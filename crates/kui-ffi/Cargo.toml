@@ -51,6 +51,10 @@ runner = ["dep:kui-native"]
 [dependencies]
 kui-core.workspace = true
 kui-native = { workspace = true, optional = true }
+# Every host loads a `.lua` extension through `open_extension` (ADR 0059):
+# the Lua VM ships in this library, and a script opens C plugins through
+# the loader this crate registers with kui-lua.
+kui-lua.workspace = true
 
 # The examples' devtools (docs/adr/0021), for the Rust host below.
 [dev-dependencies]

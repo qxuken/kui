@@ -434,6 +434,9 @@ fn add_extension_answers_with_what_went_wrong() {
 fn a_script_loads_a_c_plugin_and_places_it() {
     use kui_core::{InputEvent, Vec2};
 
+    // kui-lua opens C plugins through the loader kui-ffi hands it (ADR 0059).
+    kui_ffi::register_native_loader();
+
     // `target/<profile>/`, where cbuild leaves it — read off this test
     // binary, which cargo puts one level below in `deps/`, so a release
     // test looks for a release plugin rather than a stale debug one.
@@ -701,4 +704,91 @@ fn a_script_that_read_the_theme_is_not_replayed_across_a_theme_change() {
     );
     assert_eq!(frame(&mut core, &mut exts), Some("replayed"));
     assert_eq!(views(&lua), 2);
+}
+
+/// ADR 0059: a folder holding `init.lua` loads as one extension named for
+/// the folder, its modules beside `init.lua`.
+#[test]
+fn a_folder_with_init_lua_loads_and_requires_its_modules() {
+    let dir = std::env::temp_dir().join(format!("kui-lua-folder-{}", std::process::id()));
+    let ext_dir = dir.join("kit");
+    std::fs::create_dir_all(&ext_dir).unwrap();
+    std::fs::write(
+        ext_dir.join("words.lua"),
+        "return { hello = 'from words.lua' }",
+    )
+    .unwrap();
+    std::fs::write(
+        ext_dir.join("init.lua"),
+        "local words = require('words')\nfunction view(env) return column { text(words.hello) } end\n",
+    )
+    .unwrap();
+    assert!(kui_lua::is_lua_path(&ext_dir));
+    assert!(!kui_lua::is_lua_path(&dir));
+    let mut ext = LuaExtension::from_path(&ext_dir).unwrap();
+    assert_eq!(ext.name(), "kit");
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
+    ext.view(&Slot::root(), &mut ui).unwrap();
+    ui.finish();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A script loads another script with `env.add_extension`, with no native
+/// loader registered, and fills its slot; a C path with none registered is
+/// answered with a message naming it.
+#[test]
+fn a_script_loads_a_script_and_names_a_c_path_it_cannot_open() {
+    let dir = std::env::temp_dir().join(format!("kui-lua-guest-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let guest = dir.join("guest.lua");
+    std::fs::write(
+        &guest,
+        "slots = { 'pane' }\nfunction view(env, slot) return column { key = 'guest', text('the guest') } end\n",
+    )
+    .unwrap();
+    let mut ext = LuaExtension::from_source(
+        "host.lua",
+        &format!(
+            r#"
+            result = {{}}
+            function view(env)
+              local ok, err = env.add_extension("guest", [[{}]])
+              result.ok, result.err = ok, err
+              local ok2, err2 = env.add_extension("native", "no/such/plugin.so")
+              result.ok2, result.err2 = ok2, err2
+              return column {{ fill {{ name = "guest/pane" }} }}
+            end
+            "#,
+            guest.display()
+        ),
+    )
+    .unwrap();
+    let mut core = Core::new();
+    let mut exts = Extensions::new();
+    {
+        let mut ui = core.frame_with(Size::new(300.0, 100.0), 1.0, &mut exts);
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+    }
+    let result: mlua::Table = ext.lua().globals().get("result").unwrap();
+    assert_eq!(
+        result.get::<Option<bool>>("ok").unwrap(),
+        Some(true),
+        "{:?}",
+        result.get::<Option<String>>("err")
+    );
+    assert_eq!(result.get::<mlua::Value>("ok2").unwrap(), mlua::Value::Nil);
+    let err2: String = result.get("err2").unwrap();
+    assert!(err2.contains("plugin.so"), "{err2}");
+    assert!(
+        core.key_of("guest").is_some()
+            || core
+                .access_tree()
+                .nodes
+                .iter()
+                .any(|n| n.name.as_deref() == Some("the guest")),
+        "the guest filled its slot"
+    );
+    let _ = std::fs::remove_dir_all(dir);
 }

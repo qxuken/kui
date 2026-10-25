@@ -247,16 +247,20 @@ pub extern "C" fn kui_reply(ev: *const KuiEvent, reply: *const KuiValue) -> bool
 // ---------------------------------------------------------------------------
 // Loading extensions from C
 
-/// Loads the shared library at `path` as an extension of this context,
-/// under `namespace` — the word that makes the front of every slot name it
-/// fills (`namespace/panel`). An empty `namespace` takes the extension's
-/// own `kui_ext_name`, which is what a Rust host's `Extensions::push` does.
+/// Loads the extension at `path` into this context, under `namespace` —
+/// the word that makes the front of every slot name it fills
+/// (`namespace/panel`). A `.lua` file, or a directory holding `init.lua`,
+/// loads as a Lua extension; anything else as a C shared library (ADR
+/// 0059, [`crate::open_extension`]). An empty `namespace` takes the
+/// extension's own name — a plugin's `kui_ext_name`, a script's file name
+/// — which is what a Rust host's `Extensions::push` does.
 ///
 /// False on any refusal, with the reason readable until the next call
 /// through [`kui_ctx_extension_error`]: the library will not load, it
 /// declares no `kui_ext_abi` or one this build does not implement, it has
-/// no `kui_ext_view`, the namespace is empty *and* the plugin named
-/// itself nothing, or the namespace is already another extension's.
+/// no `kui_ext_view`, the script fails to load or run, the namespace is
+/// empty *and* the extension named itself nothing, or the namespace is
+/// already another extension's.
 ///
 /// The context owns the extension from here: it is unloaded by
 /// `kui_ctx_free`, after the plugin's own `kui_ext_free`. Load before the
@@ -295,8 +299,8 @@ pub extern "C" fn kui_ctx_add_extension(ptr: *mut KuiCtx, namespace: KuiStr, pat
         // SAFETY: the caller's, and the doc comment says so. An empty
         // namespace is the extension's own name — `push_as`'s rule, not
         // one repeated here.
-        let loaded = unsafe { crate::CExtension::open(&*kstr(path)) }
-            .and_then(|ext| c.extensions.push_as(kstr(namespace), Box::new(ext)));
+        let loaded = unsafe { crate::open_extension(&*kstr(path)) }
+            .and_then(|ext| c.extensions.push_as(kstr(namespace), ext));
         if let Err(err) = loaded {
             c.last_ext_error = err;
         }

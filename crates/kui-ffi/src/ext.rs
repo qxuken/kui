@@ -76,6 +76,43 @@ use kui_core::{Extension, Slot, Ui, UiEvent, Value};
 use crate::convert::kstr;
 use crate::{KUI_ABI_VERSION, KuiCtx, KuiEvent, KuiStr, KuiValue};
 
+/// Opens the extension at `path` the way every host's door does (ADR
+/// 0059): a `.lua` file, or a directory holding `init.lua`, as a
+/// [`kui_lua::LuaExtension`]; anything else as a C library
+/// ([`CExtension::open`]). What `kui_ctx_add_extension` and Node's
+/// `addExtension` call. Registers kui-ffi's C loader with kui-lua on the
+/// way ([`register_native_loader`]), so a script loaded here can load a C
+/// plugin of its own with `env.add_extension`.
+///
+/// # Safety
+/// A C library's entry points run on the host's frame in the host's
+/// process: loading one is trusting it as much as linking it would be. A
+/// script is only as trusted as what it may load, which is the same.
+pub unsafe fn open_extension(path: impl AsRef<Path>) -> Result<Box<dyn Extension>, String> {
+    register_native_loader();
+    let path = path.as_ref();
+    if kui_lua::is_lua_path(path) {
+        return kui_lua::LuaExtension::from_path(path)
+            .map(|ext| Box::new(ext) as Box<dyn Extension>)
+            .map_err(|e| e.to_string());
+    }
+    // SAFETY: the caller's.
+    unsafe { CExtension::open(path) }.map(|ext| Box::new(ext) as Box<dyn Extension>)
+}
+
+/// Hands kui-ffi's C loader to kui-lua, for a script's `env.add_extension`.
+/// [`open_extension`] calls it; a Rust host that builds a
+/// [`kui_lua::LuaExtension`] itself, and whose script loads a C plugin,
+/// calls it once first. The first registration wins, and this is the only
+/// one there is, so calling it again is free.
+pub fn register_native_loader() {
+    // SAFETY: a script naming a C plugin trusts it as its host trusts the
+    // script; see `open_extension`.
+    kui_lua::set_native_loader(|path| {
+        unsafe { CExtension::open(path) }.map(|ext| Box::new(ext) as Box<dyn Extension>)
+    });
+}
+
 type ViewFn = extern "C" fn(*mut c_void, *mut KuiCtx);
 type EventFn = extern "C" fn(*mut c_void, *const KuiEvent);
 

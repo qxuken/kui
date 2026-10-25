@@ -43,6 +43,7 @@ kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.67" }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
 kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.67", default-features = false }
+kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.67" }
 kui-devtools = { path = "examples/devtools" }
 
 slotmap = "1.1.1"

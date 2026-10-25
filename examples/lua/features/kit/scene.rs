@@ -259,14 +259,11 @@ impl Scene {
     }
 }
 
-/// Kit's entry script, loaded so its `require`s find the modules beside
-/// it: `from_file` names the chunk by its file name alone, so a script
-/// cannot find its own folder (an M0 finding for ADR A).
+/// Kit's entry script. `from_file` puts its folder first on
+/// `package.path`, so its `require`s find the modules beside it (ADR 0059).
 pub fn load_kit() -> LuaExtension {
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../addons/kit/lua");
-    let src = std::fs::read_to_string(format!("{dir}/kit.lua")).expect("addons/kit/lua/kit.lua");
-    let src = format!("package.path = {dir:?} .. '/?.lua;' .. package.path\n{src}");
-    LuaExtension::from_source("kit.lua", &src).expect("load Kit")
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../addons/kit/lua/kit.lua");
+    LuaExtension::from_file(path).expect("load addons/kit/lua/kit.lua")
 }
 
 fn hash(i: u64) -> u64 {

@@ -3272,15 +3272,17 @@ int32_t kui_slot_fill(KuiCtx *ctx, KuiStr name);
 
 /* -- Extensions: loading one from C --------------------------- */
 
-/* Load the shared library at `path` as an extension of this context, under
- * `namespace` - the word that fronts every slot name it fills
- * ("namespace/panel"). An empty `namespace` takes the plugin's own
- * kui_ext_name.
+/* Load the extension at `path` into this context, under `namespace` - the
+ * word that fronts every slot name it fills ("namespace/panel"). A `.lua`
+ * file, or a directory holding init.lua, loads as a Lua extension; anything
+ * else as a C shared library (ADR 0059). An empty `namespace` takes the
+ * extension's own name: a plugin's kui_ext_name, a script's file name.
  *
  * False on any refusal, with the reason readable until the next call
  * through kui_ctx_extension_error: the library will not load, it declares
  * no kui_ext_abi or one this build does not implement, it has no
- * kui_ext_view, or the namespace is empty or already another extension's.
+ * kui_ext_view, the script fails to load or run, or the namespace is empty
+ * or already another extension's.
  *
  * The context owns it from here and unloads it in kui_ctx_free, after the
  * plugin's own kui_ext_free. Load before the first frame: origins are

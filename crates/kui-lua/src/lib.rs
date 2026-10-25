@@ -316,12 +316,23 @@
 //!
 //! ## A script may host a plugin
 //!
-//! `env.add_extension(namespace, path)` loads a C extension, a `.so` /
-//! `.dylib` / `.dll` exporting the `kui_ext_*` entry points kui-ffi's
-//! `kui.h` describes, and `fill { name = "ns/slot", params = }` is the
-//! position it draws in among the script's children. The plugin's replies
-//! reach `on_event` with `from` set to the namespace. A script loads C
-//! libraries only; a host that wants two scripts loads two.
+//! `env.add_extension(namespace, path)` loads an extension of the script's
+//! own: another script (a `.lua` file, or a folder holding `init.lua`), or a
+//! C extension, a `.so` / `.dylib` / `.dll` exporting the `kui_ext_*` entry
+//! points kui-ffi's `kui.h` describes, which the host's crate opens for it
+//! ([`set_native_loader`]; ADR 0059). `fill { name = "ns/slot", params = }`
+//! is the position it draws in among the script's children, and its
+//! replies reach `on_event` with `from` set to the namespace.
+//!
+//! # Every host loads a script
+//!
+//! A `.lua` path given to any host's extension door — Node's
+//! `addExtension`, C's `kui_ctx_add_extension`, Odin's
+//! `ctx_add_extension`, a script's `env.add_extension` — loads as a
+//! [`LuaExtension`] ([`is_lua_path`], [`LuaExtension::from_path`]).
+//! [`LuaExtension::from_file`] names the chunk `@<path>` and puts the
+//! file's folder first on `package.path`, so a script made of modules
+//! `require`s the files beside it.
 //!
 //! # Where to look
 //!
@@ -356,6 +367,34 @@ pub use meta::luals_meta;
 pub use teal::teal_decls;
 
 const PRELUDE: &str = include_str!("prelude.lua");
+
+/// What `env.add_extension` opens a path that is not Lua with: a C
+/// library, in practice, by `kui_ffi`'s loader. kui-lua does not depend on
+/// kui-ffi — kui-ffi depends on kui-lua, so every host that loads
+/// extensions loads `.lua` ones (ADR 0059) — so the loader is handed in
+/// by whichever crate links both: [`set_native_loader`].
+pub type NativeLoader = fn(&std::path::Path) -> Result<Box<dyn Extension>, String>;
+
+static NATIVE_LOADER: std::sync::OnceLock<NativeLoader> = std::sync::OnceLock::new();
+
+/// Registers what a script's `env.add_extension` loads a non-Lua path
+/// with. The first registration wins; later ones are ignored, since every
+/// caller registers the same loader. `kui_ffi::open_extension` registers
+/// kui-ffi's on its first call, and `kui_ffi::register_native_loader` does
+/// it for a Rust host that builds [`LuaExtension`]s itself. With none
+/// registered, a script asking for a C plugin is told so, by its path.
+pub fn set_native_loader(loader: NativeLoader) {
+    let _ = NATIVE_LOADER.set(loader);
+}
+
+/// Whether `path` names a Lua extension: a file ending in `.lua`, or a
+/// directory holding `init.lua` (ADR 0059). Every host's one door loads
+/// such a path as a [`LuaExtension`] and anything else as a C library.
+pub fn is_lua_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("lua"))
+        || (path.is_dir() && path.join("init.lua").is_file())
+}
 
 /// A Lua script loaded as a kui [`Extension`].
 ///
@@ -451,11 +490,32 @@ impl LuaExtension {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn from_source(name: impl Into<String>, source: &str) -> mlua::Result<Self> {
+        let name = name.into();
+        let chunk = name.clone();
+        Self::load(name, &chunk, source, None)
+    }
+
+    /// The script loaded under `name`, its chunk called `chunk`, with `dir`
+    /// first on `package.path` when it came from a file.
+    fn load(
+        name: String,
+        chunk: &str,
+        source: &str,
+        dir: Option<&std::path::Path>,
+    ) -> mlua::Result<Self> {
         let lua = Lua::new();
         rows::register(&lua)?;
         lua.load(PRELUDE).set_name("kui:prelude").exec()?;
-        let name = name.into();
-        lua.load(source).set_name(&name).exec()?;
+        if let Some(dir) = dir {
+            // `dir/?.lua;dir/?/init.lua;` ahead of the default path, so a
+            // script made of modules `require`s the files beside it. A
+            // script has no `debug` library to find its own folder with.
+            let package: Table = lua.globals().get("package")?;
+            let rest: String = package.get("path")?;
+            let d = dir.to_string_lossy();
+            package.set("path", format!("{d}/?.lua;{d}/?/init.lua;{rest}"))?;
+        }
+        lua.load(source).set_name(chunk).exec()?;
         let slots = match lua.globals().get::<mlua::Value>("slots")? {
             mlua::Value::Nil => Vec::new(),
             mlua::Value::Table(t) => t.sequence_values::<String>().collect::<mlua::Result<_>>()?,
@@ -504,13 +564,36 @@ impl LuaExtension {
     }
 
     /// Loads a script from a file; its file name becomes the script's name.
+    ///
+    /// The chunk is named `@<path>`, so an error names the file, and the
+    /// file's directory goes first on `package.path`, so the script's
+    /// `require "skin"` finds `skin.lua` beside it (ADR 0059).
     pub fn from_file(path: impl AsRef<std::path::Path>) -> mlua::Result<Self> {
         let path = path.as_ref();
-        let source = std::fs::read_to_string(path).map_err(mlua::Error::external)?;
+        let source = std::fs::read_to_string(path)
+            .map_err(|e| mlua::Error::runtime(format!("{}: {e}", path.display())))?;
         let name = path
             .file_name()
             .map_or_else(|| "lua".into(), |n| n.to_string_lossy().into_owned());
-        Self::from_source(name, &source)
+        let dir = path.parent().filter(|d| !d.as_os_str().is_empty());
+        let dir = dir.unwrap_or(std::path::Path::new("."));
+        Self::load(name, &format!("@{}", path.display()), &source, Some(dir))
+    }
+
+    /// Loads a script from a `.lua` file, or from a directory holding
+    /// `init.lua` — named for the directory, its modules beside `init.lua`.
+    /// What every host's door does with a path [`is_lua_path`] accepts.
+    pub fn from_path(path: impl AsRef<std::path::Path>) -> mlua::Result<Self> {
+        let path = path.as_ref();
+        if path.is_dir() {
+            let mut ext = Self::from_file(path.join("init.lua"))?;
+            if let Some(n) = path.file_name() {
+                ext.name = n.to_string_lossy().into_owned();
+            }
+            Ok(ext)
+        } else {
+            Self::from_file(path)
+        }
     }
 }
 
@@ -1716,12 +1799,13 @@ fn env_table<'scope, 'env: 'scope>(
     )?;
     // `env.add_extension(namespace, path)` → true, or nil and a message:
     // the script hosting an extension of its own (ADR 0014, and
-    // `kui_core::slot`). The mechanism is C shared libraries and only
-    // that — a `.so` / `.dylib` / `.dll` exporting the seven `kui_ext_*`
-    // entry points `crates/kui-ffi/include/kui.h` describes — which is
-    // the same plugin a Rust, C or Node host loads, and is why a script
-    // can place one at all: the contract between a host and an extension
-    // is C, so the script is just another host.
+    // `kui_core::slot`). A `.lua` file or a folder with `init.lua` is
+    // another script, loaded here; anything else is a C shared library —
+    // a `.so` / `.dylib` / `.dll` exporting the seven `kui_ext_*` entry
+    // points `crates/kui-ffi/include/kui.h` describes — opened by the
+    // native loader the host's crate registered (ADR 0059). Either is the
+    // same extension a Rust, C or Node host loads: the script is just
+    // another host.
     //
     // Called from `view`, because that is where a script knows what it
     // wants, and idempotent by (namespace, path) so the honest spelling
@@ -1749,14 +1833,31 @@ fn env_table<'scope, 'env: 'scope>(
                     )
                 });
             }
-            // SAFETY: no more so than the host loading it would be. The
-            // library's code runs in this process on this frame; a script
-            // naming one is trusting it as the host trusts the script.
-            let ext = match unsafe { kui_ffi::CExtension::open(&path) } {
-                Ok(ext) => ext,
-                Err(e) => return Ok((None, Some(e))),
+            // A `.lua` path is loaded here; anything else goes to the
+            // native loader the host's crate registered (ADR 0059). Its
+            // code runs in this process on this frame: a script naming
+            // one is trusting it as the host trusts the script.
+            let ext: Box<dyn Extension> = if is_lua_path(&path) {
+                match LuaExtension::from_path(&path) {
+                    Ok(ext) => Box::new(ext),
+                    Err(e) => return Ok((None, Some(e.to_string()))),
+                }
+            } else if let Some(open) = NATIVE_LOADER.get() {
+                match open(&path) {
+                    Ok(ext) => ext,
+                    Err(e) => return Ok((None, Some(e))),
+                }
+            } else {
+                return Ok((
+                    None,
+                    Some(format!(
+                        "{}: this host loads no C plugins from a script; a Rust host \
+                         registers the loader with `kui_ffi::register_native_loader()`",
+                        path.display()
+                    )),
+                ));
             };
-            let origin = match ui.borrow_mut().add_extension(&namespace, Box::new(ext)) {
+            let origin = match ui.borrow_mut().add_extension(&namespace, ext) {
                 Ok(origin) => origin,
                 Err(e) => return Ok((None, Some(e))),
             };

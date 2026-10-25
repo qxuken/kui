@@ -185,7 +185,7 @@
 // The other direction: a C shared library as a guest inside a host that
 // already owns the frame.
 mod ext;
-pub use ext::CExtension;
+pub use ext::{CExtension, open_extension, register_native_loader};
 
 #[macro_use]
 mod abi;

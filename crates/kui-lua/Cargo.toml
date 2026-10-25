@@ -17,14 +17,14 @@ exclude = ["tests/tl"]
 [dependencies]
 kui-core.workspace = true
 mlua.workspace = true
-# For `CExtension` alone: a script that places a native panel needs
-# something to open the `.so`/`.dylib`/`.dll` with, and that loader is the
-# C API's. `default-features = false` in the workspace manifest, so this is
-# the library without its windowed runner — a Lua extension has no window
-# of its own and would not use one (see the note in kui-ffi/Cargo.toml).
-kui-ffi.workspace = true
+# No kui-ffi: kui-ffi depends on this crate so that every host loads `.lua`
+# extensions (ADR 0059), and a script's `env.add_extension` opens a C plugin
+# through the loader kui-ffi registers (`set_native_loader`).
 
 [dev-dependencies]
+# The C loader, for the examples and tests whose script loads a C plugin
+# (`kui_ffi::register_native_loader`). A dev-dependency may close the cycle.
+kui-ffi.workspace = true
 divan.workspace = true
 kui-native.workspace = true
 # The examples' devtools (docs/adr/0021), for the Rust host of the panel.

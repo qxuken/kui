@@ -101,6 +101,10 @@ fn load() -> Extensions {
         env!("CARGO_MANIFEST_DIR"),
         "/../../examples/lua/features/slots/panel.lua"
     );
+    // The script loads the C panel itself with `env.add_extension`, through
+    // kui-ffi's loader: a host that builds its `LuaExtension` by hand hands
+    // that loader to kui-lua first (ADR 0059).
+    kui_ffi::register_native_loader();
     let ext = LuaExtension::from_file(script).expect("load panel.lua");
     let mut exts = Extensions::new();
     if let Err(e) = exts.push_as("todos", Box::new(ext)) {

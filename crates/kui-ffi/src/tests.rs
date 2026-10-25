@@ -4804,3 +4804,83 @@ mod perf_headless {
         kui_ctx_free(ctx);
     }
 }
+
+/// ADR 0059: a C host's one door loads a `.lua` path as a Lua extension —
+/// its folder first on `package.path`, so it `require`s the module beside
+/// it — and a script that will not load is refused with its file named.
+#[cfg(test)]
+mod lua_extensions {
+    use super::*;
+
+    fn script_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("kui-ffi-lua-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_c_host_loads_a_lua_extension_and_it_requires_its_neighbour() {
+        let dir = script_dir("ok");
+        std::fs::write(
+            dir.join("label.lua"),
+            "return { text = 'from the module beside it' }",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("panel.lua"),
+            r#"
+            local label = require("label")
+            slots = { "panel" }
+            function view(env, slot)
+              return column { bg = 0x204060ff, pad = 8, text(label.text) }
+            end
+            "#,
+        )
+        .unwrap();
+        let path = dir.join("panel.lua");
+        let path = path.to_str().unwrap();
+
+        let ctx = kui_ctx_new();
+        assert!(
+            kui_ctx_add_extension(ctx, ks("lua"), ks(path)),
+            "the script loads"
+        );
+        kui_frame_begin(ctx, 320.0, 240.0, 1.0);
+        let root: KuiSpec = unsafe { std::mem::zeroed() };
+        kui_root(ctx, &root);
+        assert!(kui_slot(ctx, ks("lua/panel"), std::ptr::null()));
+        kui_frame_finish(ctx);
+        let mut draw = KuiDrawData::default();
+        kui_draw_data(ctx, &mut draw);
+        assert!(
+            draw.quad_count > 1,
+            "the script drew: {} quads",
+            draw.quad_count
+        );
+        kui_ctx_free(ctx);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_script_that_does_not_load_is_refused_with_its_file_named() {
+        let dir = script_dir("bad");
+        std::fs::write(
+            dir.join("broken.lua"),
+            "function view(env) return column { end",
+        )
+        .unwrap();
+        let path = dir.join("broken.lua");
+        let path = path.to_str().unwrap();
+
+        let ctx = kui_ctx_new();
+        assert!(!kui_ctx_add_extension(ctx, ks("lua"), ks(path)));
+        let mut why = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_ctx_extension_error(ctx, &mut why));
+        assert!(kstr(why).contains("broken.lua"), "{}", &*kstr(why));
+        kui_ctx_free(ctx);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

@@ -9780,6 +9780,51 @@ test('a C extension fills the slot the view declares, and its reply comes back',
   );
 });
 
+// ADR 0059: the same door loads a Lua script, which needs no compiler, so
+// this one always runs: the script requires the module beside it, fills
+// the slot, and its reply reaches the app with its origin.
+test('a .lua extension loads through addExtension, fills its slot and replies (ADR 0059)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kui-lua-ext-'));
+  try {
+    writeFileSync(join(dir, 'words.lua'), "return { title = 'a script, from Node' }");
+    writeFileSync(
+      join(dir, 'panel.lua'),
+      `local words = require('words')
+       slots = { 'panel' }
+       function view(env, slot)
+         return column { width = 'grow', height = 'grow',
+           row { key = 'go', role = 'button', label = words.title, pad = 8,
+                 on_click = { kind = 'go' }, text(words.title) } }
+       end
+       function on_event(ev)
+         if ev.kind == 'go' then return { kind = 'went' } end
+       end`,
+    );
+    const ctx = new Ctx();
+    ctx.addExtension('lua', join(dir, 'panel.lua'));
+    assert.deepEqual(ctx.extensionNamespaces(), ['lua']);
+    const enc = createEncoder(protocol());
+    const draw = () => {
+      const tree = box({ width: 'grow', height: 'grow', pad: 0 }, [el('slot', { name: 'lua/panel' })]);
+      const { stream, strings } = enc.encode(tree);
+      ctx.frameBinary(400, 300, 1, stream, strings);
+    };
+    draw();
+    const button = ctx.accessTree().nodes.find((n) => n.origin === 1 && n.name === 'a script, from Node');
+    assert.ok(button, 'the script drew its button, titled from the module beside it');
+    ctx.cursor(button.rect.x + button.rect.w / 2, button.rect.y + button.rect.h / 2);
+    ctx.mouse(true);
+    ctx.mouse(false);
+    draw();
+    const replies = ctx.pollEvents().filter((e) => e.payload?.kind === 'went');
+    assert.equal(replies.length, 1, 'the script replied once');
+    assert.equal(replies[0].origin, 1, 'with its origin');
+    assert.throws(() => ctx.addExtension('bad', join(dir, 'missing.lua')), /missing\.lua/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // A slot replayed by its host (ADR 0045), through the same C plugin.
 test('a replayed slot spares the plugin, and says why when it cannot (ADR 0045)', (t) => {
   const name = process.platform === 'win32' ? 'panel.dll' : 'panel.so';

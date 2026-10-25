@@ -33,8 +33,6 @@
 //! point `KUI_NODE_LIB` at the resulting library; see `packages/kui/README.md`.
 //! Book: <https://kui-book.qxuken.dev>. Repository: <https://github.com/qxuken/kui>.
 
-use kui_ffi::CExtension;
-
 use kui_core::{
     Appearance, Assistive, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample,
     FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref,
@@ -572,23 +570,24 @@ impl Ctx {
         self.core.begin_frame_cause();
     }
 
-    /// Loads a C extension: a shared library exporting the seven
-    /// `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes.
-    /// `namespace` is the word that fronts every slot name it
+    /// Loads an extension: a Lua script (a `.lua` file, or a folder
+    /// holding `init.lua`), or a C shared library exporting the seven
+    /// `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
+    /// (ADR 0059). `namespace` is the word that fronts every slot name it
     /// fills — `<slot name="todos/panel"/>` for `addExtension('todos', …)`
-    /// — and an empty one takes the plugin's own `kui_ext_name`. Throws
-    /// with the reason if the library will not load, declares no
-    /// `kui_ext_abi` or one this build does not implement, has no
-    /// `kui_ext_view`, or wants a namespace another extension has.
+    /// — and an empty one takes the extension's own name. Throws with the
+    /// reason if the script fails to load or run, or the library will not
+    /// load, declares no `kui_ext_abi` or one this build does not
+    /// implement, has no `kui_ext_view`, or wants a namespace another
+    /// extension has.
     ///
     /// Load before the first frame: origins are positions in the list, so
     /// one added later renumbers the ones after it. The context owns it and
     /// unloads it when the context goes.
     ///
-    /// **A plugin runs in this process**, on this thread, on this app's
-    /// frame — loading one is trusting it as much as linking it would be.
-    /// Only C shared libraries: there is no script-loads-script path here,
-    /// and a Lua extension is loaded by a Rust host or not at all.
+    /// **An extension runs in this process**, on this thread, on this
+    /// app's frame — loading one is trusting it as much as linking it would
+    /// be, a script included: it may load C plugins of its own.
     #[napi]
     pub fn add_extension(&mut self, namespace: String, path: String) -> Result<()> {
         load_extension(&mut self.extensions, namespace, path)
@@ -2249,7 +2248,7 @@ impl KuiWindow {
         // namespace?}]`. Origins are positions in the list, and the runner
         // owns it — so the routing a headless `Ctx` does for itself is the
         // runner's here, and `TreeApp::on_event` only ever sees what came
-        // back out of it. C shared libraries only (ADR 0014); see
+        // back out of it. A Lua script or a C library (ADR 0059); see
         // `Ctx::addExtension`.
         for e in o
             .get("extensions")
@@ -2270,7 +2269,7 @@ impl KuiWindow {
             }
             // SAFETY: the caller's; the option is documented as loading
             // code into this process.
-            let ext = unsafe { kui_ffi::CExtension::open(path) }.map_err(err)?;
+            let ext = unsafe { kui_ffi::open_extension(path) }.map_err(err)?;
             launcher = launcher.try_extension_as(ns, ext).map_err(err)?;
         }
         launcher = match o.get("chrome") {
@@ -5149,8 +5148,8 @@ fn load_extension(
     path: String,
 ) -> Result<()> {
     // SAFETY: the caller's, and `addExtension`'s doc comment says so.
-    let ext = unsafe { CExtension::open(&path) }.map_err(err)?;
-    extensions.push_as(namespace, Box::new(ext)).map_err(err)
+    let ext = unsafe { kui_ffi::open_extension(&path) }.map_err(err)?;
+    extensions.push_as(namespace, ext).map_err(err)
 }
 /// `access(key, action, arg)`: `arg` is the new text as a string
 /// (`setValue`, `replaceSelectedText`), or `{anchor: {run, character},

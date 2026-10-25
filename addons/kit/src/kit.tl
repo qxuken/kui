@@ -8,9 +8,7 @@
 -- them whenever they change.
 --
 -- The modules beside this file are found through `package.path`, which
--- the host extends with this folder before loading it: a script has no
--- `debug` library and `from_file` names its chunk by the file name alone,
--- so it cannot find its own folder (ADR A, decision 3).
+-- every host's loader starts with this file's folder (ADR 0059).
 
 local skin = require("skin")
 local ledger = require("ledger")

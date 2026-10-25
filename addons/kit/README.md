@@ -40,5 +40,5 @@ What the spike works around until core has it:
   `ev.message::<Msg>()` decodes it (ADR B, decision 3).
 - **Large data** crosses once by revision: `data = { rev, rows }` when it
   changes, `{ rev }` after.
-- **Finding its own modules:** the host extends `package.path` with
-  `lua/` before loading `kit.lua` (ADR A, decision 3).
+- **Finding its own modules** was a workaround in M0; since ADR 0059 a
+  loaded file's folder is first on `package.path` in every host.

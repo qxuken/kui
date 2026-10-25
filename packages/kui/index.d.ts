@@ -2599,23 +2599,24 @@ export declare class Ctx {
    */
   beginFrameCause(): void
   /**
-   * Loads a C extension: a shared library exporting the seven
-   * `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes.
-   * `namespace` is the word that fronts every slot name it
+   * Loads an extension: a Lua script (a `.lua` file, or a folder
+   * holding `init.lua`), or a C shared library exporting the seven
+   * `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
+   * (ADR 0059). `namespace` is the word that fronts every slot name it
    * fills — `<slot name="todos/panel"/>` for `addExtension('todos', …)`
-   * — and an empty one takes the plugin's own `kui_ext_name`. Throws
-   * with the reason if the library will not load, declares no
-   * `kui_ext_abi` or one this build does not implement, has no
-   * `kui_ext_view`, or wants a namespace another extension has.
+   * — and an empty one takes the extension's own name. Throws with the
+   * reason if the script fails to load or run, or the library will not
+   * load, declares no `kui_ext_abi` or one this build does not
+   * implement, has no `kui_ext_view`, or wants a namespace another
+   * extension has.
    *
    * Load before the first frame: origins are positions in the list, so
    * one added later renumbers the ones after it. The context owns it and
    * unloads it when the context goes.
    *
-   * **A plugin runs in this process**, on this thread, on this app's
-   * frame — loading one is trusting it as much as linking it would be.
-   * Only C shared libraries: there is no script-loads-script path here,
-   * and a Lua extension is loaded by a Rust host or not at all.
+   * **An extension runs in this process**, on this thread, on this
+   * app's frame — loading one is trusting it as much as linking it would
+   * be, a script included: it may load C plugins of its own.
    */
   addExtension(namespace: string, path: string): void
   /**

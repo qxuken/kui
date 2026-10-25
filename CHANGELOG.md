@@ -66,6 +66,10 @@ was the first bare bump to break an app in five releases).
 - Under custom chrome a press on the drawn menu bar's empty room starts
   a window drag, while no menu is open; a press on a title still opens
   its menu.
+- kui-lua no longer depends on kui-ffi: a Rust host that builds a
+  `LuaExtension` itself and whose script loads a C plugin with
+  `env.add_extension` calls `kui_ffi::register_native_loader()` first
+  (backlog C59, ADR 0059).
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -94,6 +98,18 @@ mouse wheel's notch over a row that scrolls only sideways, or turned
 with Shift held, moves that row now: a test that sent one and read the
 page's offset reads the row's, and a Windows or Linux user scrolls
 what was out of reach before.
+
+Every host now loads a `.lua` extension, and the price of that is
+kui-lua giving up its kui-ffi dependency, which was there for one call:
+opening the C plugin a script names. kui-ffi depends on kui-lua instead
+and hands it that loader. A host that loads through `kui_ffi`'s door
+(`open_extension`, `kui_ctx_add_extension`, Node) has it registered for
+it. A Rust host that builds its `LuaExtension` by hand and lets the
+script open a C plugin adds one call before the first frame; without it
+the script's `env.add_extension` answers nil and a message naming the
+path, as it did for a missing file. A script loading another script
+needs nothing.
+
 The rest of this release breaks nothing: a fix to text
 at a size no screen shows, a declaration file for Teal beside the one
 for lua-language-server, and a new runner beside the window's.
@@ -116,6 +132,31 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
   spawn for "Show in folder" or a link.
+- **A `.lua` extension loads in every host** (backlog C59,
+  [ADR 0059](docs/adr/0059-a-lua-extension-loads-in-every-host.md)).
+  Every door that loads an extension now takes a `.lua` file, or a folder
+  holding `init.lua`, as a Lua extension, and anything else as a C
+  library: Node's `addExtension` and a window's `extensions`, C's
+  `kui_ctx_add_extension`, Odin's `ctx_add_extension` and a script's own
+  `env.add_extension`. One extension written in Lua (Kit, under
+  [`addons/kit`](addons/kit), is the first) reaches every binding.
+    - `kui_ffi::open_extension(path)` is the one loader they all call.
+    - `kui_lua::is_lua_path` and `LuaExtension::from_path` tell a script
+      from a library and load either shape.
+    - A loaded file's chunk is named `@<path>`, so errors name the file.
+      Its folder goes first on `package.path`, so a script made of modules
+      `require`s the files beside it.
+    - `Box<dyn Extension>` is an `Extension`.
+
+  The Lua VM now ships in `libkui_ffi` and the Node addon. On a release
+  aarch64-apple-darwin build that adds about 1.55 MB: 16.88 → 18.45 MB
+  with the runner, 7.72 → 9.26 MB without.
+
+  **What you can delete:**
+    - a Rust shim whose only job was to host a Lua extension for a Node,
+      C or Odin app;
+    - a `package.path` line prepended to a script's source so it finds
+      its own modules.
 
 - **The Lua DSL described for Teal** (backlog F194).
   `kui_lua::teal_decls()` returns a `kui.d.tl` for

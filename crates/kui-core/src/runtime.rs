@@ -2230,3 +2230,22 @@ pub trait Extension {
     /// to the host, delivered in order.
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value>;
 }
+
+/// A boxed extension is one: what a host that learns the kind only at run
+/// time holds — `kui_ffi::open_extension` answers a Lua script or a C
+/// library for one path (ADR 0059) — goes to `Launcher::extension_as` as
+/// it is.
+impl<E: Extension + ?Sized> Extension for Box<E> {
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+    fn slots(&self) -> &[String] {
+        (**self).slots()
+    }
+    fn view(&mut self, slot: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        (**self).view(slot, ui)
+    }
+    fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
+        (**self).on_event(ev)
+    }
+}
