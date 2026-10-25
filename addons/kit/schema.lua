@@ -16,6 +16,7 @@ return {
     { name = "Skin", doc = "The look: Ledger's paper and ink, Phosphor's terminal, or Neutral's quiet chrome.", "ledger", "phosphor", "neutral" },
     { name = "Density", doc = "Row and control heights: 22 and 26 px, or 20 and 22 px compact.", "comfortable", "compact" },
     { name = "Level", doc = "A log line's level.", "debug", "info", "warn", "error" },
+    { name = "Browse", doc = "What a field's Choose… button asks the system for: a folder, a file to open, or where to save one.", "folder", "open", "save" },
     { name = "XFormat", doc = "How a chart labels its x axis: the number (with `x_unit`), time counted back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the local time of day.", "number", "ago", "clock" },
   },
 
@@ -188,9 +189,11 @@ return {
         { "focus", "integer?", doc = "Takes the keyboard each time this number changes while the field is on screen: keep a counter in your model and bump it (⌘F). A field that shows after the bump takes its number as where it starts." },
         { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows: a new item's name." },
         { "error", "string?", doc = "What is wrong with the text: drawn at the end of the field in the danger colour (cut short past half its width, the whole message its tooltip), its edge in danger too, and read after its name. It takes no room of its own, so a field in a toolbar keeps its height. An empty string marks the field only, for fields that share one message." },
+        { "browse", "Browse?", doc = "A Choose… button after the field that opens the system's folder, open or save dialog; the path picked arrives as `change`, as if typed. Cancelled, nothing changes. The dialog starts in the field's folder when its text is an absolute path." },
+        { "browse_label", "string?", doc = "The button's label; Choose… when left out." },
       },
       events = {
-        { "change", doc = "The text changed.", fields = { { "text", "string", doc = "The whole text." } } },
+        { "change", doc = "The text changed, or a path was picked.", fields = { { "text", "string", doc = "The whole text." } } },
         { "submit", doc = "Enter.", fields = { { "text", "string", doc = "The whole text." } } },
       } },
     { "text_area",

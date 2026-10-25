@@ -155,6 +155,7 @@ function M.tabs(c: Ctx, p: P): kui.Node
       on_click = act(c, "tabs.change", { value = tb.value }),
       ctx.caption(c, tb.label as string, { color = ref(c, here and "fg" or "muted") }),
     }
+    ctx.ring(c, t, "t" .. i)
     if tb.count ~= nil then
       t[#t + 1] = ctx.data(c, tostring(tb.count), { size = "$kitSizeLabel", color = ref(c, "faint") })
     end
@@ -206,6 +207,7 @@ function M.section(c: Ctx, p: P): kui.Node
     icons.node(c, collapsed and "chevron_right" or "chevron_down", 12, "muted"),
     ctx.caption(c, str(p.title) or "", { size = "$kitSizeLabel" }),
   }
+  ctx.ring(c, head, "toggle")
   if p.count ~= nil then head[#head + 1] = ctx.data(c, tostring(p.count), { size = "$kitSizeLabel", color = ref(c, "faint") }) end
   local bar = row {
     key = "head",

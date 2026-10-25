@@ -1759,9 +1759,14 @@ fn a_new_notes_title_takes_the_keyboard_and_tab_goes_on_to_its_body() {
 /// A raw key press as a window sends one: the key down, then its editing
 /// key, routed.
 fn press_key(r: &mut LuaRig, code: kui_core::KeyCode) {
-    use kui_core::testing::key_press;
-    let e = r.core.handle_input(key_press(code));
+    let kp = kui_core::KeyPress::new(code, kui_core::KeyMods::default());
+    let edit = kp.edit_event();
+    let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kp));
     r.route(e);
+    if let Some(ev) = edit {
+        let e = r.core.handle_input(ev);
+        r.route(e);
+    }
     r.frames(1);
 }
 
@@ -1947,4 +1952,201 @@ fn a_waterfalls_spans_are_one_stop_or_none() {
         }
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }
+}
+
+#[test]
+fn a_tables_ring_and_selection_are_one_cursor() {
+    // Watchtower: a click on a row focused that row (a row with a click
+    // and no role was a control of its own), the arrows moved the
+    // selection through the table above it, and the ring stayed on the
+    // row first clicked.
+    let mut r = LuaRig::new(
+        r#"
+        local ch = channel({ name = { "one", "two", "three", "four" } })
+        sel = nil
+        function on_event(ev) if ev.kind == "sel" then sel = ev.select.row end end
+        function view(env)
+          return column { width = "grow", height = "grow",
+            column { width = 300, height = 200,
+              component("kit/table", { rows = ch, columns = { { field = "name", title = "Name" } },
+                selected = sel, grow = true, on_select = { kind = "sel" } }) } }
+        end
+        "#,
+    );
+    r.frames(2);
+    let two = r.text("two").unwrap();
+    r.slow_click(two.x + 2.0, two.y + two.h / 2.0);
+    r.frames(1);
+    let focused = |r: &mut LuaRig| -> Option<String> {
+        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+    };
+    assert_eq!(focused(&mut r).as_deref(), Some("rows"), "the click focuses the table, not the row");
+    press_key(&mut r, kui_core::KeyCode::Down);
+    press_key(&mut r, kui_core::KeyCode::Down);
+    r.frames(1);
+    let sel: Option<i64> = r.app.globals().get("sel").unwrap();
+    assert_eq!(sel, Some(3), "the arrows moved the selection");
+    let ring = focus_colours();
+    let rings: Vec<kui_core::Quad> = kui_core::testing::solids(&mut r.core)
+        .into_iter()
+        .filter(|q| q.border_w > 0.0 && ring.contains(&q.border_color))
+        .collect();
+    let four = r.text("four").unwrap();
+    assert_eq!(rings.len(), 1, "one ring: {rings:?}");
+    let q = rings[0].rect;
+    assert!(q.y <= four.y && q.y + q.h >= four.y + four.h, "on the selected row: {q:?} vs {four:?}");
+}
+
+#[test]
+fn rings_are_in_the_skins_focus_colour() {
+    // The core's ring is the theme's blue in every skin; Kit's controls
+    // draw their own in the skin's focus colour, the core's turned off.
+    for (skin, colours) in [("phosphor", [0x0f7a35ffu32, 0x39ff6aff]), ("neutral", [0x2f6fedff, 0x5b8cffff])] {
+        let mut r = LuaRig::new(&format!(
+            r#"
+            function view(env)
+              return column {{ width = "grow", height = "grow", pad = 20, gap = 8,
+                component("kit/settings", {{ skin = "{skin}" }}),
+                component("kit/button", {{ label = "Go" }}),
+                component("kit/segmented", {{ value = "a", options = {{ {{ value = "a", label = "A" }}, {{ value = "b", label = "B" }} }} }}),
+                component("kit/tabs", {{ value = "x", tabs = {{ {{ value = "x", label = "X" }}, {{ value = "y", label = "Y" }} }} }}, {{}}),
+                component("kit/slider", {{ value = 0.5, label = "Zoom" }}),
+                component("kit/section", {{ title = "More" }}, {{}}),
+              }}
+            end
+            "#
+        ));
+        r.frames(2);
+        let skin_ring: Vec<kui_core::Color> = colours.iter().map(|&c| kui_core::Color::hex(c)).collect();
+        let theme_ring = [kui_core::Theme::light().focus_ring, kui_core::Theme::dark().focus_ring];
+        for stop in 0..5 {
+            kui_core::testing::tab(&mut r.core, false);
+            r.frames(2);
+            let quads = kui_core::testing::solids(&mut r.core);
+            let ours = quads.iter().filter(|q| q.border_w > 0.0 && skin_ring.contains(&q.border_color)).count();
+            let theirs = quads.iter().filter(|q| q.border_w > 0.0 && theme_ring.contains(&q.border_color)).count();
+            let who = r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+            assert!(ours >= 1, "{skin}, stop {stop} ({who:?}): a ring in the skin's colour");
+            assert_eq!(theirs, 0, "{skin}, stop {stop} ({who:?}): no ring in the theme's");
+        }
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
+
+#[test]
+fn a_slider_lands_on_the_step_nearest_the_pointer_and_its_handle_on_the_value() {
+    // The handle was laid out after the fill, half a handle and more past
+    // the value's place, while the core maps the pointer along the track:
+    // dragging the handle landed a step past the one under it.
+    let mut r = LuaRig::new(
+        r#"
+        v = 5
+        function on_event(ev) if ev.kind == "v" then v = ev.change.value end end
+        function view(env)
+          return column { width = 400, height = "grow", pad = 20,
+            component("kit/slider", { value = v, min = 0, max = 10, step = 1, label = "Level", on_change = { kind = "v" } }) }
+        end
+        "#,
+    );
+    r.frames(3);
+    let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).expect("the track").rect;
+    let (start, len) = (track.x + 6.0, track.w - 12.0);
+    let handle = r
+        .node(|n| (n.rect.w - 12.0).abs() < 0.5 && (n.rect.h - 12.0).abs() < 0.5)
+        .expect("the handle")
+        .rect;
+    let centre = handle.x + 6.0;
+    assert!((centre - (start + 0.5 * len)).abs() <= 1.0, "the handle sits on 5: {centre} vs {}", start + 0.5 * len);
+    let y = track.y + track.h / 2.0;
+    use kui_core::{InputEvent, Vec2};
+    let mut drag_to = |r: &mut LuaRig, at: f32| -> f64 {
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(centre, y)));
+        r.route(e);
+        r.frames(1);
+        let e = r.core.handle_input(InputEvent::mouse_down(1));
+        r.route(e);
+        r.frames(1);
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(start + at / 10.0 * len, y)));
+        r.route(e);
+        r.frames(1);
+        let e = r.core.handle_input(InputEvent::mouse_up());
+        r.route(e);
+        r.frames(2);
+        r.app.globals().get("v").unwrap()
+    };
+    assert_eq!(drag_to(&mut r, 5.4), 5.0, "5.4 is nearest 5");
+    assert_eq!(drag_to(&mut r, 5.6), 6.0, "5.6 is nearest 6");
+    assert_eq!(drag_to(&mut r, 2.45), 2.0, "2.45 is nearest 2");
+}
+
+#[test]
+fn an_under_way_bar_crosses_its_whole_track() {
+    // It slid from -80 px to 400 px whatever the track's width: on a wide
+    // track it turned back a third of the way along.
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = 900, height = "grow", pad = 20,
+            component("kit/progress", { label = "Under way" }) }
+        end
+        "#,
+    );
+    r.core.set_time(1.0);
+    r.frames(3);
+    let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).expect("the track").rect;
+    let mut right = f32::MIN;
+    let mut left = f32::MAX;
+    for k in 0..60 {
+        r.core.set_time(1.0 + k as f64 * 0.05);
+        r.frames(1);
+        for q in kui_core::testing::solids(&mut r.core) {
+            let bar = (q.rect.h - 4.0).abs() < 0.5 && (q.rect.w - 0.3 * track.w).abs() < 2.0;
+            if bar {
+                right = right.max(q.rect.x + q.rect.w);
+                left = left.min(q.rect.x);
+            }
+        }
+    }
+    assert!(right >= track.x + track.w - 2.0, "it reaches the track's end: {right} vs {:?}", track);
+    assert!(left <= track.x + 2.0, "and starts from its start: {left} vs {:?}", track);
+}
+
+#[test]
+fn a_fields_choose_button_asks_for_a_folder_and_fills_the_field() {
+    // Tidewater's sync folder could only be typed.
+    let mut r = LuaRig::new(
+        r#"
+        folder = "/Users/me/Tidewater"
+        function on_event(ev) if ev.kind == "folder" then folder = ev.change.text end end
+        function view(env)
+          return column { width = 500, height = "grow", pad = 20,
+            component("kit/text_field", { label = "Sync folder", value = folder, mono = true, browse = "folder",
+              on_change = { kind = "folder" } }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let b = r.named("Choose… sync folder");
+    r.slow_click(b.x + b.w / 2.0, b.y + b.h / 2.0);
+    r.frames(2);
+    let asks = r.core.take_file_requests();
+    assert_eq!(asks.len(), 1, "one dialog asked for");
+    assert_eq!(asks[0].mode, kui_core::FileDialogMode::Folder);
+    assert_eq!(asks[0].directory.as_deref(), Some("/Users/me/Tidewater"),
+        "it starts in the field's folder");
+    let e = r.core.handle_input(kui_core::InputEvent::Files(vec!["/Volumes/Data/Sync".into()]));
+    r.route(e);
+    r.frames(2);
+    let folder: String = r.app.globals().get("folder").unwrap();
+    assert_eq!(folder, "/Volumes/Data/Sync", "the path picked is the field's");
+    // Cancelled: nothing changes.
+    r.slow_click(b.x + b.w / 2.0, b.y + b.h / 2.0);
+    r.frames(2);
+    assert_eq!(r.core.take_file_requests().len(), 1);
+    let e = r.core.handle_input(kui_core::InputEvent::Files(vec![]));
+    r.route(e);
+    r.frames(2);
+    let folder: String = r.app.globals().get("folder").unwrap();
+    assert_eq!(folder, "/Volumes/Data/Sync", "a cancel changes nothing");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }

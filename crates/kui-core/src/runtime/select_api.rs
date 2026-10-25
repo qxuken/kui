@@ -767,7 +767,9 @@ impl Core {
         if self.file_ask.pending() {
             return false;
         }
-        self.file_ask = crate::dialog::FileAsk::Queued(dialog, self.origin);
+        // Asked from a component instance's fill: the answer goes to it.
+        let instance = self.fill_frames.last().map(|f| f.key());
+        self.file_ask = crate::dialog::FileAsk::Queued(dialog, self.origin, instance);
         if !self.building {
             self.owe_frame("request_files");
         }
@@ -783,8 +785,8 @@ impl Core {
     /// host to show. Taking it keeps the ask outstanding until the answer.
     pub fn take_file_requests(&mut self) -> Vec<crate::dialog::FileDialog> {
         match std::mem::take(&mut self.file_ask) {
-            crate::dialog::FileAsk::Queued(dialog, origin) => {
-                self.file_ask = crate::dialog::FileAsk::Taken(dialog.tag.clone(), origin);
+            crate::dialog::FileAsk::Queued(dialog, origin, instance) => {
+                self.file_ask = crate::dialog::FileAsk::Taken(dialog.tag.clone(), origin, instance);
                 vec![dialog]
             }
             other => {

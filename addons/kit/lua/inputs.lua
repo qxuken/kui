@@ -93,6 +93,7 @@ end
 local function pressed_face(c, variant, t)
    local sk = c.s.skin
    if variant ~= "primary" or t.disabled == true or not c.s.shadows or sk.shadow <= 0 or sk.shadow_blur > 0 then
+      ctx.ring(c, t, "ctl")
       return row(t)
    end
    local function state(f)
@@ -122,6 +123,10 @@ local function pressed_face(c, variant, t)
 
       transition = d ~= 0 and 1 or nil,
    }
+
+
+   local ringed = ctx.focus_shows(c, "hit")
+   if ringed then face.border = { w = 2, color = ref(c, "focus") } end
    for i = 1, #t do face[i] = t[i] end
    local hit = {
       key = "hit",
@@ -134,6 +139,7 @@ local function pressed_face(c, variant, t)
       selected = t.selected,
       on_click = t.on_click,
       cursor = t.cursor,
+      focus_bg = ringed and 0x00000000 or nil,
       width = t.width,
       height = t.height,
       min_width = t.min_width,
@@ -266,6 +272,9 @@ end
 
 
 
+
+
+
 local function focus_request(c, p)
    local st = ctx.state(c, function() return { seen = false } end)
    local want = p.focus
@@ -279,6 +288,38 @@ end
 local function labelled(c, label, body, width)
    if not label then return body end
    return column({ width = (width) or "grow", gap = 3, ctx.muted(c, ctx.label(c, label), { bold = true }), body })
+end
+
+
+
+
+local function browse_button(c, p, value)
+   local mode = str(p.browse)
+   if not mode then return nil end
+   local st = ctx.state(c, function() return { seen = false } end)
+   if st.browse then
+      st.browse = false
+      local dir = value:match("^/") and value or nil
+      pcall(c.env.request_files, {
+         mode = mode,
+         title = str(p.label),
+         directory = mode ~= "save" and dir or nil,
+         file_name = mode == "save" and (value:match("[^/]+$")) or nil,
+         tag = act(c, "text_field.picked"),
+      })
+   end
+   local t = pressable(c, "default", {
+      key = "browse",
+      label = (str(p.browse_label) or "Choose…") .. (str(p.label) and (" " .. (p.label):lower()) or ""),
+      disabled = p.disabled == true,
+      pad = { x = 10 },
+      gap = 6,
+      on_click = act(c, "text_field.browse"),
+      icons.node(c, mode == "folder" and "folder" or "file", 13, "fg"),
+      ctx.caption(c, str(p.browse_label) or "Choose…", { color = ref(c, "fg") }),
+   })
+   if p.disabled == true then t.opacity = "$disabledOpacity" end
+   return pressed_face(c, "default", t)
 end
 
 function M.text_field(c, p)
@@ -311,7 +352,13 @@ function M.text_field(c, p)
    }
    if err and err ~= "" then box.gap = 6 end
    well(c, box, focused, err ~= nil)
-   local field = column({ width = (p.width) or "grow", gap = 0, row(box), underline(c, focused, err ~= nil) })
+   local chooser = browse_button(c, p, value)
+   local field = column({ width = (not chooser and p.width) or "grow", min_width = 0, gap = 0,
+row(box), underline(c, focused, err ~= nil), })
+   if chooser then
+
+      field = row({ width = (p.width) or "grow", gap = 8, cross_align = "center", field, chooser })
+   end
    if p.hide_label == true then return field end
    return labelled(c, str(p.label), field, p.width)
 end
@@ -442,6 +489,7 @@ function M.select(c, p)
       ctx.grow(),
       icons.node(c, st.open and "chevron_up" or "chevron_down", 12, "muted"),
    })
+   ctx.ring(c, field, "field")
    if st.open then
       local list = {
          key = "menu",
@@ -476,6 +524,8 @@ function M.select(c, p)
             cursor = "pointer",
             opacity = o.disabled == true and "$disabledOpacity" or nil,
             on_click = act(c, "select.pick", { value = o.value }),
+            focus_bg = ctx.focus_shows(c, "o" .. i) and (here and ref(c, "sel") or ref(c, "hover")) or nil,
+            border = ctx.focus_shows(c, "o" .. i) and { w = 2, color = ref(c, "focus") } or nil,
             ctx.text(c, o.label, { color = ref(c, here and "sel_fg" or "fg") }),
          })
       end
@@ -501,6 +551,16 @@ local function tickbox(c, on, mixed, round)
       t[1] = icons.node(c, mixed and "minus" or "check", 11, "on_accent")
    end
    return row(t)
+end
+
+
+
+local function ringed_mark(c, mark, key, radius)
+   if ctx.focus_shows(c, key) then
+      local m = mark
+      m[#m + 1] = ctx.focus_ring(c, 14, 14, radius)
+   end
+   return mark
 end
 
 function M.checkbox(c, p)
@@ -609,7 +669,8 @@ function M.radio_group(c, p)
          cross_align = "center",
          cursor = "pointer",
          on_click = act(c, "radio_group.pick", { value = o.value }),
-         tickbox(c, here, false, true),
+         focus_bg = ctx.focus_shows(c, "r" .. i) and 0x00000000 or nil,
+         ringed_mark(c, tickbox(c, here, false, true), "r" .. i, 7),
          ctx.text(c, o.label),
       })
    end
@@ -640,7 +701,7 @@ function M.segmented(c, p)
    }
    for i, o in ipairs(options) do
       local here = o.value == p.value
-      t[#t + 1] = row({
+      local seg = {
          key = "s" .. i,
          role = "radio",
          label = o.label,
@@ -661,7 +722,9 @@ function M.segmented(c, p)
 
          o.count ~= nil and ctx.data(c, tostring(o.count), { size = "$kitSizeLabel", bold = o.alert == true,
 color = ref(c, here and on_fg or (o.alert == true and "danger" or "muted")), }) or nil,
-      })
+      }
+      ctx.ring(c, seg, "s" .. i)
+      t[#t + 1] = row(seg)
    end
    return row(t)
 end
@@ -686,6 +749,7 @@ function M.slider(c, p)
    held = okp and held
    local okh, over = pcall(c.env.is_hovered, "track")
    over = okh and over
+   local ringed = ctx.focus_shows(c, "track")
    local track = row({
       key = "track",
       hoverable = true,
@@ -699,15 +763,24 @@ function M.slider(c, p)
       on_change = act(c, "slider.change"),
       width = "grow",
       height = 18,
+
+
+
+
+
+      pad = { x = 6 },
       cross_align = "center",
       cursor = held and "grabbing" or "grab",
-      column({ width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent") }),
+      focus_bg = ringed and 0x00000000 or nil,
+      column({ key = "fill", width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent"),
+
       column({
          key = "handle",
+         float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" } },
          width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
-         bg = ref(c, held and "accent_press" or (over and "accent" or "panel")),
-         border = { w = "$kitRuleW", color = ref(c, "ink") },
-      }),
+         bg = ref(c, held and "accent_press" or ((over or ringed) and "accent" or "panel")),
+         border = { w = ringed and 2 or "$kitRuleW", color = ref(c, ringed and "focus" or "ink") },
+      }), }),
       column({ width = "grow", height = 4, radius = 2, bg = ref(c, "rule") }),
    })
    if not str(p.label) then return track end
@@ -727,6 +800,13 @@ function M.event(m, kit)
    elseif kit == "text_field.change" or kit == "search.change" or kit == "text_area.change" then
       local ch = m.change
       return emit("on_change", { text = ch and ch.text or "" })
+   elseif kit == "text_field.browse" then
+      local st = ctx.peek(m.inst)
+      if st then st.browse = true end
+   elseif kit == "text_field.picked" then
+      local f = m.files
+      local paths = f and f.paths
+      if paths and paths[1] then return emit("on_change", { text = paths[1] }) end
    elseif kit == "text_field.submit" or kit == "search.submit" then
       return emit("on_submit", { text = m.text or "" })
    elseif kit == "search.clear" then

@@ -260,6 +260,31 @@ impl Level {
     }
 }
 
+/// What a field's Choose… button asks the system for: a folder, a file to
+/// open, or where to save one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Browse {
+    #[default]
+    Folder,
+    Open,
+    Save,
+}
+
+impl Browse {
+    /// The value's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Browse::Folder => "folder",
+            Browse::Open => "open",
+            Browse::Save => "save",
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::str(self.as_str())
+    }
+}
+
 /// How a chart labels its x axis: the number (with `x_unit`), time counted back
 /// to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the
 /// local time of day.
@@ -1708,8 +1733,15 @@ pub struct TextField {
     /// own, so a field in a toolbar keeps its height. An empty string marks the
     /// field only, for fields that share one message.
     pub error: Option<String>,
+    /// A Choose… button after the field that opens the system's folder, open
+    /// or save dialog; the path picked arrives as `change`, as if typed.
+    /// Cancelled, nothing changes. The dialog starts in the field's folder when
+    /// its text is an absolute path.
+    pub browse: Option<Browse>,
+    /// The button's label; Choose… when left out.
+    pub browse_label: Option<String>,
     /// The message `change` arrives as, with `change: TextFieldChange` in it.
-    /// The text changed.
+    /// The text changed, or a path was picked.
     pub on_change: Option<Value>,
     /// The message `submit` arrives as, with `submit: TextFieldSubmit` in it.
     /// Enter.
@@ -1734,6 +1766,8 @@ impl TextField {
             focus: None,
             autofocus: None,
             error: None,
+            browse: None,
+            browse_label: None,
             on_change: None,
             on_submit: None,
             key: None,
@@ -1802,7 +1836,22 @@ impl TextField {
         self
     }
 
-    /// The message `change` arrives as. The text changed.
+    /// A Choose… button after the field that opens the system's folder, open
+    /// or save dialog; the path picked arrives as `change`, as if typed.
+    /// Cancelled, nothing changes. The dialog starts in the field's folder when
+    /// its text is an absolute path.
+    pub fn browse(mut self, v: Browse) -> Self {
+        self.browse = Some(v);
+        self
+    }
+
+    /// The button's label; Choose… when left out.
+    pub fn browse_label(mut self, v: impl Into<String>) -> Self {
+        self.browse_label = Some(v.into());
+        self
+    }
+
+    /// The message `change` arrives as. The text changed, or a path was picked.
     pub fn on_change(mut self, msg: impl Into<Value>) -> Self {
         self.on_change = Some(msg.into());
         self
@@ -1856,6 +1905,12 @@ impl TextField {
         }
         if let Some(v) = &self.error {
             m.push(("error".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.browse {
+            m.push(("browse".into(), v.to_value()));
+        }
+        if let Some(v) = &self.browse_label {
+            m.push(("browse_label".into(), Value::str(v.as_str())));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));

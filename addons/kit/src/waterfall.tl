@@ -243,11 +243,13 @@ local function lane_row(c: Ctx, lane: Lane, st: State, v0: number, v1: number, w
           -- the arrows walk the bars, Enter picks one. Every bar was a Tab
           -- stop of its own, and a stop that did nothing where no one
           -- picked.
+          key = picks and ("span" .. b.row) or nil,
           role = picks and "listItem" or nil,
           focusable = picks or nil,
           on_click = picks and act(c, "waterfall.pick", { row = b.row }) or nil,
         }
         if w >= 4 then bar.border = { w = 1, color = ref(c, sel and "ink" or "rule") } end
+        if picks then ctx.ring(c, bar, "span" .. b.row) end
         if w >= 48 then
           bar[#bar + 1] = text(b.n, { size = 11, max_lines = 1, ellipsis = true, family = "$kitData",
             color = ref(c, sel and "sel_fg" or "fg") })
@@ -264,13 +266,15 @@ local function lane_row(c: Ctx, lane: Lane, st: State, v0: number, v1: number, w
 end
 
 local function tool(c: Ctx, icon: string, label: string, action: string, v0: number, v1: number): kui.Node
-  return row {
+  local t: kui.Props = {
     role = "button", label = label, tooltip = label, width = 22, height = 22,
     main_align = "center", cross_align = "center", radius = "$kitRadius",
     hover_bg = ref(c, "hover"), cursor = "pointer",
     on_click = act(c, "waterfall." .. action, { v0 = v0, v1 = v1 }),
     icons.node(c, icon, 13, "fg"),
   }
+  ctx.ring(c, t, "tool." .. action)
+  return row(t)
 end
 
 function M.waterfall(c: Ctx, p: P): kui.Node

@@ -390,6 +390,21 @@ for lua-language-server, and a new runner beside the window's.
   in the new title and its checklist folds. The Kit app shows all 39
   components, a Keyboard page and a toast stack, and runs as an app of its
   own (`kui.config.lua`: Kit, `dev.kui.kit.gallery`).
+  A sixth: a table's or a list's ring and its selection are one cursor —
+  a table's row was a control of its own, so a click focused the row and
+  its ring stayed while the arrows moved the selection; rows are list
+  items now, the click focuses the table, and while the keyboard drives
+  it (Tab, or its keys since the last click) the ring is on the selected
+  row. Every Kit control draws its ring in the skin's focus colour
+  (Phosphor's green, Neutral's blue, Ledger's), its edge at 2 px, with the
+  core's ring — the theme's, and the theme is the host's, which a Lua
+  add-on cannot set — turned off. `text_field` takes `browse` (`folder`,
+  `open` or `save`): a Choose… button after the field that opens the
+  system's dialog and fills the field with the path picked; Tidewater's
+  sync folder has one. A slider's handle sits on its value and a drag
+  lands on the step nearest the pointer (the handle was laid out after
+  the fill, half a handle and more past the value's place). An under-way
+  progress bar crosses its whole track, however wide.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
@@ -966,6 +981,10 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- The answer to a file dialog a component instance asked for (`env.
+  request_files` from its fill) carries that instance, so what the
+  component proposes in reply reaches its placer's message (ADR 0067):
+  a Kit field's Choose… heard the path and could tell nobody.
 - An `anchor` scroller the last layout left at its end stays at its end
   in the next, whatever changed size — its rows or its own box — until
   something scrolls it away: a log whose panel grew sat a band short of

@@ -228,15 +228,20 @@ impl FileDialog {
     }
 }
 
-/// Where the one ask stands.
+/// Where the one ask stands. The origin is who asked; the instance, the
+/// component instance whose fill asked, if one did: the answer carries it
+/// as its `instance`, so what the component proposes in reply reaches the
+/// message its placer gave it (ADR 0067), as an event from one of its
+/// nodes would. Without it a Kit field's Choose… heard the path and could
+/// tell nobody.
 #[derive(Clone, Debug, Default)]
 pub(crate) enum FileAsk {
     #[default]
     None,
     /// Asked, not yet taken by a host.
-    Queued(FileDialog, OriginId),
+    Queued(FileDialog, OriginId, Option<Key>),
     /// Taken, not yet answered: what the answer carries back and to whom.
-    Taken(Value, OriginId),
+    Taken(Value, OriginId, Option<Key>),
 }
 
 impl FileAsk {
@@ -247,24 +252,38 @@ impl FileAsk {
     /// The `files` event for the answer `paths`, and the ask spent; `None`
     /// when nothing was asked — a late or stray answer is dropped.
     pub(crate) fn answer(&mut self, paths: &[String]) -> Option<crate::input::UiEvent> {
-        let (tag, origin) = match std::mem::take(self) {
+        let (tag, origin, instance) = match std::mem::take(self) {
             FileAsk::None => return None,
-            FileAsk::Queued(d, origin) => (d.tag, origin),
-            FileAsk::Taken(tag, origin) => (tag, origin),
+            FileAsk::Queued(d, origin, instance) => (d.tag, origin, instance),
+            FileAsk::Taken(tag, origin, instance) => (tag, origin, instance),
         };
-        Some(crate::input::UiEvent::declared(
+        let mut ev = crate::input::UiEvent::declared(
             crate::input::EventKind::Files,
             origin,
             Key::ROOT,
             Some(&tag),
             Value::map([("paths", Value::list(paths.iter().map(Value::str)))]),
-        ))
+        );
+        ev.instance = instance;
+        Some(ev)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The answer to an ask a component instance's fill made carries that
+    /// instance, so its reply is routed to the instance's placer.
+    #[test]
+    fn the_answer_carries_the_instance_that_asked() {
+        let inst = Key::ROOT.str("field");
+        let mut ask = FileAsk::Queued(FileDialog::folder(), OriginId::HOST, Some(inst));
+        let ev = ask.answer(&["/tmp".into()]).unwrap();
+        assert_eq!(ev.instance, Some(inst));
+        let mut ask = FileAsk::Taken(Value::Null, OriginId::HOST, None);
+        assert_eq!(ask.answer(&[]).unwrap().instance, None);
+    }
 
     /// A dot written before an extension is dropped by the builder as it
     /// is on the way in from Node, Lua and C (backlog RG44).

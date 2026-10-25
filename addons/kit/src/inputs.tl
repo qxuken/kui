@@ -92,6 +92,7 @@ end
 local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
   local sk = c.s.skin
   if variant ~= "primary" or t.disabled == true or not c.s.shadows or sk.shadow <= 0 or sk.shadow_blur > 0 then
+    ctx.ring(c, t, "ctl")
     return row(t)
   end
   local function state(f: function(kui.KeyRef): boolean): boolean
@@ -121,6 +122,10 @@ local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
     -- A keyframe cycle runs over `transition`; one stop, so any length holds it.
     transition = d ~= 0 and 1 or nil,
   }
+  -- The keyboard's ring on the face, the box that takes the focus its own
+  -- core ring off.
+  local ringed = ctx.focus_shows(c, "hit")
+  if ringed then face.border = { w = 2, color = ref(c, "focus") } end
   for i = 1, #t do face[i] = t[i] end
   local hit: kui.Props = {
     key = "hit",
@@ -133,6 +138,7 @@ local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
     selected = t.selected,
     on_click = t.on_click,
     cursor = t.cursor,
+    focus_bg = ringed and 0x00000000 or nil,
     width = t.width,
     height = t.height,
     min_width = t.min_width,
@@ -256,6 +262,9 @@ end
 local record Asked
   focus: integer
   seen: boolean
+  -- Choose… was pressed: the next fill asks for the dialog (a view's
+  -- verb; an event handler holds no env).
+  browse: boolean
 end
 
 -- `focus` is a request: each new number takes the keyboard to the field.
@@ -278,6 +287,38 @@ end
 local function labelled(c: Ctx, label: string, body: kui.Node, width: any): kui.Node
   if not label then return body end
   return column { width = (width as number) or "grow", gap = 3, ctx.muted(c, ctx.label(c, label), { bold = true }), body }
+end
+
+-- A field's Choose… button and its dialog, for `browse`: the press marks
+-- the ask, this fill makes it, and the answer comes back to Kit as the
+-- tag's message with `files` in it (`text_field.picked`).
+local function browse_button(c: Ctx, p: P, value: string): kui.Node
+  local mode = str(p.browse)
+  if not mode then return nil end
+  local st = ctx.state(c, function(): Asked return { seen = false } end)
+  if st.browse then
+    st.browse = false
+    local dir = value:match("^/") and value or nil
+    pcall(c.env.request_files, {
+      mode = mode,
+      title = str(p.label),
+      directory = mode ~= "save" and dir or nil,
+      file_name = mode == "save" and (value:match("[^/]+$")) or nil,
+      tag = act(c, "text_field.picked"),
+    })
+  end
+  local t = pressable(c, "default", {
+    key = "browse",
+    label = (str(p.browse_label) or "Choose…") .. (str(p.label) and (" " .. (p.label as string):lower()) or ""),
+    disabled = p.disabled == true,
+    pad = { x = 10 },
+    gap = 6,
+    on_click = act(c, "text_field.browse"),
+    icons.node(c, mode == "folder" and "folder" or "file", 13, "fg"),
+    ctx.caption(c, str(p.browse_label) or "Choose…", { color = ref(c, "fg") }),
+  })
+  if p.disabled == true then t.opacity = "$disabledOpacity" end
+  return pressed_face(c, "default", t)
 end
 
 function M.text_field(c: Ctx, p: P): kui.Node
@@ -310,7 +351,13 @@ function M.text_field(c: Ctx, p: P): kui.Node
   }
   if err and err ~= "" then box.gap = 6 end
   well(c, box, focused, err ~= nil)
-  local field = column { width = (p.width as number) or "grow", gap = 0, row(box), underline(c, focused, err ~= nil) }
+  local chooser = browse_button(c, p, value)
+  local field: kui.Node = column { width = (not chooser and p.width as number) or "grow", min_width = 0, gap = 0,
+    row(box), underline(c, focused, err ~= nil) }
+  if chooser then
+    -- The button beside the field, on its line; the field gives it room.
+    field = row { width = (p.width as number) or "grow", gap = 8, cross_align = "center", field, chooser }
+  end
   if p.hide_label == true then return field end
   return labelled(c, str(p.label), field, p.width)
 end
@@ -441,6 +488,7 @@ function M.select(c: Ctx, p: P): kui.Node
     ctx.grow(),
     icons.node(c, st.open and "chevron_up" or "chevron_down", 12, "muted"),
   })
+  ctx.ring(c, field, "field")
   if st.open then
     local list: kui.Props = {
       key = "menu",
@@ -475,6 +523,8 @@ function M.select(c: Ctx, p: P): kui.Node
         cursor = "pointer",
         opacity = o.disabled == true and "$disabledOpacity" or nil,
         on_click = act(c, "select.pick", { value = o.value }),
+        focus_bg = ctx.focus_shows(c, "o" .. i) and (here and ref(c, "sel") or ref(c, "hover")) or nil,
+        border = ctx.focus_shows(c, "o" .. i) and { w = 2, color = ref(c, "focus") } or nil,
         ctx.text(c, o.label as string, { color = ref(c, here and "sel_fg" or "fg") }),
       }
     end
@@ -500,6 +550,16 @@ local function tickbox(c: Ctx, on: boolean, mixed: boolean, round: boolean): kui
     t[1] = icons.node(c, mixed and "minus" or "check", 11, "on_accent")
   end
   return row(t)
+end
+
+-- A mark (a box, a dot) with the skin's ring 2 px round it while the
+-- keyboard holds the control keyed `key`.
+local function ringed_mark(c: Ctx, mark: kui.Node, key: string, radius: number): kui.Node
+  if ctx.focus_shows(c, key) then
+    local m = mark as kui.Props
+    m[#m + 1] = ctx.focus_ring(c, 14, 14, radius)
+  end
+  return mark
 end
 
 function M.checkbox(c: Ctx, p: P): kui.Node
@@ -608,7 +668,8 @@ function M.radio_group(c: Ctx, p: P): kui.Node
       cross_align = "center",
       cursor = "pointer",
       on_click = act(c, "radio_group.pick", { value = o.value }),
-      tickbox(c, here, false, true),
+      focus_bg = ctx.focus_shows(c, "r" .. i) and 0x00000000 or nil,
+      ringed_mark(c, tickbox(c, here, false, true), "r" .. i, 7),
       ctx.text(c, o.label as string),
     }
   end
@@ -639,7 +700,7 @@ function M.segmented(c: Ctx, p: P): kui.Node
   }
   for i, o in ipairs(options) do
     local here = o.value == p.value
-    t[#t + 1] = row {
+    local seg: kui.Props = {
       key = "s" .. i,
       role = "radio",
       label = o.label as string,
@@ -661,6 +722,8 @@ function M.segmented(c: Ctx, p: P): kui.Node
       o.count ~= nil and ctx.data(c, tostring(o.count), { size = "$kitSizeLabel", bold = o.alert == true,
         color = ref(c, here and on_fg or (o.alert == true and "danger" or "muted")) }) or nil,
     }
+    ctx.ring(c, seg, "s" .. i)
+    t[#t + 1] = row(seg)
   end
   return row(t)
 end
@@ -685,6 +748,7 @@ function M.slider(c: Ctx, p: P): kui.Node
   held = okp and held
   local okh, over = pcall(c.env.is_hovered, "track")
   over = okh and over
+  local ringed = ctx.focus_shows(c, "track")
   local track = row {
     key = "track",
     hoverable = true,
@@ -698,15 +762,24 @@ function M.slider(c: Ctx, p: P): kui.Node
     on_change = act(c, "slider.change"),
     width = "grow",
     height = 18,
+    -- Half the handle each side: the core maps the pointer along the
+    -- content box (ADR 0034), and the handle's centre sits at the value's
+    -- place in it. The handle was laid out in the row after the fill, so
+    -- its centre sat half a handle past the value's place and more toward
+    -- the far end: a drag landed a step past the one under the pointer.
+    pad = { x = 6 },
     cross_align = "center",
     cursor = held and "grabbing" or "grab",
-    column { width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent") },
-    column {
-      key = "handle",
-      width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
-      bg = ref(c, held and "accent_press" or (over and "accent" or "panel")),
-      border = { w = "$kitRuleW", color = ref(c, "ink") },
-    },
+    focus_bg = ringed and 0x00000000 or nil,
+    column { key = "fill", width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent"),
+      -- Centred on the fill's end: the value's place, over the rail.
+      column {
+        key = "handle",
+        float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" } },
+        width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
+        bg = ref(c, held and "accent_press" or ((over or ringed) and "accent" or "panel")),
+        border = { w = ringed and 2 or "$kitRuleW", color = ref(c, ringed and "focus" or "ink") },
+      } },
     column { width = "grow", height = 4, radius = 2, bg = ref(c, "rule") },
   }
   if not str(p.label) then return track end
@@ -726,6 +799,13 @@ function M.event(m: P, kit: string): any
   elseif kit == "text_field.change" or kit == "search.change" or kit == "text_area.change" then
     local ch = m.change as P
     return emit("on_change", { text = ch and ch.text or "" })
+  elseif kit == "text_field.browse" then
+    local st = ctx.peek(m.inst as integer) as Asked
+    if st then st.browse = true end
+  elseif kit == "text_field.picked" then
+    local f = m.files as P
+    local paths = f and f.paths as {string}
+    if paths and paths[1] then return emit("on_change", { text = paths[1] }) end
   elseif kit == "text_field.submit" or kit == "search.submit" then
     return emit("on_submit", { text = m.text or "" })
   elseif kit == "search.clear" then

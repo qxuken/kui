@@ -136,6 +136,21 @@ LEVEL_NAMES := [Level]string {
 	.Error = "error",
 }
 
+// What a field's Choose… button asks the system for: a folder, a file to
+// open, or where to save one.
+Browse :: enum {
+	Folder,
+	Open,
+	Save,
+}
+
+@(private)
+BROWSE_NAMES := [Browse]string {
+	.Folder = "folder",
+	.Open = "open",
+	.Save = "save",
+}
+
 // How a chart labels its x axis: the number (with `x_unit`), time counted back
 // to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the
 // local time of day.
@@ -863,7 +878,14 @@ TextField :: struct {
 	// a field in a toolbar keeps its height. An empty string marks the field only,
 	// for fields that share one message.
 	error: string,
-	// The message `change` arrives as. The text changed.
+	// A Choose… button after the field that opens the system's folder, open or
+	// save dialog; the path picked arrives as `change`, as if typed. Cancelled,
+	// nothing changes. The dialog starts in the field's folder when its text is an
+	// absolute path.
+	browse: Maybe(Browse),
+	// The button's label; Choose… when left out.
+	browse_label: string,
+	// The message `change` arrives as. The text changed, or a path was picked.
 	on_change: any,
 	// The message `submit` arrives as. Enter.
 	on_submit: any,
@@ -872,7 +894,7 @@ TextField :: struct {
 	fresh: bool,
 }
 
-// What `change` carries: The text changed.
+// What `change` carries: The text changed, or a path was picked.
 TextField_Change :: struct {
 	// The whole text.
 	text: string,
@@ -907,6 +929,8 @@ text_field_props :: proc(p: TextField) -> ^c.Value {
 	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
 	if x, ok := p.autofocus.?; ok do c.value_map_set(m, "autofocus", c.value_bool(x))
 	if p.error != "" do c.value_map_set(m, "error", c.value_str(p.error))
+	if x, ok := p.browse.?; ok do c.value_map_set(m, "browse", c.value_str(BROWSE_NAMES[x]))
+	if p.browse_label != "" do c.value_map_set(m, "browse_label", c.value_str(p.browse_label))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.on_submit != nil do c.value_map_set(m, "on_submit", (^c.Value)(kui.encode(p.on_submit)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))

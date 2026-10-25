@@ -40,6 +40,12 @@ local record kit
     "debug" "info" "warn" "error"
   end
 
+  -- What a field's Choose… button asks the system for: a folder, a file to
+  -- open, or where to save one.
+  enum Browse
+    "folder" "open" "save"
+  end
+
   -- How a chart labels its x axis: the number (with `x_unit`), time counted
   -- back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds
   -- as the local time of day.
@@ -320,7 +326,15 @@ local record kit
     -- room of its own, so a field in a toolbar keeps its height. An empty
     -- string marks the field only, for fields that share one message.
     error: string
-    -- The message `change` arrives as. The text changed.
+    -- A Choose… button after the field that opens the system's folder, open
+    -- or save dialog; the path picked arrives as `change`, as if typed.
+    -- Cancelled, nothing changes. The dialog starts in the field's folder
+    -- when its text is an absolute path.
+    browse: Browse
+    -- The button's label; Choose… when left out.
+    browse_label: string
+    -- The message `change` arrives as. The text changed, or a path was
+    -- picked.
     on_change: any
     -- The message `submit` arrives as. Enter.
     on_submit: any

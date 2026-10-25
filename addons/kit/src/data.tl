@@ -79,6 +79,11 @@ local record Seen
   -- Tab heard by the list's key sink, to hand the focus on with when it
   -- is next drawn: 1 forward, -1 back.
   tab: integer
+  -- A key reached the sink since the last click on a row: the keyboard
+  -- is driving it. The core shows focus after Tab, not after a key a sink
+  -- takes, so after a click and the arrows nothing showed where the
+  -- cursor was.
+  keyed: boolean
 end
 
 -- A list or a table is a key sink (its arrows move the selection), and a
@@ -93,10 +98,28 @@ end
 
 -- The focus, drawn: the sink's own edge in the focus colour while it holds
 -- the keyboard (a scroller's ring was clipped by the pane around it).
--- Only when the keyboard put the focus there (focus-visible): a click on
--- a row focuses the list without a ring round it.
-local function focus_edge(c: Ctx, t: kui.Props)
-  if ctx.focus_shows(c, "rows") then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
+-- Whether the list or table is the keyboard's: focus shown on it (Tab),
+-- or keys taken by it since the last click on a row.
+local function keyboard_on(c: Ctx, seen: Seen): boolean
+  if ctx.focus_shows(c, "rows") then return true end
+  if not seen.keyed then return false end
+  local ok, here = pcall(c.env.is_focused, "rows")
+  return ok and here == true
+end
+
+-- Only when the keyboard drives it (focus-visible, or its keys): a click
+-- on a row focuses the list without a ring round it. With a row selected
+-- the ring is on that row instead (`cursor_ring`): the selection and the
+-- ring are one cursor, which the arrows move together.
+local function focus_edge(c: Ctx, t: kui.Props, selected: integer, on: boolean)
+  if selected == nil and on then
+    t.border = { w = "$kitRuleW", color = ref(c, "focus") }
+  end
+end
+
+-- The selected row's ring while the keyboard drives the list or table.
+local function cursor_ring(c: Ctx, t: kui.Props, sel: boolean, on: boolean)
+  if sel and on then t.border = { w = 2, color = ref(c, "focus") } end
 end
 
 -- A tone a channel cell names, as the role its text is drawn in; nil for
@@ -178,6 +201,7 @@ function M.table(c: Ctx, p: P): kui.Node
       on_click = sorts and act(c, "table.sort", { field = field }) or nil,
       ctx.caption(c, col.title as string, { color = ref(c, sorted and "fg" or "muted") }),
     }
+    if sorts then ctx.ring(c, h, "h" .. i) end
     if sorted then h[#h + 1] = icons.node(c, p.descending == true and "chevron_down" or "chevron_up", 11, "fg") end
     head[#head + 1] = row(h)
   end
@@ -188,13 +212,20 @@ function M.table(c: Ctx, p: P): kui.Node
     focusable = selects or nil,
     on_key = selects and act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }) or nil,
     on_range = act(c, "table.range"),
+    role = "list",
     label = "rows",
   }
-  focus_edge(c, rows_t)
+  local on = keyboard_on(c, seen)
+  focus_edge(c, rows_t, selected, on)
   local view = body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
     local sel = selected == i
     local line: kui.Props = {
       index = i,
+      -- A row of the list, not a control of its own: a row with a click
+      -- and no role was a Tab stop, and a click on it focused the row,
+      -- whose ring then stayed while the arrows moved the selection.
+      role = "listItem",
+      selected = sel,
       height = row_h,
       width = "grow",
       pad = { x = 10 },
@@ -236,6 +267,7 @@ function M.table(c: Ctx, p: P): kui.Node
       }
     end
     line.label = table.concat(name, ", ")
+    cursor_ring(c, line, sel, on)
     return row(line)
   end)
 
@@ -275,7 +307,8 @@ function M.list(c: Ctx, p: P): kui.Node
     focusable = selects or nil,
     on_key = selects and act(c, "list.key", { selected = selected, n = n, page = 8 }) or nil,
   }
-  focus_edge(c, rows_t)
+  local on = keyboard_on(c, seen)
+  focus_edge(c, rows_t, selected, on)
   return body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
     local sel = selected == i
     local title = cell_text(ch:get(i, p.title as string))
@@ -294,7 +327,7 @@ function M.list(c: Ctx, p: P): kui.Node
     -- in the tone the row's `tone` field names.
     local badge = str(p.badge) and cell_text(ch:get(i, p.badge as string)) or ""
     local tone = str(p.tone) and cell_text(ch:get(i, p.tone as string)) or nil
-    return row {
+    local item: kui.Props = {
       index = i,
       role = "listItem",
       label = badge ~= "" and (badge .. " " .. title) or title,
@@ -311,6 +344,8 @@ function M.list(c: Ctx, p: P): kui.Node
         pill(c, badge, tone, false, sel) } or nil,
       column(t),
     }
+    cursor_ring(c, item, sel, on)
+    return row(item)
   end)
 end
 
@@ -488,7 +523,7 @@ end
 -- What a log shows while it is not keeping to its end: a button over its
 -- foot that takes it back there and keeps it.
 local function jump(c: Ctx): kui.Node
-  return row {
+  local t: kui.Props = {
     key = "jump",
     role = "button",
     label = "Jump to the latest line",
@@ -507,6 +542,8 @@ local function jump(c: Ctx): kui.Node
     icons.node(c, "chevron_down", 12, "fg"),
     ctx.caption(c, "Latest", { size = "$kitSizeLabel" }),
   }
+  ctx.ring(c, t, "jump")
+  return row(t)
 end
 
 function M.log(c: Ctx, p: P): kui.Node
@@ -529,6 +566,8 @@ function M.log(c: Ctx, p: P): kui.Node
       gap = 10,
       cross_align = wrap and "start" or "center",
       hover_bg = ref(c, "hover"),
+      -- A line, not a control: a click and no role made every line a Tab stop.
+      role = "listItem",
       on_click = act(c, "log.select", { row = i }),
       with_time and ctx.data(c, cell_text(ch:get(i, "time")), { size = "$kitSizeLabel", color = ref(c, "faint") }) or nil,
       row { width = 44, ctx.data(c, level:upper(), { size = "$kitSizeLabel", bold = true, color = ref(c, LEVEL_ROLE[level] or "muted") }) },
@@ -819,10 +858,16 @@ function M.progress(c: Ctx, p: P): kui.Node
     bar = { key = "bar", width = { pct = v * 100 }, height = "grow", bg = ref(c, "accent"),
       transition = 320, easing = "snappy" }
   else
-    -- Under way: a third of the track sliding across it.
+    -- Under way: a third of the track sliding across all of it, in from
+    -- past its start and out past its end. It went from -80 px to 400 px
+    -- whatever the track's width, so on a wide track it turned back a
+    -- third of the way along. The track's width is its laid-out rect's
+    -- (`on_layout` keeps it for `layout_of`, and a new width redraws).
+    local r = c.env.layout_of("track")
+    local w = r and r.w or 400
     bar = {
       width = { pct = 30 }, height = "grow", bg = ref(c, "accent"),
-      keyframes = { { dx = -80 }, { dx = 400 } }, transition = 1400,
+      keyframes = { { dx = -0.3 * w }, { dx = w } }, transition = math.max(1400, w * 2.5),
     }
   end
   local track = row {
@@ -833,6 +878,8 @@ function M.progress(c: Ctx, p: P): kui.Node
     value_max = 100,
     value_text = v and string.format("%d%%", math.floor(v * 100 + 0.5)) or "under way",
     disabled = true,
+    key = "track",
+    on_layout = not v and act(c, "progress.layout") or nil,
     width = "grow",
     height = 4,
     clip = true,
@@ -846,6 +893,8 @@ end
 
 function M.event(m: P, kit: string): any
   if kit == "table.select" or kit == "list.select" or kit == "log.select" then
+    local seen = ctx.peek(m.inst as integer) as Seen
+    if seen and kit ~= "log.select" then seen.keyed = false end
     return emit("on_select", { row = m.row })
   elseif kit == "log.end" then
     local st = ctx.peek(m.inst as integer) as Follow
@@ -865,6 +914,8 @@ function M.event(m: P, kit: string): any
     end
     local n = (m.n or 0) as integer
     if n == 0 then return nil end
+    local seen = ctx.peek(m.inst as integer) as Seen
+    if seen then seen.keyed = true end
     local s = step(k.code as string, m.selected as integer, n, (m.page or 8) as integer)
     if s and s ~= m.selected then return emit("on_select", { row = s }) end
   end

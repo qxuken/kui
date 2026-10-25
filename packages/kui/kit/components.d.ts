@@ -27,6 +27,9 @@ export type Density = 'comfortable' | 'compact';
 /** A log line's level. */
 export type Level = 'debug' | 'info' | 'warn' | 'error';
 
+/** What a field's Choose… button asks the system for: a folder, a file to open, or where to save one. */
+export type Browse = 'folder' | 'open' | 'save';
+
 /** How a chart labels its x axis: the number (with `x_unit`), time counted back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the local time of day. */
 export type XFormat = 'number' | 'ago' | 'clock';
 
@@ -348,7 +351,11 @@ export interface TextFieldProps {
   autofocus?: boolean;
   /** What is wrong with the text: drawn at the end of the field in the danger colour (cut short past half its width, the whole message its tooltip), its edge in danger too, and read after its name. It takes no room of its own, so a field in a toolbar keeps its height. An empty string marks the field only, for fields that share one message. */
   error?: string;
-  /** The message change arrives as: yours, with `change: TextFieldChange` in it. The text changed. */
+  /** A Choose… button after the field that opens the system's folder, open or save dialog; the path picked arrives as `change`, as if typed. Cancelled, nothing changes. The dialog starts in the field's folder when its text is an absolute path. */
+  browse?: Browse;
+  /** The button's label; Choose… when left out. */
+  browseLabel?: string;
+  /** The message change arrives as: yours, with `change: TextFieldChange` in it. The text changed, or a path was picked. */
   onChange?: unknown;
   /** The message submit arrives as: yours, with `submit: TextFieldSubmit` in it. Enter. */
   onSubmit?: unknown;

@@ -158,6 +158,26 @@ static inline KuiStr kit_level_name(KitLevel v) {
 }
 
 /*
+ * What a field's Choose… button asks the system for: a folder, a file to
+ * open, or where to save one.
+ */
+typedef enum KitBrowse {
+    KIT_BROWSE_UNSET = 0,
+    KIT_BROWSE_FOLDER,
+    KIT_BROWSE_OPEN,
+    KIT_BROWSE_SAVE,
+} KitBrowse;
+
+static inline KuiStr kit_browse_name(KitBrowse v) {
+    switch (v) {
+    case KIT_BROWSE_FOLDER: return KUI_STR("folder");
+    case KIT_BROWSE_OPEN: return KUI_STR("open");
+    case KIT_BROWSE_SAVE: return KUI_STR("save");
+    default: return KUI_STR("");
+    }
+}
+
+/*
  * How a chart labels its x axis: the number (with `x_unit`), time counted back
  * to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the
  * local time of day.
@@ -968,8 +988,19 @@ typedef struct KitTextField {
      */
     KuiStr error;
     /*
+     * A Choose… button after the field that opens the system's folder, open
+     * or save dialog; the path picked arrives as `change`, as if typed.
+     * Cancelled, nothing changes. The dialog starts in the field's folder when
+     * its text is an absolute path.
+     */
+    KitBrowse browse;
+    /*
+     * The button's label; Choose… when left out.
+     */
+    KuiStr browse_label;
+    /*
      * The message `change` arrives as, consumed; NULL for none. The text
-     * changed.
+     * changed, or a path was picked.
      */
     KuiValue *on_change;
     /*
@@ -994,6 +1025,8 @@ static inline KuiValue *kit_text_field_props(const KitTextField *p) {
     if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
     if (p->autofocus_set) kui_value_map_set(m, KUI_STR("autofocus"), kui_value_bool(p->autofocus));
     if (p->error.len > 0) kui_value_map_set(m, KUI_STR("error"), kui_value_str(p->error));
+    if (p->browse != 0) kui_value_map_set(m, KUI_STR("browse"), kui_value_str(kit_browse_name(p->browse)));
+    if (p->browse_label.len > 0) kui_value_map_set(m, KUI_STR("browse_label"), kui_value_str(p->browse_label));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->on_submit != NULL) kui_value_map_set(m, KUI_STR("on_submit"), p->on_submit);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));

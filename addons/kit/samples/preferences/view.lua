@@ -35,7 +35,7 @@ local ERRORS = {}
 local function field(v, key, o)
   local err = ERRORS[key]
   local p = { key = key, label = o.label, hide_label = true, value = v[key], mono = o.mono, width = o.width,
-    placeholder = o.placeholder, disabled = o.disabled, on_change = set(key),
+    placeholder = o.placeholder, disabled = o.disabled, on_change = set(key), browse = o.browse,
     error = err and (o.says and err or "") or nil }
   return kit.text_field(p)
 end
@@ -65,7 +65,7 @@ local ROWS = {
 
   -- Sync
   { "sync", "Folder", "folder", "Sync folder", "Everything under it is kept in step with your other devices.", "path location directory",
-    function(v) return field(v, "folder", { label = "Sync folder", mono = true, width = 360, says = true }) end, inline = true },
+    function(v) return field(v, "folder", { label = "Sync folder", mono = true, width = 440, says = true, browse = "folder" }) end, inline = true },
   { "sync", "Folder", "mode", "Direction", "Upload only keeps the cloud a backup; nothing deleted there reaches this device.", "two-way backup upload download",
     function(v) return kit.segmented({ key = "mode", label = "Sync direction", value = v.mode, on_change = set("mode"), options = {
       { value = "two-way", label = "Two-way" }, { value = "upload", label = "Upload only" }, { value = "download", label = "Download only" } } }) end },

@@ -22,6 +22,13 @@ pub(crate) struct FillFrame {
     built: Vec<u64>,
 }
 
+impl FillFrame {
+    /// The instance this fill draws.
+    pub(crate) fn key(&self) -> Key {
+        self.key
+    }
+}
+
 /// What `Core::begin_children` changed, for `end_children` to put back.
 pub(crate) struct ChildrenState {
     origin: OriginId,

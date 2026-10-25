@@ -28,6 +28,10 @@
 ---A log line's level.
 ---@alias kit.Level "debug"|"info"|"warn"|"error"
 
+---What a field's Choose… button asks the system for: a folder, a file to
+---open, or where to save one.
+---@alias kit.Browse "folder"|"open"|"save"
+
 ---How a chart labels its x axis: the number (with `x_unit`), time counted
 ---back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds
 ---as the local time of day.
@@ -195,7 +199,9 @@
 ---@field focus? integer Takes the keyboard each time this number changes while the field is on screen: keep a counter in your model and bump it (⌘F). A field that shows after the bump takes its number as where it starts.
 ---@field autofocus? boolean Takes the keyboard as it first shows: a new item's name.
 ---@field error? string What is wrong with the text: drawn at the end of the field in the danger colour (cut short past half its width, the whole message its tooltip), its edge in danger too, and read after its name. It takes no room of its own, so a field in a toolbar keeps its height. An empty string marks the field only, for fields that share one message.
----@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.TextFieldChange). The text changed.
+---@field browse? kit.Browse A Choose… button after the field that opens the system's folder, open or save dialog; the path picked arrives as `change`, as if typed. Cancelled, nothing changes. The dialog starts in the field's folder when its text is an absolute path.
+---@field browse_label? string The button's label; Choose… when left out.
+---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.TextFieldChange). The text changed, or a path was picked.
 ---@field on_submit? any The message it arrives as: yours, with `submit = {…}` in it (kit.TextFieldSubmit). Enter.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.

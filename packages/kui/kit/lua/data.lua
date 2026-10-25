@@ -85,6 +85,11 @@ end
 
 
 
+
+
+
+
+
 local function hand_on(c, seen)
    local dir = seen.tab
    if not dir then return end
@@ -96,8 +101,26 @@ end
 
 
 
-local function focus_edge(c, t)
-   if ctx.focus_shows(c, "rows") then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
+local function keyboard_on(c, seen)
+   if ctx.focus_shows(c, "rows") then return true end
+   if not seen.keyed then return false end
+   local ok, here = pcall(c.env.is_focused, "rows")
+   return ok and here == true
+end
+
+
+
+
+
+local function focus_edge(c, t, selected, on)
+   if selected == nil and on then
+      t.border = { w = "$kitRuleW", color = ref(c, "focus") }
+   end
+end
+
+
+local function cursor_ring(c, t, sel, on)
+   if sel and on then t.border = { w = 2, color = ref(c, "focus") } end
 end
 
 
@@ -179,6 +202,7 @@ bg = ref(c, framed and "panel" or "sunken"), }
          on_click = sorts and act(c, "table.sort", { field = field }) or nil,
          ctx.caption(c, col.title, { color = ref(c, sorted and "fg" or "muted") }),
       }
+      if sorts then ctx.ring(c, h, "h" .. i) end
       if sorted then h[#h + 1] = icons.node(c, p.descending == true and "chevron_down" or "chevron_up", 11, "fg") end
       head[#head + 1] = row(h)
    end
@@ -189,13 +213,20 @@ bg = ref(c, framed and "panel" or "sunken"), }
       focusable = selects or nil,
       on_key = selects and act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }) or nil,
       on_range = act(c, "table.range"),
+      role = "list",
       label = "rows",
    }
-   focus_edge(c, rows_t)
+   local on = keyboard_on(c, seen)
+   focus_edge(c, rows_t, selected, on)
    local view = body(c, "rows", n, row_h, rows_t, function(i)
       local sel = selected == i
       local line = {
          index = i,
+
+
+
+         role = "listItem",
+         selected = sel,
          height = row_h,
          width = "grow",
          pad = { x = 10 },
@@ -237,6 +268,7 @@ bg = ref(c, framed and "panel" or "sunken"), }
          })
       end
       line.label = table.concat(name, ", ")
+      cursor_ring(c, line, sel, on)
       return row(line)
    end)
 
@@ -276,7 +308,8 @@ function M.list(c, p)
       focusable = selects or nil,
       on_key = selects and act(c, "list.key", { selected = selected, n = n, page = 8 }) or nil,
    }
-   focus_edge(c, rows_t)
+   local on = keyboard_on(c, seen)
+   focus_edge(c, rows_t, selected, on)
    return body(c, "rows", n, row_h, rows_t, function(i)
       local sel = selected == i
       local title = cell_text(ch:get(i, p.title))
@@ -295,7 +328,7 @@ color = ref(c, sel and "sel_fg" or "muted"), })
 
       local badge = str(p.badge) and cell_text(ch:get(i, p.badge)) or ""
       local tone = str(p.tone) and cell_text(ch:get(i, p.tone)) or nil
-      return row({
+      local item = {
          index = i,
          role = "listItem",
          label = badge ~= "" and (badge .. " " .. title) or title,
@@ -311,7 +344,9 @@ color = ref(c, sel and "sel_fg" or "muted"), })
          badge ~= "" and row({ width = p.badge_width, min_width = "fit",
 pill(c, badge, tone, false, sel), }) or nil,
          column(t),
-      })
+      }
+      cursor_ring(c, item, sel, on)
+      return row(item)
    end)
 end
 
@@ -489,7 +524,7 @@ end
 
 
 local function jump(c)
-   return row({
+   local t = {
       key = "jump",
       role = "button",
       label = "Jump to the latest line",
@@ -507,7 +542,9 @@ local function jump(c)
       on_click = act(c, "log.end"),
       icons.node(c, "chevron_down", 12, "fg"),
       ctx.caption(c, "Latest", { size = "$kitSizeLabel" }),
-   })
+   }
+   ctx.ring(c, t, "jump")
+   return row(t)
 end
 
 function M.log(c, p)
@@ -530,6 +567,8 @@ function M.log(c, p)
          gap = 10,
          cross_align = wrap and "start" or "center",
          hover_bg = ref(c, "hover"),
+
+         role = "listItem",
          on_click = act(c, "log.select", { row = i }),
          with_time and ctx.data(c, cell_text(ch:get(i, "time")), { size = "$kitSizeLabel", color = ref(c, "faint") }) or nil,
          row({ width = 44, ctx.data(c, level:upper(), { size = "$kitSizeLabel", bold = true, color = ref(c, LEVEL_ROLE[level] or "muted") }) }),
@@ -821,9 +860,15 @@ function M.progress(c, p)
 transition = 320, easing = "snappy", }
    else
 
+
+
+
+
+      local r = c.env.layout_of("track")
+      local w = r and r.w or 400
       bar = {
          width = { pct = 30 }, height = "grow", bg = ref(c, "accent"),
-         keyframes = { { dx = -80 }, { dx = 400 } }, transition = 1400,
+         keyframes = { { dx = -0.3 * w }, { dx = w } }, transition = math.max(1400, w * 2.5),
       }
    end
    local track = row({
@@ -834,6 +879,8 @@ transition = 320, easing = "snappy", }
       value_max = 100,
       value_text = v and string.format("%d%%", math.floor(v * 100 + 0.5)) or "under way",
       disabled = true,
+      key = "track",
+      on_layout = not v and act(c, "progress.layout") or nil,
       width = "grow",
       height = 4,
       clip = true,
@@ -847,6 +894,8 @@ end
 
 function M.event(m, kit)
    if kit == "table.select" or kit == "list.select" or kit == "log.select" then
+      local seen = ctx.peek(m.inst)
+      if seen and kit ~= "log.select" then seen.keyed = false end
       return emit("on_select", { row = m.row })
    elseif kit == "log.end" then
       local st = ctx.peek(m.inst)
@@ -866,6 +915,8 @@ function M.event(m, kit)
       end
       local n = (m.n or 0)
       if n == 0 then return nil end
+      local seen = ctx.peek(m.inst)
+      if seen then seen.keyed = true end
       local s = step(k.code, m.selected, n, (m.page or 8))
       if s and s ~= m.selected then return emit("on_select", { row = s }) end
    end

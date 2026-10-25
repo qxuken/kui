@@ -172,6 +172,8 @@ function make(namespace) {
       if (props.focus !== undefined) wire.focus = props.focus;
       if (props.autofocus !== undefined) wire.autofocus = props.autofocus;
       if (props.error !== undefined) wire.error = props.error;
+      if (props.browse !== undefined) wire.browse = props.browse;
+      if (props.browseLabel !== undefined) wire.browse_label = props.browseLabel;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       if (props.onSubmit !== undefined) wire.on_submit = props.onSubmit;
       const groups = undefined;

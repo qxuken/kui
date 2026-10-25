@@ -81,8 +81,25 @@ end
 -- keyboard put it there: a click focuses without a ring, as a browser's
 -- :focus-visible has it.
 function M.focus_shows(c: Ctx, key: string): boolean
+  -- The reading first: with no visible focus anywhere there is no ring,
+  -- and no focus read to re-ask the fill by (a key not yet declared reads
+  -- as another the frame after, and every control was asked twice).
+  if c.env.focus_visible ~= true then return false end
   local ok, here = pcall(c.env.is_focused, key)
-  return ok and here and c.env.focus_visible == true
+  return ok and here == true
+end
+
+-- The skin's focus ring on control `t`, keyed `key` among its instance's
+-- nodes: while the keyboard holds it, its edge is the skin's focus colour
+-- at 2 px (a border takes no room, so nothing moves), and the core's own
+-- ring is turned off with a `focus_bg` of the control's own fill. The
+-- core's ring is the theme's colour, the same blue in every skin, and a
+-- Lua add-on cannot set the theme (ADR 0019: the palette is the host's).
+function M.ring(c: Ctx, t: kui.Props, key: string)
+  t.key = t.key or key
+  if not M.focus_shows(c, key) then return end
+  t.focus_bg = t.bg or 0x00000000
+  t.border = { w = 2, color = M.ref(c, "focus") }
 end
 
 -- A focus ring hugging a mark `w`×`h` (a checkbox's square, a switch's

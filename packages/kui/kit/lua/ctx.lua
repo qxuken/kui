@@ -82,8 +82,25 @@ end
 
 
 function M.focus_shows(c, key)
+
+
+
+   if c.env.focus_visible ~= true then return false end
    local ok, here = pcall(c.env.is_focused, key)
-   return ok and here and c.env.focus_visible == true
+   return ok and here == true
+end
+
+
+
+
+
+
+
+function M.ring(c, t, key)
+   t.key = t.key or key
+   if not M.focus_shows(c, key) then return end
+   t.focus_bg = t.bg or 0x00000000
+   t.border = { w = 2, color = M.ref(c, "focus") }
 end
 
 
