@@ -132,7 +132,9 @@ was the first bare bump to break an app in five releases).
   how to fix it; `KUI_NODE_LIB` still points at one by hand.
 - In a runner app F12 is the devtools' key, and the devtools are on,
   hidden, until it brings them up at the Log tab: an app's own F12
-  binding is now the panel's (ADR 0068).
+  binding is now the panel's, unless its manifest says `devtools_key =
+  false` (F12 the app's, Ctrl+Shift+I the panel's) or names another
+  chord (ADR 0068).
 - `Instance` gained `slot`, the contribution slot it was placed in: a
   struct literal adds `slot: None`. `<slot>` in Node and `slot(...)` in
   Lua are back with the new meaning, a contribution slot (below).

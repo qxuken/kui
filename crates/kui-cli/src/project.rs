@@ -49,6 +49,22 @@ pub struct Project {
     /// run`, and in a packed app unless `pack.devtools = false` (or
     /// `KUI_FLAGS` asks for them back).
     pub devtools_reachable: bool,
+    /// The chord that brings the devtools up: F12 by default;
+    /// `devtools_key = false` leaves F12 to the app (the core's own
+    /// Ctrl+Shift+I, and the macOS View menu, still reach them), and a
+    /// string names another chord, as a menu item spells one.
+    pub devtools_key: DevtoolsKey,
+}
+
+/// The manifest's `devtools_key`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DevtoolsKey {
+    /// F12, the runner's default.
+    F12,
+    /// `false`: the runner takes no key; the core's own chord stays.
+    Core,
+    /// A chord the app chose.
+    Chord(kui_core::Accel),
 }
 
 /// The manifest's `pack` table.
@@ -102,6 +118,7 @@ pub fn find(path: &Path) -> Result<Project, String> {
         pin: None,
         pack: PackConfig { devtools: true, ..Default::default() },
         devtools_reachable: true,
+        devtools_key: DevtoolsKey::F12,
     };
     if let Some(config) = ["kui.config.lua", "kui.config.tl"]
         .iter()
@@ -183,6 +200,24 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
             };
         }
         p.devtools = t.get::<Option<bool>>("devtools")?.unwrap_or(false);
+        p.devtools_key = match t.get::<mlua::Value>("devtools_key")? {
+            mlua::Value::Nil | mlua::Value::Boolean(true) => DevtoolsKey::F12,
+            mlua::Value::Boolean(false) => DevtoolsKey::Core,
+            mlua::Value::String(s) => {
+                let s = s.to_str()?.to_string();
+                DevtoolsKey::Chord(kui_core::Accel::parse(&s).ok_or_else(|| {
+                    mlua::Error::runtime(format!(
+                        "devtools_key = {s:?}: a chord as a menu item spells one (\"mod+alt+i\", \"f11\"), or false to leave F12 to the app"
+                    ))
+                })?)
+            }
+            other => {
+                return Err(mlua::Error::runtime(format!(
+                    "devtools_key: a chord (\"mod+alt+i\") or false, not {}",
+                    other.type_name()
+                )));
+            }
+        };
         p.rename = t.get::<Option<bool>>("rename")?.unwrap_or(true);
         if let Some(i) = t.get::<Option<String>>("icon")? {
             p.icon = Some(p.dir.join(i));
@@ -315,4 +350,35 @@ pub fn glob(pattern: &str, path: &str) -> bool {
     let p = pattern.as_bytes();
     let s = path.as_bytes();
     (0..=s.len()).filter(|&i| i == 0 || s[i - 1] == b'/').any(|i| go(p, &s[i..]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with_config(name: &str, config: &str) -> Result<Project, String> {
+        let dir = std::env::temp_dir().join(format!("kui-project-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.lua"), "").unwrap();
+        std::fs::write(dir.join("kui.config.lua"), config).unwrap();
+        let p = find(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        p
+    }
+
+    #[test]
+    fn devtools_key_is_f12_unless_the_app_leaves_it_or_names_another() {
+        assert_eq!(with_config("key-default", "return {}").unwrap().devtools_key, DevtoolsKey::F12);
+        assert_eq!(
+            with_config("key-off", "return { devtools_key = false }").unwrap().devtools_key,
+            DevtoolsKey::Core
+        );
+        let chord = with_config("key-chord", r#"return { devtools_key = "mod+alt+i" }"#).unwrap();
+        assert_eq!(chord.devtools_key, DevtoolsKey::Chord(kui_core::Accel::parse("mod+alt+i").unwrap()));
+        let Err(bad) = with_config("key-bad", r#"return { devtools_key = "not a chord" }"#) else {
+            panic!("a bad chord loaded");
+        };
+        assert!(bad.contains("devtools_key") && bad.contains("false"), "{bad}");
+    }
 }

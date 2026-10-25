@@ -176,7 +176,9 @@ date: 2026-10-25
   section is its own piece of work. The subsystem is set.
 - **The devtools are on, hidden, in every runner app** (docked nowhere),
   which is what lets F12 bring them up: a core with the devtools off
-  hears none of their chords.
+  hears none of their chords. An app that binds F12 itself says
+  `devtools_key = false` in its manifest (the core's Ctrl+Shift+I and
+  the macOS menu still reach the panel), or names another chord.
 - **`kui run app.kui`** runs an archive by itself, as decision 11 says;
   the archive's comment also names the runner and hash, so `unzip -l`
   shows them.

@@ -129,6 +129,7 @@ servers and workers they held run on.
 | `kui` | The runner the app was written against, as `"0.1.0-alpha.68"`: `kui run` warns when it is not this runner or one it lists as compatible; `kui pack` packs that runner. |
 | `pack` | `{ exclude = { "fixtures/**" }, console = true, devtools = false, npm = { name = "@company/app" } }`: what `kui pack` leaves out, a Windows `exe` with a console, devtools off in the packed app, the npm package's name. |
 | `devtools` | `true` opens with the devtools panel. Without it they are there, hidden: F12 brings them up at the Log tab, as does View › Toggle Developer Tools on macOS. |
+| `devtools_key` | The chord that brings them up: F12 by default; another as a menu item spells one (`"mod+alt+i"`), or `false` to leave F12 to the app — the core's own Ctrl+Shift+I and the macOS menu still reach them. |
 | `rename` | `false` keeps the name "kui" in the Dock (as `--no-rename`). |
 | `watch` | `{ include = { "*.json" }, exclude = { "data/**" } }` beside the app's `.lua` and `.tl`. |
 

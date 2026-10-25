@@ -312,10 +312,17 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
             core.set_devtools_dock(kui_core::DevtoolsDock::Off);
         });
     }
-    if project.devtools_reachable
-        && let Some(f12) = kui_core::Accel::parse("f12")
-    {
-        launcher = launcher.devtools_key(f12);
+    // F12 unless the manifest leaves it to the app (`devtools_key = false`,
+    // the core's own Ctrl+Shift+I then) or names another chord.
+    if project.devtools_reachable {
+        let key = match &project.devtools_key {
+            project::DevtoolsKey::F12 => kui_core::Accel::parse("f12"),
+            project::DevtoolsKey::Core => None,
+            project::DevtoolsKey::Chord(a) => Some(*a),
+        };
+        if let Some(key) = key {
+            launcher = launcher.devtools_key(key);
+        }
     }
     if let Some((w, h)) = project.min_size {
         launcher = launcher.min_size(w, h);
