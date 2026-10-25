@@ -5471,3 +5471,8 @@ move.
 
 - `.` **F203** — [An app cannot show a file in its folder or open it with its app, and the devtools did it from the core](backlog/closed-2026-09.md#-f203--an-app-cannot-show-a-file-in-its-folder-or-open-it-with-its-app-and-the-devtools-did-it-from-the-core--done-2026-10-25) — done (2026-10-25) — `show_in_folder` / `open_external` in kui-native with doors in C, Odin and Node; the core asks with `MenuAction::ShowInFolder`
 - `.` **F204** — [A held drag scrolls only the scroller its press was in](backlog/closed-2026-09.md#-f204--a-held-drag-scrolls-only-the-scroller-its-press-was-in--done-2026-10-25) — done (2026-10-25) — hands an axis on as the wheel chains, `overscroll: contain` keeps it in
+
+**From trying the edge_scroll example (2026-10-25)** — F205 and F206, filed and built the same day
+
+- `.` **F205** — [A one-line text in a box that scrolls sideways is cut at the box with nothing to scroll to](backlog/closed-2026-09.md#-f205--a-one-line-text-in-a-box-that-scrolls-sideways-is-cut-at-the-box-with-nothing-to-scroll-to--done-2026-10-25) — done (2026-10-25) — a text in a `scroll_x` box is no narrower than its min-content
+- `.` **F206** — [The devtools' strip wraps tabs onto more lines, holds four placement buttons, and its tooltips cover the pane](backlog/closed-2026-09.md#-f206--the-devtools-strip-wraps-tabs-onto-more-lines-holds-four-placement-buttons-and-its-tooltips-cover-the-pane--done-2026-10-25) — done (2026-10-25) — "⋮" menu with the dock side, one scrolling tab line, short tooltips, drag-select followed from the inner scroller, the examples' View menu

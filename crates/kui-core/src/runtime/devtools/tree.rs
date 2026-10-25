@@ -229,7 +229,7 @@ pub(super) fn tree_tab(
                 "pick",
                 Icon::Pick,
                 Some(st.pick),
-                "pick a node from the app · Ctrl+Shift+P · Escape leaves",
+                "pick a node · Ctrl+Shift+P",
             );
             icon_button(
                 ui,
@@ -237,7 +237,7 @@ pub(super) fn tree_tab(
                 "highlight",
                 Icon::Eye,
                 Some(st.highlight),
-                "highlight the selected node · off, the app is lit only under a hovered row or the picker",
+                "keep the selection lit",
             );
             ui.leaf(NodeSpec::row().width(4.0));
             let filter = filter_field(ui, t, "tree-filter", "find a node");
@@ -255,7 +255,14 @@ pub(super) fn tree_tab(
                 TextStyle::new(11.0).color(t.faint).nowrap(),
             );
             icon_button(ui, t, "fold-all", Icon::FoldAll, None, "collapse every row");
-            icon_button(ui, t, "unfold-all", Icon::UnfoldAll, None, "expand every row");
+            icon_button(
+                ui,
+                t,
+                "unfold-all",
+                Icon::UnfoldAll,
+                None,
+                "expand every row",
+            );
         },
     );
     let mut rows = rows(nodes, st);

@@ -49,6 +49,8 @@ pub(super) enum Icon {
     ChevronRight,
     /// … open: a chevron pointing down.
     ChevronDown,
+    /// Three dots in a column: the menu with the placements in it.
+    More,
 }
 
 /// The box an icon is drawn in, logical px.
@@ -87,6 +89,11 @@ pub(super) fn draw(ui: &mut Ui<'_>, icon: Icon, color: Color, fill: Color) {
                 spec().bg(fill),
             );
             frame(ui, stroke, 6.0, 6.0, 14.5, 14.5);
+        }
+        Icon::More => {
+            for y in [3.5, 8.0, 12.5] {
+                ui.line(v(8.0, y), v(8.0, y), Stroke::new(2.6, color), spec());
+            }
         }
         Icon::Close => {
             ui.line(v(4.0, 4.0), v(12.0, 12.0), stroke, spec());

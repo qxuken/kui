@@ -596,6 +596,10 @@ pub(crate) struct State {
     focus_list: bool,
     /// The node the last snapshot spelled out whole for the inspector.
     detail_of: Option<Key>,
+    /// The strip's "⋮" menu is open.
+    more_open: bool,
+    /// The tab the strip last brought into view.
+    tab_revealed: Option<Shown>,
     /// The inspector lists only the fields a node declares; off, every
     /// field with its default.
     changed_only: bool,
@@ -676,6 +680,8 @@ impl Default for State {
             tree_key: None,
             focus_list: false,
             detail_of: None,
+            more_open: false,
+            tab_revealed: None,
             changed_only: true,
             perf: Perf::default(),
             facts: Facts::default(),
@@ -967,6 +973,16 @@ impl State {
                     if let Some(i) = self.tabs.iter().position(|t| t.name == name) {
                         self.select_tab(Tab::ALL.len() + i);
                     }
+                } else if other == "more" {
+                    self.more_open = !self.more_open;
+                } else if other == "more-close" {
+                    self.more_open = false;
+                } else if other == "more-close-panel" {
+                    self.more_open = false;
+                    return self.act(&format!("dock:{}", Dock::Off.name()));
+                } else if let Some(id) = other.strip_prefix("more-tab:") {
+                    self.more_open = false;
+                    return self.act(&format!("tab:{id}"));
                 } else if let Some(tab) = other.strip_prefix("tab:").and_then(Tab::parse) {
                     self.tab = tab;
                     self.custom = None;
@@ -990,7 +1006,8 @@ impl State {
                     };
                     self.note(format!("menus: {}", self.menus_name()));
                 } else if let Some(dock) = other.strip_prefix("dock:").and_then(Dock::parse) {
-                    // One of the header's placement buttons.
+                    // A placement from the "⋮" menu, or the close.
+                    self.more_open = false;
                     if dock != self.dock {
                         self.place(dock);
                         self.pick = false;

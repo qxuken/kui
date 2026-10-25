@@ -69,6 +69,11 @@ pub(crate) struct DragFollow {
     /// The container the last step moved — the scroller or one it
     /// handed an axis to: who holds the next frame in a trace.
     pub stepped_key: Option<Key>,
+    /// The innermost scroller inside the scroller that was under the
+    /// pointer when the hand last moved it: a box the drag was brought
+    /// into, which its edge step starts from — and not one the content
+    /// carried under a pointer held still.
+    pub entered: Option<Key>,
     /// A handler scroller's ramp; a container's are kept per container
     /// by the hand-off (`Core::step_edge_chain`).
     pub ramp: EdgeRamp,
@@ -78,9 +83,10 @@ pub(crate) struct DragFollow {
 /// rect its zones are measured against.
 pub(crate) type EdgePick = Option<(Key, Rect)>;
 
-/// How close to its limit a container has to be to count as there:
-/// a sub-pixel remainder is no room to move.
-const AT_LIMIT: f32 = 0.5;
+/// How close to its limit a container has to be to count as there: a
+/// held drag steps the last sub-pixel too, so a page ends where its end
+/// is, where a wheel notch counts half a pixel as none.
+const AT_LIMIT: f32 = 0.001;
 
 impl Core {
     /// Arms the follow for a drag a press just started on `node` at
@@ -92,8 +98,26 @@ impl Core {
             scroller,
             stepped: false,
             stepped_key: None,
+            entered: None,
             ramp: EdgeRamp::default(),
         });
+    }
+
+    /// The innermost scroll container under the pointer that is `scope`
+    /// or inside it, by the finished frame: where a drag-select pressed
+    /// there is followed from.
+    pub(crate) fn scroller_under_in(&self, scope: Key) -> Option<Key> {
+        let start = self.tree.index_of(scope)?;
+        let end = self.tree.subtree_end(start);
+        self.interaction
+            .scroll_regions_at()
+            .filter(|r| !r.handler)
+            .map(|r| r.key)
+            .find(|&k| {
+                self.tree
+                    .index_of(k)
+                    .is_some_and(|i| (start..end).contains(&i))
+            })
     }
 
     /// The pointer moved and the caller placed the live end there against
@@ -106,6 +130,7 @@ impl Core {
         };
         f.point = point;
         f.scroller = f.scroller.map(|s| self.reading_of(s.key(), s));
+        f.entered = f.scroller.and_then(|s| self.scroller_under_in(s.key()));
         self.drag_follow = Some(f);
     }
 
@@ -298,7 +323,25 @@ impl Core {
                         // that axis to. A step the clamp would undo is no
                         // step: a scroller at its end under a held pointer
                         // is idle, not asking for frames until the release.
-                        let picks = self.edge_chain(key, rect, f.point, window, |r| r);
+                        // From the innermost scroller under the pointer
+                        // inside this one — a code block the drag has come
+                        // into from the text around it, held at its edge,
+                        // while it is still the one the hand brought it
+                        // into rather than one that scrolled under a still
+                        // pointer — or this one: the press's scroller is
+                        // where the walk ends up, not the only place it
+                        // starts.
+                        let inner = self
+                            .scroller_under_in(key)
+                            .filter(|&k| k != key && f.entered == Some(k))
+                            .and_then(|k| self.tree.index_of(k).map(|j| (k, j)));
+                        let (from, rect) = match inner {
+                            Some((k, j)) => {
+                                (k, Rect::from_pos_size(self.tree.pos[j], self.tree.size[j]))
+                            }
+                            None => (key, rect),
+                        };
+                        let picks = self.edge_chain(from, rect, f.point, window, |r| r);
                         let (moved, by) = self.step_edge_chain(picks, f.point, window, dt);
                         f.stepped_key = by;
                         moved != Vec2::ZERO
@@ -350,8 +393,32 @@ impl Core {
     ) -> [EdgePick; 2] {
         let feel = self.edge_feel;
         let regions = &self.interaction.scroll_regions;
-        let Some(start) = regions.iter().rposition(|r| r.key == start) else {
-            return [None, None];
+        let region = |k: Key| regions.iter().rposition(|r| r.key == k);
+        // A scroller out of view has no region this frame — a code block
+        // the page it hands on to has scrolled away: the walk starts at
+        // the nearest container around it that still has one, by the
+        // finished frame's tree, and the drag goes on to the page's end.
+        let (start, own) = match region(start) {
+            Some(i) => (i, true),
+            None => {
+                let mut at = self.tree.index_of(start);
+                let mut found = None;
+                while let Some(i) = at {
+                    let p = self.tree.parent[i];
+                    if p == NIL {
+                        break;
+                    }
+                    if let Some(j) = region(self.tree.keys[p as usize]) {
+                        found = Some(j);
+                        break;
+                    }
+                    at = Some(p as usize);
+                }
+                match found {
+                    Some(j) => (j, false),
+                    None => return [None, None],
+                }
+            }
         };
         let mut picks = [None, None];
         for (axis, pick) in picks.iter_mut().enumerate() {
@@ -363,7 +430,11 @@ impl Core {
                     break;
                 }
                 if if x { r.scrolls_x } else { r.scrolls_y } {
-                    let rect = if i == start { first } else { rect_of(r.rect) };
+                    let rect = if i == start && own {
+                        first
+                    } else {
+                        rect_of(r.rect)
+                    };
                     let way = crate::edge_scroll::zone_way(&feel, rect, window, p, x);
                     let room = way != 0.0
                         && self.scroll.geometry(r.key).is_some_and(|g| {
