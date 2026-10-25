@@ -10,7 +10,7 @@ return {
 
   enums = {
     { name = "Variant", doc = "How loud a control is; success confirms what just happened (Copied).", "default", "primary", "ghost", "danger", "success" },
-    { name = "Tone", doc = "What a badge, a stat or a toast is about.", "neutral", "accent", "ok", "warn", "danger" },
+    { name = "Tone", doc = "What a badge, a stat or a toast is about.", "neutral", "info", "accent", "ok", "warn", "danger" },
     { name = "Align", doc = "Where a cell's content sits.", "start", "center", "end" },
     { name = "Axis", doc = "Which way a split divides.", "row", "column" },
     { name = "Skin", doc = "The look: Ledger's paper and ink, Phosphor's terminal, or Neutral's quiet chrome.", "ledger", "phosphor", "neutral" },
@@ -433,7 +433,7 @@ return {
       doc = "A message in a window's corner: shown for `duration` (5 s) or until dismissed (`duration = 0`), in its tone — info, success, warning or error — as a bar down its edge and its icon; it slides out as it goes. Several stack in a `toaster`.",
       props = {
         { "message", "string", doc = "What happened." },
-        { "tone", "Tone?", doc = "neutral (info, the default), accent, ok (success), warn (warning) or danger (error)." },
+        { "tone", "Tone?", doc = "info (the default, in the skin's focus blue), neutral (grey), accent, ok (success), warn (warning) or danger (error)." },
         { "action", "string?", doc = "One action on what happened, a button beside the message: `Undo`." },
         { "action_name", "string?", doc = "The action's accessible name when it says more than its label (Undo → Undo the delete)." },
         { "duration", "number?", doc = "How long it stays, in ms, counted again from when the pointer leaves it; 5000 when left out, 0 to keep it until dismissed." },

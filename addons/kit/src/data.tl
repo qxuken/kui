@@ -101,7 +101,7 @@ end
 
 -- A tone a channel cell names, as the role its text is drawn in; nil for
 -- none or a word Kit has no tone for.
-local TONE_ROLE: {string:string} = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "muted" }
+local TONE_ROLE: {string:string} = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", info = "focus", neutral = "muted" }
 
 local function tone_of(v: any): string
   return v is string and TONE_ROLE[v] or nil
@@ -156,6 +156,10 @@ function M.table(c: Ctx, p: P): kui.Node
   -- The header on a plane of its own (the sunken colour) rather than over
   -- a rule; `border` frames the whole table and rules the header instead.
   local framed = p.border == true
+  -- A table nobody sorts or selects in takes no keyboard: its headers are
+  -- captions and its rows no stop. Both were stops that did nothing.
+  local sorts = p.on_sort ~= nil
+  local selects = p.on_select ~= nil
   local head: kui.Props = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
     bg = ref(c, framed and "panel" or "sunken") }
   for i, col in ipairs(cols) do
@@ -163,15 +167,15 @@ function M.table(c: Ctx, p: P): kui.Node
     local sorted = p.sort == field
     local h: kui.Props = {
       key = "h" .. i,
-      role = "button",
+      role = sorts and "button" or nil,
       label = (col.title as string) .. (sorted and (p.descending == true and ", sorted descending" or ", sorted ascending") or ""),
       width = (col.width as number) or "grow",
       height = "grow",
       gap = 4,
       cross_align = "center",
       main_align = col.align == "end" and "end" or (col.align == "center" and "center" or "start"),
-      cursor = "pointer",
-      on_click = act(c, "table.sort", { field = field }),
+      cursor = sorts and "pointer" or nil,
+      on_click = sorts and act(c, "table.sort", { field = field }) or nil,
       ctx.caption(c, col.title as string, { color = ref(c, sorted and "fg" or "muted") }),
     }
     if sorted then h[#h + 1] = icons.node(c, p.descending == true and "chevron_down" or "chevron_up", 11, "fg") end
@@ -181,8 +185,8 @@ function M.table(c: Ctx, p: P): kui.Node
   local striped = p.striped == true
   local rows_t: kui.Props = {
     height = "grow",
-    focusable = true,
-    on_key = act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }),
+    focusable = selects or nil,
+    on_key = selects and act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }) or nil,
     on_range = act(c, "table.range"),
     label = "rows",
   }
@@ -197,8 +201,8 @@ function M.table(c: Ctx, p: P): kui.Node
       gap = 10,
       cross_align = "center",
       bg = sel and ref(c, "sel") or ((striped and i % 2 == 1) and ref(c, "hover") or nil),
-      hover_bg = sel and ref(c, "sel") or ref(c, "hover"),
-      on_click = act(c, "table.select", { row = i }),
+      hover_bg = selects and (sel and ref(c, "sel") or ref(c, "hover")) or nil,
+      on_click = selects and act(c, "table.select", { row = i }) or nil,
     }
     local ink = ref(c, sel and "sel_fg" or "fg")
     local name: {string} = {}
@@ -262,12 +266,14 @@ function M.list(c: Ctx, p: P): kui.Node
     if selected then reveal(c.env, "rows", selected, row_h) end
     seen.selected = selected
   end
+  -- A list nobody selects in takes no keyboard: no stop that does nothing.
+  local selects = p.on_select ~= nil
   local rows_t: kui.Props = {
     height = p.grow == true and "grow" or nil,
     role = "list",
     label = str(p.label),
-    focusable = true,
-    on_key = act(c, "list.key", { selected = selected, n = n, page = 8 }),
+    focusable = selects or nil,
+    on_key = selects and act(c, "list.key", { selected = selected, n = n, page = 8 }) or nil,
   }
   focus_edge(c, rows_t)
   return body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
@@ -299,8 +305,8 @@ function M.list(c: Ctx, p: P): kui.Node
       gap = 8,
       cross_align = "center",
       bg = sel and ref(c, "sel") or nil,
-      hover_bg = sel and ref(c, "sel") or ref(c, "hover"),
-      on_click = act(c, "list.select", { row = i }),
+      hover_bg = selects and (sel and ref(c, "sel") or ref(c, "hover")) or nil,
+      on_click = selects and act(c, "list.select", { row = i }) or nil,
       badge ~= "" and row { width = p.badge_width as number, min_width = "fit",
         pill(c, badge, tone, false, sel) } or nil,
       column(t),
@@ -673,6 +679,7 @@ end
 local function tone_ink(tone: string): string
   if tone == "ok" or tone == "warn" or tone == "danger" then return tone end
   if tone == "accent" then return "on_accent" end
+  if tone == "info" then return "focus" end
   return "muted"
 end
 
@@ -700,7 +707,7 @@ function M.badge(c: Ctx, p: P): kui.Node
     -- As written: a badge carries data (a status, a version, a count),
     -- which the skin's label casing would garble.
     p.dot == true and column { width = 6, height = 6, radius = 3,
-      bg = ref(c, tone == "neutral" and "faint" or (accent and "on_accent" or tone)) } or nil,
+      bg = ref(c, tone == "neutral" and "faint" or (accent and "on_accent" or tone_ink(tone))) } or nil,
     ctx.text(c, label, { size = "$kitSizeLabel", bold = c.s.skin.label_bold, color = ref(c, tone_ink(tone)), max_lines = 1 }),
   }
   -- No outline: the dot and the text carry the tone, and a row of badges
@@ -747,7 +754,7 @@ function M.code(c: Ctx, p: P): kui.Node
   }
 end
 
-local NOTICE_ROLE: {string:string} = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", neutral = "muted" }
+local NOTICE_ROLE: {string:string} = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", info = "focus", neutral = "muted" }
 
 function M.notice(c: Ctx, p: P): kui.Node
   local tone = str(p.tone) or "neutral"

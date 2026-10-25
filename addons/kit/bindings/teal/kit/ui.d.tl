@@ -11,7 +11,7 @@ local record kit
 
   -- What a badge, a stat or a toast is about.
   enum Tone
-    "neutral" "accent" "ok" "warn" "danger"
+    "neutral" "info" "accent" "ok" "warn" "danger"
   end
 
   -- Where a cell's content sits.
@@ -801,8 +801,8 @@ local record kit
   record ToastProps
     -- What happened.
     message: string
-    -- neutral (info, the default), accent, ok (success), warn (warning) or
-    -- danger (error).
+    -- info (the default, in the skin's focus blue), neutral (grey), accent,
+    -- ok (success), warn (warning) or danger (error).
     tone: Tone
     -- One action on what happened, a button beside the message: `Undo`.
     action: string

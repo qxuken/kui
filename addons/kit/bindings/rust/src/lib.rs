@@ -116,6 +116,7 @@ impl Variant {
 pub enum Tone {
     #[default]
     Neutral,
+    Info,
     Accent,
     Ok,
     Warn,
@@ -127,6 +128,7 @@ impl Tone {
     pub fn as_str(self) -> &'static str {
         match self {
             Tone::Neutral => "neutral",
+            Tone::Info => "info",
             Tone::Accent => "accent",
             Tone::Ok => "ok",
             Tone::Warn => "warn",
@@ -4558,8 +4560,8 @@ impl MenuDismiss {
 pub struct Toast {
     /// What happened.
     pub message: String,
-    /// neutral (info, the default), accent, ok (success), warn (warning) or
-    /// danger (error).
+    /// info (the default, in the skin's focus blue), neutral (grey), accent, ok
+    /// (success), warn (warning) or danger (error).
     pub tone: Option<Tone>,
     /// One action on what happened, a button beside the message: `Undo`.
     pub action: Option<String>,
@@ -4601,8 +4603,8 @@ impl Toast {
         }
     }
 
-    /// neutral (info, the default), accent, ok (success), warn (warning) or
-    /// danger (error).
+    /// info (the default, in the skin's focus blue), neutral (grey), accent, ok
+    /// (success), warn (warning) or danger (error).
     pub fn tone(mut self, v: Tone) -> Self {
         self.tone = Some(v);
         self

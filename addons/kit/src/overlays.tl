@@ -135,9 +135,11 @@ function M.menu(c: Ctx, p: P): kui.Node
   return column(t)
 end
 
-local TONE_ICON: {string:string} = { ok = "check", warn = "alert", danger = "alert", accent = "info", neutral = "info" }
--- The bar down a toast's edge, by tone: neutral is the soft rule.
-local TONE_BAR: {string:string} = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "rule" }
+local TONE_ICON: {string:string} = { ok = "check", warn = "alert", danger = "alert", accent = "info", info = "info", neutral = "info" }
+-- The bar down a toast's edge, by tone: info (the default) in the skin's
+-- focus blue, neutral the soft rule. A toast with no tone was grey, its
+-- bar the rule colour, and read as something gone wrong with the toast.
+local TONE_BAR: {string:string} = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", info = "focus", neutral = "rule" }
 
 local record Shown
   message: string
@@ -148,9 +150,10 @@ end
 local TOAST_MS = 5000
 
 function M.toast(c: Ctx, p: P): kui.Node
-  local tone = str(p.tone) or "neutral"
+  local tone = str(p.tone) or "info"
   local message = str(p.message) or ""
-  local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or (tone == "accent" and "accent" or "muted")
+  local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone
+    or (tone == "accent" and "accent" or (tone == "info" and "focus" or "muted"))
   -- It goes by itself after `duration` ms (0 keeps it), counted from when
   -- its message first showed and again from when the pointer leaves it:
   -- a frame asked for at the deadline, and in that frame a node whose
@@ -224,6 +227,12 @@ function M.toaster(c: Ctx, _p: P): kui.Node
     float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
     gap = 8,
     cross_align = "end",
+    -- A host that places the toaster only while it has toasts takes it
+    -- away with the last one, and a node going with its parent skips its
+    -- own exit (DX19): the last toast vanished where the others slid
+    -- out. The toaster leaves as a toast does, with whatever is in it.
+    exit = { opacity = 0, dx = 32 },
+    transition = 180,
     children(""),
   }
 end

@@ -123,7 +123,10 @@ local function checklist(m, n)
       kit.icon_button({ key = "rm", icon = "x", label = "Remove “" .. it.text .. "”", on_press = { kind = "item_remove", i = i } }),
     }
   end
-  return kit.section({ key = "checklist", title = "Checklist", count = #n.items, collapsed = false }, {
+  -- Folded as the model says, and the heading asks to change it: it was
+  -- handed `collapsed = false` and no toggle, so pressing it did nothing.
+  return kit.section({ key = "checklist", title = "Checklist", count = #n.items, collapsed = m.checklist_folded,
+    on_toggle = { kind = "fold_checklist" } }, {
     column { width = "grow", gap = 6, pad = { t = 4 },
       #n.items > 0 and kit.progress({ key = "done", value = done / #n.items, label = string.format("%d of %d done", done, #n.items) }) or nil,
       column { key = "items", width = "grow", gap = 0, table.unpack(rows) },

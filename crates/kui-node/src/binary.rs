@@ -1258,6 +1258,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let placeholder = r.str_ref()?;
             // A leaf: its `tooltip` floats beside it (backlog RG113).
             let p = lower_props(r, ui)?.for_leaf();
+            let key_focus = p.key_focus;
             // Bit 32: the text is the editor's `value`, brought back to on
             // every frame it differs, not a seed (ADR 0047, decision 8).
             let value = flags & 32 != 0;
@@ -1292,6 +1293,13 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 };
                 ui.core().text_edit(label, initial, &opts, p.spec)
             };
+            // `keyFocus` on an editor takes focus as the editor starts
+            // being declared, as on any node: the editor path does not
+            // open through `open_from`, where the row is honoured, and
+            // dropped it.
+            if key_focus {
+                ui.core().set_key_focus(Some(key));
+            }
             // Bit 64: `initial` was declared beside `value`, which wins;
             // the core cannot tell, since it is handed one text.
             if value && flags & 64 != 0 {

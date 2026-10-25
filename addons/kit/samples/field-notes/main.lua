@@ -42,6 +42,7 @@ function init()
     side = 0.17,
     mid = 0.36,
     focus_search = 0,
+    checklist_folded = false,
     new_item = "",
     confirm = nil,        -- the id a delete waits on
     toast = nil,
@@ -207,6 +208,7 @@ function update(msg)
       kui.spawn(function() store.delete(n.id) end)
     end
   elseif k == "focus_search" then m.focus_search = m.focus_search + 1
+  elseif k == "fold_checklist" then m.checklist_folded = msg.toggle.collapsed
   elseif k == "skin" then m.skin = msg.change.value
   elseif k == "side" then m.side = msg.resize.fraction
   elseif k == "mid" then m.mid = msg.resize.fraction

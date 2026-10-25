@@ -44,6 +44,7 @@ static inline KuiStr kit_variant_name(KitVariant v) {
 typedef enum KitTone {
     KIT_TONE_UNSET = 0,
     KIT_TONE_NEUTRAL,
+    KIT_TONE_INFO,
     KIT_TONE_ACCENT,
     KIT_TONE_OK,
     KIT_TONE_WARN,
@@ -53,6 +54,7 @@ typedef enum KitTone {
 static inline KuiStr kit_tone_name(KitTone v) {
     switch (v) {
     case KIT_TONE_NEUTRAL: return KUI_STR("neutral");
+    case KIT_TONE_INFO: return KUI_STR("info");
     case KIT_TONE_ACCENT: return KUI_STR("accent");
     case KIT_TONE_OK: return KUI_STR("ok");
     case KIT_TONE_WARN: return KUI_STR("warn");
@@ -2260,8 +2262,8 @@ typedef struct KitToast {
      */
     KuiStr message;
     /*
-     * neutral (info, the default), accent, ok (success), warn (warning) or
-     * danger (error).
+     * info (the default, in the skin's focus blue), neutral (grey), accent, ok
+     * (success), warn (warning) or danger (error).
      */
     KitTone tone;
     /*

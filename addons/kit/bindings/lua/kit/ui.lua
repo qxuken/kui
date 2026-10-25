@@ -10,7 +10,7 @@
 ---@alias kit.Variant "default"|"primary"|"ghost"|"danger"|"success"
 
 ---What a badge, a stat or a toast is about.
----@alias kit.Tone "neutral"|"accent"|"ok"|"warn"|"danger"
+---@alias kit.Tone "neutral"|"info"|"accent"|"ok"|"warn"|"danger"
 
 ---Where a cell's content sits.
 ---@alias kit.Align "start"|"center"|"end"
@@ -499,7 +499,7 @@
 ---The props of `kit/toast`.
 ---@class kit.ToastProps
 ---@field message string What happened.
----@field tone? kit.Tone neutral (info, the default), accent, ok (success), warn (warning) or danger (error).
+---@field tone? kit.Tone info (the default, in the skin's focus blue), neutral (grey), accent, ok (success), warn (warning) or danger (error).
 ---@field action? string One action on what happened, a button beside the message: `Undo`.
 ---@field action_name? string The action's accessible name when it says more than its label (Undo → Undo the delete).
 ---@field duration? number How long it stays, in ms, counted again from when the pointer leaves it; 5000 when left out, 0 to keep it until dismissed.

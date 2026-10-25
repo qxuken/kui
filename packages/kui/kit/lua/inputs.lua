@@ -332,10 +332,7 @@ function M.text_area(c, p)
    local edge = err and "danger" or (focused and (boxed and "focus" or "ink") or (boxed and "rule" or "faint"))
    local grow = p.grow == true
 
-
    local thick = (focused or err ~= nil) and not boxed
-   local edge_w = thick and c.s.skin.rule_w or c.s.skin.hair
-   local inset = pad + (c.s.skin.rule_w - edge_w)
 
 
 
@@ -347,7 +344,7 @@ function M.text_area(c, p)
       scroll_y = max_rows ~= nil,
       bg = ref(c, "sunken"),
       radius = "$kitRadius",
-      border = { w = edge_w, color = ref(c, edge) },
+      border = { w = thick and "$kitRuleW" or "$kitHair", color = ref(c, edge) },
       edit({
          key = "edit",
          value = value,
@@ -355,8 +352,8 @@ function M.text_area(c, p)
          tab_inserts = p.tab_inserts == true or nil,
          width = "grow",
          height = grow and "grow" or nil,
-         min_height = rows * line_h + 2 * inset,
-         pad = inset,
+         min_height = rows * line_h + 2 * pad,
+         pad = pad,
          cursor = "text",
          placeholder = str(p.placeholder),
          label = str(p.label) or str(p.placeholder),
@@ -680,16 +677,18 @@ function M.slider(c, p)
 
 
 
-   local group = "kit-slider-" .. tostring(c.inst)
 
 
 
 
-   local ok, held = pcall(c.env.is_pressed, "track")
-   held = ok and held
+
+   local okp, held = pcall(c.env.is_pressed, "track")
+   held = okp and held
+   local okh, over = pcall(c.env.is_hovered, "track")
+   over = okh and over
    local track = row({
       key = "track",
-      hover_group = group,
+      hoverable = true,
       role = "slider",
       label = str(p.label),
       value_now = v,
@@ -701,13 +700,12 @@ function M.slider(c, p)
       width = "grow",
       height = 18,
       cross_align = "center",
-      cursor = held and "grabbing" or "pointer",
+      cursor = held and "grabbing" or "grab",
       column({ width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent") }),
       column({
-         key = "handle", hover_group = group,
-         cursor = held and "grabbing" or "grab",
+         key = "handle",
          width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
-         bg = ref(c, "panel"), hover_bg = ref(c, "accent"), pressed_bg = ref(c, "accent_press"),
+         bg = ref(c, held and "accent_press" or (over and "accent" or "panel")),
          border = { w = "$kitRuleW", color = ref(c, "ink") },
       }),
       column({ width = "grow", height = 4, radius = 2, bg = ref(c, "rule") }),

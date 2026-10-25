@@ -50,6 +50,7 @@ VARIANT_NAMES := [Variant]string {
 // What a badge, a stat or a toast is about.
 Tone :: enum {
 	Neutral,
+	Info,
 	Accent,
 	Ok,
 	Warn,
@@ -59,6 +60,7 @@ Tone :: enum {
 @(private)
 TONE_NAMES := [Tone]string {
 	.Neutral = "neutral",
+	.Info = "info",
 	.Accent = "accent",
 	.Ok = "ok",
 	.Warn = "warn",
@@ -2120,8 +2122,8 @@ menu_in :: proc(ui: ^kui.Ui, namespace: string, p: Menu) -> i32 {
 Toast :: struct {
 	// What happened.
 	message: string,
-	// neutral (info, the default), accent, ok (success), warn (warning) or danger
-	// (error).
+	// info (the default, in the skin's focus blue), neutral (grey), accent, ok
+	// (success), warn (warning) or danger (error).
 	tone: Maybe(Tone),
 	// One action on what happened, a button beside the message: `Undo`.
 	action: string,

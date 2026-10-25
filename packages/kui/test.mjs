@@ -741,6 +741,23 @@ test('a chord and a keepTab field\'s Tab reach the sink above the editor', () =>
   assert.deepEqual(keys, [['tab', 'shell'], ['n', 'shell']], 'typing stays in the field');
 });
 
+// `keyFocus` on an editor takes focus as it first shows, from the control
+// that held it: the editor path dropped the row.
+test('keyFocus on an edit takes focus as it shows', () => {
+  const view = (shown) =>
+    box({ pad: 8 }, [
+      el('button', { onClick: 'b' }, ['B'], 'b'),
+      shown ? el('edit', { initial: '', keyFocus: true, width: 200 }, [], 'f') : null,
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, view(false));
+  ctx.key('tab');
+  ctx.frame(320, 240, 1, view(true));
+  ctx.frame(320, 240, 1, view(true));
+  const focused = ctx.accessTree().nodes.find((n) => n.focused);
+  assert.equal(focused && focused.role, 'textInput', 'the editor has the keyboard');
+});
+
 // Tab leaves a multiline editor as it leaves a field; `tabInserts` keeps it
 // as indentation.
 test('tab leaves a multiline edit unless it declares tabInserts', () => {

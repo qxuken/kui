@@ -136,9 +136,11 @@ function M.menu(c, p)
    return column(t)
 end
 
-local TONE_ICON = { ok = "check", warn = "alert", danger = "alert", accent = "info", neutral = "info" }
+local TONE_ICON = { ok = "check", warn = "alert", danger = "alert", accent = "info", info = "info", neutral = "info" }
 
-local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "rule" }
+
+
+local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", info = "focus", neutral = "rule" }
 
 
 
@@ -149,9 +151,10 @@ local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent
 local TOAST_MS = 5000
 
 function M.toast(c, p)
-   local tone = str(p.tone) or "neutral"
+   local tone = str(p.tone) or "info"
    local message = str(p.message) or ""
-   local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or (tone == "accent" and "accent" or "muted")
+   local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or
+   (tone == "accent" and "accent" or (tone == "info" and "focus" or "muted"))
 
 
 
@@ -225,6 +228,12 @@ function M.toaster(c, _p)
       float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
       gap = 8,
       cross_align = "end",
+
+
+
+
+      exit = { opacity = 0, dx = 32 },
+      transition = 180,
       children(""),
    })
 end

@@ -1683,3 +1683,268 @@ fn a_slider_handle_is_grabbed_and_drags() {
     let v: f64 = r.app.globals().get("v").unwrap();
     assert!(v > 0.6, "the drag from the handle moved the value: {v}");
 }
+
+#[test]
+fn a_toast_with_no_tone_is_info_and_the_last_one_slides_out() {
+    // A toast with no tone was grey, its edge the rule colour; and the
+    // last toast in a toaster vanished, since the host took the toaster
+    // away with it and a node going with its parent skips its exit.
+    let mut r = LuaRig::new(
+        r#"
+        shown = true
+        function view(env)
+          return column { width = "grow", height = "grow",
+            component("kit/settings", { skin = "ledger" }),
+            shown and component("kit/toaster", {}, {
+              component("kit/toast", { message = "Saved.", inline = true, duration = 0 }) }) or nil }
+        end
+        "#,
+    );
+    r.core.set_time(1.0);
+    r.frames(3);
+    r.core.set_time(2.0);
+    r.frames(2);
+    let edge = r
+        .node(|n| (n.rect.w - 4.0).abs() < 0.5 && n.rect.h > 20.0)
+        .expect("the tone's edge");
+    assert!(
+        focus_colours().contains(&edge.bg),
+        "the edge is the skin's info blue: {:?}",
+        edge.bg
+    );
+    let glyphs = |r: &mut LuaRig| kui_core::testing::quads_of(&mut r.core, kui_core::QuadKind::GlyphMask).len();
+    let with = glyphs(&mut r);
+    r.app.globals().set("shown", false).unwrap();
+    r.frames(1);
+    r.core.set_time(2.06);
+    r.frames(1);
+    assert!(glyphs(&mut r) >= with, "still drawn while it slides out");
+    r.core.set_time(2.5);
+    r.frames(2);
+    assert!(glyphs(&mut r) < with, "gone once it has");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn a_new_notes_title_takes_the_keyboard_and_tab_goes_on_to_its_body() {
+    // Field Notes: New note opened the note, and the keyboard stayed on
+    // the button.
+    let mut r = LuaRig::new(
+        r#"
+        id = nil
+        function on_event(ev) if ev.kind == "new" then id = (id or 0) + 1 end end
+        function view(env)
+          return column { width = "grow", height = "grow", gap = 8,
+            component("kit/button", { label = "New note", on_press = { kind = "new" } }),
+            id and column { key = "editor." .. id, width = "grow", gap = 8,
+              component("kit/text_field", { key = "title", label = "Title", hide_label = true, value = "Untitled", autofocus = true }),
+              component("kit/text_area", { key = "body", label = "Note", hide_label = true, value = "" }),
+            } or nil }
+        end
+        "#,
+    );
+    r.frames(2);
+    let b = r.named("New note");
+    r.slow_click(b.x + b.w / 2.0, b.y + b.h / 2.0);
+    r.frames(3);
+    let focused = |r: &mut LuaRig| -> Option<String> {
+        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+    };
+    assert_eq!(focused(&mut r).as_deref(), Some("Title"), "the title has the keyboard");
+    kui_core::testing::tab(&mut r.core, false);
+    r.frames(2);
+    assert_eq!(focused(&mut r).as_deref(), Some("Note"), "Tab goes on to the body");
+}
+
+/// A raw key press as a window sends one: the key down, then its editing
+/// key, routed.
+fn press_key(r: &mut LuaRig, code: kui_core::KeyCode) {
+    use kui_core::testing::key_press;
+    let e = r.core.handle_input(key_press(code));
+    r.route(e);
+    r.frames(1);
+}
+
+#[test]
+fn a_tables_rows_are_one_stop_the_arrows_walk() {
+    // Tab stopped on the table and the arrows did nothing visible; and a
+    // table nobody selects in was a stop that did nothing at all.
+    for selectable in [true, false] {
+        let mut r = LuaRig::new(&format!(
+            r#"
+            local ch = channel({{ name = {{ "one", "two", "three", "four" }} }})
+            sel = nil
+            function on_event(ev) if ev.kind == "sel" then sel = ev.select.row end end
+            function view(env)
+              return column {{ width = "grow", height = "grow",
+                component("kit/button", {{ label = "Before" }}),
+                column {{ width = 300, height = 200,
+                  component("kit/table", {{ rows = ch, columns = {{ {{ field = "name", title = "Name" }} }},
+                    selected = sel, grow = true, on_select = {selectable} and {{ kind = "sel" }} or nil }}) }},
+                component("kit/button", {{ label = "After" }}) }}
+            end
+            "#
+        ));
+        r.frames(2);
+        let focused = |r: &mut LuaRig| -> Option<String> {
+            r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+        };
+        r.core.set_focus(None);
+        let mut stops = Vec::new();
+        for _ in 0..4 {
+            kui_core::testing::tab(&mut r.core, false);
+            r.frames(1);
+            stops.push(focused(&mut r));
+        }
+        let into = stops.iter().position(|s| s.as_deref() == Some("rows"));
+        if !selectable {
+            assert!(into.is_none(), "a table nobody selects in is no stop: {stops:?}");
+            continue;
+        }
+        assert!(into.is_some(), "the rows are a stop: {stops:?}");
+        r.core.set_focus(None);
+        for _ in 0..=into.unwrap() {
+            kui_core::testing::tab(&mut r.core, false);
+            r.frames(1);
+        }
+        assert_eq!(focused(&mut r).as_deref(), Some("rows"));
+        use kui_core::KeyCode;
+        press_key(&mut r, KeyCode::Down);
+        r.frames(1);
+        let sel: Option<i64> = r.app.globals().get("sel").unwrap();
+        assert_eq!(sel, Some(0), "Down from nothing picks the first row");
+        press_key(&mut r, KeyCode::End);
+        r.frames(1);
+        let sel: Option<i64> = r.app.globals().get("sel").unwrap();
+        assert_eq!(sel, Some(3), "End the last");
+        press_key(&mut r, KeyCode::Up);
+        r.frames(1);
+        let sel: Option<i64> = r.app.globals().get("sel").unwrap();
+        assert_eq!(sel, Some(2), "Up the one before");
+        press_key(&mut r, KeyCode::Home);
+        r.frames(1);
+        let sel: Option<i64> = r.app.globals().get("sel").unwrap();
+        assert_eq!(sel, Some(0), "Home the first");
+    }
+}
+
+#[test]
+fn a_bar_charts_bars_are_one_stop_the_arrows_walk_and_look_hovered() {
+    // Every bar was a Tab stop, ringed apart from the look a hovered bar
+    // has and with no tooltip; and the value column left a gap wider than
+    // a bar between "6%" and the first bar.
+    let src = |selects: bool| {
+        format!(
+            r#"
+            local ch = channel({{ name = {{ "a", "b", "c" }}, rate = {{ 5, 2.9, 1.3 }} }})
+            picked = nil
+            function on_event(ev) if ev.kind == "pick" then picked = ev.select.row end end
+            function view(env)
+              return column {{ width = 400, height = "grow",
+                component("kit/button", {{ label = "Before" }}),
+                component("kit/bar_chart", {{ data = ch, label = "name", value = "rate", unit = "%", height = 160,
+                  on_select = {selects} and {{ kind = "pick" }} or nil }}),
+                component("kit/button", {{ label = "After" }}) }}
+            end
+            "#
+        )
+    };
+    let mut r = LuaRig::new(&src(true));
+    r.frames(2);
+    let focused = |r: &mut LuaRig| -> Option<String> {
+        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+    };
+    let mut stops = Vec::new();
+    for _ in 0..3 {
+        kui_core::testing::tab(&mut r.core, false);
+        r.frames(1);
+        stops.push(focused(&mut r));
+    }
+    assert_eq!(stops[1].as_deref(), Some("a: 5%"), "the bars are one stop, the first bar: {stops:?}");
+    assert_eq!(stops[2].as_deref(), Some("After"), "and the next stop is past them: {stops:?}");
+    kui_core::testing::tab(&mut r.core, true);
+    r.frames(1);
+    use kui_core::{EditKey, InputEvent, Mods};
+    r.core.handle_input(InputEvent::Key(EditKey::Right, Mods::NONE));
+    r.frames(2);
+    assert_eq!(focused(&mut r).as_deref(), Some("b: 2.9%"), "Right walks to the next bar");
+    let items: Vec<_> = r.core.nodes().into_iter().filter(|n| n.role == Some(kui_core::Role::ListItem)).collect();
+    let (a, bar) = (items[0].clone(), items[1].clone());
+    assert_ne!(bar.bg, a.bg, "the bar the keyboard is on looks hovered");
+    assert!(r.text("b: 2.9%").is_some(), "its tooltip shows");
+    let e = r.core.handle_input(InputEvent::Key(EditKey::Enter, Mods::NONE));
+    r.route(e);
+    r.frames(1);
+    let picked: Option<i64> = r.app.globals().get("picked").unwrap();
+    assert_eq!(picked, Some(1), "Enter picks it");
+    // The value column hugs its widest label.
+    let six = r.text("6%").expect("the top value label");
+    assert!(a.rect.x - (six.x + six.w) <= 10.0, "the first bar sits by the labels: {six:?} {:?}", a.rect);
+
+    let mut r = LuaRig::new(&src(false));
+    r.frames(2);
+    kui_core::testing::tab(&mut r.core, false);
+    r.frames(1);
+    kui_core::testing::tab(&mut r.core, false);
+    r.frames(1);
+    assert_eq!(focused(&mut r).as_deref(), Some("After"), "bars nobody picks are no stop");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn a_waterfalls_spans_are_one_stop_or_none() {
+    // Every span bar was a Tab stop, and one that did nothing where the
+    // host picks no spans (Relay's trace).
+    let src = |picks: bool| {
+        format!(
+            r#"
+            local ch = channel({{ name = {{ "load", "parse", "paint" }}, start = {{ 0, 2, 30 }}, len = {{ 60, 20, 10 }},
+              depth = {{ 0, 1, 1 }}, group = {{ 0, 1, 2 }}, target = {{ "a", "b", "c" }} }})
+            picked = nil
+            function on_event(ev) if ev.kind == "pick" then picked = ev.select.row end end
+            function view(env)
+              return column {{ width = 600, height = "grow",
+                component("kit/waterfall", {{ bars = ch, on_select = {picks} and {{ kind = "pick" }} or nil }}),
+                component("kit/button", {{ label = "After" }}) }}
+            end
+            "#
+        )
+    };
+    let focused = |r: &mut LuaRig| -> Option<String> {
+        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+    };
+    for picks in [true, false] {
+        let mut r = LuaRig::new(&src(picks));
+        r.frames(3);
+        let mut stops = Vec::new();
+        for _ in 0..6 {
+            kui_core::testing::tab(&mut r.core, false);
+            r.frames(1);
+            stops.push(focused(&mut r));
+        }
+        let spans = stops.iter().filter(|s| matches!(s.as_deref(), Some("load" | "parse" | "paint"))).count();
+        if picks {
+            // The three tools, the spans once, After, round to the first.
+            assert_eq!(spans, 1, "the spans are one stop: {stops:?}");
+            let at = stops.iter().position(|s| matches!(s.as_deref(), Some("load" | "parse" | "paint"))).unwrap();
+            r.core.set_focus(None);
+            for _ in 0..=at {
+                kui_core::testing::tab(&mut r.core, false);
+                r.frames(1);
+            }
+            let first = focused(&mut r);
+            use kui_core::{EditKey, InputEvent, Mods};
+            r.core.handle_input(InputEvent::Key(EditKey::Down, Mods::NONE));
+            r.frames(1);
+            assert_ne!(focused(&mut r), first, "an arrow walks to the next span");
+            let e = r.core.handle_input(InputEvent::Key(EditKey::Enter, Mods::NONE));
+            r.route(e);
+            r.frames(1);
+            let picked: Option<i64> = r.app.globals().get("picked").unwrap();
+            assert!(picked.is_some(), "Enter picks it");
+        } else {
+            assert_eq!(spans, 0, "spans nobody picks are no stop: {stops:?}");
+        }
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}

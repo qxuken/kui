@@ -201,7 +201,7 @@ local function nice(raw: number): number
   return 10 * p
 end
 
-local function lane_row(c: Ctx, lane: Lane, st: State, v0: number, v1: number, width: number, selected: integer): kui.Node
+local function lane_row(c: Ctx, lane: Lane, st: State, v0: number, v1: number, width: number, selected: integer, picks: boolean): kui.Node
   local scale = width / (v1 - v0)
   local px = 1 / scale
   local extent = st.index.hi - st.index.lo
@@ -239,7 +239,13 @@ local function lane_row(c: Ctx, lane: Lane, st: State, v0: number, v1: number, w
           clip = true,
           pad = { x = 4 },
           cross_align = "center",
-          on_click = act(c, "waterfall.pick", { row = b.row }),
+          -- One of the lanes' list (ADR 0007) when the host picks spans:
+          -- the arrows walk the bars, Enter picks one. Every bar was a Tab
+          -- stop of its own, and a stop that did nothing where no one
+          -- picked.
+          role = picks and "listItem" or nil,
+          focusable = picks or nil,
+          on_click = picks and act(c, "waterfall.pick", { row = b.row }) or nil,
         }
         if w >= 4 then bar.border = { w = 1, color = ref(c, sel and "ink" or "rule") } end
         if w >= 48 then
@@ -290,8 +296,11 @@ function M.waterfall(c: Ctx, p: P): kui.Node
     tick = tick + step
   end
 
+  local picks = p.on_select ~= nil
   local lanes: kui.Props = {
     key = "lanes",
+    role = picks and "list" or nil,
+    label = picks and "spans" or nil,
     width = "grow",
     height = p.grow == true and "grow" or nil,
     scroll_y = p.grow == true,
@@ -303,7 +312,7 @@ function M.waterfall(c: Ctx, p: P): kui.Node
     on_scroll = act(c, "waterfall.wheel", { v0 = v0, v1 = v1, x = st.x, w = width }),
   }
   for _, lane in ipairs(st.index.lanes) do
-    lanes[#lanes + 1] = lane_row(c, lane, st, v0, v1, width, selected)
+    lanes[#lanes + 1] = lane_row(c, lane, st, v0, v1, width, selected, picks)
   end
   -- Marks: a rule down the lanes and a label at the top.
   for i, m in ipairs(st.index.marks) do

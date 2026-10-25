@@ -345,7 +345,13 @@ local function bars(c: Ctx, h: number, values: {number}, names: {string}, kit: s
     for _, v in ipairs(values) do if v > top then top = v end end
   end
   if top <= 0 then top = 1 end
-  local plot: kui.Props = { width = "grow", height = h, gap = 2, cross_align = "end" }
+  -- Bars a host selects in are one Tab stop, a list of them (ADR 0007):
+  -- the arrows walk the bars, Enter or Space picks one, and the bar the
+  -- keyboard is on looks as the pointer's does — the hover colour and its
+  -- tooltip. Each bar was a stop of its own, ringed apart from the look a
+  -- bar under the pointer has.
+  local plot: kui.Props = { width = "grow", height = h, gap = 2, cross_align = "end",
+    role = kit and "list" or nil, label = kit and "bars" or nil }
   for i, v in ipairs(values) do
     local said = with_unit(short(v), unit)
     local t: kui.Props = {
@@ -357,7 +363,13 @@ local function bars(c: Ctx, h: number, values: {number}, names: {string}, kit: s
       label = (names[i] or "") .. ": " .. said,
       tooltip = (names[i] or "") .. ": " .. said,
     }
-    if kit then t.on_click = act(c, kit, { row = i - 1 }); t.cursor = "pointer" end
+    if kit then
+      t.role = "listItem"
+      t.focusable = true
+      t.on_click = act(c, kit, { row = i - 1 })
+      t.cursor = "pointer"
+      t.focus_bg = ref(c, "ink")
+    end
     if shown then
       plot[#plot + 1] = column { key = "c" .. i, width = "grow", min_width = 0, gap = 2, cross_align = "center",
         ctx.data(c, said, { size = 10, color = ref(c, "muted"), max_lines = 1 }),
@@ -404,7 +416,7 @@ function M.bar_chart(c: Ctx, p: P): kui.Node
   local unit = str(p.unit)
   if p.horizontal == true then
     return column { width = "grow", role = "group", label = "bar chart",
-      lying(c, values, names, "bar_chart.select", unit, (p.label_width or 120) as number) }
+      lying(c, values, names, p.on_select ~= nil and "bar_chart.select" or nil, unit, (p.label_width or 120) as number) }
   end
   local h = (p.height or 160) as number
   -- A value axis: round steps from 0 to past the tallest bar, ruled
@@ -414,16 +426,34 @@ function M.bar_chart(c: Ctx, p: P): kui.Node
   local step = nice(math.max(top, 1e-9) / 4)
   local top_tick = math.max(step, math.ceil(top / step - 1e-9) * step)
   local plot_h = h - 16
-  local scale: kui.Props = { width = unit and 52 or 40, height = h }
+  -- The value labels' column as wide as the widest of them: a fixed 52 px
+  -- for a unit left a gap between "6%" and the first bar wider than a bar.
+  local labels: {string} = {}
+  local label_w = 0.0
+  do
+    local v = 0.0
+    while v <= top_tick + step / 2 do
+      local s = with_unit(short(v), unit)
+      labels[#labels + 1] = s
+      local m = c.env.measure_text(s, { size = 10, family = "$kitData" } as kui.Props, nil)
+      if m and m.width > label_w then label_w = m.width end
+      v = v + step
+    end
+  end
+  local scale_w = math.ceil(label_w) + 2
+  local scale: kui.Props = { width = scale_w, height = h }
   -- The rules as lines in the plot's own box, drawn before the bars and
   -- so under them (a float would be a layer over them), clipped to the box.
   local plot: kui.Props = { width = "grow", height = h }
   local v = 0.0
+  local k = 0
   while v <= top_tick + step / 2 do
     local y = h - v / top_tick * plot_h
-    scale[#scale + 1] = column {
+    k = k + 1
+    scale[#scale + 1] = row {
       float = { anchor = "parent", clip = true, dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
-      ctx.data(c, with_unit(short(v), unit), { size = 10, color = ref(c, "faint") }),
+      width = scale_w, main_align = "end",
+      ctx.data(c, labels[k], { size = 10, color = ref(c, "faint") }),
     }
     if v > 0 then
       plot[#plot + 1] = line { from = { 0, y }, to = { 8192, y }, width = 1, color = ref(c, "rule") }
@@ -437,11 +467,12 @@ function M.bar_chart(c: Ctx, p: P): kui.Node
     axis[#axis + 1] = row { width = "grow", min_width = 0, main_align = "center",
       ctx.muted(c, names[i], { size = 10, max_lines = 2, ellipsis = true, wrap = "word" }) }
   end
-  plot[#plot + 1] = bars(c, h, values, names, "bar_chart.select", top_tick, plot_h, p.values ~= false, unit)
+  local picks = p.on_select ~= nil and "bar_chart.select" or nil
+  plot[#plot + 1] = bars(c, h, values, names, picks, top_tick, plot_h, p.values ~= false, unit)
   return column {
     width = "grow", gap = 4, role = "group", label = "bar chart",
     row { width = "grow", gap = 6, column(scale), column { width = "grow", gap = 0, column(plot), ctx.rule(c, "ink", "$kitHair") } },
-    row { width = "grow", pad = { l = (unit and 52 or 40) + 6 }, row(axis) },
+    row { width = "grow", pad = { l = scale_w + 6 }, row(axis) },
   }
 end
 

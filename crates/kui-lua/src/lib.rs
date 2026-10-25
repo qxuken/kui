@@ -3422,7 +3422,16 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 wrap: p.wrap,
                 ..Default::default()
             };
+            let key_focus = p.key_focus;
             let key = ui.text_edit(&label, &text, &opts, p.spec);
+            // `key_focus` on an editor: the node takes focus on the frame
+            // it starts being declared, as on any other node. The editor
+            // path never opens through `open_from`, which is where the row
+            // is honoured, and dropped it: a field asking for the keyboard
+            // as it showed (Kit's `autofocus`) never got it.
+            if key_focus {
+                ui.core().set_key_focus(Some(key));
+            }
             value.warn(ui, key, &label);
             Ok(())
         }
@@ -6313,6 +6322,35 @@ mod tests {
         assert_eq!(events[0].payload.get_str("tag"), Some("shell"));
         core.handle_input(InputEvent::Key(kui_core::EditKey::Tab, Default::default()));
         assert_eq!(core.focus(), focused, "focus stays in the field");
+    }
+
+    /// `key_focus` on an editor takes focus as it first shows, from a
+    /// control that holds it: the editor path dropped the row.
+    #[test]
+    fn key_focus_on_an_edit_takes_focus_as_it_shows() {
+        let mut ext = LuaExtension::from_source(
+            "key_focus_edit",
+            r#"
+                shown = false
+                function view(env)
+                  return column {
+                    row { key = "b", role = "button", label = "B", on_click = "b", width = 40, height = 20 },
+                    shown and edit { key = "f", initial = "", key_focus = true, width = 200 } or nil,
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        kui_core::testing::tab(&mut core, false);
+        let button = core.focus();
+        assert!(button.is_some(), "the button holds focus");
+        ext.lua().globals().set("shown", true).unwrap();
+        frame(&mut core, &mut ext);
+        assert_ne!(core.focus(), button, "focus left the button");
+        assert!(core.edit.focused().is_some(), "for the editor");
+        assert_eq!(core.focus(), core.edit.focused());
     }
 
     /// `tab_inserts` lowers: a multiline editor's Tab types; without it Tab

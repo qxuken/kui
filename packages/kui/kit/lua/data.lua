@@ -102,7 +102,7 @@ end
 
 
 
-local TONE_ROLE = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "muted" }
+local TONE_ROLE = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", info = "focus", neutral = "muted" }
 
 local function tone_of(v)
    return type(v) == "string" and TONE_ROLE[v] or nil
@@ -157,6 +157,10 @@ function M.table(c, p)
 
 
    local framed = p.border == true
+
+
+   local sorts = p.on_sort ~= nil
+   local selects = p.on_select ~= nil
    local head = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
 bg = ref(c, framed and "panel" or "sunken"), }
    for i, col in ipairs(cols) do
@@ -164,15 +168,15 @@ bg = ref(c, framed and "panel" or "sunken"), }
       local sorted = p.sort == field
       local h = {
          key = "h" .. i,
-         role = "button",
+         role = sorts and "button" or nil,
          label = (col.title) .. (sorted and (p.descending == true and ", sorted descending" or ", sorted ascending") or ""),
          width = (col.width) or "grow",
          height = "grow",
          gap = 4,
          cross_align = "center",
          main_align = col.align == "end" and "end" or (col.align == "center" and "center" or "start"),
-         cursor = "pointer",
-         on_click = act(c, "table.sort", { field = field }),
+         cursor = sorts and "pointer" or nil,
+         on_click = sorts and act(c, "table.sort", { field = field }) or nil,
          ctx.caption(c, col.title, { color = ref(c, sorted and "fg" or "muted") }),
       }
       if sorted then h[#h + 1] = icons.node(c, p.descending == true and "chevron_down" or "chevron_up", 11, "fg") end
@@ -182,8 +186,8 @@ bg = ref(c, framed and "panel" or "sunken"), }
    local striped = p.striped == true
    local rows_t = {
       height = "grow",
-      focusable = true,
-      on_key = act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }),
+      focusable = selects or nil,
+      on_key = selects and act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }) or nil,
       on_range = act(c, "table.range"),
       label = "rows",
    }
@@ -198,8 +202,8 @@ bg = ref(c, framed and "panel" or "sunken"), }
          gap = 10,
          cross_align = "center",
          bg = sel and ref(c, "sel") or ((striped and i % 2 == 1) and ref(c, "hover") or nil),
-         hover_bg = sel and ref(c, "sel") or ref(c, "hover"),
-         on_click = act(c, "table.select", { row = i }),
+         hover_bg = selects and (sel and ref(c, "sel") or ref(c, "hover")) or nil,
+         on_click = selects and act(c, "table.select", { row = i }) or nil,
       }
       local ink = ref(c, sel and "sel_fg" or "fg")
       local name = {}
@@ -263,12 +267,14 @@ function M.list(c, p)
       if selected then reveal(c.env, "rows", selected, row_h) end
       seen.selected = selected
    end
+
+   local selects = p.on_select ~= nil
    local rows_t = {
       height = p.grow == true and "grow" or nil,
       role = "list",
       label = str(p.label),
-      focusable = true,
-      on_key = act(c, "list.key", { selected = selected, n = n, page = 8 }),
+      focusable = selects or nil,
+      on_key = selects and act(c, "list.key", { selected = selected, n = n, page = 8 }) or nil,
    }
    focus_edge(c, rows_t)
    return body(c, "rows", n, row_h, rows_t, function(i)
@@ -300,8 +306,8 @@ color = ref(c, sel and "sel_fg" or "muted"), })
          gap = 8,
          cross_align = "center",
          bg = sel and ref(c, "sel") or nil,
-         hover_bg = sel and ref(c, "sel") or ref(c, "hover"),
-         on_click = act(c, "list.select", { row = i }),
+         hover_bg = selects and (sel and ref(c, "sel") or ref(c, "hover")) or nil,
+         on_click = selects and act(c, "list.select", { row = i }) or nil,
          badge ~= "" and row({ width = p.badge_width, min_width = "fit",
 pill(c, badge, tone, false, sel), }) or nil,
          column(t),
@@ -674,6 +680,7 @@ end
 local function tone_ink(tone)
    if tone == "ok" or tone == "warn" or tone == "danger" then return tone end
    if tone == "accent" then return "on_accent" end
+   if tone == "info" then return "focus" end
    return "muted"
 end
 
@@ -701,7 +708,7 @@ function M.badge(c, p)
 
 
       p.dot == true and column({ width = 6, height = 6, radius = 3,
-bg = ref(c, tone == "neutral" and "faint" or (accent and "on_accent" or tone)), }) or nil,
+bg = ref(c, tone == "neutral" and "faint" or (accent and "on_accent" or tone_ink(tone))), }) or nil,
       ctx.text(c, label, { size = "$kitSizeLabel", bold = c.s.skin.label_bold, color = ref(c, tone_ink(tone)), max_lines = 1 }),
    }
 
@@ -748,7 +755,7 @@ function M.code(c, p)
    })
 end
 
-local NOTICE_ROLE = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", neutral = "muted" }
+local NOTICE_ROLE = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", info = "focus", neutral = "muted" }
 
 function M.notice(c, p)
    local tone = str(p.tone) or "neutral"

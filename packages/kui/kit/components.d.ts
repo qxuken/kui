@@ -10,7 +10,7 @@ import type { ColorProp } from '@qxuken/kui/jsx-runtime';
 export type Variant = 'default' | 'primary' | 'ghost' | 'danger' | 'success';
 
 /** What a badge, a stat or a toast is about. */
-export type Tone = 'neutral' | 'accent' | 'ok' | 'warn' | 'danger';
+export type Tone = 'neutral' | 'info' | 'accent' | 'ok' | 'warn' | 'danger';
 
 /** Where a cell's content sits. */
 export type Align = 'start' | 'center' | 'end';
@@ -924,7 +924,7 @@ export type MenuDismissMsg<T = {}> = T & { dismiss: MenuDismiss };
 export interface ToastProps {
   /** What happened. */
   message: string;
-  /** neutral (info, the default), accent, ok (success), warn (warning) or danger (error). */
+  /** info (the default, in the skin's focus blue), neutral (grey), accent, ok (success), warn (warning) or danger (error). */
   tone?: Tone;
   /** One action on what happened, a button beside the message: `Undo`. */
   action?: string;

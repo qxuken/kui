@@ -202,7 +202,7 @@ local function nice(raw)
    return 10 * p
 end
 
-local function lane_row(c, lane, st, v0, v1, width, selected)
+local function lane_row(c, lane, st, v0, v1, width, selected, picks)
    local scale = width / (v1 - v0)
    local px = 1 / scale
    local extent = st.index.hi - st.index.lo
@@ -240,7 +240,13 @@ local function lane_row(c, lane, st, v0, v1, width, selected)
                clip = true,
                pad = { x = 4 },
                cross_align = "center",
-               on_click = act(c, "waterfall.pick", { row = b.row }),
+
+
+
+
+               role = picks and "listItem" or nil,
+               focusable = picks or nil,
+               on_click = picks and act(c, "waterfall.pick", { row = b.row }) or nil,
             }
             if w >= 4 then bar.border = { w = 1, color = ref(c, sel and "ink" or "rule") } end
             if w >= 48 then
@@ -291,8 +297,11 @@ ctx.data(c, fmt(tick, step), { size = 10.5, color = ref(c, "muted") }), })
       tick = tick + step
    end
 
+   local picks = p.on_select ~= nil
    local lanes = {
       key = "lanes",
+      role = picks and "list" or nil,
+      label = picks and "spans" or nil,
       width = "grow",
       height = p.grow == true and "grow" or nil,
       scroll_y = p.grow == true,
@@ -304,7 +313,7 @@ ctx.data(c, fmt(tick, step), { size = 10.5, color = ref(c, "muted") }), })
       on_scroll = act(c, "waterfall.wheel", { v0 = v0, v1 = v1, x = st.x, w = width }),
    }
    for _, lane in ipairs(st.index.lanes) do
-      lanes[#lanes + 1] = lane_row(c, lane, st, v0, v1, width, selected)
+      lanes[#lanes + 1] = lane_row(c, lane, st, v0, v1, width, selected, picks)
    end
 
    for i, m in ipairs(st.index.marks) do
