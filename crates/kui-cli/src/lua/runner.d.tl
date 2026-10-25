@@ -98,6 +98,20 @@
   getenv: function(name: string): string
   -- The app's folder, and the runner's version.
   dir: string
+  -- The app's id, the manifest's (reverse DNS), else its folder's name.
+  id: string
+  -- The app's own version, the manifest's `version`.
+  app_version: string
+  -- The app's own folders for data and caches, the same packed and not.
+  data_dir: string
+  cache_dir: string
+  -- What `kui pack` wrote, in a packed app; nil under `kui run`.
+  record Packed
+    runner: string
+    bytecode: boolean
+    hash: string
+  end
+  packed: Packed
   version: string
 
   record Timer

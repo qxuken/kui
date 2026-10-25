@@ -122,6 +122,12 @@ was the first bare bump to break an app in five releases).
 - The warnings `unknown-slot` and `duplicate-slot` are gone, and
   `recursive-slot` is `recursive-component`.
 - An extension's `root` is drawn fresh every frame, never replayed.
+- A runner app's `load`, `loadfile`, `dofile` and `require` take Lua
+  source only; bytecode loads only from a packed app's own files (ADR
+  0068). An app that `load`ed a `string.dump` gets nil and the reason.
+- In a runner app F12 is the devtools' key, and the devtools are on,
+  hidden, until it brings them up at the Log tab: an app's own F12
+  binding is now the panel's (ADR 0068).
 - `Instance` gained `slot`, the contribution slot it was placed in: a
   struct literal adds `slot: None`. `<slot>` in Node and `slot(...)` in
   Lua are back with the new meaning, a contribution slot (below).
@@ -344,6 +350,26 @@ for lua-language-server, and a new runner beside the window's.
   headless. Preferences' ⌘S / Ctrl+S saves (a menu bar it never had), its
   toasts stack with an Undo each; the book's task list clears done tasks
   with a ghost button beside the primary Add.
+
+- **How kui reaches a machine** (backlog C88, [ADR
+  0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
+  runner app for any platform from any machine — the target's prebuilt
+  runner with the app's archive added: a Windows `exe` (archive appended,
+  subsystem set), a macOS `.app` (archive in `Resources`, `.icns`, signed
+  ad hoc on a Mac), a Linux binary in a `.tar.gz`, an npm package of
+  sources over `@qxuken/kui-cli`, or the `.kui` archive alone, which `kui
+  run app.kui` runs; sources by default, `--bytecode` opt-in; `--installer
+  <url>` writes `install.sh` / `install.ps1` for a company's own host.
+  A packed app runs from its archive with every argument its own
+  (`KUI_FLAGS` for the runner's), read-only to `kui.fs`, logging to its
+  data folder. `kui upgrade [version]` and `kui runners fetch <version>
+  --to <dir>` read the GitHub release (or a mirror with its layout). The
+  manifest gains `id`, `version`, `kui` (the runner pinned, warned on
+  outside the compatibility table) and `pack`; scripts read `kui.id`,
+  `kui.app_version`, `kui.data_dir`, `kui.cache_dir` and `kui.packed`.
+  The samples and the book's task list keep their files in
+  `kui.data_dir`. A macOS runner app gets a View menu with Toggle
+  Developer Tools until it declares its own bar.
 
 - **Contribution slots** (backlog C86, [ADR
   0067](docs/adr/0067-slots-fold-into-components.md)'s second step): a

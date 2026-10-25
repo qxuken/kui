@@ -22,7 +22,7 @@ if not boot then
     name = "field-notes",
     about = "notes and checklists in notebooks, kept in sqlite",
     options = {
-      db = { default = (kui.env.HOME or ".") .. "/.local/share/kui-samples/field-notes.db", value = "path",
+      db = { default = kui.data_dir .. "/field-notes.db", value = "path",
         help = "the notes file (:memory: for a fresh, seeded one each run)" },
     },
   })

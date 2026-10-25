@@ -183,6 +183,15 @@ fn main() -> ExitCode {
         "check" => check(&args),
         "new" => new(&args),
         "types" => types(&args.path).map(|()| 0),
+        // `kui run app.kui`: an archive `kui pack` wrote, run as packed.
+        _ if args.path.extension().is_some_and(|e| e == "kui") && args.path.is_file() => {
+            packed::from_file(&args.path).and_then(|p| {
+                let mut a = args;
+                a.path = p.dir.clone();
+                a.no_rename = true;
+                run(&a, Some(&p))
+            })
+        }
         _ => run(&args, None),
     };
     exit(result)

@@ -61,6 +61,9 @@ end
 | `kui check [path]` | Type-checks the app's `.tl` files against kui's, Kit's and the runner's declarations. |
 | `kui new <dir>` | Starts an app, with its editor declarations. |
 | `kui types [path]` | Writes `.kui/types` (lua-language-server's and Teal's declarations), `.luarc.json` and `tlconfig.lua`. |
+| `kui pack [path]` | Builds the app for any platform from any machine (ADR 0068): `--target linux-x64,darwin-arm64,win32-x64,linux-arm64` (or `all`; default this machine's), `--format exe\|app\|bin\|npm\|kui` (default each target's own), `--out dist`. See [Shipping an app](#shipping-an-app). |
+| `kui upgrade [version]` | Replaces this `kui` with the release's (the latest by default); one npm or Homebrew installed says the command to use instead. |
+| `kui runners fetch <version> --to <dir>` | Downloads every platform's runner with its checksums, laid out as the release is, for a mirror (`latest` also writes `latest.txt`). |
 
 ## The standard library
 
@@ -109,9 +112,50 @@ servers and workers they held run on.
 | `chrome` | `"native"` (the default), `"custom"` (the app draws its titlebar), `"borderless"`. |
 | `titlebar` | `"standard"`, `"medium"`, `"tall"`: the macOS strip under custom chrome. |
 | `icon` | A PNG for the Dock, the taskbar and the window. |
-| `devtools` | `true` opens with the devtools panel. |
+| `id` | Reverse DNS, as `"dev.example.notes"`: names `kui.data_dir`, `kui.cache_dir` and the macOS bundle. `kui pack` needs one; `kui run` takes the folder's name. |
+| `version` | The app's own version: `kui.app_version`, the bundle's, the file names `kui pack` writes. |
+| `kui` | The runner the app was written against, as `"0.1.0-alpha.68"`: `kui run` warns when it is not this runner or one it lists as compatible; `kui pack` packs that runner. |
+| `pack` | `{ exclude = { "fixtures/**" }, console = true, devtools = false, npm = { name = "@company/app" } }`: what `kui pack` leaves out, a Windows `exe` with a console, devtools off in the packed app, the npm package's name. |
+| `devtools` | `true` opens with the devtools panel. Without it they are there, hidden: F12 brings them up at the Log tab, as does View › Toggle Developer Tools on macOS. |
 | `rename` | `false` keeps the name "kui" in the Dock (as `--no-rename`). |
 | `watch` | `{ include = { "*.json" }, exclude = { "data/**" } }` beside the app's `.lua` and `.tl`. |
+
+The app also reads who it is and where it may write: `kui.id`,
+`kui.app_version`, `kui.data_dir` and `kui.cache_dir` (its own folders,
+in each system's place, the same packed and not), and `kui.packed` (what
+`kui pack` wrote, in a packed app). Lua bytecode loads only from a
+packed app's own files; `load`, `loadfile`, `dofile` and `require` take
+source everywhere else.
+
+## Shipping an app
+
+`kui pack` takes the target's prebuilt runner and adds the app to it — a
+zip with the app's files under `app/` and a generated `kui.pack.lua` — so
+one machine builds for every platform, with nothing to compile:
+
+| Format | What |
+| --- | --- |
+| `exe` | Windows: one file, the archive appended (`unzip -l app.exe` lists it), GUI unless `pack.console`. |
+| `app` | macOS: a zipped `.app`, the archive in `Resources/app.zip`, the icon as `.icns`; signed ad hoc when packed on a Mac. |
+| `bin` | Linux: one file, the archive appended, and its icon, in a `.tar.gz`. |
+| `npm` | A package of the app's sources with a `bin` and an exact dependency on `@qxuken/kui-cli`, for a registry of your own (`npm publish` it). |
+| `kui` | The archive alone, which `kui run app.kui` runs. |
+
+- Sources by default; `--bytecode` compiles them (`--strip` drops their
+  debug information), tied to the runner it packs.
+- `--installer https://host/app/` also writes `install.sh` and
+  `install.ps1` that fetch the builds from there, check them against the
+  `SHA256SUMS` beside them, and install into the user's own folders.
+- Runners for other versions or platforms come from the GitHub release,
+  cached; `--runner-mirror` (or `KUI_RUNNER_MIRROR`) names a mirror with
+  the release's layout, which `kui runners fetch` fills, and `--runner`
+  a file.
+- A packed app gets every argument (`app --port 3001`); the runner's own
+  flags come from `KUI_FLAGS` (`KUI_FLAGS=--devtools`). A packed GUI app
+  logs to `kui.data_dir/logs/<name>.log` (the last few runs); `KUI_LOG`
+  names another file, or `-` for none. Its own files are read-only.
+- Signing is yours: `rcodesign` signs and notarizes a `.app` from Linux,
+  `osslsigncode` an `.exe`.
 
 Kit is built in: `require("kit.ui")`. Its palette is readable from the app
 too — `bg = "$kitPanel"` follows the skin.

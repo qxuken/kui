@@ -33,8 +33,8 @@ window you are looking at is the one you are editing.
 
 ## The folder
 
-An app is a folder. `kui.config.lua` names it, its entry and its
-window:
+An app is a folder. `kui.config.lua` names it, gives it an `id` and a
+version, and says its entry and its window:
 
 ```lua
 {{#include ../../../examples/lua/tutorial/tasks/kui.config.lua:config}}
@@ -123,6 +123,27 @@ cd tasks && kui run test --headless
 
 A task that throws ends a headless run with 1, so a broken test fails
 rather than waits.
+
+## Shipping it
+
+Your users should not need `kui`. `kui pack` builds the app for them —
+for every platform, from your machine, because the app is Lua and only
+the runner differs, and the release has a runner for each:
+
+```bash
+kui pack tasks --target all --installer https://example.com/tasks/
+```
+
+`dist/` then holds a `.app` for macOS, an `.exe` for Windows, a binary for
+each Linux, `SHA256SUMS`, and an `install.sh` and `install.ps1` that
+fetch the right one from the URL you gave. Upload the folder there, and
+`curl -fsSL https://example.com/tasks/install.sh | sh` installs it.
+`--format npm` writes a package instead, for a team that already has
+Node and a registry of its own.
+
+The `id` is what names the app's own folder, `kui.data_dir` — which is
+why the task list keeps its file there: a packed app's own files are
+read-only.
 
 ## Where the runner goes from here
 

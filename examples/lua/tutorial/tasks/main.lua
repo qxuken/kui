@@ -7,7 +7,7 @@
 local opts = kui.parse_args({
   about = "a task list on Kit",
   options = {
-    file = { default = (kui.env.HOME or ".") .. "/.local/share/kui-tasks.json", value = "path",
+    file = { default = kui.data_dir .. "/tasks.json", value = "path",
       help = "where the tasks are kept" },
   },
 })

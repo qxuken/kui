@@ -55,6 +55,16 @@ pub fn detect() -> Option<Result<Packed, String>> {
     Some(open(&zip, &pack.read().ok()?))
 }
 
+/// A `.kui` archive given to `kui run`: the same app, run the same way.
+pub fn from_file(path: &Path) -> Result<Packed, String> {
+    let zip = ZipReader::open_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let pack = zip
+        .get(PACK_FILE)
+        .ok_or_else(|| format!("{}: not a kui archive (no {PACK_FILE})", path.display()))?;
+    let bytes = pack.read().map_err(|e| format!("{}: {e}", path.display()))?;
+    open(&zip, &bytes)
+}
+
 /// Reads `kui.pack.lua`, checks it, and extracts the app once.
 fn open(zip: &ZipReader, pack: &[u8]) -> Result<Packed, String> {
     let lua = mlua::Lua::new();
@@ -75,6 +85,9 @@ fn open(zip: &ZipReader, pack: &[u8]) -> Result<Packed, String> {
         ));
     }
     let dir = extract(zip, &hash)?;
+    // Canonical, as the app's own paths are (`project::find`), so the
+    // read-only and bytecode checks compare like with like.
+    let dir = dir.canonicalize().unwrap_or(dir);
     let _ = DIR.set(dir.clone());
     Ok(Packed { dir, runner, bytecode, hash, entry: get("entry") })
 }
@@ -110,12 +123,13 @@ fn extract(zip: &ZipReader, hash: &str) -> Result<PathBuf, String> {
     }
     std::fs::write(tmp.join(".complete"), hash).map_err(|e| e.to_string())?;
     if std::fs::rename(&tmp, &root).is_err() {
-        // Another run got there first, or an old half-written folder is in
-        // the way: take a whole one if there is one now.
-        let _ = std::fs::remove_dir_all(&tmp);
+        // Another run got there first — take its folder — or a folder a
+        // run left half-written is in the way: clear it, once.
         if !root.join(".complete").is_file() {
             let _ = std::fs::remove_dir_all(&root);
-            return extract(zip, hash);
+            std::fs::rename(&tmp, &root).map_err(|e| format!("{}: {e}", root.display()))?;
+        } else {
+            let _ = std::fs::remove_dir_all(&tmp);
         }
     }
     Ok(app)

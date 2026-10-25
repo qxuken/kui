@@ -209,6 +209,25 @@ function kui.getenv(name) end
 ---The app's folder.
 ---@type string
 kui.dir = ""
+---The app's id: the manifest's `id` (reverse DNS), else its folder's name.
+---@type string
+kui.id = ""
+---The app's own version, the manifest's `version`.
+---@type string?
+kui.app_version = nil
+---The app's own data folder (Application Support, $XDG_DATA_HOME, %APPDATA%), named by its id.
+---@type string
+kui.data_dir = ""
+---The app's own cache folder, named by its id.
+---@type string
+kui.cache_dir = ""
+---@class kui.Packed
+---@field runner string The kui it was packed for.
+---@field bytecode boolean
+---@field hash string
+---What `kui pack` wrote, in a packed app; nil under `kui run`.
+---@type kui.Packed?
+kui.packed = nil
 ---@type string
 kui.version = ""
 

@@ -5,7 +5,7 @@ date: 2026-10-25
 
 # How kui reaches a machine
 
-> **Accepted (2026-10-25), not yet built.** Settled by a grilling round
+> **Accepted and built (2026-10-25); backlog C88.** Settled by a grilling round
 > with the user. How a developer gets the `kui` runner and the Node
 > addon, and how an app written on the runner reaches the people who use
 > it — packed for any platform from one machine, shipped through GitHub,
@@ -150,6 +150,36 @@ date: 2026-10-25
 22. **A default menu**: the runner gives every app a good macOS menu bar
     when the app declares none — the app menu, Edit, View with Toggle
     Developer Tools, Window, Help — over ADR 0030's standard menus.
+
+## What the building changed
+
+- **A packed app is extracted, once, and run from a folder** — under
+  `<kui cache>/apps/<hash>/`, written into a temporary folder renamed
+  into place — rather than read from the archive in place (decision 18).
+  The core still opens an `svg`'s or an `image`'s `src` by path itself;
+  until the core-purity plan's "core I/O asks" moves that, a folder is
+  what every reader can use. What decision 18 keeps: `kui.fs` refuses to
+  write into it, naming `kui.data_dir`, and bytecode loads from nowhere
+  else.
+- **Text-only loading is the runner's for every app**, not only packed
+  ones: Lua's `load`, `loadfile`, `dofile` and `require` take bytecode
+  by default, and mlua's safe mode does not stop them, so the runner
+  wraps all four.
+- **A bytecode archive's entry is a source stub** (`__kui_entry.lua`,
+  named in `kui.pack.lua`) that requires the compiled entry, so the
+  host's own load of the entry stays source.
+- **A `.app` packed on a Mac is signed ad hoc** after it is assembled:
+  the runner's own signature holds as a binary and fails strict
+  validation once it is a bundle's executable. Packed elsewhere it is
+  not signed; decision 16 stands for everything past ad hoc.
+- **The Windows `exe`'s icon is not written yet**: writing a PE resource
+  section is its own piece of work. The subsystem is set.
+- **The devtools are on, hidden, in every runner app** (docked nowhere),
+  which is what lets F12 bring them up: a core with the devtools off
+  hears none of their chords.
+- **`kui run app.kui`** runs an archive by itself, as decision 11 says;
+  the archive's comment also names the runner and hash, so `unzip -l`
+  shows them.
 
 ## Considered options
 

@@ -14,7 +14,7 @@ if not boot then
     name = "preferences",
     about = "Tidewater's preferences window: a settings sample for Kit",
     options = {
-      config = { default = (kui.env.HOME or ".") .. "/.config/kui-samples/tidewater.toml", value = "path",
+      config = { default = kui.data_dir .. "/tidewater.toml", value = "path",
         help = "the settings file it reads and saves" },
     },
   })

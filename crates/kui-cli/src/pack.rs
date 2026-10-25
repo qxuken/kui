@@ -313,7 +313,10 @@ fn bin(
 
 /// macOS: an `.app` — the runner as its executable, the archive as
 /// `Resources/app.zip` (so the runner's signature still holds), the icon,
-/// an `Info.plist` — shipped zipped.
+/// an `Info.plist` — shipped zipped. Packed on a Mac, the bundle is signed
+/// ad hoc (`codesign --sign -`), which the runner's own signature does not
+/// cover once it sits in a bundle; packed elsewhere it is not, and
+/// `rcodesign` signs it (docs/releasing.md, ADR 0068 decision 16).
 #[allow(clippy::too_many_arguments)]
 fn app(
     project: &Project,
@@ -325,26 +328,71 @@ fn app(
     icon: &crate::icons::Rgba,
 ) -> Result<PathBuf, String> {
     let name = file_name(&project.name);
-    let bundle = format!("{name}.app/Contents/");
     let archive = archive(project, files, opts, runner_version, version, 0)?;
-    let plist = info_plist(project, &name, version);
+    let build = opts.out.join(".build");
+    let _ = std::fs::remove_dir_all(&build);
+    let bundle = build.join(format!("{name}.app"));
+    let contents = bundle.join("Contents");
+    let put = |rel: &str, data: &[u8], mode: u32| -> Result<(), String> {
+        let p = contents.join(rel);
+        if let Some(dir) = p.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        }
+        std::fs::write(&p, data).map_err(|e| format!("{}: {e}", p.display()))?;
+        set_mode(&p, mode);
+        Ok(())
+    };
+    put("Info.plist", info_plist(project, &name, version).as_bytes(), 0o644)?;
+    put("PkgInfo", b"APPL????", 0o644)?;
+    put(&format!("MacOS/{name}"), &runner, 0o755)?;
+    put("Resources/app.zip", &archive, 0o644)?;
+    put("Resources/AppIcon.icns", &crate::icons::icns(icon), 0o644)?;
+    if cfg!(target_os = "macos") {
+        let signed = std::process::Command::new("codesign")
+            .args(["--force", "--sign", "-", "--timestamp=none"])
+            .arg(&bundle)
+            .output();
+        match signed {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => eprintln!("kui: codesign: {}", String::from_utf8_lossy(&o.stderr).trim()),
+            Err(e) => eprintln!("kui: codesign not run ({e}); the .app is unsigned"),
+        }
+    }
     let mut zip = ZipWriter::new();
-    let e = |e: std::io::Error| e.to_string();
-    zip.add_dir(&format!("{name}.app/")).map_err(e)?;
-    zip.add_dir(&bundle).map_err(e)?;
-    zip.add_dir(&format!("{bundle}MacOS/")).map_err(e)?;
-    zip.add_dir(&format!("{bundle}Resources/")).map_err(e)?;
-    zip.add_file(&format!("{bundle}Info.plist"), plist.as_bytes(), 0o644, true).map_err(e)?;
-    zip.add_file(&format!("{bundle}PkgInfo"), b"APPL????", 0o644, false).map_err(e)?;
-    zip.add_file(&format!("{bundle}MacOS/{name}"), &runner, 0o755, true).map_err(e)?;
-    zip.add_file(&format!("{bundle}Resources/app.zip"), &archive, 0o644, false).map_err(e)?;
-    zip.add_file(&format!("{bundle}Resources/AppIcon.icns"), &crate::icons::icns(icon), 0o644, true)
-        .map_err(e)?;
-    let bytes = zip.finish(0, b"").map_err(e)?;
+    zip_tree(&mut zip, &build, &bundle)?;
+    let bytes = zip.finish(0, b"").map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_dir_all(&build);
     let path = opts.out.join(format!("{name}-{version}-darwin-arm64.app.zip"));
     std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
 }
+
+/// Every folder and file under `dir`, named relative to `root`, modes kept.
+fn zip_tree(zip: &mut ZipWriter, root: &Path, dir: &Path) -> Result<(), String> {
+    let rel = |p: &Path| p.strip_prefix(root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+    zip.add_dir(&rel(dir)).map_err(|e| e.to_string())?;
+    let mut entries: Vec<_> = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?.flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        let p = e.path();
+        if p.is_dir() {
+            zip_tree(zip, root, &p)?;
+        } else {
+            let data = std::fs::read(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+            zip.add_file(&rel(&p), &data, mode_of(&p), true).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_mode(p: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(mode));
+}
+
+#[cfg(not(unix))]
+fn set_mode(_: &Path, _: u32) {}
 
 /// A name for a bundle or an exe: the app's, without path separators.
 fn file_name(name: &str) -> String {

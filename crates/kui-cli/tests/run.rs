@@ -629,3 +629,167 @@ fn the_devtools_log_tab_shows_what_the_app_printed() {
     assert!(o.status.success(), "{}", out(&o));
     assert!(shot.exists(), "{}", out(&o));
 }
+
+// -- kui pack (ADR 0068) -----------------------------------------------------
+
+/// Runs `kui <args>` in `dir` with the runner's cache in `cache` and the
+/// extra environment `env`, killing it past `secs`.
+fn kui_env(dir: &Path, args: &[&str], env: &[(&str, &str)], cache: &Path, secs: u64) -> Output {
+    let mut cmd = Command::new(KUI);
+    cmd.args(args)
+        .current_dir(dir)
+        .env("KUI_CACHE_DIR", cache)
+        .env_remove("KUI_FLAGS")
+        .env_remove("KUI_LOG")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let mut child = cmd.spawn().expect("run kui");
+    let start = Instant::now();
+    while child.try_wait().unwrap().is_none() {
+        if start.elapsed() > Duration::from_secs(secs) {
+            let _ = child.kill();
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    child.wait_with_output().unwrap()
+}
+
+/// An app that says what it can see of itself when packed, then ends.
+fn packer(name: &str) -> PathBuf {
+    app(
+        name,
+        &[
+            (
+                "kui.config.lua",
+                r#"return { name = "Packer", id = "dev.kui.test.packer", version = "2.0.0" }"#,
+            ),
+            ("data.txt", "an asset"),
+            ("lib.lua", r#"return { said = "a module" }"#),
+            ("test/skip.lua", "error('test/ is not packed')"),
+            (
+                "main.lua",
+                r#"
+                local p = kui.packed
+                print("packed", p ~= nil, p and p.bytecode)
+                print("args", table.concat(kui.args, ","))
+                print("id", kui.id, kui.app_version)
+                print("asset", kui.fs.read("data.txt"))
+                print("module", require("lib").said)
+                print("test dir", kui.fs.exists("test/skip.lua"))
+                local ok, err = pcall(kui.fs.write, "x.txt", "no")
+                print("write", ok, (tostring(err):find("read%-only")) ~= nil)
+                kui.exit(0)
+                "#,
+            ),
+        ],
+    )
+}
+
+#[test]
+fn a_packed_archive_runs_from_itself_read_only_with_its_arguments() {
+    let dir = packer("pack-kui");
+    let cache = dir.join(".cache");
+    let o = kui_env(&dir, &["pack", "--format", "kui", "--out", "dist"], &[], &cache, 60);
+    assert!(o.status.success(), "{}", out(&o));
+    let archive = dir.join("dist/packer-2.0.0.kui");
+    assert!(archive.is_file(), "{}", out(&o));
+    let o = kui_env(&dir, &["run", archive.to_str().unwrap(), "--headless", "--", "a", "b"], &[], &cache, 60);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(s.contains("packed\ttrue\tfalse"), "{s}");
+    assert!(s.contains("args\ta,b"), "{s}");
+    assert!(s.contains("id\tdev.kui.test.packer\t2.0.0"), "{s}");
+    assert!(s.contains("asset\tan asset"), "{s}");
+    assert!(s.contains("module\ta module"), "{s}");
+    assert!(s.contains("test dir\tfalse"), "{s}");
+    assert!(s.contains("write\tfalse\ttrue"), "a packed app's own files are read-only:\n{s}");
+}
+
+#[test]
+fn a_bytecode_archive_runs_and_bytecode_loads_nowhere_else() {
+    let dir = packer("pack-bytecode");
+    let cache = dir.join(".cache");
+    let o = kui_env(&dir, &["pack", "--format", "kui", "--bytecode", "--out", "dist"], &[], &cache, 60);
+    assert!(o.status.success(), "{}", out(&o));
+    let archive = dir.join("dist/packer-2.0.0.kui");
+    let o = kui_env(&dir, &["run", archive.to_str().unwrap(), "--headless"], &[], &cache, 60);
+    let s = out(&o);
+    assert!(s.contains("packed\ttrue\ttrue") && s.contains("module\ta module"), "{s}");
+
+    let plain = app(
+        "bytecode-refused",
+        &[(
+            "main.lua",
+            r#"
+            local f, err = load(string.dump(function() return 1 end))
+            print("load", f == nil, err)
+            kui.exit(0)
+            "#,
+        )],
+    );
+    let o = kui_env(&plain, &["run", "--headless"], &[], &cache, 60);
+    let s = out(&o);
+    assert!(s.contains("load\ttrue") && s.contains("binary chunk"), "{s}");
+}
+
+/// A runner with an archive appended runs it: every argument the app's,
+/// the runner's own from KUI_FLAGS. Packed for Linux with this machine's
+/// own runner, so it runs here.
+#[cfg(unix)]
+#[test]
+fn a_fused_binary_runs_its_app_with_every_argument_the_apps() {
+    let dir = packer("pack-fused");
+    let cache = dir.join(".cache");
+    let o = kui_env(
+        &dir,
+        &["pack", "--target", "linux-x64", "--format", "bin", "--runner", KUI, "--out", "dist"],
+        &[],
+        &cache,
+        60,
+    );
+    assert!(o.status.success(), "{}", out(&o));
+    let tar = Command::new("tar")
+        .args(["-xzf", "packer-2.0.0-linux-x64.tar.gz"])
+        .current_dir(dir.join("dist"))
+        .status()
+        .unwrap();
+    assert!(tar.success());
+    let mut child = Command::new(dir.join("dist/packer"))
+        .args(["--port", "3001"])
+        .env("KUI_FLAGS", "--headless")
+        .env("KUI_CACHE_DIR", &cache)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let start = Instant::now();
+    while child.try_wait().unwrap().is_none() && start.elapsed() < Duration::from_secs(60) {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = child.kill();
+    let o = child.wait_with_output().unwrap();
+    let s = out(&o);
+    assert!(s.contains("args\t--port,3001"), "{s}");
+    assert!(s.contains("asset\tan asset"), "{s}");
+}
+
+#[test]
+fn pack_asks_for_an_id_and_run_warns_on_a_pin_it_does_not_cover() {
+    let dir = app(
+        "pack-no-id",
+        &[
+            ("kui.config.lua", r#"return { name = "NoId", kui = "0.0.1" }"#),
+            ("main.lua", "print('ran') kui.exit(0)"),
+        ],
+    );
+    let cache = dir.join(".cache");
+    let o = kui_env(&dir, &["pack", "--format", "kui"], &[], &cache, 60);
+    assert!(!o.status.success() && out(&o).contains("needs an id"), "{}", out(&o));
+    let o = kui_env(&dir, &["run", "--headless"], &[], &cache, 60);
+    let s = out(&o);
+    assert!(s.contains("ran") && s.contains("pins kui 0.0.1"), "{s}");
+}
