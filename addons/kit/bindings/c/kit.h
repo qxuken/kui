@@ -2317,7 +2317,7 @@ typedef struct KitToast {
     /*
      * One of a `toaster`'s stack rather than floating in the corner on its own.
      */
-    bool inline;
+    bool inline_;
     bool inline_set;
     /*
      * The message `dismiss` arrives as, consumed; NULL for none. Its close
@@ -2342,7 +2342,7 @@ static inline KuiValue *kit_toast_props(const KitToast *p) {
     if (p->action.len > 0) kui_value_map_set(m, KUI_STR("action"), kui_value_str(p->action));
     if (p->action_name.len > 0) kui_value_map_set(m, KUI_STR("action_name"), kui_value_str(p->action_name));
     if (p->duration_set) kui_value_map_set(m, KUI_STR("duration"), kui_value_float(p->duration));
-    if (p->inline_set) kui_value_map_set(m, KUI_STR("inline"), kui_value_bool(p->inline));
+    if (p->inline_set) kui_value_map_set(m, KUI_STR("inline"), kui_value_bool(p->inline_));
     if (p->on_dismiss != NULL) kui_value_map_set(m, KUI_STR("on_dismiss"), p->on_dismiss);
     if (p->on_action != NULL) kui_value_map_set(m, KUI_STR("on_action"), p->on_action);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));

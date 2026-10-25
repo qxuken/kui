@@ -28,12 +28,25 @@ fn c_doc(doc: &str, indent: &str) -> String {
     format!("{indent}/*\n{body}{indent} */\n")
 }
 
+/// `name`, or `name_` where it is one of C's keywords (`inline`, `default`);
+/// its `_set` and `_count` keep the plain name.
+fn ident(name: &str) -> String {
+    const KEYWORDS: &[&str] = &[
+        "auto", "bool", "break", "case", "char", "const", "continue", "default", "do", "double",
+        "else", "enum", "extern", "false", "float", "for", "goto", "if", "inline", "int", "long",
+        "register", "restrict", "return", "short", "signed", "sizeof", "static", "struct",
+        "switch", "true", "typedef", "union", "unsigned", "void", "volatile", "while",
+    ];
+    if KEYWORDS.contains(&name) { format!("{name}_") } else { name.to_string() }
+}
+
 /// The C fields a schema field becomes (its name, and its `_set` or
 /// `_count` beside it when it needs one).
-fn fields(schema: &Schema, name: &str, t: &Type) -> Vec<String> {
+fn fields(schema: &Schema, field: &str, t: &Type) -> Vec<String> {
     let (inner, req) = t.required();
     let mut out = Vec::new();
     let a = &schema.addon;
+    let name = ident(field);
     match inner {
         Type::String => out.push(format!("KuiStr {name};")),
         Type::Number => out.push(format!("double {name};")),
@@ -61,12 +74,12 @@ fn fields(schema: &Schema, name: &str, t: &Type) -> Vec<String> {
                 _ => "KuiValue *".to_string(),
             };
             out.push(format!("const {elem} *{name};"));
-            out.push(format!("size_t {name}_count;"));
+            out.push(format!("size_t {field}_count;"));
         }
         Type::Optional(_) => unreachable!(),
     }
     if !req && matches!(inner, Type::Number | Type::Integer | Type::Boolean | Type::Length) {
-        out.push(format!("bool {name}_set;"));
+        out.push(format!("bool {field}_set;"));
     }
     out
 }
@@ -77,7 +90,8 @@ fn put(schema: &Schema, s: &mut String, name: &str, t: &Type, indent: &str) {
     let a = &schema.addon;
     let (inner, req) = t.required();
     let key = format!("KUI_STR(\"{name}\")");
-    let v = format!("p->{name}");
+    let v = format!("p->{}", ident(name));
+    let flag = format!("p->{name}");
     let value = |inner: &Type, v: &str| -> String {
         match inner {
             Type::String => format!("kui_value_str({v})"),
@@ -109,7 +123,7 @@ fn put(schema: &Schema, s: &mut String, name: &str, t: &Type, indent: &str) {
             let _ = writeln!(
                 s,
                 "{indent}if ({v} != NULL) {{\n{indent}    KuiValue *list = kui_value_list();\n{indent}    \
-                 for (size_t i = 0; i < {v}_count; i++) kui_value_list_push(list, {item});\n{indent}    \
+                 for (size_t i = 0; i < {flag}_count; i++) kui_value_list_push(list, {item});\n{indent}    \
                  kui_value_map_set(m, {key}, list);\n{indent}}}"
             );
         }
@@ -120,7 +134,7 @@ fn put(schema: &Schema, s: &mut String, name: &str, t: &Type, indent: &str) {
                 Some(match inner {
                     Type::String => format!("{v}.len > 0"),
                     Type::Number | Type::Integer | Type::Boolean | Type::Length => {
-                        format!("{v}_set")
+                        format!("{flag}_set")
                     }
                     Type::Color => format!("{v} != 0"),
                     Type::Named(n) if schema.enum_named(n).is_some() => format!("{v} != 0"),
