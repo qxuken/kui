@@ -4342,3 +4342,22 @@ reply :: proc(ev: Event, reply: any = nil) -> bool {
 	return c.reply(&ev_c, borrow(&scratch, reply))
 }
 
+// An extension's answer to an event that raises one of its component's
+// events: the host hears the message it passed for that prop, about the
+// instance (ADR 0060).
+// Rust: slot::emit.
+emit :: proc(ev: Event, prop: string, fields: any = nil) -> bool {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	ev_c := event_to_c(ev, &scratch)
+	return c.emit(&ev_c, prop, borrow(&scratch, fields))
+}
+
+// In a component's fill: builds the host's children of a group here, under
+// the host's origin, keyed by the instance and the group, their events the
+// host's (ADR 0060).
+// Rust: Ui::children.
+children :: proc(ui: ^Ui, group: string) {
+	c.children(ui, group)
+}
+

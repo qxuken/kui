@@ -817,7 +817,7 @@ export type EventName =
   | 'scroll' | 'focus' | 'hover' | 'drop' | 'files' | 'open' | 'layout'
   | 'resize' | 'window' | 'system' | 'fonts' | 'modifiers' | 'change'
   | 'submit' | 'cancel' | 'boundary' | 'sound' | 'capture' | 'dismiss'
-  | 'reply';
+  | 'reply' | 'component';
 // -- end generated --
 
 /** A position in an editor's text: one of its `runs` and a character
@@ -1392,6 +1392,15 @@ export type WarningCode =
    *  make one name. The message names the token's DTCG path; the rest of the
    *  file landed. */
   | 'dtcg-skipped'
+  /** A host placed a component (ADR 0060) that no loaded extension provides: no
+   *  extension under its namespace, or one that does not list the name in its
+   *  `components`. Nothing is drawn where it was placed. Raised once per name
+   *  and key. */
+  | 'unknown-component'
+  /** A fill asked for its host's children (`children()`) where they cannot be:
+   *  outside a component instance's fill — a slot's — or a second time for one
+   *  group. Nothing is built. */
+  | 'children-misplaced'
   /** An `svg` element's document did not parse (ADR 0063): the message carries
    *  the parser's reason. The element draws an empty box of the size its spec
    *  gives. Raised once per key. */
@@ -1405,6 +1414,10 @@ export type WarningCode =
    *  was approximated or left out; the message lists what. `auto` would have
    *  drawn it as an image. */
   | 'svg-approximated'
+  /** An `svg` element drawn as an image holds a shape that reaches past 30,000
+   *  px at its drawn size — a coordinate like `8e8` — which the rasterizer
+   *  cannot hold, so the image draws nothing. Raised once per key. */
+  | 'svg-too-large'
   /** A slot name declared twice in one frame. The second declaration was
    *  ignored: a fill is keyed by the slot's full name, so two fills of one name
    *  would share every key. Two places for one extension are two names. */

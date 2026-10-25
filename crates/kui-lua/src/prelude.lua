@@ -188,6 +188,32 @@ function path(t)
   return t
 end
 
+-- component("kit/card", { title = "Deploys", key = "deploys", on_close = { close = true } },
+-- { text("body"), footer = { button { label = "OK" } } }): a component an
+-- extension provides (docs/adr/0060), placed here and keyed by where it is
+-- (or by `key`); its events arrive as the messages in its `on_*` props.
+-- The third argument's list is the host children the component puts where
+-- it calls `children()`, a named group where it calls `children("footer")`.
+-- An instance whose props did not change is replayed; `fresh = true` asks
+-- every frame.
+function component(name, props, kids)
+  return { type = "component", name = name, props = props, children = kids }
+end
+
+-- In a component's function (`components.card = function(env, props,
+-- inst) … end`): where the host's children of `group` go, the unnamed group
+-- without one.
+function children(group)
+  return { type = "children", group = group or "" }
+end
+
+-- In `on_event`: raise the component's event `prop` ("on_close", or
+-- "onClose" — either spelling finds the host's) with `fields`, which the
+-- host hears as the message it passed for that prop.
+function emit(prop, fields)
+  return { ["$emit"] = prop, ["$fields"] = fields }
+end
+
 -- svg { data = "<svg …>", label = "Search", color = "$accent" } or
 -- svg { src = "icons/search.svg", width = 16 }: an SVG document in a box
 -- (docs/adr/0063). `mode` is "auto" (paths when it can, an image when it

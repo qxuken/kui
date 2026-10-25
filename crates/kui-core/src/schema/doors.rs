@@ -1683,6 +1683,30 @@ pub const DOORS: &[Door] = &[
         doc: "The host's claim that nothing it feeds the extension changed: the core checks the params, every fact the kept fill read and the slot's place, and pushes the kept nodes again without the extension, or fills and keeps and says why (ADR 0045).",
     },
     Door {
+        rust: "Ui::component",
+        c: Is("kui_component"),
+        odin: Is("component"),
+        node: As("`<component name props groups fresh>children</component>`"),
+        lua: As("`component(name, props, children)`"),
+        doc: "Places a component an extension provides, keyed by where it is or by `key` in its props: its fill reads the props, its events arrive as the messages in its `on*` props, the host's children are built where it asks, and an unchanged instance is replayed without the extension (ADR 0060).",
+    },
+    Door {
+        rust: "Ui::children",
+        c: Is("kui_children"),
+        odin: Is("children"),
+        node: No("a Node host places components; it fills none"),
+        lua: As("`children(group)` in a component's function"),
+        doc: "In a component's fill: builds the host's children of a group here, under the host's origin, keyed by the instance and the group, their events the host's (ADR 0060).",
+    },
+    Door {
+        rust: "slot::emit",
+        c: Is("kui_emit"),
+        odin: Is("emit"),
+        node: No("a Node host hears component events; it raises none"),
+        lua: As("`emit(prop, fields)` returned from `on_event`"),
+        doc: "An extension's answer to an event that raises one of its component's events: the host hears the message it passed for that prop, about the instance (ADR 0060).",
+    },
+    Door {
         rust: "Core::slot_fill",
         c: Is("kui_slot_fill"),
         odin: Is("slot_fill"),
@@ -2067,6 +2091,7 @@ mod tests {
         let theme = read(root.join("theme.rs"));
         let scroll = read(root.join("scroll.rs"));
         let edge = read(root.join("edge_scroll.rs"));
+        let slot = read(root.join("slot.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
@@ -2086,6 +2111,7 @@ mod tests {
                 "SharedResources" => &session,
                 "Tokens" => &tokens,
                 "Theme" => &theme,
+                "slot" => &slot,
                 "WheelFeel" => &scroll,
                 "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,

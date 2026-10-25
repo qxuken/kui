@@ -70,6 +70,8 @@ was the first bare bump to break an app in five releases).
   `LuaExtension` itself and whose script loads a C plugin with
   `env.add_extension` calls `kui_ffi::register_native_loader()` first
   (backlog C59, ADR 0059).
+- `EventKind` and `kui_core::Event` gained `Component`, a component's
+  event (ADR 0060): an exhaustive `match` on either adds an arm.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -132,6 +134,35 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
   spawn for "Show in folder" or a link.
+- **Components an extension provides** (backlog C60,
+  [ADR 0060](docs/adr/0060-components-an-extension-provides.md)). An
+  extension lists components, and a host places them as often as it
+  likes, each keyed by where it was placed:
+    - Node: `<component name="kit/card" props={{ title, onClose: msg }}
+      groups={{ footer: [...] }}>…children</component>`.
+    - Lua: `component("kit/card", { title = …, on_close = msg }, { …children,
+      footer = { … } })`; an extension provides them in a `components`
+      table of `(env, props, inst)` functions, puts the host's children
+      with `children(group)`, and raises an event with `emit(prop, fields)`
+      from `on_event`.
+    - C: `kui_component(ctx, name, props, children, user)` for a host;
+      `kui_ext_components`, `kui_children` and `kui_emit` for a plugin.
+      Odin gets `kui.component`, `kui.component_with`, `kui.children` and
+      `kui.emit`.
+    - Rust: `ui.component(name, &props)`, `ui.component_with(name, &props,
+      |group, ui| …)`, and `Extension::components` / `component`.
+
+  The host's children are built where the component asks, under the
+  host's origin, so their events stay the host's. A component's events
+  arrive as the messages the host passed in its `on*` props
+  (`event: "component"`), whichever binding placed it. An instance whose
+  props did not change is replayed without asking the extension;
+  `fresh: true` asks every frame. `unknown-component` and
+  `children-misplaced` say what went wrong.
+
+  **What you can delete:** the slot-per-instance naming scheme, and the
+  reply templates a host passed in params to get its own message back.
+
 - **An `svg` element** (backlog V12,
   [ADR 0063](docs/adr/0063-an-svg-element.md)). Draw an SVG file — an
   icon, a logo, a legend glyph — in a box, in every binding:

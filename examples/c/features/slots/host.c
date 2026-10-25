@@ -71,6 +71,7 @@ typedef struct {
     long long toggles; /* replies from the panel */
     uint16_t reply_from;
     uint64_t reply_slot; /* which slot's fill the reply is about */
+    long long pressed;   /* the badge's onPress, heard as our own message */
     int frames;          /* frames built: the first keeps the panel's fill, the rest replay it */
 } Host;
 
@@ -78,6 +79,15 @@ static KuiValue *msg(const char *kind) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("kind"), kui_value_str(KUI_STR(kind)));
     return m;
+}
+
+/* Our children of the badge, built where it asks: under our origin, so
+ * their events are ours. */
+static void badge_children(void *user, KuiCtx *ui, KuiStr group) {
+    (void)user;
+    if (group.len != 0) return;
+    KuiTextStyle small = {.size = 12};
+    kui_text(ui, KUI_STR("host child"), &small);
 }
 
 static void view(void *user, KuiCtx *ui) {
@@ -139,6 +149,15 @@ static void view(void *user, KuiCtx *ui) {
         kui_slot_replay(ui, KUI_STR(PANEL_SLOT), params);
     h->frames++;
     kui_value_free(params);
+
+    /* And a component the panel provides (docs/adr/0060): placed like a
+     * node, as often as we like, with our own child inside it and the
+     * message its press arrives as in its props. */
+    KuiValue *props = kui_value_map();
+    kui_value_map_set(props, KUI_STR("label"), kui_value_str(KUI_STR("badge")));
+    kui_value_map_set(props, KUI_STR("onPress"), msg("pressed"));
+    kui_component(ui, KUI_STR(NS "/badge"), props, badge_children, NULL);
+    kui_value_free(props);
 }
 
 static void on_event(void *user, const KuiEvent *ev) {
@@ -153,6 +172,8 @@ static void on_event(void *user, const KuiEvent *ev) {
      * kui_ctx_extension_namespace turns that number back into `todos`. */
     if (kui_str_eq(s, "count") && ev->origin == 0) {
         h->clicks++;
+    } else if (kui_str_eq(s, "pressed") && kui_str_eq(ev->event, "component")) {
+        h->pressed++;
     } else if (kui_str_eq(s, "toggled")) {
         h->toggles++;
         h->reply_from = ev->origin;
@@ -180,6 +201,25 @@ static bool find_row(KuiCtx *ctx, uint32_t origin, float *x, float *y) {
         const KuiAccessNode *a = &nodes[i];
         if (a->origin != origin || a->name.len < 2) continue;
         if (memcmp(a->name.ptr, "[ ", 2) != 0) continue;
+        *x = a->x + a->w * 0.5f;
+        *y = a->y + a->h * 0.5f;
+        found = true;
+    }
+    free(nodes);
+    return found;
+}
+
+/* The centre of the first node of `origin` named exactly `name`. */
+static bool find_named(KuiCtx *ctx, uint32_t origin, const char *name, float *x, float *y) {
+    size_t n = kui_access_tree(ctx, NULL, 0);
+    if (n == 0) return false;
+    KuiAccessNode *nodes = calloc(n, sizeof *nodes);
+    if (!nodes) return false;
+    n = kui_access_tree(ctx, nodes, n);
+    bool found = false;
+    for (size_t i = 0; i < n && !found; i++) {
+        const KuiAccessNode *a = &nodes[i];
+        if (a->origin != origin || !kui_str_eq(a->name, name)) continue;
         *x = a->x + a->w * 0.5f;
         *y = a->y + a->h * 0.5f;
         found = true;
@@ -249,7 +289,29 @@ static int headless(const char *plugin) {
         ev = KUI_EVENT_INIT;
     }
 
+    /* The badge: press its dot, and the panel raises the onPress we passed. */
+    float bx = 0, by = 0;
+    if (!find_named(ctx, 1, "badge", &bx, &by)) {
+        fprintf(stderr, "FAIL: the badge component drew no dot\n");
+        kui_ctx_free(ctx);
+        return 1;
+    }
+    kui_input_cursor(ctx, bx, by);
+    kui_input_mouse(ctx, true, 1);
+    kui_input_mouse(ctx, false, 1);
+    frame(ctx, &host);
+    ev = KUI_EVENT_INIT;
+    while (kui_poll_event(ctx, &ev)) {
+        on_event(&host, &ev);
+        ev = KUI_EVENT_INIT;
+    }
+
     int rc = 0;
+    if (host.pressed != 1) {
+        fprintf(stderr, "FAIL: expected the badge's onPress once, heard %lld\n",
+                host.pressed);
+        rc = 1;
+    }
     if (host.clicks != 0) {
         fprintf(stderr, "FAIL: the plugin's click reached the host (%lld)\n",
                 host.clicks);
@@ -273,7 +335,8 @@ static int headless(const char *plugin) {
     }
     if (rc == 0)
         printf("ok: the slot filled, the click reached the plugin and not the "
-               "host, and its reply came back from `%.*s`\n",
+               "host, its reply came back from `%.*s`, and the badge's press "
+               "arrived as our own message\n",
                (int)ns.len, (const char *)ns.ptr);
     kui_ctx_free(ctx);
     return rc;

@@ -2627,6 +2627,13 @@ pub const EVENTS: &[EventDef] = &[
         payload: "the message the extension sent, on the node its event was about",
         doc: "An extension's message to whoever placed its slot (`docs/adr/0014-slots-an-extension-fills-in-place.md`): what its handler answered an event of its own fill with, routed up to the host — or to the guest that placed it, up to the reply hops' limit. `origin` is the extension that spoke.",
     },
+    EventDef {
+        kind: "component",
+        handler: "a component's event prop (`onSelect`, Lua's `on_select`)",
+        field: None,
+        payload: "the message the host passed for the prop, with the extension's own fields under the prop's field — `select` for `onSelect` — on the instance; their shape is the component's to document",
+        doc: "A component instance's event (`docs/adr/0060-components-an-extension-provides.md`): the extension answered an event of its own with `emit(prop, fields)`, and the host hears the message it passed for that prop — its own type, as a stock control's events arrive (ADR 0047) — about the instance's key, to whoever placed the instance. A prop the host did not pass delivers nothing.",
+    },
 ];
 
 /// A host-registered resource and how each binding registers it.

@@ -510,6 +510,7 @@ EventFn :: #type proc "c" (rawptr, ^Event)
 TeardownFn :: #type proc "c" (rawptr)
 ExtViewFn :: #type proc "c" (rawptr, ^Ctx)
 ExtEventFn :: #type proc "c" (rawptr, ^Event)
+ChildrenFn :: #type proc "c" (rawptr, ^Ctx, string)
 
 // -- Structs
 Sizing :: struct {
@@ -1472,4 +1473,7 @@ foreign lib {
 	slot_namespace :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	slot_params :: proc(ctx: ^Ctx) -> ^Value ---
 	reply :: proc(ev: ^Event, reply: ^Value) -> bool ---
+	emit :: proc(ev: ^Event, prop: string, fields: ^Value) -> bool ---
+	children :: proc(ctx: ^Ctx, group: string) ---
+	component :: proc(ctx: ^Ctx, name: string, props: ^Value, children: ChildrenFn, user: rawptr) -> i32 ---
 }

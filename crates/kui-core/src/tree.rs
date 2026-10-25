@@ -136,6 +136,10 @@ impl Tree {
     }
 }
 
+/// The slot a range of `Tree::fills` names when its nodes are in no slot:
+/// a component's host children placed by the host's own view.
+pub const NO_SLOT: Key = Key(0);
+
 /// One frame's nodes as parallel arrays in preorder; see the
 /// [module docs](self).
 #[derive(Default)]
@@ -387,13 +391,17 @@ impl Tree {
         self.fills.clear();
     }
 
-    /// The innermost slot fill node `i` was opened inside, if any.
+    /// The innermost slot fill node `i` was opened inside, if any. A
+    /// component's host children are the range of the slot their placer
+    /// was in, which for the host's own view is [`NO_SLOT`] and so none
+    /// (ADR 0060).
     pub fn slot_of(&self, i: usize) -> Option<Key> {
         let i = i as u32;
         self.fills
             .iter()
             .find(|(_, first, end)| (*first..*end).contains(&i))
             .map(|(slot, _, _)| *slot)
+            .filter(|slot| *slot != NO_SLOT)
     }
 
     /// Notes what a spec asks of the frame, so a pass whose work exists

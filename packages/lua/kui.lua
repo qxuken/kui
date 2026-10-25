@@ -306,7 +306,7 @@ function row_heights(rows, estimate) end
 ---field named for the event (`drag`, `change`, …), and the envelope beside them.
 ---An app's message names its field by inheriting it: `---@class Pan: kui.Event, kui.WithDrag`.
 ---@class kui.Event
----@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"reply" What happened: the event kind, beside the message rather than in it.
+---@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"reply"|"component" What happened: the event kind, beside the message rather than in it.
 ---@field node_key integer The emitting node's key, what `env.edit_text` and the rest take.
 ---@field window integer|kui.WindowEvent The window it came from, as `env.window.id` reads; a `window` event's data, which has the name.
 ---@field slot? string The full name of the slot the node was filled into.
@@ -318,7 +318,7 @@ function row_heights(rows, estimate) end
 ---`on_event`'s second argument: the envelope alone, whatever fields the message has.
 ---The first argument's envelope fields give way to the message's own; these never do.
 ---@class kui.Envelope
----@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"reply"
+---@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"reply"|"component"
 ---@field node_key integer
 ---@field window integer The window it came from, as `env.window.id` reads.
 ---@field slot? string
@@ -827,6 +827,35 @@ function polygon(t) end
 ---@param t kui.path
 ---@return kui.Node
 function path(t) end
+
+---component("kit/card", { title = "Deploys", key = "deploys", on_close = { close = true } },
+---{ text("body"), footer = { button { label = "OK" } } }): a component an
+---extension provides (docs/adr/0060), placed here and keyed by where it is
+---(or by `key`); its events arrive as the messages in its `on_*` props.
+---The third argument's list is the host children the component puts where
+---it calls `children()`, a named group where it calls `children("footer")`.
+---An instance whose props did not change is replayed; `fresh = true` asks
+---every frame.
+---@param name any
+---@param props any
+---@param kids any
+---@return kui.Node
+function component(name, props, kids) end
+
+---In a component's function (`components.card = function(env, props,
+---inst) … end`): where the host's children of `group` go, the unnamed group
+---without one.
+---@param group any
+---@return kui.Node
+function children(group) end
+
+---In `on_event`: raise the component's event `prop` ("on_close", or
+---"onClose" — either spelling finds the host's) with `fields`, which the
+---host hears as the message it passed for that prop.
+---@param prop any
+---@param fields any
+---@return kui.Node
+function emit(prop, fields) end
 
 ---svg { data = "<svg …>", label = "Search", color = "$accent" } or
 ---svg { src = "icons/search.svg", width = 16 }: an SVG document in a box

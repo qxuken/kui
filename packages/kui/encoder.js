@@ -1237,6 +1237,45 @@ export function createEncoder(P) {
         props(rows, el.key, false);
         return;
       }
+      case 'component': {
+        // A component an extension provides (docs/adr/0060), placed here
+        // and keyed by where it is or by its `key`. `props` is what its
+        // fill reads — and, in its `on*` props, the messages its events
+        // arrive as; it rides as one JSON string. The children are the
+        // host's own: the unnamed group, and `groups` by name, each a
+        // length-prefixed run of ops the core builds only where the fill
+        // asks for it.
+        if (typeof p.name !== 'string' || !p.name.includes('/')) throw new Error('<component> needs a name, "namespace/component"');
+        if (p.props != null && (typeof p.props !== 'object' || Array.isArray(p.props))) throw new Error('<component> props must be an object');
+        const groups = p.groups ?? {};
+        if (typeof groups !== 'object' || Array.isArray(groups)) throw new Error('<component> groups must be an object of child lists by name');
+        for (const k of Object.keys(p)) {
+          if (k !== 'name' && k !== 'props' && k !== 'groups' && k !== 'fresh' && k !== 'children') {
+            throw new Error(`<component> takes name, props, groups and fresh, not ${JSON.stringify(k)} (put it in props)`);
+          }
+        }
+        const props = { ...(p.props ?? {}) };
+        if (el.key != null) props.key = String(el.key);
+        if (p.fresh) props.fresh = true;
+        const kids = el.children;
+        const hasKids = kids != null && !(Array.isArray(kids) && kids.length === 0);
+        const names = Object.keys(groups);
+        reserve(8);
+        f[fi++] = OP.component;
+        strRef(p.name);
+        strRef(JSON.stringify(props));
+        f[fi++] = names.length + (hasKids ? 1 : 0);
+        const group = (name, nodes) => {
+          reserve(4);
+          strRef(name);
+          const at = fi++;
+          children(nodes);
+          f[at] = fi - at - 1;
+        };
+        if (hasKids) group('', kids);
+        for (const n of names) group(n, groups[n]);
+        return;
+      }
       case 'svg': {
         // The markup as `data` or a file as `src`, the two rows by name;
         // `color` is a schema row the props pass writes into the style,

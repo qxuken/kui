@@ -49,7 +49,7 @@ use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
 use crate::line::Stroke;
 use crate::runtime::{Core, SlotFill};
-use crate::slot::{Fill, Slot};
+use crate::slot::{Children, Fill, Slot};
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
 use crate::tree::OriginId;
@@ -62,11 +62,32 @@ pub struct Ui<'a> {
     /// `None` for a frame begun without one, and inside a fill — an
     /// extension's `slot` declares and fills nothing.
     filler: Option<&'a mut dyn Fill>,
+    /// The host's children of the component instance this `Ui` fills, if
+    /// it fills one (ADR 0060): what `children(group)` builds.
+    children: Option<&'a mut dyn Children>,
 }
 
 impl<'a> Ui<'a> {
     pub(crate) fn new(core: &'a mut Core) -> Self {
-        Self { core, filler: None }
+        Self {
+            core,
+            filler: None,
+            children: None,
+        }
+    }
+
+    /// A `Ui` from its parts: the core, the filler answering its slots,
+    /// and the host's children of the instance it fills.
+    pub(crate) fn parts(
+        core: &'a mut Core,
+        filler: Option<&'a mut dyn Fill>,
+        children: Option<&'a mut dyn Children>,
+    ) -> Self {
+        Self {
+            core,
+            filler,
+            children,
+        }
     }
 
     /// [`Self::wrap`] with something to fill the slots the frame declares
@@ -77,6 +98,7 @@ impl<'a> Ui<'a> {
         Self {
             core,
             filler: Some(filler),
+            children: None,
         }
     }
 
@@ -88,7 +110,11 @@ impl<'a> Ui<'a> {
     /// The inverse escape hatch: wraps a borrowed core mid-frame so foreign
     /// frontends that drive `Core` directly (FFI, Node) can call `widgets::*`.
     pub fn wrap(core: &'a mut Core) -> Self {
-        Self { core, filler: None }
+        Self {
+            core,
+            filler: None,
+            children: None,
+        }
     }
 
     /// Declares a slot here, with no parameters: whatever fills it draws
@@ -368,6 +394,208 @@ impl<'a> Ui<'a> {
         f: impl FnOnce(&mut Ui<'_>),
     ) {
         self.core.fill_within(slot, origin, Some(filler), f);
+    }
+
+    /// `fill_within` for a component instance (ADR 0060): `children`
+    /// builds the host's children where the fill calls
+    /// [`Self::children`]. What `Extensions` calls for an instance.
+    pub fn fill_instance(
+        &mut self,
+        origin: OriginId,
+        slot: &Slot<'_>,
+        filler: &mut dyn Fill,
+        children: &mut dyn Children,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.core
+            .fill_instance(slot, origin, Some(filler), children, f);
+    }
+
+    /// Places a component an extension provides (ADR 0060): `name` is
+    /// `namespace/component`, `props` what its fill reads — and the
+    /// messages its events arrive as, in its event props (`onSelect`). An
+    /// instance is keyed by where it is placed, or by a `key` in `props`,
+    /// so a component repeats as freely as a node. It is **replayed by
+    /// default**: an instance whose props and whose reads of the frame
+    /// are what they were last frame is pushed again without asking the
+    /// extension (ADR 0045's journal); `fresh: true` in `props` asks every
+    /// frame. Answers how it was filled, `None` when nothing provides it
+    /// (`unknown-component`) or outside a frame.
+    ///
+    /// ```rust,ignore
+    /// ui.component("kit/button", &Value::map([("label", "Save".into()), ("onClick", Msg::Save.into())]));
+    /// ```
+    pub fn component(&mut self, name: &str, props: &Value) -> Option<SlotFill> {
+        self.place(name, props, None, None)
+    }
+
+    /// [`Self::component`] with the host's own children: `children(group,
+    /// ui)` builds the group the fill asks for — `""` for the unnamed one
+    /// — where the fill asks, under the host's origin, keyed by the
+    /// instance and the group and not by how the fill nests them, their
+    /// events the host's. A group the fill does not ask for is not built.
+    pub fn component_with(
+        &mut self,
+        name: &str,
+        props: &Value,
+        mut children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<SlotFill> {
+        self.place(name, props, Some(&mut children), None)
+    }
+
+    /// [`Self::component_with`] whose fill is `fill` rather than whatever
+    /// extension the name's namespace is: how an extension places a
+    /// component of its own inside one of its fills — its own namespace's
+    /// extension is busy drawing, so the list cannot ask it — keeping the
+    /// instance boundary (its key, its replay, its events, which reach the
+    /// extension as its own message). The instance's nodes are the current
+    /// origin's.
+    pub fn component_by(
+        &mut self,
+        name: &str,
+        props: &Value,
+        mut children: impl FnMut(&str, &mut Ui<'_>),
+        mut fill: impl FnMut(&Slot<'_>, &mut Ui<'_>),
+    ) -> Option<SlotFill> {
+        self.place(name, props, Some(&mut children), Some(&mut fill))
+    }
+
+    /// Builds the host's children of `group` here (ADR 0060): what a
+    /// component's fill calls where the host's content goes — `""` for
+    /// the unnamed group, a name for another (`"footer"`). Once per group
+    /// per instance; outside an instance's fill it builds nothing and
+    /// raises `children-misplaced`.
+    pub fn children(&mut self, group: &str) {
+        let Some(state) = self.core.begin_children(group) else {
+            return;
+        };
+        if let Some(children) = self.children.as_deref_mut() {
+            let mut ui = Ui::parts(
+                &mut *self.core,
+                self.filler.as_deref_mut().map(shorter_fill),
+                None,
+            );
+            children.build(group, &mut ui);
+        }
+        self.core.end_children(state);
+    }
+
+    fn place(
+        &mut self,
+        name: &str,
+        props: &Value,
+        children: Option<&mut dyn Children>,
+        by: Option<InstanceFill<'_>>,
+    ) -> Option<SlotFill> {
+        if self.core.tree.is_empty() {
+            return None;
+        }
+        let label = props.get_str("key");
+        let key = match label {
+            Some(l) => self.core.child_key(l),
+            None => self.core.auto_key(),
+        };
+        let fresh = matches!(props.get("fresh"), Some(Value::Bool(true)));
+        // Inside a fill being kept, a placement is one more op of it: a
+        // replay places it again — unless the host's children are a
+        // closure of the fill's own, which no replay could call.
+        let keeping = self.core.keeping();
+        if keeping {
+            if children.is_some() {
+                self.core
+                    .taint_kept("it placed a component with children of its own");
+            } else {
+                self.core.keep_op(crate::runtime::replay::Op::Component {
+                    name: name.into(),
+                    props: props.clone(),
+                });
+            }
+            self.core.pause_keeping();
+        }
+        let placer = self.core.origin();
+        let slot_now = self.core.current_fill_slot();
+        // The host's children see the placer's own children, so a fill
+        // can forward its host's content into a component it places.
+        let mut none = |_: &str, _: &mut Ui<'_>| {};
+        let mut placed = Placed {
+            inner: children.unwrap_or(&mut none),
+            outer: self.children.as_deref_mut().map(shorter_children),
+        };
+        let mut answer = None;
+        let (namespace, short) = crate::slot::split_name(name);
+        let slot = Slot {
+            name: short,
+            namespace,
+            params: props,
+            key,
+        };
+        if let Some(by) = by {
+            // The fill is the caller's: the instance is the current
+            // origin's, filled in place.
+            if let Some(filler) = self.filler.as_deref_mut() {
+                filler.placed(name, key, props, placer, slot_now);
+            }
+            let replayed = if !fresh && !keeping {
+                match self.core.take_replayable_instance(key, props) {
+                    Ok(kept) => {
+                        let filler = self.filler.as_deref_mut().map(shorter_fill);
+                        self.core.replay_instance(&slot, kept, filler, &mut placed);
+                        Some(SlotFill::Replayed)
+                    }
+                    Err((fill, _)) => {
+                        self.core.keep_next_instance(key, props);
+                        Some(fill)
+                    }
+                }
+            } else {
+                None
+            };
+            answer = match replayed {
+                Some(SlotFill::Replayed) => Some(SlotFill::Replayed),
+                other => {
+                    let filler = self.filler.as_deref_mut().map(shorter_fill);
+                    self.core
+                        .fill_instance(&slot, placer, filler, &mut placed, |ui| by(&slot, ui));
+                    self.core.forget_next_fill();
+                    Some(other.unwrap_or(SlotFill::NotKept))
+                }
+            };
+        } else if let Some(filler) = self.filler.as_deref_mut() {
+            filler.placed(name, key, props, placer, slot_now);
+            if !fresh && !keeping {
+                match self.core.take_replayable_instance(key, props) {
+                    Ok(kept) => {
+                        self.core
+                            .replay_instance(&slot, kept, Some(filler), &mut placed);
+                        answer = Some(SlotFill::Replayed);
+                    }
+                    Err((fill, _why)) => {
+                        self.core.keep_next_instance(key, props);
+                        let filled = filler.component(
+                            name,
+                            key,
+                            props,
+                            &mut placed,
+                            &mut Ui::new(self.core),
+                        );
+                        self.core.forget_next_fill();
+                        answer = filled.then_some(fill);
+                    }
+                }
+            } else if filler.component(name, key, props, &mut placed, &mut Ui::new(self.core)) {
+                answer = Some(SlotFill::NotKept);
+            }
+        }
+        if keeping {
+            self.core.resume_keeping();
+        }
+        if answer.is_none() {
+            self.core.warn(crate::diag::unknown_component(name, key));
+        }
+        if let Some(l) = label {
+            self.core.note_label(key, l);
+        }
+        answer
     }
 
     /// The origin the nodes opened right now are tagged with:
@@ -1596,7 +1824,7 @@ impl<'a> Ui<'a> {
     /// menu is drawn after both, which is what makes it the frame's modal
     /// scope and its topmost float.
     pub fn finish(self) {
-        let Ui { core, filler } = self;
+        let Ui { core, filler, .. } = self;
         core.perf_build_done();
         // Not in the devtools' own window: nothing the host or an
         // extension declares there is built.
@@ -1623,4 +1851,36 @@ impl<'a> Ui<'a> {
         Core::build_menu(&mut Ui::new(core));
         core.finish_frame();
     }
+}
+
+/// A fill an instance is drawn by in place (`Ui::component_by`).
+type InstanceFill<'f> = &'f mut dyn FnMut(&Slot<'_>, &mut Ui<'_>);
+
+/// A placement's children as the fill sees them: the host's builder, run
+/// with the placer's own children in reach (ADR 0060).
+struct Placed<'p, 'q> {
+    inner: &'p mut dyn Children,
+    outer: Option<&'q mut dyn Children>,
+}
+
+impl Children for Placed<'_, '_> {
+    fn build(&mut self, group: &str, ui: &mut Ui<'_>) {
+        let mut inner = Ui::parts(
+            &mut *ui.core,
+            ui.filler.as_deref_mut().map(shorter_fill),
+            self.outer.as_deref_mut().map(shorter_children),
+        );
+        self.inner.build(group, &mut inner);
+    }
+}
+
+/// A filler borrowed for as long as the `Ui` it goes into: the trait
+/// object's lifetime shortened at a coercion site, since a `Ui` has one.
+pub(crate) fn shorter_fill<'s>(f: &'s mut (dyn Fill + '_)) -> &'s mut (dyn Fill + 's) {
+    f
+}
+
+/// [`shorter_fill`] for the host's children.
+pub(crate) fn shorter_children<'s>(c: &'s mut (dyn Children + '_)) -> &'s mut (dyn Children + 's) {
+    c
 }

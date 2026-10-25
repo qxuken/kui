@@ -17,6 +17,7 @@
 //! const char *kui_ext_name(void);                       /* else: file stem */
 //! void       *kui_ext_init(void);                       /* else: NULL      */
 //! const KuiStr *kui_ext_slots(size_t *count);          /* else: "root"    */
+//! const KuiStr *kui_ext_components(size_t *count);     /* else: none      */
 //! void        kui_ext_view(void *user, KuiCtx *ctx);    /* required        */
 //! void        kui_ext_on_event(void *user, const KuiEvent *ev);
 //! void        kui_ext_free(void *user);
@@ -156,6 +157,10 @@ pub struct CExtension {
     /// What `kui_ext_slots` returned at load, copied out: the slot names
     /// this plugin fills. Empty means `"root"`.
     slots: Vec<String>,
+    /// What `kui_ext_components` returned at load: the components it
+    /// provides (ADR 0060), each drawn by `kui_ext_view` with the
+    /// component's name as `kui_slot_name`.
+    components: Vec<String>,
 }
 
 impl CExtension {
@@ -195,6 +200,7 @@ impl CExtension {
             on_event: None,
             free: None,
             slots: Vec::new(),
+            components: Vec::new(),
         };
         let Some(abi) = (unsafe { ext.sym::<extern "C" fn() -> u32>("kui_ext_abi") }) else {
             return Err(format!(
@@ -228,6 +234,18 @@ impl CExtension {
             if !p.is_null() {
                 let names = unsafe { std::slice::from_raw_parts(p, count) };
                 ext.slots = names.iter().map(|s| kstr(*s).into_owned()).collect();
+            }
+        }
+
+        // The components it provides, the same way (ADR 0060).
+        if let Some(components) = unsafe {
+            ext.sym::<extern "C" fn(*mut usize) -> *const KuiStr>("kui_ext_components")
+        } {
+            let mut count = 0usize;
+            let p = components(&mut count);
+            if !p.is_null() {
+                let names = unsafe { std::slice::from_raw_parts(p, count) };
+                ext.components = names.iter().map(|s| kstr(*s).into_owned()).collect();
             }
         }
 
@@ -440,6 +458,10 @@ impl Extension for CExtension {
 
     fn slots(&self) -> &[String] {
         &self.slots
+    }
+
+    fn components(&self) -> &[String] {
+        &self.components
     }
 
     fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {

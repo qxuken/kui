@@ -41,6 +41,16 @@
 //! cycle is the `recursive-slot` warning and an empty position); and
 //! replies go to whoever declared the slot ([`Extensions::route`]), which
 //! for every extension the host declared is the host.
+//!
+//! A **component** (ADR 0060) is a slot made cheap and repeatable: an
+//! extension lists the components it provides ([`Extension::components`]),
+//! and a host places one with `Ui::component` as many times as it likes,
+//! each instance keyed by where it was placed. An instance can hold the
+//! host's own children — the fill marks where with `Ui::children(group)`,
+//! and the host's [`Children`] builds them under the host's origin — and
+//! its events reach the host as the messages the host passed in its
+//! props: the extension answers an event with [`emit`], and
+//! [`Extensions::route`] delivers the host's message for that prop.
 
 use crate::input::UiEvent;
 use crate::key::Key;
@@ -79,6 +89,78 @@ pub const NAMESPACE_SEPARATOR: char = '/';
 
 /// `Value::Null` with a `'static` address, for a slot with no params.
 pub static NULL_PARAMS: Value = Value::Null;
+
+/// The host's children of a component instance, by group: what a fill's
+/// `Ui::children(group)` builds, at the place the fill marked, under the
+/// host's origin. A closure `|group, ui| …` is one; the unnamed group is
+/// `""`.
+pub trait Children {
+    fn build(&mut self, group: &str, ui: &mut Ui<'_>);
+}
+
+impl<F: FnMut(&str, &mut Ui<'_>)> Children for F {
+    fn build(&mut self, group: &str, ui: &mut Ui<'_>) {
+        self(group, ui)
+    }
+}
+
+/// The reply an extension answers an event with to raise one of its
+/// component's events (ADR 0060): `prop` names the event prop the host
+/// passed its message in (`"onSelect"`, or Lua's `"on_select"`), `fields`
+/// what rides with it (`Value::Null` for nothing). [`Extensions::route`]
+/// delivers the host's message for that prop, on the instance the event
+/// came from, as an [`EventKind::Component`](crate::input::EventKind)
+/// event; a prop the host left out delivers nothing.
+pub fn emit(prop: &str, fields: Value) -> Value {
+    Value::map([(EMIT_PROP, Value::str(prop)), (EMIT_FIELDS, fields)])
+}
+
+/// The two keys an [`emit`] reply is spelled with: reserved, so a reply
+/// of the extension's own cannot be read as one.
+pub const EMIT_PROP: &str = "$emit";
+pub const EMIT_FIELDS: &str = "$fields";
+
+/// An [`emit`] reply's prop and fields, or `None` for any other reply.
+pub fn emit_of(reply: &Value) -> Option<(&str, &Value)> {
+    let prop = reply.get_str(EMIT_PROP)?;
+    Some((prop, reply.get(EMIT_FIELDS).unwrap_or(&NULL_PARAMS)))
+}
+
+/// Whether a component prop is an event prop: `on` and then an upper-case
+/// letter (`onSelect`) or an underscore (Lua's `on_select`).
+pub fn is_event_prop(name: &str) -> bool {
+    let b = name.as_bytes();
+    b.len() > 2 && b.starts_with(b"on") && (b[2].is_ascii_uppercase() || b[2] == b'_')
+}
+
+/// Whether event prop `prop` (either spelling) is the one whose field is
+/// `field` — `onSelect` and `on_select` both match `select` — without
+/// building the field.
+pub fn prop_is_field(prop: &str, field: &str) -> bool {
+    let rest = prop.strip_prefix("on").unwrap_or(prop);
+    let rest = rest.strip_prefix('_').unwrap_or(rest);
+    let mut a = rest.chars();
+    let mut b = field.chars();
+    match (a.next(), b.next()) {
+        (Some(x), Some(y)) => x.to_lowercase().eq(std::iter::once(y)) && a.eq(b),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// The field an event prop's data rides in on the host's message:
+/// `onSelect` and `on_select` are both `select`.
+pub fn event_field(prop: &str) -> String {
+    let rest = prop.strip_prefix("on").unwrap_or(prop);
+    let rest = rest.strip_prefix('_').unwrap_or(rest);
+    let mut out = String::with_capacity(rest.len());
+    let mut chars = rest.chars();
+    if let Some(c) = chars.next() {
+        out.extend(c.to_lowercase());
+    }
+    out.extend(chars);
+    out
+}
 
 /// How many times a reply may be answered by another reply before the
 /// rest go to the host instead ([`Extensions::route`]). Nesting is a few
@@ -159,6 +241,36 @@ pub trait Fill {
              extension list to fill its slots"
         ))
     }
+    /// Fill the component instance placed as `full_name` at `key` now,
+    /// with `props` as the host passed them and `children` building the
+    /// host's own children where the fill asks (ADR 0060); answers
+    /// whether anything provides the component. The default provides
+    /// none.
+    fn component(
+        &mut self,
+        full_name: &str,
+        key: Key,
+        props: &Value,
+        children: &mut dyn Children,
+        ui: &mut Ui<'_>,
+    ) -> bool {
+        let _ = (full_name, key, props, children, ui);
+        false
+    }
+    /// An instance was placed this frame, filled or replayed: what lets
+    /// [`Extensions::route`] find the host's message for an event prop
+    /// after the frame. `slot` is the slot the placer's own nodes are in
+    /// (`None` for the host's view). The default keeps nothing.
+    fn placed(
+        &mut self,
+        full_name: &str,
+        key: Key,
+        props: &Value,
+        placer: OriginId,
+        slot: Option<Key>,
+    ) {
+        let _ = (full_name, key, props, placer, slot);
+    }
 }
 
 /// One loaded extension: its namespace, itself, and the answers of its
@@ -177,6 +289,8 @@ struct Entry {
     /// never a second answer to miss.
     name: String,
     slots: Vec<String>,
+    /// `Extension::components` as it answered at load (ADR 0060).
+    components: Vec<String>,
     /// The origin that declared the slot this extension last filled:
     /// `OriginId::HOST` for one in the host's own view, another
     /// extension's when that extension declared it. Where its replies go
@@ -191,6 +305,53 @@ struct Entry {
 #[derive(Default)]
 pub struct Extensions {
     list: Vec<Entry>,
+    /// Each component instance placed last frame, by its key: where its
+    /// events go and the messages its host passed for them (ADR 0060).
+    instances: rustc_hash::FxHashMap<Key, Instance>,
+    /// Bumped by every `finish`: an instance not placed since is dropped.
+    generation: u32,
+}
+
+/// What [`Extensions::route`] needs of a placed instance after the frame.
+struct Instance {
+    /// The origin that placed it, and the slot its nodes are in.
+    placer: OriginId,
+    slot: Option<Key>,
+    /// The event props the host passed, as (field, message), in prop
+    /// order: `onSelect` and Lua's `on_select` are both `select`, so an
+    /// extension emits one name whichever binding placed it.
+    events: Vec<(String, Value)>,
+    generation: u32,
+}
+
+impl Instance {
+    /// Whether `props`' event props are exactly these, without building
+    /// a list to compare: a frame that passes the same ones allocates
+    /// nothing.
+    fn same_events(&self, props: &Value) -> bool {
+        let Value::Map(entries) = props else {
+            return self.events.is_empty();
+        };
+        let mut mine = self.events.iter();
+        for (k, v) in entries.iter().filter(|(k, _)| is_event_prop(k)) {
+            match mine.next() {
+                Some((field, mv)) if prop_is_field(k, field) && mv == v => {}
+                _ => return false,
+            }
+        }
+        mine.next().is_none()
+    }
+
+    fn events_of(props: &Value) -> Vec<(String, Value)> {
+        match props {
+            Value::Map(entries) => entries
+                .iter()
+                .filter(|(k, _)| is_event_prop(k))
+                .map(|(k, v)| (event_field(k), v.clone()))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 impl Extensions {
@@ -246,6 +407,7 @@ impl Extensions {
         if let Some(bad) = ext
             .slots()
             .iter()
+            .chain(ext.components())
             .find(|s| s.is_empty() || s.contains(NAMESPACE_SEPARATOR))
         {
             return Err(format!(
@@ -260,6 +422,7 @@ impl Extensions {
             namespace,
             name: ext.name().to_owned(),
             slots: ext.slots().to_vec(),
+            components: ext.components().to_vec(),
             ext: Some(ext),
             asked_by: OriginId::HOST,
         });
@@ -346,6 +509,31 @@ impl Extensions {
             }
             let up = self.asked_by(to);
             for payload in replies {
+                // A component's event (ADR 0060): the host's own message
+                // for the prop, on the instance the event came from, to
+                // whoever placed it.
+                if let Some((prop, fields)) = emit_of(&payload)
+                    && let Some(inst) = ev.slot
+                    && let Some(rec) = self.instances.get(&inst)
+                {
+                    let Some((field, message)) = rec
+                        .events
+                        .iter()
+                        .find(|(field, _)| prop_is_field(prop, field))
+                    else {
+                        continue;
+                    };
+                    let mut out =
+                        UiEvent::component(rec.placer, inst, message, field, fields.clone());
+                    out.window = ev.window;
+                    out.slot = rec.slot;
+                    if rec.placer == OriginId::HOST || depth + 1 >= MAX_REPLY_HOPS {
+                        to_host(out);
+                    } else {
+                        queue.push_back((rec.placer, depth + 1, out));
+                    }
+                    continue;
+                }
                 let mut reply = UiEvent::declared(
                     crate::input::EventKind::Reply,
                     to,
@@ -371,13 +559,25 @@ impl Extensions {
     /// list itself stays free to fill the slots this extension declares
     /// while it draws — and so the one slot it cannot fill is its own,
     /// which would be the cycle.
-    fn fill_one(&mut self, i: usize, name: &str, key: Key, params: &Value, ui: &mut Ui<'_>) {
+    fn fill_one(
+        &mut self,
+        i: usize,
+        name: &str,
+        key: Key,
+        params: &Value,
+        children: Option<&mut dyn Children>,
+        ui: &mut Ui<'_>,
+    ) {
         let ns = self.list[i].namespace.clone();
         let ext_name = self.list[i].name.clone();
         let Some(mut ext) = self.list[i].ext.take() else {
             let full = full_name(&ns, name);
-            ui.core()
-                .warn(crate::diag::recursive_slot(&ext_name, &full, key));
+            let warning = if children.is_some() {
+                crate::diag::recursive_component(&ext_name, &full, key)
+            } else {
+                crate::diag::recursive_slot(&ext_name, &full, key)
+            };
+            ui.core().warn(warning);
             return;
         };
         // Who put it here, and so where its replies go.
@@ -389,8 +589,14 @@ impl Extensions {
             key,
         };
         let origin = OriginId(i as u16 + 1);
-        ui.fill_within(origin, &slot, self, |ui| {
-            if let Err(err) = ext.view(&slot, ui) {
+        let instance = children.is_some();
+        let body = |ui: &mut Ui<'_>| {
+            let drawn = if instance {
+                ext.component(&slot, ui)
+            } else {
+                ext.view(&slot, ui)
+            };
+            if let Err(err) = drawn {
                 ui.core().taint_kept("its view failed");
                 ui.core().warn(crate::diag::extension_view_error(
                     &ext_name,
@@ -404,7 +610,11 @@ impl Extensions {
                         .color(crate::color::Color::rgb8(0xe8, 0x5d, 0x5d)),
                 );
             }
-        });
+        };
+        match children {
+            Some(children) => ui.fill_instance(origin, &slot, self, children, body),
+            None => ui.fill_within(origin, &slot, self, body),
+        }
         self.list[i].ext = Some(ext);
     }
 }
@@ -440,30 +650,38 @@ impl Fill for Extensions {
         // `root` is one more name the host chose, not the auto-fill.
         let wants = slots.iter().any(|s| s == ANY_SLOT)
             || if name == ROOT_SLOT {
-                slots.is_empty()
+                slots.is_empty() && self.list[i].components.is_empty()
             } else {
                 slots.iter().any(|s| s == name)
             };
         if wants {
-            self.fill_one(i, name, key, params, ui);
+            self.fill_one(i, name, key, params, None, ui);
         }
     }
 
     fn finish(&mut self, ui: &mut Ui<'_>) {
+        // The instances this frame placed are the ones whose events can
+        // still arrive; the rest are gone (ADR 0060).
+        let generation = self.generation;
+        self.instances.retain(|_, r| r.generation == generation);
+        self.generation = generation.wrapping_add(1);
         // By index rather than over a snapshot: a root fill here may load
         // an extension of its own, which joins the end of the list, and
         // the frame it arrived on is the frame it should draw on.
         let mut i = 0;
         while i < self.list.len() {
             let ns = self.list[i].namespace.clone();
-            if self.list[i].slots.is_empty() {
+            if self.list[i].slots.is_empty() && !self.list[i].components.is_empty() {
+                // An extension of components only: placed where a host
+                // puts them, never filled after the view (ADR 0060).
+            } else if self.list[i].slots.is_empty() {
                 // The fill every extension got before slots existed: after
                 // the host's view, in list order.
                 let full = full_name(&ns, ROOT_SLOT);
                 if !ui.slot_declared(&full)
                     && let Some(key) = ui.core().begin_slot(&full)
                 {
-                    self.fill_one(i, ROOT_SLOT, key, &NULL_PARAMS, ui);
+                    self.fill_one(i, ROOT_SLOT, key, &NULL_PARAMS, None, ui);
                 }
             } else {
                 // A wildcard lists nothing to check: whatever the host
@@ -488,6 +706,61 @@ impl Fill for Extensions {
     fn add(&mut self, namespace: &str, ext: Box<dyn Extension>) -> Result<OriginId, String> {
         self.insert(namespace.to_owned(), ext)
     }
+
+    fn component(
+        &mut self,
+        full_name: &str,
+        key: Key,
+        props: &Value,
+        children: &mut dyn Children,
+        ui: &mut Ui<'_>,
+    ) -> bool {
+        let (ns, name) = split_name(full_name);
+        let Some(i) = self.list.iter().position(|e| e.namespace == ns) else {
+            return false;
+        };
+        let comps = &self.list[i].components;
+        if !comps.iter().any(|c| c == name || c == ANY_SLOT) {
+            return false;
+        }
+        self.fill_one(i, name, key, props, Some(children), ui);
+        true
+    }
+
+    fn placed(
+        &mut self,
+        full_name: &str,
+        key: Key,
+        props: &Value,
+        placer: OriginId,
+        slot: Option<Key>,
+    ) {
+        let generation = self.generation;
+        match self.instances.get_mut(&key) {
+            Some(rec) => {
+                if !rec.same_events(props) {
+                    rec.events = Instance::events_of(props);
+                }
+                rec.placer = placer;
+                rec.slot = slot;
+                rec.generation = generation;
+            }
+            None => {
+                let (ns, _) = split_name(full_name);
+                if self.list.iter().any(|e| e.namespace == ns) {
+                    self.instances.insert(
+                        key,
+                        Instance {
+                            placer,
+                            slot,
+                            events: Instance::events_of(props),
+                            generation,
+                        },
+                    );
+                }
+            }
+        }
+    }
 }
 
 impl<F: Fill + ?Sized> Fill for &mut F {
@@ -500,6 +773,26 @@ impl<F: Fill + ?Sized> Fill for &mut F {
     fn add(&mut self, namespace: &str, ext: Box<dyn Extension>) -> Result<OriginId, String> {
         F::add(&mut **self, namespace, ext)
     }
+    fn component(
+        &mut self,
+        full_name: &str,
+        key: Key,
+        props: &Value,
+        children: &mut dyn Children,
+        ui: &mut Ui<'_>,
+    ) -> bool {
+        F::component(&mut **self, full_name, key, props, children, ui)
+    }
+    fn placed(
+        &mut self,
+        full_name: &str,
+        key: Key,
+        props: &Value,
+        placer: OriginId,
+        slot: Option<Key>,
+    ) {
+        F::placed(&mut **self, full_name, key, props, placer, slot);
+    }
 }
 
 impl<F: Fill + ?Sized> Fill for Box<F> {
@@ -511,5 +804,52 @@ impl<F: Fill + ?Sized> Fill for Box<F> {
     }
     fn add(&mut self, namespace: &str, ext: Box<dyn Extension>) -> Result<OriginId, String> {
         F::add(&mut **self, namespace, ext)
+    }
+    fn component(
+        &mut self,
+        full_name: &str,
+        key: Key,
+        props: &Value,
+        children: &mut dyn Children,
+        ui: &mut Ui<'_>,
+    ) -> bool {
+        F::component(&mut **self, full_name, key, props, children, ui)
+    }
+    fn placed(
+        &mut self,
+        full_name: &str,
+        key: Key,
+        props: &Value,
+        placer: OriginId,
+        slot: Option<Key>,
+    ) {
+        F::placed(&mut **self, full_name, key, props, placer, slot);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_props_and_their_fields_in_both_spellings() {
+        assert!(is_event_prop("onSelect"));
+        assert!(is_event_prop("on_select"));
+        assert!(!is_event_prop("one"));
+        assert!(!is_event_prop("on"));
+        assert_eq!(event_field("onSelect"), "select");
+        assert_eq!(event_field("on_select"), "select");
+        assert_eq!(event_field("onRowClick"), "rowClick");
+        assert!(prop_is_field("onSelect", "select"));
+        assert!(prop_is_field("on_select", "select"));
+        assert!(!prop_is_field("onSelected", "select"));
+        assert!(!prop_is_field("onSelect", "selected"));
+    }
+
+    #[test]
+    fn an_emit_reply_reads_back() {
+        let r = emit("onSave", Value::Int(3));
+        assert_eq!(emit_of(&r), Some(("onSave", &Value::Int(3))));
+        assert_eq!(emit_of(&Value::map([("save", Value::Bool(true))])), None);
     }
 }

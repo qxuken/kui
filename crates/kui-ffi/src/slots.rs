@@ -244,6 +244,74 @@ pub extern "C" fn kui_reply(ev: *const KuiEvent, reply: *const KuiValue) -> bool
     })
 }
 
+/// Raises one of your component's events from inside `kui_ext_on_event`
+/// (ADR 0060): `prop` names the event prop the host passed its message in
+/// (`onSelect` or `on_select` — either finds the host's), `fields` what
+/// rides with it under the prop's field (NULL for nothing; you keep
+/// ownership). The host hears the message it passed, about the instance
+/// the event came from; a prop the host did not pass delivers nothing.
+/// False where [`kui_reply`] would be.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_emit(ev: *const KuiEvent, prop: KuiStr, fields: *const KuiValue) -> bool {
+    guard(false, || {
+        let fields = unsafe { fields.as_ref() }.map_or(kui_core::Value::Null, |v| v.0.clone());
+        let reply = KuiValue(kui_core::slot::emit(&kstr(prop), fields));
+        kui_reply(ev, &reply)
+    })
+}
+
+/// Places a component an extension provides (ADR 0060) at the cursor:
+/// `name` is `namespace/component`, `props` what its fill reads (borrowed;
+/// NULL for none) — `key` in it keys the instance, `fresh: true` asks the
+/// extension every frame, and its `on*` entries are the messages the
+/// component's events arrive as. `children` builds your own children
+/// where the component asks for them, called with `user`, a context
+/// borrowing the frame for the call, and the group (empty for the unnamed
+/// one); NULL for none. An instance whose props did not change is
+/// replayed without asking the extension. Returns how it was filled, a
+/// `KUI_SLOT_*` code, or `KUI_SLOT_UNDECLARED` when nothing provides it
+/// (`unknown-component`) or outside a frame.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_component(
+    ptr: *mut KuiCtx,
+    name: KuiStr,
+    props: *const KuiValue,
+    children: Option<ChildrenFn>,
+    user: *mut c_void,
+) -> i32 {
+    guard(-1, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return -1;
+        };
+        let name = kstr(name);
+        let props = unsafe { props.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
+        let fill = with_host_ui(c, |ui| match children {
+            Some(cb) => ui.component_with(&name, props, |group, ui| {
+                let mut inner = KuiCtx::borrowing_in(ui);
+                cb(user, &mut inner, KuiStr::borrowed(group));
+            }),
+            None => ui.component(&name, props),
+        });
+        fill.map_or(-1, |f| f.code())
+    })
+}
+
+/// Where your host's children of `group` go, from inside a component's
+/// `kui_ext_view` (ADR 0060): built here, under the host's origin, keyed
+/// by the instance and the group. Empty `group` for the unnamed one. Once
+/// per group; anywhere else it builds nothing and raises
+/// `children-misplaced`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_children(ptr: *mut KuiCtx, group: KuiStr) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let group = kstr(group);
+        with_host_ui(c, |ui| ui.children(&group));
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Loading extensions from C
 

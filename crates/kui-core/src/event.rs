@@ -829,6 +829,9 @@ pub enum Event {
     Capture(Captured),
     Dismiss(Dismiss),
     Reply,
+    /// A component instance's event (ADR 0060): the host's own message
+    /// for the event prop is [`UiEvent::message`]'s to decode.
+    Component,
     Unread(EventKind),
 }
 
@@ -920,6 +923,7 @@ impl UiEvent {
             EventKind::Capture => Event::Capture(read_captured(p)?),
             EventKind::Dismiss => Event::Dismiss(read_dismiss(p)?),
             EventKind::Reply => Event::Reply,
+            EventKind::Component => Event::Component,
         })
     }
 }

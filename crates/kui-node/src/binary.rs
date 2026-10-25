@@ -127,7 +127,7 @@ use crate::{Result, err, value_of};
 /// v25: `menuBar` carries a flags word after its `onMenu` message, 1
 /// for `standardMenus` (ADR 0052); and `revealOnHover` (ADR 0051) and
 /// `floatsInOrder` (ADR 0053) are new rows.
-/// v26: `svg` is a new op (ADR 0063).
+/// v26: `svg` is a new op (ADR 0063), and so is `component` (ADR 0060).
 pub const VERSION: u32 = 26;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
@@ -183,6 +183,11 @@ pub const OP_PATH: u32 = 26;
 /// as indices into `SvgMode::ALL` and `SvgFit::ALL`, then props — whose
 /// `color` is what `currentColor` paints.
 pub const OP_SVG: u32 = 27;
+/// A component an extension provides (ADR 0060): its full name, its props
+/// as one JSON string (none for null), the number of child groups, then
+/// each group's name (empty for the unnamed one), its length in slots and
+/// that many slots of ops — built only where the instance's fill asks.
+pub const OP_COMPONENT: u32 = 28;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -219,6 +224,7 @@ pub fn protocol_json() -> Json {
                 ("radioGroup", OP_RADIO_GROUP),
                 ("path", OP_PATH),
                 ("svg", OP_SVG),
+                ("component", OP_COMPONENT),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1425,6 +1431,46 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 }
             }
             Ok(())
+        }
+        // name, props JSON?, then the child groups as length-prefixed op
+        // runs (docs/adr/0060): each is read where the fill asks for it,
+        // by a reader over its own slots, and skipped here.
+        OP_COMPONENT => {
+            let name = r.req_str()?;
+            let props = match r.str_ref()? {
+                Some(s) => payload(s)?,
+                None => kui_core::Value::Null,
+            };
+            let n = r.count()?;
+            let mut groups = Vec::with_capacity(n);
+            for _ in 0..n {
+                let group = r.str_ref()?.unwrap_or("");
+                let len = r.count()?;
+                groups.push((group, r.i, len));
+                r.i += len;
+            }
+            let (stream, strings) = (r.s, r.strings);
+            let mut result = Ok(());
+            ui.component_with(name, &props, |group, ui| {
+                let Some(&(_, start, len)) = groups.iter().find(|(g, ..)| *g == group) else {
+                    return;
+                };
+                let mut sub = Reader {
+                    s: &stream[start..start + len],
+                    i: 0,
+                    strings,
+                };
+                while sub.i < len {
+                    let step = sub.u().and_then(|op| decode_op(op, &mut sub, ui));
+                    if let Err(e) = step {
+                        if result.is_ok() {
+                            result = Err(e);
+                        }
+                        return;
+                    }
+                }
+            });
+            result
         }
         // data?, src?, mode, fit, then the prop list — `color` lands in
         // the style and is what `currentColor` paints

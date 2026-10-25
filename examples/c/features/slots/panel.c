@@ -80,6 +80,40 @@ const KuiStr *kui_ext_slots(size_t *count) {
     return SLOTS;
 }
 
+/* The component this panel provides (docs/adr/0060): a host places as many
+ * badges as it likes with kui_component, and each is drawn by kui_ext_view
+ * with "badge" as its kui_slot_name. */
+static const KuiStr COMPONENTS[] = {{(const uint8_t *)"badge", 5}};
+const KuiStr *kui_ext_components(size_t *count) {
+    *count = sizeof COMPONENTS / sizeof *COMPONENTS;
+    return COMPONENTS;
+}
+
+/* One badge: its label from the props, a pressable dot, and the host's own
+ * children beside them - kui_children puts them here, under the host's
+ * origin. The press comes back to kui_ext_on_event, which raises the
+ * badge's onPress for the host with kui_emit. */
+static void badge_view(KuiCtx *ui) {
+    const KuiValue *props = kui_slot_params(ui);
+    KuiStr label = str_of(props, "label", KUI_STR("badge"));
+    KuiTheme t = KUI_THEME_INIT;
+    kui_theme(ui, &t);
+    KuiSpec row = {.dir = KUI_ROW, .gap = 6, .cross_align = KUI_CENTER,
+                   .pad_l = 6, .pad_r = 6, .pad_t = 2, .pad_b = 2,
+                   .bg = t.surface, .radius = 8};
+    kui_open(ui, &row, NULL);
+    {
+        KuiSpec dot = {.width = {KUI_FIXED, 12}, .height = {KUI_FIXED, 12},
+                       .bg = t.accent, .radius = 6, .label = label};
+        kui_open(ui, &dot, msg("badge"));
+        kui_close(ui);
+        KuiTextStyle small = {.size = 12, .color = t.fg};
+        kui_text(ui, label, &small);
+        kui_children(ui, KUI_STR(""));
+    }
+    kui_close(ui);
+}
+
 void *kui_ext_init(void) {
     Panel *p = calloc(1, sizeof *p);
     if (!p) return NULL;
@@ -95,6 +129,11 @@ void kui_ext_free(void *user) { free(user); }
 void kui_ext_view(void *user, KuiCtx *ui) {
     Panel *p = (Panel *)user;
     if (!p) return;
+    KuiStr which = {0};
+    if (kui_slot_name(ui, &which) && kui_str_eq(which, "badge")) {
+        badge_view(ui);
+        return;
+    }
 
     /* What the host passed with the slot: a title, and the template of
      * the reply it wants on a toggle. Both borrowed for this call. */
@@ -214,6 +253,14 @@ void kui_ext_on_event(void *user, const KuiEvent *ev) {
                 kui_value_free(reply);
             }
         }
+    } else if (kui_str_eq(s, "badge")) {
+        /* A badge's dot: raise its onPress, which the host hears as the
+         * message it passed for it, with how many presses so far. */
+        static int64_t presses = 0;
+        KuiValue *fields = kui_value_map();
+        kui_value_map_set(fields, KUI_STR("presses"), kui_value_int(++presses));
+        kui_emit(ev, KUI_STR("onPress"), fields);
+        kui_value_free(fields);
     } else if (kui_str_eq(s, "add")) {
         if (p->count < MAX_TODOS) {
             snprintf(p->todos[p->count], TODO_LEN, "todo #%d", p->count + 1);

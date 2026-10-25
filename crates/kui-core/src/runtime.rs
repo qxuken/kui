@@ -305,8 +305,16 @@ pub struct Core {
     /// fill being kept, the ask for the next one to keep, what each slot
     /// kept between frames, and what `slot_replay` answered this frame.
     recording: Option<replay::Recording>,
-    keep_next: Option<(String, Key, Value)>,
+    keep_next: Option<(replay::KeepAs, Key, Value)>,
     kept: rustc_hash::FxHashMap<String, replay::Kept>,
+    /// What each component instance kept, by its key (ADR 0060): an
+    /// instance is replayed by default, so most of these are replayed
+    /// every frame.
+    kept_instances: rustc_hash::FxHashMap<Key, replay::Kept>,
+    /// The fills being drawn right now, innermost last: what a fill's
+    /// `children()` asks of, and what the host's children are built
+    /// against (ADR 0060).
+    fill_frames: Vec<fills::FillFrame>,
     slot_fills: Vec<(String, replay::SlotFill, Option<String>)>,
     slot_fills_last: Vec<(String, replay::SlotFill, Option<String>)>,
     /// The key namespace of the fill in progress:
@@ -1259,6 +1267,8 @@ impl Core {
             recording: None,
             keep_next: None,
             kept: Default::default(),
+            kept_instances: Default::default(),
+            fill_frames: Vec::new(),
             slot_fills: Vec::new(),
             slot_fills_last: Vec::new(),
             ns_depth: usize::MAX,
@@ -2269,8 +2279,25 @@ pub trait Extension {
     }
     fn view(&mut self, slot: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String>;
     /// One of this extension's events; the values returned are replies
-    /// to the host, delivered in order.
+    /// to the host, delivered in order. A reply built with
+    /// [`crate::slot::emit`] raises an event of the component instance the
+    /// event came from, as the message its host passed (ADR 0060).
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value>;
+    /// The components this extension provides (ADR 0060): names in its
+    /// own vocabulary, placed by a host as `namespace/name` any number of
+    /// times. [`crate::slot::ANY_SLOT`] takes every name. Empty — the
+    /// default — provides none.
+    fn components(&self) -> &[String] {
+        &[]
+    }
+    /// Draws one component instance: `inst.name` is the component,
+    /// `inst.params` the props the host passed, `inst.key` the instance's
+    /// key, and `Ui::children(group)` builds the host's children where the
+    /// fill wants them. The default draws it as [`Self::view`] draws a
+    /// slot, for an extension that tells the two apart by name.
+    fn component(&mut self, inst: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        self.view(inst, ui)
+    }
 }
 
 /// A boxed extension is one: what a host that learns the kind only at run
@@ -2289,5 +2316,11 @@ impl<E: Extension + ?Sized> Extension for Box<E> {
     }
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
         (**self).on_event(ev)
+    }
+    fn components(&self) -> &[String] {
+        (**self).components()
+    }
+    fn component(&mut self, inst: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        (**self).component(inst, ui)
     }
 }

@@ -9,6 +9,9 @@ use super::*;
 /// `run`, because the widgets take one whether or not this build has a
 /// windowed runner.
 pub(crate) type ViewFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx);
+/// A component's children builder (`kui_component`, ADR 0060): your
+/// `user`, a context borrowing the frame for the call, and the group.
+pub(crate) type ChildrenFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx, group: KuiStr);
 /// A C callback that receives one event: `kui_run`'s, and only its — so
 /// unlike `ViewFn` it is not here in a build without the runner.
 #[cfg(feature = "runner")]
@@ -327,6 +330,14 @@ pub struct KuiStr {
 impl KuiStr {
     /// A string the library never frees: an event's kind, a schema name.
     pub(crate) fn from_static(s: &'static str) -> Self {
+        Self {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
+    /// A string borrowed for one call: the caller keeps `s` alive past it.
+    pub(crate) fn borrowed(s: &str) -> Self {
         Self {
             ptr: s.as_ptr(),
             len: s.len(),

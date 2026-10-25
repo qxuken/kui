@@ -1009,6 +1009,42 @@ static void conf_polygon(KuiCtx *ui, const Fixtures *f, int phase) {
  * stroked, faded; a bar turned an eighth about a pivot it names (ADR 0041);
  * and the last does not parse, which kui_path_d turns into
  * the warning under its key. Data is conformance::PATH_* to the character. */
+/* docs/adr/0060: two cards the corpus extension provides, loaded from
+   conf.lua for this scene; the first holds our body and footer children,
+   built where the card asks. */
+static void conf_component_children(void *user, KuiCtx *ui, KuiStr group) {
+    (void)user;
+    if (group.len == 0) {
+        KuiTextStyle body = {.size = 12, .color = 0xd6d8e0ff};
+        kui_text(ui, KUI_STR("body"), &body);
+    } else if (kui_str_eq(group, "footer")) {
+        KuiTextStyle foot = {.size = 10, .color = 0x8a8fa3ff};
+        kui_text(ui, KUI_STR("foot"), &foot);
+    }
+}
+
+static void conf_component(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec canvas = {.width = {KUI_FIXED, 240}, .height = {KUI_FIXED, 160},
+                      .pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 6,
+                      .bg = 0x14161eff};
+    kui_open(ui, &canvas, NULL);
+    KuiValue *closed = kui_value_map();
+    kui_value_map_set(closed, KUI_STR("kind"), kui_value_str(KUI_STR("closed")));
+    KuiValue *props = kui_value_map();
+    kui_value_map_set(props, KUI_STR("title"), kui_value_str(KUI_STR("Deploys")));
+    kui_value_map_set(props, KUI_STR("key"), kui_value_str(KUI_STR("deploys")));
+    kui_value_map_set(props, KUI_STR("onClose"), closed);
+    kui_component(ui, KUI_STR("conf/card"), props, conf_component_children, NULL);
+    kui_value_free(props);
+    KuiValue *empty = kui_value_map();
+    kui_value_map_set(empty, KUI_STR("title"), kui_value_str(KUI_STR("Empty")));
+    kui_component(ui, KUI_STR("conf/card"), empty, NULL, NULL);
+    kui_value_free(empty);
+    kui_close(ui);
+}
+
 /* docs/adr/0063-an-svg-element.md: an icon as paths, clickable; the same
    by width; a gradient as an image; a covered badge; the icon as a
    decorative image; markup that does not parse. */
@@ -2557,6 +2593,7 @@ static const ConfScene CONF_SCENES[] = {
     {"polygon", conf_polygon},
     {"path", conf_path},
     {"svg", conf_svg},
+    {"component", conf_component},
     {"fragments", conf_fragments},
     {"modal", conf_modal},
     {"composite", conf_composite},
@@ -2948,6 +2985,16 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
                            (float)env->controls_w, (float)env->controls_h);
     }
     Fixtures f = conf_fixtures(ctx);
+    /* The scenes that place a component load the corpus extension from its
+       file (conformance::wants_extension), run from the repository root. */
+    if (strcmp(scene->name, "component") == 0 &&
+        !kui_ctx_add_extension(ctx, KUI_STR("conf"),
+                               KUI_STR("crates/kui-core/tests/fixtures/component/conf.lua"))) {
+        KuiStr why = {0};
+        kui_ctx_extension_error(ctx, &why);
+        fprintf(stderr, "conformance: the corpus extension did not load: %.*s\n",
+                (int)why.len, (const char *)why.ptr);
+    }
 
     Rep events, cmds, audio;
     rep_init(&events);

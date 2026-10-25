@@ -3591,9 +3591,10 @@ whose host keeps its params is 1.03 µs, and 1.25 µs when the host builds
 them every frame. A fresh slot is 29.9 µs. Profiling 200 replayed slots
 (`--bench replay_only`) put the replay gap in core, not in Lua. Four
 entries, all for Kit's M2: what ADR B's cheap instances need besides a
-shared `env`. They are filed, not built. C60 and C61 are held for the
-draft ADRs in Kit's plan (components an extension provides, the runner)
-until those are accepted. C59 — only a Rust host loaded a Lua extension,
+shared `env`. They are filed, not built. C60 was held for the draft ADR
+in Kit's plan (components an extension provides) and is built, with [ADR
+0060](adr/0060-components-an-extension-provides.md), in the archive; C61
+is held for the runner's. C59 — only a Rust host loaded a Lua extension,
 Kit's track A of M1 — was filed the same day and built with [ADR
 0059](adr/0059-a-lua-extension-loads-in-every-host.md), and is in the
 archive.
@@ -5542,9 +5543,10 @@ move.
 
 - `.` **F205** — [A one-line text in a box that scrolls sideways is cut at the box with nothing to scroll to](backlog/closed-2026-09.md#-f205--a-one-line-text-in-a-box-that-scrolls-sideways-is-cut-at-the-box-with-nothing-to-scroll-to--done-2026-10-25) — done (2026-10-25) — a text in a `scroll_x` box is no narrower than its min-content
 - `.` **F206** — [The devtools' strip wraps tabs onto more lines, holds four placement buttons, and its tooltips cover the pane](backlog/closed-2026-09.md#-f206--the-devtools-strip-wraps-tabs-onto-more-lines-holds-four-placement-buttons-and-its-tooltips-cover-the-pane--done-2026-10-25) — done (2026-10-25) — "⋮" menu with the dock side, one scrolling tab line, short tooltips, drag-select followed from the inner scroller, the examples' View menu
-**From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C62–C65 open, for Kit's M2
+**From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 built in Kit's M2 with ADR 0060; C62–C65 open, for Kit's M2
 
 - `~` **C59** — [Only a Rust host loads a Lua extension](backlog/closed-2026-09.md#-c59--only-a-rust-host-loads-a-lua-extension--done-2026-10-25) — done (2026-10-25) — every host's door loads a `.lua` file or a folder holding `init.lua` (`kui_ffi::open_extension`), kui-lua opens C plugins through a loader kui-ffi registers, a loaded file's chunk is `@path` and its folder first on `package.path`
+- `~` **C60** — [An extension can fill a slot once a frame but provide nothing a host places as often as it likes](backlog/closed-2026-09.md#-c60--an-extension-can-fill-a-slot-once-a-frame-but-provide-nothing-a-host-places-as-often-as-it-likes--done-2026-10-25) — done (2026-10-25) — [ADR 0060](adr/0060-components-an-extension-provides.md): components placed by position, host children by group, events as the host's message through `emit`, replayed by default; doors in five bindings, a corpus scene in all five
 - `.` **C62** — [Declaring a slot scans every slot declared so far](#from-kits-m0-spike-2026-10-25) — open — a hash set of the frame's slot names
 - `.` **C63** — [A replayed fill is kept again every frame, and its specs are cloned to push](#from-kits-m0-spike-2026-10-25) — open
 - `.` **C64** — [Every replay compares the whole palette by value](#from-kits-m0-spike-2026-10-25) — open — a generation number

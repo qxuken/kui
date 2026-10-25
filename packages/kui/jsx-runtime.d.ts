@@ -958,6 +958,26 @@ export declare namespace JSX {
       sampling?: 'linear' | 'nearest';
       fit?: 'fill' | 'contain' | 'cover';
     };
+    /** A component an extension provides
+     *  (docs/adr/0060-components-an-extension-provides.md), placed here and
+     *  keyed by where it is — or by `key` — so it repeats as freely as a
+     *  node. `name` is `namespace/component`, the namespace the extension
+     *  was loaded under (`addExtension`). `props` is what its fill reads,
+     *  and its `on*` props are the messages its events arrive as, with the
+     *  extension's data under the prop's field (`onSelect`'s under
+     *  `select`), as `event: 'component'`. The children are yours, built
+     *  where the component asks: the unnamed group, and `groups` by name.
+     *  An instance whose props did not change is replayed without asking
+     *  the extension; `fresh` asks every frame. One nothing provides draws
+     *  nothing and raises `unknown-component`. */
+    component: {
+      name: string;
+      props?: Record<string, unknown>;
+      groups?: Record<string, KuiNode>;
+      fresh?: boolean;
+      key?: string | number;
+      children?: KuiNode;
+    };
     /** An SVG document drawn in a box
      *  (docs/adr/0063-an-svg-element.md): `data` is the markup itself,
      *  `src` a file read once and again when it changes. `mode` `auto`

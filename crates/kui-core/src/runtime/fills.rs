@@ -5,7 +5,34 @@
 //! it owns the node stack and the keys.
 
 use super::*;
-use crate::slot::Slot;
+use crate::slot::{Children, Slot};
+
+/// A fill being drawn: the slot or instance it fills, and for an
+/// instance what its host's children are built against.
+#[derive(Clone)]
+pub(crate) struct FillFrame {
+    key: Key,
+    /// Whether this is a component instance, whose fill may ask for the
+    /// host's children.
+    instance: bool,
+    /// The origin that placed it, and the namespace its nodes were keyed
+    /// in: what the host's children are built under.
+    placer_origin: OriginId,
+    placer_ns: (usize, Key),
+    /// The groups whose children were built, hashed: each once.
+    built: Vec<u64>,
+}
+
+/// What `Core::begin_children` changed, for `end_children` to put back.
+pub(crate) struct ChildrenState {
+    origin: OriginId,
+    ns: (usize, Key),
+    counter: u64,
+    first: u32,
+    depth: usize,
+    group_key: Key,
+    hole: Key,
+}
 
 impl Core {
     /// Declares a slot under its full name at the cursor and returns its
@@ -64,6 +91,31 @@ impl Core {
         filler: Option<&mut dyn crate::slot::Fill>,
         f: impl FnOnce(&mut Ui<'_>),
     ) {
+        self.fill_frame(slot, origin, filler, None, f);
+    }
+
+    /// `fill_within` for a component instance (ADR 0060): `children`
+    /// builds the host's own children where the fill asks for them, with
+    /// `Ui::children`.
+    pub fn fill_instance(
+        &mut self,
+        slot: &Slot<'_>,
+        origin: OriginId,
+        filler: Option<&mut dyn crate::slot::Fill>,
+        children: &mut dyn Children,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.fill_frame(slot, origin, filler, Some(children), f);
+    }
+
+    fn fill_frame(
+        &mut self,
+        slot: &Slot<'_>,
+        origin: OriginId,
+        filler: Option<&mut dyn crate::slot::Fill>,
+        children: Option<&mut dyn Children>,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) {
         if self.tree.is_empty() {
             return;
         }
@@ -78,14 +130,23 @@ impl Core {
         self.ns_depth = depth;
         self.ns_key = slot.key;
         let first = self.tree.len() as u32;
+        self.fill_frames.push(FillFrame {
+            key: slot.key,
+            instance: children.is_some(),
+            placer_origin: saved_origin,
+            placer_ns: saved_ns,
+            built: Vec::new(),
+        });
         // The fill the host asked to keep begins here (ADR 0045).
         self.begin_keeping(slot, origin);
         let span = self.perf_fill_begin(origin, slot.namespace);
 
-        match filler {
-            Some(filler) => f(&mut Ui::with_filler(self, filler)),
-            None => f(&mut Ui::new(self)),
-        }
+        f(&mut Ui::parts(
+            self,
+            filler.map(crate::ui::shorter_fill),
+            children.map(crate::ui::shorter_children),
+        ));
+        self.fill_frames.pop();
         // After the fills inside it, so the innermost is found first.
         self.tree
             .fills
@@ -108,5 +169,115 @@ impl Core {
         }
         self.origin = saved_origin;
         (self.ns_depth, self.ns_key) = saved_ns;
+    }
+
+    /// The slot the nodes opened right now belong to: the fill being
+    /// drawn, `None` in the host's own view (or its host children).
+    pub(crate) fn current_fill_slot(&self) -> Option<Key> {
+        (self.ns_depth != usize::MAX).then_some(self.ns_key)
+    }
+
+    /// A component's fill asks for its host's children of `group` here
+    /// (ADR 0060): the host's origin, namespace and label scope come back,
+    /// the children are keyed under `instance.str(group)` — so their keys
+    /// do not depend on how the fill nests them — and their range is not
+    /// the instance's, so their events are the host's. `None`, with
+    /// `children-misplaced`, outside an instance's fill or for a group
+    /// already built.
+    pub(crate) fn begin_children(&mut self, group: &str) -> Option<ChildrenState> {
+        if self.tree.is_empty() {
+            return None;
+        }
+        let Some(frame) = self.fill_frames.last_mut() else {
+            self.warn(crate::diag::children_misplaced(
+                Key::ROOT,
+                group,
+                "in the host's own view",
+            ));
+            return None;
+        };
+        if !frame.instance {
+            let key = frame.key;
+            self.warn(crate::diag::children_misplaced(
+                key,
+                group,
+                "by a slot's fill, which holds none (a component's does)",
+            ));
+            return None;
+        }
+        let h = crate::key::hash_bulk(group.as_bytes());
+        if frame.built.contains(&h) {
+            let key = frame.key;
+            self.warn(crate::diag::children_misplaced(key, group, "twice"));
+            return None;
+        }
+        frame.built.push(h);
+        let (key, placer_origin, placer_ns) = (frame.key, frame.placer_origin, frame.placer_ns);
+        if self.keeping() {
+            self.keep_op(replay::Op::Children(group.into()));
+        }
+        // The host's nodes are not the fill's: a replay builds them again.
+        self.pause_keeping();
+        let state = ChildrenState {
+            origin: self.origin,
+            ns: (self.ns_depth, self.ns_key),
+            counter: self.counters.last().copied().unwrap_or(0),
+            first: self.tree.len() as u32,
+            depth: self.stack.len(),
+            group_key: key.str(group),
+            hole: if placer_ns.0 == usize::MAX {
+                crate::tree::NO_SLOT
+            } else {
+                placer_ns.1
+            },
+        };
+        // Inside the children it is the placer's context again: a
+        // `children()` there is the placer's own (its host's children,
+        // forwarded), and a fill below it is the placer's frame's.
+        let below = self.fill_frames.len().checked_sub(2);
+        let placer_frame = match below {
+            Some(i) => self.fill_frames[i].clone(),
+            None => FillFrame {
+                key: Key::ROOT,
+                instance: false,
+                placer_origin: OriginId::HOST,
+                placer_ns: (usize::MAX, Key::ROOT),
+                built: Vec::new(),
+            },
+        };
+        self.fill_frames.push(placer_frame);
+        self.origin = placer_origin;
+        self.ns_depth = self.stack.len();
+        self.ns_key = state.group_key;
+        if let Some(c) = self.counters.last_mut() {
+            *c = 0;
+        }
+        Some(state)
+    }
+
+    /// The other half of [`Self::begin_children`]: what the host's
+    /// children left open is closed, their range recorded as the
+    /// placer's, and the fill's own context put back.
+    pub(crate) fn end_children(&mut self, state: ChildrenState) {
+        self.fill_frames.pop();
+        if self.stack.len() > state.depth {
+            let open = self.stack.len() - state.depth;
+            self.diag.raise(crate::diag::unbalanced_extension(
+                "the host's children",
+                state.group_key,
+                open,
+            ));
+            self.stack.truncate(state.depth);
+            self.counters.truncate(state.depth);
+        }
+        self.tree
+            .fills
+            .push((state.hole, state.first, self.tree.len() as u32));
+        if let Some(c) = self.counters.last_mut() {
+            *c = state.counter;
+        }
+        self.origin = state.origin;
+        (self.ns_depth, self.ns_key) = state.ns;
+        self.resume_keeping();
     }
 }

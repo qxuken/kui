@@ -2329,6 +2329,52 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "component",
+        doc: "Two instances of a component an extension provides (ADR \
+              0060), the extension loaded from `conf.lua` by every adapter \
+              but Rust's, which spells it as `ConfKit`: a card holding the \
+              host's own children — a body text, and a footer text after \
+              its close box — keyed by the host, and a second card with no \
+              children. The second frame on replays both without asking \
+              the extension. A press on the close box is the extension's \
+              event, which it answers with `emit`, and the host hears its \
+              own `onClose` message, `component closed`.",
+        custom: &["key"],
+        elements: &["box", "text"],
+        build: build_component,
+        env: NATIVE_CHROME,
+        steps: &[Step::Cursor(22, 65), Step::MouseDown, Step::MouseUp],
+        expect: Expect {
+            solid: 5,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 4,
+            access: &[
+                "0 window ||",
+                "1 staticText Deploys||",
+                "1 staticText body||",
+                "1 button Close||",
+                "1 staticText foot||",
+                "1 staticText Empty||",
+                "1 button Close||",
+            ],
+            events: &["component closed"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
         name: "fragments",
         doc: "A box a registered WGSL function paints \
               (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`): \
@@ -5411,6 +5457,29 @@ pub const PATH_BAR: &str = "M30 104 H50 V110 H30 Z";
 pub const PATH_BAR_TURN: (f32, f32, f32) = (0.125, 40.0, 107.0);
 pub const PATH_BAD: &str = "M10 10 L20";
 
+fn build_component(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(
+        NodeSpec::column()
+            .size(240.0, 160.0)
+            .padding(Edges::all(8.0))
+            .gap(6.0)
+            .bg(Color::hex(0x14161eff)),
+        |ui| {
+            let props = Value::map([
+                ("title", Value::str("Deploys")),
+                ("key", Value::str("deploys")),
+                ("onClose", Value::map([("kind", Value::str("closed"))])),
+            ]);
+            ui.component_with("conf/card", &props, |group, ui| match group {
+                "" => ui.text("body", TextStyle::new(12.0).color(Color::hex(0xd6d8e0ff))),
+                "footer" => ui.text("foot", TextStyle::new(10.0).color(Color::hex(0x8a8fa3ff))),
+                _ => {}
+            });
+            ui.component("conf/card", &Value::map([("title", Value::str("Empty"))]));
+        },
+    );
+}
+
 /// The `svg` scene's markup, spelled the same by every adapter.
 pub const SVG_ICON: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21L16.65 16.65"/></svg>"#;
 pub const SVG_BAR: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#d8863b"/><stop offset="1" stop-color="#7f9cf5"/></linearGradient></defs><rect width="40" height="20" rx="4" fill="url(#g)"/></svg>"##;
@@ -7112,6 +7181,20 @@ pub fn drive(
     core: &mut Core,
     env: WindowEnv,
     steps: &[Step],
+    build: impl FnMut(&mut Ui<'_>, u32),
+) -> Output {
+    drive_with(core, None, env, steps, build)
+}
+
+/// [`drive`] with an extension list filling what the scene places — the
+/// `component` scene's [`ConfKit`] — and routing the events its nodes
+/// raise, as every binding's host does: what reaches the host is what the
+/// report lists.
+pub fn drive_with(
+    core: &mut Core,
+    mut filler: Option<&mut crate::slot::Extensions>,
+    env: WindowEnv,
+    steps: &[Step],
     mut build: impl FnMut(&mut Ui<'_>, u32),
 ) -> Output {
     core.set_diagnostics(true);
@@ -7122,23 +7205,39 @@ pub fn drive(
     let mut coverage = Coverage::default();
     let mut phase = 0u32;
     let mut viewport = VIEWPORT;
+    // What reaches the host: everything, with no list; with one, what
+    // its route hands on.
+    let routed = |filler: &mut Option<&mut crate::slot::Extensions>, evs: Vec<UiEvent>| {
+        let mut out = Vec::new();
+        match filler.as_deref_mut() {
+            Some(exts) => exts.route(evs, |ev| out.push(event_row(&ev))),
+            None => out.extend(evs.iter().map(event_row)),
+        }
+        out
+    };
     let mut frame = |core: &mut Core,
+                     filler: &mut Option<&mut crate::slot::Extensions>,
                      phase: u32,
                      viewport: Size,
                      events: &mut Vec<(String, String)>,
                      commands: &mut Vec<WindowCommand>,
                      audio: &mut Vec<AudioCommand>,
                      coverage: &mut Coverage| {
-        let mut ui = core.frame(viewport, SCALE);
+        let mut ui = match filler.as_deref_mut() {
+            Some(exts) => core.frame_with(viewport, SCALE, exts),
+            None => core.frame(viewport, SCALE),
+        };
         build(&mut ui, phase);
         ui.finish();
         observe(core, coverage);
-        events.extend(core.take_pending_events().iter().map(event_row));
+        let pending = core.take_pending_events();
+        events.extend(routed(filler, pending));
         commands.extend(core.take_window_commands());
         audio.extend(core.take_audio_commands());
     };
     frame(
         core,
+        &mut filler,
         phase,
         viewport,
         &mut events,
@@ -7178,13 +7277,14 @@ pub fn drive(
             }
             _ => {
                 let evs = core.handle_input(step.event().expect("an input step"));
-                events.extend(evs.iter().map(event_row));
+                events.extend(routed(&mut filler, evs));
                 commands.extend(core.take_window_commands());
                 audio.extend(core.take_audio_commands());
             }
         }
         frame(
             core,
+            &mut filler,
             phase,
             viewport,
             &mut events,
@@ -7251,9 +7351,96 @@ pub fn drive(
 pub fn run(scene: &Scene) -> Output {
     let mut core = Core::new();
     let f = fixtures(&mut core);
-    drive(&mut core, scene.env, scene.steps, |ui, phase| {
-        (scene.build)(ui, &f, phase)
-    })
+    let mut exts = wants_extension(scene).then(|| {
+        let mut exts = crate::slot::Extensions::new();
+        exts.push_as(EXTENSION_NAMESPACE, Box::new(ConfKit::default()))
+            .expect("the corpus extension loads");
+        exts
+    });
+    drive_with(
+        &mut core,
+        exts.as_mut(),
+        scene.env,
+        scene.steps,
+        |ui, phase| (scene.build)(ui, &f, phase),
+    )
+}
+
+/// The scenes that place what an extension provides: each adapter loads
+/// [`EXTENSION_FIXTURE`] under [`EXTENSION_NAMESPACE`] for them, through
+/// its own door, before the first frame.
+pub fn wants_extension(scene: &Scene) -> bool {
+    scene.name == "component"
+}
+
+/// The corpus extension's file, from the repository's root: what every
+/// adapter but Rust's loads (ADR 0059's door, so it is also the check that
+/// a `.lua` extension loads the same in every host).
+pub const EXTENSION_FIXTURE: &str = "crates/kui-core/tests/fixtures/component/conf.lua";
+/// The namespace it is loaded under.
+pub const EXTENSION_NAMESPACE: &str = "conf";
+
+/// [`EXTENSION_FIXTURE`] spelled in Rust for the reference adapter, which
+/// cannot load Lua from here: a `card` component — a titled box holding
+/// the host's children, then a row of a close box, whose press raises
+/// `onClose` with the count of presses so far, and the host's `footer`
+/// children. It and the file must draw the same; the corpus says so.
+#[derive(Default)]
+pub struct ConfKit {
+    closes: i64,
+}
+
+static CONF_COMPONENTS: std::sync::LazyLock<Vec<String>> =
+    std::sync::LazyLock::new(|| vec!["card".to_string()]);
+
+impl crate::runtime::Extension for ConfKit {
+    fn name(&self) -> &str {
+        "conf.lua"
+    }
+    fn components(&self) -> &[String] {
+        &CONF_COMPONENTS
+    }
+    fn view(&mut self, _slot: &crate::slot::Slot<'_>, _ui: &mut Ui<'_>) -> Result<(), String> {
+        Ok(())
+    }
+    fn component(&mut self, inst: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        let title = inst.params.get_str("title").unwrap_or("card").to_string();
+        ui.with(
+            NodeSpec::column()
+                .padding(Edges::all(6.0))
+                .gap(4.0)
+                .bg(Color::hex(0x202634ff))
+                .radius(6.0)
+                .width(200.0),
+            |ui| {
+                ui.text(&title, TextStyle::new(14.0).color(Color::hex(0xe8e8f0ff)));
+                ui.children("");
+                ui.with(NodeSpec::row().gap(4.0), |ui| {
+                    ui.with_keyed(
+                        "close",
+                        NodeSpec::row()
+                            .size(16.0, 16.0)
+                            .bg(Color::hex(0x7f9cf5ff))
+                            .label("Close")
+                            .on_click(Value::map([("tag", Value::str("close"))])),
+                        |_| {},
+                    );
+                    ui.children("footer");
+                });
+            },
+        );
+        Ok(())
+    }
+    fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
+        if ev.payload.get_str("tag") == Some("close") {
+            self.closes += 1;
+            return vec![crate::slot::emit(
+                "onClose",
+                Value::map([("count", Value::Int(self.closes))]),
+            )];
+        }
+        Vec::new()
+    }
 }
 
 // ---------------------------------------------------------------------------

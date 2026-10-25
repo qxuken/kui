@@ -5504,6 +5504,19 @@ const SCENE_TREES = {
         el('path', { d: 'M10 10 L20', bg: '#ffffff' }, [], 'bad'),
       ]),
     ]),
+  // docs/adr/0060: two cards an extension provides, the first holding the
+  // host's body and footer children; its close box raises onClose.
+  component: () =>
+    root({}, [
+      box({ width: 240, height: 160, pad: 8, gap: 6, bg: '#14161e' }, [
+        el('component', {
+          name: 'conf/card',
+          props: { title: 'Deploys', onClose: { kind: 'closed' } },
+          groups: { footer: [text('foot', { size: 10, color: '#8a8fa3' })] },
+        }, [text('body', { size: 12, color: '#d6d8e0' })], 'deploys'),
+        el('component', { name: 'conf/card', props: { title: 'Empty' } }),
+      ]),
+    ]),
   // docs/adr/0063-an-svg-element.md: an icon as paths, clickable; the
   // same by width; a gradient as an image; a covered badge; the icon as a
   // decorative image; markup that does not parse.
@@ -6227,9 +6240,16 @@ function quadDigest(buffer, clipBuffer) {
 /** The protocol every binding drives: a frame, then each replayed step
  *  followed by another frame, then the last frame's output. Mirrors
  *  `conformance::drive`. */
-function driveScene(env, steps, build) {
+// The corpus scenes that place what an extension provides, and the file
+// every adapter but Rust's loads for them (`conformance::wants_extension`,
+// `EXTENSION_FIXTURE`, `EXTENSION_NAMESPACE`).
+const EXTENSION_SCENES = ['component'];
+const EXTENSION_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'crates/kui-core/tests/fixtures/component/conf.lua');
+
+function driveScene(env, steps, build, name) {
   const ctx = new Ctx();
   ctx.setDiagnostics(true);
+  if (EXTENSION_SCENES.includes(name)) ctx.addExtension('conf', EXTENSION_FIXTURE);
   // Step 0 of the protocol: the window facts, before the first frame —
   // `<titlebar>` and `<windowButtons>` read them while that frame builds.
   // `null` is a scene at the corpus defaults, which is what a bare `Ctx`
@@ -6780,7 +6800,7 @@ test('every corpus scene lowers the way kui-core does', (t) => {
   for (const { name, env, steps, block } of blocks) {
     const build = SCENE_TREES[name];
     assert.ok(build, `no JSX scene for ${name} — every corpus scene needs one`);
-    const out = driveScene(env, steps, build);
+    const out = driveScene(env, steps, build, name);
     const actual = sceneReport(name, env, steps, out);
     assert.equal(actual, block, `scene ${name} lowers differently than kui-core does`);
     // The readback, beyond the `env` line the report already derives from
@@ -9885,6 +9905,65 @@ test('a .lua extension loads through addExtension, fills its slot and replies (A
     assert.equal(replies.length, 1, 'the script replied once');
     assert.equal(replies[0].origin, 1, 'with its origin');
     assert.throws(() => ctx.addExtension('bad', join(dir, 'missing.lua')), /missing\.lua/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a Lua component holds the host\'s children and its events arrive as the host\'s message (ADR 0060)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kui-lua-comp-'));
+  try {
+    writeFileSync(
+      join(dir, 'kit.lua'),
+      `fills = 0
+       components = {
+         card = function(env, props)
+           fills = fills + 1
+           return column { pad = 4, gap = 2,
+             text(props.title or 'card'), text('fills ' .. fills),
+             children(), children('footer') }
+         end,
+         button = function(env, props)
+           return row { width = 60, height = 20, on_click = { tag = 'pressed' },
+                        label = props.label or 'Kit button' }
+         end,
+       }
+       function on_event(ev)
+         if ev.tag == 'pressed' then return emit('onClick', { count = 1 }) end
+       end`,
+    );
+    const ctx = new Ctx();
+    ctx.setInspect(true);
+    ctx.addExtension('kit', join(dir, 'kit.lua'));
+    const enc = createEncoder(protocol());
+    const draw = () => {
+      const tree = box({ pad: 0, gap: 4 }, [
+        el('component', { name: 'kit/button', props: { label: 'Save', onClick: { save: true } } }),
+        el('component', { name: 'kit/card', props: { title: 'Deploys' }, groups: { footer: [text('foot')] } },
+          [text('from Node')], 'deploys'),
+      ]);
+      const { stream, strings } = enc.encode(tree);
+      ctx.frameBinary(400, 300, 1, stream, strings);
+    };
+    draw();
+    const names = ctx.accessTree().nodes;
+    assert.ok(names.find((n) => n.name === 'Save' && n.origin === 1), 'the kit drew its button');
+    draw();
+    const texts = ctx.nodes().filter((n) => n.text != null).map((n) => [n.text, n.origin]);
+    assert.deepEqual(
+      texts.filter(([t]) => ['Deploys', 'fills 1', 'from Node', 'foot'].includes(t)),
+      [['Deploys', 1], ['fills 1', 1], ['from Node', 0], ['foot', 0]],
+      'the host\'s children are the host\'s, and the unchanged card was replayed',
+    );
+    const button = names.find((n) => n.name === 'Save');
+    ctx.cursor(button.rect.x + 4, button.rect.y + 4);
+    ctx.mouse(true);
+    ctx.mouse(false);
+    draw();
+    const events = ctx.pollEvents().filter((e) => e.event === 'component');
+    assert.equal(events.length, 1, JSON.stringify(ctx.pollEvents()));
+    assert.equal(events[0].payload.save, true);
+    assert.deepEqual(events[0].payload.click, { count: 1 });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -792,6 +792,38 @@ scene_polygon :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// docs/adr/0060: two cards the corpus extension provides, loaded from conf.lua
+// for this scene; the first holds our body and footer children.
+Closed :: struct {
+	kind: string,
+}
+
+Card_Props :: struct {
+	title:   string,
+	key:     string,
+	onClose: Closed,
+}
+
+Title_Props :: struct {
+	title: string,
+}
+
+scene_component :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	if kui.box(ui, {width = kui.px(240), height = kui.px(160), pad = kui.pad(8), gap = 6, bg = 0x14161eff}) {
+		children :: proc(_: ^int, ui: ^kui.Ui, group: string) {
+			switch group {
+			case "":
+				kui.text(ui, "body", {size = 12, color = 0xd6d8e0ff})
+			case "footer":
+				kui.text(ui, "foot", {size = 10, color = 0x8a8fa3ff})
+			}
+		}
+		none := 0
+		kui.component_with(ui, "conf/card", Card_Props{title = "Deploys", key = "deploys", onClose = {kind = "closed"}}, &none, children)
+		kui.component(ui, "conf/card", Title_Props{title = "Empty"})
+	}
+}
+
 // docs/adr/0063: an icon as paths, clickable; the same by width; a gradient
 // as an image; a covered badge; the icon as a decorative image; markup that
 // does not parse.
@@ -2126,6 +2158,7 @@ SCENES := [?]Scene {
 	{"polygon", scene_polygon},
 	{"path", scene_path},
 	{"svg", scene_svg},
+	{"component", scene_component},
 	{"fragments", scene_fragments},
 	{"modal", scene_modal},
 	{"composite", scene_composite},
@@ -2535,6 +2568,11 @@ run_scene :: proc(scene: Scene, env: Env, steps: []Step, out: ^strings.Builder) 
 		)
 	}
 	f := fixtures(ui)
+	// The scenes that place a component load the corpus extension from its
+	// file (conformance::wants_extension), run from the repository root.
+	if scene.name == "component" && !kui.ctx_add_extension(ui, "conf", "crates/kui-core/tests/fixtures/component/conf.lua") {
+		fmt.eprintln("conformance: the corpus extension did not load")
+	}
 
 	events := strings.builder_make(context.temp_allocator)
 	cmds := strings.builder_make(context.temp_allocator)

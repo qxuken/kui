@@ -4843,9 +4843,9 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  * (examples/lua/features/slots/panel.lua), and the loader on the host's side is
  * kui_ffi::CExtension.
  *
- * YOU define these six; the library only calls them. Two are required -
+ * YOU define these seven; the library only calls them. Two are required -
  * kui_ext_abi and kui_ext_view - and the host refuses to load a plugin
- * without either. The other four are optional, and a missing one is not an
+ * without either. The other five are optional, and a missing one is not an
  * error:
  *
  *   kui_ext_abi      REQUIRED. Your KUI_ABI_VERSION. The host refuses a
@@ -4873,6 +4873,14 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  *                    Absent, or an empty array = you fill "root", once
  *                    after the host's view, where every extension drew
  *                    before slots existed.
+ *   kui_ext_components The components you provide (ADR 0060), the same
+ *                    shape as kui_ext_slots: placed by a host with
+ *                    kui_component as often as it likes, each instance drawn
+ *                    by kui_ext_view with the component's name as
+ *                    kui_slot_name and its props as kui_slot_params; call
+ *                    kui_children where the host's children go, and answer
+ *                    an event with kui_emit to raise one of its events.
+ *                    Absent = none.
  *   kui_ext_on_event One event of yours, payload borrowed for the call.
  *                    Answer the host from inside it with kui_reply, as
  *                    often as the event deserves.
@@ -4933,6 +4941,7 @@ KUI_EXT_EXPORT uint32_t kui_ext_abi(void);
 KUI_EXT_EXPORT const char *kui_ext_name(void);
 KUI_EXT_EXPORT void *kui_ext_init(void);
 KUI_EXT_EXPORT const KuiStr *kui_ext_slots(size_t *count);
+KUI_EXT_EXPORT const KuiStr *kui_ext_components(size_t *count);
 KUI_EXT_EXPORT void kui_ext_view(void *user, KuiCtx *ctx);
 KUI_EXT_EXPORT void kui_ext_on_event(void *user, const KuiEvent *ev);
 KUI_EXT_EXPORT void kui_ext_free(void *user);
@@ -4956,6 +4965,28 @@ const KuiValue *kui_slot_params(KuiCtx *ctx);
  * event that is not the one in progress, it does nothing and returns
  * false. */
 bool kui_reply(const KuiEvent *ev, const KuiValue *reply);
+/* One of your component's events, from inside kui_ext_on_event (ADR
+ * 0060): prop names the event prop the host passed its message in
+ * (onSelect or on_select - either finds the host's), fields what rides
+ * with it under the prop's field (NULL for nothing; you keep it). The host
+ * hears its own message, about the instance the event came from. */
+bool kui_emit(const KuiEvent *ev, KuiStr prop, const KuiValue *fields);
+/* Where the host's children of `group` go, from inside a component's
+ * kui_ext_view (ADR 0060); empty for the unnamed group. Once per group;
+ * elsewhere it builds nothing and raises children-misplaced. */
+void kui_children(KuiCtx *ctx, KuiStr group);
+
+/* A component an extension provides, placed at the cursor (ADR 0060): name
+ * is namespace/component; props (borrowed, NULL for none) is what its fill
+ * reads - "key" keys the instance, "fresh": true asks every frame, and its
+ * on* entries are the messages its events arrive as. children builds your
+ * own children where the component asks, with a context borrowing the
+ * frame for the call and the group (empty for the unnamed one); NULL for
+ * none. An unchanged instance is replayed without asking the extension.
+ * Returns a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+typedef void (*KuiChildrenFn)(void *user, KuiCtx *ctx, KuiStr group);
+int32_t kui_component(KuiCtx *ctx, KuiStr name, const KuiValue *props,
+                      KuiChildrenFn children, void *user);
 
 #ifdef __cplusplus
 }

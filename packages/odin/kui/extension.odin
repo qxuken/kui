@@ -18,6 +18,13 @@ import c "c"
 //     @(export) kui_ext_abi      :: proc "c" () -> u32 { return kui.ABI_VERSION }
 //     @(export) kui_ext_name     :: proc "c" () -> cstring { return "my panel" }
 //     @(export) kui_ext_slots    :: proc "c" (count: ^uint) -> [^]string { return kui.ext_slots(SLOTS[:], count) }
+//
+// and, for a plugin that provides components (docs/adr/0060), an eighth,
+// the same shape, drawn by kui_ext_view with the component's name as its
+// slot_name (children(ui, group) puts the host's children; emit(ev, prop,
+// fields) raises one of its events):
+//
+//     @(export) kui_ext_components :: proc "c" (count: ^uint) -> [^]string { return kui.ext_slots(COMPONENTS[:], count) }
 //     @(export) kui_ext_init     :: proc "c" () -> rawptr { return kui.ext_init(State, init) }
 //     @(export) kui_ext_view     :: proc "c" (user: rawptr, ui: ^kui.Ui) { kui.ext_view(user, ui, view) }
 //     @(export) kui_ext_on_event :: proc "c" (user: rawptr, ev: ^kui.Ext_Event) { kui.ext_on_event(user, ev, on_event) }

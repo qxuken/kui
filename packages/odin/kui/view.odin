@@ -312,3 +312,38 @@ devtools_tab_open :: proc(ui: ^Ui, name, label: string) -> bool {
 close_devtools_tab :: proc(ui: ^Ui, _, _: string, opened: bool) {
 	if opened do c.close(ui)
 }
+
+// -- Components (ADR 0060) ----------------------------------------------------
+
+// A component an extension provides, placed here and keyed by where it is
+// (or by "key" in props): name is namespace/component, props what its fill
+// reads - "fresh": true asks every frame, and its on* entries are the
+// messages its events arrive as. An unchanged instance is replayed without
+// asking the extension. Answers a slot fill code, -1 when nothing provides
+// it (unknown-component).
+// Rust: Ui::component.
+component :: proc(ui: ^Ui, name: string, props: any = nil) -> i32 {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return c.component(ui, name, borrow(&scratch, props), nil, nil)
+}
+
+// component with your own children: children builds the group the component
+// asks for (an empty group is the unnamed one), under your origin, keyed by
+// the instance and the group.
+component_with :: proc(ui: ^Ui, name: string, props: any, data: ^$T, children: proc(data: ^T, ui: ^Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^Ui, group: string),
+		ctx:      Saved_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return c.component(ui, name, borrow(&scratch, props), call, &b)
+}

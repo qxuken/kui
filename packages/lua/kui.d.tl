@@ -114,7 +114,7 @@ global type kui = record
   end
 
   enum EventKind
-    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "reply"
+    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "reply" "component"
   end
 
   enum DragEventPhase
@@ -1639,6 +1639,26 @@ global polygon: function(t: kui.polygon): kui.Node
 -- its box without one): the quad turns, the mask is drawn once (docs/adr/0041).
 -- `dash` and `dash_offset` cut the stroke as a line's do.
 global path: function(t: kui.path): kui.Node
+
+-- component("kit/card", { title = "Deploys", key = "deploys", on_close = { close = true } },
+-- { text("body"), footer = { button { label = "OK" } } }): a component an
+-- extension provides (docs/adr/0060), placed here and keyed by where it is
+-- (or by `key`); its events arrive as the messages in its `on_*` props.
+-- The third argument's list is the host children the component puts where
+-- it calls `children()`, a named group where it calls `children("footer")`.
+-- An instance whose props did not change is replayed; `fresh = true` asks
+-- every frame.
+global component: function(name: any, props: any, kids: any): kui.Node
+
+-- In a component's function (`components.card = function(env, props,
+-- inst) … end`): where the host's children of `group` go, the unnamed group
+-- without one.
+global children: function(group: any): kui.Node
+
+-- In `on_event`: raise the component's event `prop` ("on_close", or
+-- "onClose" — either spelling finds the host's) with `fields`, which the
+-- host hears as the message it passed for that prop.
+global emit: function(prop: any, fields: any): kui.Node
 
 -- svg { data = "<svg …>", label = "Search", color = "$accent" } or
 -- svg { src = "icons/search.svg", width = 16 }: an SVG document in a box

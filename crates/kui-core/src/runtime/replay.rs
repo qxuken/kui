@@ -191,6 +191,23 @@ pub(crate) enum Op {
         name: Box<str>,
         params: Value,
     },
+    /// The host's children of a group, asked for here by an instance's
+    /// fill (ADR 0060): built again on replay by the host's own builder,
+    /// which the frame's placement hands in.
+    Children(Box<str>),
+    /// A component the fill placed, with no children of its own: placed
+    /// again on replay, and filled or replayed by its own lights.
+    Component {
+        name: Box<str>,
+        props: Value,
+    },
+}
+
+/// Under what a fill is kept: a slot by its full name, an instance by its
+/// key (ADR 0060).
+pub(crate) enum KeepAs {
+    Slot(String),
+    Instance,
 }
 
 /// A fact of the frame a kept fill read, with what it read: the replay
@@ -247,7 +264,7 @@ pub(crate) const ONCE_ACCENT: u8 = 4;
 
 /// The fill being kept, while it runs.
 pub(crate) struct Recording {
-    name: String,
+    name: KeepAs,
     slot_key: Key,
     origin: OriginId,
     params: Value,
@@ -425,7 +442,15 @@ impl Core {
         if self.recording.is_some() {
             return;
         }
-        self.keep_next = Some((name.to_owned(), key, params.clone()));
+        self.keep_next = Some((KeepAs::Slot(name.to_owned()), key, params.clone()));
+    }
+
+    /// [`Self::keep_next_fill`] for a component instance, kept by its key.
+    pub(crate) fn keep_next_instance(&mut self, key: Key, props: &Value) {
+        if self.recording.is_some() {
+            return;
+        }
+        self.keep_next = Some((KeepAs::Instance, key, props.clone()));
     }
 
     /// Nothing filled the slot asked for: the ask lapses.
@@ -483,7 +508,14 @@ impl Core {
             taint: r.taint,
             frame: self.frame_no,
         };
-        self.kept.insert(r.name, kept);
+        match r.name {
+            KeepAs::Slot(name) => {
+                self.kept.insert(name, kept);
+            }
+            KeepAs::Instance => {
+                self.kept_instances.insert(kept.slot_key, kept);
+            }
+        }
     }
 
     /// The first fact the kept fill read that reads otherwise now, as
@@ -585,6 +617,48 @@ impl Core {
         self.kept.insert(name.to_owned(), kept);
     }
 
+    /// [`Self::take_replayable`] for the component instance at `key`.
+    pub(crate) fn take_replayable_instance(
+        &mut self,
+        key: Key,
+        props: &Value,
+    ) -> Result<Kept, (SlotFill, Option<String>)> {
+        let Some(kept) = self.kept_instances.remove(&key) else {
+            return Err((SlotFill::NotKept, None));
+        };
+        if let Some(why) = kept.taint {
+            return Err((SlotFill::NotReplayable, Some(why.to_owned())));
+        }
+        if kept.params != *props {
+            return Err((SlotFill::Params, None));
+        }
+        if let Some(moved) = self.first_moved(&kept.reads) {
+            return Err((SlotFill::Reads, Some(moved)));
+        }
+        Ok(kept)
+    }
+
+    /// [`Self::replay`] for a component instance: the host's `children`
+    /// build their groups again where the kept fill asked for them.
+    pub(crate) fn replay_instance(
+        &mut self,
+        slot: &Slot<'_>,
+        mut kept: Kept,
+        filler: Option<&mut dyn crate::slot::Fill>,
+        children: &mut dyn crate::slot::Children,
+    ) {
+        let origin = kept.origin;
+        let ops = std::mem::take(&mut kept.ops);
+        self.fill_instance(slot, origin, filler, children, |ui| {
+            for op in &ops {
+                replay_op(ui, op);
+            }
+        });
+        kept.ops = ops;
+        kept.frame = self.frame_no;
+        self.kept_instances.insert(slot.key, kept);
+    }
+
     /// The last answer `Ui::slot_replay` gave for `name` this frame, or
     /// the frame before while this one is being built — for a host's
     /// own ledger of what its panes cost, and for a test.
@@ -646,6 +720,12 @@ impl Core {
     pub(crate) fn replay_finish_frame(&mut self) {
         let now = self.frame_no;
         self.kept.retain(|_, k| k.frame == now);
+        self.kept_instances.retain(|_, k| k.frame == now);
+    }
+
+    /// How many nodes the instance at `key` kept, if it kept any.
+    pub fn instance_kept_nodes(&self, key: Key) -> Option<usize> {
+        self.kept_instances.get(&key).map(Kept::nodes)
     }
 }
 
@@ -722,6 +802,10 @@ fn replay_op(ui: &mut Ui<'_>, op: &Op) {
         Op::KeyFocus(key) => core.set_key_focus(Some(*key)),
         Op::Slot { name, params } => {
             ui.slot_with(name, params);
+        }
+        Op::Children(group) => ui.children(group),
+        Op::Component { name, props } => {
+            ui.component(name, props);
         }
     }
 }

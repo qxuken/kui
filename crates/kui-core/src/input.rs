@@ -1512,6 +1512,10 @@ pub enum EventKind {
     /// An extension's message to whoever placed its slot (ADR 0014): the
     /// payload is the message as the extension sent it.
     Reply,
+    /// A component's event (ADR 0060): the message its host passed for
+    /// the event prop, with what the extension sent under the prop's
+    /// field (`onSelect`'s data under `select`).
+    Component,
 }
 
 impl EventKind {
@@ -1548,6 +1552,7 @@ impl EventKind {
         EventKind::Capture,
         EventKind::Dismiss,
         EventKind::Reply,
+        EventKind::Component,
     ];
 
     /// The wire name: what `ev.event` reads in every binding, a root
@@ -1585,6 +1590,7 @@ impl EventKind {
             EventKind::Capture => "capture",
             EventKind::Dismiss => "dismiss",
             EventKind::Reply => "reply",
+            EventKind::Component => "component",
         }
     }
 
@@ -1693,6 +1699,47 @@ impl UiEvent {
             key,
             event,
             payload,
+            slot: None,
+            taken,
+            data: has_data,
+            fact: false,
+        }
+    }
+
+    /// A component instance's event (ADR 0060): the host's `message` for
+    /// the event prop, as a node's declared event carries one (a map as it
+    /// is, anything else under `tag`), with `data` under `field` — the
+    /// prop's name less its `on` (`select` for `onSelect`) — unless it is
+    /// null. Addressed to `origin`, the placer, about the instance `key`.
+    pub fn component(
+        origin: OriginId,
+        key: Key,
+        message: &Value,
+        field: &str,
+        data: Value,
+    ) -> Self {
+        let mut entries = match message {
+            Value::Map(own) => own.clone(),
+            Value::Null => Vec::new(),
+            other => vec![("tag".to_string(), other.clone())],
+        };
+        let has_data = data != Value::Null;
+        let mut taken = false;
+        if has_data {
+            match entries.iter_mut().find(|(k, _)| k == field) {
+                Some(slot) => {
+                    slot.1 = data;
+                    taken = true;
+                }
+                None => entries.push((field.to_string(), data)),
+            }
+        }
+        Self {
+            origin,
+            window: WindowId::MAIN,
+            key,
+            event: EventKind::Component,
+            payload: Value::Map(entries),
             slot: None,
             taken,
             data: has_data,

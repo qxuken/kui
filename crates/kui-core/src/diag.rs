@@ -460,6 +460,15 @@ warnings! {
     /// paths that make one name. The message names the token's DTCG path;
     /// the rest of the file landed.
     pub const DTCG_SKIPPED: &str = "dtcg-skipped";
+    /// A host placed a component (ADR 0060) that no loaded extension
+    /// provides: no extension under its namespace, or one that does not
+    /// list the name in its `components`. Nothing is drawn where it was
+    /// placed. Raised once per name and key.
+    pub const UNKNOWN_COMPONENT: &str = "unknown-component";
+    /// A fill asked for its host's children (`children()`) where they
+    /// cannot be: outside a component instance's fill — a slot's — or a
+    /// second time for one group. Nothing is built.
+    pub const CHILDREN_MISPLACED: &str = "children-misplaced";
     /// An `svg` element's document did not parse (ADR 0063): the message
     /// carries the parser's reason. The element draws an empty box of the
     /// size its spec gives. Raised once per key.
@@ -594,6 +603,40 @@ pub fn unknown_slot(extension: &str, namespace: &str, slot: &str) -> Warning {
     }
 }
 
+/// The [`UNKNOWN_COMPONENT`] warning for an instance of `name` at `key`.
+pub fn unknown_component(name: &str, key: Key) -> Warning {
+    let (ns, short) = crate::slot::split_name(name);
+    Warning {
+        code: UNKNOWN_COMPONENT,
+        key,
+        message: if ns.is_empty() {
+            format!(
+                "component `{name}` has no namespace: place it as `namespace/{name}`, the \
+                 namespace the host loaded its extension under"
+            )
+        } else {
+            format!(
+                "no extension loaded as `{ns}` provides a component `{short}`, so nothing is \
+                 drawn here; load one, or check the name against its `components`"
+            )
+        },
+    }
+}
+
+/// The [`CHILDREN_MISPLACED`] warning: `why` says which way.
+pub fn children_misplaced(key: Key, group: &str, why: &str) -> Warning {
+    let name = if group.is_empty() {
+        "the host's children".to_string()
+    } else {
+        format!("the host's `{group}` children")
+    };
+    Warning {
+        code: CHILDREN_MISPLACED,
+        key,
+        message: format!("{name} were asked for {why}, so nothing was built"),
+    }
+}
+
 /// The [`SVG_MALFORMED`] warning for an `svg` element at `key`.
 pub fn svg_malformed(key: Key, why: &str) -> Warning {
     Warning {
@@ -722,6 +765,21 @@ pub fn recursive_slot(extension: &str, slot: &str, slot_key: Key) -> Warning {
             "extension `{extension}` declared slot {slot:?} while it was drawing, which is its \
              own; it was left empty, since filling it would mean calling `{extension}` inside \
              itself. An extension may declare the slots of extensions it loaded — not its own"
+        ),
+    }
+}
+
+/// The [`RECURSIVE_SLOT`] warning for a component an extension placed of
+/// its own while drawing (ADR 0060).
+pub fn recursive_component(extension: &str, name: &str, key: Key) -> Warning {
+    Warning {
+        code: RECURSIVE_SLOT,
+        key: key.str(RECURSIVE_SLOT),
+        message: format!(
+            "extension `{extension}` placed its own component {name:?} while it was drawing; \
+             the list cannot ask `{extension}` inside itself, so it was left empty — place it \
+             with `Ui::component_by` (the bindings do for their own namespace), or draw it \
+             inline"
         ),
     }
 }

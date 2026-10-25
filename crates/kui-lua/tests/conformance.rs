@@ -721,6 +721,16 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // second is keyed with a tooltip, the ring is the flat op form, the cubic is a
         // stroke alone, the triangle is both and faded, and the last does not
         // parse. Data is `conformance::PATH_*` to the character.
+        "component" => r#"
+            return column { width = 240, height = 160, pad = 8, gap = 6, bg = 0x14161eff,
+              component("conf/card", { title = "Deploys", key = "deploys",
+                                       on_close = { kind = "closed" } },
+                { text("body", { size = 12, color = 0xd6d8e0ff }),
+                  footer = { text("foot", { size = 10, color = 0x8a8fa3ff }) } }),
+              component("conf/card", { title = "Empty" }),
+            }
+        "#
+        .to_string(),
         "svg" => r##"
             local icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21L16.65 16.65"/></svg>'
             local bar = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#d8863b"/><stop offset="1" stop-color="#7f9cf5"/></linearGradient></defs><rect width="40" height="20" rx="4" fill="url(#g)"/></svg>'
@@ -1300,17 +1310,37 @@ fn every_scene_lowers_identically_from_lua() {
         let source = lua_source(scene, &f);
         let mut ext = LuaExtension::from_source(scene.name, &source)
             .unwrap_or_else(|e| panic!("{}: {e}", scene.name));
-        let out = conformance::drive(&mut core, scene.env, scene.steps, |ui, phase| {
-            // A script has no `env` reading for "which phase of a scene is
-            // this"; the host seeds one, which is what a real host does
-            // with any fact the core does not carry.
-            ext.lua()
-                .globals()
-                .set("phase", phase)
-                .unwrap_or_else(|e| panic!("{}: {e}", scene.name));
-            ext.view(&Slot::root(), ui)
-                .unwrap_or_else(|e| panic!("{}: {e}", scene.name))
+        // The scenes that place a component load the corpus extension
+        // from its file, as every host but Rust's reference does.
+        let mut exts = conformance::wants_extension(scene).then(|| {
+            let mut exts = kui_core::Extensions::new();
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join(conformance::EXTENSION_FIXTURE);
+            exts.push_as(
+                conformance::EXTENSION_NAMESPACE,
+                Box::new(LuaExtension::from_path(&path).expect("the corpus extension loads")),
+            )
+            .unwrap();
+            exts
         });
+        let out = conformance::drive_with(
+            &mut core,
+            exts.as_mut(),
+            scene.env,
+            scene.steps,
+            |ui, phase| {
+                // A script has no `env` reading for "which phase of a scene is
+                // this"; the host seeds one, which is what a real host does
+                // with any fact the core does not carry.
+                ext.lua()
+                    .globals()
+                    .set("phase", phase)
+                    .unwrap_or_else(|e| panic!("{}: {e}", scene.name));
+                ext.view(&Slot::root(), ui)
+                    .unwrap_or_else(|e| panic!("{}: {e}", scene.name))
+            },
+        );
         let actual = conformance::report(scene.name, scene.env, scene.steps, &out);
 
         assert_eq!(

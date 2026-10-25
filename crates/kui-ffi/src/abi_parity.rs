@@ -141,6 +141,7 @@ c_type! {
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
     KuiWaker => "KuiWaker",
     ViewFn => "KuiViewFn",
+    Option<crate::types::ChildrenFn> => "KuiChildrenFn",
 }
 #[cfg(feature = "runner")]
 c_type! {
