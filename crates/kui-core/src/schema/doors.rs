@@ -503,13 +503,19 @@ pub const DOORS: &[Door] = &[
     },
     Door {
         rust: "Ui::is_group_hovered",
-        c: As(
-            "`hoverBg` / `pressedBg` on a `hoverGroup` member paint it; the reader is what the Rust widgets ask when they paint by hand",
-        ),
-        odin: As("`hover_bg` / `pressed_bg` on a `hover_group` member paint it"),
-        node: As("the same form as C's"),
-        lua: As("the same form as C's"),
-        doc: "Whether any member of a hover group is hovered (`is_group_pressed` the same for a press).",
+        c: Is("kui_is_group_hovered"),
+        odin: Is("is_group_hovered"),
+        node: Is("isGroupHovered"),
+        lua: Is("is_group_hovered"),
+        doc: "Whether any member of a hover group is hovered: Rust takes the id (`NodeSpec::hover_group_id`), every binding the `hoverGroup` name. `hoverBg` on a member paints it without asking.",
+    },
+    Door {
+        rust: "Ui::is_group_pressed",
+        c: Is("kui_is_group_pressed"),
+        odin: Is("is_group_pressed"),
+        node: Is("isGroupPressed"),
+        lua: Is("is_group_pressed"),
+        doc: "Whether any member of a hover group holds a press (backlog C92), by id in Rust and by name elsewhere: what a widget drawn from several pieces styles its pressed state from; `pressedBg` on a member paints it without asking.",
     },
     Door {
         rust: "Core::cursor",

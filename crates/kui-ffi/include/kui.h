@@ -447,8 +447,9 @@ extern "C" {
  * was placed in; and KuiEvent appends `from`, the namespace of the
  * provider that raised a component event (80 bytes on 64-bit, from 64).
  * And KuiSpec appends focus_ring (816 bytes on 64-bit, from 808), the core
- * focus ring's colour (backlog C93); kui_tab_moves_focus (backlog C99) is
- * a new function.
+ * focus ring's colour (backlog C93); kui_tab_moves_focus (backlog C99),
+ * kui_is_group_hovered and kui_is_group_pressed (backlog C92) are new
+ * functions.
  */
 #define KUI_ABI_VERSION 39u
 uint32_t kui_abi_version(void);
@@ -3881,6 +3882,10 @@ void kui_cells(KuiCtx *ctx, KuiStr label, uint32_t rows, uint32_t cols,
 uint64_t kui_child_key(KuiCtx *ctx, KuiStr label);
 bool kui_is_hovered(KuiCtx *ctx, uint64_t key);
 bool kui_is_pressed(KuiCtx *ctx, uint64_t key);
+/* A hover group (KuiSpec.hover_group) by its name: whether any member is
+ * hovered, or holds a press (backlog C92). */
+bool kui_is_group_hovered(KuiCtx *ctx, KuiStr group);
+bool kui_is_group_pressed(KuiCtx *ctx, KuiStr group);
 /* Whether dragged files are over `key`, for drop-dependent
  * layout; the colour is KuiSpec.drop_bg. */
 bool kui_is_drop_target(KuiCtx *ctx, uint64_t key);

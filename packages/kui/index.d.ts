@@ -3831,6 +3831,16 @@ export declare class Ctx {
    */
   isPressed(key: string): boolean
   /**
+   * Whether any member of the hover group `group` (the
+   * `hoverGroup` name) is hovered, as of the last frame.
+   */
+  isGroupHovered(group: string): boolean
+  /**
+   * Whether any member of the hover group `group` holds a
+   * press, as of the last frame (backlog C92).
+   */
+  isGroupPressed(group: string): boolean
+  /**
    * Whether files dragged in from the OS are over `key` — for
    * drop-dependent layout; the colour swap is the
    * `dropBg` prop. `key` is either spelling, as for `isHovered`.
@@ -5470,6 +5480,16 @@ export declare class KuiWindow {
    * as for `isHovered`.
    */
   isPressed(key: string): boolean
+  /**
+   * Whether any member of the hover group `group` (the
+   * `hoverGroup` name) is hovered, as of the last frame.
+   */
+  isGroupHovered(group: string): boolean
+  /**
+   * Whether any member of the hover group `group` holds a
+   * press, as of the last frame (backlog C92).
+   */
+  isGroupPressed(group: string): boolean
   /**
    * Whether files dragged in from the OS are over `key` — for
    * drop-dependent layout; the colour swap is the

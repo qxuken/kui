@@ -1462,6 +1462,10 @@ global type kui = record
     is_drop_target: function(key: KeyRef): boolean
     -- The drop zone the dragged files are over, if any — what a driver answers the OS with, and what a test reads to say a zone was found (ADR 0031, decision 5).
     drop_target: function(): integer
+    -- Whether any member of a hover group is hovered: Rust takes the id (`NodeSpec::hover_group_id`), every binding the `hoverGroup` name. `hoverBg` on a member paints it without asking.
+    is_group_hovered: function(group: string): boolean
+    -- Whether any member of a hover group holds a press (backlog C92), by id in Rust and by name elsewhere: what a widget drawn from several pieces styles its pressed state from; `pressedBg` on a member paints it without asking.
+    is_group_pressed: function(group: string): boolean
     -- Where layout put a node last frame (backlog C26).
     layout_of: function(key: KeyRef): Rect
     -- A scrolling node's offset.

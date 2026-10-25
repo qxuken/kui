@@ -78,6 +78,8 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("is_focused", "key: KeyRef", "boolean"),
     ("is_hovered", "key: KeyRef", "boolean"),
     ("is_pressed", "key: KeyRef", "boolean"),
+    ("is_group_hovered", "group: string", "boolean"),
+    ("is_group_pressed", "group: string", "boolean"),
     ("is_drop_target", "key: KeyRef", "boolean"),
     ("drop_target", "", "integer"),
     ("label_of", "key: KeyRef", "string"),

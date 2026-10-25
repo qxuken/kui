@@ -238,7 +238,9 @@ static void surface_view(void *user, KuiCtx *ui) {
             .role = KUI_ROLE_IMAGE, .label = KUI_STR("swatch"),
         };
         kui_image(ui, k->image, &pic);
-        if (kui_is_hovered(ui, k->card) || kui_is_pressed(ui, k->card)) {
+        if (kui_is_hovered(ui, k->card) || kui_is_pressed(ui, k->card)
+            || kui_is_group_hovered(ui, KUI_STR("card"))
+            || kui_is_group_pressed(ui, KUI_STR("card"))) {
             kui_tooltip(ui, KUI_STR("the card"));
         } else {
             kui_tooltip_with(ui, body_text, (void *)"custom tip");

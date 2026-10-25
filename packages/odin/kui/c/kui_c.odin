@@ -1327,6 +1327,8 @@ foreign lib {
 	child_key :: proc(ctx: ^Ctx, label: string) -> u64 ---
 	is_hovered :: proc(ctx: ^Ctx, key: u64) -> bool ---
 	is_pressed :: proc(ctx: ^Ctx, key: u64) -> bool ---
+	is_group_hovered :: proc(ctx: ^Ctx, group: string) -> bool ---
+	is_group_pressed :: proc(ctx: ^Ctx, group: string) -> bool ---
 	is_drop_target :: proc(ctx: ^Ctx, key: u64) -> bool ---
 	drop_target :: proc(ctx: ^Ctx) -> u64 ---
 	measure_text :: proc(ctx: ^Ctx, text: string, style: ^TextStyle, max_w: f32, out: ^TextMetrics) -> bool ---

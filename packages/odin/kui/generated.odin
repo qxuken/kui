@@ -3354,6 +3354,21 @@ is_pressed :: proc(ui: ^Ui, key: u64) -> bool {
 	return c.is_pressed(ui, key)
 }
 
+// Whether any member of a hover group is hovered: Rust takes the id
+// (`NodeSpec::hover_group_id`), every binding the `hoverGroup` name.
+// Rust: Ui::is_group_hovered.
+is_group_hovered :: proc(ui: ^Ui, group: string) -> bool {
+	return c.is_group_hovered(ui, group)
+}
+
+// Whether any member of a hover group holds a press (backlog C92), by id in
+// Rust and by name elsewhere: what a widget drawn from several pieces styles
+// its pressed state from; `pressedBg` on a member paints it without asking.
+// Rust: Ui::is_group_pressed.
+is_group_pressed :: proc(ui: ^Ui, group: string) -> bool {
+	return c.is_group_pressed(ui, group)
+}
+
 // Whether files dragged in from the OS are over a node (ADR 0031) — for
 // drop-dependent layout; the colour is `drop_bg`.
 // Rust: Ui::is_drop_target.

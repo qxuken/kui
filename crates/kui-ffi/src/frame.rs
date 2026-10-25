@@ -1287,6 +1287,26 @@ pub extern "C" fn kui_is_pressed(ptr: *mut KuiCtx, key: u64) -> bool {
     })
 }
 
+/// Whether any member of the hover group `group` (a `hover_group` name) is
+/// hovered.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_is_group_hovered(ptr: *mut KuiCtx, group: KuiStr) -> bool {
+    guard(false, || {
+        let id = kui_core::NodeSpec::hover_group_id(&kstr(group));
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_group_hovered(id))
+    })
+}
+
+/// Whether any member of the hover group `group` holds a press (backlog
+/// C92).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_is_group_pressed(ptr: *mut KuiCtx, group: KuiStr) -> bool {
+    guard(false, || {
+        let id = kui_core::NodeSpec::hover_group_id(&kstr(group));
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_group_pressed(id))
+    })
+}
+
 /// Finishes the frame: lets loaded extensions fill what the view did not,
 /// lays the tree out and paints it. After it, [`kui_draw_data`] has the
 /// frame and [`kui_poll_event`] has anything the frame itself produced (a

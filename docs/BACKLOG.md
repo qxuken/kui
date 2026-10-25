@@ -3648,14 +3648,7 @@ in every binding.
 
 - `.` **C91** — [A child that only declares a cursor or hover takes the press](backlog/closed-2026-09.md#-c91--a-child-that-only-declares-a-cursor-or-hover-takes-the-press--done-2026-10-26) — done (2026-10-26) — a press on a node that takes none goes to the nearest ancestor that does (`HitRegion::press_to`); hover unchanged
 
-### `.` C92 — Lua has no `is_group_pressed`
-
-Rust has it; Kit had to read a pressed group another way. **Do.** The door
-in Lua (and Node, C, Odin where missing), pinned in DOORS.
-
-- `.` **C93** — [A key sink draws no focus ring](backlog/closed-2026-09.md#-c93--a-key-sink-draws-no-focus-ring--done-2026-10-26) — done (2026-10-26) — a focused sink draws the core ring when focus is keyboard-visible; a key a sink takes shows the focus; `focusRing` colours the ring down a subtree (transparent turns it off)
-
-- `.` **C94** — [An editor's key events carry no Ctrl](backlog/closed-2026-09.md#-c94--an-editors-key-events-carry-no-ctrl--done-2026-10-26) — done (2026-10-26) — `Mods::ctrl` on the editing channel and in the `boundary` event; Ctrl+Tab is `ctrl`, not a stand-in `doc`
+- `.` **C92** — [Lua has no `is_group_pressed`](backlog/closed-2026-09.md#-c92--lua-has-no-is_group_pressed--done-2026-10-26) — done (2026-10-26) — `is_group_hovered` / `is_group_pressed` by name in Lua, Node, C and Odin, pinned in DOORS
 
 - `.` **C95** — [Lua cannot reduce a channel](backlog/closed-2026-09.md#-c95--lua-cannot-reduce-a-channel--done-2026-10-26) — done (2026-10-26) — `Channel::reduce` (min/max/first/last and their rows per bucket) with doors in Lua, Node, C and Odin; 100k rows into 720 in ~0.1 ms
 - `.` **C96** — [A path whose `d` changes costs far more than its size](backlog/closed-2026-09.md#-c96--a-path-whose-d-changes-costs-far-more-than-its-size--done-2026-10-26) — done (2026-10-26) — zeno's cell walk over kui's own storage (cells sorted by row once): the 1,400-vertex zigzag 1.65 s → 6 ms, masks the same to the byte
@@ -5634,3 +5627,4 @@ move.
 - `.` **C91** — [A child that only declares a cursor or hover takes the press](backlog/closed-2026-09.md#-c91--a-child-that-only-declares-a-cursor-or-hover-takes-the-press--done-2026-10-26) — done (2026-10-26) — a press on a node that takes none goes to the nearest ancestor that does (`HitRegion::press_to`); hover unchanged
 - `.` **C93** — [A key sink draws no focus ring](backlog/closed-2026-09.md#-c93--a-key-sink-draws-no-focus-ring--done-2026-10-26) — done (2026-10-26) — a focused sink draws the core ring when focus is keyboard-visible; a key a sink takes shows the focus; `focusRing` colours the ring down a subtree (transparent turns it off)
 - `.` **C94** — [An editor's key events carry no Ctrl](backlog/closed-2026-09.md#-c94--an-editors-key-events-carry-no-ctrl--done-2026-10-26) — done (2026-10-26) — `Mods::ctrl` on the editing channel and in the `boundary` event; Ctrl+Tab is `ctrl`, not a stand-in `doc`
+- `.` **C92** — [Lua has no `is_group_pressed`](backlog/closed-2026-09.md#-c92--lua-has-no-is_group_pressed--done-2026-10-26) — done (2026-10-26) — `is_group_hovered` / `is_group_pressed` by name in Lua, Node, C and Odin, pinned in DOORS

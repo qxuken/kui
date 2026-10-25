@@ -1499,6 +1499,24 @@ fn env_table(
             Ok(ui.is_pressed(key))
         })?,
     )?;
+    // A hover group (`hover_group = "name"`) by its name: any member hovered,
+    // or holding a press (backlog C92) — what a widget drawn from several
+    // pieces styles itself from, the way the core paints `hover_bg` /
+    // `pressed_bg` on a member.
+    t.set(
+        "is_group_hovered",
+        lua.create_function(move |_, group: String| {
+            let ui = ui.borrow_mut()?;
+            Ok(ui.is_group_hovered(kui_core::NodeSpec::hover_group_id(&group)))
+        })?,
+    )?;
+    t.set(
+        "is_group_pressed",
+        lua.create_function(move |_, group: String| {
+            let ui = ui.borrow_mut()?;
+            Ok(ui.is_group_pressed(kui_core::NodeSpec::hover_group_id(&group)))
+        })?,
+    )?;
     // Files dragged in from the OS are over this node (ADR 0031): for
     // drop-dependent *layout*; the colour swap is the `drop_bg` prop.
     t.set(
@@ -7941,6 +7959,47 @@ mod tests {
         });
         frame(&mut core, &mut ext);
         assert!(!pressed(&ext), "released");
+    }
+
+    /// `env.is_group_hovered(name)` / `env.is_group_pressed(name)` read a
+    /// hover group by the name its members declare (backlog C92): a press
+    /// on one member is the group's.
+    #[test]
+    fn scripts_read_a_hover_groups_state_by_name() {
+        let mut ext = LuaExtension::from_source(
+            "group",
+            r#"
+                function view(env)
+                  g_hovered = env.is_group_hovered("knob")
+                  g_pressed = env.is_group_pressed("knob")
+                  return column { key = "root", pad = 10,
+                    row { key = "track", width = 100, height = 20, hover_group = "knob",
+                          hover_bg = 0x333333ff, on_click = "t" },
+                    row { key = "handle", width = 20, height = 20, hover_group = "knob",
+                          hover_bg = 0x444444ff },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let get = |ext: &LuaExtension, k: &str| ext.lua.globals().get::<bool>(k).unwrap();
+        frame(&mut core, &mut ext);
+        assert!(!get(&ext, "g_hovered") && !get(&ext, "g_pressed"));
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(20.0, 20.0)));
+        frame(&mut core, &mut ext);
+        assert!(get(&ext, "g_hovered") && !get(&ext, "g_pressed"));
+        core.handle_input(InputEvent::MouseDown {
+            button: kui_core::MouseButton::Primary,
+            clicks: 1,
+        });
+        frame(&mut core, &mut ext);
+        assert!(get(&ext, "g_pressed"), "a member's press is the group's");
+        core.handle_input(InputEvent::MouseUp {
+            button: kui_core::MouseButton::Primary,
+        });
+        frame(&mut core, &mut ext);
+        assert!(!get(&ext, "g_pressed"));
     }
 
     /// `env.is_drop_target(key)` and `env.drop_target()` beside the trio

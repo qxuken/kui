@@ -4082,6 +4082,22 @@ macro_rules! core_methods {
                 Ok(self.$core().is_pressed(key))
             }
 
+            /// Whether any member of the hover group `group` (the
+            /// `hoverGroup` name) is hovered, as of the last frame.
+            #[napi]
+            pub fn is_group_hovered(&mut self, group: String) -> bool {
+                self.$core()
+                    .is_group_hovered(kui_core::NodeSpec::hover_group_id(&group))
+            }
+
+            /// Whether any member of the hover group `group` holds a
+            /// press, as of the last frame (backlog C92).
+            #[napi]
+            pub fn is_group_pressed(&mut self, group: String) -> bool {
+                self.$core()
+                    .is_group_pressed(kui_core::NodeSpec::hover_group_id(&group))
+            }
+
             /// Whether files dragged in from the OS are over `key` — for
             /// drop-dependent layout; the colour swap is the
             /// `dropBg` prop. `key` is either spelling, as for `isHovered`.

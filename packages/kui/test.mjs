@@ -7725,6 +7725,28 @@ test('uniformList says what it needs rather than drawing nothing', () => {
   assert.throws(() => uniformList(ctx, { key: 'l', rows: 10, rowH: 10 }), /row builder/);
 });
 
+// A hover group read by the name its members declare (backlog C92): a press
+// on one member is the group's.
+test('isGroupHovered and isGroupPressed read a hover group by name', () => {
+  const view = () =>
+    box({ pad: 10 }, [
+      box({ width: 100, height: 20, hoverGroup: 'knob', hoverBg: '#333333', onClick: 't' }, [], 'track'),
+      box({ width: 20, height: 20, hoverGroup: 'knob', hoverBg: '#444444' }, [], 'handle'),
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, view());
+  assert.equal(ctx.isGroupHovered('knob'), false);
+  ctx.cursor(20, 20);
+  ctx.frame(320, 240, 1, view());
+  assert.equal(ctx.isGroupHovered('knob'), true);
+  assert.equal(ctx.isGroupPressed('knob'), false);
+  ctx.mouse(true);
+  assert.equal(ctx.isGroupPressed('knob'), true, 'a member pressed');
+  ctx.mouse(false);
+  assert.equal(ctx.isGroupPressed('knob'), false);
+  assert.equal(ctx.isGroupPressed('nothing'), false);
+});
+
 test('a query answers for a label no frame declared; a command still throws', () => {
   // Both spellings name a node, but the two kinds of call want different
   // answers for "nothing is called that". A query has one already — false,

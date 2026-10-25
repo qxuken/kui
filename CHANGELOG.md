@@ -287,6 +287,13 @@ for lua-language-server, and a new runner beside the window's.
   *What you can delete:* a `ch:column` copied into a script to bucket
   it, and the bucketing loop.
 
+- **A hover group read by its name in every binding** (backlog C92):
+  Lua `env.is_group_hovered(name)` and `env.is_group_pressed(name)`,
+  Node `isGroupHovered(name)` and `isGroupPressed(name)`, C
+  `kui_is_group_hovered(ctx, name)` and `kui_is_group_pressed(ctx,
+  name)`, Odin `is_group_hovered` and `is_group_pressed`, beside Rust's
+  `Ui::is_group_hovered` / `is_group_pressed` by id, and pinned in
+  `schema::DOORS`. Kit read a pressed group another way.
 - **The core focus ring in an app's colour** (backlog C93): `focusRing`
   (Lua and Rust `focus_ring`, C `KuiSpec.focus_ring`, Odin
   `Spec.focus_ring`) colours the ring for the node and everything under
