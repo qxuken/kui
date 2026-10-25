@@ -1565,6 +1565,10 @@ export interface UiEvent<A = AppMsg> {
    *  cannot say which; this is what routes an event by the instance it
    *  came from (ADR 0067). */
   instance: string | null;
+  /** The namespace of the extension that raised a component's event — what
+   *  tells a slot's contributors apart, since each raises the view's one
+   *  message (ADR 0067) — or null for any other event. */
+  from: string | null;
 }
 
 /** Window inner size in logical px plus the device pixel ratio. */

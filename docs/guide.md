@@ -225,6 +225,12 @@ replayed while its props and what it read stay the same; an extension that
 provides nothing but `view` is its component `root`, drawn after the
 host's view unless the host places `fs/root` itself.
 
+Where the host does not know who will draw — a toolbar plugins add
+buttons to — it declares a **slot** instead: `ui.slot("app.toolbar",
+&props)` places every component the loaded extensions contribute to that
+name (`contributes = { ["app.toolbar"] = "save" }` in Lua), side by side,
+each with the props, and `from` on an event says which of them raised it.
+
 The same functions from C, because the extension contract is the contract
 and the language is a detail — `kui_ffi::CExtension` `dlopen`s a shared
 library and hands it the same share of the frame
@@ -254,9 +260,10 @@ resolved from the host executable at load, the way a Lua C module resolves
 
 ## Reference
 
-[The book](https://kui-book.qxuken.dev) ([docs/book](book/src/SUMMARY.md) in the repository) is the path in: fourteen short
+[The book](https://kui-book.qxuken.dev) ([docs/book](book/src/SUMMARY.md) in the repository) is the path in: sixteen short
 chapters, one concept each, every code block pulled from a step under
-`examples/rust/tutorial` so it cannot go stale
+`examples/rust/tutorial` (and the runner chapter's from an app under
+`examples/lua/tutorial`) so it cannot go stale
 ([ADR 0039](adr/0039-a-tutorial-is-a-sequence.md)). It is written for
 the reader who has none of the names yet; the two documents below are
 for the reader who has.

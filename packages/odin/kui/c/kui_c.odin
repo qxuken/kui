@@ -935,6 +935,7 @@ Event :: struct {
 	reply_sink: ^ReplySink,
 	instance: u64,
 	event: string,
+	from: string,
 }
 
 Quad :: struct {
@@ -1120,6 +1121,12 @@ RunConfig :: struct {
 	frame_latency: u32,
 	backdrop: u32,
 	titlebar: u32,
+}
+
+Contribution :: struct {
+	slot: string,
+	component: string,
+	order: i32,
 }
 
 // -- Functions
@@ -1493,7 +1500,9 @@ foreign lib {
 	instance_name :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	instance_namespace :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	instance_params :: proc(ctx: ^Ctx) -> ^Value ---
+	instance_slot :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	emit :: proc(ev: ^Event, prop: string, fields: ^Value) -> bool ---
 	children :: proc(ctx: ^Ctx, group: string) ---
 	component :: proc(ctx: ^Ctx, name: string, props: ^Value, children: ChildrenFn, user: rawptr) -> i32 ---
+	slot :: proc(ctx: ^Ctx, name: string, props: ^Value) -> uint ---
 }

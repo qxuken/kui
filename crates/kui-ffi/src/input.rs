@@ -396,7 +396,8 @@ pub extern "C" fn kui_release_held_keys(ptr: *mut KuiCtx) {
 /// until it returns false.
 ///
 /// `out->payload` is borrowed until the next poll on this context or
-/// [`kui_ctx_free`]. Also false, leaving the event queued, when `out`'s
+/// [`kui_ctx_free`], and so is `out->from`, the provider that raised a
+/// component event (ADR 0067). Also false, leaving the event queued, when `out`'s
 /// `size` is below the layout this library knows.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
@@ -404,8 +405,9 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
         };
-        // Drop the previously handed-out payload.
+        // Drop the previously handed-out payload, and the `from` beside it.
         c.last_payload = None;
+        c.last_from = None;
         // Also whatever a call between frames left pending — the synthetic
         // key releases `kui_focus` / `kui_release_held_keys` force.
         let pending = c.core().take_pending_events();
@@ -419,6 +421,13 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
         let payload = Box::new(KuiValue(ev.payload));
         let payload_ptr: *const KuiValue = &*payload;
         c.last_payload = Some(payload);
+        // Kept on the context beside the payload, so it lives exactly as
+        // long: a String's buffer does not move when the String does.
+        c.last_from = ev.from;
+        let from = c
+            .last_from
+            .as_deref()
+            .map_or(KuiStr::from_static(""), KuiStr::borrowed);
         write_out(
             out,
             KuiEvent {
@@ -428,6 +437,7 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
                 window: ev.window.0,
                 instance: ev.instance.map_or(0, |k| k.0),
                 event: KuiStr::from_static(ev.event.name()),
+                from,
                 ..Default::default()
             },
         )

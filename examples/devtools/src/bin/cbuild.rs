@@ -461,7 +461,7 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
         Step {
             exe: format!("{bin}/{}", exe_name("host")),
             args: vec![s("--headless")],
-            note: "C on both sides: the slot filled, the click routed, the reply back",
+            note: "C on both sides: the panel placed, the click routed, the emit back, the toolbar slot's chip heard",
             must_fail: None,
         },
         Step {

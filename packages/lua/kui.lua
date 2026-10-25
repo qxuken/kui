@@ -869,6 +869,17 @@ function path(t) end
 ---@return kui.Node
 function component(name, props, kids) end
 
+---slot("app.toolbar", { on_run = { kind = "run" } }): a contribution slot
+---(docs/adr/0067) — every component the loaded extensions contribute to
+---the name (their `contributes`) placed here as siblings, in load order
+---and then `order`, each with these props; their events arrive as these
+---messages with `at.from` naming who raised them. An empty slot draws
+---nothing and says nothing.
+---@param name any
+---@param props any
+---@return kui.Node
+function slot(name, props) end
+
 ---In a component's function (`components.card = function(env, props,
 ---inst) … end`): where the host's children of `group` go, the unnamed group
 ---without one.

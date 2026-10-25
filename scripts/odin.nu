@@ -175,7 +175,8 @@ def build-plugin [src: string, release: bool] {
     }
     ^(odin) build $src -file -build-mode:shared -define:KUI_PLUGIN=true $"-out:($lib)" ...$link ...$opt
     # The contract's seven (a plugin providing components), exported under
-    # their C names. A DLL's exports
+    # their C names; kui_ext_contributions is the eighth, optional, so a
+    # plugin that contributes to no slot need not export it. A DLL's exports
     # are a table nm does not read; llvm-readobj comes with the clang gen uses.
     let exported = if $nu.os-info.name == "windows" {
         llvm-readobj --coff-exports $lib | lines | parse -r '^\s*Name: (?<sym>kui_ext_\w+)$' | get sym

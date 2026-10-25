@@ -521,6 +521,19 @@ static int surface(void) {
         check(n == 1 && kui_str_eq(unknown[0].code, "unknown-component"),
               "and warns unknown-component");
     }
+    /* A contribution slot nothing contributes to places nothing and says
+     * nothing: whether a slot is drawn at all is the app's call (ADR 0067).
+     * host.c fills one from its plugin. */
+    {
+        KuiValue *props = kui_value_map();
+        kui_value_map_set(props, KUI_STR("on_press"), kui_value_str(KUI_STR("pressed")));
+        check(kui_slot(ui, KUI_STR("surface.toolbar"), props) == 0,
+              "kui_slot with nothing contributing answers 0");
+        kui_value_free(props);
+        KuiWarning none[4];
+        check(kui_take_warnings(ui, none, sizeof none / sizeof none[0]) == 0,
+              "and warns nothing");
+    }
     kui_focus(ui, kui_key_of(ui, KUI_STR("sink")));
     check(kui_is_focused(ui, k.sink), "kui_is_focused");
     KuiStr no_text = {0};
@@ -1698,6 +1711,7 @@ static int surface(void) {
         check(!kui_instance_name(ui, &name) && !kui_instance_namespace(ui, &name),
               "kui_instance_name / kui_instance_namespace are false outside an extension");
         check(kui_instance_params(ui) == NULL, "and kui_instance_params is NULL");
+        check(!kui_instance_slot(ui, &name), "and kui_instance_slot is false");
     }
 
     /* And none of that raised a diagnostic either. */

@@ -1084,8 +1084,17 @@ fn asserts() -> (String, Vec<&'static str>) {
         reply_sink: *mut KuiReplySink => "KuiReplySink *",
         instance: u64 => "uint64_t",
         event: KuiStr => "KuiStr",
+        from: KuiStr => "KuiStr",
     });
     abi_out_struct!(o, KuiEvent);
+
+    // What a plugin's `kui_ext_contributions` returns (ADR 0067): an
+    // array the library reads, so [in].
+    abi_struct!(o, KuiContribution {
+        slot: KuiStr => "KuiStr",
+        component: KuiStr => "KuiStr",
+        order: i32 => "int32_t",
+    });
 
     abi_struct!(o, KuiWindowConfig {
         kind: u32 => "uint32_t",
@@ -1635,6 +1644,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // New beside ABI 34's surface, no bump (ADR 0049): a new array
         // struct moves no existing stride.
         ("KuiFamilyToken", 32, 34),
+        // New in ABI 39 (ADR 0067): a plugin's contribution rows, an
+        // array the library reads once at load.
+        ("KuiContribution", 40, 39),
     ];
     let (text, _) = asserts();
     let sizes: BTreeMap<&str, usize> = text

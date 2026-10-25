@@ -51,7 +51,7 @@ C_Model :: struct {
 
 // What a plugin defines and the library only calls (kui.h's "Extension
 // ABI"): an Odin plugin would export these, not import them.
-PLUGIN_SIDE :: []string{"kui_ext_abi", "kui_ext_name", "kui_ext_init", "kui_ext_components", "kui_ext_view", "kui_ext_on_event", "kui_ext_free"}
+PLUGIN_SIDE :: []string{"kui_ext_abi", "kui_ext_name", "kui_ext_init", "kui_ext_components", "kui_ext_contributions", "kui_ext_view", "kui_ext_on_event", "kui_ext_free"}
 
 load_c :: proc(ast_path, header_path: string) -> (m: C_Model) {
 	data, read_err := os.read_entire_file(ast_path, context.allocator)

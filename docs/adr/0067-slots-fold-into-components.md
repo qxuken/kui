@@ -5,7 +5,7 @@ date: 2026-10-25
 
 # Slots fold into components; a slot is where extensions contribute
 
-> **Accepted (2026-10-25); backlog C86.** Supersedes [ADR 0014](0014-slots-an-extension-fills-in-place.md)
+> **Accepted and built (2026-10-25); backlog C86.** Supersedes [ADR 0014](0014-slots-an-extension-fills-in-place.md)
 > and [ADR 0045](0045-a-slot-replayed-by-its-host.md); amends [ADR 0032](0032-a-devtools-tab-mounts-a-slot.md)
 > and [ADR 0060](0060-components-an-extension-provides.md). Settled by a
 > grilling round with the user; built in two steps, the fold and then the
@@ -174,6 +174,16 @@ Settled while the fold was built, beyond the grilling:
   instance's full name, beside it.
 - `FillAnswer`'s codes are kept with `Moved` gone (Heard stays 6), and a
   C placement answers `KUI_FILL_NONE` (-1) when nothing was kept.
+- **The slot's key is its name** among its siblings (or a `key` prop), not
+  its position: a slot is declared once in a place, and a key by name
+  keeps its contributions' state when the view around it changes.
+- **`from` is on every component event**, not only a slot's: the
+  namespace of the extension that emitted it (`UiEvent::from`).
+- **An `Instance` carries `slot`**, the slot it was placed in, which a
+  binding hands on as the instance's `slot` (Lua's `inst.slot`, C's
+  `kui_instance_slot`).
+- **A Lua script's `contributes` map** is read by slot name; to order two
+  contributions to one slot, use the list spelling with `order`.
 
 ### Migration
 

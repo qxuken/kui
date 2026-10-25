@@ -9,7 +9,11 @@
  * It loads panel.c, beside this file, under a namespace of its own choosing,
  * places that plugin's `panel` component in the middle of its own view with
  * kui_component (docs/adr/0067-slots-fold-into-components.md), and counts the
- * `on_toggle` message it passed in the props as it comes back. The panel is
+ * `on_toggle` message it passed in the props as it comes back. It also
+ * declares a contribution slot, "todos.toolbar", with kui_slot: it names no
+ * plugin there, and whatever the loaded plugins contribute to it is placed
+ * in its column - the panel's chip - its press arriving as the host's
+ * on_press with KuiEvent.from saying who raised it. The panel is
  * the *same binary* panel.rs loads: an extension does not know or care what
  * language its host is written in, which is the point of the extension
  * contract being C in the first place.
@@ -24,8 +28,9 @@
  * builds a frame the way the runner does, finds a row the plugin drew,
  * clicks it, and checks that the click reached the plugin and not the host
  * and that the plugin's emit reached the host as the host's own message,
- * about the panel's instance. Which is panel.rs's --headless, from the other
- * side.
+ * about the panel's instance; then that the toolbar slot placed the
+ * panel's chip and that a press on it arrives with `from` naming the
+ * panel's namespace. Which is panel.rs's --headless, from the other side.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,6 +81,9 @@ typedef struct {
     uint64_t toggle_from; /* the instance the event is about: KuiEvent.key */
     long long pressed;    /* the badge's onPress, heard as our own message */
     int32_t panel_fill;   /* how the last frame filled the panel: a KUI_FILL_* code */
+    size_t toolbar;       /* how many contributions the toolbar slot placed */
+    long long chipped;    /* the slot's on_press, from whichever contributor */
+    char chip_from[32];   /* who raised the last one: KuiEvent.from, copied */
 } Host;
 
 static KuiValue *msg(const char *kind) {
@@ -131,6 +139,17 @@ static void view(void *user, KuiCtx *ui) {
         kui_text(ui, (KuiStr){(const uint8_t *)line, strlen(line)}, &body);
 
         kui_button(ui, KUI_STR("count"), msg("count"));
+
+        /* A contribution slot (ADR 0067): we name a place, not a plugin.
+         * Every loaded extension that contributes to "todos.toolbar" puts
+         * one of its components here, as siblings in this column, each with
+         * these props - so on_press is the message any of them raises, and
+         * the event's `from` says which. The answer is how many were
+         * placed; nothing contributing is 0 and no warning. */
+        KuiValue *slot_props = kui_value_map();
+        kui_value_map_set(slot_props, KUI_STR("on_press"), msg("chipped"));
+        h->toolbar = kui_slot(ui, KUI_STR("todos.toolbar"), slot_props);
+        kui_value_free(slot_props);
     }
     kui_close(ui);
 
@@ -178,6 +197,13 @@ static void on_event(void *user, const KuiEvent *ev) {
         h->clicks++;
     } else if (kui_str_eq(s, "pressed") && kui_str_eq(ev->event, "component")) {
         h->pressed++;
+    } else if (kui_str_eq(s, "chipped") && kui_str_eq(ev->event, "component")) {
+        /* One message for the whole slot; `from` is the namespace of the
+         * extension that raised it, borrowed like the payload - copied out,
+         * since the next poll releases it. */
+        h->chipped++;
+        snprintf(h->chip_from, sizeof h->chip_from, "%.*s", (int)ev->from.len,
+                 (const char *)ev->from.ptr);
     } else if (kui_str_eq(s, "toggled") && kui_str_eq(ev->event, "component")) {
         h->toggles++;
         /* What the panel said rides under the prop's field: on_toggle's is
@@ -319,7 +345,41 @@ static int headless(const char *plugin) {
         ev = KUI_EVENT_INIT;
     }
 
+    /* The toolbar slot: one contribution, the panel's chip - found by the
+     * name it gave itself from kui_instance_slot - and its press. */
+    if (host.toolbar != 1) {
+        fprintf(stderr, "FAIL: the toolbar slot placed %zu contributions, not 1\n",
+                host.toolbar);
+        kui_ctx_free(ctx);
+        return 1;
+    }
+    float cx = 0, cy = 0;
+    if (!find_named(ctx, 1, "chip in todos.toolbar", &cx, &cy)) {
+        fprintf(stderr, "FAIL: the panel's chip is not in the toolbar slot\n");
+        kui_ctx_free(ctx);
+        return 1;
+    }
+    kui_input_cursor(ctx, cx, cy);
+    kui_input_mouse(ctx, true, 1);
+    kui_input_mouse(ctx, false, 1);
+    frame(ctx, &host);
+    ev = KUI_EVENT_INIT;
+    while (kui_poll_event(ctx, &ev)) {
+        on_event(&host, &ev);
+        ev = KUI_EVENT_INIT;
+    }
+
     int rc = 0;
+    if (host.chipped != 1) {
+        fprintf(stderr, "FAIL: expected the slot's on_press once, heard %lld\n",
+                host.chipped);
+        rc = 1;
+    }
+    if (strcmp(host.chip_from, NS) != 0) {
+        fprintf(stderr, "FAIL: the on_press came from \"%s\", not \"%s\"\n",
+                host.chip_from, NS);
+        rc = 1;
+    }
     if (host.pressed != 1) {
         fprintf(stderr, "FAIL: expected the badge's onPress once, heard %lld\n",
                 host.pressed);
@@ -354,8 +414,9 @@ static int headless(const char *plugin) {
     }
     if (rc == 0)
         printf("ok: `%.*s/panel` placed and replayed, the click reached the "
-               "plugin and not the host, its on_toggle (row %lld) and the "
-               "badge's press arrived as our own messages\n",
+               "plugin and not the host, its on_toggle (row %lld), the "
+               "badge's press and the toolbar chip's (from `todos`) arrived as "
+               "our own messages\n",
                (int)ns.len, (const char *)ns.ptr, (long long)host.toggled);
     kui_ctx_free(ctx);
     return rc;

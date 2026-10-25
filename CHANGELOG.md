@@ -122,6 +122,9 @@ was the first bare bump to break an app in five releases).
 - The warnings `unknown-slot` and `duplicate-slot` are gone, and
   `recursive-slot` is `recursive-component`.
 - An extension's `root` is drawn fresh every frame, never replayed.
+- `Instance` gained `slot`, the contribution slot it was placed in: a
+  struct literal adds `slot: None`. `<slot>` in Node and `slot(...)` in
+  Lua are back with the new meaning, a contribution slot (below).
 - Node's wire protocol is 27: a prebuilt addon from before refuses the
   stream.
 
@@ -194,7 +197,8 @@ placed `slot_with("ns/panel", params)`, passes the reply it wanted as an
 where it returned a table. A plugin with only a `view` is untouched — its
 `root` still follows the host's view. The word comes back in the next
 step with the one meaning a component cannot have: a place where any
-number of extensions append components.
+number of extensions append components — three plugins each adding a
+button to one toolbar, without the host naming them.
 
 The rest of this release breaks nothing else: a fix to text
 at a size no screen shows, a declaration file for Teal beside the one
@@ -295,6 +299,21 @@ for lua-language-server, and a new runner beside the window's.
   (`number`, `ago`, `clock`), `x_unit` and `y_unit`; `bar_chart`'s value
   axis, value labels, wrapping names, `unit` and `horizontal`; `slider`'s
   `value_label`, `radio_group`'s `hide_label`, a toast's `action`.
+
+- **Contribution slots** (backlog C86, [ADR
+  0067](docs/adr/0067-slots-fold-into-components.md)'s second step): a
+  place a view declares by name where any number of extensions append
+  their components — `ui.slot("app.toolbar", &props)`, Lua `slot(name,
+  props)`, Node `<slot name props/>`, C `kui_slot`, Odin `slot`. An
+  extension contributes by naming the slot and one of its components
+  (`Extension::contributions`, Lua's `contributes`, C's
+  `kui_ext_contributions`); they are placed in load order, then `order`,
+  as siblings, each an instance keyed by the slot, its provider and its
+  component, each with the slot's props. Its events arrive as the
+  messages in those props, and every component event now says who raised
+  it: `UiEvent::from`, Node's `ev.from`, Lua's `at.from`, C's
+  `KuiEvent.from`. `inst.slot` (C `kui_instance_slot`) says where an
+  instance was placed. An empty slot is silent.
 
 - **Kit samples** ([`addons/kit/samples`](addons/kit/samples)): four
   apps on the runner to look at Kit in something like real use — Relay,

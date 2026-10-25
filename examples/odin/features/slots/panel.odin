@@ -6,7 +6,10 @@
 // places "<namespace>/panel", which keeps its todos, hears its own clicks
 // (the host never sees them) and raises the host's `on_toggle` with emit;
 // and "badge", a dot the host places as often as it likes with its own
-// children inside, whose press raises `onPress`.
+// children inside, whose press raises `onPress`. It also contributes a
+// "chip" to the "todos.toolbar" slot: wherever a host declares that slot,
+// the chip is placed there with the slot's props, and its press raises the
+// slot's `on_press`, which the host hears with `from` naming this plugin.
 //
 // It links against nothing: built -build-mode:shared with KUI_PLUGIN, every
 // kui_* stays undefined and resolves from the host at load. So the one
@@ -28,8 +31,9 @@ Todo :: struct {
 }
 
 Panel :: struct {
-	todos:   [dynamic]Todo,
-	presses: int, // the badges' dots, pressed so far
+	todos:        [dynamic]Todo,
+	presses:      int, // the badges' dots, pressed so far
+	chip_presses: int, // the toolbar chip, pressed so far
 }
 
 // The panel's own messages: they come back to on_event because the host
@@ -40,16 +44,21 @@ Toggle :: struct {
 Add :: struct {}
 Clear :: struct {}
 Badge :: struct {}
+Chip :: struct {}
 Msg :: union {
 	Toggle,
 	Add,
 	Clear,
 	Badge,
+	Chip,
 }
 
-// -- the contract: seven exports, each one line -------------------------------
+// -- the contract: eight exports, each one line -------------------------------
 
-COMPONENTS := [?]string{"panel", "badge"}
+COMPONENTS := [?]string{"panel", "badge", "chip"}
+// What it adds to other people's slots (ADR 0067): a host names the slot,
+// never this plugin, and every contributor to it is placed there.
+CONTRIBUTIONS := [?]kui.Ext_Contribution{{slot = "todos.toolbar", component = "chip"}}
 
 @(export)
 kui_ext_abi :: proc "c" () -> u32 {return kui.ABI_VERSION}
@@ -57,6 +66,8 @@ kui_ext_abi :: proc "c" () -> u32 {return kui.ABI_VERSION}
 kui_ext_name :: proc "c" () -> cstring {return "odin panel"}
 @(export)
 kui_ext_components :: proc "c" (count: ^uint) -> [^]string {return kui.ext_components(COMPONENTS[:], count)}
+@(export)
+kui_ext_contributions :: proc "c" (count: ^uint) -> [^]kui.Ext_Contribution {return kui.ext_contributions(CONTRIBUTIONS[:], count)}
 @(export)
 kui_ext_init :: proc "c" () -> rawptr {return kui.ext_init(Panel, init)}
 @(export)
@@ -80,8 +91,12 @@ teardown :: proc(p: ^Panel) {
 }
 
 view :: proc(p: ^Panel, ui: ^kui.Ui) {
-	if name, _ := kui.instance_name(ui); name == "badge" {
+	switch name, _ := kui.instance_name(ui); name {
+	case "badge":
 		badge(ui)
+		return
+	case "chip":
+		chip(p, ui)
 		return
 	}
 	// What the host placed the panel with, borrowed for this call: a title.
@@ -154,6 +169,26 @@ badge :: proc(ui: ^kui.Ui) {
 	}
 }
 
+// The toolbar chip: a pressable pill named for the slot it was placed in -
+// the name a host finds it by - saying how often it was pressed.
+chip :: proc(p: ^Panel, ui: ^kui.Ui) {
+	slot, in_slot := kui.instance_slot(ui)
+	if !in_slot do slot = "no slot"
+	t := kui.theme(ui)
+	spec := kui.Spec {
+		dir         = .Row,
+		cross_align = .Center,
+		pad         = {l = 8, r = 8, t = 2, b = 2},
+		bg          = t.accent,
+		radius      = 8,
+		label       = fmt.tprintf("chip in %s", slot),
+		on_click    = Chip{},
+	}
+	if kui.box(ui, spec) {
+		kui.text(ui, fmt.tprintf("todos chip · %d", p.chip_presses), {size = 12, color = t.on_accent})
+	}
+}
+
 on_event :: proc(p: ^Panel, ev: kui.Event) {
 	switch m in kui.message(ev, Msg) {
 	case Toggle:
@@ -172,6 +207,13 @@ on_event :: proc(p: ^Panel, ev: kui.Event) {
 		kui.emit(ev, "onPress", struct {
 			presses: int,
 		}{p.presses})
+	case Chip:
+		// The toolbar chip: raise the slot's on_press. Every contributor
+		// gets the slot's props, so the host tells them apart by `from`.
+		p.chip_presses += 1
+		kui.emit(ev, "on_press", struct {
+			presses: int,
+		}{p.chip_presses})
 	case Add:
 		append(&p.todos, Todo{text = fmt.aprintf("todo #%d", len(p.todos) + 1)})
 	case Clear:

@@ -1542,6 +1542,8 @@ global type kui = record
     params: {string:any}
     -- The integer key events and `set_focus` use.
     key: integer
+    -- The contribution slot it was placed in (`slot(name, props)`), nil for a placement by name.
+    slot: string
   end
 end
 
@@ -1675,6 +1677,14 @@ global path: function(t: kui.path): kui.Node
 -- An instance whose props did not change is replayed; `fresh = true` asks
 -- every frame.
 global component: function(name: any, props: any, kids: any): kui.Node
+
+-- slot("app.toolbar", { on_run = { kind = "run" } }): a contribution slot
+-- (docs/adr/0067) — every component the loaded extensions contribute to
+-- the name (their `contributes`) placed here as siblings, in load order
+-- and then `order`, each with these props; their events arrive as these
+-- messages with `at.from` naming who raised them. An empty slot draws
+-- nothing and says nothing.
+global slot: function(name: any, props: any): kui.Node
 
 -- In a component's function (`components.card = function(env, props,
 -- inst) … end`): where the host's children of `group` go, the unnamed group

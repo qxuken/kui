@@ -9,14 +9,15 @@
 //!
 //! # The plugin's side
 //!
-//! Six symbols, two of them required - `kui_ext_abi` and `kui_ext_view` -
-//! and four optional (see `include/kui.h`):
+//! Eight symbols, two of them required - `kui_ext_abi` and `kui_ext_view` -
+//! and six optional (see `include/kui.h`):
 //!
 //! ```c
 //! uint32_t    kui_ext_abi(void);                        /* required: KUI_ABI_VERSION */
 //! const char *kui_ext_name(void);                       /* else: file stem */
 //! void       *kui_ext_init(void);                       /* else: NULL      */
 //! const KuiStr *kui_ext_components(size_t *count);     /* else: "root"    */
+//! const KuiContribution *kui_ext_contributions(size_t *count); /* else: none */
 //! void        kui_ext_view(void *user, KuiCtx *ctx);    /* required        */
 //! void        kui_ext_on_event(void *user, const KuiEvent *ev);
 //! void        kui_ext_free(void *user);
@@ -72,10 +73,10 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
 
-use kui_core::{Extension, Instance, Ui, UiEvent, Value};
+use kui_core::{Contribution, Extension, Instance, Ui, UiEvent, Value};
 
 use crate::convert::kstr;
-use crate::{KUI_ABI_VERSION, KuiCtx, KuiEvent, KuiStr, KuiValue};
+use crate::{KUI_ABI_VERSION, KuiContribution, KuiCtx, KuiEvent, KuiStr, KuiValue};
 
 /// Opens the extension at `path` the way every host's door does (ADR
 /// 0059): a `.lua` file, or a directory holding `init.lua`, as a
@@ -120,8 +121,9 @@ type EventFn = extern "C" fn(*mut c_void, *const KuiEvent);
 /// A C shared library loaded as a guest extension of a Rust host.
 ///
 /// The plugin exports `kui_ext_abi` and `kui_ext_view` (and optionally
-/// `kui_ext_name`, `kui_ext_init`, `kui_ext_components`, `kui_ext_on_event`
-/// and `kui_ext_free`; `include/kui.h` has the prototypes). Each time the
+/// `kui_ext_name`, `kui_ext_init`, `kui_ext_components`,
+/// `kui_ext_contributions`, `kui_ext_on_event` and `kui_ext_free`;
+/// `include/kui.h` has the prototypes). Each time the
 /// host's `Ui` places one of the plugin's components (its `root`, after
 /// the host's view, when it provides nothing else), `kui_ext_view` is
 /// called with a context borrowing that frame and builds into it with the
@@ -159,6 +161,10 @@ pub struct CExtension {
     /// provides (ADR 0060), each drawn by `kui_ext_view` with the
     /// component's name as `kui_instance_name`. Empty means `"root"` alone.
     components: Vec<String>,
+    /// What `kui_ext_contributions` returned at load: the components it
+    /// adds to contribution slots (ADR 0067), copied out. Empty when it
+    /// contributes nothing.
+    contributions: Vec<Contribution>,
 }
 
 impl CExtension {
@@ -198,6 +204,7 @@ impl CExtension {
             on_event: None,
             free: None,
             components: Vec::new(),
+            contributions: Vec::new(),
         };
         let Some(abi) = (unsafe { ext.sym::<extern "C" fn() -> u32>("kui_ext_abi") }) else {
             return Err(format!(
@@ -222,7 +229,9 @@ impl CExtension {
 
         // A plugin from before ADR 0067 lists slots: say what to export now
         // rather than load it and draw nothing.
-        if unsafe { ext.sym::<extern "C" fn(*mut usize) -> *const KuiStr>("kui_ext_slots") }.is_some() {
+        if unsafe { ext.sym::<extern "C" fn(*mut usize) -> *const KuiStr>("kui_ext_slots") }
+            .is_some()
+        {
             return Err(format!(
                 "{}: kui_ext_slots is gone (ADR 0067); export kui_ext_components, or nothing to \
                  draw kui_ext_view as the root",
@@ -241,6 +250,24 @@ impl CExtension {
             if !p.is_null() {
                 let names = unsafe { std::slice::from_raw_parts(p, count) };
                 ext.components = names.iter().map(|s| kstr(*s).into_owned()).collect();
+            }
+        }
+
+        // What it contributes to slots, read once on the same terms: the
+        // array is the plugin's, the strings copied out. Whether each names
+        // a component it provides is `Extensions::push_as`'s check, made
+        // for every kind of extension alike.
+        if let Some(contributions) = unsafe {
+            ext.sym::<extern "C" fn(*mut usize) -> *const KuiContribution>("kui_ext_contributions")
+        } {
+            let mut count = 0usize;
+            let p = contributions(&mut count);
+            if !p.is_null() {
+                let rows = unsafe { std::slice::from_raw_parts(p, count) };
+                ext.contributions = rows
+                    .iter()
+                    .map(|c| Contribution::new(kstr(c.slot), kstr(c.component)).order(c.order))
+                    .collect();
             }
         }
 
@@ -455,6 +482,10 @@ impl Extension for CExtension {
         &self.components
     }
 
+    fn contributions(&self) -> &[Contribution] {
+        &self.contributions
+    }
+
     fn view(&mut self, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         // Borrows the host's frame for this call only - the plugin builds
         // into the same tree the host just built into, under its own origin.
@@ -468,11 +499,7 @@ impl Extension for CExtension {
         // pointer, so a plugin may place what an extension the host loaded
         // provides (`kui_core::slot`). It cannot load one itself — a
         // plugin's context has no list of its own.
-        let mut ctx = KuiCtx::borrowing_in(ui);
-        ctx.slot_name = Some(slot.name.to_owned());
-        ctx.slot_namespace = Some(slot.namespace.to_owned());
-        ctx.slot_params =
-            (!matches!(slot.params, Value::Null)).then(|| KuiValue(slot.params.clone()));
+        let mut ctx = instance_ctx(slot, ui);
         (self.view)(self.user, &mut ctx);
         Ok(())
     }
@@ -491,6 +518,11 @@ impl Extension for CExtension {
             window: ev.window.0,
             instance: ev.instance.map_or(0, |k| k.0),
             event: KuiStr::from_static(ev.event.name()),
+            // Borrowed from `ev` for the callback, as the payload is.
+            from: ev
+                .from
+                .as_deref()
+                .map_or(KuiStr::from_static(""), KuiStr::borrowed),
             ..Default::default()
         };
         // Emits: the plugin calls `kui_emit(ev, prop, fields)` during the
@@ -498,6 +530,19 @@ impl Extension for CExtension {
         // call collects them for the host.
         crate::slots::collect_replies(&mut out, |ev| cb(self.user, ev))
     }
+}
+
+/// The context a C extension's `kui_ext_view` is handed for one instance:
+/// borrowing `ui`'s frame, and carrying which instance it is — what
+/// `kui_instance_name`, `_namespace`, `_params` and `_slot` answer. Valid
+/// for the call that made it, like the borrow.
+pub(crate) fn instance_ctx(inst: &Instance<'_>, ui: &mut Ui<'_>) -> KuiCtx {
+    let mut ctx = KuiCtx::borrowing_in(ui);
+    ctx.slot_name = Some(inst.name.to_owned());
+    ctx.slot_namespace = Some(inst.namespace.to_owned());
+    ctx.slot_params = (!matches!(inst.params, Value::Null)).then(|| KuiValue(inst.params.clone()));
+    ctx.instance_slot = inst.slot.map(str::to_owned);
+    ctx
 }
 
 impl Drop for CExtension {

@@ -130,7 +130,8 @@ use crate::{Result, err, value_of};
 /// v26: `svg` is a new op (ADR 0063), and so is `component` (ADR 0060).
 /// v27: the old `slot` op (17) is gone, folded into `component` (ADR
 /// 0067); `devtoolsTab` carries a component and its props (a JSON strref,
-/// absent for none) where it carried a slot.
+/// absent for none) where it carried a slot; and `slot` is a new op (29),
+/// a contribution slot (ADR 0067's second step): name, props.
 pub const VERSION: u32 = 27;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
@@ -191,6 +192,10 @@ pub const OP_SVG: u32 = 27;
 /// each group's name (empty for the unnamed one), its length in slots and
 /// that many slots of ops — built only where the instance's fill asks.
 pub const OP_COMPONENT: u32 = 28;
+/// A contribution slot (ADR 0067): its name, then its props as one JSON
+/// strref (absent for none). Every component the loaded extensions
+/// contribute to the name is placed there.
+pub const OP_SLOT: u32 = 29;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -227,6 +232,7 @@ pub fn protocol_json() -> Json {
                 ("path", OP_PATH),
                 ("svg", OP_SVG),
                 ("component", OP_COMPONENT),
+                ("slot", OP_SLOT),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1405,6 +1411,15 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         // name, props JSON?, then the child groups as length-prefixed op
         // runs (docs/adr/0060): each is read where the fill asks for it,
         // by a reader over its own slots, and skipped here.
+        OP_SLOT => {
+            let name = r.req_str()?;
+            let props = match r.str_ref()? {
+                Some(s) => payload(s)?,
+                None => kui_core::Value::Null,
+            };
+            ui.slot(name, &props);
+            Ok(())
+        }
         OP_COMPONENT => {
             let name = r.req_str()?;
             let props = match r.str_ref()? {

@@ -1633,6 +1633,11 @@ pub struct UiEvent {
     /// ranges the last frame recorded (`Tree::fills`); a producer leaves it
     /// `None`.
     pub instance: Option<Key>,
+    /// The namespace of the extension that raised a component's event
+    /// (ADR 0067), or `None` for any other event. Every contributor to a
+    /// slot raises the host's one message, so this is what tells them
+    /// apart; stamped by `Extensions::route`.
+    pub from: Option<String>,
     /// The message already had a field named for the event, and the
     /// event's data replaced it: what the core raises
     /// `message-field-taken` for on the way out (ADR 0047, decision 4).
@@ -1644,6 +1649,10 @@ pub struct UiEvent {
     /// [`UiEvent::data`] does not read as the event's (the alpha.60 pre-tag
     /// pass, backlog RG157).
     pub(crate) data: bool,
+    /// The field the data is under when it is not the event kind's name: a
+    /// component's event carries it under its prop's (`select` for
+    /// `onSelect`, ADR 0060), which [`UiEvent::data`] reads.
+    pub(crate) field: Option<Box<str>>,
     /// A fact about the window ([`UiEvent::fact`]) whose message is not
     /// known where it was noticed: a resize, a modifier change, the OS's
     /// documents. Its payload is the bare data until the core resolves it
@@ -1665,9 +1674,9 @@ impl UiEvent {
     /// the message already has is the core's: the event's data replaces
     /// it.
     ///
-    /// The window is left [`WindowId::MAIN`] and the slot `None` for the
-    /// core to stamp on the way out (see [`UiEvent::window`],
-    /// [`UiEvent::slot`]).
+    /// The window is left [`WindowId::MAIN`] and the instance `None` for
+    /// the core to stamp on the way out (see [`UiEvent::window`],
+    /// [`UiEvent::instance`]).
     pub fn declared(
         event: EventKind,
         origin: OriginId,
@@ -1700,8 +1709,10 @@ impl UiEvent {
             event,
             payload,
             instance: None,
+            from: None,
             taken,
             data: has_data,
+            field: None,
             fact: false,
         }
     }
@@ -1741,8 +1752,10 @@ impl UiEvent {
             event: EventKind::Component,
             payload: Value::Map(entries),
             instance: None,
+            from: None,
             taken,
             data: has_data,
+            field: Some(field.into()),
             fact: false,
         }
     }
@@ -1759,8 +1772,10 @@ impl UiEvent {
             event,
             payload: data,
             instance: None,
+            from: None,
             taken: false,
             data: false,
+            field: None,
             fact: true,
         }
     }
@@ -1772,7 +1787,8 @@ impl UiEvent {
         if !self.data {
             return None;
         }
-        self.payload.get(self.event.name())
+        self.payload
+            .get(self.field.as_deref().unwrap_or(self.event.name()))
     }
 
     /// The event's data map, for a producer adding a field after the
@@ -1782,7 +1798,7 @@ impl UiEvent {
         if !self.data {
             return None;
         }
-        let field = self.event.name();
+        let field = self.field.as_deref().unwrap_or(self.event.name());
         let Value::Map(entries) = &mut self.payload else {
             return None;
         };

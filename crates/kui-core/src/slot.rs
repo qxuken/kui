@@ -73,6 +73,37 @@ pub struct Instance<'a> {
     /// The instance's own key: where it was placed (or its `key` prop),
     /// and the namespace the extension's nodes are keyed under.
     pub key: Key,
+    /// The contribution slot it was placed in (ADR 0067, decision 13), or
+    /// `None` for a placement by name.
+    pub slot: Option<&'a str>,
+}
+
+/// One component an extension adds to a contribution slot (ADR 0067): the
+/// slot's name — any string, by the convention `owner.place` — and one of
+/// the components the extension provides. A host's `Ui::slot(name, props)`
+/// places every contribution to `name`, in load order and then `order`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Contribution {
+    pub slot: String,
+    pub component: String,
+    /// Where it goes among the slot's contributions: lower first, ties in
+    /// load order. 0 by default.
+    pub order: i32,
+}
+
+impl Contribution {
+    pub fn new(slot: impl Into<String>, component: impl Into<String>) -> Self {
+        Contribution {
+            slot: slot.into(),
+            component: component.into(),
+            order: 0,
+        }
+    }
+
+    pub fn order(mut self, order: i32) -> Self {
+        self.order = order;
+        self
+    }
 }
 
 /// The component every extension provides: its `view`.
@@ -177,6 +208,7 @@ impl Instance<'_> {
             namespace: "",
             params: &NULL_PARAMS,
             key: Key::ROOT.str(ROOT_COMPONENT),
+            slot: None,
         }
     }
 
@@ -267,6 +299,13 @@ pub trait Fill {
         let _ = (full_name, key, props, placer, slot);
         false
     }
+    /// The full names of the components contributed to the slot `slot`
+    /// (ADR 0067), in the order they are placed: load order, then each
+    /// contribution's `order`. The default has none.
+    fn contributions(&self, slot: &str) -> Vec<String> {
+        let _ = slot;
+        Vec::new()
+    }
 }
 
 /// One loaded extension: its namespace, itself, and the answers of its
@@ -289,6 +328,8 @@ struct Entry {
     /// once, at load.
     name: String,
     components: Vec<String>,
+    /// `Extension::contributions` as it answered at load.
+    contributions: Vec<Contribution>,
     /// The generation its `root` was last placed in by someone: a root
     /// placed this frame is not placed again after the host's view.
     root_placed: u32,
@@ -422,6 +463,31 @@ impl Extensions {
                 NAMESPACE_SEPARATOR
             ));
         }
+        // A contribution names one of the extension's own components: a
+        // name it lists, any with `*`, or `root`.
+        let any = ext.components().iter().any(|c| c == ANY_COMPONENT);
+        if let Some(bad) = ext.contributions().iter().find(|c| {
+            c.slot.is_empty()
+                || !(any
+                    || c.component == ROOT_COMPONENT
+                    || ext.components().contains(&c.component))
+        }) {
+            return Err(if bad.slot.is_empty() {
+                format!(
+                    "extension `{}` contributes `{}` to a slot with no name",
+                    ext.name(),
+                    bad.component
+                )
+            } else {
+                format!(
+                    "extension `{}` contributes `{}` to slot `{}`, a component it does not \
+                     provide: list it in its components",
+                    ext.name(),
+                    bad.component,
+                    bad.slot
+                )
+            });
+        }
         let origin = OriginId(self.list.len() as u16 + 1);
         let mut ext = ext;
         let spares = if ext.components().is_empty() {
@@ -433,6 +499,7 @@ impl Extensions {
             namespace,
             name: ext.name().to_owned(),
             components: ext.components().to_vec(),
+            contributions: ext.contributions().to_vec(),
             ext: Some(ext),
             spares,
             root_placed: self.generation.wrapping_sub(1),
@@ -529,6 +596,9 @@ impl Extensions {
                         UiEvent::component(rec.placer, inst, message, field, fields.clone());
                     out.window = ev.window;
                     out.instance = rec.slot;
+                    // Who raised it: what tells a slot's contributors
+                    // apart, since each raises the host's one message.
+                    out.from = self.namespace_of(ev.origin).map(str::to_owned);
                     if rec.placer == OriginId::HOST || depth + 1 >= MAX_EMIT_HOPS {
                         to_host(out);
                     } else {
@@ -577,11 +647,13 @@ impl Extensions {
                 }
             },
         };
+        let in_slot = ui.core().take_placing_slot();
         let slot = Instance {
             name,
             namespace: &ns,
             params,
             key,
+            slot: in_slot.as_deref(),
         };
         let origin = OriginId(i as u16 + 1);
         let body = |ui: &mut Ui<'_>| {
@@ -655,7 +727,14 @@ impl Fill for Extensions {
                 let full = full_name(&self.list[i].namespace, ROOT_COMPONENT);
                 if let Some(key) = ui.core().root_fill_key(&full) {
                     self.placed(&full, key, &NULL_PARAMS, OriginId::HOST, None);
-                    self.fill_one(i, ROOT_COMPONENT, key, &NULL_PARAMS, &mut |_: &str, _: &mut Ui<'_>| {}, ui);
+                    self.fill_one(
+                        i,
+                        ROOT_COMPONENT,
+                        key,
+                        &NULL_PARAMS,
+                        &mut |_: &str, _: &mut Ui<'_>| {},
+                        ui,
+                    );
                 }
             }
             i += 1;
@@ -729,6 +808,22 @@ impl Fill for Extensions {
         }
         heard
     }
+
+    fn contributions(&self, slot: &str) -> Vec<String> {
+        let mut found: Vec<(i32, String)> = self
+            .list
+            .iter()
+            .flat_map(|e| {
+                e.contributions
+                    .iter()
+                    .filter(|c| c.slot == slot)
+                    .map(|c| (c.order, full_name(&e.namespace, &c.component)))
+            })
+            .collect();
+        // Stable: equal orders keep load order.
+        found.sort_by_key(|(order, _)| *order);
+        found.into_iter().map(|(_, name)| name).collect()
+    }
 }
 
 impl<F: Fill + ?Sized> Fill for &mut F {
@@ -758,6 +853,9 @@ impl<F: Fill + ?Sized> Fill for &mut F {
     ) -> bool {
         F::placed(&mut **self, full_name, key, props, placer, slot)
     }
+    fn contributions(&self, slot: &str) -> Vec<String> {
+        F::contributions(&**self, slot)
+    }
 }
 
 impl<F: Fill + ?Sized> Fill for Box<F> {
@@ -786,6 +884,9 @@ impl<F: Fill + ?Sized> Fill for Box<F> {
         slot: Option<Key>,
     ) -> bool {
         F::placed(&mut **self, full_name, key, props, placer, slot)
+    }
+    fn contributions(&self, slot: &str) -> Vec<String> {
+        F::contributions(&**self, slot)
     }
 }
 

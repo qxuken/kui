@@ -217,7 +217,11 @@
 ///   `KUI_SLOT_*` codes (`kui_component` answers `KUI_FILL_*`), `kui_reply`
 ///   and the `kui_ext_slots` export; `kui_slot_name` / `_namespace` /
 ///   `_params` renamed `kui_instance_*`; `kui_devtools_tab` takes a
-///   component and its props. No struct moved.
+///   component and its props. No struct moved by the fold. Then, in the
+///   same ABI, the new slot (ADR 0067): `kui_slot`, the optional
+///   `kui_ext_contributions` export with its `KuiContribution` rows,
+///   `kui_instance_slot`, and `from` appended to `KuiEvent` (80 bytes on
+///   64-bit, from 64): the provider that raised a component event.
 pub const KUI_ABI_VERSION: u32 = 39;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

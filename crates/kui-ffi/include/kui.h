@@ -439,7 +439,13 @@ extern "C" {
  * kui_slot_namespace and kui_slot_params are kui_instance_name,
  * kui_instance_namespace and kui_instance_params. kui_devtools_tab takes
  * the component and its props in place of a slot. KuiEvent.slot is
- * KuiEvent.instance, the same field renamed. No struct moved.
+ * KuiEvent.instance, the same field renamed. No struct moved by the fold.
+ * The same ABI then gives the word a new meaning (ADR 0067, the new slot):
+ * kui_slot declares a contribution slot every loaded extension may add
+ * components to, through the optional kui_ext_contributions export and its
+ * KuiContribution rows; kui_instance_slot tells an instance which slot it
+ * was placed in; and KuiEvent appends `from`, the namespace of the
+ * provider that raised a component event (80 bytes on 64-bit, from 64).
  */
 #define KUI_ABI_VERSION 39u
 uint32_t kui_abi_version(void);
@@ -457,7 +463,7 @@ uint32_t kui_abi_version(void);
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
  *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
  *          KuiDerivedToken, KuiFamilyToken, KuiFileFilter, KuiFileDialog,
- *          KuiGradientStop, KuiGradient, KuiWindowEvents.
+ *          KuiGradientStop, KuiGradient, KuiWindowEvents, KuiContribution.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -2194,6 +2200,14 @@ typedef struct KuiEvent {
      * kui_menu_bar_with's. Static: valid for the library's life, never
      * freed. Empty on a host reserving an older layout. */
     KuiStr event;
+    /* Who raised it (ABI 39, ADR 0067): the namespace of the extension
+     * whose instance emitted a component event - the one kui_slot placed,
+     * say, so a host that hears one message from many contributors can
+     * tell them apart - and empty for anything else. The message stays
+     * yours; this rides beside it. Borrowed like the payload: until the
+     * next kui_poll_event or kui_ctx_free, or for the callback it is
+     * handed to. Empty on a host reserving an older layout. */
+    KuiStr from;
 } KuiEvent;
 #define KUI_EVENT_INIT ((KuiEvent){ .size = sizeof(KuiEvent) })
 
@@ -4849,9 +4863,9 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  * (examples/lua/features/slots/panel.lua), and the loader on the host's side is
  * kui_ffi::CExtension.
  *
- * YOU define these six; the library only calls them. Two are required -
+ * YOU define these eight; the library only calls them. Two are required -
  * kui_ext_abi and kui_ext_view - and the host refuses to load a plugin
- * without either. The other four are optional, and a missing one is not an
+ * without either. The other six are optional, and a missing one is not an
  * error:
  *
  *   kui_ext_abi      REQUIRED. Your KUI_ABI_VERSION. The host refuses a
@@ -4884,6 +4898,18 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  *                    kui_emit to raise one of its events. Absent, or an
  *                    empty array = you provide only "root", drawn once
  *                    after the host's view unless the host places it.
+ *   kui_ext_contributions What you add to other people's slots (ADR 0067):
+ *                    a pointer to an array of KuiContribution you keep
+ *                    alive for as long as you are loaded, and its count
+ *                    through the out-pointer. Read once, at load. Each row
+ *                    names a slot - any string, by the convention
+ *                    owner.place ("app.toolbar") - and one of the
+ *                    components you provide, which is placed wherever a
+ *                    host's kui_slot declares that slot, with the slot's
+ *                    props; kui_instance_slot says which slot it was. A
+ *                    row naming a component you do not provide refuses
+ *                    the load. Absent, or an empty array = you contribute
+ *                    nothing.
  *   kui_ext_on_event One event of yours, payload borrowed for the call.
  *                    Raise your instance's events from inside it with
  *                    kui_emit, as often as the event deserves.
@@ -4925,7 +4951,7 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  * before ABI 10: every reply landed in the copy nobody was reading.
  *
  * The other Windows difference is below: a DLL exports nothing unless it
- * says so, which is what KUI_EXT_EXPORT on these six declarations is for.
+ * says so, which is what KUI_EXT_EXPORT on these eight declarations is for.
  * It is on the declarations rather than left to you, so a plugin that
  * includes this header and defines them the ordinary way is already
  * exported and your source stays the source that builds everywhere.
@@ -4940,10 +4966,22 @@ typedef void (*KuiExtEventFn)(void *user, const KuiEvent *ev);
 #define KUI_EXT_EXPORT
 #endif
 
+/* One row of kui_ext_contributions (ADR 0067): `component`, one you
+ * provide, goes in the slot named `slot`, `order` placing it among the
+ * slot's other contributions - lower first, ties in load order, 0 for no
+ * preference. The strings are yours and must outlive the array, which a
+ * static one does. */
+typedef struct KuiContribution {
+    KuiStr slot;
+    KuiStr component;
+    int32_t order;
+} KuiContribution;
+
 KUI_EXT_EXPORT uint32_t kui_ext_abi(void);
 KUI_EXT_EXPORT const char *kui_ext_name(void);
 KUI_EXT_EXPORT void *kui_ext_init(void);
 KUI_EXT_EXPORT const KuiStr *kui_ext_components(size_t *count);
+KUI_EXT_EXPORT const KuiContribution *kui_ext_contributions(size_t *count);
 KUI_EXT_EXPORT void kui_ext_view(void *user, KuiCtx *ctx);
 KUI_EXT_EXPORT void kui_ext_on_event(void *user, const KuiEvent *ev);
 KUI_EXT_EXPORT void kui_ext_free(void *user);
@@ -4960,6 +4998,12 @@ KUI_EXT_EXPORT void kui_ext_free(void *user);
 bool kui_instance_name(KuiCtx *ctx, KuiStr *out);
 bool kui_instance_namespace(KuiCtx *ctx, KuiStr *out);
 const KuiValue *kui_instance_params(KuiCtx *ctx);
+/* The contribution slot this instance was placed in (ADR 0067): the name
+ * the host's kui_slot declared, so one component contributed to two slots
+ * can draw for each. False, out untouched, for an instance a host placed
+ * by name with kui_component, and on a context that is not an extension's.
+ * Borrowed for the call, like the name. */
+bool kui_instance_slot(KuiCtx *ctx, KuiStr *out);
 /* One of your component's events, from inside kui_ext_on_event (ADR
  * 0060): prop names the event prop the host passed its message in
  * (onSelect or on_select - either finds the host's), fields what rides
@@ -4997,6 +5041,23 @@ void kui_children(KuiCtx *ctx, KuiStr group);
 typedef void (*KuiChildrenFn)(void *user, KuiCtx *ctx, KuiStr group);
 int32_t kui_component(KuiCtx *ctx, KuiStr name, const KuiValue *props,
                       KuiChildrenFn children, void *user);
+
+/* A contribution slot, declared at the cursor (ADR 0067): every component
+ * the loaded extensions contribute to `name` (kui_ext_contributions, a
+ * script's `contributes`) is placed here as siblings - in load order, then
+ * by `order` - with no box of its own around them; wrap the call in one if
+ * you want one. The name is a space of its own, never read as
+ * namespace/component: any string, by the convention owner.place, owner
+ * the declarer's stable name. Each contribution is an instance keyed by
+ * the slot ("key" in props, else the name), its provider and its
+ * component, so loading or dropping a plugin leaves the others' focus and
+ * scroll where they were; each is replayed like any placement. props
+ * (borrowed, NULL for none) reach every contributor, and their on* entries
+ * are the messages the contributions' events arrive as, KuiEvent.from
+ * naming the provider. No children. Returns how many were placed: 0 when
+ * nothing contributes, or outside a frame - and never a warning, since
+ * whether a slot is drawn at all is your call. */
+size_t kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *props);
 
 #ifdef __cplusplus
 }

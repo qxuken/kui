@@ -43,6 +43,10 @@ pub struct KuiCtx {
     /// Payload most recently handed out by kui_poll_event; freed on the next
     /// poll (or context free) so C never manages event payload lifetime.
     pub(crate) last_payload: Option<Box<KuiValue>>,
+    /// The `from` most recently handed out by kui_poll_event — the provider
+    /// that raised the event (ADR 0067) — kept beside the payload and on
+    /// its terms: valid until the next poll or context free.
+    pub(crate) last_from: Option<String>,
     /// Text most recently handed out by kui_edit_text; freed on the next call.
     pub(crate) last_edit_text: Option<String>,
     /// The label most recently handed out by `kui_label_of`; valid until
@@ -140,6 +144,10 @@ pub struct KuiCtx {
     pub(crate) slot_name: Option<String>,
     pub(crate) slot_namespace: Option<String>,
     pub(crate) slot_params: Option<KuiValue>,
+    /// The contribution slot that instance was placed in (ADR 0067,
+    /// decision 13): what `kui_instance_slot` answers. `None` for a
+    /// placement by name, and on every context that is no instance's.
+    pub(crate) instance_slot: Option<String>,
     /// The extensions this context hosts, in origin order.
     /// `kui_ctx_add_extension` fills it, `kui_component` draws *them* in
     /// place, `kui_frame_finish` draws each `ns/root` the view did not
@@ -229,6 +237,7 @@ impl KuiCtx {
             _owned: None,
             events: Vec::new(),
             last_payload: None,
+            last_from: None,
             last_edit_text: None,
             label_of: String::new(),
             fragment_source: String::new(),
@@ -262,6 +271,7 @@ impl KuiCtx {
             slot_name: None,
             slot_namespace: None,
             slot_params: None,
+            instance_slot: None,
             extensions: Default::default(),
             last_ext_error: String::new(),
             last_dtcg_error: String::new(),
@@ -1661,6 +1671,13 @@ pub struct KuiEvent {
     /// this kind (ADR 0048: there are no root events). Static: valid for
     /// the life of the library. Appended in ABI 33.
     pub event: KuiStr,
+    /// Who raised it (ADR 0067, decision 14): the namespace of the
+    /// extension whose instance emitted a component event, empty for
+    /// anything else — the host's own nodes, and an extension's own events
+    /// on their way to it. Borrowed on the payload's terms: until the next
+    /// `kui_poll_event` / `kui_ctx_free`, or for the callback it is handed
+    /// to. Appended in ABI 39.
+    pub from: KuiStr,
 }
 
 impl Default for KuiEvent {
@@ -1677,6 +1694,10 @@ impl Default for KuiEvent {
                 ptr: std::ptr::null(),
                 len: 0,
             },
+            from: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
         }
     }
 }
@@ -1689,6 +1710,22 @@ unsafe impl OutParam for KuiEvent {
     fn size_mut(&mut self) -> &mut u32 {
         &mut self.size
     }
+}
+
+/// One component a C extension adds to a contribution slot (ADR 0067,
+/// decision 10): an element of the array its optional
+/// `kui_ext_contributions` export returns, which the plugin keeps alive
+/// while it is loaded and the loader copies out once. `slot` is the slot's
+/// name (any string, by the convention `owner.place`), `component` one of
+/// the components the plugin provides (checked at load), and `order` where
+/// it goes among the slot's contributions — lower first, ties in load
+/// order.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiContribution {
+    pub slot: KuiStr,
+    pub component: KuiStr,
+    pub order: i32,
 }
 
 /// What a declared window is (`kui_window_declare`), and what an `Open`

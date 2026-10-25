@@ -107,8 +107,8 @@
 //!
 //! A plugin is a shared library exporting `kui_ext_abi` and `kui_ext_view`
 //! (and optionally `kui_ext_name`, `kui_ext_init`, `kui_ext_components`,
-//! `kui_ext_on_event`, `kui_ext_free`); `examples/c/features/slots/panel.c`
-//! is one. The host loads it and places what it provides:
+//! `kui_ext_contributions`, `kui_ext_on_event`, `kui_ext_free`);
+//! `examples/c/features/slots/panel.c` is one. The host loads it and places what it provides:
 //!
 //! ```rust,no_run
 //! use kui_ffi::CExtension;
@@ -267,6 +267,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             _owned: Some(owned),
             events: Vec::new(),
             last_payload: None,
+            last_from: None,
             last_edit_text: None,
             label_of: String::new(),
             fragment_source: String::new(),
@@ -300,6 +301,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             slot_name: None,
             slot_namespace: None,
             slot_params: None,
+            instance_slot: None,
             extensions: Default::default(),
             last_ext_error: String::new(),
             last_dtcg_error: String::new(),
@@ -1499,12 +1501,8 @@ pub extern "C" fn kui_devtools_tab(
             return false;
         };
         let props = unsafe { props.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
-        c.core().devtools_tab_declare_with(
-            &kstr(name),
-            &kstr(label),
-            Some(&kstr(component)),
-            props,
-        )
+        c.core()
+            .devtools_tab_declare_with(&kstr(name), &kstr(label), Some(&kstr(component)), props)
     })
 }
 

@@ -38,6 +38,17 @@ impl Core {
     /// under after the host's view — `parent.str(full)`, recorded for
     /// `key_of` — or `None` outside a frame (ADR 0067: an extension
     /// providing nothing else is placed there unless the host placed it).
+    /// The contribution slot of the placement about to be filled, taken:
+    /// what its instance reads as `slot` (ADR 0067). Taken at the fill's
+    /// start, so a component the fill places inside is a plain placement.
+    pub(crate) fn take_placing_slot(&mut self) -> Option<Box<str>> {
+        self.placing_slot.take()
+    }
+
+    pub(crate) fn set_placing_slot(&mut self, slot: Option<&str>) {
+        self.placing_slot = slot.map(Into::into);
+    }
+
     pub(crate) fn root_fill_key(&mut self, full: &str) -> Option<Key> {
         if self.tree.is_empty() {
             return None;

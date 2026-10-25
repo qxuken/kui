@@ -13,7 +13,10 @@
 //! a position among the host's children, drawn then and there, and the
 //! props it passes are the panel's title and the message the host wants
 //! when a todo is toggled (`on_toggle`). The plugin raises it with
-//! `kui_emit`, and the host counts what comes back.
+//! `kui_emit`, and the host counts what comes back. The host also declares
+//! a contribution slot, `todos.toolbar`, with `ui.slot`: whatever loaded
+//! plugin contributes to it (the panel's chip) is placed there, and its
+//! press arrives as the host's `on_press` with `from` naming the provider.
 //!
 //! Run:
 //!   cargo run -p kui-devtools --bin cbuild   # target/debug/panel.so (panel.dll on Windows)
@@ -44,6 +47,10 @@ struct Host {
     last_toggle: Option<(i64, Key)>,
     /// How the last frame filled the panel.
     panel_fill: Option<FillAnswer>,
+    /// How many contributions the toolbar slot placed last frame.
+    toolbar: usize,
+    /// The slot's `on_press`, and who raised each: `UiEvent::from`.
+    chipped: Vec<Option<String>>,
     /// The plugin, loaded in `main` and taken by whichever of the window
     /// and the headless drive runs.
     ext: Option<CExtension>,
@@ -74,6 +81,13 @@ impl App for Host {
                     TextStyle::new(13.0).color(t.muted),
                 );
                 widgets::button(ui, "click me", Value::map([("kind", "click".into())]));
+                // A contribution slot (ADR 0067): a place, not a plugin.
+                // Whatever the loaded extensions contribute to it lands
+                // here with these props; the event's `from` says who.
+                self.toolbar = ui.slot(
+                    "todos.toolbar",
+                    &Value::map([("on_press", Value::map([("kind", "chipped".into())]))]),
+                );
             },
         );
 
@@ -114,6 +128,7 @@ impl App for Host {
                     .unwrap_or(-1);
                 self.last_toggle = Some((index, ev.key));
             }
+            (EventKind::Component, Some("chipped")) => self.chipped.push(ev.from.clone()),
             _ => {}
         }
     }
@@ -277,8 +292,32 @@ fn headless(host: &mut Host, core: &mut Core, ext: CExtension) -> i32 {
         return 1;
     }
 
+    // The toolbar slot: the panel's chip, found by the name it took from
+    // the slot it was placed in, and its press back with `from`.
+    if host.toolbar != 1 {
+        eprintln!(
+            "FAIL: the toolbar slot placed {} contributions, not 1",
+            host.toolbar
+        );
+        return 1;
+    }
+    let Some(chip) = find(core, EXT, "chip in todos.toolbar") else {
+        eprintln!("FAIL: the panel's chip is not in the toolbar slot");
+        return 1;
+    };
+    let evs = click(core, chip);
+    exts.route(evs, |ev| host.on_event(ev));
+    if host.chipped != [Some("todos".to_owned())] {
+        eprintln!(
+            "FAIL: expected one on_press from `todos`, got {:?}",
+            host.chipped
+        );
+        return 1;
+    }
+
     println!(
-        "ok: clicks routed by origin both ways, the panel placed in place, its on_toggle delivered"
+        "ok: clicks routed by origin both ways, the panel placed in place, its on_toggle \
+         delivered, the toolbar chip's press from `todos`"
     );
     0
 }

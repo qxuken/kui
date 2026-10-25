@@ -227,12 +227,13 @@ pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
 pub use runtime::perf::{LoopNote, SpanId};
-pub use runtime::{Content, Core, Extension, Owed, FillAnswer, SvgOpts, SvgSource};
+pub use runtime::{Content, Core, Extension, FillAnswer, Owed, SvgOpts, SvgSource};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry, WheelFeel};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};
 pub use session::{Session, SharedAudio, SharedResources};
 pub use slot::{
-    ANY_COMPONENT, Extensions, Fill, NAMESPACE_SEPARATOR, ROOT_COMPONENT, Instance, full_name, split_name,
+    ANY_COMPONENT, Contribution, Extensions, Fill, Instance, NAMESPACE_SEPARATOR, ROOT_COMPONENT,
+    full_name, split_name,
 };
 pub use spec::{
     Align, Bound, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, Min,

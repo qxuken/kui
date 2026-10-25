@@ -1344,6 +1344,8 @@ surface :: proc() -> bool {
 		_, name_ok := kui.instance_name(ui)
 		_, ns_ok := kui.instance_namespace(ui)
 		check(!name_ok && !ns_ok, "instance_name / instance_namespace are false outside an extension")
+		_, slot_ok := kui.instance_slot(ui)
+		check(!slot_ok, "instance_slot is false outside an extension")
 	}
 
 	// And none of that raised a diagnostic either.
@@ -1391,6 +1393,7 @@ Rest :: struct {
 	sampler:  kui.Fragment,
 	ring:     []f32,
 	fill:     i32,
+	slotted:  int,
 }
 
 // The OS's settings moving, in the message rest_view's root declares.
@@ -1418,6 +1421,9 @@ rest_view :: proc(r: ^Rest, ui: ^kui.Ui) {
 	// instance build nothing, and it says that too.
 	r.fill = kui.component(ui, "ns/panel", "params")
 	kui.children(ui, "")
+	// A contribution slot nothing contributes to places nothing and says
+	// nothing (ADR 0067): whether it is drawn is the app's call.
+	r.slotted = kui.slot(ui, "surface.toolbar", "props")
 }
 
 rest :: proc() {
@@ -1490,6 +1496,7 @@ rest :: proc() {
 
 	kui.frame(ui, &r, rest_view, 600, 400, 1)
 	check(r.fill == kui.FILL_NONE, "component: nothing provides it, FILL_NONE")
+	check(r.slotted == 0, "slot: nothing contributes, 0")
 	dd, dd_ok := kui.draw_data(ui)
 	segments, fragments, images := 0, 0, 0
 	for q in dd.quads {

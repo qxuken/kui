@@ -62,6 +62,11 @@ impl kui_native::App for CApp {
             window: ev.window.0,
             instance: ev.instance.map_or(0, |k| k.0),
             event: KuiStr::from_static(ev.event.name()),
+            // Borrowed from `ev` for the callback, as the payload is.
+            from: ev
+                .from
+                .as_deref()
+                .map_or(KuiStr::from_static(""), KuiStr::borrowed),
             ..Default::default()
         };
         cb(self.user, &out);

@@ -4130,7 +4130,7 @@ mod borrows {
 #[cfg(test)]
 mod replay_headless {
     use super::*;
-    use kui_core::{Extension, Extensions, Instance, FillAnswer, Ui, UiEvent, Value};
+    use kui_core::{Extension, Extensions, FillAnswer, Instance, Ui, UiEvent, Value};
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -4845,7 +4845,13 @@ mod lua_extensions {
         let root: KuiSpec = unsafe { std::mem::zeroed() };
         kui_root(ctx, &root);
         assert_eq!(
-            kui_component(ctx, ks("lua/panel"), std::ptr::null(), None, std::ptr::null_mut()),
+            kui_component(
+                ctx,
+                ks("lua/panel"),
+                std::ptr::null(),
+                None,
+                std::ptr::null_mut()
+            ),
             1,
             "kept, not replayed: its first frame"
         );
@@ -4990,6 +4996,192 @@ mod dtcg {
         ));
         assert!(kui_tokens_dtcg_error(ctx, &mut why));
         assert!(kstr(why).contains("no/such/brand.json"), "{}", &*kstr(why));
+        kui_ctx_free(ctx);
+    }
+}
+
+/// ADR 0067's new slot through C: `kui_slot` places every contribution to
+/// a name, the instance reads back which slot it is in with
+/// `kui_instance_slot`, and the emit it raises reaches the host's
+/// `kui_poll_event` with `from` naming the provider — kept beside the
+/// payload, valid until the next poll. The C plugin end of it, the
+/// `kui_ext_contributions` export, is `examples/c/features/slots`'
+/// `--headless`, which the build scripts run.
+#[cfg(test)]
+mod contribution_slots {
+    use super::*;
+    use kui_core::{Contribution, Extension, Instance, NodeSpec, Ui, UiEvent, Value};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Provides `chip`, contributes it to `todos.toolbar`, and records the
+    /// slot each fill was placed in as `kui_instance_slot` reports it.
+    struct Chip {
+        components: Vec<String>,
+        contributions: Vec<Contribution>,
+        slots: Rc<RefCell<Vec<Option<String>>>>,
+    }
+
+    impl Extension for Chip {
+        fn name(&self) -> &str {
+            "chip"
+        }
+        fn components(&self) -> &[String] {
+            &self.components
+        }
+        fn contributions(&self) -> &[Contribution] {
+            &self.contributions
+        }
+        fn view(&mut self, _inst: &Instance<'_>, _ui: &mut Ui<'_>) -> Result<(), String> {
+            Ok(())
+        }
+        fn component(&mut self, inst: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+            // The context a C plugin's kui_ext_view is handed, and what
+            // it answers there.
+            {
+                let mut ctx = crate::ext::instance_ctx(inst, ui);
+                let mut out = ks("");
+                let slot = kui_instance_slot(&mut ctx, &mut out).then(|| kstr(out).into_owned());
+                self.slots.borrow_mut().push(slot);
+            }
+            ui.with_keyed(
+                "chip",
+                NodeSpec::row()
+                    .size(60.0, 20.0)
+                    .label("chip")
+                    .on_click(Value::map([("kind", Value::str("chip"))])),
+                |_| {},
+            );
+            Ok(())
+        }
+        fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
+            match ev.payload.get_str("kind") {
+                Some("chip") => vec![kui_core::slot::emit("on_press", Value::Null)],
+                _ => Vec::new(),
+            }
+        }
+    }
+
+    fn frame(ctx: *mut KuiCtx, props: *const KuiValue) -> (usize, usize) {
+        kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+        let root: KuiSpec = unsafe { std::mem::zeroed() };
+        kui_root(ctx, &root);
+        let placed = kui_slot(ctx, ks("todos.toolbar"), props);
+        let nobody = kui_slot(ctx, ks("nobody.here"), props);
+        // A placement by name is no slot's.
+        kui_component(
+            ctx,
+            ks("todos/chip"),
+            std::ptr::null(),
+            None,
+            std::ptr::null_mut(),
+        );
+        kui_frame_finish(ctx);
+        (placed, nobody)
+    }
+
+    #[test]
+    fn a_slot_places_each_contribution_and_its_emit_names_the_provider() {
+        let slots = Rc::new(RefCell::new(Vec::new()));
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        unsafe { &mut *ctx }
+            .extensions
+            .push_as(
+                "todos",
+                Box::new(Chip {
+                    components: vec!["chip".into()],
+                    contributions: vec![Contribution::new("todos.toolbar", "chip")],
+                    slots: slots.clone(),
+                }),
+            )
+            .unwrap();
+
+        let props = KuiValue(Value::map([(
+            "on_press",
+            Value::map([("kind", Value::str("chipped"))]),
+        )]));
+        assert_eq!(
+            frame(ctx, &props),
+            (1, 0),
+            "one contribution, and none to a slot no one names"
+        );
+        assert_eq!(
+            *slots.borrow(),
+            vec![Some("todos.toolbar".to_owned()), None],
+            "the contribution knows its slot; the placement by name has none"
+        );
+        let mut warnings = [unsafe { std::mem::zeroed::<KuiWarning>() }; 4];
+        let n = kui_take_warnings(ctx, warnings.as_mut_ptr(), warnings.len());
+        let codes: Vec<String> = warnings[..n]
+            .iter()
+            .map(|w| format!("{}: {}", kstr(w.code), kstr(w.message)))
+            .collect();
+        assert!(codes.is_empty(), "an empty slot is silent: {codes:?}");
+
+        // The chip is the root's first child, at its origin: click it.
+        kui_input_cursor(ctx, 10.0, 10.0);
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        frame(ctx, &props);
+
+        let mut ev = KuiEvent::default();
+        assert!(
+            kui_poll_event(ctx, &mut ev),
+            "the chip's emit reached the host"
+        );
+        assert_eq!(ev.origin, 0, "as the host's own message");
+        assert_eq!(kstr(ev.event), "component");
+        let payload = unsafe { &*ev.payload };
+        assert_eq!(payload.0.get_str("kind"), Some("chipped"));
+        assert_eq!(
+            kstr(ev.from),
+            "todos",
+            "from names the provider's namespace"
+        );
+        assert_eq!(ev.size as usize, std::mem::size_of::<KuiEvent>());
+        // Valid until the next poll, which releases it with the payload.
+        assert!(!kui_poll_event(ctx, &mut ev), "and nothing else");
+        assert!(unsafe { &*ctx }.last_from.is_none());
+        kui_ctx_free(ctx);
+    }
+
+    /// The host's own events carry no `from`, and the empty string is a
+    /// real pointer, not NULL, so a host may print it as it is.
+    #[test]
+    fn a_host_event_comes_from_nobody() {
+        let ctx = kui_ctx_new();
+        let frame = |ctx| {
+            kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+            let root: KuiSpec = unsafe { std::mem::zeroed() };
+            kui_root(ctx, &root);
+            let mut spec: KuiSpec = unsafe { std::mem::zeroed() };
+            spec.width = KuiSizing {
+                tag: 2,
+                value: 50.0,
+            };
+            spec.height = KuiSizing {
+                tag: 2,
+                value: 50.0,
+            };
+            let msg = Box::into_raw(Box::new(KuiValue(Value::map([(
+                "kind",
+                Value::str("mine"),
+            )]))));
+            kui_open_keyed(ctx, ks("mine"), &spec, msg);
+            kui_close(ctx);
+            kui_frame_finish(ctx);
+        };
+        frame(ctx);
+        kui_input_cursor(ctx, 10.0, 10.0);
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        frame(ctx);
+        let mut ev = KuiEvent::default();
+        assert!(kui_poll_event(ctx, &mut ev));
+        assert_eq!(unsafe { &*ev.payload }.0.get_str("kind"), Some("mine"));
+        assert!(!ev.from.ptr.is_null());
+        assert_eq!(ev.from.len, 0);
         kui_ctx_free(ctx);
     }
 }

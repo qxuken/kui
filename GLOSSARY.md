@@ -85,6 +85,13 @@ Something an extension provides by name and a view places with
 _Avoid_: slot (since ADR 0067 that is a place many extensions append
 to), widget (that is what the core draws)
 
+**Slot**:
+A place a view declares by name (`slot("app.toolbar", props)`) where every
+loaded extension that contributes to that name appends one of its
+components. The name is any string, by the convention `owner.place`.
+_Avoid_: hook, extension point, island; and the old meaning (one
+extension's named place, folded into components by ADR 0067)
+
 **Instance**:
 One placement of a component, keyed by its position or its `key` prop.
 It is kept and replayed while its props and what it read stay the same.

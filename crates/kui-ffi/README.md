@@ -60,6 +60,8 @@ impl App for Host {
         ui.open(NodeSpec::row().fill());
         // the plugin's `panel` component draws here (ADR 0067)
         ui.component("todos/panel", &Value::map([("title", "todos".into())]));
+        // and whatever any loaded plugin contributes to this slot
+        ui.slot("app.toolbar", &Value::Null);
         ui.close();
     }
 }

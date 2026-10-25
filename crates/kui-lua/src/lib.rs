@@ -352,8 +352,8 @@
 
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
-    Align, Color, Content, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Instance,
-    Span, Ui, UiEvent, Value, WindowConfig, WindowLifecycle, widgets,
+    Align, Color, Content, EditOptions, Extension, FloatConfig, Instance, Key, PadShorthand,
+    Sizing, Span, Ui, UiEvent, Value, WindowConfig, WindowLifecycle, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -454,6 +454,9 @@ pub struct LuaExtension {
     /// it provides as components (ADR 0060), each a function `(env,
     /// props, inst)` returning the instance's tree.
     components: Vec<String>,
+    /// The script's `contributes` global, read once at load: the
+    /// components it adds to contribution slots (ADR 0067).
+    contributions: Vec<kui_core::Contribution>,
     /// The folder a file-loaded script came from, which an `svg`'s
     /// relative `src` is read against (ADR 0063); `None` for a script
     /// loaded from a string, whose paths are the process's.
@@ -578,6 +581,7 @@ impl LuaExtension {
                 )));
             }
         };
+        let contributions = parse_contributions(&lua.globals().get::<mlua::Value>("contributes")?)?;
         let tokens = match lua.globals().get::<mlua::Value>("tokens")? {
             mlua::Value::Nil => None,
             mlua::Value::Table(t) => Some(parse_tokens(&t)?),
@@ -595,6 +599,7 @@ impl LuaExtension {
             env: Default::default(),
             instance_names: Default::default(),
             components,
+            contributions,
             dir: dir.map(|d| d.to_string_lossy().into()),
             tokens,
         })
@@ -646,7 +651,13 @@ impl LuaExtension {
             .map_or_else(|| "lua".into(), |n| n.to_string_lossy().into_owned());
         let dir = path.parent().filter(|d| !d.as_os_str().is_empty());
         let dir = dir.unwrap_or(std::path::Path::new("."));
-        Self::load(name, &format!("@{}", path.display()), &source, Some(dir), setup)
+        Self::load(
+            name,
+            &format!("@{}", path.display()),
+            &source,
+            Some(dir),
+            setup,
+        )
     }
 
     /// Loads a script from a `.lua` file, or from a directory holding
@@ -684,6 +695,10 @@ impl Extension for LuaExtension {
         &self.components
     }
 
+    fn contributions(&self) -> &[kui_core::Contribution] {
+        &self.contributions
+    }
+
     fn component(&mut self, inst: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         self.draw_component(inst, ui)
     }
@@ -702,6 +717,7 @@ impl Extension for LuaExtension {
             env: std::cell::RefCell::new(None),
             instance_names: Default::default(),
             components: self.components.clone(),
+            contributions: Vec::new(),
             dir: self.dir.clone(),
             tokens: None,
         }))
@@ -748,7 +764,7 @@ impl Extension for LuaExtension {
                 // loaded, who raised it: the namespace it chose in
                 // `env.add_extension`. Absent for the script's own nodes,
                 // which is what tells the two apart.
-                if let Some(ns) = self.loaded_as(ev.origin) {
+                if let Some(ns) = ev.from.clone().or_else(|| self.loaded_as(ev.origin)) {
                     t.set("from", ns)?;
                 }
             }
@@ -993,7 +1009,7 @@ impl LuaExtension {
                 t.set("component", name.as_str())?;
             }
         }
-        if let Some(ns) = self.loaded_as(ev.origin) {
+        if let Some(ns) = ev.from.clone().or_else(|| self.loaded_as(ev.origin)) {
             t.set("from", ns)?;
         }
         Ok(t)
@@ -1015,6 +1031,55 @@ fn event_payload(lua: &Lua, payload: &Value) -> mlua::Result<Table> {
     }
 }
 
+/// The `contributes` global (ADR 0067): `{ ["app.toolbar"] = "save" }`,
+/// a slot to one component or a list of them, or a list of `{ slot =,
+/// component =, order = }` — what the script adds to contribution slots.
+fn parse_contributions(v: &mlua::Value) -> mlua::Result<Vec<kui_core::Contribution>> {
+    let bad = |what: String| {
+        mlua::Error::runtime(format!(
+            "`contributes` {what}: write `{{ [\"app.toolbar\"] = \"save\" }}` or `{{ {{ slot = \
+             \"app.toolbar\", component = \"save\", order = 10 }} }}`"
+        ))
+    };
+    let t = match v {
+        mlua::Value::Nil => return Ok(Vec::new()),
+        mlua::Value::Table(t) => t,
+        other => return Err(bad(format!("is a {}", other.type_name()))),
+    };
+    let mut out = Vec::new();
+    if t.raw_len() > 0 {
+        for entry in t.sequence_values::<Table>() {
+            let e = entry.map_err(|_| bad("has an entry that is not a table".into()))?;
+            let slot: Option<String> = e.get("slot")?;
+            let component: Option<String> = e.get("component")?;
+            let (Some(slot), Some(component)) = (slot, component) else {
+                return Err(bad("has an entry without its slot and component".into()));
+            };
+            let order: Option<i64> = e.get("order")?;
+            out.push(kui_core::Contribution::new(slot, component).order(order.unwrap_or(0) as i32));
+        }
+        return Ok(out);
+    }
+    for pair in t.pairs::<String, mlua::Value>() {
+        let (slot, v) = pair.map_err(|_| bad("has a key that is not a slot name".into()))?;
+        match v {
+            mlua::Value::String(c) => {
+                out.push(kui_core::Contribution::new(&slot, c.to_str()?.to_string()))
+            }
+            mlua::Value::Table(list) => {
+                for c in list.sequence_values::<String>() {
+                    out.push(kui_core::Contribution::new(&slot, c?));
+                }
+            }
+            other => return Err(bad(format!("names {} for `{slot}`", other.type_name()))),
+        }
+    }
+    // A table's pairs come in no order; load order within one script is
+    // by slot, then as listed.
+    out.sort_by(|a, b| a.slot.cmp(&b.slot));
+    Ok(out)
+}
+
 /// `view`'s second argument and a component's third: `{ name = ...,
 /// namespace = ..., params = ..., key = ... }` — the component in the
 /// script's own vocabulary (`root` for `view`), the namespace the host
@@ -1027,6 +1092,9 @@ fn instance_table(lua: &Lua, slot: &Instance<'_>) -> mlua::Result<Table> {
     t.set("name", slot.name)?;
     t.set("namespace", slot.namespace)?;
     t.set("key", slot.key.0 as i64)?;
+    if let Some(s) = slot.slot {
+        t.set("slot", s)?;
+    }
     if !matches!(slot.params, Value::Null) {
         t.set("params", value_to_lua(lua, slot.params)?)?;
     }
@@ -2394,7 +2462,10 @@ fn each_child(t: &Table, mut f: impl FnMut(Table) -> mlua::Result<()>) -> mlua::
             mlua::Value::Nil => {}
             mlua::Value::Table(child) => f(child)?,
             other => {
-                return Err(bad(format!("child {i} is a {}, not a node", other.type_name())));
+                return Err(bad(format!(
+                    "child {i} is a {}, not a node",
+                    other.type_name()
+                )));
             }
         }
     }
@@ -2545,7 +2616,10 @@ fn build_devtools_tab(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         let (k, _) = pair?;
         let mlua::Value::String(k) = k else { continue };
         let k = k.to_str()?;
-        if !matches!(k.as_ref(), "type" | "name" | "label" | "component" | "props" | "view") {
+        if !matches!(
+            k.as_ref(),
+            "type" | "name" | "label" | "component" | "props" | "view"
+        ) {
             return refuse(
                 ui,
                 &format!(
@@ -2783,6 +2857,19 @@ fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         }
         "titlebar" | "tooltip" | "radio_group" => build_holder(ui, t, ty),
         "component" => build_component(ui, t),
+        // A contribution slot (ADR 0067): every component the loaded
+        // extensions contribute to `name`, placed here as siblings.
+        "slot" => {
+            let name: String = t.get::<Option<String>>("name")?.ok_or_else(|| {
+                mlua::Error::runtime("slot needs a name: slot(\"owner.place\", props)")
+            })?;
+            let props = match t.get::<mlua::Value>("props")? {
+                mlua::Value::Nil => Value::Null,
+                v => lua_to_value(&v)?,
+            };
+            ui.slot(&name, &props);
+            Ok(())
+        }
         // Where a component's fill puts its host's children (ADR 0060).
         "children" => {
             let group = t.get::<Option<String>>("group")?.unwrap_or_default();
@@ -5557,7 +5644,10 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
+        let err = ext
+            .view(&Instance::root(), &mut ui)
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains("block | bar | underline") && err.contains("blob"),
             "{err}"
@@ -5592,7 +5682,10 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
+        let err = ext
+            .view(&Instance::root(), &mut ui)
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains("option_as_alt") && err.contains("\"both\"") && err.contains("meta"),
             "{err}"
@@ -6657,7 +6750,10 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
+        let err = ext
+            .view(&Instance::root(), &mut ui)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("needs options"), "{err}");
         ui.finish();
         let mut ext = LuaExtension::from_source(
@@ -6667,7 +6763,10 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
+        let err = ext
+            .view(&Instance::root(), &mut ui)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("index from 1"), "{err}");
         ui.finish();
         // And, by name (backlog RG10): no label, and no options at all —
@@ -6676,7 +6775,10 @@ mod tests {
             let mut ext = LuaExtension::from_source("bad", src).unwrap();
             let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
+            let err = ext
+                .view(&Instance::root(), &mut ui)
+                .unwrap_err()
+                .to_string();
             ui.finish();
             err
         };
@@ -8603,7 +8705,10 @@ mod tests {
         ext.lua.globals().set("target", "nope").unwrap();
         cmd(&ext, "set");
         let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
-        let e = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
+        let e = ext
+            .view(&Instance::root(), &mut ui)
+            .unwrap_err()
+            .to_string();
         ui.finish();
         assert!(
             e.contains("no node is keyed \"nope\"") && e.contains("integer key"),
@@ -8998,7 +9103,9 @@ mod tests {
             let mut core = Core::new();
             let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            let r = ext.view(&Instance::root(), &mut ui).map_err(|e| e.to_string());
+            let r = ext
+                .view(&Instance::root(), &mut ui)
+                .map_err(|e| e.to_string());
             ui.finish();
             r
         };
@@ -9373,7 +9480,9 @@ mod tests {
             let mut core = Core::new();
             let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            let r = ext.view(&Instance::root(), &mut ui).map_err(|e| e.to_string());
+            let r = ext
+                .view(&Instance::root(), &mut ui)
+                .map_err(|e| e.to_string());
             ui.finish();
             r
         };

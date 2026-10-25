@@ -206,7 +206,11 @@ const ENV_SHAPES: &[(&str, &[(&str, &str)])] = &[
 
 /// `view`'s and a component's last argument, as the crate docs give it.
 const INSTANCE: &[(&str, &str, &str)] = &[
-    ("name", "string", "The component in the script's own vocabulary; `root` for `view`."),
+    (
+        "name",
+        "string",
+        "The component in the script's own vocabulary; `root` for `view`.",
+    ),
     (
         "namespace",
         "string",
@@ -221,6 +225,11 @@ const INSTANCE: &[(&str, &str, &str)] = &[
         "key",
         "integer",
         "The integer key events and `set_focus` use.",
+    ),
+    (
+        "slot",
+        "string",
+        "The contribution slot it was placed in (`slot(name, props)`), nil for a placement by name.",
     ),
 ];
 

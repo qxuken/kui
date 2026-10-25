@@ -299,6 +299,79 @@ impl<'a> Ui<'a> {
         self.place(name, props, None, None)
     }
 
+    /// A contribution slot (ADR 0067): every component the loaded
+    /// extensions contribute to `name` is placed here, as siblings in the
+    /// current container — no wrapper; wrap the slot for a box — in load
+    /// order and then each contribution's `order`. Each gets `props`, and
+    /// its instance's `slot` says where it is. `name` is any string, by
+    /// the convention `owner.place` (`app.toolbar`), never read as a
+    /// namespace. Each contribution is an instance keyed by the slot (its
+    /// name, or a `key` prop), its provider and its component, so adding
+    /// a plugin leaves the others' keys, focus and scroll where they were;
+    /// each is kept and replayed on its own. Its events arrive as the
+    /// messages `props` declares, with `from` naming the provider. Answers
+    /// how many were placed; an empty slot is silent.
+    ///
+    /// ```rust,ignore
+    /// ui.slot("app.toolbar", &Value::map([("onRun", Msg::Run.into())]));
+    /// ```
+    pub fn slot(&mut self, name: &str, props: &Value) -> usize {
+        self.slot_at(None, name, props)
+    }
+
+    /// [`Self::slot`] at a key: a replay places a slot again where its
+    /// kept fill placed it, running the provider loop anew.
+    pub(crate) fn slot_at(&mut self, at: Option<Key>, name: &str, props: &Value) -> usize {
+        if self.core.tree.is_empty() {
+            return 0;
+        }
+        let key = match (at, props.get_str("key")) {
+            (Some(k), _) => k,
+            (None, Some(l)) => self.core.child_key(l),
+            (None, None) => self.core.child_key(name),
+        };
+        let found = match self.filler.as_deref() {
+            Some(f) => f.contributions(name),
+            None => Vec::new(),
+        };
+        // Inside a fill being kept, the slot is one op: a replay runs the
+        // provider loop again, so a plugin loaded since is placed.
+        let keeping = self.core.keeping();
+        if keeping {
+            self.core.keep_op(crate::runtime::replay::Op::Slot {
+                key,
+                name: name.into(),
+                props: props.clone(),
+            });
+            self.core.pause_keeping();
+        }
+        let props = match props {
+            Value::Map(entries) if entries.iter().any(|(k, _)| k == "key") => Value::Map(
+                entries
+                    .iter()
+                    .filter(|(k, _)| k != "key")
+                    .cloned()
+                    .collect(),
+            ),
+            other => other.clone(),
+        };
+        let mut placed = 0;
+        for full in &found {
+            let (ns, short) = crate::slot::split_name(full);
+            self.core.set_placing_slot(Some(name));
+            if self
+                .place_at(Some(key.str(ns).str(short)), full, &props, None, None)
+                .is_some()
+            {
+                placed += 1;
+            }
+        }
+        if keeping {
+            self.core.resume_keeping();
+        }
+        placed
+    }
+
     /// [`Self::component`] with the host's own children: `children(group,
     /// ui)` builds the group the fill asks for — `""` for the unnamed one
     /// — where the fill asks, under the host's origin, keyed by the
@@ -363,7 +436,12 @@ impl<'a> Ui<'a> {
     /// A component placed again by a replay, at the key it had when the
     /// kept fill placed it: a replay pushes nodes under their own keys, so
     /// the counter a fresh placement would read is not where it was.
-    pub(crate) fn component_at(&mut self, key: Key, name: &str, props: &Value) -> Option<FillAnswer> {
+    pub(crate) fn component_at(
+        &mut self,
+        key: Key,
+        name: &str,
+        props: &Value,
+    ) -> Option<FillAnswer> {
         self.place_at(Some(key), name, props, None, None)
     }
 
@@ -416,12 +494,17 @@ impl<'a> Ui<'a> {
         };
         let mut answer = None;
         let (namespace, short) = crate::slot::split_name(name);
+        // The contribution slot this placement is for, if any: the fill
+        // that draws it takes it again (`Extensions::fill_one`).
+        let in_slot = self.core.take_placing_slot();
         let slot = Instance {
             name: short,
             namespace,
             params: props,
             key,
+            slot: in_slot.as_deref(),
         };
+        self.core.set_placing_slot(in_slot.as_deref());
         if let Some(by) = by {
             // The fill is the caller's: the instance is the current
             // origin's, filled in place.
@@ -491,6 +574,7 @@ impl<'a> Ui<'a> {
         if keeping {
             self.core.resume_keeping();
         }
+        self.core.set_placing_slot(None);
         if answer.is_none() {
             self.core.warn(crate::diag::unknown_component(name, key));
         }

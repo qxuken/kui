@@ -913,9 +913,32 @@ export function createEncoder(P) {
           props(p, null, false);
         }
         return;
-      case 'slot':
-        // The old slot folded into components (ADR 0067).
-        throw new Error('<slot> is gone (ADR 0067): place what an extension provides with <component name="ns/name" props={…}/>');
+      case 'slot': {
+        // A contribution slot (ADR 0067): every component the loaded
+        // extensions contribute to `name` lands here as siblings, each
+        // with `props` — the `on*` ones the messages their events arrive
+        // as, with `from` naming who raised them. Any string names one,
+        // by the convention `owner.place`.
+        if (typeof p.name !== 'string' || p.name === '') throw new Error('<slot> needs a name, "owner.place"');
+        if (p.params != null || p.keep != null || p.replay != null) {
+          throw new Error('<slot> is a contribution slot since ADR 0067: place one extension\'s component with <component name="ns/name" props={…}/>');
+        }
+        if (p.props != null && (typeof p.props !== 'object' || Array.isArray(p.props))) throw new Error('<slot> props must be an object');
+        for (const k of Object.keys(p)) {
+          if (k !== 'name' && k !== 'props' && k !== 'children') {
+            throw new Error(`<slot> takes name and props, not ${JSON.stringify(k)} (put it in props)`);
+          }
+        }
+        const kids = el.children;
+        if (kids != null && !(Array.isArray(kids) && kids.length === 0)) throw new Error('<slot> takes no children: every contributor gets the props');
+        const props = { ...(p.props ?? {}) };
+        if (el.key != null) props.key = String(el.key);
+        reserve(6);
+        f[fi++] = OP.slot;
+        strRef(p.name);
+        strRef(Object.keys(props).length ? JSON.stringify(props) : null);
+        return;
+      }
       case 'devtoolsTab': {
         // A tab in the core's devtools panel (ADR 0032, 0067). `name` is
         // the tab's identity, `label` what the strip shows. Two forms:

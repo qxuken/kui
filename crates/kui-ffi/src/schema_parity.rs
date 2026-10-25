@@ -957,6 +957,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_instance_name",
             "kui_instance_namespace",
             "kui_instance_params",
+            "kui_instance_slot",
         ];
         // The context, the frame and the handshake.
         const MECHANICS: &[&str] = &[

@@ -2742,7 +2742,7 @@ impl KuiWindow {
 // ---------------------------------------------------------------------------
 // The shared surface
 
-/// Pending UI events as `[{origin, window, key, event, payload, instance}]` —
+/// Pending UI events as `[{origin, window, key, event, payload, instance, from}]` —
 /// payloads plain JSON, so your Elm messages come back out as data.
 /// `event` is which event it was (`"drag"`, `"change"`, `"resize"`, …,
 /// ADR 0047): a node's payload is the message its handler declared with
@@ -2771,6 +2771,9 @@ fn events_json(events: Vec<UiEvent>) -> Json {
                     "instance".into(),
                     ev.instance.map_or(Json::Null, |k| Json::String(key_str(k))),
                 );
+                // Who raised a component's event: the provider's namespace
+                // (ADR 0067), what tells a slot's contributors apart.
+                o.insert("from".into(), ev.from.map_or(Json::Null, Json::String));
                 Json::Object(o)
             })
             .collect(),

@@ -320,6 +320,10 @@ pub struct Core {
     /// `children()` asks of, and what the host's children are built
     /// against (ADR 0060).
     fill_frames: Vec<fills::FillFrame>,
+    /// The contribution slot the placement being made is for (ADR 0067):
+    /// set by `Ui::slot` around each contribution, taken by the fill that
+    /// draws it, which tells its instance.
+    placing_slot: Option<Box<str>>,
     /// The key namespace of the fill in progress:
     /// while the node stack is exactly `ns_depth` deep, a child's key is
     /// derived from `ns_key` instead of from the node it is opened under,
@@ -1040,7 +1044,11 @@ impl Core {
             .flatten();
         let missed = tokens.pick_families_over(prev, |n| self.session.register_family(n));
         self.warn_unpicked_families(missed);
-        let shares = tokens.is_exported() || self.tokens.get(&self.origin).is_some_and(|t| t.is_exported());
+        let shares = tokens.is_exported()
+            || self
+                .tokens
+                .get(&self.origin)
+                .is_some_and(|t| t.is_exported());
         self.tokens.insert(self.origin, tokens);
         if shares {
             self.share_tokens();
@@ -1154,7 +1162,9 @@ impl Core {
         self.note_read_once(replay::ONCE_METRICS, || {
             replay::Read::Metrics(self.metrics_gen)
         });
-        self.note_read_once(replay::ONCE_TOKENS, || replay::Read::Tokens(self.tokens_rev));
+        self.note_read_once(replay::ONCE_TOKENS, || {
+            replay::Read::Tokens(self.tokens_rev)
+        });
         let own = self.tokens.get(&self.origin);
         let host = if self.origin == OriginId::HOST {
             None
@@ -1309,6 +1319,7 @@ impl Core {
             keep_next: None,
             kept_instances: Default::default(),
             fill_frames: Vec::new(),
+            placing_slot: None,
             ns_depth: usize::MAX,
             ns_key: Key::ROOT,
             dt_app: None,
@@ -2326,12 +2337,24 @@ pub trait Extension {
     fn components(&self) -> &[String] {
         &[]
     }
+    /// The components this extension adds to contribution slots (ADR
+    /// 0067): each names a slot and one of its own components, placed
+    /// wherever a host declares that slot, beside every other extension's.
+    /// Read once, at load; a component it does not provide is a load
+    /// error. Empty by default.
+    fn contributions(&self) -> &[crate::slot::Contribution] {
+        &[]
+    }
     /// Draws one component instance: `inst.name` is the component,
     /// `inst.params` the props the host passed, `inst.key` the instance's
     /// key, and `Ui::children(group)` builds the host's children where the
     /// fill wants them. The default is [`Self::view`], for an extension
     /// that tells its components apart by name.
-    fn component(&mut self, inst: &crate::slot::Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn component(
+        &mut self,
+        inst: &crate::slot::Instance<'_>,
+        ui: &mut Ui<'_>,
+    ) -> Result<(), String> {
         self.view(inst, ui)
     }
     /// A second handle onto this extension, sharing its state: what the
@@ -2364,7 +2387,14 @@ impl<E: Extension + ?Sized> Extension for Box<E> {
     fn components(&self) -> &[String] {
         (**self).components()
     }
-    fn component(&mut self, inst: &crate::slot::Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn contributions(&self) -> &[crate::slot::Contribution] {
+        (**self).contributions()
+    }
+    fn component(
+        &mut self,
+        inst: &crate::slot::Instance<'_>,
+        ui: &mut Ui<'_>,
+    ) -> Result<(), String> {
         (**self).component(inst, ui)
     }
     fn reentry(&mut self) -> Option<Box<dyn Extension>> {

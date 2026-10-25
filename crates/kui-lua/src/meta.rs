@@ -1204,7 +1204,7 @@ pub(crate) mod tests {
     /// file gives the event's class, and the envelope beside them.
     #[test]
     fn a_delivered_event_has_the_fields_its_class_names() {
-        use kui_core::{Core, Extension, InputEvent, Size, Instance, Vec2};
+        use kui_core::{Core, Extension, InputEvent, Instance, Size, Vec2};
         let mut ext = crate::LuaExtension::from_source(
             "events",
             r#"

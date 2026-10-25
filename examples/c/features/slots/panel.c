@@ -15,6 +15,11 @@
  * host hears as its own message.
  * (docs/adr/0067-slots-fold-into-components.md)
  *
+ * It also adds a "chip" to any host's "todos.toolbar" slot, named in
+ * kui_ext_contributions: wherever a host declares that slot with kui_slot,
+ * the chip is drawn there with the slot's props, and its press raises the
+ * slot's on_press - which the host hears with KuiEvent.from naming us.
+ *
  * It links against nothing: every kui_* call here is left undefined and
  * resolved from the host executable at load, the way a Lua C module
  * resolves lua_*. See ../../crates/kui-ffi/src/ext.rs for the loader and
@@ -35,6 +40,7 @@ typedef struct Panel {
     char todos[MAX_TODOS][TODO_LEN];
     int done[MAX_TODOS];
     int count;
+    int chip_presses; /* the toolbar chip, pressed so far */
 } Panel;
 
 /* -- small helpers ------------------------------------------------------- */
@@ -69,15 +75,53 @@ uint32_t kui_ext_abi(void) { return KUI_ABI_VERSION; }
 const char *kui_ext_name(void) { return "c panel"; }
 
 /* The components this panel provides (docs/adr/0060, 0067): the todo
- * "panel", and a "badge" a host places as often as it likes. Each instance
- * is drawn by kui_ext_view with its name as kui_instance_name. The array
- * outlives every call - the host reads it once at load and copies the
- * names out. */
+ * "panel", a "badge" a host places as often as it likes, and the "chip"
+ * below contributes. Each instance is drawn by kui_ext_view with its name
+ * as kui_instance_name. The array outlives every call - the host reads it
+ * once at load and copies the names out. */
 static const KuiStr COMPONENTS[] = {{(const uint8_t *)"panel", 5},
-                                    {(const uint8_t *)"badge", 5}};
+                                    {(const uint8_t *)"badge", 5},
+                                    {(const uint8_t *)"chip", 4}};
 const KuiStr *kui_ext_components(size_t *count) {
     *count = sizeof COMPONENTS / sizeof *COMPONENTS;
     return COMPONENTS;
+}
+
+/* What this panel adds to other people's slots (ADR 0067): the chip, in
+ * "todos.toolbar". A host never names us to get it - it declares the slot,
+ * and every plugin contributing to it is placed there. Read once at load,
+ * like the components; the chip must be one of them, or the load fails. */
+static const KuiContribution CONTRIBUTIONS[] = {
+    {{(const uint8_t *)"todos.toolbar", 13}, {(const uint8_t *)"chip", 4}, 0},
+};
+const KuiContribution *kui_ext_contributions(size_t *count) {
+    *count = sizeof CONTRIBUTIONS / sizeof *CONTRIBUTIONS;
+    return CONTRIBUTIONS;
+}
+
+/* The chip: a pressable pill saying how often it was pressed, named for the
+ * slot kui_instance_slot says it is in - the one name a host can find it
+ * by. Its press comes back to kui_ext_on_event, which raises the slot's
+ * on_press. */
+static void chip_view(const Panel *p, KuiCtx *ui) {
+    KuiStr slot = KUI_STR("no slot");
+    kui_instance_slot(ui, &slot);
+    char label[64];
+    snprintf(label, sizeof label, "chip in %.*s", (int)slot.len, (const char *)slot.ptr);
+    char text[32];
+    snprintf(text, sizeof text, "todos chip · %d", p->chip_presses);
+    KuiTheme t = KUI_THEME_INIT;
+    kui_theme(ui, &t);
+    KuiSpec chip = {.dir = KUI_ROW, .cross_align = KUI_CENTER,
+                    .pad_l = 8, .pad_r = 8, .pad_t = 2, .pad_b = 2,
+                    .bg = t.accent, .radius = 8,
+                    .label = {(const uint8_t *)label, strlen(label)}};
+    kui_open(ui, &chip, msg("chip"));
+    {
+        KuiTextStyle small = {.size = 12, .color = t.on_accent};
+        kui_text(ui, (KuiStr){(const uint8_t *)text, strlen(text)}, &small);
+    }
+    kui_close(ui);
 }
 
 /* One badge: its label from the props, a pressable dot, and the host's own
@@ -123,6 +167,10 @@ void kui_ext_view(void *user, KuiCtx *ui) {
     KuiStr which = {0};
     if (kui_instance_name(ui, &which) && kui_str_eq(which, "badge")) {
         badge_view(ui);
+        return;
+    }
+    if (kui_str_eq(which, "chip")) {
+        chip_view(p, ui);
         return;
     }
 
@@ -245,6 +293,14 @@ void kui_ext_on_event(void *user, const KuiEvent *ev) {
         KuiValue *fields = kui_value_map();
         kui_value_map_set(fields, KUI_STR("presses"), kui_value_int(++presses));
         kui_emit(ev, KUI_STR("onPress"), fields);
+        kui_value_free(fields);
+    } else if (kui_str_eq(s, "chip")) {
+        /* The toolbar chip: raise the slot's on_press. Every contributor
+         * to the slot gets the same props, so the host tells us apart by
+         * the event's `from`, not by anything we put here. */
+        KuiValue *fields = kui_value_map();
+        kui_value_map_set(fields, KUI_STR("presses"), kui_value_int(++p->chip_presses));
+        kui_emit(ev, KUI_STR("on_press"), fields);
         kui_value_free(fields);
     } else if (kui_str_eq(s, "add")) {
         if (p->count < MAX_TODOS) {

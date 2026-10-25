@@ -2,7 +2,7 @@
 //! table is the process's, so this binary is its own.
 
 use kui_core::calc::{self, Expr};
-use kui_core::{Core, Extension, OriginId, Size, Instance, diag};
+use kui_core::{Core, Extension, Instance, OriginId, Size, diag};
 use kui_lua::LuaExtension;
 
 /// A new expression in a view once the table is full leaves that prop at
@@ -34,7 +34,8 @@ fn a_new_expression_past_the_full_table_leaves_its_prop_undeclared() {
     core.set_inspect(true);
     let mut ui = core.frame(Size::new(600.0, 200.0), 1.0);
     ui.set_origin(OriginId(1));
-    ext.view(&Instance::root(), &mut ui).expect("the frame builds");
+    ext.view(&Instance::root(), &mut ui)
+        .expect("the frame builds");
     ui.finish();
     let nodes = core.nodes();
     let w: Vec<f32> = ["kept", "spelled", "data", "capped", "floored"]

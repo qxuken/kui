@@ -240,6 +240,16 @@ function component(name, props, kids)
   return { type = "component", name = name, props = props, children = kids }
 end
 
+-- slot("app.toolbar", { on_run = { kind = "run" } }): a contribution slot
+-- (docs/adr/0067) — every component the loaded extensions contribute to
+-- the name (their `contributes`) placed here as siblings, in load order
+-- and then `order`, each with these props; their events arrive as these
+-- messages with `at.from` naming who raised them. An empty slot draws
+-- nothing and says nothing.
+function slot(name, props)
+  return { type = "slot", name = name, props = props }
+end
+
 -- In a component's function (`components.card = function(env, props,
 -- inst) … end`): where the host's children of `group` go, the unnamed group
 -- without one.

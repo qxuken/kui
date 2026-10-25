@@ -9767,11 +9767,51 @@ test('a tick that returns effects and no model hands them on without a frame (AD
 // There is no script-loads-script path — a Lua extension is loaded by a Rust
 // host or not at all.
 
-test('<slot> is gone, and says what replaced it (ADR 0067)', () => {
-  const ctx = new Ctx();
-  assert.deepEqual(ctx.extensionNamespaces(), []);
-  const enc = createEncoder(protocol());
-  assert.throws(() => enc.encode(box({}, [el('slot', { name: 'todos/panel' })])), /<slot> is gone \(ADR 0067\).*<component/);
+test('a slot places what every extension contributes, in order, and says who raised an event (ADR 0067)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kui-slot-'));
+  try {
+    const plugin = (name, order) =>
+      `contributes = { { slot = 'app.toolbar', component = 'b', order = ${order} } }
+       components = {
+         b = function(env, props, inst)
+           return row { key = 'b', width = 60, height = 20, role = 'button',
+             label = '${name} in ' .. inst.slot .. ' for ' .. props.title, on_click = { kind = 'press' } }
+         end,
+       }
+       function on_event(ev)
+         if ev.kind == 'press' then return emit('on_run', { by = '${name}' }) end
+       end`;
+    writeFileSync(join(dir, 'save.lua'), plugin('save', 0));
+    writeFileSync(join(dir, 'open.lua'), plugin('open', -1));
+    const ctx = new Ctx();
+    ctx.setInspect(true);
+    ctx.addExtension('save', join(dir, 'save.lua'));
+    ctx.addExtension('open', join(dir, 'open.lua'));
+    const view = () =>
+      box({ dir: 'row', width: 'grow', height: 'grow' }, [
+        el('slot', { name: 'app.toolbar', props: { title: 'files', on_run: { kind: 'run' } } }),
+      ]);
+    ctx.frame(400, 100, 1, view());
+    const named = ctx.accessTree().nodes.filter((n) => n.origin > 0).map((n) => n.name);
+    assert.deepEqual(named, ['open in app.toolbar for files', 'save in app.toolbar for files']);
+    assert.deepEqual(ctx.warnings(), []);
+    const save = ctx.accessTree().nodes.find((n) => n.name?.startsWith('save'));
+    ctx.cursor(save.rect.x + 4, save.rect.y + 4);
+    ctx.mouse(true);
+    ctx.mouse(false);
+    ctx.frame(400, 100, 1, view());
+    const runs = ctx.pollEvents().filter((e) => e.payload?.kind === 'run');
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0].event, 'component');
+    assert.equal(runs[0].from, 'save', 'the provider that raised it');
+    assert.deepEqual(runs[0].payload, { kind: 'run', run: { by: 'save' } });
+    // What the old slot took is refused with what replaced it.
+    const enc = createEncoder(protocol());
+    assert.throws(() => enc.encode(box({}, [el('slot', { name: 'todos/panel', params: {} })])), /<component/);
+    assert.throws(() => enc.encode(box({}, [el('slot', {})])), /needs a name/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('addExtension reports why a library is not a plugin, and keeps nothing', () => {
@@ -9846,6 +9886,7 @@ test('a C extension draws the component the view places, and its emit comes back
   assert.equal(emits[0].origin, 0, 'the message is the view’s');
   assert.equal(emits[0].key, ctx.keyOf('todos/panel'), 'on the instance the view placed');
   assert.equal(emits[0].instance, null, 'which the view drew outside any instance');
+  assert.equal(emits[0].from, 'todos', 'raised by the plugin');
   assert.equal(typeof emits[0].payload.toggle?.index, 'number', 'the emit’s fields under the event’s field');
   assert.ok(
     !events.some((e) => e.payload?.kind === 'toggle'),
@@ -10119,9 +10160,10 @@ test('an event names the instance its node was drawn in, and null for the app’
   const [ev] = ctx.pollEvents();
   // A bare-string message arrives as `{tag}`, even with no data (ADR 0047).
   assert.deepEqual(ev.payload, { tag: 'hit' });
-  assert.deepEqual(Object.keys(ev).sort(), ['event', 'instance', 'key', 'origin', 'payload', 'window']);
+  assert.deepEqual(Object.keys(ev).sort(), ['event', 'from', 'instance', 'key', 'origin', 'payload', 'window']);
   assert.equal(ev.event, 'click');
   assert.equal(ev.instance, null);
+  assert.equal(ev.from, null);
 });
 
 test('a text size or line height of nothing frames, and dir null is absent', () => {

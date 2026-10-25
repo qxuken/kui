@@ -98,6 +98,7 @@ fn the_function_is_told_its_instance_its_namespace_and_the_props() {
             namespace: "fs",
             params: &params,
             key,
+            slot: None,
         };
         ext.component(&inst, &mut ui).unwrap();
         ui.finish();
@@ -414,9 +415,14 @@ fn a_placed_plugins_emit_reaches_the_script_and_not_the_host() {
         Some("component"),
         "and `at.event` says so"
     );
-    // `from` is the namespace *this script* loaded a plugin under; the
-    // host loaded this one, so the script is told nothing it did not do.
-    assert_eq!(counted.get_str("from"), Some("-"));
+    // `from` names the extension that raised it (ADR 0067), whoever
+    // loaded it.
+    assert_eq!(counted.get_str("from"), Some("todos"));
+    assert_eq!(
+        host.from.as_deref(),
+        Some("ui"),
+        "and the host's says the script"
+    );
 }
 
 /// `component` takes a full name; one without says so where a script
@@ -727,7 +733,11 @@ fn a_script_that_places_a_component_is_replayed_itself() {
     let settled = views.get();
     host_frame(&mut core, &mut exts, "ui/panel", &none);
     host_frame(&mut core, &mut exts, "ui/panel", &none);
-    assert_eq!(views.get(), settled, "nothing asks the plugin once both are kept");
+    assert_eq!(
+        views.get(),
+        settled,
+        "nothing asks the plugin once both are kept"
+    );
     assert!(
         core.access_tree()
             .nodes

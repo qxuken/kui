@@ -3,7 +3,11 @@
 // plugin's `panel` component in the middle of its own view (docs/adr/0067)
 // with a title and the message it wants on a toggle, and counts what comes
 // back. The plugin may be the Odin panel beside this file or the C one -
-// the same contract, and the host cannot tell which it loaded.
+// the same contract, and the host cannot tell which it loaded. It also
+// declares a contribution slot, "todos.toolbar": it names no plugin there,
+// and whatever the loaded plugins contribute to it - the panel's chip - is
+// placed in its column, a press on it arriving as the host's on_press with
+// Event.from naming who raised it.
 //
 //   nu scripts/odin.nu test                      builds the Odin panel and runs this --headless
 //   ./target/odin/host                           a window, with target/odin/panel.so
@@ -35,6 +39,9 @@ Host :: struct {
 	toggled:     int, // which row it said
 	toggle_from: u64, // the instance the event is about: Event.key
 	panel_fill:  i32, // how the last frame filled the panel: a kui.FILL_* code
+	toolbar:     int, // how many contributions the toolbar slot placed
+	chipped:     int, // the slot's on_press, from whichever contributor
+	chip_from:   string, // who raised the last one: Event.from, cloned
 }
 
 Count :: struct {}
@@ -51,9 +58,12 @@ Toggled :: struct {
 		toggle: Toggle_Data,
 	},
 }
+// The message every contribution to the toolbar raises: {kind = "chipped"}.
+Chipped :: struct {}
 Msg :: union {
 	Count,
 	Toggled,
+	Chipped,
 }
 
 // What we place the panel with: a key (so the instance is keyed by name,
@@ -74,6 +84,12 @@ view :: proc(h: ^Host, ui: ^kui.Ui) {
 		kui.text(ui, "the host, in Odin", {size = 18})
 		kui.text(ui, fmt.tprintf("clicks %d, toggles heard %d", h.clicks, h.toggles), {size = 13, color = t.muted})
 		kui.button(ui, "count", Count{})
+		// A contribution slot (ADR 0067): a place, not a plugin. Whatever
+		// the loaded extensions contribute to it lands here, each with
+		// these props; the event's `from` says which raised it.
+		h.toolbar = kui.slot(ui, "todos.toolbar", struct {
+			on_press: Chipped,
+		}{})
 	}
 
 	// The plugin's half, in place: a component among our own children,
@@ -97,6 +113,12 @@ on_event :: proc(h: ^Host, ev: kui.Event) {
 		h.toggled = m.toggle.index
 		// And which instance: one plugin may be placed many times.
 		h.toggle_from = ev.key
+	case Chipped:
+		if ev.event != "component" do return
+		h.chipped += 1
+		// Borrowed like the payload, until the next poll: kept by copy.
+		delete(h.chip_from)
+		h.chip_from = strings.clone(ev.from)
 	}
 }
 
@@ -120,6 +142,14 @@ load :: proc(plugin: string) -> ^kui.Ui {
 find_row :: proc(ui: ^kui.Ui, origin: u32) -> (x, y: f32, ok: bool) {
 	for n in kui.access_tree(ui) {
 		if n.origin == origin && strings.has_prefix(n.name, "[ ") do return n.x + n.w / 2, n.y + n.h / 2, true
+	}
+	return
+}
+
+// The centre of the first node of `origin` named exactly `name`.
+find_named :: proc(ui: ^kui.Ui, origin: u32, name: string) -> (x, y: f32, ok: bool) {
+	for n in kui.access_tree(ui) {
+		if n.origin == origin && n.name == name do return n.x + n.w / 2, n.y + n.h / 2, true
 	}
 	return
 }
@@ -180,8 +210,28 @@ headless :: proc(plugin: string) -> bool {
 		fmt.eprintln("FAIL: the panel did not tick the row it was clicked on")
 		ok = false
 	}
+	// The toolbar slot: one contribution, the panel's chip, found by the
+	// name it took from the slot it was placed in - and its press, from
+	// the namespace we loaded the panel under.
+	if ok && h.toolbar != 1 {
+		fmt.eprintfln("FAIL: the toolbar slot placed %d contributions, not 1", h.toolbar)
+		ok = false
+	}
+	if cx, cy, chip_found := find_named(ui, 1, "chip in todos.toolbar"); ok && chip_found {
+		kui.click(ui, cx, cy)
+		kui.frame(ui, &h, view, 900, 600)
+		for ev in kui.poll_event(ui) do on_event(&h, ev)
+	} else if ok {
+		fmt.eprintln("FAIL: the panel's chip is not in the toolbar slot")
+		ok = false
+	}
+	if ok && (h.chipped != 1 || h.chip_from != NS) {
+		fmt.eprintfln("FAIL: expected one on_press from %q, heard %d, last from %q", NS, h.chipped, h.chip_from)
+		ok = false
+	}
+	delete(h.chip_from)
 	if ok {
-		fmt.printfln("ok: `%s/panel` placed and replayed, the click reached the plugin and not the host, and its on_toggle (row %d) arrived as our own message", ns, h.toggled)
+		fmt.printfln("ok: `%s/panel` placed and replayed, the click reached the plugin and not the host, its on_toggle (row %d) and the toolbar chip's press (from `%s`) arrived as our own messages", ns, h.toggled, NS)
 	}
 	return ok
 }

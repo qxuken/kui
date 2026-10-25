@@ -190,6 +190,13 @@ pub(crate) enum Op {
         name: Box<str>,
         props: Value,
     },
+    /// A contribution slot the fill placed (ADR 0067): placed again on
+    /// replay, its providers asked anew.
+    Slot {
+        key: Key,
+        name: Box<str>,
+        props: Value,
+    },
 }
 
 /// A fact of the frame a kept fill read, with what it read: the replay
@@ -527,7 +534,12 @@ impl Core {
             Read::Cursor(p) => self.interaction.cursor().map(|c| c.minus(self.dt_shift())) == *p,
             Read::Scroll(k, v) => self.scroll.offset(*k) == *v,
             Read::ScrollGeom(k, g) => self.scroll_geometry(*k) == *g,
-            Read::LabelMissing { label, origin, ns, guest } => !self.label_answers(label, *origin, *ns, *guest),
+            Read::LabelMissing {
+                label,
+                origin,
+                ns,
+                guest,
+            } => !self.label_answers(label, *origin, *ns, *guest),
             Read::Layout(k, r) => self.layout_of_raw(*k) == *r,
             Read::TextHit(k, p, h) => self.text_hit_raw(*k, *p) == *h,
             Read::TextCut(k, v) => self.text.cut(*k, self.building) == *v,
@@ -691,6 +703,9 @@ fn replay_op(ui: &mut Ui<'_>, op: &Op) {
         Op::Children(group) => ui.children(group),
         Op::Component { key, name, props } => {
             ui.component_at(*key, name, props);
+        }
+        Op::Slot { key, name, props } => {
+            ui.slot_at(Some(*key), name, props);
         }
     }
 }

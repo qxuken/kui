@@ -2199,6 +2199,28 @@ pane without the extension stamping its payloads.
 [ADR 0060](adr/0060-components-an-extension-provides.md) ·
 [ADR 0067](adr/0067-slots-fold-into-components.md)
 
+### How do I let several extensions add to one place — a toolbar, a menu, a status bar?
+
+Declare a slot: `ui.slot("app.toolbar", &props)` (Lua `slot("app.toolbar",
+props)`, Node `<slot name="app.toolbar" props={…}/>`, C `kui_slot`) places
+every component the loaded extensions contribute to that name, as
+siblings in the current container — wrap the slot for a box. An extension
+contributes by naming the slot and one of its own components:
+`Extension::contributions()`, Lua's `contributes = { ["app.toolbar"] =
+"save" }` (or a list of `{ slot =, component =, order = }`), C's
+`kui_ext_contributions`. They are placed in load order, then by `order`.
+Every contributor gets the slot's props and its `inst.slot` says where it
+is; its events arrive as the messages in those props, and `from` names
+the extension that raised one (`ev.from`, Lua's `at.from`, C's
+`ev->from`). Each contribution is its own instance, keyed by the slot,
+its provider and its component, so loading another plugin moves nobody's
+focus or scroll. The name is any string — by convention `owner.place`,
+the owner the declarer's own stable name — and an empty or undrawn slot
+is silent: not drawing it is the app's call.
+
+[ADR 0067](adr/0067-slots-fold-into-components.md) ·
+`crates/kui-core/tests/contributions.rs`
+
 ### My plugin's pane costs every frame, even when nothing in it moved — how do I stop asking it?
 
 You already don't: a component is replayed by default (ADR 0067). When

@@ -1675,6 +1675,14 @@ pub const DOORS: &[Door] = &[
         doc: "Places a component an extension provides — `ns/root` is an extension's view — keyed by where it is or by `key` in its props: its fill reads the props, its events arrive as the messages in its `on*` props, the host's children are built where it asks, and an unchanged instance is replayed without the extension (ADR 0060, ADR 0067).",
     },
     Door {
+        rust: "Ui::slot",
+        c: Is("kui_slot"),
+        odin: Is("slot"),
+        node: As("`<slot name props/>`"),
+        lua: As("`slot(name, props)`"),
+        doc: "A contribution slot: places every component the loaded extensions contribute to `name` (`Extension::contributions`, Lua's `contributes`, C's `kui_ext_contributions`) as siblings here, in load order and then `order`, each with the slot's props and its events the host's messages with `from` naming the provider; answers how many where the binding can (ADR 0067).",
+    },
+    Door {
         rust: "Ui::children",
         c: Is("kui_children"),
         odin: Is("children"),

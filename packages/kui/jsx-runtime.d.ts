@@ -1020,6 +1020,17 @@ export declare namespace JSX {
      *  (docs/adr/0025-the-image-is-the-canvas.md, decision 7); an image
      *  that is not live draws nothing, as a dead `src` does. */
     fragment: BoxProps & { src: string; image?: string; params?: number[] };
+    /** A contribution slot (docs/adr/0067-slots-fold-into-components.md):
+     *  every component the loaded extensions contribute to `name` (a Lua
+     *  script's `contributes`, a C plugin's `kui_ext_contributions`) lands
+     *  here as siblings — no wrapper; wrap the slot for a box — in load order
+     *  and then each contribution's `order`. Each gets `props`; its events
+     *  arrive as the messages in their `on*` props, with `from` naming the
+     *  extension that raised them. `name` is any string, by the convention
+     *  `owner.place` (`app.toolbar`). An empty slot draws nothing and says
+     *  nothing. Each contribution is its own instance, keyed by the slot, its
+     *  provider and its component, and replayed on its own. */
+    slot: { name: string; props?: Record<string, unknown> };
     /** A tab in the core's devtools panel, beside facts, events, tree and perf
      *  (docs/adr/0032-a-devtools-tab-mounts-a-slot.md, amended by 0067).
      *  `name` is the tab's identity, `label` what the strip shows (the name

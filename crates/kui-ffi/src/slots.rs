@@ -7,6 +7,11 @@
 //! instance's events with `kui_emit`, whose sink rides on the event (ABI
 //! 10) so that a plugin linked against another copy of this library still
 //! reaches the host.
+//!
+//! A host also declares a contribution slot with `kui_slot` (ADR 0067,
+//! the new slot): every loaded extension that contributes to the name
+//! (`kui_ext_contributions`) places one of its components there, and
+//! `kui_instance_slot` tells the instance which slot that was.
 
 use super::*;
 
@@ -62,6 +67,24 @@ pub extern "C" fn kui_instance_namespace(ptr: *mut KuiCtx, out: *mut KuiStr) -> 
             ptr: ns.as_ptr(),
             len: ns.len(),
         };
+        true
+    })
+}
+
+/// The contribution slot this instance was placed in (ADR 0067): the
+/// name a host's `kui_slot` declared. False (and `out` untouched) for an
+/// instance placed by name with `kui_component`, and on a context that is
+/// not an extension's. Borrowed for the duration of `kui_ext_view`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_instance_slot(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let (Some(slot), Some(out)) = (c.instance_slot.as_deref(), unsafe { out.as_mut() }) else {
+            return false;
+        };
+        *out = KuiStr::borrowed(slot);
         true
     })
 }
@@ -199,6 +222,29 @@ pub extern "C" fn kui_component(
             None => ui.component(&name, props),
         });
         fill.map_or(-1, |f| f.code())
+    })
+}
+
+/// Declares a contribution slot at the cursor (ADR 0067, decisions 9–16):
+/// every component the loaded extensions contribute to `name` (a C
+/// plugin's `kui_ext_contributions`, a script's `contributes`) is placed
+/// here as siblings, in load order and then `order`, each an instance
+/// keyed by the slot (`key` in `props`, else `name`), its provider and its
+/// component. Each gets `props` (borrowed; NULL for none) — its `on*`
+/// entries are the messages the contributions' events arrive as, `from`
+/// on the event naming the provider. No children. Returns how many were
+/// placed: 0 when nothing contributes, outside a frame, or on a slot no
+/// one has heard of — never a warning, since whether a slot is drawn at
+/// all is the app's call.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_slot(ptr: *mut KuiCtx, name: KuiStr, props: *const KuiValue) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let name = kstr(name);
+        let props = unsafe { props.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
+        with_host_ui(c, |ui| ui.slot(&name, props))
     })
 }
 
@@ -357,6 +403,7 @@ mod tests {
         let mut name = ks("");
         assert!(!kui_instance_name(ctx, &mut name));
         assert!(!kui_instance_namespace(ctx, &mut name));
+        assert!(!kui_instance_slot(ctx, &mut name));
         assert!(kui_instance_params(ctx).is_null());
         kui_ctx_free(ctx);
     }
@@ -377,14 +424,23 @@ mod tests {
         };
         let fields = KuiValue(Value::map([("kind", "open".into())]));
         let emitted = kui_core::slot::emit("on_open", fields.0.clone());
-        assert!(!kui_emit(&ev, ks("on_open"), &fields), "no callback in progress");
+        assert!(
+            !kui_emit(&ev, ks("on_open"), &fields),
+            "no callback in progress"
+        );
         let got = collect_replies(&mut ev, |ev| {
             assert!(kui_emit(ev, ks("on_open"), &fields));
-            assert!(!kui_emit(&other, ks("on_open"), &fields), "an event with no sink");
+            assert!(
+                !kui_emit(&other, ks("on_open"), &fields),
+                "an event with no sink"
+            );
             assert!(kui_emit(ev, ks("on_open"), &fields));
         });
         assert_eq!(got, vec![emitted.clone(), emitted]);
-        assert!(!kui_emit(&ev, ks("on_open"), &fields), "the sink closed with the callback");
+        assert!(
+            !kui_emit(&ev, ks("on_open"), &fields),
+            "the sink closed with the callback"
+        );
         assert!(ev.reply_sink.is_null(), "and the event no longer names one");
     }
 
@@ -436,7 +492,13 @@ mod tests {
         // drawing something.
         kui_frame_begin(ctx, 200.0, 100.0, 1.0);
         assert_eq!(
-            kui_component(ctx, ks("todos/panel"), std::ptr::null(), None, std::ptr::null_mut()),
+            kui_component(
+                ctx,
+                ks("todos/panel"),
+                std::ptr::null(),
+                None,
+                std::ptr::null_mut()
+            ),
             -1
         );
         kui_frame_finish(ctx);

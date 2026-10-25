@@ -1236,6 +1236,7 @@ Event :: struct {
 	reply_sink: ^c.ReplySink,
 	instance: u64,
 	event: string,
+	from: string,
 }
 
 event_to_c :: proc(v: Event, scratch: ^Scratch) -> (out: c.Event) {
@@ -1247,6 +1248,7 @@ event_to_c :: proc(v: Event, scratch: ^Scratch) -> (out: c.Event) {
 	out.reply_sink = v.reply_sink
 	out.instance = v.instance
 	out.event = v.event
+	out.from = v.from
 	_ = scratch
 	return
 }
@@ -1259,6 +1261,7 @@ event_from_c :: proc(v: c.Event) -> (out: Event) {
 	out.reply_sink = v.reply_sink
 	out.instance = v.instance
 	out.event = v.event
+	out.from = v.from
 	return
 }
 
@@ -4308,6 +4311,12 @@ instance_params :: proc(ui: ^Ui) -> Value {
 	return Value(c.instance_params(ui))
 }
 
+// kui_instance_slot (kui.h).
+instance_slot :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
+	ok = c.instance_slot(ui, &out)
+	return
+}
+
 // An extension's answer to an event that raises one of its component's
 // events: the host hears the message it passed for that prop, about the
 // instance (ADR 0060).
@@ -4325,5 +4334,17 @@ emit :: proc(ev: Event, prop: string, fields: any = nil) -> bool {
 // Rust: Ui::children.
 children :: proc(ui: ^Ui, group: string) {
 	c.children(ui, group)
+}
+
+// A contribution slot: places every component the loaded extensions
+// contribute to `name` (`Extension::contributions`, Lua's `contributes`, C's
+// `kui_ext_contributions`) as siblings here, in load order and then `order`,
+// each with the slot's props and its events the host's messages with `from`
+// naming the provider; answers how many where the binding can (ADR 0067).
+// Rust: Ui::slot.
+slot :: proc(ui: ^Ui, name: string, props: any = nil) -> int {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return int(c.slot(ui, name, borrow(&scratch, props)))
 }
 

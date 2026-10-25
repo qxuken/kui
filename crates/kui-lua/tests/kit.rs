@@ -5,13 +5,18 @@
 
 use kui_core::channel::{Channel, Column};
 use kui_core::testing::click_at;
-use kui_core::{Core, EventKind, Extension, Extensions, NodeSpec, Size, FillAnswer, Ui, UiEvent, Value};
+use kui_core::{
+    Core, EventKind, Extension, Extensions, FillAnswer, NodeSpec, Size, Ui, UiEvent, Value,
+};
 use kui_kit as kit;
 use kui_lua::LuaExtension;
 
 const KIT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../addons/kit/lua/kit.lua");
 const SCHEMA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../addons/kit/schema.lua");
-const VIEW: Size = Size { w: 1200.0, h: 900.0 };
+const VIEW: Size = Size {
+    w: 1200.0,
+    h: 900.0,
+};
 
 fn msg(kind: &str) -> Value {
     Value::map([("kind", Value::str(kind))])
@@ -24,8 +29,11 @@ struct Rig {
 
 fn rig() -> Rig {
     let mut exts = Extensions::new();
-    exts.push_as("kit", Box::new(LuaExtension::from_file(KIT).expect("load Kit")))
-        .unwrap();
+    exts.push_as(
+        "kit",
+        Box::new(LuaExtension::from_file(KIT).expect("load Kit")),
+    )
+    .unwrap();
     let mut core = Core::new();
     core.set_inspect(true);
     Rig { core, exts }
@@ -60,7 +68,11 @@ impl Rig {
     }
 
     fn texts(&self) -> Vec<String> {
-        self.core.nodes().into_iter().filter_map(|n| n.text).collect()
+        self.core
+            .nodes()
+            .into_iter()
+            .filter_map(|n| n.text)
+            .collect()
     }
 }
 
@@ -105,86 +117,267 @@ fn logs() -> Channel {
 
 /// One of every component, through the wrappers.
 fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)>) {
-    let choices = vec![kit::Choice::new("a", "Alpha"), kit::Choice::new("b", "Beta")];
+    let choices = vec![
+        kit::Choice::new("a", "Alpha"),
+        kit::Choice::new("b", "Beta"),
+    ];
     let mut put = |name: &'static str, a: Option<FillAnswer>| answers.push((name, a));
     put("settings", kit::Settings::new().place(ui));
-    put("toolbar", kit::Toolbar::new().place_with(ui, |group, ui| {
-        if group.is_empty() {
-            kit::Button::new("Run").variant(kit::Variant::Primary).on_press(msg("run")).place(ui);
-        } else {
-            kit::Search::new("").on_change(msg("query")).place(ui);
-        }
-    }));
-    put("panel", kit::Panel::new().title("Requests").place_with(ui, |group, ui| {
-        if group.is_empty() {
-            kit::Table::new(
-                vec![
-                    kit::Column::new("name", "Name"),
-                    kit::Column::new("ms", "Time").align(kit::Align::End).mono(true).width(80.0),
-                ],
-                rows(),
-            )
-            .selected(1)
-            .on_select(msg("pick"))
-            .place(ui);
-        }
-    }));
-    put("icon_button", kit::IconButton::new("refresh", "Reload").on_press(msg("reload")).place(ui));
-    put("text_field", kit::TextField::new("hello").label("Name").place(ui));
-    put("text_field_error", kit::TextField::new("a/b").label("Device").error("A name cannot hold /.").place(ui));
-    put("text_area", kit::TextArea::new("line one\nline two").label("Note").rows(3).max_rows(6).place(ui));
-    put("table_toned", kit::Table::new(
-        vec![
-            kit::Column::new("name", "Name"),
-            kit::Column::new("state", "State").tone("tone").badge(true).width(90.0),
-        ],
-        states(),
-    )
-    .place(ui));
-    put("list_badged", kit::List::new(states(), "name").badge("state").tone("tone").badge_width(60.0).place(ui));
-    put("select", kit::Select::new(choices.clone()).value("a").label("Mode").place(ui));
-    put("checkbox", kit::Checkbox::new("Follow", true).on_toggle(msg("follow")).place(ui));
-    put("checkbox_rich", kit::Checkbox::new("mobile-limit", false).hide_label(true).grow(true).place_with(ui, |_, ui| {
-        ui.text("mobile-limit", kui_core::TextStyle::new(12.0));
-    }));
-    put("switch", kit::Switch::new("Live", false).on_toggle(msg("live")).place(ui));
-    put("radio_group", kit::RadioGroup::new(choices.clone()).value("b").place(ui));
-    put("radio_group_unlabelled", kit::RadioGroup::new(choices.clone()).value("a").label("Theme").hide_label(true).place(ui));
-    put("segmented", kit::Segmented::new(choices.clone(), "a").label("Filter").on_change(msg("seg")).place(ui));
-    put("slider", kit::Slider::new(0.3, 0.0, 1.0).label("Zoom").place(ui));
-    put("slider_said", kit::Slider::new(2500.0, 0.0, 10000.0).label("Upload").value_label("2.5 MB/s").place(ui));
-    put("split", kit::Split::new(0.4).place_with(ui, |group, ui| {
-        kit::Badge::new(group).place(ui);
-    }));
-    put("tabs", kit::Tabs::new(vec![kit::Tab::new("a", "One"), kit::Tab::new("b", "Two").count(3)], "a")
-        .place_with(ui, |_, ui| kit::Divider::new().place(ui).map(|_| ()).unwrap_or(())));
-    put("section", kit::Section::new("More").count(2).place_with(ui, |_, ui| {
-        kit::Code::new("let x = 1;").place(ui);
-    }));
-    put("list", kit::List::new(rows(), "name").detail("ms").place(ui));
-    put("inspector", kit::Inspector::new(vec![kit::Entry::new("status", "200").mono(true)]).place(ui));
+    put(
+        "toolbar",
+        kit::Toolbar::new().place_with(ui, |group, ui| {
+            if group.is_empty() {
+                kit::Button::new("Run")
+                    .variant(kit::Variant::Primary)
+                    .on_press(msg("run"))
+                    .place(ui);
+            } else {
+                kit::Search::new("").on_change(msg("query")).place(ui);
+            }
+        }),
+    );
+    put(
+        "panel",
+        kit::Panel::new()
+            .title("Requests")
+            .place_with(ui, |group, ui| {
+                if group.is_empty() {
+                    kit::Table::new(
+                        vec![
+                            kit::Column::new("name", "Name"),
+                            kit::Column::new("ms", "Time")
+                                .align(kit::Align::End)
+                                .mono(true)
+                                .width(80.0),
+                        ],
+                        rows(),
+                    )
+                    .selected(1)
+                    .on_select(msg("pick"))
+                    .place(ui);
+                }
+            }),
+    );
+    put(
+        "icon_button",
+        kit::IconButton::new("refresh", "Reload")
+            .on_press(msg("reload"))
+            .place(ui),
+    );
+    put(
+        "text_field",
+        kit::TextField::new("hello").label("Name").place(ui),
+    );
+    put(
+        "text_field_error",
+        kit::TextField::new("a/b")
+            .label("Device")
+            .error("A name cannot hold /.")
+            .place(ui),
+    );
+    put(
+        "text_area",
+        kit::TextArea::new("line one\nline two")
+            .label("Note")
+            .rows(3)
+            .max_rows(6)
+            .place(ui),
+    );
+    put(
+        "table_toned",
+        kit::Table::new(
+            vec![
+                kit::Column::new("name", "Name"),
+                kit::Column::new("state", "State")
+                    .tone("tone")
+                    .badge(true)
+                    .width(90.0),
+            ],
+            states(),
+        )
+        .place(ui),
+    );
+    put(
+        "list_badged",
+        kit::List::new(states(), "name")
+            .badge("state")
+            .tone("tone")
+            .badge_width(60.0)
+            .place(ui),
+    );
+    put(
+        "select",
+        kit::Select::new(choices.clone())
+            .value("a")
+            .label("Mode")
+            .place(ui),
+    );
+    put(
+        "checkbox",
+        kit::Checkbox::new("Follow", true)
+            .on_toggle(msg("follow"))
+            .place(ui),
+    );
+    put(
+        "checkbox_rich",
+        kit::Checkbox::new("mobile-limit", false)
+            .hide_label(true)
+            .grow(true)
+            .place_with(ui, |_, ui| {
+                ui.text("mobile-limit", kui_core::TextStyle::new(12.0));
+            }),
+    );
+    put(
+        "switch",
+        kit::Switch::new("Live", false)
+            .on_toggle(msg("live"))
+            .place(ui),
+    );
+    put(
+        "radio_group",
+        kit::RadioGroup::new(choices.clone()).value("b").place(ui),
+    );
+    put(
+        "radio_group_unlabelled",
+        kit::RadioGroup::new(choices.clone())
+            .value("a")
+            .label("Theme")
+            .hide_label(true)
+            .place(ui),
+    );
+    put(
+        "segmented",
+        kit::Segmented::new(choices.clone(), "a")
+            .label("Filter")
+            .on_change(msg("seg"))
+            .place(ui),
+    );
+    put(
+        "slider",
+        kit::Slider::new(0.3, 0.0, 1.0).label("Zoom").place(ui),
+    );
+    put(
+        "slider_said",
+        kit::Slider::new(2500.0, 0.0, 10000.0)
+            .label("Upload")
+            .value_label("2.5 MB/s")
+            .place(ui),
+    );
+    put(
+        "split",
+        kit::Split::new(0.4).place_with(ui, |group, ui| {
+            kit::Badge::new(group).place(ui);
+        }),
+    );
+    put(
+        "tabs",
+        kit::Tabs::new(
+            vec![
+                kit::Tab::new("a", "One"),
+                kit::Tab::new("b", "Two").count(3),
+            ],
+            "a",
+        )
+        .place_with(ui, |_, ui| {
+            kit::Divider::new().place(ui).map(|_| ()).unwrap_or(())
+        }),
+    );
+    put(
+        "section",
+        kit::Section::new("More").count(2).place_with(ui, |_, ui| {
+            kit::Code::new("let x = 1;").place(ui);
+        }),
+    );
+    put(
+        "list",
+        kit::List::new(rows(), "name").detail("ms").place(ui),
+    );
+    put(
+        "inspector",
+        kit::Inspector::new(vec![kit::Entry::new("status", "200").mono(true)]).place(ui),
+    );
     put("log", kit::Log::new(logs()).place(ui));
-    put("log_wrapped", kit::Log::new(logs()).wrap(true).time(false).place(ui));
-    put("stat", kit::Stat::new("p95", "412 ms").delta("-8%").tone(kit::Tone::Ok).place(ui));
-    put("empty", kit::Empty::new("Nothing yet").detail("Run a request.").place(ui));
-    put("progress", kit::Progress::new().value(0.4).label("Loading").place(ui));
-    put("notice", kit::Notice::new("The port is busy.").tone(kit::Tone::Danger).title("Not bound").place_with(ui, |_, ui| {
-        kit::Button::new("Retry").place(ui);
-    }));
-    put("pressed", kit::Button::new("Logs").pressed(true).icon("terminal").tooltip("Hide the log").place(ui));
+    put(
+        "log_wrapped",
+        kit::Log::new(logs()).wrap(true).time(false).place(ui),
+    );
+    put(
+        "stat",
+        kit::Stat::new("p95", "412 ms")
+            .delta("-8%")
+            .tone(kit::Tone::Ok)
+            .place(ui),
+    );
+    put(
+        "empty",
+        kit::Empty::new("Nothing yet")
+            .detail("Run a request.")
+            .place(ui),
+    );
+    put(
+        "progress",
+        kit::Progress::new().value(0.4).label("Loading").place(ui),
+    );
+    put(
+        "notice",
+        kit::Notice::new("The port is busy.")
+            .tone(kit::Tone::Danger)
+            .title("Not bound")
+            .place_with(ui, |_, ui| {
+                kit::Button::new("Retry").place(ui);
+            }),
+    );
+    put(
+        "pressed",
+        kit::Button::new("Logs")
+            .pressed(true)
+            .icon("terminal")
+            .tooltip("Hide the log")
+            .place(ui),
+    );
     put("sparkline", kit::Sparkline::new(rows(), "ms").place(ui));
-    put("line_chart", kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")]).area(true).place(ui));
-    put("line_chart_ago", kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")])
-        .x_format(kit::XFormat::Ago).x_unit("min").y_unit("ms").place(ui));
-    put("line_chart_clock", kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")])
-        .x_format(kit::XFormat::Clock).place(ui));
-    put("bar_chart", kit::BarChart::new(rows(), "name", "ms").place(ui));
-    put("bar_chart_lying", kit::BarChart::new(rows(), "name", "ms").horizontal(true).unit("ms").place(ui));
-    put("histogram", kit::Histogram::new(rows(), "ms").bins(4).place(ui));
+    put(
+        "line_chart",
+        kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")])
+            .area(true)
+            .place(ui),
+    );
+    put(
+        "line_chart_ago",
+        kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")])
+            .x_format(kit::XFormat::Ago)
+            .x_unit("min")
+            .y_unit("ms")
+            .place(ui),
+    );
+    put(
+        "line_chart_clock",
+        kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")])
+            .x_format(kit::XFormat::Clock)
+            .place(ui),
+    );
+    put(
+        "bar_chart",
+        kit::BarChart::new(rows(), "name", "ms").place(ui),
+    );
+    put(
+        "bar_chart_lying",
+        kit::BarChart::new(rows(), "name", "ms")
+            .horizontal(true)
+            .unit("ms")
+            .place(ui),
+    );
+    put(
+        "histogram",
+        kit::Histogram::new(rows(), "ms").bins(4).place(ui),
+    );
     put("waterfall", kit::Waterfall::new(spans()).place(ui));
-    put("statusbar", kit::Statusbar::new().place_with(ui, |_, ui| {
-        kit::Badge::new("connected").tone(kit::Tone::Ok).place(ui);
-    }));
+    put(
+        "statusbar",
+        kit::Statusbar::new().place_with(ui, |_, ui| {
+            kit::Badge::new("connected").tone(kit::Tone::Ok).place(ui);
+        }),
+    );
 }
 
 #[test]
@@ -202,14 +395,21 @@ fn every_component_draws_without_a_warning() {
     let mut r = rig();
     let mut answers = Vec::new();
     r.frame(|ui| gallery(ui, &mut answers));
-    let unanswered: Vec<_> = answers.iter().filter(|(_, a)| a.is_none()).map(|(n, _)| *n).collect();
+    let unanswered: Vec<_> = answers
+        .iter()
+        .filter(|(_, a)| a.is_none())
+        .map(|(n, _)| *n)
+        .collect();
     assert!(unanswered.is_empty(), "nothing provided {unanswered:?}");
     let warnings = r.core.take_warnings();
     assert!(warnings.is_empty(), "{warnings:#?}");
     // A second frame with nothing moved replays what read nothing that moved.
     let mut again = Vec::new();
     r.frame(|ui| gallery(ui, &mut again));
-    let replayed = again.iter().filter(|(_, a)| *a == Some(FillAnswer::Replayed)).count();
+    let replayed = again
+        .iter()
+        .filter(|(_, a)| *a == Some(FillAnswer::Replayed))
+        .count();
     assert!(replayed >= 10, "{again:?}");
     assert!(r.core.take_warnings().is_empty());
 }
@@ -219,10 +419,18 @@ fn a_press_reaches_the_host_as_its_own_message() {
     let mut r = rig();
     let view = |ui: &mut Ui<'_>| {
         kit::Button::new("Run").on_press(msg("run")).place(ui);
-        kit::Checkbox::new("Follow", false).on_toggle(msg("follow")).place(ui);
-        kit::Segmented::new(vec![kit::Choice::new("a", "Alpha"), kit::Choice::new("b", "Beta")], "a")
-            .on_change(msg("seg"))
+        kit::Checkbox::new("Follow", false)
+            .on_toggle(msg("follow"))
             .place(ui);
+        kit::Segmented::new(
+            vec![
+                kit::Choice::new("a", "Alpha"),
+                kit::Choice::new("b", "Beta"),
+            ],
+            "a",
+        )
+        .on_change(msg("seg"))
+        .place(ui);
     };
     r.frame(view);
     r.frame(view);
@@ -237,28 +445,51 @@ fn a_press_reaches_the_host_as_its_own_message() {
     assert!(toggle.checked);
 
     let ev = r.click("Beta");
-    assert_eq!(kit::SegmentedChange::from_payload(&ev[0].payload).unwrap().value, "b");
+    assert_eq!(
+        kit::SegmentedChange::from_payload(&ev[0].payload)
+            .unwrap()
+            .value,
+        "b"
+    );
 }
 
 #[test]
 fn a_select_opens_picks_and_closes_on_its_own() {
     let mut r = rig();
     let view = |ui: &mut Ui<'_>| {
-        kit::Select::new(vec![kit::Choice::new("a", "Alpha"), kit::Choice::new("b", "Beta")])
-            .value("a")
-            .label("Mode")
-            .on_change(msg("mode"))
-            .place(ui);
+        kit::Select::new(vec![
+            kit::Choice::new("a", "Alpha"),
+            kit::Choice::new("b", "Beta"),
+        ])
+        .value("a")
+        .label("Mode")
+        .on_change(msg("mode"))
+        .place(ui);
     };
     r.frame(view);
     r.frame(view);
-    assert!(r.click("Mode: Alpha").is_empty(), "opening is Kit's own business");
+    assert!(
+        r.click("Mode: Alpha").is_empty(),
+        "opening is Kit's own business"
+    );
     r.frame(view);
-    assert!(r.texts().iter().any(|t| t == "Beta"), "open: {:?}", r.texts());
+    assert!(
+        r.texts().iter().any(|t| t == "Beta"),
+        "open: {:?}",
+        r.texts()
+    );
     let ev = r.click("Beta");
-    assert_eq!(kit::SelectChange::from_payload(&ev[0].payload).unwrap().value, "b");
+    assert_eq!(
+        kit::SelectChange::from_payload(&ev[0].payload)
+            .unwrap()
+            .value,
+        "b"
+    );
     r.frame(view);
-    assert!(!r.texts().iter().any(|t| t == "Beta"), "closed after the pick");
+    assert!(
+        !r.texts().iter().any(|t| t == "Beta"),
+        "closed after the pick"
+    );
 }
 
 #[test]
@@ -272,7 +503,10 @@ fn a_skin_switch_reasks_every_instance() {
     };
     r.frame(view(kit::Skin::Ledger));
     r.frame(view(kit::Skin::Ledger));
-    assert!(r.texts().contains(&"SAVE".to_string()), "Ledger labels in capitals");
+    assert!(
+        r.texts().contains(&"SAVE".to_string()),
+        "Ledger labels in capitals"
+    );
     r.frame(view(kit::Skin::Neutral));
     assert!(
         r.texts().contains(&"Save".to_string()),
@@ -285,15 +519,17 @@ fn a_skin_switch_reasks_every_instance() {
 fn kit_components_nest_inside_kit_components_through_the_hosts_children() {
     let mut r = rig();
     let view = |ui: &mut Ui<'_>| {
-        kit::Panel::new().title("Outer").place_with(ui, |group, ui| {
-            if group.is_empty() {
-                kit::Toolbar::new().place_with(ui, |group, ui| {
-                    if group.is_empty() {
-                        kit::Button::new("Deep").on_press(msg("deep")).place(ui);
-                    }
-                });
-            }
-        });
+        kit::Panel::new()
+            .title("Outer")
+            .place_with(ui, |group, ui| {
+                if group.is_empty() {
+                    kit::Toolbar::new().place_with(ui, |group, ui| {
+                        if group.is_empty() {
+                            kit::Button::new("Deep").on_press(msg("deep")).place(ui);
+                        }
+                    });
+                }
+            });
     };
     r.frame(view);
     assert!(r.core.take_warnings().is_empty());
@@ -409,8 +645,11 @@ fn lua_app(src: &str, frames: usize) -> (Core, Vec<String>) {
     let mut exts = Extensions::new();
     exts.push_as("kit", Box::new(LuaExtension::from_file(KIT).unwrap()))
         .unwrap();
-    exts.push_as("app", Box::new(LuaExtension::from_source("app.lua", src).unwrap()))
-        .unwrap();
+    exts.push_as(
+        "app",
+        Box::new(LuaExtension::from_source("app.lua", src).unwrap()),
+    )
+    .unwrap();
     let mut core = Core::new();
     core.set_inspect(true);
     let mut warnings = Vec::new();
@@ -445,8 +684,15 @@ fn a_dialog_shows_its_body() {
         .expect("the body's text is built")
         .rect;
     // The text is laid out either way; the box it is clipped to was not.
-    let body = nodes.iter().find(|n| n.label.as_deref() == Some("body")).expect("the body box").rect;
-    assert!(body.h >= text.h, "the body is as tall as its text: {body:?} holding {text:?}");
+    let body = nodes
+        .iter()
+        .find(|n| n.label.as_deref() == Some("body"))
+        .expect("the body box")
+        .rect;
+    assert!(
+        body.h >= text.h,
+        "the body is as tall as its text: {body:?} holding {text:?}"
+    );
 }
 
 #[test]
@@ -510,7 +756,11 @@ fn a_wrapped_log_follows_to_its_last_line() {
     );
     assert!(w.is_empty(), "{w:#?}");
     let nodes = core.nodes();
-    let bx = nodes.iter().find(|n| n.label.as_deref() == Some("box")).expect("the box").rect;
+    let bx = nodes
+        .iter()
+        .find(|n| n.label.as_deref() == Some("box"))
+        .expect("the box")
+        .rect;
     let last = nodes
         .iter()
         .find(|n| n.text.as_deref().is_some_and(|t| t.starts_with("line 18")))
@@ -542,6 +792,13 @@ fn a_notice_narrower_than_its_actions_puts_them_under_the_message() {
         .find(|n| n.text.as_deref().is_some_and(|t| t.starts_with("The disk")))
         .expect("the message")
         .rect;
-    let retry = nodes.iter().find(|n| n.text.as_deref() == Some("RETRY")).expect("the action").rect;
-    assert!(retry.y >= msg.y + msg.h - 0.5, "the action is under the message: {retry:?} vs {msg:?}");
+    let retry = nodes
+        .iter()
+        .find(|n| n.text.as_deref() == Some("RETRY"))
+        .expect("the action")
+        .rect;
+    assert!(
+        retry.y >= msg.y + msg.h - 0.5,
+        "the action is under the message: {retry:?} vs {msg:?}"
+    );
 }

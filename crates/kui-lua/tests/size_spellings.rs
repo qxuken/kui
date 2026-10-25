@@ -4,7 +4,7 @@
 //! the table marks `"only": "js"` is JS's spelling (`percent`), which
 //! Lua refuses for its own `pct`.
 
-use kui_core::{Core, Extension, OriginId, Size, Instance};
+use kui_core::{Core, Extension, Instance, OriginId, Size};
 use kui_lua::LuaExtension;
 
 /// A JSON value as a Lua literal.
