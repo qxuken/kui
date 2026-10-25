@@ -2934,7 +2934,8 @@ bool kui_channel_add_i64(KuiChannelBuilder *b, KuiStr name, const int64_t *value
 bool kui_channel_add_str(KuiChannelBuilder *b, KuiStr name, const KuiStr *values, size_t count);
 /* The channel, yours until kui_channel_free; the builder is consumed either
  * way. NULL for columns of two lengths or a name given twice, the reason in
- * kui_channel_error (borrowed until the next call on this thread). */
+ * kui_channel_error (borrowed until the next call on this thread), which
+ * also says why the last kui_channel_reduce answered false. */
 KuiChannel *kui_channel_finish(KuiChannelBuilder *b);
 bool kui_channel_error(KuiStr *out);
 /* The channel a handle value names, held anew (free it), or NULL when the
@@ -2952,6 +2953,18 @@ int32_t kui_channel_column(const KuiChannel *ch, KuiStr name);
  * hold ch; false for another column kind or out of range. */
 bool kui_channel_get_f64(const KuiChannel *ch, size_t row, size_t col, double *out);
 bool kui_channel_get_str(const KuiChannel *ch, size_t row, size_t col, KuiStr *out);
+/* Column col over rows [from, to) in at most `buckets` buckets of near one
+ * size - one a row when the range has fewer, `to` past the end stopped at
+ * it - for a chart's pixel columns without reading every row (backlog C95).
+ * out takes KUI_CHANNEL_BUCKET doubles a bucket and needs room for
+ * `buckets` of them: the least, greatest, first and last value, then the
+ * row each was read from (the channel's row, exact as a double). *count is
+ * how many were written, 0 for an empty range. NaN is skipped; a bucket of
+ * only NaN is NaN at its first row. False for NULL, no column col, or a
+ * column that is not numbers, the reason in kui_channel_error. */
+#define KUI_CHANNEL_BUCKET 8
+bool kui_channel_reduce(const KuiChannel *ch, size_t col, size_t from, size_t to, size_t buckets,
+                        double *out, size_t *count);
 bool kui_token_family(KuiCtx *ctx, KuiStr name, uint32_t *family, uint64_t *font);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before

@@ -2621,6 +2621,16 @@ export declare class Channel {
   /** One column whole: a `Float64Array` for numbers, an array otherwise. */
   column(col: string | number): Float64Array | Array<Json>
   /**
+   * Column `col` over rows `from` up to `to` in `buckets` buckets of
+   * near one size — one a row when the range has fewer — each one's
+   * least, greatest, first and last value and the rows they were read
+   * from: a chart's pixel columns of a hundred thousand rows without the
+   * rows crossing into JavaScript. `to` past the end stops at it; an
+   * empty range answers empty arrays. Throws for a column that is not
+   * numbers.
+   */
+  reduce(col: string | number, from: number, to: number, buckets: number): ChannelReduction
+  /**
    * The next revision under the same identity, holding `columns`: a
    * handle to this channel names that revision from now on.
    */
@@ -2635,6 +2645,22 @@ export declare class Channel {
    * component's props crosses as one.
    */
   toJSON(): Json
+}
+
+/**
+ * What `channel.reduce` answers (backlog C95): a typed array per field,
+ * one entry a bucket. NaN is skipped; a bucket of only NaN is NaN at its
+ * first row. Rows are the channel's, 0-based.
+ */
+export interface ChannelReduction {
+  min: Float64Array
+  max: Float64Array
+  first: Float64Array
+  last: Float64Array
+  minRow: Uint32Array
+  maxRow: Uint32Array
+  firstRow: Uint32Array
+  lastRow: Uint32Array
 }
 
 /**

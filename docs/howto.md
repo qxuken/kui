@@ -552,6 +552,41 @@ list(ctx, { key: 'log', heights },
 [`virtual_list.rs`](../examples/rust/widgets/virtual_list.rs) ·
 [`virtual_list.tsx`](../examples/node/widgets/virtual_list.tsx) (`--variable`)
 
+### How do I draw a line chart of a hundred thousand points?
+
+Put the series in a channel and ask it for one bucket per pixel column:
+`reduce(col, from, to, buckets)` answers each bucket's least, greatest,
+first and last value and the row each came from, in Rust, about 0.1 ms
+for 100,000 rows into 720 buckets, and nothing but the buckets crosses
+into the binding. Draw each bucket's four points in row order (first,
+then the least and the greatest in whichever order their rows came, then
+last) and the line is the one the rows would draw: every peak and trough
+is there, which an average or every n-th row loses. `from` and `to` are
+the rows in view, so a zoom is a smaller range; with fewer rows than
+buckets each row is a bucket of its own. A NaN is a gap the reduction
+skips, and a bucket of only NaN reads NaN, a place to break the line.
+
+```lua
+local r = series:reduce("y", first, last + 1, plot_w)
+local pts = {}
+for i = 1, #r.min do
+  local a, b = r.min_row[i], r.max_row[i]
+  local lo, hi = r.min[i], r.max[i]
+  if a > b then a, b, lo, hi = b, a, hi, lo end
+  for _, p in ipairs { { r.first_row[i], r.first[i] }, { a, lo }, { b, hi }, { r.last_row[i], r.last[i] } } do
+    pts[#pts + 1] = { x_of(p[1]), y_of(p[2]) }
+  end
+end
+return line { points = pts, width = 1.5, color = "$accent" }
+```
+
+Node has it as `channel.reduce(...)`, a typed array per field (`min`,
+`minRow`, …); C as `kui_channel_reduce`, `KUI_CHANNEL_BUCKET` doubles a
+bucket; Odin as `channel_reduce`.
+
+[`Channel::reduce`](props.md#doors) ·
+[ADR 0065](adr/0065-a-data-channel.md)
+
 ### How do I draw a terminal's screen?
 
 `cells`: rows × cols of `{ch, fg, bg, flags}` and a cursor, one node — a

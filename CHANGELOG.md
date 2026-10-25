@@ -237,6 +237,25 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Added
 
+- **A channel reduces a range for a chart** (backlog C95):
+  `Channel::reduce(col, from, to, buckets)` (and `reduce_into`, which
+  keeps the buffer) answers, per bucket of near one size, the least,
+  greatest, first and last value of a number column and the row each
+  came from — a chart's pixel columns of a hundred thousand rows in
+  about 0.1 ms (1 ms for a million), where Kit's Lua copied the column
+  and bucketed it at 1.5 ms a series. A range shorter than `buckets`
+  gets a bucket a row, `to` past the end stops there, an empty range
+  gets none, and NaN is skipped, a bucket of only NaN reading NaN. Lua
+  `ch:reduce(col, from, to, n)` (a list per field: `min`, `max`,
+  `first`, `last`, `min_row`, …), Node `channel.reduce(...)` (a
+  `Float64Array` per value field, a `Uint32Array` per row field), C
+  `kui_channel_reduce` (`KUI_CHANNEL_BUCKET` doubles a bucket into an
+  array the caller holds), Odin `channel_reduce`. `benches/channel.rs`
+  measures it; the howto draws the line.
+
+  *What you can delete:* a `ch:column` copied into a script to bucket
+  it, and the bucketing loop.
+
 - **Show a file in its folder, or open it with its app** (backlog F203).
   `kui_native::show_in_folder(path)` shows a file or folder in the
   system's file manager — selected in Finder or Explorer, its folder

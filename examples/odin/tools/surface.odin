@@ -352,6 +352,22 @@ surface :: proc() -> bool {
 	_, three := kui.size("clamp(1, 2)")
 	check(!three, "clamp takes three")
 
+	// A channel bucketed for a chart (backlog C95): three rows in two
+	// buckets, the second holding rows 1 and 2.
+	{
+		ms := [3]f64{12.5, 30, 4}
+		b := kui.channel_new()
+		kui.channel_add_f64(b, "ms", ms[:])
+		ch := kui.channel_finish(b)
+		defer kui.channel_free(ch)
+		out: [2 * kui.CHANNEL_BUCKET]f64
+		n, ok := kui.channel_reduce(ch, 0, 0, 3, out[:])
+		check(ok && n == 2, "channel_reduce")
+		check(out[kui.CHANNEL_BUCKET] == 4 && out[kui.CHANNEL_BUCKET + 1] == 30 && out[kui.CHANNEL_BUCKET + 4] == 2, "a bucket's least, greatest and the least's row")
+		_, none := kui.channel_reduce(ch, 5, 0, 3, out[:])
+		check(!none, "no column 5")
+	}
+
 	// Resources. Unusable input is a 0 handle, not a crash.
 	junk := [4]u8{0, 1, 2, 3}
 	check(kui.font_add(ui, junk[:]) == 0, "garbage is not a font")

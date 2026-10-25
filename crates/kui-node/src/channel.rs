@@ -2,10 +2,11 @@
 //! names. `new Channel({ name: [...], ms: Float64Array })` builds one in a
 //! single call; it serializes as its handle, so `props: { rows: channel }`
 //! hands a hundred thousand rows to a component as one small value, and a
-//! Lua or C reader resolves the same handle without a copy.
+//! Lua or C reader resolves the same handle without a copy. `reduce`
+//! buckets a range for a chart in Rust (backlog C95).
 
 use kui_core::channel::{self, Cell, Column};
-use napi::bindgen_prelude::{Either, Float64Array, Object};
+use napi::bindgen_prelude::{Either, Float64Array, Object, Uint32Array};
 use napi_derive::napi;
 use serde_json::Value as Json;
 
@@ -44,6 +45,21 @@ fn cell_json(c: Cell<'_>) -> Json {
         Cell::Bool(x) => Json::Bool(x),
         Cell::Str(s) => Json::String(s.to_string()),
     }
+}
+
+/// What `channel.reduce` answers (backlog C95): a typed array per field,
+/// one entry a bucket. NaN is skipped; a bucket of only NaN is NaN at its
+/// first row. Rows are the channel's, 0-based.
+#[napi(object)]
+pub struct ChannelReduction {
+    pub min: Float64Array,
+    pub max: Float64Array,
+    pub first: Float64Array,
+    pub last: Float64Array,
+    pub min_row: Uint32Array,
+    pub max_row: Uint32Array,
+    pub first_row: Uint32Array,
+    pub last_row: Uint32Array,
 }
 
 impl Channel {
@@ -119,6 +135,42 @@ impl Channel {
             Column::F64(v) => Either::A(Float64Array::new(v.clone())),
             Column::I64(v) => Either::A(Float64Array::new(v.iter().map(|x| *x as f64).collect())),
             other => Either::B((0..other.len()).map(|i| cell_json(other.get(i))).collect()),
+        })
+    }
+
+    /// Column `col` over rows `from` up to `to` in `buckets` buckets of
+    /// near one size — one a row when the range has fewer — each one's
+    /// least, greatest, first and last value and the rows they were read
+    /// from: a chart's pixel columns of a hundred thousand rows without the
+    /// rows crossing into JavaScript. `to` past the end stops at it; an
+    /// empty range answers empty arrays. Throws for a column that is not
+    /// numbers.
+    #[napi]
+    pub fn reduce(
+        &self,
+        col: Either<String, u32>,
+        from: u32,
+        to: u32,
+        buckets: u32,
+    ) -> Result<ChannelReduction> {
+        let c = self.col(col)?;
+        let r = self
+            .inner
+            .reduce(c, from as usize, to as usize, buckets as usize)
+            .map_err(|e| err(format!("reduce: {e}")))?;
+        let f = |g: fn(&channel::Bucket) -> f64| Float64Array::new(r.iter().map(g).collect());
+        let u = |g: fn(&channel::Bucket) -> usize| {
+            Uint32Array::new(r.iter().map(|b| g(b) as u32).collect())
+        };
+        Ok(ChannelReduction {
+            min: f(|b| b.min),
+            max: f(|b| b.max),
+            first: f(|b| b.first),
+            last: f(|b| b.last),
+            min_row: u(|b| b.min_row),
+            max_row: u(|b| b.max_row),
+            first_row: u(|b| b.first_row),
+            last_row: u(|b| b.last_row),
         })
     }
 

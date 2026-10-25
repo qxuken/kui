@@ -90,3 +90,18 @@ channel_get_str :: proc(ch: ^c.Channel, row, col: int) -> (value: string, ok: bo
 	ok = c.channel_get_str(ch, uint(row), uint(col), &value)
 	return
 }
+
+// Doubles a bucket of channel_reduce takes: the least, greatest, first and
+// last value, then the row each was read from.
+CHANNEL_BUCKET :: c.CHANNEL_BUCKET
+
+// Column col over rows [from, to) in at most len(out) / CHANNEL_BUCKET
+// buckets (backlog C95), CHANNEL_BUCKET doubles each. count is how many
+// were written; ok is false for no column col or a column that is not
+// numbers, the reason in channel_error.
+channel_reduce :: proc(ch: ^c.Channel, col, from, to: int, out: []f64) -> (count: int, ok: bool) {
+	n: uint
+	ok = c.channel_reduce(ch, uint(col), uint(from), uint(to), uint(len(out) / CHANNEL_BUCKET), (^f64)(raw_data(out)), &n)
+	count = int(n)
+	return
+}

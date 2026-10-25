@@ -104,3 +104,47 @@ fn a_script_makes_reads_and_publishes_its_own() {
     assert_eq!((ch.len(), ch.rev()), (3, 2));
     assert_eq!(ch.get(0, ch.col("name").unwrap()), Cell::Str("a"));
 }
+
+/// Backlog C95: a script buckets a range in Rust and reads a flat list
+/// per field, rows 0-based; the edges are the core's (an empty range, more
+/// buckets than rows, NaN), and a column of strings is an error.
+#[test]
+fn a_script_reduces_a_range_into_buckets() {
+    let ext = LuaExtension::from_source(
+        "reduce.lua",
+        r#"
+        local ys, ss = {}, {}
+        for i = 1, 1000 do ys[i] = (i - 1) % 10; ss[i] = "x" end
+        ys[3] = 0 / 0
+        local ch = channel { y = ys, s = ss }
+        local r = ch:reduce("y", 0, 1000, 4)
+        count = #r.min
+        b0 = { r.min[1], r.max[1], r.first[1], r.last[1],
+               r.min_row[1], r.max_row[1], r.first_row[1], r.last_row[1] }
+        -- Columns go in name order, so 1 is `y`.
+        by_index = #ch:reduce(1, 10, 20, 100).max
+        empty = #ch:reduce("y", 500, 500, 8).min
+        past = #ch:reduce("y", 998, 5000, 8).min
+        gap = ch:reduce("y", 2, 3, 1).min[1]
+        bad = tostring(select(2, pcall(ch.reduce, ch, "s", 0, 10, 2)))
+        function view(env) return column {} end
+        "#,
+    )
+    .unwrap();
+    let g = ext.lua().globals();
+    assert_eq!(g.get::<i64>("count").unwrap(), 4);
+    let b0: Vec<f64> = g
+        .get::<mlua::Table>("b0")
+        .unwrap()
+        .sequence_values()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    // Rows 0..250: values (i % 10), row 2 NaN; the first 0 is row 0, the
+    // first 9 row 9, the last row 249 holds 9.
+    assert_eq!(b0, [0.0, 9.0, 0.0, 9.0, 0.0, 9.0, 0.0, 249.0]);
+    assert_eq!(g.get::<i64>("by_index").unwrap(), 10, "a bucket a row");
+    assert_eq!(g.get::<i64>("empty").unwrap(), 0);
+    assert_eq!(g.get::<i64>("past").unwrap(), 2, "`to` stops at the end");
+    assert!(g.get::<f64>("gap").unwrap().is_nan());
+    assert!(g.get::<String>("bad").unwrap().contains("strings"));
+}

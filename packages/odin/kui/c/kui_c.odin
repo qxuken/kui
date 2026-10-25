@@ -59,6 +59,8 @@ WINDOW_KIND_POPUP :: 1
 DISMISS_OUTSIDE :: 0
 DISMISS_ESCAPE :: 1
 
+CHANNEL_BUCKET :: 8
+
 OPTION_AS_ALT_NONE :: 0
 OPTION_AS_ALT_LEFT :: 1
 OPTION_AS_ALT_RIGHT :: 2
@@ -1197,6 +1199,7 @@ foreign lib {
 	channel_column :: proc(ch: ^Channel, name: string) -> i32 ---
 	channel_get_f64 :: proc(ch: [^]Channel, row: uint, col: uint, out: ^f64) -> bool ---
 	channel_get_str :: proc(ch: [^]Channel, row: uint, col: uint, out: ^string) -> bool ---
+	channel_reduce :: proc(ch: [^]Channel, col: uint, from: uint, to: uint, buckets: uint, out: ^f64, count: ^uint) -> bool ---
 	token_family :: proc(ctx: ^Ctx, name: string, family: ^u32, font: ^u64) -> bool ---
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---

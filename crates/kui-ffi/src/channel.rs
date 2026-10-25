@@ -237,3 +237,57 @@ pub extern "C" fn kui_channel_get_str(
         }
     })
 }
+
+/// Doubles a bucket of [`kui_channel_reduce`] takes: the least, greatest,
+/// first and last value, then the row each was read from.
+pub const KUI_CHANNEL_BUCKET: usize = 8;
+
+/// Column `col` over rows `from..to` in at most `buckets` buckets
+/// (backlog C95), `KUI_CHANNEL_BUCKET` doubles each into `out`, which has
+/// room for `buckets` of them; `*count` says how many were written, 0 for
+/// an empty range. A flat array and not a struct, so the door adds no
+/// layout to the ABI. False for NULL, no column `col`, or a column that is
+/// not numbers, the reason in `kui_channel_error`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_reduce(
+    ch: *const KuiChannel,
+    col: usize,
+    from: usize,
+    to: usize,
+    buckets: usize,
+    out: *mut f64,
+    count: *mut usize,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ch.as_ref() }) else {
+            return false;
+        };
+        if count.is_null() || (out.is_null() && buckets > 0) {
+            return false;
+        }
+        match c.0.reduce(col, from, to, buckets) {
+            Ok(r) => {
+                for (i, b) in r.iter().enumerate() {
+                    let at = unsafe { out.add(i * KUI_CHANNEL_BUCKET) };
+                    let row = [
+                        b.min,
+                        b.max,
+                        b.first,
+                        b.last,
+                        b.min_row as f64,
+                        b.max_row as f64,
+                        b.first_row as f64,
+                        b.last_row as f64,
+                    ];
+                    unsafe { std::ptr::copy_nonoverlapping(row.as_ptr(), at, KUI_CHANNEL_BUCKET) };
+                }
+                unsafe { *count = r.len() };
+                true
+            }
+            Err(e) => {
+                LAST_ERROR.with(|l| *l.borrow_mut() = e.0);
+                false
+            }
+        }
+    })
+}

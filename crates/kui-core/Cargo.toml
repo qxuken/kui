@@ -116,6 +116,10 @@ harness = false
 name = "paths"
 harness = false
 
+[[bench]]
+name = "channel"
+harness = false
+
 # See the note in crates/kui-native/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path.
 [[example]]

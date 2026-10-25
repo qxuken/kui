@@ -296,7 +296,8 @@ pub fn teal_decls() -> String {
         field(&mut body, name, &ty, d);
     }
     body.push_str("  end\n\n");
-    body.push_str("  -- Bulk data the core owns, read by row and column (ADR 0065); rows are 0-based.\n  record Channel\n    rev: integer\n    id: integer\n    names: {string}\n    metamethod __len: function(self: Channel): integer\n    get: function(self: Channel, row: number, col: string | integer): any\n    row: function(self: Channel, row: number): {string:any}\n    column: function(self: Channel, col: string | integer): {any}\n    publish: function(self: Channel, columns: {string:{any}}): Channel\n  end\n\n");
+    body.push_str("  -- Bulk data the core owns, read by row and column (ADR 0065); rows are 0-based.\n  record Channel\n    rev: integer\n    id: integer\n    names: {string}\n    metamethod __len: function(self: Channel): integer\n    get: function(self: Channel, row: number, col: string | integer): any\n    row: function(self: Channel, row: number): {string:any}\n    column: function(self: Channel, col: string | integer): {any}\n    reduce: function(self: Channel, col: string | integer, from: number, to: number, n: number): ChannelReduction\n    publish: function(self: Channel, columns: {string:{any}}): Channel\n  end\n\n");
+    body.push_str("  -- What `ch:reduce` answers (backlog C95): a list per field, a bucket per index; rows 0-based.\n  record ChannelReduction\n    min: {number}\n    max: {number}\n    first: {number}\n    last: {number}\n    min_row: {integer}\n    max_row: {integer}\n    first_row: {integer}\n    last_row: {integer}\n  end\n\n");
     body.push_str("  -- A variable-height list's row heights: measured where known, the mean of those elsewhere (rows are 0-based).\n  record RowHeights\n");
     for (name, params, ret) in ROW_HEIGHTS {
         let sep = if params.is_empty() { "" } else { ", " };
@@ -601,6 +602,7 @@ impl Teal {
             "List",
             "RowHeights",
             "Channel",
+            "ChannelReduction",
             "Event",
             "Envelope",
             "WindowEvents",

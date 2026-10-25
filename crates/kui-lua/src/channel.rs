@@ -1,8 +1,10 @@
 //! Channels for Lua (ADR 0065): `channel { name = {...}, ms = {...} }`
 //! makes one, a handle in props, params or an event arrives as the same
 //! userdata, and a script reads it by index — `#ch`, `ch:get(i, "ms")`,
-//! `ch:row(i)` — without the rows ever becoming Lua tables. Row indices
-//! are 0-based, as a list's `index` and an `on_range` event's are.
+//! `ch:row(i)` — without the rows ever becoming Lua tables, and
+//! `ch:reduce(col, from, to, n)` buckets a range for a chart in Rust
+//! (backlog C95). Row indices are 0-based, as a list's `index` and an
+//! `on_range` event's are.
 
 use kui_core::Value as KValue;
 use kui_core::channel::{self, Cell, Channel, Column};
@@ -89,6 +91,17 @@ impl UserData for LuaChannel {
             }
             Ok(t)
         });
+        m.add_method(
+            "reduce",
+            |lua, this, (col, from, to, n): (Value, Value, Value, Value)| {
+                let c = column_index(&this.0, &col)?;
+                let buckets = this
+                    .0
+                    .reduce(c, row_index(&from)?, row_index(&to)?, row_index(&n)?)
+                    .map_err(|e| mlua::Error::runtime(format!("reduce: {e}")))?;
+                reduction_to_lua(lua, &buckets)
+            },
+        );
         m.add_method("publish", |_, this, spec: Table| {
             let cols = columns_of(&spec)?;
             this.0
@@ -97,6 +110,26 @@ impl UserData for LuaChannel {
                 .map_err(|e| mlua::Error::runtime(format!("publish: {e}")))
         });
     }
+}
+
+/// A reduction as a script reads it (backlog C95): one flat list per
+/// field, a bucket per index — `r.min[i]`, `r.max_row[i]` — rather than a
+/// table per bucket, so 720 buckets are eight tables and not 720, and the
+/// row fields 0-based as every row a channel names is.
+fn reduction_to_lua(lua: &Lua, buckets: &[channel::Bucket]) -> mlua::Result<Table> {
+    let t = lua.create_table_with_capacity(0, 8)?;
+    let field = |name: &str, get: &dyn Fn(&channel::Bucket) -> Value| -> mlua::Result<()> {
+        t.raw_set(name, lua.create_sequence_from(buckets.iter().map(get))?)
+    };
+    field("min", &|b| Value::Number(b.min))?;
+    field("max", &|b| Value::Number(b.max))?;
+    field("first", &|b| Value::Number(b.first))?;
+    field("last", &|b| Value::Number(b.last))?;
+    field("min_row", &|b| Value::Integer(b.min_row as i64))?;
+    field("max_row", &|b| Value::Integer(b.max_row as i64))?;
+    field("first_row", &|b| Value::Integer(b.first_row as i64))?;
+    field("last_row", &|b| Value::Integer(b.last_row as i64))?;
+    Ok(t)
 }
 
 /// A spec's columns: each key a name, each value a list of numbers,

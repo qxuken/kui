@@ -312,7 +312,19 @@ function row_heights(rows, estimate) end
 ---@field get fun(self: kui.Channel, row: number, col: string | integer): number | integer | string | boolean | nil
 ---@field row fun(self: kui.Channel, row: number): table<string, any>
 ---@field column fun(self: kui.Channel, col: string | integer): any[]
+---@field reduce fun(self: kui.Channel, col: string | integer, from: number, to: number, n: number): kui.ChannelReduction
 ---@field publish fun(self: kui.Channel, columns: table<string, any[]>): kui.Channel
+
+---What `ch:reduce(col, from, to, n)` answers (backlog C95): rows `from` up to `to` in `n` buckets (one a row when fewer), each field a list with a bucket per index; NaN skipped, a bucket of only NaN NaN. Rows are the channel's, 0-based.
+---@class kui.ChannelReduction
+---@field min number[]
+---@field max number[]
+---@field first number[]
+---@field last number[]
+---@field min_row integer[]
+---@field max_row integer[]
+---@field first_row integer[]
+---@field last_row integer[]
 
 ---A channel of `columns`: each key a column's name, each value its rows, all of one kind and one length.
 ---@param columns table<string, any[]>

@@ -10148,6 +10148,27 @@ test('a Channel hands rows to a Lua component by handle, and onRange reports the
   }
 });
 
+// Backlog C95: a channel reduces a range for a chart in Rust, a typed
+// array per field; the edges are the core's.
+test('channel.reduce buckets a range into its extremes and ends (backlog C95)', () => {
+  const ys = Float64Array.from({ length: 100_000 }, (_, i) => i % 10);
+  ys[2] = NaN;
+  const ch = new Channel({ y: ys, s: Array.from({ length: 100_000 }, () => 'x') });
+  const r = ch.reduce('y', 0, 100_000, 720);
+  assert.ok(r.min instanceof Float64Array && r.minRow instanceof Uint32Array);
+  assert.equal(r.min.length, 720);
+  assert.deepEqual(
+    [r.min[0], r.max[0], r.first[0], r.last[0], r.minRow[0], r.maxRow[0], r.firstRow[0]],
+    [0, 9, 0, 7, 0, 9, 0],
+  );
+  assert.equal(r.lastRow[0], 137, 'the first bucket holds 100000 / 720 rows');
+  assert.equal(ch.reduce('y', 10, 20, 100).max.length, 10, 'a bucket a row');
+  assert.equal(ch.reduce('y', 500, 500, 8).min.length, 0);
+  assert.equal(ch.reduce('y', 99_998, 200_000, 8).min.length, 2);
+  assert.ok(Number.isNaN(ch.reduce('y', 2, 3, 1).min[0]));
+  assert.throws(() => ch.reduce('s', 0, 10, 2), /strings/);
+});
+
 // A component is replayed by default (ADR 0067): the same props and
 // nothing it read changed, and last frame's nodes are pushed again without
 // calling the script; `fresh` asks for a fill every frame.

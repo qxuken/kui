@@ -1709,6 +1709,14 @@ pub const DOORS: &[Door] = &[
         doc: "Makes a channel (ADR 0065): named columns of one length the core owns, read by row and column wherever its handle goes — a component's props, a message, another thread.",
     },
     Door {
+        rust: "Channel::reduce",
+        c: Is("kui_channel_reduce"),
+        odin: Is("channel_reduce"),
+        node: As("`channel.reduce(col, from, to, buckets)`, a typed array per field"),
+        lua: As("`ch:reduce(col, from, to, n)`, a list per field"),
+        doc: "Buckets a number column's rows `from` up to `to` into at most `n`, each one's least, greatest, first and last value and their rows (backlog C95): a chart's pixel columns of a hundred thousand rows without the rows crossing into the binding.",
+    },
+    Door {
         rust: "Launcher::extensions",
         c: As("`kui_ctx_extension_count` / `kui_ctx_extension_namespace`, one at a time"),
         odin: As("`ctx_extension_count` / `ctx_extension_namespace`, one at a time"),

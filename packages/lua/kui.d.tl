@@ -737,7 +737,20 @@ global type kui = record
     get: function(self: Channel, row: number, col: string | integer): any
     row: function(self: Channel, row: number): {string:any}
     column: function(self: Channel, col: string | integer): {any}
+    reduce: function(self: Channel, col: string | integer, from: number, to: number, n: number): ChannelReduction
     publish: function(self: Channel, columns: {string:{any}}): Channel
+  end
+
+  -- What `ch:reduce` answers (backlog C95): a list per field, a bucket per index; rows 0-based.
+  record ChannelReduction
+    min: {number}
+    max: {number}
+    first: {number}
+    last: {number}
+    min_row: {integer}
+    max_row: {integer}
+    first_row: {integer}
+    last_row: {integer}
   end
 
   -- A variable-height list's row heights: measured where known, the mean of those elsewhere (rows are 0-based).

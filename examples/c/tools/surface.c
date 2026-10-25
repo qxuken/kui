@@ -1104,6 +1104,18 @@ static int surface(void) {
         check(kui_channel_get_str(ch, 2, (size_t)col_name, &name) && kui_str_eq(name, "deploy"),
               "kui_channel_get_str");
         check(kui_channel_column(ch, KUI_STR("nope")) == -1, "an unknown column is -1");
+        /* Backlog C95: the three rows in two buckets, the second holding
+         * rows 1 and 2 - its least 4 at row 2, its greatest 30 at row 1. */
+        double buckets[2 * KUI_CHANNEL_BUCKET];
+        size_t n_buckets = 0;
+        check(kui_channel_reduce(ch, (size_t)col_ms, 0, 3, 2, buckets, &n_buckets) &&
+                  n_buckets == 2 && buckets[0] == 12.5 &&
+                  buckets[KUI_CHANNEL_BUCKET + 0] == 4 && buckets[KUI_CHANNEL_BUCKET + 1] == 30 &&
+                  buckets[KUI_CHANNEL_BUCKET + 4] == 2 && buckets[KUI_CHANNEL_BUCKET + 5] == 1,
+              "kui_channel_reduce");
+        check(!kui_channel_reduce(ch, (size_t)col_name, 0, 3, 2, buckets, &n_buckets) &&
+                  kui_channel_error(&name) && name.len > 0,
+              "kui_channel_reduce refuses a column of strings, with why");
         KuiValue *handle = kui_channel_handle(ch);
         KuiChannel *again = kui_channel_resolve(handle);
         check(again && kui_channel_len(again) == 3, "kui_channel_resolve reads the same rows");

@@ -172,6 +172,11 @@ pub(crate) const CHANNEL: &[(&str, &str, &str)] = &[
     ),
     ("row", "row: number", "table<string, any>"),
     ("column", "col: string | integer", "any[]"),
+    (
+        "reduce",
+        "col: string | integer, from: number, to: number, n: number",
+        "kui.ChannelReduction",
+    ),
     ("publish", "columns: table<string, any[]>", "kui.Channel"),
 ];
 
@@ -665,6 +670,9 @@ pub fn luals_meta() -> String {
             "---@field {name} fun(self: kui.Channel, {params}): {ret}"
         );
     }
+    out.push_str(
+        "\n---What `ch:reduce(col, from, to, n)` answers (backlog C95): rows `from` up to `to` in `n` buckets (one a row when fewer), each field a list with a bucket per index; NaN skipped, a bucket of only NaN NaN. Rows are the channel's, 0-based.\n---@class kui.ChannelReduction\n---@field min number[]\n---@field max number[]\n---@field first number[]\n---@field last number[]\n---@field min_row integer[]\n---@field max_row integer[]\n---@field first_row integer[]\n---@field last_row integer[]\n",
+    );
     out.push_str(
         "\n---A channel of `columns`: each key a column's name, each value its rows, all of one kind and one length.\n---@param columns table<string, any[]>\n---@return kui.Channel\nfunction channel(columns) end\n\n",
     );

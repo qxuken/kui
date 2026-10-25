@@ -573,6 +573,7 @@ package kui_c
 #assert(WINDOW_KIND_POPUP == 1)
 #assert(DISMISS_OUTSIDE == 0)
 #assert(DISMISS_ESCAPE == 1)
+#assert(CHANNEL_BUCKET == 8)
 #assert(OPTION_AS_ALT_NONE == 0)
 #assert(OPTION_AS_ALT_LEFT == 1)
 #assert(OPTION_AS_ALT_RIGHT == 2)
