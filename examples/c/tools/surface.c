@@ -1222,7 +1222,10 @@ static int surface(void) {
 
         /* A wheel's notch (ADR 0050) glides by default; with the switch
          * off it jumps its 40 px on the next frame, clamped to the card's
-         * travel. */
+         * travel. Shift and Ctrl are still held from the pointer state
+         * above, and a notch under Shift turns sideways (backlog F202):
+         * let go of them first. */
+        kui_input_modifiers(ui, 0);
         check(kui_smooth_wheel(ui), "kui_smooth_wheel: on by default");
         kui_set_smooth_wheel(ui, false);
         check(!kui_smooth_wheel(ui), "kui_set_smooth_wheel turns it off");
