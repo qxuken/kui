@@ -13,8 +13,21 @@
   now: function(): number
   -- Tasks waiting on something.
   pending: function(): integer
-  -- Ends the app with `code` (0 by default).
+  -- Ends the app with `code` (0 by default): the window closes and
+  -- `on_exit` runs. Ctrl-C in the terminal does the same.
   exit: function(code?: integer)
+  -- Runs `fn(env)` at the start of the next frame, before `view`: for
+  -- what only a frame can do (`env.set_clipboard`, `env.set_focus`,
+  -- `env.measure_text`) from `update`, a task or a timer.
+  next_frame: function(fn: function(env: kui.Env))
+  -- What followed `--` on the command line: `kui run app -- --port 3001`.
+  args: {string}
+  -- The folder `kui` was started from (relative paths are the app's).
+  cwd: string
+  -- "macos", "windows", "linux", or the OS's own name.
+  platform: string
+  -- The cores to share work between.
+  cpus: integer
   -- The process environment, after `.env` and `.env.local`.
   env: {string:string}
   getenv: function(name: string): string
@@ -57,6 +70,8 @@
     list: function(path?: string): {string}
     lines: function(path: string): {string}
     stat: function(path: string): Stat
+    -- Writes a file that does not exist yet; false when it does.
+    create: function(path: string, data: string): boolean
     mkdir: function(path: string)
     remove: function(path: string)
     rename: function(from: string, to: string)
@@ -64,8 +79,13 @@
 
   record ProcessOpts
     cwd: string
+    -- Added to the runner's environment.
     env: {string:string}
     stdin: string
+    -- Leads a process group of its own: `kill` reaches all it started.
+    group: boolean
+    -- Outlives the app (spawned processes end with it otherwise).
+    detach: boolean
   end
   record ProcessResult
     code: integer
@@ -79,13 +99,21 @@
     lines: function(self: Process, stream?: string): function(): string
     write: function(self: Process, data: string)
     close: function(self: Process)
+    -- The exit code; nil when a signal ended it.
     wait: function(self: Process): integer
-    kill: function(self: Process)
+    -- Ends it, or sends `sig` ("term", "int", "hup", "kill"); its group's
+    -- whole when spawned `group`. False when it had already exited.
+    kill: function(self: Process, sig?: string): boolean
   end
   record process
     -- Runs a command to its end (waits).
     run: function(cmd: string, args?: {string}, opts?: ProcessOpts): ProcessResult
     spawn: function(cmd: string, args?: {string}, opts?: ProcessOpts): Process
+    -- A signal to any process, or to the group it leads; `0` asks whether
+    -- it is alive. Whether it arrived.
+    kill: function(pid: integer, sig?: string | integer, group?: boolean): boolean
+    -- This process's id.
+    pid: integer
   end
 
   record RequestOpts

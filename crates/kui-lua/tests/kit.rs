@@ -333,3 +333,41 @@ fn a_lua_host_puts_kit_inside_kit_and_kit_draws_it() {
         .expect("the button drew");
     assert_eq!(go, kui_core::OriginId(1), "Kit's own origin");
 }
+
+#[test]
+fn a_child_left_out_with_nil_leaves_the_rest_in_place() {
+    // `cond and node or nil` in the middle of a list: the children after
+    // the hole are built, in a box and among a component's host children
+    // alike — `#t` after the prelude's `t.type =` rehash stopped at the
+    // first hole and dropped them without a word.
+    let mut exts = Extensions::new();
+    exts.push_as("kit", Box::new(LuaExtension::from_file(KIT).unwrap()))
+        .unwrap();
+    exts.push_as(
+        "app",
+        Box::new(
+            LuaExtension::from_source(
+                "app.lua",
+                r#"
+                function view(env)
+                  return column { width = "grow",
+                    text("a"), false and text("x") or nil, nil, text("b"),
+                    component("kit/toolbar", {}, { text("c"), nil, text("d") }),
+                    text("e") }
+                end
+                "#,
+            )
+            .unwrap(),
+        ),
+    )
+    .unwrap();
+    let mut core = Core::new();
+    core.set_inspect(true);
+    for _ in 0..2 {
+        let mut ui = core.frame_with(VIEW, 1.0, &mut exts);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.finish();
+    }
+    let texts: Vec<String> = core.nodes().into_iter().filter_map(|n| n.text).collect();
+    assert_eq!(texts, ["a", "b", "c", "d", "e"]);
+}

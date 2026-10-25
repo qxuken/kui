@@ -14,6 +14,17 @@ pub struct Project {
     pub entry: PathBuf,
     pub name: String,
     pub size: (f64, f64),
+    /// The window's least size, logical px.
+    pub min_size: Option<(f64, f64)>,
+    /// `chrome = "custom"` draws the app's own titlebar; `"borderless"`
+    /// none at all.
+    pub chrome: kui_native::Chrome,
+    /// `titlebar = "medium"` or `"tall"`: the macOS strip under custom
+    /// chrome.
+    pub titlebar: kui_native::Titlebar,
+    /// A PNG for the Dock, the taskbar and the window, against the app's
+    /// folder.
+    pub icon: Option<PathBuf>,
     /// Globs the watcher follows, beside the app's own `.lua` and `.tl`.
     pub watch_include: Vec<String>,
     pub watch_exclude: Vec<String>,
@@ -42,6 +53,10 @@ pub fn find(path: &Path) -> Result<Project, String> {
         dir: dir.clone(),
         entry: PathBuf::new(),
         size: (1000.0, 700.0),
+        min_size: None,
+        chrome: kui_native::Chrome::Native,
+        titlebar: kui_native::Titlebar::Standard,
+        icon: None,
         watch_include: Vec::new(),
         watch_exclude: Vec::new(),
     };
@@ -90,12 +105,28 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
         if let Some(n) = t.get::<Option<String>>("name")? {
             p.name = n;
         }
-        if let Some(s) = t.get::<Option<mlua::Table>>("size")? {
-            let w = s.get::<Option<f64>>("w")?.or(s.get::<Option<f64>>(1)?);
-            let h = s.get::<Option<f64>>("h")?.or(s.get::<Option<f64>>(2)?);
-            if let (Some(w), Some(h)) = (w, h) {
-                p.size = (w, h);
-            }
+        if let Some(s) = size(&t, "size")? {
+            p.size = s;
+        }
+        p.min_size = size(&t, "min_size")?;
+        if let Some(c) = t.get::<Option<String>>("chrome")? {
+            p.chrome = match c.as_str() {
+                "native" => kui_native::Chrome::Native,
+                "custom" => kui_native::Chrome::Custom,
+                "borderless" => kui_native::Chrome::Borderless,
+                _ => return Err(mlua::Error::runtime(format!("chrome = {c:?}: native, custom or borderless"))),
+            };
+        }
+        if let Some(b) = t.get::<Option<String>>("titlebar")? {
+            p.titlebar = match b.as_str() {
+                "standard" => kui_native::Titlebar::Standard,
+                "medium" => kui_native::Titlebar::Medium,
+                "tall" => kui_native::Titlebar::Tall,
+                _ => return Err(mlua::Error::runtime(format!("titlebar = {b:?}: standard, medium or tall"))),
+            };
+        }
+        if let Some(i) = t.get::<Option<String>>("icon")? {
+            p.icon = Some(p.dir.join(i));
         }
         if let Some(w) = t.get::<Option<mlua::Table>>("watch")? {
             if let Some(i) = w.get::<Option<Vec<String>>>("include")? {
@@ -108,6 +139,14 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
         Ok(())
     };
     get().map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// `{ w = 900, h = 600 }` or `{ 900, 600 }` under `name`.
+fn size(t: &mlua::Table, name: &str) -> mlua::Result<Option<(f64, f64)>> {
+    let Some(s) = t.get::<Option<mlua::Table>>(name)? else { return Ok(None) };
+    let w = s.get::<Option<f64>>("w")?.or(s.get::<Option<f64>>(1)?);
+    let h = s.get::<Option<f64>>("h")?.or(s.get::<Option<f64>>(2)?);
+    Ok(w.zip(h))
 }
 
 /// Loads `.env`, then `.env.local`, from `dir` into the process's

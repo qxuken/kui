@@ -157,6 +157,8 @@ export interface ToolbarProps {
 export interface StatusbarProps {
   /** fills it, in order. */
   children?: KuiNode;
+  /** ends it, at the far side. */
+  trailing?: KuiNode;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */

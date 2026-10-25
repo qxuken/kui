@@ -91,6 +91,9 @@ was the first bare bump to break an app in five releases).
   `match` adds an arm.
 - A fill being kept that looked a `$token` up is filled again when any
   origin declares its tokens anew, where it was replayed (backlog C69).
+- A Lua view draws the children after one left out with `nil` — `{ a,
+  cond and b or nil, c }` draws `c` — where it dropped every sibling
+  after the hole (backlog C79).
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -141,6 +144,14 @@ checks. And a component's 84th host child had the key of the component's
 first node, because a label's tag and an index's traded inside FNV's
 first round; the tag is now a byte of its own, which moves every key.
 
+`cond and node or nil` is how a Lua view writes a child that is sometimes
+there, and in a list's middle it lost every child after it: the walk read
+`#t`, and Lua 5.5's length starts from a hint and stops at the first
+hole. The prelude's containers (`row`, `column`, `grid`, `titlebar`,
+`tooltip`), a component's host children and a text's spans now close the
+gaps — at the cost of a length and one `next` per container when there
+is none — so a view that drew less than it said now draws what it says.
+
 The rest of this release breaks nothing: a fix to text
 at a size no screen shows, a declaration file for Teal beside the one
 for lua-language-server, and a new runner beside the window's.
@@ -176,6 +187,20 @@ for lua-language-server, and a new runner beside the window's.
   out.png` run with no window. `kui run addons/kit/app` is the Kit app:
   every component live, 100,000 rows built by a worker and handed over as
   a channel, a live chart, a log, and an HTTP server.
+
+- **What a real app needs from the runner** (backlog C80, from Cookie
+  Mapping rebuilt on it): the manifest sets the window (`min_size`,
+  `chrome`, `titlebar`, `icon`); `kui run app -- args` hands the app
+  `kui.args`, with `kui.cwd`, `kui.platform` and `kui.cpus`;
+  `kui.process.spawn(cmd, args, { group = true })` leads a process group
+  whose `p:kill("term")` reaches everything it started, a spawned process
+  ends with the app unless `detach = true`, and `kui.process.kill(pid,
+  sig, group)` signals one the app did not start (`0`: is it alive);
+  `kui.next_frame(function(env) … end)` gives `update` the clipboard,
+  focus and text measures; `on_exit()` runs however the app ends, and
+  Ctrl-C, `SIGTERM` and `SIGHUP` end it the way its close button does;
+  `kui.fs.create` writes a file only if it is absent. Kit's `statusbar`
+  takes a `trailing` group, as its toolbar does.
 
 - **Kit in the npm package** (backlog C77): `import { Button, extension }
   from '@qxuken/kui/kit'`, then `runWindowed(app, { extensions: [extension]

@@ -2412,11 +2412,27 @@ fn bad(msg: impl std::fmt::Display) -> mlua::Error {
     mlua::Error::runtime(msg.to_string())
 }
 
-fn build_children(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
-    for child in t.sequence_values::<Table>() {
-        build_node(ui, &child?)?;
+/// A node's children, holes skipped: `{ a, cond and b or nil, c }` is the
+/// idiom for a child that is sometimes there, and stopping at the first
+/// nil, as `ipairs` does, dropped every child after a missing one without
+/// a word. A constructor leaves `#t` at its last positional value; the
+/// prelude's containers close the gaps where their own `t.type =` rehash
+/// would have moved it (`seal` in prelude.lua).
+fn each_child(t: &Table, mut f: impl FnMut(Table) -> mlua::Result<()>) -> mlua::Result<()> {
+    for i in 1..=t.raw_len() {
+        match t.raw_get::<mlua::Value>(i)? {
+            mlua::Value::Nil => {}
+            mlua::Value::Table(child) => f(child)?,
+            other => {
+                return Err(bad(format!("child {i} is a {}, not a node", other.type_name())));
+            }
+        }
     }
     Ok(())
+}
+
+fn build_children(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
+    each_child(t, |child| build_node(ui, &child))
 }
 
 /// Builds `t`'s children inside a widget's content closure, carrying the
@@ -2761,11 +2777,8 @@ fn build_component(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         let Some(list) = list else {
             return;
         };
-        for node in list.sequence_values::<Table>() {
-            if let Err(e) = node.and_then(|n| build_node(ui, &n)) {
-                failed.borrow_mut().get_or_insert(e);
-                return;
-            }
+        if let Err(e) = each_child(&list, |n| build_node(ui, &n)) {
+            failed.borrow_mut().get_or_insert(e);
         }
     };
     let own = BUILD_EXT.get().filter(|b| {

@@ -98,7 +98,10 @@ return {
       } },
     { "statusbar",
       doc = "A thin row at a window's foot for state: counts, the connection, the clock.",
-      children = { { "", doc = "fills it, in order." } } },
+      children = {
+        { "", doc = "fills it, in order." },
+        { "trailing", doc = "ends it, at the far side." },
+      } },
     { "split",
       doc = "Two panes and a draggable rule between them.",
       props = {

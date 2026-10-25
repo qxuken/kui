@@ -81,6 +81,8 @@ function M.statusbar(c: Ctx, _p: P): kui.Node
     row {
       width = "grow", height = 22, pad = { x = 10 }, gap = 14, cross_align = "center",
       children(""),
+      ctx.grow(),
+      row { gap = 14, cross_align = "center", children("trailing") },
     },
   }
 end

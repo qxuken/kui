@@ -139,6 +139,36 @@ function on_event(ev)
   if f then f(ev) end
 end
 
+-- What wants the frame's env: `update` hears events without one, so
+-- clipboard writes, focus moves and measurements wait for the next view.
+local frame_fns = {}
+
+--- Runs `fn(env)` at the start of the next frame, before `view`: for what
+--- only a frame can do — `env.set_clipboard`, `env.set_focus`,
+--- `env.measure_text` — from `update`, a task or a timer.
+function kui.next_frame(fn)
+  frame_fns[#frame_fns + 1] = fn
+  if #frame_fns == 1 then kui.__poke() end
+end
+
+local wrapped
+function kui.__wrap_view()
+  local inner = rawget(_G, "view")
+  if type(inner) ~= "function" or inner == wrapped then return end
+  wrapped = function(env, ...)
+    if #frame_fns > 0 then
+      local fns = frame_fns
+      frame_fns = {}
+      for _, f in ipairs(fns) do
+        local ok, err = pcall(f, env)
+        if not ok then kui.__task_error("next_frame: " .. tostring(err)) end
+      end
+    end
+    return inner(env, ...)
+  end
+  _G.view = wrapped
+end
+
 -- Workers the app started, by id: their handlers.
 local workers = {}
 
@@ -275,7 +305,7 @@ function kui.process.run(cmd, args, opts)
 end
 
 --- Starts a command: `p:read_line()` (nil at the end), `p:lines()`,
---- `p:write(s)`, `p:close()`, `p:wait()` (the exit code), `p:kill()`.
+--- `p:write(s)`, `p:close()`, `p:wait()` (the exit code), `p:kill(sig)`.
 function kui.process.spawn(cmd, args, opts)
   local ud = kui.process.__spawn(cmd, args, opts)
   local p = { pid = ud.pid }
@@ -284,7 +314,7 @@ function kui.process.spawn(cmd, args, opts)
   function p:wait() return kui.__await(ud:__wait()) end
   function p:write(s) ud:write(s) end
   function p:close() ud:close() end
-  function p:kill() ud:kill() end
+  function p:kill(sig) return ud:kill(sig) end
   return p
 end
 

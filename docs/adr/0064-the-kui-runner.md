@@ -115,3 +115,15 @@ workers — whose I/O runs as tasks that never block a frame.
   palette, so tokens can be exported (C74, `Tokens::exported`, Lua's
   `export = true`); and Kit's chart and waterfall now declare `on_layout`,
   which is what keeps a rect for `layout_of`.
+- What a real app's port found (Cookie Mapping, rebuilt on the runner in a
+  repository of its own with the Node app's features, backlog C79–C80):
+  the manifest names the window (`min_size`, `chrome`, `titlebar`,
+  `icon`); an app reads its arguments after `--` and the folder it was
+  started in (`kui.args`, `kui.cwd`, `kui.platform`, `kui.cpus`); a
+  spawned process can lead a process group, takes a signal, and ends with
+  the app unless `detach`; `kui.next_frame(fn(env))` gives `update` what
+  only a frame has (the clipboard, focus); `on_exit()` runs on every way
+  out, Ctrl-C included; `kui.fs.create` writes only what is absent. And
+  under it, in kui-lua: a child left out with `nil` in the middle of a
+  list dropped every sibling after it, because Lua 5.5's `#t` stops at the
+  first hole (C79).

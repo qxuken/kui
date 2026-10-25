@@ -68,9 +68,11 @@ pub fn load_app(
     Ok((ext, baseline, None))
 }
 
-/// `model = init()` when the app defines `init` and has no model yet.
+/// `model = init()` when the app defines `init` and has no model yet; and
+/// the app's `view` wrapped so `kui.next_frame` callbacks run first.
 fn init(lua: &Lua) -> mlua::Result<()> {
     let g = lua.globals();
+    g.get::<mlua::Table>("kui")?.get::<mlua::Function>("__wrap_view")?.call::<()>(())?;
     if g.get::<mlua::Value>("model")?.is_nil()
         && let Ok(f) = g.get::<mlua::Function>("init")
     {
@@ -343,7 +345,15 @@ impl App for Runner {
         }
     }
 
+    /// The app's `on_exit()` first — it may save, or stop what it started
+    /// gently — then whatever it spawned that still runs, then its servers.
     fn teardown(&mut self) {
+        if let Ok(f) = self.lua.globals().get::<mlua::Function>("on_exit")
+            && let Err(e) = f.call::<()>(())
+        {
+            eprintln!("kui: on_exit: {e}");
+        }
+        self.shared.children.kill_all();
         for (_, s) in self.shared.servers.lock().unwrap().drain() {
             drop(s);
         }

@@ -1708,6 +1708,7 @@ dependencies = [
  "kui-core",
  "kui-lua",
  "kui-native",
+ "libc",
  "mlua",
  "rusqlite",
  "tiny_http",

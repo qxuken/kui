@@ -358,3 +358,121 @@ fn types_writes_what_editors_read() {
     let decls = std::fs::read_to_string(dir.join(".kui/types/kui.d.tl")).unwrap();
     assert!(decls.contains("serve: function(opts?: ServeOpts): Server"), "the runner's API is in the kui record");
 }
+
+#[test]
+fn the_app_reads_its_arguments_folder_and_platform() {
+    let dir = app(
+        "args",
+        &[(
+            "main.lua",
+            r#"
+            print("args", table.concat(kui.args, ","))
+            print("cwd", kui.cwd == kui.dir)
+            print("platform", kui.platform ~= nil and kui.platform ~= "", kui.cpus >= 1, kui.process.pid > 0)
+            print("create", kui.fs.create("lock", "a"), kui.fs.create("lock", "b"), kui.fs.read("lock"))
+            kui.exit(0)
+            "#,
+        )],
+    );
+    let o = kui(&dir, &["run", "--headless", "--", "--port", "3001", "x y"], 20);
+    let s = out(&o);
+    assert!(s.contains("args\t--port,3001,x y"), "{s}");
+    assert!(s.contains("cwd\ttrue"), "{s}");
+    assert!(s.contains("platform\ttrue\ttrue\ttrue"), "{s}");
+    assert!(s.contains("create\ttrue\tfalse\ta"), "a second create leaves the first's file:\n{s}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_group_dies_whole_and_spawned_processes_end_with_the_app() {
+    let dir = app(
+        "groups",
+        &[
+            (
+                "tree.sh",
+                "#!/bin/sh\n# a parent that starts a child and waits on it, as npx does\nsleep 31337 &\necho started\nwait\n",
+            ),
+            (
+                "main.lua",
+                r#"
+                local function sleepers()
+                  local r = kui.process.run("pgrep", { "-f", "sleep 3133" })
+                  local n = 0
+                  for _ in r.stdout:gmatch("%d+") do n = n + 1 end
+                  return n
+                end
+                kui.spawn(function()
+                  local p = kui.process.spawn("sh", { "tree.sh" }, { group = true })
+                  print("line", p:read_line())
+                  print("alive", kui.process.kill(p.pid, 0))
+                  print("term", p:kill("term"))
+                  print("code", p:wait())
+                  kui.sleep(100)
+                  print("orphans", sleepers())
+                  print("after", p:kill())
+                  -- what is still running when the app ends goes with it
+                  kui.process.spawn("sh", { "-c", "sleep 31338" })
+                  kui.exit(0)
+                end)
+                "#,
+            ),
+        ],
+    );
+    let o = kui(&dir, &["run", "--headless"], 20);
+    let s = out(&o);
+    assert!(s.contains("line\tstarted"), "{s}");
+    assert!(s.contains("alive\ttrue"), "{s}");
+    assert!(s.contains("term\ttrue"), "{s}");
+    assert!(s.contains("code\tnil"), "a signal's exit has no code:\n{s}");
+    assert!(s.contains("orphans\t0"), "the group's child died with it:\n{s}");
+    assert!(s.contains("after\tfalse"), "an exited process is not signalled again:\n{s}");
+    std::thread::sleep(Duration::from_millis(200));
+    let left = Command::new("pgrep").args(["-f", "sleep 31338"]).output().unwrap();
+    assert!(left.stdout.is_empty(), "the app's process ended with it");
+}
+
+#[test]
+fn next_frame_hands_update_the_env_and_on_exit_runs_last() {
+    let dir = app(
+        "frame",
+        &[(
+            "main.lua",
+            r#"
+            function update(msg)
+              if msg.kind == "go" then
+                kui.next_frame(function(env)
+                  print("env", type(env.set_clipboard), env.viewport_w > 0)
+                  kui.exit(0)
+                end)
+              end
+            end
+            function on_exit() print("on_exit") end
+            function view(env) return column {} end
+            kui.dispatch({ kind = "go" })
+            "#,
+        )],
+    );
+    let o = kui(&dir, &["run", "--headless"], 20);
+    let s = out(&o);
+    assert!(s.contains("env\tfunction\ttrue"), "{s}");
+    assert!(s.contains("on_exit"), "{s}");
+}
+
+#[test]
+fn a_manifest_sets_the_window() {
+    let dir = app(
+        "manifest",
+        &[
+            (
+                "kui.config.lua",
+                r#"return { name = "Win", min_size = { w = 400, h = 300 }, chrome = "custom", titlebar = "medium" }"#,
+            ),
+            ("main.lua", "kui.exit(0)"),
+        ],
+    );
+    let o = kui(&dir, &["run", "--headless"], 20);
+    assert!(o.status.success(), "{}", out(&o));
+    let bad = app("bad-manifest", &[("kui.config.lua", r#"return { chrome = "glass" }"#), ("main.lua", "")]);
+    let o = kui(&bad, &["run", "--headless"], 20);
+    assert!(out(&o).contains("native, custom or borderless"), "{}", out(&o));
+}

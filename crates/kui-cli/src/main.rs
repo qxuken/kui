@@ -1,7 +1,7 @@
 //! `kui`: runs a Lua or Teal app with Kit and a standard library, and
 //! nothing else to install (ADR 0064).
 //!
-//!   kui run [path] [--headless] [--watch] [--size WxH]
+//!   kui run [path] [--headless] [--watch] [--size WxH] [-- app args]
 //!   kui check [path]
 //!   kui new <dir>
 //!
@@ -33,6 +33,7 @@ run options:
   --size WxH     the window's size in logical px (default 1000x700)
   --shot FILE    no window: write a frame to FILE (.png) and end
   --after MS     with --shot, how long to run first (default 800)
+  -- ARGS        what follows is the app's, in kui.args
 
 An app defines view(env) and, to hear its events and kui.dispatch, update(msg).
 ";
@@ -45,6 +46,8 @@ struct Args {
     size: Option<(f64, f64)>,
     shot: Option<PathBuf>,
     after: f64,
+    /// After `--`: the app's own arguments.
+    rest: Vec<String>,
 }
 
 fn parse() -> Result<Args, String> {
@@ -57,6 +60,7 @@ fn parse() -> Result<Args, String> {
         size: None,
         shot: None,
         after: 800.0,
+        rest: Vec::new(),
     };
     match it.peek().map(String::as_str) {
         Some("run" | "check" | "new" | "types") => a.cmd = it.next().unwrap(),
@@ -67,6 +71,10 @@ fn parse() -> Result<Args, String> {
     let mut path = None;
     while let Some(arg) = it.next() {
         match arg.as_str() {
+            "--" => {
+                a.rest = it.by_ref().collect();
+                break;
+            }
             "--watch" => a.watch = true,
             "--headless" => a.headless = true,
             "--shot" => {
@@ -134,6 +142,7 @@ fn main() -> ExitCode {
 fn run(args: &Args) -> Result<i32, String> {
     let project = project::find(&args.path)?;
     project::load_dotenv(&project.dir);
+    modules::set_args(args.rest.clone());
     let shared = modules::Shared::new(project.dir.clone(), None);
     let (ext, baseline, load_error) = host::load_app(&project, shared.clone(), args.watch)?;
     let lua = ext.lua().clone();
@@ -145,9 +154,19 @@ fn run(args: &Args) -> Result<i32, String> {
     });
     let runner = host::Runner::new(lua, shared.clone(), &project, baseline, watch, load_error, shot);
     let (w, h) = args.size.unwrap_or(project.size);
-    let launcher = kui_native::app(&project.name)
+    let mut launcher = kui_native::app(&project.name)
+        .chrome(project.chrome)
+        .titlebar(project.titlebar)
         .extension_as("app", ext)
         .extension_as(kit::NAMESPACE, kit);
+    if let Some((w, h)) = project.min_size {
+        launcher = launcher.min_size(w, h);
+    }
+    if let Some(icon) = &project.icon {
+        let bytes = std::fs::read(icon).map_err(|e| format!("icon {}: {e}", icon.display()))?;
+        launcher = launcher.try_icon_bytes(&bytes).map_err(|e| format!("icon {}: {e}", icon.display()))?;
+    }
+    modules::on_interrupt(shared.clone());
     if args.headless {
         launcher.open_headless(runner, w as f32, h as f32, 1.0).run();
     } else {

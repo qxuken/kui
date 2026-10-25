@@ -70,7 +70,10 @@ function Process:close() end
 ---Its exit code (waits).
 ---@return integer
 function Process:wait() end
-function Process:kill() end
+---Ends it, or sends `sig` ("term", "int", "hup", "kill"); its group's whole when spawned `group`. False when it had already exited.
+---@param sig? string
+---@return boolean
+function Process:kill(sig) end
 
 ---@class kui.Db
 local Db = {}
@@ -114,9 +117,24 @@ function kui.now() end
 ---Tasks waiting on something.
 ---@return integer
 function kui.pending() end
----Ends the app with `code` (0 by default).
+---Ends the app with `code` (0 by default): the window closes and `on_exit` runs. Ctrl-C in the terminal does the same.
 ---@param code? integer
 function kui.exit(code) end
+---Runs `fn(env)` at the start of the next frame, before `view`: for what only a frame can do (`env.set_clipboard`, `env.set_focus`, `env.measure_text`) from `update`, a task or a timer.
+---@param fn fun(env: kui.Env)
+function kui.next_frame(fn) end
+---What followed `--` on the command line: `kui run app -- --port 3001`.
+---@type string[]
+kui.args = {}
+---The folder `kui` was started from (relative paths are the app's).
+---@type string
+kui.cwd = ""
+---"macos", "windows", "linux", or the OS's own name.
+---@type string
+kui.platform = ""
+---The cores to share work between.
+---@type integer
+kui.cpus = 1
 ---The process environment, after `.env` and `.env.local`.
 ---@type table<string, string>
 kui.env = {}
@@ -170,6 +188,9 @@ function kui.fs.list(path) end
 function kui.fs.lines(path) end
 ---@return { size: integer, dir: boolean, file: boolean, modified: number }?
 function kui.fs.stat(path) end
+---Writes a file that does not exist yet; false when it does.
+---@return boolean
+function kui.fs.create(path, data) end
 function kui.fs.mkdir(path) end
 function kui.fs.remove(path) end
 function kui.fs.rename(from, to) end
@@ -180,8 +201,18 @@ kui.process = {}
 ---@param opts? { cwd?: string, env?: table<string,string>, stdin?: string }
 ---@return kui.ProcessResult
 function kui.process.run(cmd, args, opts) end
+---`group`: leads a process group of its own, so `kill` reaches all it started. `detach`: outlives the app (spawned processes end with it otherwise).
+---@param opts? { cwd?: string, env?: table<string,string>, group?: boolean, detach?: boolean }
 ---@return kui.Process
 function kui.process.spawn(cmd, args, opts) end
+---A signal to any process, or to the group it leads; `0` asks whether it is alive. Whether it arrived.
+---@param sig? string|integer
+---@param group? boolean
+---@return boolean
+function kui.process.kill(pid, sig, group) end
+---This process's id.
+---@type integer
+kui.process.pid = 0
 
 kui.http = {}
 ---Each waits.

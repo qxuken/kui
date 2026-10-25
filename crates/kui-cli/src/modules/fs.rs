@@ -29,6 +29,23 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             std::fs::write(&p, &*data.as_bytes()).map_err(|e| io(&p, e))
         })?,
     )?;
+    // Writes a file that does not exist yet: false, and nothing written,
+    // when it does — a lock two runs started at once cannot share.
+    fs.set(
+        "create",
+        lua.create_function(|lua, (path, data): (String, mlua::LuaString)| {
+            use std::io::Write;
+            let p = shared(lua).path(&path);
+            if let Some(dir) = p.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
+            }
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&p) {
+                Ok(mut f) => f.write_all(&data.as_bytes()).map(|()| true).map_err(|e| io(&p, e)),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+                Err(e) => Err(io(&p, e)),
+            }
+        })?,
+    )?;
     fs.set(
         "append",
         lua.create_function(|lua, (path, data): (String, mlua::LuaString)| {

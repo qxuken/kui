@@ -1,16 +1,51 @@
 -- kui prelude: injected before every extension script.
 -- Views are plain tables — the same IR the Rust builders lower into.
 
+-- A list's gaps closed: `{ a, cond and b or nil, c }` is how a view writes
+-- a child that is sometimes there, but `#t` is a border, not a count, and
+-- Lua 5.5's starts from a hint and stops at the first hole, losing `c`
+-- (and the Rust walk reads `#t`). Straight out of a constructor every
+-- positional value is in the array part, so `next(t, #t)` is an integer
+-- exactly when one lies past a hole: the common case costs a length and a
+-- `next`, and only a list with a gap is walked and closed up.
+local math_type = math.type
+local function close_gaps(t)
+  local n = #t
+  local k
+  if n == 0 then k = next(t) else k = next(t, n) end
+  -- past the array part `next` reaches the named keys: no child is left
+  if math_type(k) ~= "integer" then return t end
+  local last = n
+  for key in next, t do
+    if math_type(key) == "integer" and key > last then last = key end
+  end
+  local j = 0
+  for i = 1, last do
+    local v = rawget(t, i)
+    if v ~= nil then
+      j = j + 1
+      t[j] = v
+    end
+  end
+  for i = j + 1, last do t[i] = nil end
+  return t
+end
+
+-- A container: its children's gaps closed, then its type.
+local function seal(t, ty)
+  close_gaps(t)
+  t.type = ty
+  return t
+end
+
 function row(t)
   t = t or {}
-  t.type = "row"
-  return t
+  return seal(t, "row")
 end
 
 function column(t)
   t = t or {}
-  t.type = "column"
-  return t
+  return seal(t, "column")
 end
 
 -- grid { row { text("name"), text("value") }, row { ... } }: a table
@@ -24,8 +59,7 @@ end
 -- column's. Named `grid` here because `table` is Lua's own.
 function grid(t)
   t = t or {}
-  t.type = "grid"
-  return t
+  return seal(t, "grid")
 end
 
 -- text("plain", opts) or text({ "plain ", { "bold", bold = true, color = 0x.. } }, opts)
@@ -39,7 +73,7 @@ function text(s, opts)
   end
   t.type = "text"
   if type(s) == "table" then
-    t.spans = s
+    t.spans = close_gaps(s)
   else
     t.value = tostring(s)
   end
@@ -197,6 +231,12 @@ end
 -- An instance whose props did not change is replayed; `fresh = true` asks
 -- every frame.
 function component(name, props, kids)
+  if kids then
+    close_gaps(kids)
+    for k, v in pairs(kids) do
+      if type(k) == "string" and type(v) == "table" then close_gaps(v) end
+    end
+  end
   return { type = "component", name = name, props = props, children = kids }
 end
 
@@ -250,8 +290,7 @@ end
 -- hosts custom content between the drag inset and the window buttons.
 function titlebar(t)
   t = t or {}
-  t.type = "titlebar"
-  return t
+  return seal(t, "titlebar")
 end
 
 function window_buttons()
@@ -281,8 +320,7 @@ function tooltip(s, t)
     t = t or {}
     t.value = tostring(s)
   end
-  t.type = "tooltip"
-  return t
+  return seal(t, "tooltip")
 end
 
 function latency_graph()

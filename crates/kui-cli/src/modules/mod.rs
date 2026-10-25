@@ -36,6 +36,8 @@ pub struct Shared {
     /// Inside a worker: its id and the app's inbox, where its dispatches go.
     pub worker: Option<(u64, Ops)>,
     pub timers: timer::Timers,
+    /// Processes `kui.process.spawn` started that end with the app.
+    pub children: process::Children,
 }
 
 impl Shared {
@@ -50,6 +52,7 @@ impl Shared {
             errors: Mutex::default(),
             exit: Mutex::default(),
             worker,
+            children: process::Children::default(),
         })
     }
 
@@ -69,6 +72,70 @@ impl Shared {
         }
     }
 }
+
+/// The app's own arguments, what followed `--` on the command line.
+static ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+pub fn set_args(args: Vec<String>) {
+    let _ = ARGS.set(args);
+}
+
+/// The OS, as `kui.platform` names it.
+const PLATFORM: &str = match std::env::consts::OS.as_bytes() {
+    b"macos" => "macos",
+    b"windows" => "windows",
+    b"linux" => "linux",
+    _ => std::env::consts::OS,
+};
+
+/// Ctrl-C, or a `kill`, in the terminal the app runs from: a `kui.exit`
+/// with the signal's code, so the window closes the way it closes from
+/// its button and `on_exit` runs. A second one ends the process at once.
+/// The handler only writes a byte to a pipe; a thread waits on the other
+/// end, so nothing polls.
+#[cfg(unix)]
+pub fn on_interrupt(shared: Arc<Shared>) {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static WRITE: AtomicI32 = AtomicI32::new(-1);
+    extern "C" fn handler(sig: libc::c_int) {
+        let fd = WRITE.load(Ordering::Relaxed);
+        let b = sig as u8;
+        // SAFETY: write(2) is async-signal-safe, the buffer is one byte.
+        unsafe { libc::write(fd, (&b as *const u8).cast(), 1) };
+    }
+    let mut fds = [0; 2];
+    // SAFETY: a fresh pipe; its ends live for the process.
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        return;
+    }
+    WRITE.store(fds[1], Ordering::Relaxed);
+    for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
+        // SAFETY: the handler only writes to the pipe.
+        unsafe { libc::signal(sig, handler as *const () as libc::sighandler_t) };
+    }
+    let read = fds[0];
+    let _ = std::thread::Builder::new().name("kui-signals".into()).spawn(move || {
+        let mut seen = false;
+        loop {
+            let mut b = 0u8;
+            // SAFETY: reads one byte into `b`.
+            let n = unsafe { libc::read(read, (&mut b as *mut u8).cast(), 1) };
+            if n <= 0 {
+                return;
+            }
+            if seen {
+                shared.children.kill_all();
+                std::process::exit(128 + b as i32);
+            }
+            seen = true;
+            shared.exit.lock().unwrap().get_or_insert(128 + b as i32);
+            shared.ops.poke();
+        }
+    });
+}
+
+#[cfg(not(unix))]
+pub fn on_interrupt(_shared: Arc<Shared>) {}
 
 /// The state's shared half, from inside a Lua function.
 pub fn shared(lua: &Lua) -> Arc<Shared> {
@@ -130,6 +197,12 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     )?;
     kui.set("dir", shared.dir.to_string_lossy().as_ref())?;
     kui.set("version", env!("CARGO_PKG_VERSION"))?;
+    kui.set("args", ARGS.get().cloned().unwrap_or_default())?;
+    if let Ok(cwd) = std::env::current_dir() {
+        kui.set("cwd", cwd.to_string_lossy().as_ref())?;
+    }
+    kui.set("platform", PLATFORM)?;
+    kui.set("cpus", std::thread::available_parallelism().map_or(1, |n| n.get()))?;
     if shared.worker.is_some() {
         kui.set("__worker", true)?;
     }

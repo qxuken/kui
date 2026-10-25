@@ -566,7 +566,8 @@ local function make(namespace)
   ---A thin row at a window's foot for state: counts, the connection, the
   ---clock.
   ---
-  ---Your children: its list part fills it, in order.
+  ---Your children: its list part fills it, in order; `trailing` ends it, at
+  ---the far side.
   ---@param props kit.StatusbarProps
   ---@param children? table
   ---@return kui.Node

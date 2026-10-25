@@ -58,7 +58,8 @@ function make(namespace) {
     },
     Statusbar(props = {}, children) {
       const wire = {};
-      const groups = undefined;
+      const groups = {};
+      if (props.trailing !== undefined) groups.trailing = flat(props.trailing);
       return {
         type: 'component',
         key: props.key != null ? String(props.key) : undefined,
