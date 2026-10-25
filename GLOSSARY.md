@@ -65,6 +65,32 @@ dismissal arrive as the messages on its `windows` entry.
 _Avoid_: root event (there are none since ADR 0048), global event, core
 message
 
+## Extensions
+
+**Extension**:
+Code a host loads to draw in its frame: a Lua script, a C library, a
+Rust type. It is loaded under a namespace the host chooses.
+_Avoid_: plugin (fine in prose, not as a type), module
+
+**Namespace**:
+The word a host loads an extension under, which fronts every component
+name it provides: `fs` in `fs/panel`.
+_Avoid_: prefix, scope
+
+**Component**:
+Something an extension provides by name and a view places with
+`component("ns/name", props, children)`, as often as it likes. Its
+`on_*` props are the messages its events arrive as. An extension's
+`view` is its component `root`.
+_Avoid_: slot (since ADR 0067 that is a place many extensions append
+to), widget (that is what the core draws)
+
+**Instance**:
+One placement of a component, keyed by its position or its `key` prop.
+It is kept and replayed while its props and what it read stay the same.
+An event names the instance its node was drawn in.
+_Avoid_: slot, fill (that is the drawing of an instance)
+
 ## Editors
 
 **Seed**:

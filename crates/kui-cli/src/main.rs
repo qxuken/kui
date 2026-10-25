@@ -167,6 +167,7 @@ fn run(args: &Args) -> Result<i32, String> {
     project::load_dotenv(&project.dir);
     modules::set_args(args.rest.clone());
     modules::set_name(project.name.clone());
+    modules::set_task_error_exits(args.headless);
     let shared = modules::Shared::new(project.dir.clone(), None);
     let loaded = host::load_app(&project, shared.clone(), args.watch);
     // The app ended before its window opened — `--help`, a bad flag, a

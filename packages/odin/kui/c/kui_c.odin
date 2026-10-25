@@ -46,7 +46,7 @@ Waker :: struct {}
 AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 38
+ABI_VERSION :: 39
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -63,6 +63,14 @@ OPTION_AS_ALT_NONE :: 0
 OPTION_AS_ALT_LEFT :: 1
 OPTION_AS_ALT_RIGHT :: 2
 OPTION_AS_ALT_BOTH :: 3
+
+FILL_NONE :: -1
+FILL_REPLAYED :: 0
+FILL_NOT_KEPT :: 1
+FILL_PARAMS :: 2
+FILL_READS :: 3
+FILL_NOT_REPLAYABLE :: 4
+FILL_HEARD :: 6
 
 FIT :: 0
 GROW :: 1
@@ -925,7 +933,7 @@ Event :: struct {
 	payload: ^Value,
 	window: u32,
 	reply_sink: ^ReplySink,
-	slot: u64,
+	instance: u64,
 	event: string,
 }
 
@@ -1229,10 +1237,6 @@ foreign lib {
 	open_keyed :: proc(ctx: ^Ctx, label: string, spec: ^Spec, on_click: ^Value) -> u64 ---
 	open_indexed :: proc(ctx: ^Ctx, index: u64, spec: ^Spec, on_click: ^Value) -> u64 ---
 	row_count :: proc(ctx: ^Ctx, rows: u64) ---
-	slot :: proc(ctx: ^Ctx, name: string, params: ^Value) -> bool ---
-	slot_kept :: proc(ctx: ^Ctx, name: string, params: ^Value) -> bool ---
-	slot_replay :: proc(ctx: ^Ctx, name: string, params: ^Value) -> i32 ---
-	slot_fill :: proc(ctx: ^Ctx, name: string) -> i32 ---
 	ctx_add_extension :: proc(ctx: ^Ctx, namespace_: string, path: string) -> bool ---
 	ctx_extension_error :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	ctx_extension_count :: proc(ctx: ^Ctx) -> u32 ---
@@ -1377,7 +1381,7 @@ foreign lib {
 	set_devtools_theme :: proc(ctx: ^Ctx, base: string, accent: u32) -> bool ---
 	set_devtools_key :: proc(ctx: ^Ctx, key: string) -> bool ---
 	devtools_key :: proc(ctx: ^Ctx, out: ^string) -> bool ---
-	devtools_tab :: proc(ctx: ^Ctx, name: string, label: string, slot: string) -> bool ---
+	devtools_tab :: proc(ctx: ^Ctx, name: string, label: string, component: string, props: ^Value) -> bool ---
 	devtools_tab_open :: proc(ctx: ^Ctx, name: string, label: string) -> bool ---
 	devtools_selected :: proc(ctx: ^Ctx) -> u64 ---
 	devtools_hovered :: proc(ctx: ^Ctx) -> u64 ---
@@ -1486,10 +1490,9 @@ foreign lib {
 	animation_encoder_free :: proc(enc: ^AnimationEncoder) ---
 	pixels_free :: proc(pixels: [^]u8) ---
 	run_with :: proc(ctx: ^Ctx, title: string, config: ^RunConfig, view: ViewFn, on_event: EventFn, user: rawptr) -> bool ---
-	slot_name :: proc(ctx: ^Ctx, out: ^string) -> bool ---
-	slot_namespace :: proc(ctx: ^Ctx, out: ^string) -> bool ---
-	slot_params :: proc(ctx: ^Ctx) -> ^Value ---
-	reply :: proc(ev: ^Event, reply: ^Value) -> bool ---
+	instance_name :: proc(ctx: ^Ctx, out: ^string) -> bool ---
+	instance_namespace :: proc(ctx: ^Ctx, out: ^string) -> bool ---
+	instance_params :: proc(ctx: ^Ctx) -> ^Value ---
 	emit :: proc(ev: ^Event, prop: string, fields: ^Value) -> bool ---
 	children :: proc(ctx: ^Ctx, group: string) ---
 	component :: proc(ctx: ^Ctx, name: string, props: ^Value, children: ChildrenFn, user: rawptr) -> i32 ---

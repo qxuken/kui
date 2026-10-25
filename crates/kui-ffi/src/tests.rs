@@ -4108,8 +4108,8 @@ mod borrows {
         kui_set_diagnostics(ctx, true);
         kui_frame_begin(ctx, 200.0, 100.0, 1.0);
         kui_root(ctx, &zspec());
-        for name in ["a", "a", "b", "b", "c", "c"] {
-            kui_slot(ctx, ks(name), std::ptr::null());
+        for name in ["x/a", "x/a", "x/b", "x/b", "x/c", "x/c"] {
+            kui_component(ctx, ks(name), std::ptr::null(), None, std::ptr::null_mut());
         }
         kui_frame_finish(ctx);
         let mut out = [unsafe { std::mem::zeroed::<KuiWarning>() }; 8];
@@ -4134,6 +4134,8 @@ mod replay_headless {
     use std::cell::Cell;
     use std::rc::Rc;
 
+    static PANE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| "pane".to_owned());
+
     /// A plugin that paints its box from `kui_theme` and sizes it from
     /// `kui_metrics`, through the context a C plugin's view is handed.
     struct Painted {
@@ -4145,8 +4147,8 @@ mod replay_headless {
         fn name(&self) -> &str {
             "painted"
         }
-        fn slots(&self) -> &[String] {
-            &[]
+        fn components(&self) -> &[String] {
+            std::slice::from_ref(&PANE)
         }
         fn view(&mut self, _slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
             self.views.set(self.views.get() + 1);
@@ -4192,34 +4194,27 @@ mod replay_headless {
         )
         .unwrap();
         let mut core = kui_core::Core::new();
-        let mut frame = |core: &mut kui_core::Core, keep: bool| {
+        let mut frame = |core: &mut kui_core::Core| {
             let mut ui = core.frame_with(kui_core::Size::new(200.0, 100.0), 1.0, &mut exts);
-            let fill = if keep {
-                ui.slot_kept("painted/root", &Value::Null);
-                None
-            } else {
-                ui.slot_replay("painted/root", &Value::Null)
-            };
+            let fill = ui.component("painted/pane", &Value::Null);
             ui.finish();
             fill
         };
-        frame(&mut core, true);
-        assert_eq!(frame(&mut core, false), Some(FillAnswer::Replayed));
+        assert_eq!(frame(&mut core), Some(FillAnswer::NotKept));
+        assert_eq!(frame(&mut core), Some(FillAnswer::Replayed));
         assert_eq!(views.get(), 1);
 
         let pink = kui_core::Color::hex(0xff00ffff);
         core.set_theme(kui_core::Theme::light().with_accent(pink));
-        assert_eq!(frame(&mut core, false), Some(FillAnswer::Reads));
-        assert_eq!(core.slot_fill_why("painted/root"), Some("Theme"));
+        assert_eq!(frame(&mut core), Some(FillAnswer::Reads));
         assert_eq!((views.get(), bg.get()), (2, 0xff00ffff));
-        assert_eq!(frame(&mut core, false), Some(FillAnswer::Replayed));
+        assert_eq!(frame(&mut core), Some(FillAnswer::Replayed));
 
         let mut m = *core.metrics();
         m.radius += 3.0;
         core.set_metrics(m);
-        assert_eq!(frame(&mut core, false), Some(FillAnswer::Reads));
-        assert_eq!(core.slot_fill_why("painted/root"), Some("Metrics"));
-        assert_eq!(frame(&mut core, false), Some(FillAnswer::Replayed));
+        assert_eq!(frame(&mut core), Some(FillAnswer::Reads));
+        assert_eq!(frame(&mut core), Some(FillAnswer::Replayed));
         assert_eq!(views.get(), 3);
     }
 }
@@ -4830,10 +4825,11 @@ mod lua_extensions {
             dir.join("panel.lua"),
             r#"
             local label = require("label")
-            slots = { "panel" }
-            function view(env, slot)
-              return column { bg = 0x204060ff, pad = 8, text(label.text) }
-            end
+            components = {
+              panel = function(env, props, inst)
+                return column { bg = 0x204060ff, pad = 8, text(label.text) }
+              end,
+            }
             "#,
         )
         .unwrap();
@@ -4848,7 +4844,11 @@ mod lua_extensions {
         kui_frame_begin(ctx, 320.0, 240.0, 1.0);
         let root: KuiSpec = unsafe { std::mem::zeroed() };
         kui_root(ctx, &root);
-        assert!(kui_slot(ctx, ks("lua/panel"), std::ptr::null()));
+        assert_eq!(
+            kui_component(ctx, ks("lua/panel"), std::ptr::null(), None, std::ptr::null_mut()),
+            1,
+            "kept, not replayed: its first frame"
+        );
         kui_frame_finish(ctx);
         let mut draw = KuiDrawData::default();
         kui_draw_data(ctx, &mut draw);

@@ -1937,13 +1937,13 @@ label, so two rows of a list under different parents answer the same. One verb g
 the frame that does — that is how the `update` opening an editor names it.
 A label declared by two nodes under different parents raises `ambiguous-key`
 and picks the first in tree order: labels are unique among siblings, not
-across a tree. The lookup is the asker's: a plugin filling a slot (a Lua
-script, a C extension) is answered from the nodes it opened and no one
+across a tree. The lookup is the asker's: a plugin drawing a component (a
+Lua script, a C extension) is answered from the nodes it opened and no one
 else's, so its `filter` and the host's never meet; the host sees its own
-first, and everyone's when it declared none. A plugin that fills many
-slots — one pane a slot — is answered from the slot asking alone, so two
+first, and everyone's when it declared none. A plugin placed many times —
+one pane an instance — is answered from the instance asking alone, so two
 of its panes can both call their scroller `list`; to reach a node in
-another of its slots, pass the hex key.
+another of its instances, pass the hex key.
 
 [`key` row](props.md#composite-props-hand-written-per-binding) ·
 [`ambiguous-key`](props.md#warnings) ·
@@ -2182,52 +2182,50 @@ nothing.
 
 ### How do I let an extension draw inside my view?
 
-Declare the place: `ui.slot("fs/panel")` is a position among the host's own
-children, filled then and there by the extension the name addresses, with a
-`Value` of parameters in and replies out. The host decides the namespace an
-extension is loaded under (`extension_as("fs", ext)`), so the same plugin
-loaded twice is two namespaces and two sets of slots. An extension whose
-slots are not known when it loads — views registered at runtime, one slot
-per pane — lists `"*"` and fills every name declared under its namespace;
-and every event says which slot's fill drew its node (`ev.slot`), so a
-host with one extension across many panes routes by pane without the
-extension stamping its payloads.
+Place what it provides: `ui.component("fs/panel", &props)` is a position
+among the host's own children, drawn then and there by the extension the
+namespace addresses, with props in and the host's own messages out — an
+`on_toggle` prop is the message the host hears when the extension emits
+`on_toggle`. The host decides the namespace an extension is loaded under
+(`extension_as("fs", ext)`), so the same plugin loaded twice is two
+namespaces. An extension lists what it provides (`components()`, Lua's
+`components` table, C's `kui_ext_components`), `"*"` for every name under
+its namespace — views registered at runtime, one per pane; one that lists
+nothing provides `root`, its `view`, drawn after the host's view unless
+the host places `fs/root`. Every event says which instance drew its node
+(`ev.instance`), so a host with one extension across many panes routes by
+pane without the extension stamping its payloads.
 
-[ADR 0014](adr/0014-slots-an-extension-fills-in-place.md) ·
-[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08) ·
-[alpha.13](../CHANGELOG.md#010-alpha13-2026-09-15)
+[ADR 0060](adr/0060-components-an-extension-provides.md) ·
+[ADR 0067](adr/0067-slots-fold-into-components.md)
 
 ### My plugin's pane costs every frame, even when nothing in it moved — how do I stop asking it?
 
-Declare the slot with `ui.slot_kept("fs/panel", &params)` the frame you
-first show it, and `ui.slot_replay("fs/panel", &params)` after, for as
-long as nothing *you* feed the plugin has changed — the buffers, the
-settings, whatever it reads from you outside kui. That is all you vouch
-for. The core checks the rest itself before it replays: the params are
-the same, every fact of the frame the kept fill read is the same (which
-node was hovered, where its scroller stood, the theme and the metrics,
-the focus), and
-the slot is where it was. When all of that holds it pushes last frame's
-nodes again through the doors they came in by, resolving hover and a
-transition's easing for this frame, and never calls the plugin's `view`;
-when any of it does not, it runs the plugin as `slot_kept` would and tells
-you why in the answer (`SlotFill::Params`, `Reads`, `Moved`, `NotKept`,
-`NotReplayable`) and in `core.slot_fill(name)` after. A slot inside the
-plugin's tree — an editor's field, a legend — is declared again and
-filled fresh on a replay, so a caret still blinks inside a pane that is
-not rebuilt. A fill that declares something of the frame beyond its
-nodes (a title, a window, a frame it wants next, a devtools tab), draws
-a `cells` grid, or fails, is kept as not replayable and runs every frame
-as before. In Lua, `fill { name =, params =, keep = true }` then
-`replay = true` and `env.slot_fill(name)`; in C, `kui_slot_kept`,
-`kui_slot_replay` and `kui_slot_fill`; in Node, `<slot keep>` then
-`<slot replay>` and `ctx.slotFill(name)`. A view that reads the clock or
-the caret phase off `env` as a plain field is one you must not replay —
-a reading handed out whole cannot say which fields were used — and the
-explicit doors (`ui.now()`, `env.caret_visible()` as a call) still count.
+You already don't: a component is replayed by default (ADR 0067). When
+its props are the same, every fact of the frame its last fill read is the
+same (which node was hovered, where its scroller stood, the theme and the
+metrics, the focus) and nothing it emitted was heard since, the core
+pushes last frame's nodes again through the doors they came in by,
+resolving hover and a transition's easing for this frame, and never calls
+the plugin. What it cannot see is what *you* feed the plugin outside kui —
+your buffers, your settings — so pass what changes as a prop, or a
+revision number of it, and the placement fills again when it does. Pass
+`fresh: true` in the props to fill every frame. In Rust and C the
+placement answers why it filled (`FillAnswer::Params`, `Reads`, `NotKept`,
+`NotReplayable`, `Heard`; C's `KUI_FILL_*`); the devtools tree shows it
+everywhere. A component inside the plugin's tree is placed again on a
+replay and answers for itself, so a caret still blinks inside a pane that
+is not rebuilt. A fill that declares something of the frame beyond its
+nodes (a title, a window, a frame it wants next, a devtools tab), draws a
+`cells` grid, or fails, is kept as not replayable and runs every frame. An
+extension's `root` is always drawn fresh. A view that reads the clock or
+the caret phase off `env` as a plain field is one the core cannot vouch
+for — a reading handed out whole cannot say which fields were used — and
+the explicit doors (`ui.now()`, `env.caret_visible()` as a call) still
+count.
 
-[ADR 0045](adr/0045-a-slot-replayed-by-its-host.md) ·
-`crates/kui-core/tests/slot_replay.rs`
+[ADR 0067](adr/0067-slots-fold-into-components.md) ·
+`crates/kui-core/tests/instance_replay.rs`
 
 ### How do I redraw when a thread has new data?
 
@@ -2807,7 +2805,7 @@ enum has, an `env` read that is not there — by `tl check view.tl`, and
 `tl gen view.tl` writes the `view.lua` the host loads with
 `LuaExtension::from_file`; kui runs plain Lua either way, so a project
 can mix typed and untyped scripts. `view` takes `env: kui.Env` and
-`slot: kui.Slot`. A message is a record that extends `kui.Event`, and
+`inst: kui.Instance`. A message is a record that extends `kui.Event`, and
 the `kui.With…` field its event fills, cast from what `on_event` hears:
 
 ```lua
@@ -2821,8 +2819,8 @@ global function on_event(ev: kui.Event): {string:any}
 end
 ```
 
-`slot.params` is the host's own table, so what a view reads from it is
-cast too (`slot.params.title as string`). The file is checked against
+`inst.params` (and a component's `props`) is the host's own table, so
+what a view reads from it is cast too (`props.title as string`). The file is checked against
 Teal 0.24.8; copy it again after an upgrade.
 
 [alpha.68 `### Added`](../CHANGELOG.md#010-alpha68-unreleased)

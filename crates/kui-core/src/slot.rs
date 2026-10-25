@@ -505,7 +505,7 @@ impl Extensions {
                 continue;
             };
             let replies = ext.on_event(&ev);
-            if let Some(inst) = ev.slot
+            if let Some(inst) = ev.instance
                 && self.instances.contains_key(&inst)
             {
                 self.heard.insert(inst);
@@ -515,7 +515,7 @@ impl Extensions {
                 // for the prop, on the instance the event came from, to
                 // whoever placed it.
                 if let Some((prop, fields)) = emit_of(&payload)
-                    && let Some(inst) = ev.slot
+                    && let Some(inst) = ev.instance
                     && let Some(rec) = self.instances.get(&inst)
                 {
                     let Some((field, message)) = rec
@@ -528,7 +528,7 @@ impl Extensions {
                     let mut out =
                         UiEvent::component(rec.placer, inst, message, field, fields.clone());
                     out.window = ev.window;
-                    out.slot = rec.slot;
+                    out.instance = rec.slot;
                     if rec.placer == OriginId::HOST || depth + 1 >= MAX_EMIT_HOPS {
                         to_host(out);
                     } else {

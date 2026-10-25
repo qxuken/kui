@@ -51,7 +51,7 @@ C_Model :: struct {
 
 // What a plugin defines and the library only calls (kui.h's "Extension
 // ABI"): an Odin plugin would export these, not import them.
-PLUGIN_SIDE :: []string{"kui_ext_abi", "kui_ext_name", "kui_ext_init", "kui_ext_slots", "kui_ext_components", "kui_ext_view", "kui_ext_on_event", "kui_ext_free"}
+PLUGIN_SIDE :: []string{"kui_ext_abi", "kui_ext_name", "kui_ext_init", "kui_ext_components", "kui_ext_view", "kui_ext_on_event", "kui_ext_free"}
 
 load_c :: proc(ast_path, header_path: string) -> (m: C_Model) {
 	data, read_err := os.read_entire_file(ast_path, context.allocator)
@@ -166,10 +166,11 @@ int_string :: proc(n: int) -> string {
 	return strings.clone(strconv.write_int(buf[:], i64(n), 10))
 }
 
-// `#define KUI_NAME <number>` - the constants the AST does not carry. A
-// macro with arguments, or one whose body is not a lone number (the
-// *_INIT initializers, KUI_STR), is not a constant and is skipped. Adjacent
-// lines are one family, as an enum's members are.
+// `#define KUI_NAME <number>` - the constants the AST does not carry - with
+// or without a `/* ... */` after it (the KUI_FILL_* codes). A macro with
+// arguments, or one whose body is not a lone number (the *_INIT
+// initializers, KUI_STR), is not a constant and is skipped. Adjacent lines
+// are one family, as an enum's members are.
 header_defines :: proc(path: string) -> (out: [dynamic]Constant) {
 	text, err := os.read_entire_file(path, context.allocator)
 	if err != nil do fail("cannot read %s: %v", path, err)
@@ -177,7 +178,9 @@ header_defines :: proc(path: string) -> (out: [dynamic]Constant) {
 	group := 1_000_000
 	adjacent := false
 	for line in strings.split_lines_iterator(&rest) {
-		fields := strings.fields(line, context.temp_allocator)
+		code := line
+		if i := strings.index(code, "/*"); i >= 0 do code = code[:i]
+		fields := strings.fields(code, context.temp_allocator)
 		if len(fields) != 3 || fields[0] != "#define" || !strings.has_prefix(fields[1], "KUI_") {
 			adjacent = false
 			continue

@@ -106,22 +106,22 @@
 //! # A C extension in a Rust app
 //!
 //! A plugin is a shared library exporting `kui_ext_abi` and `kui_ext_view`
-//! (and optionally `kui_ext_name`, `kui_ext_init`, `kui_ext_slots`,
+//! (and optionally `kui_ext_name`, `kui_ext_init`, `kui_ext_components`,
 //! `kui_ext_on_event`, `kui_ext_free`); `examples/c/features/slots/panel.c`
-//! is one. The host loads it and declares where it draws:
+//! is one. The host loads it and places what it provides:
 //!
 //! ```rust,no_run
 //! use kui_ffi::CExtension;
-//! use kui_native::{App, NodeSpec, Ui};
+//! use kui_native::{App, NodeSpec, Ui, Value};
 //!
 //! struct Host;
 //!
 //! impl App for Host {
 //!     fn view(&mut self, ui: &mut Ui<'_>) {
 //!         ui.open(NodeSpec::row().fill());
-//!         // The plugin fills this position: `todos` is the namespace the
-//!         // host loaded it under, `panel` a slot the plugin lists.
-//!         ui.slot("todos/panel");
+//!         // The plugin draws here: `todos` is the namespace the host
+//!         // loaded it under, `panel` a component the plugin lists.
+//!         ui.component("todos/panel", &Value::Null);
 //!         ui.close();
 //!     }
 //! }
@@ -159,9 +159,9 @@
 //!   [`KuiWindowCommand`].
 //! - Accessibility: [`kui_access_tree`], [`KuiAccessNode`],
 //!   [`kui_input_access`].
-//! - Extensions: [`CExtension`], [`kui_ctx_add_extension`], [`kui_slot`],
-//!   [`kui_slot_kept`], [`kui_slot_replay`], [`kui_slot_fill`],
-//!   [`kui_reply`].
+//! - Extensions: [`CExtension`], [`kui_ctx_add_extension`],
+//!   [`kui_component`], [`kui_children`], [`kui_emit`],
+//!   [`kui_instance_params`].
 //! - Diagnostics: [`kui_set_diagnostics`], [`kui_take_warnings`],
 //!   [`kui_set_devtools`].
 //! - The windowed runner (feature `runner`): `kui_run`, `kui_run_with`,
@@ -426,9 +426,9 @@ pub extern "C" fn kui_env_set_audio(ptr: *mut KuiCtx, device: u32, live: u32) {
 /// `KuiTheme t = KUI_THEME_INIT; kui_theme(ctx, &t);` then
 /// `spec.bg = t.surface`.
 ///
-/// Read inside a fill kept with [`kui_slot_kept`], the palette is one of
-/// the facts [`kui_slot_replay`] checks: a fill that drew from it runs
-/// again when it changes (ADR 0045, backlog F155).
+/// Read inside a component's fill, the palette is one of the facts a
+/// replay checks: a fill that drew from it runs again when it changes
+/// (ADR 0067, backlog F155).
 ///
 /// False for a bad context, a NULL `out`, or a `size` below the first
 /// ABI's layout.
@@ -1478,26 +1478,33 @@ pub extern "C" fn kui_devtools_key(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
     })
 }
 
-/// Declares a devtools tab an extension fills: `name` is the tab's
-/// identity, `label` what the strip shows, `slot` the full
-/// `namespace/slot` the extension names. While the tab is on show the
-/// panel declares that slot in the tab's body; otherwise the extension is
-/// not asked, and no `unknown-slot` is raised. Call it every frame, panel
-/// on or off. False for a name already declared this frame
-/// (`duplicate-tab`) or outside a frame.
+/// Declares a devtools tab an extension draws: `name` is the tab's
+/// identity, `label` what the strip shows, `component` the full
+/// `namespace/name` of what the extension provides, `props` (borrowed,
+/// NULL for none) what it is placed with beside the panel's facts — its
+/// `on*` entries the messages its events reach you as (ADR 0067). While the
+/// tab is on show the panel places it in the tab's body; otherwise the
+/// extension is not asked. Call it every frame, panel on or off. False for
+/// a name already declared this frame (`duplicate-tab`) or outside a frame.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_devtools_tab(
     ptr: *mut KuiCtx,
     name: KuiStr,
     label: KuiStr,
-    slot: KuiStr,
+    component: KuiStr,
+    props: *const KuiValue,
 ) -> bool {
     guard(false, || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
         };
-        c.core()
-            .devtools_tab_declare(&kstr(name), &kstr(label), Some(&kstr(slot)))
+        let props = unsafe { props.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
+        c.core().devtools_tab_declare_with(
+            &kstr(name),
+            &kstr(label),
+            Some(&kstr(component)),
+            props,
+        )
     })
 }
 

@@ -1,56 +1,20 @@
-//! Slots across the C boundary.
+//! Components across the C boundary (ADR 0060, ADR 0067).
 //!
-//! A C **host** declares a slot with `kui_slot` the way a Rust host calls
-//! `Ui::slot`, and loads what fills it with `kui_ctx_add_extension`. A C
-//! **extension** reads which slot it is filling with
-//! `kui_slot_name` / `kui_slot_params`, and answers an event with
-//! `kui_reply`, whose sink rides on the event (ABI 10) so that a plugin
-//! linked against another copy of this library still reaches the host.
+//! A C **host** places a component with `kui_component` the way a Rust
+//! host calls `Ui::component`, and loads what provides it with
+//! `kui_ctx_add_extension`. A C **extension** reads which instance it is
+//! drawing with `kui_instance_name` / `kui_instance_params`, and raises an
+//! instance's events with `kui_emit`, whose sink rides on the event (ABI
+//! 10) so that a plugin linked against another copy of this library still
+//! reaches the host.
 
 use super::*;
 
-/// Declares a slot named `name` at the cursor, with `params` (may be NULL)
-/// for whatever fills it, and fills it then and there with the extension
-/// the name's namespace belongs to. `name` is the full `namespace/slot`:
-/// the namespace this context loaded the extension under with
-/// [`kui_ctx_add_extension`], and the slot in the extension's own
-/// vocabulary.
-///
-/// Returns false when the frame already declared this name (a duplicate,
-/// which warns) or on a bad context; true when the slot was declared,
-/// whether or not anything filled it. `kui_key_of` answers its key either
-/// way, so a host with no extensions loaded still gets a placed, empty
-/// node — which is what this did for every host before extensions could be
-/// loaded from C at all.
-///
-/// A C extension may call this from its own view too, and the slot is
-/// declared inside its fill and keyed there. What it cannot do is load
-/// the thing that fills it: a plugin's context has no list of its own, so
-/// the name it declares has to be one the host above it already loaded
-/// (`kui_core::slot`, and `env.add_extension` in Lua for the side that
-/// can load). Its own slot is the one name that finds nobody, since it is
-/// out of the list while it draws — that warns and draws nothing.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_slot(ptr: *mut KuiCtx, name: KuiStr, params: *const KuiValue) -> bool {
-    guard(false, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else {
-            return false;
-        };
-        let name = kstr(name);
-        let params = unsafe { params.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
-        // `Ui::slot_with` is `begin_slot` and the fill together, so the
-        // one question is which `Ui`: under `kui_run_with` the runner's
-        // own, which carries its extension list and which `borrowing_in`
-        // kept a pointer to; otherwise one made here around the context's
-        // core and *its* list. The core is behind a raw pointer on the
-        // context so that both can be borrowed at once (`with_host_ui`).
-        with_host_ui(c, |ui| ui.slot_with(&name, params))
-    })
-}
-
-/// The `Ui` a host's slot call goes through: under `kui_run_with` the
-/// runner's own, which carries its extension list; otherwise one made
-/// around the context's core and *its* list. See [`kui_slot`].
+/// The `Ui` a host's placement goes through: under `kui_run_with` the
+/// runner's own, which carries its extension list and which
+/// `borrowing_in` kept a pointer to; otherwise one made here around the
+/// context's core and *its* list. The core is behind a raw pointer on the
+/// context so that both can be borrowed at once.
 fn with_host_ui<T>(c: &mut KuiCtx, f: impl FnOnce(&mut kui_core::Ui<'_>) -> T) -> T {
     if c.host_ui.is_null() {
         let mut local = kui_core::Ui::with_filler(unsafe { &mut *c.core }, &mut c.extensions);
@@ -60,64 +24,12 @@ fn with_host_ui<T>(c: &mut KuiCtx, f: impl FnOnce(&mut kui_core::Ui<'_>) -> T) -
     }
 }
 
-/// [`kui_slot`], and what the fill built is kept for [`kui_slot_replay`]
-/// to push again next frame (ADR 0045): every node as its door saw it,
-/// the slots declared inside, every fact of the frame the fill read.
-/// Returns what `kui_slot` returns.
+/// Which component this context is drawing an instance of — `root` for
+/// the view after the host's; false (and `out` untouched) on a context
+/// that is not an extension's — a standalone one, or a C host's view
+/// callback. Borrowed for the duration of `kui_ext_view`.
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_slot_kept(ptr: *mut KuiCtx, name: KuiStr, params: *const KuiValue) -> bool {
-    guard(false, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else {
-            return false;
-        };
-        let name = kstr(name);
-        let params = unsafe { params.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
-        with_host_ui(c, |ui| ui.slot_kept(&name, params))
-    })
-}
-
-/// The host's claim that nothing it feeds the extension filling `name`
-/// has changed since the fill was kept (ADR 0045). The core checks what
-/// it can see — the params, every fact of the frame the kept fill read,
-/// that the slot is declared where it was — and pushes the kept nodes
-/// again without asking the extension (`KUI_SLOT_REPLAYED`), or fills
-/// and keeps it as `kui_slot_kept` would and says why (the other
-/// `KUI_SLOT_*` codes). `KUI_SLOT_UNDECLARED` when the slot was not
-/// declared: a duplicate, or outside a frame.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_slot_replay(ptr: *mut KuiCtx, name: KuiStr, params: *const KuiValue) -> i32 {
-    guard(-1, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else {
-            return -1;
-        };
-        let name = kstr(name);
-        let params = unsafe { params.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
-        with_host_ui(c, |ui| ui.slot_replay(&name, params)).map_or(-1, |f| f.code())
-    })
-}
-
-/// What the last `kui_slot_replay` of `name` answered this frame (or the
-/// frame before, while this one is being built), as its `KUI_SLOT_*`
-/// code; `KUI_SLOT_UNDECLARED` when it was not asked — a frame that kept
-/// the slot with [`kui_slot_kept`], filled it plainly or skipped it.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_slot_fill(ptr: *mut KuiCtx, name: KuiStr) -> i32 {
-    guard(-1, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else {
-            return -1;
-        };
-        let name = kstr(name);
-        unsafe { &*c.core }
-            .slot_fill(&name)
-            .map_or(-1, |f| f.code())
-    })
-}
-
-/// Which slot this context is a fill of; false (and `out` untouched) on
-/// a context that is not an extension's — a standalone one, or a C host's
-/// view callback. Borrowed for the duration of `kui_ext_view`.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_slot_name(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+pub extern "C" fn kui_instance_name(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
     guard(false, || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
@@ -134,11 +46,11 @@ pub extern "C" fn kui_slot_name(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
 }
 
 /// The namespace the host loaded this extension under — what makes the
-/// slot's full name, and what tells one instance of a plugin loaded twice
-/// from the other. False (and `out` untouched) on a context that is not
+/// component's full name, and what tells one load of a plugin loaded
+/// twice from the other. False (and `out` untouched) on a context that is not
 /// an extension's. Borrowed for the duration of `kui_ext_view`.
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_slot_namespace(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+pub extern "C" fn kui_instance_namespace(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
     guard(false, || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
@@ -154,11 +66,11 @@ pub extern "C" fn kui_slot_namespace(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool
     })
 }
 
-/// The parameters the host declared the slot with, or NULL when it passed
+/// The props the host placed this instance with, or NULL when it passed
 /// none (or this is not an extension's context). Borrowed for the
 /// duration of `kui_ext_view`; read it with `kui_value_get` and friends.
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_slot_params(ptr: *mut KuiCtx) -> *const KuiValue {
+pub extern "C" fn kui_instance_params(ptr: *mut KuiCtx) -> *const KuiValue {
     guard(std::ptr::null(), || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return std::ptr::null();
@@ -182,7 +94,7 @@ struct HostSink {
     replies: Vec<Value>,
 }
 
-/// The `push` a plugin's `kui_reply` forwards to. Runs in the copy of the
+/// The `push` a plugin's `kui_emit` forwards to. Runs in the copy of the
 /// library that opened the sink, which is the whole reason it is a function
 /// pointer: see [`KuiReplySink`].
 unsafe extern "C" fn push_reply(sink: *mut KuiReplySink, value: *const KuiValue) -> bool {
@@ -220,28 +132,19 @@ pub(crate) fn collect_replies(ev: &mut KuiEvent, cb: impl FnOnce(&KuiEvent)) -> 
     sink.replies
 }
 
-/// Replies to the host from inside `kui_ext_on_event`: `ev` is the event
-/// the callback was handed, `reply` is copied (you keep ownership) and
-/// reaches the host's `on_event` with your origin and the event's window
-/// and key. Call it as often as the event deserves. Outside the callback,
-/// or on an event that carries no sink (anything a host polled for
-/// itself), it does nothing and returns false.
-///
-/// It forwards through the sink on the event rather than into a list of
-/// its own, so it works when the plugin's copy of this library is not the
-/// host's ([`KuiReplySink`]).
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_reply(ev: *const KuiEvent, reply: *const KuiValue) -> bool {
-    guard(false, || {
-        let (Some(ev), Some(reply)) = (unsafe { ev.as_ref() }, unsafe { reply.as_ref() }) else {
-            return false;
-        };
-        let sink = ev.reply_sink;
-        let Some(push) = (unsafe { sink.as_ref() }).and_then(|s| s.push) else {
-            return false;
-        };
-        unsafe { push(sink, reply) }
-    })
+/// An answer to the host from inside `kui_ext_on_event`, through the sink
+/// on the event rather than into a list of its own, so it works when the
+/// plugin's copy of this library is not the host's ([`KuiReplySink`]).
+/// False outside the callback, or on an event that carries no sink.
+fn answer(ev: *const KuiEvent, reply: &KuiValue) -> bool {
+    let Some(ev) = (unsafe { ev.as_ref() }) else {
+        return false;
+    };
+    let sink = ev.reply_sink;
+    let Some(push) = (unsafe { sink.as_ref() }).and_then(|s| s.push) else {
+        return false;
+    };
+    unsafe { push(sink, reply) }
 }
 
 /// Raises one of your component's events from inside `kui_ext_on_event`
@@ -250,13 +153,15 @@ pub extern "C" fn kui_reply(ev: *const KuiEvent, reply: *const KuiValue) -> bool
 /// rides with it under the prop's field (NULL for nothing; you keep
 /// ownership). The host hears the message it passed, about the instance
 /// the event came from; a prop the host did not pass delivers nothing.
-/// False where [`kui_reply`] would be.
+/// False outside the callback, or on an event that carries no sink
+/// (anything a host polled for itself). Call it as often as the event
+/// deserves; it is the one way an extension speaks (ADR 0067).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_emit(ev: *const KuiEvent, prop: KuiStr, fields: *const KuiValue) -> bool {
     guard(false, || {
         let fields = unsafe { fields.as_ref() }.map_or(kui_core::Value::Null, |v| v.0.clone());
         let reply = KuiValue(kui_core::slot::emit(&kstr(prop), fields));
-        kui_reply(ev, &reply)
+        answer(ev, &reply)
     })
 }
 
@@ -268,8 +173,9 @@ pub extern "C" fn kui_emit(ev: *const KuiEvent, prop: KuiStr, fields: *const Kui
 /// where the component asks for them, called with `user`, a context
 /// borrowing the frame for the call, and the group (empty for the unnamed
 /// one); NULL for none. An instance whose props did not change is
-/// replayed without asking the extension. Returns how it was filled, a
-/// `KUI_SLOT_*` code, or `KUI_SLOT_UNDECLARED` when nothing provides it
+/// replayed without asking the extension; `namespace/root` is that
+/// extension's view, drawn fresh every frame. Returns how it was filled, a
+/// `KUI_FILL_*` code, or `KUI_FILL_NONE` when nothing provides it
 /// (`unknown-component`) or outside a frame.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_component(
@@ -316,7 +222,7 @@ pub extern "C" fn kui_children(ptr: *mut KuiCtx, group: KuiStr) {
 // Loading extensions from C
 
 /// Loads the extension at `path` into this context, under `namespace` —
-/// the word that makes the front of every slot name it fills
+/// the word that makes the front of every component name it provides
 /// (`namespace/panel`). A `.lua` file, or a directory holding `init.lua`,
 /// loads as a Lua extension; anything else as a C shared library (ADR
 /// 0059, [`crate::open_extension`]). An empty `namespace` takes the
@@ -337,11 +243,11 @@ pub extern "C" fn kui_children(ptr: *mut KuiCtx, group: KuiStr) {
 ///
 /// It has to be a context of your own, so this refuses one that borrows
 /// somebody else's frame — a plugin's `kui_ext_view`, or a view callback
-/// under `kui_run_with`. Such a context fills its slots from the list one
+/// under `kui_run_with`. Such a context draws its components from the list one
 /// level up (`host_ui`) and dies at the end of the call, so a plugin
 /// loaded into it would be unloaded again having drawn nothing. Saying so
 /// is the point: the alternative is that this answers true and the
-/// `kui_slot` after it quietly draws an empty node.
+/// `kui_component` after it quietly draws nothing.
 ///
 /// # Safety
 /// The library's entry points run in this process on this thread, on the
@@ -355,12 +261,12 @@ pub extern "C" fn kui_ctx_add_extension(ptr: *mut KuiCtx, namespace: KuiStr, pat
         };
         c.last_ext_error.clear();
         if !c.host_ui.is_null() {
-            // A borrowed frame: this context's list is not the one filling
-            // its slots, so anything put in it would be loaded, never
+            // A borrowed frame: this context's list is not the one drawing
+            // its components, so anything put in it would be loaded, never
             // asked to draw, and unloaded when the call returns.
             c.last_ext_error = "cannot load an extension into a context that borrows a frame: \
-                                its slots are filled from the list one level up. Load into a \
-                                context of your own, before `kui_run_with`"
+                                its components are drawn from the list one level up. Load into \
+                                a context of your own, before `kui_run_with`"
                 .to_owned();
             return false;
         }
@@ -444,44 +350,21 @@ mod tests {
         }
     }
 
-    /// A C host's slot: declared at the cursor, findable by name, and a
-    /// second declaration of the name refused with the warning.
+    /// A context that is not an extension's has no instance to read.
     #[test]
-    fn a_host_slot_is_declared_and_named() {
+    fn a_host_context_names_no_instance() {
         let ctx = kui_ctx_new();
-        // A standalone context starts with diagnostics off; the duplicate
-        // below is what they are for here.
-        kui_set_diagnostics(ctx, true);
-        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
-        let root: KuiSpec = unsafe { std::mem::zeroed() };
-        kui_root(ctx, &root);
-        assert!(kui_slot(ctx, ks("side"), std::ptr::null()));
-        assert!(
-            !kui_slot(ctx, ks("side"), std::ptr::null()),
-            "declared twice"
-        );
-        kui_frame_finish(ctx);
-        assert_eq!(
-            kui_key_of(ctx, ks("side")),
-            kui_core::Key::ROOT.str("side").0,
-            "the slot's key is `parent.str(name)`, and `kui_key_of` answers it"
-        );
-        let c = unsafe { ctx.as_mut() }.unwrap();
-        let ws = c.core().take_warnings();
-        assert_eq!(ws.len(), 1);
-        assert_eq!(ws[0].code, kui_core::diag::DUPLICATE_SLOT);
-        // Not an extension's context: no slot to read.
         let mut name = ks("");
-        assert!(!kui_slot_name(ctx, &mut name));
-        assert!(!kui_slot_namespace(ctx, &mut name));
-        assert!(kui_slot_params(ctx).is_null());
+        assert!(!kui_instance_name(ctx, &mut name));
+        assert!(!kui_instance_namespace(ctx, &mut name));
+        assert!(kui_instance_params(ctx).is_null());
         kui_ctx_free(ctx);
     }
 
-    /// `kui_reply` reaches the host only through the sink the callback was
+    /// `kui_emit` reaches the host only through the sink the callback was
     /// handed, and only while it is open.
     #[test]
-    fn replies_are_collected_for_the_event_in_progress_only() {
+    fn emits_are_collected_for_the_event_in_progress_only() {
         let payload = KuiValue(Value::Null);
         let mut ev = KuiEvent {
             payload: &payload,
@@ -492,16 +375,16 @@ mod tests {
             payload: &payload,
             ..Default::default()
         };
-        let reply = KuiValue(Value::map([("kind", "open".into())]));
-        assert!(!kui_reply(&ev, &reply), "no callback in progress");
+        let fields = KuiValue(Value::map([("kind", "open".into())]));
+        let emitted = kui_core::slot::emit("on_open", fields.0.clone());
+        assert!(!kui_emit(&ev, ks("on_open"), &fields), "no callback in progress");
         let got = collect_replies(&mut ev, |ev| {
-            assert!(kui_reply(ev, &reply));
-            assert!(!kui_reply(&other, &reply), "an event with no sink");
-            assert!(!kui_reply(ev, std::ptr::null()), "no value");
-            assert!(kui_reply(ev, &reply));
+            assert!(kui_emit(ev, ks("on_open"), &fields));
+            assert!(!kui_emit(&other, ks("on_open"), &fields), "an event with no sink");
+            assert!(kui_emit(ev, ks("on_open"), &fields));
         });
-        assert_eq!(got, vec![reply.0.clone(), reply.0.clone()]);
-        assert!(!kui_reply(&ev, &reply), "the sink closed with the callback");
+        assert_eq!(got, vec![emitted.clone(), emitted]);
+        assert!(!kui_emit(&ev, ks("on_open"), &fields), "the sink closed with the callback");
         assert!(ev.reply_sink.is_null(), "and the event no longer names one");
     }
 
@@ -549,13 +432,12 @@ mod tests {
         );
         assert!(!kui_ctx_extension_namespace(ctx, 1, &mut out));
 
-        // And a slot still places its node with nothing to fill it, which is
-        // what lets a host lay out before it has a plugin.
+        // And a component nobody provides answers that, rather than
+        // drawing something.
         kui_frame_begin(ctx, 200.0, 100.0, 1.0);
-        assert!(kui_slot(ctx, ks("todos/panel"), std::ptr::null()));
-        assert!(
-            !kui_slot(ctx, ks("todos/panel"), std::ptr::null()),
-            "duplicate"
+        assert_eq!(
+            kui_component(ctx, ks("todos/panel"), std::ptr::null(), None, std::ptr::null_mut()),
+            -1
         );
         kui_frame_finish(ctx);
         kui_ctx_free(ctx);
@@ -563,7 +445,7 @@ mod tests {
 
     /// A context that borrows a frame refuses a plugin instead of taking
     /// one into a list nothing fills. The path is the one a script would
-    /// take (`examples/lua/features/slots/panel.lua` loads from its view), so the answer
+    /// take (`examples/lua/features/plugins/panel.lua` loads from its view), so the answer
     /// has to be a reason and not a quiet `true`.
     #[test]
     fn a_borrowed_frame_will_not_take_an_extension() {

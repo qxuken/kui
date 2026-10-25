@@ -97,8 +97,8 @@ a hidden one back); an app that wants that chord for itself respells it —
 `.devtools_key(Accel::parse("f12").unwrap())`, `win.setDevtoolsKey('f12')`,
 `kui_set_devtools_key(ctx, KUI_STR("f12"))` — and the old one is its own
 again. An app can add **tabs of its own** beside the three
-([ADR 0032](adr/0032-a-devtools-tab-mounts-a-slot.md)): a slot a
-plugin fills (`ui.devtools_tab("syntax", "Tree-sitter", "ts/panel")`), or
+([ADR 0032](adr/0032-a-devtools-tab-mounts-a-slot.md)): a component a
+plugin provides (`ui.devtools_tab("syntax", "Tree-sitter", "ts/panel", &props)`), or
 the app's own content, built only while the tab is on show —
 `ui.devtools_tab_with(name, label, |ui| …)`, `<devtoolsTab name label>{()
 => …}</devtoolsTab>`, `if (kui_devtools_tab_open(ctx, name, label)) { …
@@ -187,37 +187,43 @@ Buffer arguments by ~30%), so the binary stream stays the default.
 A Lua extension in full:
 
 ```lua
-slots = { "panel" }                       -- what it fills, in its own words
+components = {}                           -- what it provides, in its own words
 
-function view(env, slot)                  -- slot = { name, namespace, params, key }
+function components.panel(env, props, inst)   -- inst = { name, namespace, key }
   return column { gap = 8, pad = 16, bg = 0x14161eff,
-    text({ slot.params.title, { " · " .. tostring(count), bold = true } }, { size = 20 }),
+    text({ props.title, { " · " .. tostring(count), bold = true } }, { size = 20 }),
     row { tooltip = "adds one", button { label = "bump", on_click = { kind = "bump" } } },
     edit { key = "note", initial = "", width = "grow", on_change = { kind = "note" } },
   }
 end
 
 function on_event(ev, at)                 -- ev = the message + event + node_key; at = the envelope alone
-  if ev.kind == "bump" then count = count + 1; return { kind = "bumped", count = count } end
+  if ev.kind == "bump" then count = count + 1; return emit("on_bump", { count = count }) end
   if ev.kind == "note" then note = ev.change.text end   -- the text rides in `change`
-end                                       -- what it returns is a reply to the host
+end                                       -- emit raises the host's own message
 ```
 
-Where it draws is a **slot** the host declares in its own view
-([ADR 0014](adr/0014-slots-an-extension-fills-in-place.md)): a position
-among the host's children, filled then and there, with parameters in and
-replies out. The host loads the script under a namespace it chooses — the
-way an importer picks an alias — and names the slot by `namespace/slot`:
+Where it draws is a **component** the host places in its own view
+([ADR 0060](adr/0060-components-an-extension-provides.md),
+[ADR 0067](adr/0067-slots-fold-into-components.md)): a position among the
+host's children, drawn then and there, with props in and the host's own
+messages out. The host loads the script under a namespace it chooses — the
+way an importer picks an alias — and names the component by
+`namespace/name`:
 
 ```rust
 kui_native::app("counter").extension_as("fs", LuaExtension::from_file("panel.lua")?).run(app)
 // …and in the host's view, wherever the panel should sit:
-ui.slot_with("fs/panel", &Value::map([("title", "notes".into())]));
+ui.component("fs/panel", &Value::map([
+    ("title", "notes".into()),
+    ("on_bump", Value::map([("kind", "bumped".into())])),
+]));
 ```
 
-The same plugin loaded twice under two namespaces is two panels with two
-sets of parameters; an extension that names no slots draws after the host's
-view, where every extension drew before slots existed.
+The same plugin placed twice is two panels with two sets of props, each
+replayed while its props and what it read stay the same; an extension that
+provides nothing but `view` is its component `root`, drawn after the
+host's view unless the host places `fs/root` itself.
 
 The same functions from C, because the extension contract is the contract
 and the language is a detail — `kui_ffi::CExtension` `dlopen`s a shared
@@ -226,17 +232,18 @@ library and hands it the same share of the frame
 [examples/c/features/slots/panel.rs](../examples/c/features/slots/panel.rs)):
 
 ```c
-static const KuiStr SLOTS[] = {{(const uint8_t *)"panel", 5}};
-const KuiStr *kui_ext_slots(size_t *n) { *n = 1; return SLOTS; }
+static const KuiStr COMPONENTS[] = {{(const uint8_t *)"panel", 5}};
+const KuiStr *kui_ext_components(size_t *n) { *n = 1; return COMPONENTS; }
 void kui_ext_view(void *user, KuiCtx *ui) {
-    const KuiValue *params = kui_slot_params(ui);   /* what the host passed  */
+    const KuiValue *props = kui_instance_params(ui); /* what the host passed  */
     KuiSpec panel = {.dir = KUI_COLUMN, .gap = 8, .bg = 0x14161eff};
     kui_open(ui, &panel, NULL);              /* ordinary builder calls, into  */
     kui_button(ui, KUI_STR("bump"), msg());  /* the host's own frame          */
     kui_close(ui);
 }
 void kui_ext_on_event(void *user, const KuiEvent *ev) {
-    /* yours, never the host's - and kui_reply(ev, value) is how you answer it */
+    /* yours, never the host's - kui_emit(ev, KUI_STR("on_bump"), fields)
+     * raises the message the host passed for on_bump */
 }
 ```
 

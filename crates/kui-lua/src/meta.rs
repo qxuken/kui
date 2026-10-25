@@ -797,8 +797,9 @@ fn events_meta() -> String {
     out.push_str(
         "---@field node_key integer The emitting node's key, what `env.edit_text` and the rest take.\n\
          ---@field window integer|kui.WindowEvent The window it came from, as `env.window.id` reads; a `window` event's data, which has the name.\n\
-         ---@field slot? string The full name of the slot the node was filled into.\n\
-         ---@field from? string The namespace of the plugin a reply came from.\n\
+         ---@field instance? integer The key of the component instance the node was drawn in.\n\
+         ---@field component? string That instance's full name, `ns/name`.\n\
+         ---@field from? string The namespace of the plugin that raised it.\n\
          ---@field kind? string The message's own `kind`: the core never writes one.\n\
          ---@field tag? any A message that is not a table, kept under `tag`.\n\
          ---@field [string] any\n\n\
@@ -810,7 +811,8 @@ fn events_meta() -> String {
     out.push_str(
         "---@field node_key integer\n\
          ---@field window integer The window it came from, as `env.window.id` reads.\n\
-         ---@field slot? string\n\
+         ---@field instance? integer\n\
+         ---@field component? string\n\
          ---@field from? string\n\n",
     );
     let shape_line = |out: &mut String, name: &str, required: bool, ty: &str| {

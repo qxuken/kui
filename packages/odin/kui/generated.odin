@@ -1234,7 +1234,7 @@ Event :: struct {
 	payload: Value,
 	window: u32,
 	reply_sink: ^c.ReplySink,
-	slot: u64,
+	instance: u64,
 	event: string,
 }
 
@@ -1245,7 +1245,7 @@ event_to_c :: proc(v: Event, scratch: ^Scratch) -> (out: c.Event) {
 	out.payload = (^c.Value)(v.payload)
 	out.window = v.window
 	out.reply_sink = v.reply_sink
-	out.slot = v.slot
+	out.instance = v.instance
 	out.event = v.event
 	_ = scratch
 	return
@@ -1257,7 +1257,7 @@ event_from_c :: proc(v: c.Event) -> (out: Event) {
 	out.payload = Value(v.payload)
 	out.window = v.window
 	out.reply_sink = v.reply_sink
-	out.slot = v.slot
+	out.instance = v.instance
 	out.event = v.event
 	return
 }
@@ -2772,42 +2772,6 @@ row_count :: proc(ui: ^Ui, rows: u64) {
 	c.row_count(ui, rows)
 }
 
-// kui_slot (kui.h).
-slot :: proc(ui: ^Ui, name: string, params: any = nil) -> bool {
-	scratch: Scratch
-	defer scratch_free(&scratch)
-	return c.slot(ui, name, borrow(&scratch, params))
-}
-
-// Declares a slot as `slot` does and keeps what the fill built — every node
-// as its door saw it, the slots inside, every fact of the frame it read —
-// for `slot_replay` to push again (ADR 0045).
-// Rust: Ui::slot_kept.
-slot_kept :: proc(ui: ^Ui, name: string, params: any = nil) -> bool {
-	scratch: Scratch
-	defer scratch_free(&scratch)
-	return c.slot_kept(ui, name, borrow(&scratch, params))
-}
-
-// The host's claim that nothing it feeds the extension changed: the core
-// checks the params, every fact the kept fill read and the slot's place, and
-// pushes the kept nodes again without the extension, or fills and keeps and
-// says why (ADR 0045).
-// Rust: Ui::slot_replay.
-slot_replay :: proc(ui: ^Ui, name: string, params: any = nil) -> i32 {
-	scratch: Scratch
-	defer scratch_free(&scratch)
-	return c.slot_replay(ui, name, borrow(&scratch, params))
-}
-
-// What the last `slot_replay` of a name answered this frame, or the frame
-// before while this one is being built: replayed, or why it was filled fresh
-// (ADR 0045).
-// Rust: Core::slot_fill.
-slot_fill :: proc(ui: ^Ui, name: string) -> i32 {
-	return c.slot_fill(ui, name)
-}
-
 // Loads a plugin under a namespace; a `KuiWindow` takes its list at
 // construction (`extensions`).
 // Rust: Ui::add_extension.
@@ -3943,11 +3907,14 @@ devtools_key :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
 	return
 }
 
-// Declares a devtools tab an extension fills through the slot named (ADR
-// 0032).
+// Declares a devtools tab whose body places the component named, with the
+// host's props and the panel's facts, while it is on show (ADR 0032, ADR
+// 0067).
 // Rust: Ui::devtools_tab.
-devtools_tab :: proc(ui: ^Ui, name: string, label: string, slot: string) -> bool {
-	return c.devtools_tab(ui, name, label, slot)
+devtools_tab :: proc(ui: ^Ui, name: string, label: string, component: string, props: any = nil) -> bool {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return c.devtools_tab(ui, name, label, component, borrow(&scratch, props))
 }
 
 // The node the panel's tree tab has selected (ADR 0032, decision 4).
@@ -4324,29 +4291,21 @@ open_external :: proc(target: string) -> bool {
 	return c.open_external(target)
 }
 
-// kui_slot_name (kui.h).
-slot_name :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
-	ok = c.slot_name(ui, &out)
+// kui_instance_name (kui.h).
+instance_name :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
+	ok = c.instance_name(ui, &out)
 	return
 }
 
-// kui_slot_namespace (kui.h).
-slot_namespace :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
-	ok = c.slot_namespace(ui, &out)
+// kui_instance_namespace (kui.h).
+instance_namespace :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
+	ok = c.instance_namespace(ui, &out)
 	return
 }
 
-// kui_slot_params (kui.h).
-slot_params :: proc(ui: ^Ui) -> Value {
-	return Value(c.slot_params(ui))
-}
-
-// kui_reply (kui.h).
-reply :: proc(ev: Event, reply: any = nil) -> bool {
-	scratch: Scratch
-	defer scratch_free(&scratch)
-	ev_c := event_to_c(ev, &scratch)
-	return c.reply(&ev_c, borrow(&scratch, reply))
+// kui_instance_params (kui.h).
+instance_params :: proc(ui: ^Ui) -> Value {
+	return Value(c.instance_params(ui))
 }
 
 // An extension's answer to an event that raises one of its component's

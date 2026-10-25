@@ -947,18 +947,16 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_latency_hud",
             "kui_tooltip",
             "kui_tooltip_with",
-            "kui_slot",
             "kui_child_key",
             "kui_row_count",
             "kui_set_key_focus",
             "kui_spec_float_preset",
         ];
-        // The plugin's side of a slot and an event's reply.
+        // The plugin's side of a component instance (ADR 0067).
         const PLUGIN: &[&str] = &[
-            "kui_slot_name",
-            "kui_slot_namespace",
-            "kui_slot_params",
-            "kui_reply",
+            "kui_instance_name",
+            "kui_instance_namespace",
+            "kui_instance_params",
         ];
         // The context, the frame and the handshake.
         const MECHANICS: &[&str] = &[

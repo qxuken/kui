@@ -52,13 +52,14 @@ A Rust app loading a C plugin:
 
 ```rust
 use kui_ffi::CExtension;
-use kui_native::{App, NodeSpec, Ui};
+use kui_native::{App, NodeSpec, Ui, Value};
 
 struct Host;
 impl App for Host {
     fn view(&mut self, ui: &mut Ui<'_>) {
         ui.open(NodeSpec::row().fill());
-        ui.slot("todos/panel"); // the plugin draws here
+        // the plugin's `panel` component draws here (ADR 0067)
+        ui.component("todos/panel", &Value::map([("title", "todos".into())]));
         ui.close();
     }
 }

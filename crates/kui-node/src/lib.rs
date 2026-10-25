@@ -511,7 +511,7 @@ pub struct Ctx {
     /// 0055).
     captures: kui_native::Captures,
     /// The extensions this context hosts, in origin order:
-    /// what `addExtension` loads, what a `<slot>` fills from, and what an
+    /// what `addExtension` loads, what a `<component>` draws from, and what an
     /// event whose origin is not the host's is delivered to.
     extensions: kui_core::Extensions,
 }
@@ -543,10 +543,10 @@ impl Ctx {
         strings: Uint8Array,
     ) -> Result<()> {
         let scale = if scale > 0.0 { scale } else { 1.0 };
-        // `frame_with`, not `frame`: the extension list is what fills a
-        // `<slot>` the view declares, and `Ui::finish` is what lets each
-        // extension take the `ns/root` the view did not declare and warn
-        // about a slot nothing did (ADR 0014). Two disjoint fields, so the
+        // `frame_with`, not `frame`: the extension list is what draws a
+        // `<component>` the view places, and `Ui::finish` is what draws each
+        // extension's `ns/root` the view did not place (ADR 0067). Two
+        // disjoint fields, so the
         // core can be borrowed for the frame and the list for the filling.
         let mut ui = self.core.frame_with(
             Size::new(width as f32, height as f32),
@@ -574,8 +574,8 @@ impl Ctx {
     /// Loads an extension: a Lua script (a `.lua` file, or a folder
     /// holding `init.lua`), or a C shared library exporting the seven
     /// `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
-    /// (ADR 0059). `namespace` is the word that fronts every slot name it
-    /// fills — `<slot name="todos/panel"/>` for `addExtension('todos', …)`
+    /// (ADR 0059). `namespace` is the word that fronts every component it
+    /// provides — `<component name="todos/panel"/>` for `addExtension('todos', …)`
     /// — and an empty one takes the extension's own name. Throws with the
     /// reason if the script fails to load or run, or the library will not
     /// load, declares no `kui_ext_abi` or one this build does not
@@ -2742,7 +2742,7 @@ impl KuiWindow {
 // ---------------------------------------------------------------------------
 // The shared surface
 
-/// Pending UI events as `[{origin, window, key, event, payload, slot}]` —
+/// Pending UI events as `[{origin, window, key, event, payload, instance}]` —
 /// payloads plain JSON, so your Elm messages come back out as data.
 /// `event` is which event it was (`"drag"`, `"change"`, `"resize"`, …,
 /// ADR 0047): a node's payload is the message its handler declared with
@@ -2764,12 +2764,12 @@ fn events_json(events: Vec<UiEvent>) -> Json {
                 o.insert("key".into(), Json::String(key_str(ev.key)));
                 o.insert("event".into(), Json::String(ev.event.name().into()));
                 o.insert("payload".into(), json_of(&ev.payload));
-                // The slot the node was filled into, as its key (`keyOf` of
-                // the slot's full name answers the same), or null for a
-                // node the app drew (backlog K2).
+                // The component instance the node was drawn in, as its key
+                // (`keyOf` of the `key` prop it was placed with answers the
+                // same), or null for a node the app drew (backlog K2).
                 o.insert(
-                    "slot".into(),
-                    ev.slot.map_or(Json::Null, |k| Json::String(key_str(k))),
+                    "instance".into(),
+                    ev.instance.map_or(Json::Null, |k| Json::String(key_str(k))),
                 );
                 Json::Object(o)
             })
@@ -4257,7 +4257,7 @@ macro_rules! core_methods {
             /// the view. Two nodes on one label under different parents
             /// resolve to the first in tree order and raise
             /// `ambiguous-key` — among the host's own first, and a
-            /// plugin filling a slot is answered from its own nodes only.
+            /// plugin's component is answered from its own nodes only.
             #[napi]
             pub fn key_of(&mut self, label: String) -> Option<String> {
                 self.$core().key_of(&label).map(key_str)
@@ -4274,16 +4274,6 @@ macro_rules! core_methods {
             pub fn label_of(&mut self, key: String) -> Option<String> {
                 let key = hex_key(&key)?;
                 self.$core().label_of(key).map(str::to_owned)
-            }
-
-            /// What a `<slot replay>` of `name` got this frame, or the
-            /// frame before while this one is being built (ADR 0045):
-            /// `'replayed'`, or why it was filled fresh — `'not-kept'`,
-            /// `'params'`, `'reads'`, `'not-replayable'`, `'moved'` — or
-            /// null when nothing asked.
-            #[napi]
-            pub fn slot_fill(&mut self, name: String) -> Option<String> {
-                self.$core().slot_fill(&name).map(|f| f.name().to_owned())
             }
 
             /// The hex key of the first node in the last finished frame
@@ -5247,15 +5237,14 @@ core_methods!(
 
 /// Takes a batch of events the core just produced: the host's own are
 /// queued for `pollEvents`, and one whose origin names a loaded extension
-/// is delivered to it here instead — its replies queued in its place,
-/// carrying its origin, window and key, so the host learns who answered
-/// and about what.
+/// is delivered to it here instead — its emits queued in its place as the
+/// messages their placer declared (ADR 0067).
 ///
 /// This is `Shell::route_events` in the Rust runner and `KuiCtx::absorb`
 /// in the C one — all three the same `Extensions::route`, for the same
-/// reason: a reply is addressed by being one, not routed by origin. A
-/// reply from a plugin *another extension* placed goes to that extension
-/// first and arrives here as whatever it answered.
+/// reason: an emit goes to whoever placed the instance, not by origin. An
+/// emit from a plugin *another extension* placed goes to that extension
+/// first and arrives here as whatever it emitted in turn.
 fn absorb(
     extensions: &mut kui_core::Extensions,
     events: impl IntoIterator<Item = UiEvent>,

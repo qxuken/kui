@@ -90,6 +90,15 @@ pub fn set_args(args: Vec<String>) {
     let _ = ARGS.set(args);
 }
 
+/// `--headless`: a task that throws ends the run with 1, so a headless
+/// test that fails says so instead of waiting for a `kui.exit` that the
+/// throw skipped.
+static TASK_ERROR_EXITS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_task_error_exits(on: bool) {
+    TASK_ERROR_EXITS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// The app's name, the manifest's: what `kui.parse_args` calls it.
 static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
@@ -196,7 +205,12 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     kui.set(
         "__task_error",
         lua.create_function(|lua, msg: String| {
-            shared_of(lua).error(msg);
+            let s = shared_of(lua);
+            s.error(msg);
+            if s.worker.is_none() && TASK_ERROR_EXITS.load(std::sync::atomic::Ordering::Relaxed) {
+                s.exit.lock().unwrap().get_or_insert(1);
+                s.ops.poke();
+            }
             Ok(())
         })?,
     )?;

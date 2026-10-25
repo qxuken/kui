@@ -1,85 +1,105 @@
-//! Slots from Lua (`docs/adr/0014-slots-an-extension-fills-in-place.md`):
-//! the `slots` global names what the script fills, `view(env, slot)` is
-//! told which slot and with what params, and what `on_event` returns is
-//! the script's replies to the host.
+//! Component instances from Lua (ADR 0067, which folded ADR 0014's slots
+//! into components): a `components` table names what the script provides,
+//! each function is told its instance and the host's props, a script
+//! places components of its own (and plugins it loaded) in its own tree,
+//! and what `on_event` returns speaks only through `emit`. Replay is a
+//! placement's default, `fresh` its opt-out.
 
+use kui_core::testing::click_at;
 use kui_core::{
-    Core, EventKind, Extension, Extensions, Key, NodeSpec, OriginId, Size, Instance, UiEvent, Value,
+    Core, EventKind, Extension, Extensions, FillAnswer, Instance, Key, NodeSpec, OriginId, Size,
+    UiEvent, Value,
 };
 use kui_lua::LuaExtension;
 
 const PANEL: &str = r#"
-    slots = { "panel" }
     seen = {}
-    function view(env, slot)
-      seen[#seen + 1] = {
-        name = slot.name, namespace = slot.namespace, key = slot.key,
-        title = slot.params and slot.params.title,
-      }
-      on_pick = slot.params and slot.params.on_pick
-      return column { key = "box", width = 40, height = 20, focusable = true,
-        text(slot.params and slot.params.title or "untitled"),
-      }
-    end
+    components = {
+      panel = function(env, props, inst)
+        seen[#seen + 1] = {
+          name = inst.name, namespace = inst.namespace, key = inst.key,
+          title = props.title,
+        }
+        return row { key = "box", width = 160, height = 20,
+          column { key = "pick", width = 40, height = 20,
+            on_click = { kind = "pick", item = "foo.rs" },
+            text(props.title or "untitled") },
+          column { key = "plain", width = 40, height = 20,
+            on_click = { kind = "plain" }, text("plain") },
+        }
+      end,
+    }
     function on_event(ev)
-      if ev.kind == "pick" and on_pick then
-        local reply = { item = ev.item }
-        for k, v in pairs(on_pick) do reply[k] = v end
-        return reply
-      elseif ev.kind == "many" then
-        return { { kind = "a" }, { kind = "b" } }
+      if ev.kind == "pick" then
+        return emit("on_pick", { item = ev.item })
+      elseif ev.kind == "plain" then
+        -- Not an emit: dropped, there is no untyped reply (ADR 0067).
+        return { kind = "dropped" }
       end
     end
 "#;
 
-fn host_frame(core: &mut Core, exts: &mut Extensions, name: &str, params: &Value) {
+fn host_frame(
+    core: &mut Core,
+    exts: &mut Extensions,
+    name: &str,
+    props: &Value,
+) -> Option<FillAnswer> {
     let mut ui = core.frame_with(Size::new(400.0, 100.0), 1.0, exts);
     ui.configure_root(NodeSpec::row().fill());
-    ui.slot_with(name, params);
+    let fill = ui.component(name, props);
     ui.finish();
+    fill
 }
 
 #[test]
-fn a_script_fills_the_slot_it_lists_and_reads_the_params() {
+fn a_script_draws_the_component_it_provides_and_reads_the_props() {
     let ext = LuaExtension::from_source("panel.lua", PANEL).unwrap();
-    assert_eq!(ext.slots(), ["panel".to_owned()]);
+    assert_eq!(ext.components(), ["panel".to_owned()]);
     let mut exts = Extensions::new();
     exts.push_as("fs", Box::new(ext)).unwrap();
     let mut core = Core::new();
-    let params = Value::map([("title", "todos".into())]);
-    host_frame(&mut core, &mut exts, "fs/panel", &params);
-    host_frame(&mut core, &mut exts, "fs/panel", &Value::Null);
+    let props = Value::map([("key", "fs/panel".into()), ("title", "todos".into())]);
+    assert_eq!(
+        host_frame(&mut core, &mut exts, "fs/panel", &props),
+        Some(FillAnswer::NotKept)
+    );
+    // Nothing moved: replayed without asking the script.
+    assert_eq!(
+        host_frame(&mut core, &mut exts, "fs/panel", &props),
+        Some(FillAnswer::Replayed)
+    );
 
-    // Keyed under the slot's full name, whatever the script's own name is.
+    // Keyed under the instance, which a `key` prop names like a node.
+    let inst = core.key_of("fs/panel").expect("the instance's key");
     let node = core
         .access_tree()
         .nodes
         .iter()
-        .find(|n| n.origin == OriginId(1))
+        .find(|n| n.origin == OriginId(1) && n.name.as_deref() == Some("todos"))
         .cloned()
-        .expect("the script's box");
-    assert_eq!(node.key, Key::ROOT.str("fs/panel").str("box"));
-    assert_eq!(core.key_of("fs/panel"), Some(Key::ROOT.str("fs/panel")));
+        .expect("the script's title");
+    assert_eq!(node.key, inst.str("box").str("pick"));
     assert!(core.take_warnings().is_empty());
 }
 
-/// What `view` is told, read back through the script's globals: a second
-/// instance driven directly with the `Slot` the runner would build, since
-/// a boxed extension in an `Extensions` list cannot be read back.
+/// What the function is told, read back through the script's globals: the
+/// extension driven directly with the `Instance` the runner would build,
+/// since a boxed extension in an `Extensions` list cannot be read back.
 #[test]
-fn view_is_told_the_slot_its_namespace_and_the_params() {
+fn the_function_is_told_its_instance_its_namespace_and_the_props() {
     let mut ext = LuaExtension::from_source("panel.lua", PANEL).unwrap();
     let mut core = Core::new();
     let key = Key::ROOT.str("fs/panel");
     for params in [Value::map([("title", "todos".into())]), Value::Null] {
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
-        let slot = Instance {
+        let inst = Instance {
             name: "panel",
             namespace: "fs",
             params: &params,
             key,
         };
-        ext.view(&slot, &mut ui).unwrap();
+        ext.component(&inst, &mut ui).unwrap();
         ui.finish();
     }
     let seen: mlua::Table = ext.lua().globals().get("seen").unwrap();
@@ -89,7 +109,7 @@ fn view_is_told_the_slot_its_namespace_and_the_params() {
     assert_eq!(first.get::<String>("namespace").unwrap(), "fs");
     assert_eq!(first.get::<i64>("key").unwrap(), key.0 as i64);
     assert_eq!(first.get::<String>("title").unwrap(), "todos");
-    // The params are `nil` for a slot declared without any.
+    // No props: an empty table, so `props.title` is nil.
     let second: mlua::Table = seen.get(2).unwrap();
     assert_eq!(
         second.get::<mlua::Value>("title").unwrap(),
@@ -98,75 +118,94 @@ fn view_is_told_the_slot_its_namespace_and_the_params() {
 }
 
 #[test]
-fn what_on_event_returns_is_the_scripts_replies() {
-    let mut ext = LuaExtension::from_source("panel.lua", PANEL).unwrap();
-    // The template arrives through the params of a fill; `view` keeps it.
-    let mut core = Core::new();
+fn what_on_event_emits_reaches_the_host_and_nothing_else_does() {
     let mut exts = Extensions::new();
-    exts.push_as("fs", Box::new(ext)).unwrap();
-    let params = Value::map([("on_pick", Value::map([("kind", "picked".into())]))]);
-    host_frame(&mut core, &mut exts, "fs/panel", &params);
-    let ext_ref = exts.by_origin(OriginId(1)).unwrap();
-    let ev = |kind: &str, extra: Option<(&'static str, Value)>| {
-        let msg = Value::map(std::iter::once(("kind", Value::str(kind))).chain(extra));
-        UiEvent::declared(
-            EventKind::Click,
-            OriginId(1),
-            Key::ROOT,
-            Some(&msg),
-            Value::Null,
-        )
-    };
-    // One table: one reply, the host's template with the field added.
-    let replies = ext_ref.on_event(&ev("pick", Some(("item", "foo.rs".into()))));
-    assert_eq!(replies.len(), 1);
-    assert_eq!(replies[0].get_str("kind"), Some("picked"));
-    assert_eq!(replies[0].get_str("item"), Some("foo.rs"));
-    // A sequence: several. Nothing: none.
-    let replies = ext_ref.on_event(&ev("many", None));
-    assert_eq!(replies.len(), 2);
-    assert_eq!(replies[1].get_str("kind"), Some("b"));
-    assert!(ext_ref.on_event(&ev("other", None)).is_empty());
+    exts.push_as(
+        "fs",
+        Box::new(LuaExtension::from_source("panel.lua", PANEL).unwrap()),
+    )
+    .unwrap();
+    let mut core = Core::new();
+    let props = Value::map([("on_pick", Value::map([("kind", "picked".into())]))]);
+    host_frame(&mut core, &mut exts, "fs/panel", &props);
 
-    // A script with no `on_event` at all replies nothing.
-    ext = LuaExtension::from_source("mute.lua", "function view() return column {} end").unwrap();
-    assert!(ext.on_event(&ev("pick", None)).is_empty());
-    assert!(ext.slots().is_empty(), "no `slots` global: the root fill");
+    // The pick: the host's own message, the script's fields under `pick`.
+    let events = click_at(&mut core, 20.0, 10.0);
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert!(events[0].instance.is_some(), "the node is the instance's");
+    let mut host = Vec::new();
+    exts.route(events, |ev| host.push(ev));
+    assert_eq!(host.len(), 1, "{host:?}");
+    assert_eq!(host[0].event, EventKind::Component);
+    assert_eq!(host[0].origin, OriginId::HOST, "addressed to the placer");
+    assert_eq!(host[0].payload.get_str("kind"), Some("picked"));
+    assert_eq!(
+        host[0].payload.get("pick").and_then(|p| p.get_str("item")),
+        Some("foo.rs")
+    );
+
+    // A plain table returned from on_event is no answer at all.
+    host_frame(&mut core, &mut exts, "fs/panel", &props);
+    let events = click_at(&mut core, 60.0, 10.0);
+    assert_eq!(events.len(), 1, "{events:?}");
+    let mut host = Vec::new();
+    exts.route(events, |ev| host.push(ev));
+    assert!(host.is_empty(), "{host:?}");
+
+    // A script with no `on_event` answers nothing, and one with no
+    // `components` provides only its root.
+    let mut mute =
+        LuaExtension::from_source("mute.lua", "function view() return column {} end").unwrap();
+    let ev = UiEvent::declared(
+        EventKind::Click,
+        OriginId(1),
+        Key::ROOT,
+        Some(&Value::map([("kind", "pick".into())])),
+        Value::Null,
+    );
+    assert!(mute.on_event(&ev).is_empty());
+    assert!(
+        mute.components().is_empty(),
+        "no `components`: the root alone"
+    );
 }
 
-/// `slots = { "*" }` fills every name the host declares under the
+/// `components = { ["*"] = … }` provides every name placed under the
 /// namespace (backlog K1), and `on_event` reads which one its node was in
-/// as `ev.slot`, the full name the script was handed (backlog K2) — so a
-/// script with a view per pane routes by pane without stamping payloads.
+/// as `at.component`, the full name the script was handed (backlog K2) —
+/// so a script with a view per pane routes by pane without stamping
+/// payloads.
 #[test]
-fn a_wildcard_script_fills_every_declared_name_and_hears_which_one() {
+fn a_wildcard_script_provides_every_placed_name_and_hears_which_one() {
     const VIEWS: &str = r#"
-        slots = { "*" }
-        function view(env, slot)
-          return column { key = "box", width = 40, height = 20,
-            on_click = { kind = "cell" },
-            text(slot.name),
-          }
-        end
-        function on_event(ev)
+        components = {
+          ["*"] = function(env, props, inst)
+            return column { key = "box", width = 40, height = 20,
+              on_click = { kind = "cell" },
+              text(inst.name),
+            }
+          end,
+        }
+        function on_event(ev, at)
           if ev.kind == "cell" then
-            return { kind = "routed", slot = ev.slot }
+            return emit("on_cell", { component = at.component })
           end
         end
     "#;
     let ext = LuaExtension::from_source("views.lua", VIEWS).unwrap();
-    assert_eq!(ext.slots(), ["*".to_owned()]);
+    assert_eq!(ext.components(), ["*".to_owned()]);
     let mut exts = Extensions::new();
     exts.push_as("views", Box::new(ext)).unwrap();
     let mut core = Core::new();
+    let routed = Value::map([("on_cell", Value::map([("kind", "routed".into())]))]);
     let mut ui = core.frame_with(Size::new(400.0, 100.0), 1.0, &mut exts);
     ui.configure_root(NodeSpec::row().fill());
-    ui.slot("views/pane:1");
-    ui.slot("views/pane:2");
+    ui.component("views/pane:1", &routed);
+    ui.component("views/pane:2", &routed);
     ui.finish();
     assert!(
         core.take_warnings().is_empty(),
-        "a wildcard raises no unknown-slot"
+        "a wildcard raises no unknown-component"
     );
     assert_eq!(
         core.access_tree()
@@ -175,28 +214,48 @@ fn a_wildcard_script_fills_every_declared_name_and_hears_which_one() {
             .filter(|n| n.origin == OriginId(1))
             .count(),
         2,
-        "both names filled"
+        "both names drawn"
     );
     // A click on the second pane's cell (x 40..80 in the row).
-    let events = kui_core::testing::click_at(&mut core, 60.0, 10.0);
+    let events = click_at(&mut core, 60.0, 10.0);
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].slot, core.key_of("views/pane:2"));
-    let mut replies = Vec::new();
-    exts.route(events, |ev| replies.push(ev));
-    assert_eq!(replies.len(), 1);
-    assert_eq!(replies[0].event, EventKind::Reply);
-    assert_eq!(replies[0].payload.get_str("kind"), Some("routed"));
-    assert_eq!(replies[0].payload.get_str("slot"), Some("views/pane:2"));
+    let mut host = Vec::new();
+    exts.route(events, |ev| host.push(ev));
+    assert_eq!(host.len(), 1);
+    assert_eq!(host[0].event, EventKind::Component);
+    assert_eq!(host[0].payload.get_str("kind"), Some("routed"));
+    assert_eq!(
+        host[0]
+            .payload
+            .get("cell")
+            .and_then(|c| c.get_str("component")),
+        Some("views/pane:2")
+    );
 }
 
 #[test]
-fn a_bad_slots_global_is_refused_at_load() {
-    let err = LuaExtension::from_source("bad.lua", "slots = 'panel'")
+fn a_slots_global_or_a_bad_components_table_is_refused_at_load() {
+    let err = LuaExtension::from_source("old.lua", r#"slots = { "panel" }"#)
         .err()
-        .expect("a string is not a list of slots");
-    assert!(err.to_string().contains("`slots` must be a list"), "{err}");
-    // A separator in a slot name is refused where the host loads it.
-    let ext = LuaExtension::from_source("bad.lua", r#"slots = { "a/b" }"#).unwrap();
+        .expect("`slots` is gone");
+    assert!(err.to_string().contains("`slots` is gone"), "{err}");
+    let err = LuaExtension::from_source("bad.lua", "components = 'panel'")
+        .err()
+        .expect("a string is not a table of functions");
+    assert!(
+        err.to_string().contains("`components` must be a table"),
+        "{err}"
+    );
+    let err = LuaExtension::from_source("bad.lua", "components = { panel = 1 }")
+        .err()
+        .expect("a number is not a function");
+    assert!(err.to_string().contains("must be a function"), "{err}");
+    // A separator in a name is refused where the host loads it.
+    let ext = LuaExtension::from_source(
+        "bad.lua",
+        r#"components = { ["a/b"] = function() return column {} end }"#,
+    )
+    .unwrap();
     let err = Extensions::new().push(Box::new(ext)).unwrap_err();
     assert!(err.contains("\"a/b\""), "{err}");
 }
@@ -204,18 +263,18 @@ fn a_bad_slots_global_is_refused_at_load() {
 // -- a script that hosts a plugin of its own --------------------------------
 
 /// A stand-in for the plugin. Loading one is C-only — `env.add_extension`
-/// opens a shared library — but what a `fill` does with a name is the
+/// opens a shared library — but what a `component` does with a name is the
 /// same whoever put the name in the list, so these drive the placement
 /// and the routing with a Rust extension the host loaded and
 /// `a_script_loads_a_c_plugin_and_places_it` with the real thing.
 struct Panel {
-    slots: Vec<String>,
+    components: Vec<String>,
 }
 
 impl Panel {
     fn new() -> Self {
         Self {
-            slots: vec!["panel".into()],
+            components: vec!["panel".into()],
         }
     }
 }
@@ -224,11 +283,11 @@ impl Extension for Panel {
     fn name(&self) -> &str {
         "panel"
     }
-    fn slots(&self) -> &[String] {
-        &self.slots
+    fn components(&self) -> &[String] {
+        &self.components
     }
-    fn view(&mut self, slot: &Instance<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
-        let title = slot
+    fn view(&mut self, inst: &Instance<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
+        let title = inst
             .params
             .get_str("title")
             .unwrap_or("untitled")
@@ -245,27 +304,34 @@ impl Extension for Panel {
         Ok(())
     }
     fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
-        vec![Value::map([("kind", "toggled".into())])]
+        vec![kui_core::slot::emit("on_toggle", Value::Null)]
     }
 }
 
 /// A script that draws a heading and then a plugin, in that order, and
-/// says something about everything it hears.
+/// passes on what it hears from the plugin as an emit of its own.
 const NESTING: &str = r#"
-    slots = { "panel" }
-    function view(env, slot)
-      return column { key = "outer", width = "grow", height = "grow",
-        text("the script"),
-        fill { name = "todos/panel", params = { title = "from lua" } },
-      }
-    end
-    function on_event(ev)
-      return { kind = "counted", was = ev.kind, event = ev.event, from = ev.from or "-" }
+    components = {
+      panel = function(env, props)
+        return column { key = "outer", width = "grow", height = "grow",
+          text("the script"),
+          component("todos/panel", {
+            key = "todos/panel", title = "from lua", on_toggle = { kind = "toggled" },
+          }),
+        }
+      end,
+    }
+    function on_event(ev, at)
+      return emit("on_counted", { was = ev.kind, event = at.event, from = at.from or "-" })
     end
 "#;
 
 fn nesting_frame(core: &mut Core, exts: &mut Extensions) {
-    host_frame(core, exts, "ui/panel", &Value::Null);
+    let props = Value::map([
+        ("key", "ui/panel".into()),
+        ("on_counted", Value::map([("kind", "counted".into())])),
+    ]);
+    host_frame(core, exts, "ui/panel", &props);
 }
 
 /// Two extensions, the second placed by the first.
@@ -280,8 +346,8 @@ fn nested() -> Extensions {
     exts
 }
 
-/// A script's `fill` is a slot like the host's: declared inside the
-/// script's own fill, so it is keyed there — move the script and the
+/// A script's `component` is a placement like the host's: made inside the
+/// script's own instance, so it is keyed there — move the script and the
 /// plugin moves with it — and answered from the one list of extensions
 /// the frame has.
 #[test]
@@ -291,12 +357,13 @@ fn a_script_places_a_plugin_in_its_own_tree() {
     nesting_frame(&mut core, &mut exts);
 
     // The whole chain, so that moving the script moves the plugin: the
-    // script's slot, the column it drew, and the plugin's slot inside it.
-    let script = core.key_of("ui/panel").expect("the script's own slot");
+    // script's instance, the column it drew, and the plugin's instance
+    // inside it.
+    let script = core.key_of("ui/panel").expect("the script's own instance");
     let column = core.key_of("outer").expect("the script's own column");
     let inner = core
         .key_of("todos/panel")
-        .expect("the slot the script declared");
+        .expect("the instance the script placed");
     assert_eq!(column, script.str("outer"));
     assert_eq!(inner, column.str("todos/panel"));
     let node = core
@@ -310,85 +377,76 @@ fn a_script_places_a_plugin_in_its_own_tree() {
     assert!(core.take_warnings().is_empty());
 }
 
-/// A reply answers the slot, so it goes to whoever declared it: the
-/// plugin's reply reaches the script, and what the *script* answers is
-/// what the host hears, with the script's origin on it.
+/// An emit goes to whoever placed the instance: the plugin's reaches the
+/// script as the script's own message, and what the *script* emits is
+/// what the host hears, as the host's own.
 #[test]
-fn a_placed_plugins_reply_reaches_the_script_and_not_the_host() {
+fn a_placed_plugins_emit_reaches_the_script_and_not_the_host() {
     let mut exts = nested();
     let mut core = Core::new();
     nesting_frame(&mut core, &mut exts);
+    let inner = core.key_of("todos/panel").expect("the plugin's instance");
 
+    let mut click = UiEvent::declared(
+        EventKind::Click,
+        OriginId(2),
+        inner.str("row"),
+        Some(&Value::map([("kind", "click".into())])),
+        Value::Null,
+    );
+    click.instance = Some(inner);
     let mut to_host = Vec::new();
-    exts.route(
-        [UiEvent::declared(
-            EventKind::Click,
-            OriginId(2),
-            Key::ROOT,
-            Some(&Value::map([("kind", "click".into())])),
-            Value::Null,
-        )],
-        |ev| to_host.push(ev),
-    );
+    exts.route([click], |ev| to_host.push(ev));
 
-    assert_eq!(to_host.len(), 1);
-    assert_eq!(to_host[0].payload.get_str("kind"), Some("counted"));
+    assert_eq!(to_host.len(), 1, "{to_host:?}");
+    let host = &to_host[0];
+    assert_eq!(host.event, EventKind::Component);
+    assert_eq!(host.origin, OriginId::HOST, "the host placed the script");
+    assert_eq!(host.payload.get_str("kind"), Some("counted"));
+    let counted = host.payload.get("counted").expect("the script's fields");
     assert_eq!(
-        to_host[0].payload.get_str("event"),
-        Some("reply"),
-        "the script heard a reply, and `ev.event` says so"
-    );
-    assert_eq!(
-        to_host[0].payload.get_str("was"),
+        counted.get_str("was"),
         Some("toggled"),
-        "the script heard the plugin's reply, not the click"
+        "the script heard the plugin's on_toggle as its own message, not the click"
     );
     assert_eq!(
-        to_host[0].origin,
-        OriginId(1),
-        "and the host hears the script, which is who it placed"
+        counted.get_str("event"),
+        Some("component"),
+        "and `at.event` says so"
     );
-    // `from` is the namespace *this script* loaded the plugin under; the
+    // `from` is the namespace *this script* loaded a plugin under; the
     // host loaded this one, so the script is told nothing it did not do.
-    assert_eq!(to_host[0].payload.get_str("from"), Some("-"));
+    assert_eq!(counted.get_str("from"), Some("-"));
 }
 
-/// `fill` is a position, not a box: it takes a full name and params and
-/// nothing else, and says so where a script would notice.
+/// `component` takes a full name; one without says so where a script
+/// would notice.
 #[test]
-fn a_fill_takes_a_full_name_and_params_and_nothing_else() {
-    let refused = |body: &str| -> String {
-        let mut ext = LuaExtension::from_source(
-            "bad.lua",
-            &format!("function view(env, slot) return column {{ {body} }} end"),
-        )
-        .unwrap();
-        let mut core = Core::new();
-        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
-        let err = ext
-            .view(&Instance::root(), &mut ui)
-            .expect_err("should not build");
-        ui.finish();
-        err
-    };
-    assert!(refused("fill {}").contains("namespace/slot"));
-    assert!(refused(r#"fill { name = "panel" }"#).contains("bad slot name"));
-    assert!(
-        refused(r#"fill { name = "a/b", width = 20 }"#).contains("not a box"),
-        "a fill is not a node and takes no node props"
-    );
+fn a_component_element_needs_a_name() {
+    let mut ext = LuaExtension::from_source(
+        "bad.lua",
+        r#"function view(env) return column { { type = "component" } } end"#,
+    )
+    .unwrap();
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    let err = ext
+        .view(&Instance::root(), &mut ui)
+        .expect_err("should not build");
+    ui.finish();
+    assert!(err.contains("namespace/component"), "{err}");
 }
 
 /// `env.add_extension` before the plugin exists: the answer is a message
 /// the script can act on rather than an error that kills the frame, and
-/// the same namespace twice is refused rather than silently rebound.
+/// an empty namespace with nothing to name it by is refused.
 #[test]
 fn add_extension_answers_with_what_went_wrong() {
     let mut ext = LuaExtension::from_source(
         "loader.lua",
         r#"
         tried = {}
-        function view(env, slot)
+        function view(env)
           local ok, err = env.add_extension("todos", "no/such/plugin.dll")
           tried[#tried + 1] = { ok = ok, err = err }
           local ok2, err2 = env.add_extension("", "no/such/plugin.dll")
@@ -418,7 +476,7 @@ fn add_extension_answers_with_what_went_wrong() {
 }
 
 /// The whole round trip with a real plugin: the script opens the C panel
-/// itself, places it, and hears what it says.
+/// itself, places it, and hears its on_toggle.
 ///
 /// Windows only, and skipped there until `cbuild` has run.
 /// Not a shortcut: on the unixes a plugin leaves every `kui_*` undefined
@@ -428,7 +486,7 @@ fn add_extension_answers_with_what_went_wrong() {
 /// imports `kui_ffi.dll` rather than a host, `panel.dll`, and so loads
 /// into anything — this test included. That also puts *two* copies of the
 /// library in one process (this binary links the rlib), which is the case
-/// ABI 10's reply sink exists for.
+/// ABI 10's answer sink exists for.
 #[test]
 #[cfg(windows)]
 fn a_script_loads_a_c_plugin_and_places_it() {
@@ -453,20 +511,23 @@ fn a_script_loads_a_c_plugin_and_places_it() {
     }
     let script = format!(
         r#"
-        slots = {{ "panel" }}
-        function view(env, slot)
-          local ok, err = env.add_extension("todos", [[{}]])
-          if not ok then error(err) end
-          return column {{ key = "outer", width = "grow", height = "grow",
-            text("the script"),
-            fill {{ name = "todos/panel", params = {{
-              title = "todos, from lua",
-              on_toggle = {{ kind = "toggled" }},
-            }} }},
-          }}
-        end
-        function on_event(ev)
-          if ev.from then return {{ kind = "heard", who = ev.from }} end
+        components = {{
+          panel = function(env)
+            local ok, err = env.add_extension("todos", [[{}]])
+            if not ok then error(err) end
+            return column {{ key = "outer", width = "grow", height = "grow",
+              text("the script"),
+              component("todos/panel", {{
+                title = "todos, from lua",
+                on_toggle = {{ kind = "toggled" }},
+              }}),
+            }}
+          end,
+        }}
+        function on_event(ev, at)
+          if ev.kind == "toggled" then
+            return emit("on_heard", {{ index = ev.toggle.index, event = at.event }})
+          end
         end
         "#,
         // A long-bracket literal, so a Windows path needs no escaping and
@@ -487,7 +548,10 @@ fn a_script_loads_a_c_plugin_and_places_it() {
     {
         let mut ui = core.frame_with(Size::new(900.0, 600.0), 1.0, &mut exts);
         ui.configure_root(NodeSpec::row().fill());
-        ui.slot("ui/panel");
+        ui.component(
+            "ui/panel",
+            &Value::map([("on_heard", Value::map([("kind", "heard".into())]))]),
+        );
         ui.finish();
     }
 
@@ -500,7 +564,7 @@ fn a_script_loads_a_c_plugin_and_places_it() {
         (n.origin == OriginId(2) && name.starts_with("[ "))
             .then(|| Vec2::new(n.rect.x + n.rect.w / 2.0, n.rect.y + n.rect.h / 2.0))
     });
-    let row = row.expect("the plugin drew no rows — did the slot fill?");
+    let row = row.expect("the plugin drew no rows — was it placed?");
     assert!(core.take_warnings().is_empty());
 
     // Click one of its todos and let the frame resolve the press.
@@ -516,25 +580,26 @@ fn a_script_loads_a_c_plugin_and_places_it() {
         .filter(|e| e.payload.get_str("kind") == Some("heard"))
         .collect();
     assert_eq!(heard.len(), 1, "got {to_host:?}");
+    let fields = heard[0].payload.get("heard").expect("the script's fields");
     assert_eq!(
-        heard[0].payload.get_str("who"),
-        Some("todos"),
-        "the script is told which of its plugins answered"
+        fields.get_str("event"),
+        Some("component"),
+        "the script heard the plugin's on_toggle as its own message"
     );
     assert_eq!(
         heard[0].origin,
-        OriginId(1),
-        "and the host hears the script, not the plugin it placed"
+        OriginId::HOST,
+        "and the host hears the script, which is who it placed"
     );
 }
 
-// -- a slot replayed by its host (ADR 0045) ----------------------------------
+// -- replay, a placement's default (ADR 0067) --------------------------------
 
 /// A plugin that counts its views: a stand-in for the panel a script
 /// hosts, read back through the shared cell since the boxed extension
 /// is the runner's once loaded.
 struct Counted {
-    slots: Vec<String>,
+    components: Vec<String>,
     views: std::rc::Rc<std::cell::Cell<usize>>,
 }
 
@@ -542,12 +607,12 @@ impl Extension for Counted {
     fn name(&self) -> &str {
         "counted"
     }
-    fn slots(&self) -> &[String] {
-        &self.slots
+    fn components(&self) -> &[String] {
+        &self.components
     }
-    fn view(&mut self, slot: &Instance<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, inst: &Instance<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
         self.views.set(self.views.get() + 1);
-        let title = slot
+        let title = inst
             .params
             .get_str("title")
             .unwrap_or("untitled")
@@ -568,23 +633,21 @@ impl Extension for Counted {
     }
 }
 
-/// A script that places a plugin with `replay = true` and reports what
-/// it got through a global the test reads back.
+/// A script that places a plugin, the title from a global the test moves.
 const REPLAYING: &str = r#"
-    slots = { "panel" }
     title = "first"
-    last_fill = "?"
-    function view(env, slot)
-      last_fill = tostring(env.slot_fill("todos/panel"))
-      return column { key = "outer", width = "grow", height = "grow",
-        text("the script"),
-        fill { name = "todos/panel", params = { title = title }, replay = true },
-      }
-    end
+    components = {
+      panel = function(env)
+        return column { key = "outer", width = "grow", height = "grow",
+          text("the script"),
+          component("todos/panel", { title = title }),
+        }
+      end,
+    }
 "#;
 
 #[test]
-fn a_script_replays_a_plugins_fill_and_reads_what_it_got() {
+fn a_scripts_placement_is_replayed_until_its_props_move() {
     let views = std::rc::Rc::new(std::cell::Cell::new(0));
     let mut exts = Extensions::new();
     let script = LuaExtension::from_source("host.lua", REPLAYING).unwrap();
@@ -593,84 +656,99 @@ fn a_script_replays_a_plugins_fill_and_reads_what_it_got() {
     exts.push_as(
         "todos",
         Box::new(Counted {
-            slots: vec!["panel".into()],
+            components: vec!["panel".into()],
             views: views.clone(),
         }),
     )
     .unwrap();
     let mut core = Core::new();
-    let fill = |lua: &mlua::Lua| lua.globals().get::<String>("last_fill").unwrap();
+    // The script reads a global no event moves, so its host asks it every
+    // frame: `fresh`.
+    let fresh = Value::map([("fresh", Value::Bool(true))]);
 
-    host_frame(&mut core, &mut exts, "ui/panel", &Value::Null);
+    host_frame(&mut core, &mut exts, "ui/panel", &fresh);
     assert_eq!(views.get(), 1);
-    assert_eq!(fill(&lua), "nil", "nothing asked before the first view");
-    assert_eq!(
-        core.slot_fill("todos/panel").map(|f| f.name()),
-        Some("not-kept")
-    );
-
-    host_frame(&mut core, &mut exts, "ui/panel", &Value::Null);
-    assert_eq!(views.get(), 1, "the plugin was not asked");
-    assert_eq!(
-        core.slot_fill("todos/panel").map(|f| f.name()),
-        Some("replayed")
-    );
-    // The script's next view reads the frame before's answer.
-    host_frame(&mut core, &mut exts, "ui/panel", &Value::Null);
-    assert_eq!(fill(&lua), "replayed");
-    assert_eq!(views.get(), 1);
+    host_frame(&mut core, &mut exts, "ui/panel", &fresh);
+    assert_eq!(views.get(), 1, "the plugin was not asked: replayed");
     let row = core
         .access_tree()
         .nodes
         .iter()
         .find(|n| n.name.as_deref() == Some("first"))
         .expect("the plugin's row, replayed");
-    assert_eq!(row.origin, kui_core::OriginId(2));
+    assert_eq!(row.origin, OriginId(2));
 
-    // Other params: the plugin runs, and draws the new title.
+    // Other props: the plugin runs, and draws the new title.
     lua.globals().set("title", "second").unwrap();
-    host_frame(&mut core, &mut exts, "ui/panel", &Value::Null);
+    host_frame(&mut core, &mut exts, "ui/panel", &fresh);
     assert_eq!(views.get(), 2);
-    assert_eq!(
-        core.slot_fill("todos/panel").map(|f| f.name()),
-        Some("params")
-    );
     assert!(
         core.access_tree()
             .nodes
             .iter()
             .any(|n| n.name.as_deref() == Some("second"))
     );
+    assert!(core.take_warnings().is_empty());
+}
 
-    // `keep` and `replay` together is refused where the fill is read.
-    let err = LuaExtension::from_source(
-        "both.lua",
-        r#"function view(env, slot) return column { fill { name = "a/b", keep = true, replay = true } } end"#,
+/// A script whose fill places another extension's component, with no
+/// host children, is itself replayed: the placement is one op of its kept
+/// fill, not a closure no replay could call.
+#[test]
+fn a_script_that_places_a_component_is_replayed_itself() {
+    let views = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut exts = Extensions::new();
+    exts.push_as(
+        "ui",
+        Box::new(LuaExtension::from_source("host.lua", REPLAYING).unwrap()),
     )
     .unwrap();
-    let mut exts = Extensions::new();
-    exts.push_as("both", Box::new(err)).unwrap();
+    exts.push_as(
+        "todos",
+        Box::new(Counted {
+            components: vec!["panel".into()],
+            views: views.clone(),
+        }),
+    )
+    .unwrap();
     let mut core = Core::new();
-    host_frame(&mut core, &mut exts, "both/root", &Value::Null);
-    let w = core.warnings_raised();
+    let none = Value::map([]);
+    assert_eq!(
+        host_frame(&mut core, &mut exts, "ui/panel", &none),
+        Some(FillAnswer::NotKept)
+    );
+    assert_eq!(
+        host_frame(&mut core, &mut exts, "ui/panel", &none),
+        Some(FillAnswer::Replayed),
+        "the script's own fill was replayed"
+    );
+    // A component placed inside a fill being kept is kept from its next
+    // placement on: the replay places it, it fills once more, and settles.
+    let settled = views.get();
+    host_frame(&mut core, &mut exts, "ui/panel", &none);
+    host_frame(&mut core, &mut exts, "ui/panel", &none);
+    assert_eq!(views.get(), settled, "nothing asks the plugin once both are kept");
     assert!(
-        w.iter()
-            .any(|w| w.message.contains("keep or replay, not both")),
-        "{w:?}"
+        core.access_tree()
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("first")),
+        "and the plugin's row came back with it"
     );
 }
 
 /// A script that draws from `env.theme`: replayed by its host while the
 /// palette holds, run again when it changes (backlog F155).
 const THEMED: &str = r#"
-    slots = { "panel" }
     views = 0
-    function view(env, slot)
-      views = views + 1
-      return column { key = "box", width = 40, height = 20, bg = "$accent",
-        text(string.format("%08x", env.theme.accent)),
-      }
-    end
+    components = {
+      panel = function(env)
+        views = views + 1
+        return column { key = "box", width = 40, height = 20, bg = "$accent",
+          text(string.format("%08x", env.theme.accent)),
+        }
+      end,
+    }
 "#;
 
 #[test]
@@ -681,10 +759,7 @@ fn a_script_that_read_the_theme_is_not_replayed_across_a_theme_change() {
     exts.push_as("themed", Box::new(script)).unwrap();
     let mut core = Core::new();
     let frame = |core: &mut Core, exts: &mut Extensions| {
-        let mut ui = core.frame_with(Size::new(400.0, 100.0), 1.0, exts);
-        let fill = ui.slot_replay("themed/panel", &Value::Null);
-        ui.finish();
-        fill.map(|f| f.name())
+        host_frame(core, exts, "themed/panel", &Value::Null).map(|f| f.name())
     };
     let views = |lua: &mlua::Lua| lua.globals().get::<i64>("views").unwrap();
     assert_eq!(frame(&mut core, &mut exts), Some("not-kept"));
@@ -735,8 +810,8 @@ fn a_folder_with_init_lua_loads_and_requires_its_modules() {
 }
 
 /// A script loads another script with `env.add_extension`, with no native
-/// loader registered, and fills its slot; a C path with none registered is
-/// answered with a message naming it.
+/// loader registered, and places its component; a C path with none
+/// registered is answered with a message naming it.
 #[test]
 fn a_script_loads_a_script_and_names_a_c_path_it_cannot_open() {
     let dir = std::env::temp_dir().join(format!("kui-lua-guest-{}", std::process::id()));
@@ -744,7 +819,7 @@ fn a_script_loads_a_script_and_names_a_c_path_it_cannot_open() {
     let guest = dir.join("guest.lua");
     std::fs::write(
         &guest,
-        "slots = { 'pane' }\nfunction view(env, slot) return column { key = 'guest', text('the guest') } end\n",
+        "components = { pane = function(env) return column { key = 'guest', text('the guest') } end }\n",
     )
     .unwrap();
     let mut ext = LuaExtension::from_source(
@@ -757,7 +832,7 @@ fn a_script_loads_a_script_and_names_a_c_path_it_cannot_open() {
               result.ok, result.err = ok, err
               local ok2, err2 = env.add_extension("native", "no/such/plugin.so")
               result.ok2, result.err2 = ok2, err2
-              return column {{ fill {{ name = "guest/pane" }} }}
+              return column {{ component("guest/pane") }}
             end
             "#,
             guest.display()
@@ -788,7 +863,7 @@ fn a_script_loads_a_script_and_names_a_c_path_it_cannot_open() {
                 .nodes
                 .iter()
                 .any(|n| n.name.as_deref() == Some("the guest")),
-        "the guest filled its slot"
+        "the guest drew its component"
     );
     let _ = std::fs::remove_dir_all(dir);
 }

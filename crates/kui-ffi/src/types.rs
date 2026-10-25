@@ -133,17 +133,17 @@ pub struct KuiCtx {
     /// The name most recently handed out by kui_ctx_window_name; valid
     /// until the next call.
     pub(crate) last_window_name: Option<Rc<str>>,
-    /// Which slot this context is a C extension's fill of, and the params
-    /// the host passed it: what `kui_slot_name` / `kui_slot_params`
-    /// answer. `None` on every other context - a standalone one, a C host's
+    /// Which instance this context is a C extension's fill of, and the
+    /// props the host passed it: what `kui_instance_name` /
+    /// `kui_instance_params` answer. `None` on every other context - a standalone one, a C host's
     /// view callback - where they answer false and NULL.
     pub(crate) slot_name: Option<String>,
     pub(crate) slot_namespace: Option<String>,
     pub(crate) slot_params: Option<KuiValue>,
     /// The extensions this context hosts, in origin order.
-    /// `kui_ctx_add_extension` fills it, `kui_slot` fills *them* in place,
-    /// `kui_frame_finish` lets them take `ns/root` and warn about slots
-    /// nobody declared, and an event whose origin names one is delivered to
+    /// `kui_ctx_add_extension` fills it, `kui_component` draws *them* in
+    /// place, `kui_frame_finish` draws each `ns/root` the view did not
+    /// place, and an event whose origin names one is delivered to
     /// it rather than queued for the host. `kui_run_with` moves it into
     /// the window's runner. Empty on a borrowing context: an extension
     /// does not host extensions, and a host's under the runner is the
@@ -160,8 +160,9 @@ pub struct KuiCtx {
     ///
     /// It exists because under the windowed runner the extension list is
     /// the *runner's*, not this context's — `kui_native::Launcher` owns it, and
-    /// the `Ui` it built the frame with is what knows how to fill a slot.
-    /// So `kui_slot` hands the declaration to that `Ui` when this is set,
+    /// the `Ui` it built the frame with is what knows how to draw a
+    /// component. So `kui_component` hands the placement to that `Ui` when
+    /// this is set,
     /// and fills from `extensions` when it is not. Null on every other
     /// context: a standalone one, and an extension's own.
     pub(crate) host_ui: *mut c_void,
@@ -273,7 +274,7 @@ impl KuiCtx {
 
     /// [`Self::borrowing`] for the windowed runner's view callback, which
     /// has a whole `Ui` rather than a bare `Core`: same context, plus the
-    /// pointer `kui_slot` needs to reach the runner's extensions. Valid
+    /// pointer `kui_component` needs to reach the runner's extensions. Valid
     /// for the callback and not one instruction longer, like the borrow
     /// itself.
     pub(crate) fn borrowing_in(ui: &mut kui_core::Ui<'_>) -> Self {
@@ -1604,7 +1605,7 @@ pub const KUI_OP_ALPHA: u8 = 3;
 pub const KUI_OP_MIX: u8 = 4;
 pub const KUI_OP_READABLE: u8 = 5;
 
-/// Where a `kui_reply` from inside `kui_ext_on_event` sends its value: an
+/// Where a `kui_emit` from inside `kui_ext_on_event` sends its value: an
 /// opaque handle the library puts on the event for the callback and takes
 /// back when it returns. Never allocate, dereference or store one.
 ///
@@ -1644,16 +1645,15 @@ pub struct KuiEvent {
     /// second one is opened. Appended in ABI 4; a host reserving the older
     /// layout gets a shorter write and never sees it.
     pub window: u32,
-    /// Where `kui_reply` sends a reply to this event, or NULL when there is
+    /// Where `kui_emit` sends an emit about this event, or NULL when there is
     /// nowhere to send one (every event a host polls itself). A host has no
     /// use for it: it is the library's channel to a plugin, which passes
     /// the event straight back. See [`KuiReplySink`]. Appended in ABI 10.
     pub reply_sink: *mut KuiReplySink,
-    /// The key of the slot whose fill drew the node (what `kui_key_of`
-    /// answers for the slot's full name), or 0 for a node the host drew
-    /// itself. Appended after `reply_sink` without a bump: a host
-    /// reserving the older layout never sees it.
-    pub slot: u64,
+    /// The key of the component instance whose fill drew the node (what
+    /// `kui_key_of` answers for the `key` prop it was placed with), or 0
+    /// for a node the host drew itself. `slot` before ABI 39 (ADR 0067).
+    pub instance: u64,
     /// What happened, the envelope's event kind (ADR 0047): `"click"`,
     /// `"drag"`, `"change"`, `"resize"`, … — `schema::EVENTS`' `kind`.
     /// The payload no longer says it: every payload is the message its
@@ -1672,7 +1672,7 @@ impl Default for KuiEvent {
             payload: std::ptr::null(),
             window: 0,
             reply_sink: std::ptr::null_mut(),
-            slot: 0,
+            instance: 0,
             event: KuiStr {
                 ptr: std::ptr::null(),
                 len: 0,

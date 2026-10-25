@@ -509,17 +509,18 @@ static int surface(void) {
           "kui_label_of answers the label the sink was opened under");
     check(kui_key_of(ui, label) == k.sink, "and kui_key_of of that label is the key again");
     check(!kui_label_of(ui, 0x1234, &label), "kui_label_of is false for an unknown key");
-    /* A slot with nothing loaded under its namespace is a placed, empty
-     * node; kept, replayed and read back the same (ADR 0045): nothing
-     * filled it, so nothing was kept, and the replay says so. */
-    check(kui_slot(ui, KUI_STR("nobody/slot"), NULL), "kui_slot declares a slot nobody fills");
-    check(kui_slot_kept(ui, KUI_STR("nobody/kept"), NULL), "kui_slot_kept declares one too");
-    check(kui_slot_replay(ui, KUI_STR("nobody/replay"), NULL) == KUI_SLOT_NOT_KEPT,
-          "kui_slot_replay with nothing kept fills fresh and says not-kept");
-    check(kui_slot_fill(ui, KUI_STR("nobody/replay")) == KUI_SLOT_NOT_KEPT,
-          "kui_slot_fill reads the answer back");
-    check(kui_slot_fill(ui, KUI_STR("nobody/slot")) == KUI_SLOT_UNDECLARED,
-          "and nothing for a slot never replayed");
+    /* A component under a namespace nothing was loaded into is placed
+     * nowhere: KUI_FILL_NONE and an unknown-component warning (ADR 0067).
+     * The extension contract's own placements are host.c's and
+     * conformance.c's. */
+    check(kui_component(ui, KUI_STR("nobody/panel"), NULL, NULL, NULL) == KUI_FILL_NONE,
+          "kui_component of nothing loaded answers KUI_FILL_NONE");
+    {
+        KuiWarning unknown[4];
+        size_t n = kui_take_warnings(ui, unknown, sizeof unknown / sizeof unknown[0]);
+        check(n == 1 && kui_str_eq(unknown[0].code, "unknown-component"),
+              "and warns unknown-component");
+    }
     kui_focus(ui, kui_key_of(ui, KUI_STR("sink")));
     check(kui_is_focused(ui, k.sink), "kui_is_focused");
     KuiStr no_text = {0};
@@ -1585,14 +1586,20 @@ static int surface(void) {
         kui_set_inspect(ui, true);
         kui_frame_begin(ui, 800, 600, 2.0f);
         surface_view(&k, ui);
-        /* A declared tab of each form (ADR 0032): the extension form names a
-         * slot nobody loaded (harmless: not on show, and a tab's slot raises
-         * no unknown-slot); the host form's open answers false since the
-         * name kui_set_devtools_tab selected above is listed only from the
-         * panel's next frame, so its body is skipped. A second declaration
-         * of a name is refused. */
-        check(kui_devtools_tab(ui, KUI_STR("plug"), KUI_STR("Plugin"), KUI_STR("ts/panel")), "kui_devtools_tab");
-        check(!kui_devtools_tab(ui, KUI_STR("plug"), KUI_STR("Again"), KUI_STR("ts/again")), "a name twice is refused");
+        /* A declared tab of each form (ADR 0032, ADR 0067): the extension
+         * form names a component nobody loaded (harmless: not on show, so
+         * nothing is placed), with props whose on* entries are the messages
+         * its events would reach us as; the host form's open answers false
+         * since the name kui_set_devtools_tab selected above is listed only
+         * from the panel's next frame, so its body is skipped. A second
+         * declaration of a name is refused. */
+        KuiValue *tab_props = kui_value_map();
+        kui_value_map_set(tab_props, KUI_STR("onPick"), kui_value_str(KUI_STR("picked")));
+        check(kui_devtools_tab(ui, KUI_STR("plug"), KUI_STR("Plugin"), KUI_STR("ts/panel"), tab_props),
+              "kui_devtools_tab");
+        kui_value_free(tab_props);
+        check(!kui_devtools_tab(ui, KUI_STR("plug"), KUI_STR("Again"), KUI_STR("ts/again"), NULL),
+              "a name twice is refused");
         if (kui_devtools_tab_open(ui, KUI_STR("mine"), KUI_STR("Mine"))) {
             check(false, "kui_devtools_tab_open: not on show, so nothing opens");
             kui_close(ui);
@@ -1685,11 +1692,12 @@ static int surface(void) {
         kui_ctx_free(rec);
     }
 
-    /* A standalone context is nobody's slot. */
+    /* A standalone context is no component's instance. */
     {
         KuiStr name = {0};
-        check(!kui_slot_name(ui, &name) && !kui_slot_namespace(ui, &name),
-              "kui_slot_name / kui_slot_namespace are false outside an extension");
+        check(!kui_instance_name(ui, &name) && !kui_instance_namespace(ui, &name),
+              "kui_instance_name / kui_instance_namespace are false outside an extension");
+        check(kui_instance_params(ui) == NULL, "and kui_instance_params is NULL");
     }
 
     /* And none of that raised a diagnostic either. */

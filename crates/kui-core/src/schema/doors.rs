@@ -60,7 +60,7 @@ use Cell::{As, Is, No};
 /// the host hands it for one `view`, not a handle on the host.
 /// It declares a tree and answers events; what it registers, drives,
 /// times or reads back is the host's.
-pub const GUEST: &str = "a script is a guest in the host's frame (ADR 0014): its env is the view's reading, and registering, driving, pacing and reading back are the host's";
+pub const GUEST: &str = "a script is a guest in the host's frame (ADR 0067): its env is the view's reading, and registering, driving, pacing and reading back are the host's";
 
 /// The reason for Lua's `No` on the resource rows.
 const NO_HANDLE: &str = "a script owns no handle: the host registers and the script names the id it was given (`image { id = }`, `font = id`, `audio { src = id }`)";

@@ -313,14 +313,25 @@ close_devtools_tab :: proc(ui: ^Ui, _, _: string, opened: bool) {
 	if opened do c.close(ui)
 }
 
-// -- Components (ADR 0060) ----------------------------------------------------
+// -- Components (ADR 0060, ADR 0067) ------------------------------------------
+
+// How a placement was filled (kui.h's KUI_FILL_*): what component and
+// component_with answer.
+FILL_NONE :: c.FILL_NONE // nothing provides it, or outside a frame
+FILL_REPLAYED :: c.FILL_REPLAYED // last frame's nodes, pushed again; the extension not asked
+FILL_NOT_KEPT :: c.FILL_NOT_KEPT // nothing kept: its first frame, fresh, a root, or a frame skipped it
+FILL_PARAMS :: c.FILL_PARAMS // the props differ from the kept fill's
+FILL_READS :: c.FILL_READS // a fact of the frame the fill read has moved
+FILL_NOT_REPLAYABLE :: c.FILL_NOT_REPLAYABLE // it declared of the frame, or failed
+FILL_HEARD :: c.FILL_HEARD // the instance heard one of its own events since it was filled
 
 // A component an extension provides, placed here and keyed by where it is
-// (or by "key" in props): name is namespace/component, props what its fill
+// (or by "key" in props): name is namespace/component ("namespace/root" is
+// that extension's view, drawn fresh every frame), props what its fill
 // reads - "fresh": true asks every frame, and its on* entries are the
 // messages its events arrive as. An unchanged instance is replayed without
-// asking the extension. Answers a slot fill code, -1 when nothing provides
-// it (unknown-component).
+// asking the extension. Answers how it was filled, one of the FILL_* codes
+// below (FILL_NONE, -1, when nothing provides it: unknown-component).
 // Rust: Ui::component.
 component :: proc(ui: ^Ui, name: string, props: any = nil) -> i32 {
 	scratch: Scratch

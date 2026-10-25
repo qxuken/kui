@@ -7,8 +7,8 @@
 --   return { include_dir = { "types" }, global_env_def = "kui" }
 --
 -- `tl check view.tl` types a view against it, and `tl gen view.tl`
--- writes the `view.lua` a host loads. `view(env: kui.Env, slot:
--- kui.Slot): kui.Node` and `on_event(ev: kui.Event, at: kui.Envelope)`
+-- writes the `view.lua` a host loads. `view(env: kui.Env, inst:
+-- kui.Instance): kui.Node` and `on_event(ev: kui.Event, at: kui.Envelope)`
 -- are the script's own globals; an app's message is a record that
 -- extends `kui.Event` (and the `kui.With…` field its event fills),
 -- cast from `ev`.
@@ -114,7 +114,7 @@ global type kui = record
   end
 
   enum EventKind
-    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "reply" "component" "range"
+    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "component" "range"
   end
 
   enum DragEventPhase
@@ -762,9 +762,11 @@ global type kui = record
     node_key: integer
     -- The window it came from, as `env.window.id` reads; a `window` event's data, which has the name.
     window: integer | WindowEvent
-    -- The full name of the slot the node was filled into.
-    slot: string
-    -- The namespace of the plugin a reply came from.
+    -- The key of the component instance the node was drawn in.
+    instance: integer
+    -- That instance's full name, `ns/name`.
+    component: string
+    -- The namespace of the plugin that raised it.
     from: string
     -- The message's own `kind`: the core never writes one.
     kind: string
@@ -777,7 +779,8 @@ global type kui = record
     event: EventKind
     node_key: integer
     window: integer
-    slot: string
+    instance: integer
+    component: string
     from: string
   end
 
@@ -1521,8 +1524,6 @@ global type kui = record
     request_frame_for: function(why: string)
     -- Loads a plugin under a namespace; a `KuiWindow` takes its list at construction (`extensions`).
     add_extension: function(namespace: string, path: string): boolean, string
-    -- What the last `slot_replay` of a name answered this frame, or the frame before while this one is being built: replayed, or why it was filled fresh (ADR 0045).
-    slot_fill: function(name: string): string
     -- The namespaces loaded.
     extension_namespaces: function(): {string}
     -- Names the exit a node leaves by if this frame stops declaring it, over the one it declared: a throw a button aims.
@@ -1531,13 +1532,13 @@ global type kui = record
     request_frame_at: function(at: number)
   end
 
-  -- `view`'s second argument: which slot the host is filling.
-  record Slot
-    -- The slot in the script's own vocabulary.
+  -- `view`'s second argument and a component's third: which instance is drawn.
+  record Instance
+    -- The component in the script's own vocabulary; `root` for `view`.
     name: string
     -- What the host loaded the script under.
     namespace: string
-    -- The host's table, nil when it passed none; cast what it reads (`slot.params.title as string`).
+    -- `view`'s props, nil when the host passed none; a component gets them as its own argument.
     params: {string:any}
     -- The integer key events and `set_focus` use.
     key: integer
@@ -1733,27 +1734,17 @@ global latency_graph: function(): kui.Node
 -- latency_hud { at = { "end", "end" } }
 global latency_hud: function(t?: kui.latencyGraph): kui.Node
 
--- fill { name = "todos/panel", params = { ... } }: the position a plugin
--- this script loaded draws in -- a place among its siblings, not a box
--- around anything, and keyed inside this script's own fill (ADR 0014).
--- It draws nothing itself. `name` is the full "namespace/slot" -- the
--- namespace given to env.add_extension and the slot in the plugin's own
--- vocabulary. Draws an empty position when nothing answers to the name.
--- 
--- Named `fill` and not `slot` because `slot` is view's second argument,
--- and a script that took it would shadow the constructor in the one
--- function that needs it. A fill is what the core calls this anyway: the
--- thing an extension draws.
-global fill: function(t: kui.Props): kui.Node
-
--- devtools_tab { name = "syntax", label = "Tree-sitter", slot = "ts/panel" }
+-- devtools_tab { name = "syntax", label = "Tree-sitter", component = "ts/panel",
+--   props = { on_pick = { kind = "picked" } } }
 -- devtools_tab { name = "syntax", label = "Tree-sitter", view = function()
 --   return column { text("identifier 12:4") }
 -- end }
 -- 
 -- A tab in the core's devtools panel (ADR 0032), beside facts, events,
--- tree and perf. The first form names a slot a plugin fills: the panel declares it
--- in the tab's body while the tab is on show. The second is the script's
+-- tree and perf. The first form names a component a plugin provides: the
+-- panel places it in the tab's body while the tab is on show, with `props`
+-- and the panel's facts (ADR 0067); its events arrive as the messages in
+-- `props`. The second is the script's
 -- own content: `view` is called only while the tab is on show -- so a tab
 -- nobody looks at costs its declaration and nothing else -- and the tree
 -- it returns is drawn over the tab's body, the script's to hear as any of

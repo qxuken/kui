@@ -253,7 +253,7 @@ fn a_click_on_the_hosts_children_is_the_hosts_and_names_no_slot() {
     assert_eq!(host.len(), 1, "{host:?}");
     assert_eq!(host[0].origin, OriginId::HOST);
     assert_eq!(host[0].event, EventKind::Click);
-    assert_eq!(host[0].slot, None);
+    assert_eq!(host[0].instance, None);
     assert_eq!(host[0].payload.get_str("tag"), Some("alpha"));
 }
 

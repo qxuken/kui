@@ -334,30 +334,17 @@ function latency_hud(t)
   return t
 end
 
--- fill { name = "todos/panel", params = { ... } }: the position a plugin
--- this script loaded draws in -- a place among its siblings, not a box
--- around anything, and keyed inside this script's own fill (ADR 0014).
--- It draws nothing itself. `name` is the full "namespace/slot" -- the
--- namespace given to env.add_extension and the slot in the plugin's own
--- vocabulary. Draws an empty position when nothing answers to the name.
---
--- Named `fill` and not `slot` because `slot` is view's second argument,
--- and a script that took it would shadow the constructor in the one
--- function that needs it. A fill is what the core calls this anyway: the
--- thing an extension draws.
-function fill(t)
-  t.type = "fill"
-  return t
-end
-
--- devtools_tab { name = "syntax", label = "Tree-sitter", slot = "ts/panel" }
+-- devtools_tab { name = "syntax", label = "Tree-sitter", component = "ts/panel",
+--   props = { on_pick = { kind = "picked" } } }
 -- devtools_tab { name = "syntax", label = "Tree-sitter", view = function()
 --   return column { text("identifier 12:4") }
 -- end }
 --
 -- A tab in the core's devtools panel (ADR 0032), beside facts, events,
--- tree and perf. The first form names a slot a plugin fills: the panel declares it
--- in the tab's body while the tab is on show. The second is the script's
+-- tree and perf. The first form names a component a plugin provides: the
+-- panel places it in the tab's body while the tab is on show, with `props`
+-- and the panel's facts (ADR 0067); its events arrive as the messages in
+-- `props`. The second is the script's
 -- own content: `view` is called only while the tab is on show -- so a tab
 -- nobody looks at costs its declaration and nothing else -- and the tree
 -- it returns is drawn over the tab's body, the script's to hear as any of

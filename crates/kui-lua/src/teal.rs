@@ -88,7 +88,6 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("perf_gauge", "name: string, value: number", ""),
     ("perf_mark", "name: string", ""),
     ("perf_measuring", "", "boolean"),
-    ("slot_fill", "name: string", "string"),
     ("exit_with", "key: KeyRef, exit: any", ""),
     ("set_focus", "key: KeyRef", ""),
     ("blur", "", ""),
@@ -205,9 +204,9 @@ const ENV_SHAPES: &[(&str, &[(&str, &str)])] = &[
     ),
 ];
 
-/// `view`'s second argument, as the crate docs give it.
-const SLOT: &[(&str, &str, &str)] = &[
-    ("name", "string", "The slot in the script's own vocabulary."),
+/// `view`'s and a component's last argument, as the crate docs give it.
+const INSTANCE: &[(&str, &str, &str)] = &[
+    ("name", "string", "The component in the script's own vocabulary; `root` for `view`."),
     (
         "namespace",
         "string",
@@ -216,7 +215,7 @@ const SLOT: &[(&str, &str, &str)] = &[
     (
         "params",
         "{string:any}",
-        "The host's table, nil when it passed none; cast what it reads (`slot.params.title as string`).",
+        "`view`'s props, nil when the host passed none; a component gets them as its own argument.",
     ),
     (
         "key",
@@ -314,8 +313,8 @@ pub fn teal_decls() -> String {
          --   return { include_dir = { \"types\" }, global_env_def = \"kui\" }\n\
          --\n\
          -- `tl check view.tl` types a view against it, and `tl gen view.tl`\n\
-         -- writes the `view.lua` a host loads. `view(env: kui.Env, slot:\n\
-         -- kui.Slot): kui.Node` and `on_event(ev: kui.Event, at: kui.Envelope)`\n\
+         -- writes the `view.lua` a host loads. `view(env: kui.Env, inst:\n\
+         -- kui.Instance): kui.Node` and `on_event(ev: kui.Event, at: kui.Envelope)`\n\
          -- are the script's own globals; an app's message is a record that\n\
          -- extends `kui.Event` (and the `kui.With…` field its event fills),\n\
          -- cast from `ev`.\n\n\
@@ -389,9 +388,11 @@ fn events(t: &mut Teal, body: &mut String) {
          node_key: integer\n    \
          -- The window it came from, as `env.window.id` reads; a `window` event's data, which has the name.\n    \
          window: integer | WindowEvent\n    \
-         -- The full name of the slot the node was filled into.\n    \
-         slot: string\n    \
-         -- The namespace of the plugin a reply came from.\n    \
+         -- The key of the component instance the node was drawn in.\n    \
+         instance: integer\n    \
+         -- That instance's full name, `ns/name`.\n    \
+         component: string\n    \
+         -- The namespace of the plugin that raised it.\n    \
          from: string\n    \
          -- The message's own `kind`: the core never writes one.\n    \
          kind: string\n    \
@@ -403,7 +404,8 @@ fn events(t: &mut Teal, body: &mut String) {
          event: {kind}\n    \
          node_key: integer\n    \
          window: integer\n    \
-         slot: string\n    \
+         instance: integer\n    \
+         component: string\n    \
          from: string\n  \
          end\n"
     );
@@ -468,7 +470,7 @@ fn events(t: &mut Teal, body: &mut String) {
 
 /// `view`'s arguments: `env` with its facts (`schema::ENV_FIELDS`), the
 /// palette (`THEME_ROLES`), the metrics (`METRIC_ROLES`), the tokens and
-/// the calls (`DOORS`' Lua column), and `slot`.
+/// the calls (`DOORS`' Lua column), and `Instance`.
 fn env(body: &mut String) {
     for (name, fields) in ENV_SHAPES {
         let _ = writeln!(body, "  record {name}");
@@ -537,9 +539,9 @@ fn env(body: &mut String) {
     body.push_str("  end\n\n");
 
     body.push_str(
-        "  -- `view`'s second argument: which slot the host is filling.\n  record Slot\n",
+        "  -- `view`'s second argument and a component's third: which instance is drawn.\n  record Instance\n",
     );
-    for (f, ty, d) in SLOT {
+    for (f, ty, d) in INSTANCE {
         field(body, f, ty, d);
     }
     body.push_str("  end\n");
@@ -599,7 +601,7 @@ impl Teal {
             "Metrics",
             "Tokens",
             "Env",
-            "Slot",
+            "Instance",
         ]
         .map(String::from)
         .to_vec();
@@ -1128,7 +1130,7 @@ mod tests {
     /// have only the fields the file gives theirs.
     #[test]
     fn the_env_record_is_the_env() {
-        use kui_core::{Core, Key, Rect, Size, Instance};
+        use kui_core::{Core, Key, Rect, Size};
         let mut paths: Vec<&str> = schema::ENV_FIELDS
             .iter()
             .flat_map(|f| f.lua.iter().copied())
@@ -1198,7 +1200,7 @@ mod tests {
         core.env.window.native_controls = Some(Rect::new(0.0, 0.0, 78.0, 28.0));
         let frame = |core: &mut Core, ext: &mut crate::LuaExtension| {
             let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&kui_core::Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -1280,8 +1282,6 @@ mod tests {
     #[test]
     fn a_teal_view_checks_and_its_lua_runs() {
         let src = r#"
-global slots = { "root" }
-
 local todos = { "ship the layout solver", "wire up wgpu" }
 local done: {integer:boolean} = {}
 local heights = row_heights(100, 24)
@@ -1292,9 +1292,9 @@ end
 local record Pan is kui.Event, kui.WithDrag
 end
 
-global function view(env: kui.Env, slot: kui.Slot): kui.Node
+global function view(env: kui.Env, inst: kui.Instance): kui.Node
   local t = env.theme
-  local params = slot.params or {}
+  local params = inst.params or {}
   local items: {kui.Node} = {}
   for i, todo in ipairs(todos) do
     items[#items + 1] = row {
@@ -1358,7 +1358,7 @@ end
         let mut core = kui_core::Core::new();
         for _ in 0..2 {
             let mut ui = core.frame(kui_core::Size::new(800.0, 600.0), 1.0);
-            ext.view(&kui_core::Slot::root(), &mut ui).unwrap();
+            ext.view(&kui_core::Instance::root(), &mut ui).unwrap();
             ui.finish();
         }
         assert!(core.output().0.quads.len() > 3);

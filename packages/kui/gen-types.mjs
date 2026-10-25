@@ -300,7 +300,7 @@ ${tableOf(['JSX', 'Lua', 'C', 'Odin', 'notes'], elements.map((e) => [e.jsx, e.lu
 
 ## Events
 
-Events are plain data: \`{ origin, window, key, event, payload, slot }\`
+Events are plain data: \`{ origin, window, key, event, payload, instance }\`
 from \`pollEvents()\` in Node, \`on_event(ev)\` in Lua, and
 \`kui_poll_event\` in C. \`event\` is which event it was; \`origin\` is which
 frontend drew the node (0 = the app, 1+ = an extension) and \`window\` is
@@ -467,7 +467,7 @@ Lua's \`env\`), the same thing in another
 form (a prop, a reading, a callback, a constructor option), or — in
 italics — the reason the binding has none. The reasons are the point: the
 bindings are not one surface. A Lua script is a guest in the host's frame
-([ADR 0014](adr/0014-slots-an-extension-fills-in-place.md)) whose env is
+([ADR 0067](adr/0067-slots-fold-into-components.md)) whose env is
 a reading, so registering, driving, pacing and reading back are the
 host's; Node's \`Ctx\` drives a headless core and its \`KuiWindow\` is
 driven by the runner, so the driver's half is on \`Ctx\` alone; and a

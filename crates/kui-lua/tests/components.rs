@@ -1,4 +1,4 @@
-//! Components from Lua (ADR 0060): a script's `components` table provides
+//! Components from Lua (ADR 0060, ADR 0067): a script's `components` table provides
 //! them, `children()` puts a host's children where the function says,
 //! `emit` raises an event the host hears as its own message — whether the
 //! host is Rust or another script — and a script places its own components
@@ -52,6 +52,8 @@ const HOST: &str = r#"
     end
     function on_event(ev)
       heard[#heard + 1] = ev.kind .. ":" .. ev.event .. ":" .. tostring(ev.click and ev.click.count)
+      -- Not an emit: dropped (ADR 0067). The host placed nothing of this
+      -- script's to hear it as.
       return { heard = heard[#heard] }
     end
 "#;
@@ -59,6 +61,9 @@ const HOST: &str = r#"
 struct Rig {
     core: Core,
     exts: Extensions,
+    /// The host script's interpreter, when there is one: what it heard is
+    /// read back from its globals.
+    app: Option<mlua::Lua>,
 }
 
 fn rig(host: Option<&str>) -> Rig {
@@ -68,16 +73,15 @@ fn rig(host: Option<&str>) -> Rig {
         Box::new(LuaExtension::from_source("kit.lua", KIT).unwrap()),
     )
     .unwrap();
-    if let Some(src) = host {
-        exts.push_as(
-            "app",
-            Box::new(LuaExtension::from_source("app.lua", src).unwrap()),
-        )
-        .unwrap();
-    }
+    let app = host.map(|src| {
+        let ext = LuaExtension::from_source("app.lua", src).unwrap();
+        let lua = ext.lua().clone();
+        exts.push_as("app", Box::new(ext)).unwrap();
+        lua
+    });
     let mut core = Core::new();
     core.set_inspect(true);
-    Rig { core, exts }
+    Rig { core, exts, app }
 }
 
 impl Rig {
@@ -170,13 +174,16 @@ fn a_lua_host_places_components_and_hears_their_events() {
             .iter()
             .any(|w| w.code == "children-misplaced"
                 || w.code == "unknown-component"
-                || w.code == "recursive-slot")
+                || w.code == "recursive-component")
     );
     // The button is the host's first node, at its padding.
     let events = click_at(&mut r.core, 20.0, 20.0);
     let mut host = Vec::new();
     r.exts.route(events, |ev| host.push(ev));
-    // The host script heard it and replied to the Rust host.
-    assert_eq!(host.len(), 1, "{host:?}");
-    assert_eq!(host[0].payload.get_str("heard"), Some("saved:component:1"));
+    // The host script heard it as its own message; what it returned is no
+    // emit, so the Rust host hears nothing.
+    assert!(host.is_empty(), "{host:?}");
+    let heard: mlua::Table = r.app.as_ref().unwrap().globals().get("heard").unwrap();
+    assert_eq!(heard.raw_len(), 1);
+    assert_eq!(heard.get::<String>(1).unwrap(), "saved:component:1");
 }

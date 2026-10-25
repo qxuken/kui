@@ -7,13 +7,12 @@
 use super::*;
 use crate::slot::{Children, Instance};
 
-/// A fill being drawn: the slot or instance it fills, and for an
-/// instance what its host's children are built against.
+/// A fill being drawn: the instance it draws, and what its host's
+/// children are built against.
 #[derive(Clone)]
 pub(crate) struct FillFrame {
     key: Key,
-    /// Whether this is a component instance, whose fill may ask for the
-    /// host's children.
+    /// Whether the placement passed children, which the fill may ask for.
     instance: bool,
     /// The origin that placed it, and the namespace its nodes were keyed
     /// in: what the host's children are built under.
@@ -181,7 +180,7 @@ impl Core {
             self.warn(crate::diag::children_misplaced(
                 key,
                 group,
-                "by a slot's fill, which holds none (a component's does)",
+                "by a fill placed with no children: an extension's root, or a devtools tab's",
             ));
             return None;
         }

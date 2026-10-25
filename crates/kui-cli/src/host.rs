@@ -349,6 +349,16 @@ impl App for Runner {
             .set_wake(Box::new(move || waker.lock().unwrap().wake()));
     }
 
+    // A request the app's own server queued, or a reply a task is waiting
+    // on, is answered as the wake arrives rather than at the frame it asks
+    // for, which waits for the display: a task requesting its own server
+    // took two refreshes a round trip.
+    fn on_wake(&mut self) {
+        if let Err(e) = modules::drain(&self.lua) {
+            self.shared.error(e.to_string());
+        }
+    }
+
     fn view(&mut self, ui: &mut Ui<'_>) {
         ui.configure_root(NodeSpec::column().fill());
         // Kit's palette before the app's first node: the app's root is

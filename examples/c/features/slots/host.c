@@ -1,16 +1,18 @@
-/* C as the host of a C extension: the third corner of the slots story.
+/* C as the host of a C extension: the third corner of the extension story.
  *
  * apps/counter.c is C with kui as a library. panel.c is C as a *guest*
- * inside a Rust host (panel.rs). This is the pair those two left open - C on both
- * sides - and until ABI 10 the C API could not express it: loading a plugin
- * was `kui_ffi::CExtension`, which is Rust, so a C host could declare a slot
- * with kui_slot and had nothing to put in it.
+ * inside a Rust host (panel.rs). This is the pair those two left open - C on
+ * both sides - and until ABI 10 the C API could not express it: loading a
+ * plugin was `kui_ffi::CExtension`, which is Rust, so a C host had nothing to
+ * place.
  *
  * It loads panel.c, beside this file, under a namespace of its own choosing,
- * declares that plugin's slot in the middle of its own view, and counts what
- * comes back. The panel is the *same binary* panel.rs loads: an extension
- * does not know or care what language its host is written in, which is the
- * point of ADR 0014's contract being C in the first place.
+ * places that plugin's `panel` component in the middle of its own view with
+ * kui_component (docs/adr/0067-slots-fold-into-components.md), and counts the
+ * `on_toggle` message it passed in the props as it comes back. The panel is
+ * the *same binary* panel.rs loads: an extension does not know or care what
+ * language its host is written in, which is the point of the extension
+ * contract being C in the first place.
  *
  * Run:
  *   cargo run -p kui-devtools --bin cbuild -- --run   # every platform
@@ -21,8 +23,9 @@
  * --headless is the contract without a display, and it is what CI runs: it
  * builds a frame the way the runner does, finds a row the plugin drew,
  * clicks it, and checks that the click reached the plugin and not the host
- * and that the plugin's reply reached the host with the plugin's origin on
- * it. Which is panel.rs's --headless, from the other side.
+ * and that the plugin's emit reached the host as the host's own message,
+ * about the panel's instance. Which is panel.rs's --headless, from the other
+ * side.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,9 +34,9 @@
 #include "kui.h"
 
 /* The namespace we load the panel under: ours to choose, and what fronts
- * the slot name. The plugin calls its own slot "panel". */
+ * the component's name. The plugin calls its own component "panel". */
 #define NS "todos"
-#define PANEL_SLOT NS "/panel"
+#define PANEL NS "/panel"
 
 /* Which panel to load when none is named: the one the build script leaves
  * beside this executable, in target/<profile>/. The profile is a define
@@ -67,12 +70,12 @@
 #endif
 
 typedef struct {
-    long long clicks;  /* our own button */
-    long long toggles; /* replies from the panel */
-    uint16_t reply_from;
-    uint64_t reply_slot; /* which slot's fill the reply is about */
-    long long pressed;   /* the badge's onPress, heard as our own message */
-    int frames;          /* frames built: the first keeps the panel's fill, the rest replay it */
+    long long clicks;     /* our own button */
+    long long toggles;    /* the panel's on_toggle, heard as our own message */
+    int64_t toggled;      /* which row it said, from the fields riding with it */
+    uint64_t toggle_from; /* the instance the event is about: KuiEvent.key */
+    long long pressed;    /* the badge's onPress, heard as our own message */
+    int32_t panel_fill;   /* how the last frame filled the panel: a KUI_FILL_* code */
 } Host;
 
 static KuiValue *msg(const char *kind) {
@@ -131,28 +134,27 @@ static void view(void *user, KuiCtx *ui) {
     }
     kui_close(ui);
 
-    /* The plugin's half, in place: a position among our own children,
-     * filled then and there by whoever we loaded under `todos`. The params
-     * are its title and the shape of the reply we want back on a toggle -
-     * declared every frame, retained by nobody, ours to free. */
+    /* The plugin's half, in place: a component placed among our own
+     * children, drawn then and there by whoever we loaded under `todos`.
+     * The props are its title and the message we want back when a todo is
+     * toggled - declared every frame, retained by nobody, ours to free.
+     * `key` keys the instance by name rather than by position.
+     *
+     * Replayed by default (ADR 0067): nothing this host feeds the panel
+     * changes between frames, so the core pushes the panel's nodes again
+     * without asking it - unless something it read of the frame moved (the
+     * pointer onto a row it hover-tracks) or it heard an event, when it
+     * runs the panel and the answer says why. */
     KuiValue *params = kui_value_map();
+    kui_value_map_set(params, KUI_STR("key"), kui_value_str(KUI_STR(PANEL)));
     kui_value_map_set(params, KUI_STR("title"), kui_value_str(KUI_STR("todos, from C")));
     kui_value_map_set(params, KUI_STR("on_toggle"), msg("toggled"));
-    /* Kept the first frame, replayed after (ADR 0045): nothing this host
-     * feeds the panel changes between frames, so the core pushes the
-     * panel's nodes again without asking it - unless something it read
-     * of the frame moved (the pointer onto a row it hover-tracks), when
-     * it runs the panel and says so in kui_slot_fill. */
-    if (h->frames == 0)
-        kui_slot_kept(ui, KUI_STR(PANEL_SLOT), params);
-    else
-        kui_slot_replay(ui, KUI_STR(PANEL_SLOT), params);
-    h->frames++;
+    h->panel_fill = kui_component(ui, KUI_STR(PANEL), params, NULL, NULL);
     kui_value_free(params);
 
-    /* And a component the panel provides (docs/adr/0060): placed like a
-     * node, as often as we like, with our own child inside it and the
-     * message its press arrives as in its props. */
+    /* And a second component the panel provides (docs/adr/0060): placed
+     * like a node, as often as we like, with our own child inside it and
+     * the message its press arrives as in its props. */
     KuiValue *props = kui_value_map();
     kui_value_map_set(props, KUI_STR("label"), kui_value_str(KUI_STR("badge")));
     kui_value_map_set(props, KUI_STR("onPress"), msg("pressed"));
@@ -167,19 +169,24 @@ static void on_event(void *user, const KuiEvent *ev) {
     KuiStr s;
     if (!kind || !kui_value_as_str(kind, &s)) return;
 
-    /* Our own nodes come back with origin 0. A reply carries the origin of
-     * the extension that made it, which is what tells the two apart - and
-     * kui_ctx_extension_namespace turns that number back into `todos`. */
-    if (kui_str_eq(s, "count") && ev->origin == 0) {
+    /* Our own nodes come back with origin 0, and so do the messages we
+     * passed a component: they are ours, raised by the extension with
+     * kui_emit, and `event` says "component". The extension's own clicks
+     * carry its origin and never reach us. */
+    if (ev->origin != 0) return;
+    if (kui_str_eq(s, "count")) {
         h->clicks++;
     } else if (kui_str_eq(s, "pressed") && kui_str_eq(ev->event, "component")) {
         h->pressed++;
-    } else if (kui_str_eq(s, "toggled")) {
+    } else if (kui_str_eq(s, "toggled") && kui_str_eq(ev->event, "component")) {
         h->toggles++;
-        h->reply_from = ev->origin;
-        /* And which slot: one plugin may fill several, and `origin` cannot
-         * say which one this row was in. */
-        h->reply_slot = ev->slot;
+        /* What the panel said rides under the prop's field: on_toggle's is
+         * `toggle`. And `key` is the instance it is about - one plugin may
+         * be placed many times, and `origin` cannot say which. */
+        const KuiValue *toggle = kui_value_get(ev->payload, KUI_STR("toggle"));
+        const KuiValue *index = toggle ? kui_value_get(toggle, KUI_STR("index")) : NULL;
+        if (!index || !kui_value_as_int(index, &h->toggled)) h->toggled = -1;
+        h->toggle_from = ev->key;
     }
 }
 
@@ -260,19 +267,25 @@ static int headless(const char *plugin) {
     printf("loaded %u extension(s)\n", kui_ctx_extension_count(ctx));
 
     frame(ctx, &host);
+    if (host.panel_fill != KUI_FILL_NOT_KEPT) {
+        fprintf(stderr, "FAIL: the first frame did not fill the panel (%d)\n",
+                host.panel_fill);
+        kui_ctx_free(ctx);
+        return 1;
+    }
     /* A second frame with nothing moved: the kept fill is replayed, and
-     * the row is still there to find (ADR 0045). */
+     * the row is still there to find (ADR 0067). */
     frame(ctx, &host);
-    if (kui_slot_fill(ctx, KUI_STR(PANEL_SLOT)) != KUI_SLOT_REPLAYED) {
+    if (host.panel_fill != KUI_FILL_REPLAYED) {
         fprintf(stderr, "FAIL: the second frame did not replay the panel (%d)\n",
-                kui_slot_fill(ctx, KUI_STR(PANEL_SLOT)));
+                host.panel_fill);
         kui_ctx_free(ctx);
         return 1;
     }
 
     float x = 0, y = 0;
     if (!find_row(ctx, 1, &x, &y)) {
-        fprintf(stderr, "FAIL: the panel drew no rows - did the slot fill?\n");
+        fprintf(stderr, "FAIL: the panel drew no rows - was it placed?\n");
         kui_ctx_free(ctx);
         return 1;
     }
@@ -318,26 +331,32 @@ static int headless(const char *plugin) {
         rc = 1;
     }
     if (host.toggles != 1) {
-        fprintf(stderr, "FAIL: expected one reply from the panel, got %lld\n",
+        fprintf(stderr, "FAIL: expected the panel's on_toggle once, heard %lld\n",
                 host.toggles);
         rc = 1;
     }
-    KuiStr ns = {0};
-    if (rc == 0 && !kui_ctx_extension_namespace(ctx, host.reply_from, &ns)) {
-        fprintf(stderr, "FAIL: the reply's origin %u names no extension\n",
-                host.reply_from);
+    if (rc == 0 && host.toggled < 0) {
+        fprintf(stderr, "FAIL: the on_toggle carried no toggle.index\n");
         rc = 1;
     }
-    if (rc == 0 && host.reply_slot != kui_key_of(ctx, KUI_STR("todos/panel"))) {
-        fprintf(stderr, "FAIL: the reply names slot %llx, not todos/panel's\n",
-                (unsigned long long)host.reply_slot);
+    /* The instance it is about is the panel's: placed with `key`, so
+     * kui_key_of finds it by that name like a keyed node. */
+    if (rc == 0 && host.toggle_from != kui_key_of(ctx, KUI_STR(PANEL))) {
+        fprintf(stderr, "FAIL: the on_toggle names instance %llx, not %s's\n",
+                (unsigned long long)host.toggle_from, PANEL);
+        rc = 1;
+    }
+    /* Who drew the panel: the first extension, origin 1, named back. */
+    KuiStr ns = {0};
+    if (rc == 0 && !kui_ctx_extension_namespace(ctx, 1, &ns)) {
+        fprintf(stderr, "FAIL: origin 1 names no extension\n");
         rc = 1;
     }
     if (rc == 0)
-        printf("ok: the slot filled, the click reached the plugin and not the "
-               "host, its reply came back from `%.*s`, and the badge's press "
-               "arrived as our own message\n",
-               (int)ns.len, (const char *)ns.ptr);
+        printf("ok: `%.*s/panel` placed and replayed, the click reached the "
+               "plugin and not the host, its on_toggle (row %lld) and the "
+               "badge's press arrived as our own messages\n",
+               (int)ns.len, (const char *)ns.ptr, (long long)host.toggled);
     kui_ctx_free(ctx);
     return rc;
 }

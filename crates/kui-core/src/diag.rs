@@ -117,7 +117,7 @@ warnings! {
     /// picked the first in tree order. Labels are unique among siblings, not
     /// across a tree. An extension asking from inside a fill is answered
     /// from the nodes that fill opened and no one else's — not even its own
-    /// other slots' — and the host from its own first; so this is a clash
+    /// other instances' — and the host from its own first; so this is a clash
     /// among the asker's own. Give the node meant a label nothing else
     /// declares, or pass the hex key an event carried.
     /// Two nodes with the *same* key are `duplicate-key`.
@@ -466,8 +466,9 @@ warnings! {
     /// placed. Raised once per name and key.
     pub const UNKNOWN_COMPONENT: &str = "unknown-component";
     /// A fill asked for its host's children (`children()`) where they
-    /// cannot be: outside a component instance's fill — a slot's — or a
-    /// second time for one group. Nothing is built.
+    /// cannot be: outside a fill, in one placed with none (an extension's
+    /// root, a devtools tab), or a second time for one group. Nothing is
+    /// built.
     pub const CHILDREN_MISPLACED: &str = "children-misplaced";
     /// An `svg` element's document did not parse (ADR 0063): the message
     /// carries the parser's reason. The element draws an empty box of the
@@ -495,7 +496,7 @@ warnings! {
     pub const UNBALANCED_EXTENSION: &str = "unbalanced-extension";
     /// An extension's `view` returned an error. The message is drawn in
     /// red where the fill would have been, and reported here once per
-    /// extension and slot rather than once per frame.
+    /// extension and component rather than once per frame.
     pub const EXTENSION_VIEW_ERROR: &str = "extension-view-error";
     /// An extension placed one of its *own* components while it was
     /// drawing, with no spare handle to draw it (`Extension::reentry`), so
@@ -534,9 +535,10 @@ warnings! {
     pub const DUPLICATE_TAB: &str = "duplicate-tab";
     /// A `devtoolsTab` declaration a binding could not read as either
     /// form: a child that is not a function, both a
-    /// `slot` and a child, or a `view` that is not a function in Lua. The
-    /// tab was not declared. A tab names a slot for an extension to fill,
-    /// or carries a function the binding calls only when the tab is shown.
+    /// `component` and a child, or a `view` that is not a function in Lua.
+    /// The tab was not declared. A tab names a component an extension
+    /// provides, or carries a function the binding calls only when the tab
+    /// is shown.
     pub const BAD_DEVTOOLS_TAB: &str = "bad-devtools-tab";
     /// A select's `current` names no option the field can show: an index
     /// past its options, or a separator's. The field is drawn as if none
@@ -549,7 +551,7 @@ warnings! {
 }
 
 /// The [`DUPLICATE_TAB`] warning for one name. Keyed by the name, the way
-/// `duplicate_slot` is: a tab is not a node.
+/// a name-keyed warning is: a tab is not a node.
 pub fn duplicate_tab(name: &str) -> Warning {
     Warning {
         code: DUPLICATE_TAB,

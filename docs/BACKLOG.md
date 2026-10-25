@@ -3601,6 +3601,28 @@ and is in the archive. C59 — only a Rust host loaded a Lua extension,
 Kit's track A of M1 — was filed the same day and built with [ADR
 0059](adr/0059-a-lua-extension-loads-in-every-host.md), and is in the
 archive.
+C86 — slots folded into components — was settled by a grilling round
+and built with [ADR 0067](adr/0067-slots-fold-into-components.md), and is
+in the archive; C87 is the name that round left open.
+
+### `.` C87 — "Stock controls" names what kui ships, not what they are
+
+**Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
+components, kui has two kinds of thing a view places by name — the
+**widgets** the core draws (button, toggle, select, field; ADR 0034 calls
+them "stock controls") and the **components** an extension provides. The
+user kept the widgets (a core control is one node and no extension
+round trip, and every binding reaches it without a plugin) and did not
+want their scope frozen by a document, but asked whether "stock
+controls" is the right name: it says where they come from, which the
+reader of a view does not care about, and it sits badly beside
+"component".
+
+**Do.** Pick the word (candidates: *control*, *widget*, *built-in*),
+then rename it where it is a word and not a symbol: ADR 0034's title and
+body, the howto, the guide, props.md's section headings and the glossary,
+which gains it beside **Component**. No symbol changes unless the word
+does (`widgets::` in Rust is already the module).
 
 ## After alpha.58
 
@@ -5499,7 +5521,7 @@ move.
 
 - `.` **F205** — [A one-line text in a box that scrolls sideways is cut at the box with nothing to scroll to](backlog/closed-2026-09.md#-f205--a-one-line-text-in-a-box-that-scrolls-sideways-is-cut-at-the-box-with-nothing-to-scroll-to--done-2026-10-25) — done (2026-10-25) — a text in a `scroll_x` box is no narrower than its min-content
 - `.` **F206** — [The devtools' strip wraps tabs onto more lines, holds four placement buttons, and its tooltips cover the pane](backlog/closed-2026-09.md#-f206--the-devtools-strip-wraps-tabs-onto-more-lines-holds-four-placement-buttons-and-its-tooltips-cover-the-pane--done-2026-10-25) — done (2026-10-25) — "⋮" menu with the dock side, one scrolling tab line, short tooltips, drag-select followed from the inner scroller, the examples' View menu
-**From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner
+**From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 
 - `~` **C59** — [Only a Rust host loads a Lua extension](backlog/closed-2026-09.md#-c59--only-a-rust-host-loads-a-lua-extension--done-2026-10-25) — done (2026-10-25) — every host's door loads a `.lua` file or a folder holding `init.lua` (`kui_ffi::open_extension`), kui-lua opens C plugins through a loader kui-ffi registers, a loaded file's chunk is `@path` and its folder first on `package.path`
 - `~` **C60** — [An extension can fill a slot once a frame but provide nothing a host places as often as it likes](backlog/closed-2026-09.md#-c60--an-extension-can-fill-a-slot-once-a-frame-but-provide-nothing-a-host-places-as-often-as-it-likes--done-2026-10-25) — done (2026-10-25) — [ADR 0060](adr/0060-components-an-extension-provides.md): components placed by position, host children by group, events as the host's message through `emit`, replayed by default; doors in five bindings, a corpus scene in all five
@@ -5515,6 +5537,7 @@ move.
 - `~` **C83** — [What the runner still lacks for a real app](backlog/closed-2026-09.md#-c83--what-the-runner-still-lacks-for-a-real-app--done-2026-10-25) — done (2026-10-25) — `parse_args`, devtools Log tab + `kui.log`, `kui.devtools`, Dock name, `json.array`, `fs.walk`/`read_all`, `hash`, `process.command_line`
 - `~` **C84** — [A kept fill that asks for its own node before declaring it replays its first frame for good](backlog/closed-2026-09.md#-c84--a-kept-fill-that-asks-for-its-own-node-before-declaring-it-replays-its-first-frame-for-good--done-2026-10-25) — done (2026-10-25) — `Read::LabelMissing`
 - `.` **C85** — [Ledger draws an edge around everything](backlog/closed-2026-09.md#-c85--ledger-draws-an-edge-around-everything--done-2026-10-25) — done (2026-10-25) — ink rules for regions only; hairlines in the rule colour, segmented as a track, badges without outlines
+- `~` **C86** — [There are two ways to place what an extension draws](backlog/closed-2026-09.md#-c86--there-are-two-ways-to-place-what-an-extension-draws--done-2026-10-25) — done (2026-10-25) — ADR 0067: slots fold into components; typed messages only, replay by default, `instance` on events
 - `~` **C61** — [Nothing runs a Lua app without a host written in another language](backlog/closed-2026-09.md#-c61--nothing-runs-a-lua-app-without-a-host-written-in-another-language--done-2026-10-25) — done (2026-10-25) — [ADR 0064](adr/0064-the-kui-runner.md): the `kui` binary (`crates/kui-cli`): run, check, new, types; Kit built in; json/toml/yaml, .env, fs, process, timers, HTTP client and server, SQLite, workers over channels; tasks that yield; `--watch`, `--headless`, `--shot`; the Kit app
 - `.` **C73** — [A Lua host's children built inside another script's component are taken for that script's own](backlog/closed-2026-09.md#-c73--a-lua-hosts-children-built-inside-another-scripts-component-are-taken-for-that-scripts-own--done-2026-10-25) — done (2026-10-25) — the children closure restores its own script's build context
 - `.` **C74** — [An app cannot paint with an add-on's palette](backlog/closed-2026-09.md#-c74--an-app-cannot-paint-with-an-add-ons-palette--done-2026-10-25) — done (2026-10-25) — `Tokens::exported`: read by every origin after its own table and the host's

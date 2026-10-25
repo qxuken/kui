@@ -1,10 +1,12 @@
 // kui with Odin as the *extension*, not the host: a shared library a host
-// loads into its own frame (docs/adr/0014). The same panel as
-// examples/c/features/slots/panel.c and the Lua one, deliberately - the
-// extension contract is the contract, and the language is a detail. It
-// draws into the slot the host declares as "<namespace>/panel", keeps its
-// todos, hears its own clicks (the host never sees them), and answers a
-// toggle with the reply the host asked for in the slot's params.
+// loads into its own frame (docs/adr/0067-slots-fold-into-components.md).
+// The same panel as examples/c/features/slots/panel.c and the Lua one,
+// deliberately - the extension contract is the contract, and the language
+// is a detail. It provides two components: "panel", drawn where the host
+// places "<namespace>/panel", which keeps its todos, hears its own clicks
+// (the host never sees them) and raises the host's `on_toggle` with emit;
+// and "badge", a dot the host places as often as it likes with its own
+// children inside, whose press raises `onPress`.
 //
 // It links against nothing: built -build-mode:shared with KUI_PLUGIN, every
 // kui_* stays undefined and resolves from the host at load. So the one
@@ -26,11 +28,8 @@ Todo :: struct {
 }
 
 Panel :: struct {
-	todos:       [dynamic]Todo,
-	// The `kind` of the reply the host asked for on a toggle, copied out of
-	// the slot's params each frame: they are borrowed for the view, and the
-	// reply is made from on_event. Empty: the host wants no reply.
-	toggle_kind: string,
+	todos:   [dynamic]Todo,
+	presses: int, // the badges' dots, pressed so far
 }
 
 // The panel's own messages: they come back to on_event because the host
@@ -40,30 +39,24 @@ Toggle :: struct {
 }
 Add :: struct {}
 Clear :: struct {}
+Badge :: struct {}
 Msg :: union {
 	Toggle,
 	Add,
 	Clear,
-}
-
-// The reply: the host's template's kind, with what changed. A `kind` field
-// stands in for the type's own name.
-Toggled :: struct {
-	kind:  string,
-	index: int,
-	done:  bool,
+	Badge,
 }
 
 // -- the contract: seven exports, each one line -------------------------------
 
-SLOTS := [?]string{"panel"}
+COMPONENTS := [?]string{"panel", "badge"}
 
 @(export)
 kui_ext_abi :: proc "c" () -> u32 {return kui.ABI_VERSION}
 @(export)
 kui_ext_name :: proc "c" () -> cstring {return "odin panel"}
 @(export)
-kui_ext_slots :: proc "c" (count: ^uint) -> [^]string {return kui.ext_slots(SLOTS[:], count)}
+kui_ext_components :: proc "c" (count: ^uint) -> [^]string {return kui.ext_components(COMPONENTS[:], count)}
 @(export)
 kui_ext_init :: proc "c" () -> rawptr {return kui.ext_init(Panel, init)}
 @(export)
@@ -84,20 +77,22 @@ init :: proc(p: ^Panel) {
 teardown :: proc(p: ^Panel) {
 	for t in p.todos do if strings.has_prefix(t.text, "todo #") do delete(t.text)
 	delete(p.todos)
-	delete(p.toggle_kind)
 }
 
 view :: proc(p: ^Panel, ui: ^kui.Ui) {
-	// What the host passed with the slot, borrowed for this call: a title,
-	// and the template of the reply it wants on a toggle. Read by field, as
-	// any host's map is; a host's own kind for it means nothing here.
-	params := kui.slot_params(ui)
+	if name, _ := kui.instance_name(ui); name == "badge" {
+		badge(ui)
+		return
+	}
+	// What the host placed the panel with, borrowed for this call: a title.
+	// Read by field, as any host's map is; a host's own kind for it means
+	// nothing here. Its on_toggle is the host's business - emit names the
+	// prop and the core finds the host's message for it.
+	params := kui.instance_params(ui)
 	title, has_title := kui.as_string(kui.get(params, "title"))
 	if !has_title do title = "odin panel"
-	delete(p.toggle_kind)
-	p.toggle_kind = strings.clone(kui.kind(kui.get(params, "on_toggle")))
 
-	// Opened where the host declared the slot. Its colours are the *host's*
+	// Opened where the host placed it. Its colours are the *host's*
 	// theme (ADR 0019): a plugin is a guest in someone else's frame, and
 	// reading the palette is how it looks like it belongs.
 	t := kui.theme(ui)
@@ -146,15 +141,37 @@ view :: proc(p: ^Panel, ui: ^kui.Ui) {
 	}
 }
 
+// One badge: its label from the props, a pressable dot, and the host's own
+// children beside them - children puts them here, under the host's origin.
+badge :: proc(ui: ^kui.Ui) {
+	label, has_label := kui.as_string(kui.get(kui.instance_params(ui), "label"))
+	if !has_label do label = "badge"
+	t := kui.theme(ui)
+	if kui.row(ui, {gap = 6, cross_align = .Center, pad = {l = 6, r = 6, t = 2, b = 2}, bg = t.surface, radius = 8}) {
+		if kui.box(ui, {width = kui.px(12), height = kui.px(12), bg = t.accent, radius = 6, label = label, on_click = Badge{}}) {}
+		kui.text(ui, label, {size = 12, color = t.fg})
+		kui.children(ui, "")
+	}
+}
+
 on_event :: proc(p: ^Panel, ev: kui.Event) {
 	switch m in kui.message(ev, Msg) {
 	case Toggle:
 		if m.index < 0 || m.index >= len(p.todos) do return
 		p.todos[m.index].done = !p.todos[m.index].done
-		// The host asked to hear about this: its template, filled in.
-		if p.toggle_kind != "" {
-			kui.reply(ev, Toggled{p.toggle_kind, m.index, p.todos[m.index].done})
-		}
+		// Raise on_toggle: the host hears the message it passed for it,
+		// these fields under `toggle` - or nothing, when it passed none. An
+		// anonymous struct, so the fields carry no `kind` of their own.
+		kui.emit(ev, "on_toggle", struct {
+			index: int,
+			done:  bool,
+		}{m.index, p.todos[m.index].done})
+	case Badge:
+		// A badge's dot: raise its onPress, with how many presses so far.
+		p.presses += 1
+		kui.emit(ev, "onPress", struct {
+			presses: int,
+		}{p.presses})
 	case Add:
 		append(&p.todos, Todo{text = fmt.aprintf("todo #%d", len(p.todos) + 1)})
 	case Clear:

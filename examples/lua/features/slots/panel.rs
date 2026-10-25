@@ -3,17 +3,19 @@
 //! state, and gets its clicks routed back by origin — the host never
 //! inspects the script's UI.
 //!
-//! Where the panel goes is a *slot* the host declares in its own view
-//! (`docs/adr/0014-slots-an-extension-fills-in-place.md`): `ui.slot_with`
-//! is a position among the host's children, filled then and there, and the
-//! parameters it passes are the panel's title and the shape of the reply the
-//! host wants when a todo is toggled. The script answers by returning that
-//! reply from `on_event`, and the host counts what comes back.
+//! Where the panel goes is a *component* the host places in its own view
+//! (`docs/adr/0067-slots-fold-into-components.md`): `ui.component` is a
+//! position among the host's children, drawn then and there, and the props
+//! it passes are the panel's title and the message the host wants when a
+//! todo is toggled (`on_toggle`). The script raises it by returning
+//! `emit("on_toggle", …)` from `on_event`, and the host counts what comes
+//! back.
 //!
 //! The panel is deliberately the same panel as `examples/c/features/slots/panel.c`:
 //! the extension contract is the contract and the language is a detail. And
 //! once that plugin is built, the script loads it *itself* with
-//! `env.add_extension` and places it with `fill` — three languages deep.
+//! `env.add_extension` and places it with `component` — three languages
+//! deep.
 //!
 //! Run: cargo run -p kui-lua --example lua_panel [-- --headless]
 
@@ -21,16 +23,19 @@ use kui_devtools::Example;
 use kui_lua::LuaExtension;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Core, Extensions, InputEvent, NodeSpec, OriginId, Size, TextStyle, Ui, UiEvent,
-    Value, Vec2,
+    Align, App, Core, EventKind, Extensions, FillAnswer, InputEvent, NodeSpec, OriginId, Size,
+    TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 #[derive(Default)]
 struct Host {
     clicks: i64,
-    /// Replies from the panel: one per toggled todo, and who sent it.
+    /// The panel's `on_toggle`, one per toggled todo, and which row it
+    /// said.
     toggles: i64,
-    last_reply_from: Option<OriginId>,
+    last_toggled: Option<i64>,
+    /// How the last frame filled the panel.
+    panel_fill: Option<FillAnswer>,
 }
 
 impl App for Host {
@@ -62,14 +67,13 @@ impl App for Host {
         );
 
         // The panel's place: the second child of the root row, to the right
-        // of the column above. The params are the title the host wants on
-        // it and the reply it wants back on a toggle, as a template the
-        // script fills in.
-        // The name is `namespace/slot`: `todos` is what this host calls the
-        // script when it loads it (`extensions` below - the host decides,
-        // like an importer picking an alias), `panel` the slot the script
-        // lists.
-        ui.slot_with(
+        // of the column above. The props are the title the host wants on
+        // it and the message it wants back on a toggle.
+        // The name is `namespace/component`: `todos` is what this host
+        // calls the script when it loads it (`extensions` below - the host
+        // decides, like an importer picking an alias), `panel` a component
+        // the script's `components` table provides.
+        self.panel_fill = ui.component(
             "todos/panel",
             &Value::map([
                 ("title", "todos (from the host)".into()),
@@ -81,14 +85,17 @@ impl App for Host {
 
     fn on_event(&mut self, ev: UiEvent) {
         // The handler's message is the payload (ADR 0047): the button's
-        // `{kind: "click"}` as declared, and the script's reply as it
-        // returned it.
-        match ev.payload.get_str("kind") {
-            Some("click") => self.clicks += 1,
-            // The script's reply, with its origin on the event.
-            Some("toggled") => {
+        // `{kind: "click"}` as declared, and the panel's `on_toggle` as this
+        // host passed it, the script's fields under `toggle`.
+        match (ev.event, ev.payload.get_str("kind")) {
+            (EventKind::Click, Some("click")) => self.clicks += 1,
+            (EventKind::Component, Some("toggled")) => {
                 self.toggles += 1;
-                self.last_reply_from = Some(ev.origin);
+                self.last_toggled = ev
+                    .payload
+                    .get("toggle")
+                    .and_then(|t| t.get("index"))
+                    .and_then(Value::as_int);
             }
             _ => {}
         }
@@ -118,8 +125,8 @@ fn load() -> Extensions {
 const EXT: OriginId = OriginId(1);
 
 /// One frame, built the way the windowed runner builds it: the host's view
-/// with the extensions as the filler, so the slot it declares is filled in
-/// place.
+/// with the extensions as the filler, so the component it places is drawn
+/// in place.
 fn frame(core: &mut Core, host: &mut Host, exts: &mut Extensions) {
     let mut ui = core.frame_with(Size::new(900.0, 600.0), 1.0, exts);
     host.view(&mut ui);
@@ -155,8 +162,8 @@ impl Example for Host {
     }
 
     /// No window: the same checks the C host runs on the same panel — the
-    /// script drew in the slot with the host's title, its click reached
-    /// it and not the host, its reply reached the host, and the host's
+    /// script drew its panel with the host's title, its click reached it
+    /// and not the host, its `on_toggle` reached the host, and the host's
     /// click reached the host and not it.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         let mut exts = load();
@@ -171,8 +178,8 @@ impl Example for Host {
         if drawn == 0 {
             return Err("the script drew nothing".into());
         }
-        if core.key_of("todos/panel").is_none() {
-            return Err("the slot `todos/panel` was not declared".into());
+        if self.panel_fill != Some(FillAnswer::NotKept) {
+            return Err(format!("`todos/panel` answered {:?}", self.panel_fill));
         }
         if find(core, EXT, "todos (from the host)").is_none() {
             return Err("the panel is not titled by the host's param".into());
@@ -187,12 +194,12 @@ impl Example for Host {
             return Err(format!("expected one event on origin {EXT:?}, got {evs:?}"));
         }
         // The runner's routing: the script hears its own click, the host
-        // hears the script's reply.
+        // hears the script's emit as its own message.
         exts.route(evs, |ev| self.on_event(ev));
-        if self.toggles != 1 || self.last_reply_from != Some(EXT) {
+        if self.toggles != 1 || self.last_toggled != Some(2) {
             return Err(format!(
-                "expected one `toggled` reply from {EXT:?}, got {} from {:?}",
-                self.toggles, self.last_reply_from
+                "expected one `toggled` for row 2, got {} (last {:?})",
+                self.toggles, self.last_toggled
             ));
         }
         frame(core, self, &mut exts);
@@ -217,7 +224,7 @@ impl Example for Host {
             return Err("the host's click disturbed the script".into());
         }
         println!(
-            "ok: clicks routed by origin both ways, the slot filled in place, the reply delivered"
+            "ok: clicks routed by origin both ways, the panel placed in place, its on_toggle delivered"
         );
         Ok(())
     }

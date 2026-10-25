@@ -128,7 +128,10 @@ use crate::{Result, err, value_of};
 /// for `standardMenus` (ADR 0052); and `revealOnHover` (ADR 0051) and
 /// `floatsInOrder` (ADR 0053) are new rows.
 /// v26: `svg` is a new op (ADR 0063), and so is `component` (ADR 0060).
-pub const VERSION: u32 = 26;
+/// v27: the old `slot` op (17) is gone, folded into `component` (ADR
+/// 0067); `devtoolsTab` carries a component and its props (a JSON strref,
+/// absent for none) where it carried a slot.
+pub const VERSION: u32 = 27;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -154,7 +157,7 @@ pub const OP_AUDIO: u32 = 13;
 pub const OP_LINE: u32 = 14;
 pub const OP_CELLS: u32 = 15;
 pub const OP_FRAGMENT: u32 = 16;
-pub const OP_SLOT: u32 = 17;
+// 17 was `slot`, folded into `component` (ADR 0067, v27).
 pub const OP_MENU_BAR: u32 = 18;
 pub const OP_POLYGON: u32 = 19;
 pub const OP_TOOLTIP: u32 = 20;
@@ -213,7 +216,6 @@ pub fn protocol_json() -> Json {
                 ("line", OP_LINE),
                 ("cells", OP_CELLS),
                 ("fragment", OP_FRAGMENT),
-                ("slot", OP_SLOT),
                 ("menuBar", OP_MENU_BAR),
                 ("polygon", OP_POLYGON),
                 ("tooltip", OP_TOOLTIP),
@@ -1349,38 +1351,6 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             };
             Ok(())
         }
-        // `<slot name params>`: a position among the current node's
-        // children that an extension fills, in place and now
-        // (`docs/adr/0014-slots-an-extension-fills-in-place.md`). `name` is
-        // the full `namespace/slot` — the namespace the host loaded the
-        // extension under (`addExtension`), and the slot in the extension's
-        // own vocabulary. Through `Ui::slot_with` rather than
-        // `Core::begin_slot`, because the `Ui` is what carries the filler:
-        // the runner's list for a window, the context's for a headless one.
-        // With nothing loaded it still places the node, so a view can
-        // declare its layout before it has a plugin to put in it.
-        OP_SLOT => {
-            let name = r.req_str()?;
-            let params = match r.str_ref()? {
-                Some(s) => payload(s)?,
-                None => kui_core::Value::Null,
-            };
-            // `keep` keeps what the fill builds, `replay` asks for last
-            // frame's back when the view's own side is unchanged (ADR
-            // 0045); `ctx.slotFill(name)` says which it got.
-            match r.u()? {
-                1 => {
-                    ui.slot_kept(name, &params);
-                }
-                2 => {
-                    ui.slot_replay(name, &params);
-                }
-                _ => {
-                    ui.slot_with(name, &params);
-                }
-            }
-            Ok(())
-        }
         // `d` as a strref or the flat op form, the stroke width slot,
         // flags (1 width is a length token, 2 even-odd, 4 rotate, 8
         // pivot, 16 dashed), the turns and the pivot, the dash's five
@@ -1617,7 +1587,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 // children loop must only consume up to the CLOSE op. The
                 // widget is handed this `ui` rather than a fresh wrap of
                 // its core, so the filler survives into the children and a
-                // `<slot>` inside a titlebar fills like one anywhere else.
+                // `<component>` inside a titlebar is placed like one anywhere else.
                 let mut result = Ok(());
                 widgets::titlebar_with(ui, |ui| {
                     result = decode_until_close(r, ui);
@@ -1648,18 +1618,23 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 Ok(())
             }
         }
-        // A devtools tab (ADR 0032): the extension form names a slot; the
-        // host form's content follows when the encoder called the function
-        // child, which it did only for the tab the driver read as on show —
-        // so the laziness is the encoder's, and the core builds what came.
+        // A devtools tab (ADR 0032, 0067): the extension form names a
+        // component and its props; the host form's content follows when
+        // the encoder called the function child, which it did only for the
+        // tab the driver read as on show — so the laziness is the
+        // encoder's, and the core builds what came.
         OP_DEVTOOLS_TAB => {
             let name = r.req_str()?;
             let label = r.req_str()?;
-            let slot = r.str_ref()?;
+            let component = r.str_ref()?;
+            let props = match r.str_ref()? {
+                Some(s) => payload(s)?,
+                None => kui_core::Value::Null,
+            };
             let flags = r.u()?;
-            match slot {
-                Some(slot) => {
-                    ui.devtools_tab(name, label, slot);
+            match component {
+                Some(component) => {
+                    ui.devtools_tab(name, label, component, &props);
                     Ok(())
                 }
                 None if flags & 1 != 0 => {
@@ -2253,7 +2228,7 @@ mod tests {
         ];
         // No filler: `Ui::wrap` is the frame without one, which is what a
         // view with no extensions loaded gets and what every op but
-        // `OP_SLOT` cares about.
+        // `OP_COMPONENT` cares about.
         lower_binary(&mut kui_core::Ui::wrap(&mut core), &stream, b"hi").unwrap();
         kui_core::Ui::wrap(&mut core).finish();
         assert!(!core.output().0.quads.is_empty(), "root bg draws a quad");

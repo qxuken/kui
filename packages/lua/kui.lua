@@ -322,11 +322,12 @@ function channel(columns) end
 ---field named for the event (`drag`, `change`, …), and the envelope beside them.
 ---An app's message names its field by inheriting it: `---@class Pan: kui.Event, kui.WithDrag`.
 ---@class kui.Event
----@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"reply"|"component"|"range" What happened: the event kind, beside the message rather than in it.
+---@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range" What happened: the event kind, beside the message rather than in it.
 ---@field node_key integer The emitting node's key, what `env.edit_text` and the rest take.
 ---@field window integer|kui.WindowEvent The window it came from, as `env.window.id` reads; a `window` event's data, which has the name.
----@field slot? string The full name of the slot the node was filled into.
----@field from? string The namespace of the plugin a reply came from.
+---@field instance? integer The key of the component instance the node was drawn in.
+---@field component? string That instance's full name, `ns/name`.
+---@field from? string The namespace of the plugin that raised it.
 ---@field kind? string The message's own `kind`: the core never writes one.
 ---@field tag? any A message that is not a table, kept under `tag`.
 ---@field [string] any
@@ -334,10 +335,11 @@ function channel(columns) end
 ---`on_event`'s second argument: the envelope alone, whatever fields the message has.
 ---The first argument's envelope fields give way to the message's own; these never do.
 ---@class kui.Envelope
----@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"reply"|"component"|"range"
+---@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range"
 ---@field node_key integer
 ---@field window integer The window it came from, as `env.window.id` reads.
----@field slot? string
+---@field instance? integer
+---@field component? string
 ---@field from? string
 
 ---@class kui.Rect
@@ -947,29 +949,17 @@ function latency_graph() end
 ---@return kui.Node
 function latency_hud(t) end
 
----fill { name = "todos/panel", params = { ... } }: the position a plugin
----this script loaded draws in -- a place among its siblings, not a box
----around anything, and keyed inside this script's own fill (ADR 0014).
----It draws nothing itself. `name` is the full "namespace/slot" -- the
----namespace given to env.add_extension and the slot in the plugin's own
----vocabulary. Draws an empty position when nothing answers to the name.
----
----Named `fill` and not `slot` because `slot` is view's second argument,
----and a script that took it would shadow the constructor in the one
----function that needs it. A fill is what the core calls this anyway: the
----thing an extension draws.
----@param t kui.Props
----@return kui.Node
-function fill(t) end
-
----devtools_tab { name = "syntax", label = "Tree-sitter", slot = "ts/panel" }
+---devtools_tab { name = "syntax", label = "Tree-sitter", component = "ts/panel",
+---  props = { on_pick = { kind = "picked" } } }
 ---devtools_tab { name = "syntax", label = "Tree-sitter", view = function()
 ---  return column { text("identifier 12:4") }
 ---end }
 ---
 ---A tab in the core's devtools panel (ADR 0032), beside facts, events,
----tree and perf. The first form names a slot a plugin fills: the panel declares it
----in the tab's body while the tab is on show. The second is the script's
+---tree and perf. The first form names a component a plugin provides: the
+---panel places it in the tab's body while the tab is on show, with `props`
+---and the panel's facts (ADR 0067); its events arrive as the messages in
+---`props`. The second is the script's
 ---own content: `view` is called only while the tab is on show -- so a tab
 ---nobody looks at costs its declaration and nothing else -- and the tree
 ---it returns is drawn over the tab's body, the script's to hear as any of

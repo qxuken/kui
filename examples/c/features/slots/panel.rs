@@ -8,12 +8,12 @@
 //! resolves `kui_*` from the host executable at load, the way a Lua C module
 //! resolves `lua_*`.
 //!
-//! Where the panel goes is a *slot* the host declares in its own view
-//! (`docs/adr/0014-slots-an-extension-fills-in-place.md`): `ui.slot_with`
-//! below is a position among the host's children, filled then and there,
-//! and the parameters it passes are the panel's title and the shape of the
-//! reply the host wants when a todo is toggled. The plugin answers with
-//! `kui_reply`, and the host counts what comes back.
+//! Where the panel goes is a *component* the host places in its own view
+//! (`docs/adr/0067-slots-fold-into-components.md`): `ui.component` below is
+//! a position among the host's children, drawn then and there, and the
+//! props it passes are the panel's title and the message the host wants
+//! when a todo is toggled (`on_toggle`). The plugin raises it with
+//! `kui_emit`, and the host counts what comes back.
 //!
 //! Run:
 //!   cargo run -p kui-devtools --bin cbuild   # target/debug/panel.so (panel.dll on Windows)
@@ -23,24 +23,27 @@
 //! `--headless` is the whole contract without a display: it builds a frame the
 //! way the runner does, clicks the plugin's list through the access tree the
 //! frame produced, and checks that the click reached the plugin and nothing
-//! else — and that the plugin's reply reached the host with the plugin's
-//! origin on it. A path argument (before or after the flag) loads a
-//! different plugin.
+//! else — and that the plugin's `on_toggle` reached the host as the host's
+//! own message, about the panel's instance. A path argument (before or after
+//! the flag) loads a different plugin.
 
 use kui_devtools::Example;
 use kui_ffi::CExtension;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Core, EventKind, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size,
-    TextStyle, Ui, UiEvent, Value, Vec2,
+    Align, App, Core, EventKind, Extension, Extensions, FillAnswer, InputEvent, Key, NodeSpec,
+    OriginId, Size, TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 #[derive(Default)]
 struct Host {
     clicks: i64,
-    /// Replies from the panel: one per toggled todo, and who sent it.
+    /// The panel's `on_toggle`, one per toggled todo: which row it said,
+    /// and the instance the event is about.
     toggles: i64,
-    last_reply_from: Option<OriginId>,
+    last_toggle: Option<(i64, Key)>,
+    /// How the last frame filled the panel.
+    panel_fill: Option<FillAnswer>,
     /// The plugin, loaded in `main` and taken by whichever of the window
     /// and the headless drive runs.
     ext: Option<CExtension>,
@@ -75,14 +78,14 @@ impl App for Host {
         );
 
         // The panel's place: the second child of the root row, so it lands
-        // to the right of the column above. The params are what the host
-        // wants the plugin to know — its title — and the reply it wants
-        // back when a todo is toggled, as a template the plugin fills in.
-        // The name is `namespace/slot`: `todos` is what this host calls
-        // the plugin (the host decides, like an importer picking an alias;
-        // the plugin calls itself "c panel"), and `panel` is the slot the
-        // plugin lists.
-        ui.slot_with(
+        // to the right of the column above. The props are what the host
+        // wants the plugin to know — its title — and the message it wants
+        // back when a todo is toggled. The name is `namespace/component`:
+        // `todos` is what this host calls the plugin (the host decides,
+        // like an importer picking an alias; the plugin calls itself "c
+        // panel"), and `panel` is a component the plugin lists. Replayed
+        // while nothing it read moved (ADR 0067).
+        self.panel_fill = ui.component(
             "todos/panel",
             &Value::map([
                 ("title", "todos (from the host)".into()),
@@ -94,15 +97,22 @@ impl App for Host {
 
     fn on_event(&mut self, ev: UiEvent) {
         // The envelope says what happened; the payload is the message the
-        // button (or the panel's reply) declared (ADR 0047).
+        // button declared, or the one this host passed the panel (ADR 0047).
         let kind = ev.payload.get("kind").and_then(Value::as_str);
         match (ev.event, kind) {
             (EventKind::Click, Some("click")) => self.clicks += 1,
-            // A reply the panel made from its own click: the origin says
-            // which extension, the key which of its nodes.
-            (EventKind::Reply, Some("toggled")) => {
+            // The panel's `on_toggle`, raised from its own click: this
+            // host's message, the plugin's fields under `toggle`, and the
+            // key the instance it is about.
+            (EventKind::Component, Some("toggled")) => {
                 self.toggles += 1;
-                self.last_reply_from = Some(ev.origin);
+                let index = ev
+                    .payload
+                    .get("toggle")
+                    .and_then(|t| t.get("index"))
+                    .and_then(Value::as_int)
+                    .unwrap_or(-1);
+                self.last_toggle = Some((index, ev.key));
             }
             _ => {}
         }
@@ -141,9 +151,9 @@ const PLUGIN_EXT: &str = if cfg!(target_os = "windows") {
 const BUILD_HINT: &str = "cargo run -p kui-devtools --bin cbuild -- --run";
 
 /// One frame, built the way the windowed runner builds it: the host's view
-/// with the extensions as the filler, so the slot it declares is filled in
-/// place and `finish` fills `"ns/root"` for any extension that names no
-/// slot.
+/// with the extensions as the filler, so the component it places is drawn
+/// in place and `finish` draws `"ns/root"` for any extension that provides
+/// no components.
 fn frame(core: &mut Core, host: &mut Host, exts: &mut Extensions) {
     let mut ui = core.frame_with(Size::new(900.0, 600.0), 1.0, exts);
     host.view(&mut ui);
@@ -172,9 +182,9 @@ fn click(core: &mut Core, at: Vec2) -> Vec<UiEvent> {
 }
 
 /// No window: builds frames, clicks through them, and checks that the
-/// plugin drew in the slot with the host's title, that its click reached it
-/// and not the host, that its reply reached the host, and that the host's
-/// click reached the host and not it.
+/// plugin drew its panel with the host's title, that its click reached it
+/// and not the host, that its `on_toggle` reached the host, and that the
+/// host's click reached the host and not it.
 fn headless(host: &mut Host, core: &mut Core, ext: CExtension) -> i32 {
     let name = ext.name().to_owned();
     // Loaded under the namespace this host chose for it, `todos`; its own
@@ -197,12 +207,12 @@ fn headless(host: &mut Host, core: &mut Core, ext: CExtension) -> i32 {
         eprintln!("FAIL: the extension drew nothing");
         return 1;
     }
-    // The slot is a named position: `key_of` answers it like a keyed node.
-    if core.key_of("todos/panel").is_none() {
-        eprintln!("FAIL: the slot `todos/panel` was not declared");
+    // Placed, and drawn by the plugin: its first frame has nothing kept.
+    if host.panel_fill != Some(FillAnswer::NotKept) {
+        eprintln!("FAIL: `todos/panel` answered {:?}", host.panel_fill);
         return 1;
     }
-    // The title came through the params — it is the host's string, not the
+    // The title came through the props — it is the host's string, not the
     // plugin's default.
     if find(core, EXT, "todos (from the host)").is_none() {
         eprintln!("FAIL: the panel is not titled by the host's param");
@@ -224,14 +234,14 @@ fn headless(host: &mut Host, core: &mut Core, ext: CExtension) -> i32 {
         return 1;
     }
     // An event carries the origin of the node that emitted it, so the host
-    // is never offered the plugin's clicks — and what the plugin *replies*
-    // is the one thing that does reach the host. `Extensions::route` is
-    // the walk the runner takes, and the same one.
+    // is never offered the plugin's clicks — and what the plugin *emits* is
+    // the one thing that does reach the host, as the host's own message.
+    // `Extensions::route` is the walk the runner takes, and the same one.
     exts.route(evs, |ev| host.on_event(ev));
-    if host.toggles != 1 || host.last_reply_from != Some(EXT) {
+    if host.toggles != 1 || !matches!(host.last_toggle, Some((1, _))) {
         eprintln!(
-            "FAIL: expected one `toggled` reply from {EXT:?}, got {} toggles from {:?}",
-            host.toggles, host.last_reply_from
+            "FAIL: expected one `toggled` for row 1, got {} toggles, last {:?}",
+            host.toggles, host.last_toggle
         );
         return 1;
     }
@@ -268,7 +278,7 @@ fn headless(host: &mut Host, core: &mut Core, ext: CExtension) -> i32 {
     }
 
     println!(
-        "ok: clicks routed by origin both ways, the slot filled in place, the reply delivered"
+        "ok: clicks routed by origin both ways, the panel placed in place, its on_toggle delivered"
     );
     0
 }

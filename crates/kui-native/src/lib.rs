@@ -274,6 +274,12 @@ pub trait App {
     /// socket) calls [`Waker::wake`] to get a frame drawn. The default
     /// drops the waker.
     fn setup(&mut self, _waker: Waker) {}
+    /// Called on every [`Waker::wake`] as the loop takes it, before the
+    /// frame it asks for — which waits for the display's next refresh.
+    /// For work a thread is waiting on that needs no `Ui`: answering a
+    /// request a server thread queued, handing a reply to a task. The
+    /// frame still follows. The default does nothing.
+    fn on_wake(&mut self) {}
     /// Called once, when the main window is going for good (its close
     /// button, Quit, `WindowCommand::Close` on it, a pumped runner ending),
     /// before `run` returns. Save a session, a draft or a position here;
@@ -946,8 +952,9 @@ impl Launcher {
         self
     }
 
-    /// Loads `ext` under its own name as its namespace. The slots it fills
-    /// are declared as `ui.slot("<name>/<slot>")`. Panics when the name is
+    /// Loads `ext` under its own name as its namespace. The components it
+    /// provides are placed as `ui.component("<name>/<component>", &props)`
+    /// (ADR 0067). Panics when the name is
     /// already another extension's namespace; two of one name need
     /// [`Launcher::extension_as`].
     pub fn extension(self, ext: impl Extension + 'static) -> Self {
@@ -956,9 +963,9 @@ impl Launcher {
     }
 
     /// Loads `ext` under `namespace`, so the same extension loaded twice is
-    /// two namespaces with two sets of slots and params. Panics on a
-    /// namespace already taken, an empty one, or an extension whose slot
-    /// names contain `/`.
+    /// two namespaces with two sets of components and props. Panics on a
+    /// namespace already taken, an empty one, or an extension whose
+    /// component names contain `/`.
     pub fn extension_as(self, namespace: impl Into<String>, ext: impl Extension + 'static) -> Self {
         match self.try_extension_as(namespace, ext) {
             Ok(this) => this,
@@ -2055,8 +2062,8 @@ struct Shell<A: App + ?Sized> {
     /// again by each device opened after a loss (`reopen_device`), and
     /// applied to every core.
     subpixel: bool,
-    /// Each under the namespace the host gave it; their `Fill` is what fills
-    /// the slots a view declares.
+    /// Each under the namespace the host gave it; their `Fill` is what draws
+    /// the components a view places.
     extensions: Extensions,
     /// What every window shares: fonts, images, sounds, the audio queue and
     /// the declared window set.
@@ -2574,13 +2581,13 @@ impl DynShell<'_> {
     fn route_events(&mut self, events: Vec<UiEvent>) -> bool {
         self.stamp_clock();
         let mut reached_app = false;
-        // An extension's replies go to whoever declared its slot (ADR 0014
-        // decision 6): not routed by origin — a reply is addressed by being
-        // one — and carrying the extension's origin, the window and the key
-        // of the event it answered, so the receiver knows who spoke and
-        // from where. For every extension this host placed itself, the
-        // receiver is this host; for one a guest placed, it is the guest,
-        // and `route` is the walk up.
+        // An extension's emits go to whoever placed its instance (ADR
+        // 0060, ADR 0067): not routed by origin — an emit is addressed by
+        // the instance it came from — and arriving as the placer's own
+        // message for the prop, with the window and the instance's key.
+        // For every instance this host placed itself, the receiver is this
+        // host; for one a guest placed, it is the guest, and `route` is the
+        // walk up.
         let Shell {
             extensions,
             app,
@@ -2694,10 +2701,10 @@ impl DynShell<'_> {
         // Why the runner asked, beside the input the core recorded: the
         // view reads both as `frame_cause` (backlog F111).
         pane.core.note_frame_cause(pane.cause.take());
-        // The extensions fill the slots the host's view declares, in place
-        // (`Ui::slot`), and `"root"` after it unless the host placed that
-        // too — `finish` below does the latter and reports slots nobody
-        // declared (ADR 0014). The core numbers their origins.
+        // The extensions draw the components the host's view places, in
+        // place (`Ui::component`), and each one's `"root"` after it unless
+        // the host placed that too — `finish` below does the latter (ADR
+        // 0067). The core numbers their origins.
         let mut ui = pane.core.frame_with(viewport, scale, extensions);
         app.view(&mut ui);
         let view_ms = t_view.elapsed().as_secs_f32() * 1e3;
@@ -3779,6 +3786,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             for name in take_wake_names() {
                 self.core_mut().note_wake(&name);
             }
+            self.app.on_wake();
             // Where a window cannot draw, its view runs all the same, at
             // the turn's end and drawn when it is back (`mod unseen`).
             for pane in &mut self.panes {

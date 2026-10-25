@@ -450,6 +450,7 @@ impl DynHeadless<'_> {
             for name in crate::take_wake_names() {
                 self.core.note_wake(&name);
             }
+            self.app.on_wake();
             self.owe(FrameCause::WAKE);
         }
         for ask in inbox.asks {

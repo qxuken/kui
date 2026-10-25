@@ -73,8 +73,9 @@ was the first bare bump to break an app in five releases).
 - `EventKind` and `kui_core::Event` gained `Component`, a component's
   event (ADR 0060), and `Range`, a node's rows in view (ADR 0065): an
   exhaustive `match` on either adds two arms.
-- C's ABI is 38: `KuiSpec` gained `on_range` (808 bytes on 64-bit, from
-  800). Recompile; zeroed, a node reports no range.
+- C's ABI is 39: `KuiSpec` gained `on_range` (808 bytes on 64-bit, from
+  800; ABI 38), and the slot doors went (ABI 39, below). Recompile;
+  zeroed, a node reports no range.
 - A Lua script's `env` is one table shared by every fill of the script,
   its facts written again as they change (backlog C65): a script that
   stored its own fields on `env` finds them there next fill, and one of
@@ -87,8 +88,8 @@ was the first bare bump to break an app in five releases).
 - `slot::Fill::placed` returns a `bool`, whether the instance heard one of
   its own events since it was filled (backlog C68): an implementation
   outside kui returns `false`.
-- `SlotFill` gained `Heard` (C: `KUI_SLOT_HEARD`, 6): an exhaustive
-  `match` adds an arm.
+- `FillAnswer` (`SlotFill` until this release) gained `Heard` (C:
+  `KUI_FILL_HEARD`, 6): an exhaustive `match` adds an arm.
 - A fill being kept that looked a `$token` up is filled again when any
   origin declares its tokens anew, where it was replayed (backlog C69).
 - A Lua view draws the children after one left out with `nil` — `{ a,
@@ -97,6 +98,32 @@ was the first bare bump to break an app in five releases).
 - A kept fill that asked for one of its own nodes by label before
   declaring it runs again the frame after the node first exists, where it
   replayed its first frame until its params changed (backlog C84).
+- **Slots fold into components** (backlog C86, [ADR
+  0067](docs/adr/0067-slots-fold-into-components.md), whose last table is
+  the migration). Gone: `Ui::slot`, `slot_with`, `slot_kept`,
+  `slot_replay`, `slot_declared`, `Core::slot_fill`, `slot_fill_why`,
+  `slot_kept_nodes`, `Extension::slots`, `EventKind::Reply`,
+  `slot::MAX_REPLY_HOPS`; Lua's `slots` global (refused at load), `fill
+  {}` and `env.slot_fill`; Node's `<slot>` and `ctx.slotFill`; C's
+  `kui_slot`, `kui_slot_kept`, `kui_slot_replay`, `kui_slot_fill`,
+  `KUI_SLOT_*`, `kui_reply` and the `kui_ext_slots` export (refused at
+  load); Odin's `slot*` and `reply`. Place with `component`, replayed by
+  default; speak with `emit`.
+- Renamed: `Slot` is `Instance`, `SlotFill` `FillAnswer` (C
+  `KUI_FILL_*`, `KUI_FILL_NONE` = -1), `ROOT_SLOT` / `ANY_SLOT`
+  `ROOT_COMPONENT` / `ANY_COMPONENT`, `kui_slot_name` / `_namespace` /
+  `_params` `kui_instance_*`, and an event's `slot` is `instance` (Rust
+  `UiEvent::instance`, C `KuiEvent.instance` in the same place, Node
+  `ev.instance`, Lua `at.instance` beside `at.component`, its full name).
+- A devtools tab names a component and its props:
+  `Ui::devtools_tab(name, label, component, &props)`,
+  `kui_devtools_tab(ctx, name, label, component, props)`, `<devtoolsTab
+  component props/>`, Lua `devtools_tab { component =, props = }`.
+- The warnings `unknown-slot` and `duplicate-slot` are gone, and
+  `recursive-slot` is `recursive-component`.
+- An extension's `root` is drawn fresh every frame, never replayed.
+- Node's wire protocol is 27: a prebuilt addon from before refuses the
+  stream.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -155,7 +182,21 @@ hole. The prelude's containers (`row`, `column`, `grid`, `titlebar`,
 gaps — at the cost of a length and one `next` per container when there
 is none — so a view that drew less than it said now draws what it says.
 
-The rest of this release breaks nothing: a fix to text
+There was one way to place what an extension draws too many. A slot —
+one named place a frame, filled by whatever was loaded under its
+namespace — was a component placement with fewer powers and an event path
+of its own: an untyped reply where a component speaks the host's own
+message, replay by asking (`slot_kept`, `slot_replay`) where a component
+is replayed unless it opts out, a key by name, no host children. It
+folds in: a host places `component("ns/panel", props)` wherever it
+placed `slot_with("ns/panel", params)`, passes the reply it wanted as an
+`on_*` prop, and the extension answers with `emit("on_toggle", fields)`
+where it returned a table. A plugin with only a `view` is untouched — its
+`root` still follows the host's view. The word comes back in the next
+step with the one meaning a component cannot have: a place where any
+number of extensions append components.
+
+The rest of this release breaks nothing else: a fix to text
 at a size no screen shows, a declaration file for Teal beside the one
 for lua-language-server, and a new runner beside the window's.
 
@@ -233,6 +274,24 @@ for lua-language-server, and a new runner beside the window's.
   in the soft rule colour, the split's rule is a hairline, a segmented
   control is a track with the chosen segment filled, and badges and
   notices carry their tone without an outline.
+  A design pass from the same app, in all three skins: `section` takes
+  `leading` and `actions` groups beside its heading and an `indent`, so a
+  group's select-all box sits in its rows' checkbox column; a disabled
+  button is the default variant without its shadow; `segmented` prints
+  the chosen segment in the ink where controls are outlined; an idle
+  field's underline is `faint` (3:1) and a focused one the region rule;
+  `faint` is 4.5:1 on `panel`; and a toolbar wraps its trailing group onto
+  a line of its own when both do not fit. `kui run --appearance
+  light|dark` pins the appearance, which a headless `--shot` has no OS to
+  ask for.
+
+- **Kit samples** ([`addons/kit/samples`](addons/kit/samples)): four
+  apps on the runner to look at Kit in something like real use — Relay,
+  an HTTP client serving its own mock API; Watchtower, an ops dashboard
+  over a simulated fleet, in Teal; Field Notes, notes and checklists in
+  sqlite; Preferences, a settings window over TOML — each with a headless
+  test the runner's suite runs and pictures in every skin
+  (`addons/kit/samples/shots.nu` redraws them).
 
 - **Kit in the npm package** (backlog C77): `import { Button, extension }
   from '@qxuken/kui/kit'`, then `runWindowed(app, { extensions: [extension]
@@ -754,6 +813,14 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- `kui run --headless` ends with 1 when a task throws, where it printed
+  the error and ran on: a headless test whose check threw waited for a
+  `kui.exit` the throw had skipped, and hung (from the Kit samples).
+- A request from a runner app to its own `kui.http.serve`, and any reply a
+  task waits on, is answered as the wake arrives — `App::on_wake`, new in
+  kui-native — instead of at the frame the wake asks for: in a window
+  each hop waited for the display's refresh, about 29 ms a round trip at
+  60 Hz, now about 13 (from the Kit samples).
 - A one-line text in a box that scrolls sideways scrolls (backlog F205).
   A `nowrap` text was clamped to its parent's width like any other, so
   its line ran past the box and was cut there with nothing to scroll to

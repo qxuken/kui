@@ -25,8 +25,8 @@ impl kui_native::App for CApp {
     fn view(&mut self, ui: &mut kui_native::Ui<'_>) {
         // Hand the callback a context that borrows the runner's frame for the
         // duration of view(). `borrowing_in` rather than `borrowing`: the
-        // `Ui` is what carries the runner's extensions, so a `kui_slot`
-        // from the callback fills in place the way a Rust host's does.
+        // `Ui` is what carries the runner's extensions, so a `kui_component`
+        // from the callback draws in place the way a Rust host's does.
         let mut shim = KuiCtx::borrowing_in(ui);
         shim.waker = self
             .waker
@@ -60,7 +60,7 @@ impl kui_native::App for CApp {
             key: ev.key.0,
             payload: &payload,
             window: ev.window.0,
-            slot: ev.slot.map_or(0, |k| k.0),
+            instance: ev.instance.map_or(0, |k| k.0),
             event: KuiStr::from_static(ev.event.name()),
             ..Default::default()
         };
@@ -217,8 +217,8 @@ pub extern "C" fn kui_run(
 /// `kui_set_native_menus` and text-cache budget registered on it before
 /// the call reach the window, and the handles it minted keep drawing
 /// there. The extensions loaded into it with [`kui_ctx_add_extension`]
-/// come along the same way, and the host's view declares slots with
-/// [`kui_slot`] exactly as it would headless. What the host pushed with
+/// come along the same way, and the host's view places their components
+/// with [`kui_component`] exactly as it would headless. What the host pushed with
 /// [`kui_env_set_system`] becomes the window's pin over the OS's reading
 /// (a zero field keeps following the OS). The context is left with a
 /// fresh core and no extensions, still the caller's to free. A NULL

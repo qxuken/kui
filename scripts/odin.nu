@@ -174,14 +174,15 @@ def build-plugin [src: string, release: bool] {
         _ => []
     }
     ^(odin) build $src -file -build-mode:shared -define:KUI_PLUGIN=true $"-out:($lib)" ...$link ...$opt
-    # The contract's seven, exported under their C names. A DLL's exports
+    # The contract's seven (a plugin providing components), exported under
+    # their C names. A DLL's exports
     # are a table nm does not read; llvm-readobj comes with the clang gen uses.
     let exported = if $nu.os-info.name == "windows" {
         llvm-readobj --coff-exports $lib | lines | parse -r '^\s*Name: (?<sym>kui_ext_\w+)$' | get sym
     } else {
         nm -g --defined-only $lib | lines | parse -r '\s_?(?<sym>kui_ext_\w+)$' | get sym
     }
-    let want = [kui_ext_abi kui_ext_name kui_ext_init kui_ext_slots kui_ext_view kui_ext_on_event kui_ext_free]
+    let want = [kui_ext_abi kui_ext_name kui_ext_init kui_ext_components kui_ext_view kui_ext_on_event kui_ext_free]
     let missing = $want | where {|w| $w not-in $exported }
     if not ($missing | is-empty) {
         error make { msg: $"($lib) does not export ($missing | str join ', ')" }
@@ -220,7 +221,8 @@ def "main test" [--release] {
 
 # The extension contract across languages: the Odin panel loaded by the C
 # and the Rust hosts, and the C panel by the Odin host - each pair's
-# --headless drive, a click and a reply. cbuild builds the C side.
+# --headless drive: the panel placed as a component, a click on it, and its
+# on_toggle back as the host's message (ADR 0067). cbuild builds the C side.
 def "main slots" [--release] {
     build-lib $release
     build-plugins $release

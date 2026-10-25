@@ -285,15 +285,15 @@ impl Core {
     /// main window, as every driver's is.
     pub(crate) fn stamp(&self, out: &mut [UiEvent]) {
         let id = self.env.window.id;
-        // The slot a node was filled into, from the last frame's fill
+        // The instance a node was drawn in, from the last frame's fill
         // ranges (`Tree::fills`): a frame with no extension recorded none,
         // and pays one emptiness check per batch.
         if !self.tree.fills.is_empty() {
             for ev in out.iter_mut() {
-                if ev.slot.is_none()
+                if ev.instance.is_none()
                     && let Some(i) = self.tree.index_of(ev.key)
                 {
-                    ev.slot = self.tree.slot_of(i);
+                    ev.instance = self.tree.slot_of(i);
                 }
             }
         }
@@ -345,7 +345,7 @@ impl Core {
             let data = std::mem::take(&mut ev.payload);
             let mut declared = UiEvent::declared(ev.event, origin, ev.key, Some(message), data);
             declared.window = ev.window;
-            declared.slot = ev.slot;
+            declared.instance = ev.instance;
             *ev = declared;
             true
         });

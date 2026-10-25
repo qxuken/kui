@@ -1,18 +1,17 @@
 -- A self-contained kui extension: owns its state, describes its UI as data,
 -- and receives its own click events. Loaded by the lua_panel example.
 --
--- It fills the slot the host names "panel" (docs/adr/0014), reads the title
--- and the reply template the host passes with it from `slot.params`, and
--- answers a toggle by returning the host's template from on_event.
+-- It provides the component "panel" (docs/adr/0067), drawn where the host
+-- places it: the title the host passes is in `props`, and a toggle raises
+-- the host's `on_toggle` by returning `emit("on_toggle", fields)` from
+-- on_event -- the host hears its own message, the fields under `toggle`.
 --
 -- And, when one has been built, it hosts a plugin of its own: the same
--- panel again in C, loaded with env.add_extension and placed with `fill`,
--- which makes this frame three languages deep -- a Rust host, a Lua
--- extension, and a C extension the Lua one put there. See the amendment
--- to docs/adr/0014. Build the plugin with `cargo run -p kui-devtools --bin
--- cbuild`; without it this file is exactly what it was.
-
-slots = { "panel" }
+-- panel again in C, loaded with env.add_extension and placed with
+-- `component`, which makes this frame three languages deep -- a Rust host, a
+-- Lua extension, and a C extension the Lua one put there. Build the plugin
+-- with `cargo run -p kui-devtools --bin cbuild`; without it this file is
+-- exactly what it was.
 
 -- Where `cbuild` leaves it, dev before release. On Windows this is the
 -- shape that names kui_ffi.dll as the module its imports come from, so it
@@ -58,18 +57,13 @@ end
 todos = { "ship the layout solver", "wire up wgpu", "write this panel" }
 done = {}
 filter = ""
-title = "lua panel"
-on_toggle = nil -- the host's reply template, kept from view for on_event
 
-function view(env, slot)
+local function panel(env, props)
   -- The palette the host derived from the OS (ADR 0019): every key is the
   -- 0xRRGGBBAA a colour prop takes, so a role goes straight into `bg`.
   -- Read, not set: a script is a guest in someone else's frame.
   local t = env.theme
-  local params = slot and slot.params or {}
-  title = params.title or "lua panel"
-  on_toggle = params.on_toggle
-
+  local title = props.title or "lua panel"
 
   local items = {}
   for i, todo in ipairs(todos) do
@@ -117,20 +111,17 @@ function view(env, slot)
     },
   }
 
-  -- The plugin's half. `fill` is a position among these children, filled
-  -- then and there by whoever answers to "native/panel" -- the plugin this
-  -- script loaded, under the namespace this script chose. The params are
-  -- its title and the shape of the reply this script wants back, which is
-  -- what the host does for this script one level up.
+  -- The plugin's half. `component` is a position among these children,
+  -- drawn then and there by whoever answers to "native/panel" -- the plugin
+  -- this script loaded, under the namespace this script chose. The props
+  -- are its title and the message this script wants back on a toggle,
+  -- which is what the host does for this script one level up.
   local guest
   if load_plugin(env) then
-    guest = fill {
-      name = plugin_ns .. "/panel",
-      params = {
-        title = "the same panel, in C · " .. native_toggles .. " heard",
-        on_toggle = { kind = "native_toggle" },
-      },
-    }
+    guest = component(plugin_ns .. "/panel", {
+      title = "the same panel, in C · " .. native_toggles .. " heard",
+      on_toggle = { kind = "native_toggle" },
+    })
   else
     guest = column {
       width = 300,
@@ -150,24 +141,29 @@ function view(env, slot)
   return row { width = "grow", height = "grow", gap = 12, mine, guest }
 end
 
-function on_event(ev)
-  -- A reply from a plugin this script loaded carries `from`: the namespace
-  -- it was loaded under. This script's own events have none, which is what
-  -- tells the two apart. Nothing is returned, so the host never hears the
-  -- C panel -- it is this script's guest, not the host's.
-  if ev.from then
+-- What this script provides: the panel, a function of the env, the props
+-- the host placed it with and the instance (`inst.key`, `inst.namespace`).
+-- With no `components` the script's `view` would be its root, drawn after
+-- the host's view.
+components = {
+  panel = function(env, props, inst) return panel(env, props or {}) end,
+}
+
+function on_event(ev, at)
+  -- The C panel's on_toggle, raised by the plugin this script placed: this
+  -- script's own message, `at.event` "component". Nothing is emitted, so
+  -- the host never hears the C panel -- it is this script's guest, not the
+  -- host's.
+  if ev.kind == "native_toggle" and at.event == "component" then
     native_toggles = native_toggles + 1
     return
   end
   if ev.kind == "toggle" then
     done[ev.index] = not done[ev.index]
-    -- The host asked to hear about this: its template, with the index
-    -- filled in, is the reply. Returned rather than sent - a reply is data.
-    if on_toggle then
-      local reply = { index = ev.index, done = done[ev.index] or false }
-      for k, v in pairs(on_toggle) do reply[k] = v end
-      return reply
-    end
+    -- Raise the host's on_toggle: the host hears the message it passed,
+    -- these fields under `toggle` -- or nothing, when it passed none.
+    -- Returned rather than sent: an emit is data.
+    return emit("on_toggle", { index = ev.index, done = done[ev.index] or false })
   elseif ev.kind == "filter" then
     -- The field's whole text after the edit, on the event: the next
     -- view filters by it and declares it back as the field's value.

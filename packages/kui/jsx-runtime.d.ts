@@ -1020,40 +1020,16 @@ export declare namespace JSX {
      *  (docs/adr/0025-the-image-is-the-canvas.md, decision 7); an image
      *  that is not live draws nothing, as a dead `src` does. */
     fragment: BoxProps & { src: string; image?: string; params?: number[] };
-    /** A position an extension fills, in place
-     *  (docs/adr/0014-slots-an-extension-fills-in-place.md): whatever was
-     *  loaded under the name's namespace draws here, as a child of this
-     *  node, at this position among its siblings.
-     *
-     *  `name` is the full `namespace/slot` — the namespace you loaded the
-     *  plugin under (`ctx.addExtension('todos', path)`, or a window's
-     *  `extensions` option) and the slot in the plugin's own vocabulary.
-     *  `params` is whatever the plugin should read this frame: plain data,
-     *  declared every frame, retained by nobody, like `onClick`'s payload.
-     *  `"ns/root"` is the fill that follows the view for a plugin naming no
-     *  slots, and declaring it moves that fill here.
-     *
-     *  A position, not a box: it takes no other props, and with nothing
-     *  loaded under that namespace it places an empty node so a view can
-     *  declare its layout before it has a plugin to put in it.
-     *
-     *  `keep` keeps what the fill builds, and `replay` is the view's claim
-     *  that nothing it feeds the plugin has changed since: the core checks
-     *  what it can see — the params, every fact of the frame the kept fill
-     *  read, that the slot is where it was — and pushes last frame's nodes
-     *  again without asking the plugin, or fills and keeps it and says why
-     *  in `ctx.slotFill(name)` (docs/adr/0045-a-slot-replayed-by-its-host.md).
-     *  One or the other. */
-    slot: { name: string; params?: unknown; keep?: boolean; replay?: boolean };
     /** A tab in the core's devtools panel, beside facts, events, tree and perf
-     *  (docs/adr/0032-a-devtools-tab-mounts-a-slot.md). `name` is the tab's
-     *  identity, `label` what the strip shows (the name when left out).
+     *  (docs/adr/0032-a-devtools-tab-mounts-a-slot.md, amended by 0067).
+     *  `name` is the tab's identity, `label` what the strip shows (the name
+     *  when left out).
      *
-     *  Two forms. `slot` names a slot an extension fills, the full
-     *  `namespace/slot` a plugin you loaded names: while the tab is on show
-     *  the panel declares that slot in the tab's body and the plugin draws
-     *  there; otherwise the plugin is not asked, and its naming the slot
-     *  raises no `unknown-slot`. A **function child** is the app's own
+     *  Two forms. `component` names a component an extension provides, the
+     *  full `namespace/component`: while the tab is on show the panel
+     *  places it in the tab's body with `props` and the panel's facts
+     *  merged over them, and its emits arrive as the messages its `on*`
+     *  props declare; otherwise the plugin is not asked. A **function child** is the app's own
      *  content, `{() => <column>…</column>}`: called only while the tab is
      *  on show — `frame` / `setView` read which tab that is once before
      *  encoding — so a tab nobody looks at costs its declaration and
@@ -1063,12 +1039,12 @@ export declare namespace JSX {
      *  Read the panel's facts through `devtoolsSelected()` and its
      *  siblings; drive its highlight with `setDevtoolsSelected(key)`.
      *
-     *  Not a node: declare it anywhere in the tree, every frame. A slot and
-     *  a child together, or a child that is not a function, is a throw. A
+     *  Not a node: declare it anywhere in the tree, every frame. A component
+     *  and a child together, or a child that is not a function, is a throw. A
      *  name declared twice in a frame is one tab and a `duplicate-tab`
      *  warning; the first stands. Docked only for the function form: with
      *  the panel in its own window the body says so. */
-    devtoolsTab: { name: string; label?: string; slot?: string; children?: () => unknown };
+    devtoolsTab: { name: string; label?: string; component?: string; props?: Record<string, unknown>; children?: () => unknown };
     /** A round-capped stroke (docs/adr/0010-a-segment-primitive.md): one
      *  segment from `from` to `to`, a polyline through `points`, or a smooth
      *  curve through them with `curve`. Points are in the parent's box space

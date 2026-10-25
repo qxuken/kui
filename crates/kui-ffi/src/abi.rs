@@ -212,7 +212,13 @@
 ///   0062), `kui_svg` (ADR 0063), `kui_component`, `kui_children`,
 ///   `kui_emit`, the optional `kui_ext_components` export (ADR 0060), and
 ///   the channel's builder and readers (ADR 0065).
-pub const KUI_ABI_VERSION: u32 = 38;
+/// - ABI 39: slots folded into components (ADR 0067). Gone: `kui_slot`,
+///   `kui_slot_kept`, `kui_slot_replay`, `kui_slot_fill`, the
+///   `KUI_SLOT_*` codes (`kui_component` answers `KUI_FILL_*`), `kui_reply`
+///   and the `kui_ext_slots` export; `kui_slot_name` / `_namespace` /
+///   `_params` renamed `kui_instance_*`; `kui_devtools_tab` takes a
+///   component and its props. No struct moved.
+pub const KUI_ABI_VERSION: u32 = 39;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

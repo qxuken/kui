@@ -913,46 +913,18 @@ export function createEncoder(P) {
           props(p, null, false);
         }
         return;
-      case 'slot': {
-        // A position an extension fills, in place (ADR 0014). `name` is the
-        // full `namespace/slot`: the namespace the host loaded the plugin
-        // under (`addExtension`, or a window's `extensions` option) and the
-        // slot in the plugin's own vocabulary. `params` is whatever the
-        // plugin should read this frame — plain data, declared every frame,
-        // retained by nobody, exactly like `onClick`'s payload.
-        if (typeof p.name !== 'string' || p.name === '') {
-          throw new Error('<slot> needs a name ("namespace/slot")');
-        }
-        if (!p.name.includes('/')) {
-          throw new Error(`bad slot name ${JSON.stringify(p.name)} (a full "namespace/slot")`);
-        }
-        for (const k of Object.keys(p)) {
-          if (k !== 'name' && k !== 'params' && k !== 'keep' && k !== 'replay' && k !== 'children') {
-            throw new Error(`<slot> takes name, params, keep and replay, not ${JSON.stringify(k)} — it is a position, not a box`);
-          }
-        }
-        // A slot replayed by its host (ADR 0045): `keep` keeps what the
-        // fill builds, `replay` asks for last frame's back when the view's
-        // own side of it is unchanged; `ctx.slotFill(name)` says which it
-        // got. One or the other.
-        if (p.keep && p.replay) {
-          throw new Error('<slot> takes keep or replay, not both');
-        }
-        reserve(7);
-        f[fi++] = OP.slot;
-        strRef(p.name);
-        strRef(p.params != null ? JSON.stringify(p.params) : null);
-        f[fi++] = p.replay ? 2 : p.keep ? 1 : 0;
-        return;
-      }
+      case 'slot':
+        // The old slot folded into components (ADR 0067).
+        throw new Error('<slot> is gone (ADR 0067): place what an extension provides with <component name="ns/name" props={…}/>');
       case 'devtoolsTab': {
-        // A tab in the core's devtools panel (ADR 0032). `name` is the
-        // tab's identity, `label` what the strip shows. Two forms: `slot`
-        // names a slot an extension fills (the panel declares it while the
-        // tab is on show); a *function child* is the app's own content,
-        // called only while the tab is on show — the driver reads which
-        // tab that is once a frame (`shownTab`) — so a tab nobody looks at
-        // costs its declaration and nothing else. Both is neither.
+        // A tab in the core's devtools panel (ADR 0032, 0067). `name` is
+        // the tab's identity, `label` what the strip shows. Two forms:
+        // `component` names a component an extension provides, placed in
+        // the tab's body with `props` and the panel's facts while the tab
+        // is on show; a *function child* is the app's own content, called
+        // only while the tab is on show — the driver reads which tab that
+        // is once a frame (`shownTab`) — so a tab nobody looks at costs its
+        // declaration and nothing else. Both is neither.
         if (typeof p.name !== 'string' || p.name === '') {
           throw new Error('<devtoolsTab> needs a name (its identity)');
         }
@@ -960,31 +932,42 @@ export function createEncoder(P) {
         const kids = el.children;
         const hasKids = kids != null && !(Array.isArray(kids) && kids.length === 0);
         const fn = Array.isArray(kids) && kids.length === 1 ? kids[0] : kids;
+        if (p.slot != null) {
+          throw new Error(`<devtoolsTab name=${JSON.stringify(p.name)}> takes component, not slot (ADR 0067)`);
+        }
         for (const k of Object.keys(p)) {
-          if (k !== 'name' && k !== 'label' && k !== 'slot' && k !== 'children') {
-            throw new Error(`<devtoolsTab> takes name, label and slot (or a function child), not ${JSON.stringify(k)}`);
+          if (k !== 'name' && k !== 'label' && k !== 'component' && k !== 'props' && k !== 'children') {
+            throw new Error(`<devtoolsTab> takes name, label, component and props (or a function child), not ${JSON.stringify(k)}`);
           }
         }
-        if (p.slot != null) {
-          if (typeof p.slot !== 'string' || !p.slot.includes('/')) {
-            throw new Error(`bad devtoolsTab slot ${JSON.stringify(p.slot)} (a full "namespace/slot")`);
+        if (p.component != null) {
+          if (typeof p.component !== 'string' || !p.component.includes('/')) {
+            throw new Error(`bad devtoolsTab component ${JSON.stringify(p.component)} (a full "namespace/component")`);
           }
-          if (hasKids) throw new Error(`<devtoolsTab name=${JSON.stringify(p.name)}> takes a slot or a function child, not both`);
-          reserve(8);
+          if (p.props != null && (typeof p.props !== 'object' || Array.isArray(p.props))) {
+            throw new Error('<devtoolsTab> props must be an object');
+          }
+          if (hasKids) throw new Error(`<devtoolsTab name=${JSON.stringify(p.name)}> takes a component or a function child, not both`);
+          reserve(9);
           f[fi++] = OP.devtoolsTab;
           strRef(p.name);
           strRef(label);
-          strRef(p.slot);
+          strRef(p.component);
+          strRef(p.props != null ? JSON.stringify(p.props) : null);
           f[fi++] = 0;
           return;
         }
-        if (!hasKids || typeof fn !== 'function') {
-          throw new Error(`<devtoolsTab name=${JSON.stringify(p.name)}> needs a slot or one function child, {() => …}`);
+        if (p.props != null) {
+          throw new Error(`<devtoolsTab name=${JSON.stringify(p.name)}> takes props only with a component`);
         }
-        reserve(8);
+        if (!hasKids || typeof fn !== 'function') {
+          throw new Error(`<devtoolsTab name=${JSON.stringify(p.name)}> needs a component or one function child, {() => …}`);
+        }
+        reserve(9);
         f[fi++] = OP.devtoolsTab;
         strRef(p.name);
         strRef(label);
+        strRef(null);
         strRef(null);
         if (shownTab === p.name) {
           f[fi++] = 1;

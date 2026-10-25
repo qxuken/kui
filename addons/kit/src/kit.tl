@@ -74,10 +74,10 @@ provide(overlays as {string:any}, { "dialog", "popover", "menu", "toast" })
 provide(charts as {string:any}, { "sparkline", "line_chart", "bar_chart", "histogram" })
 provide(waterfall as {string:any}, { "waterfall" })
 
-local type Component = function(kui.Env, P, kui.Slot): kui.Node
+local type Component = function(kui.Env, P, kui.Instance): kui.Node
 
 global components: {string:Component} = {
-  settings = function(env: kui.Env, props: P, _inst: kui.Slot): kui.Node
+  settings = function(env: kui.Env, props: P, _inst: kui.Instance): kui.Node
     apply(props or {})
     ensure_tokens(env)
     return column { width = 0, height = 0 }
@@ -85,7 +85,7 @@ global components: {string:Component} = {
 }
 
 for name, view in pairs(VIEWS) do
-  components[name] = function(env: kui.Env, props: P, inst: kui.Slot): kui.Node
+  components[name] = function(env: kui.Env, props: P, inst: kui.Instance): kui.Node
     ensure_tokens(env)
     local c: ctx.Ctx = { env = env, s = settings, inst = inst.key }
     return view(c, props or {})

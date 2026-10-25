@@ -546,7 +546,7 @@ fn an_event_carries_the_instance_that_drew_its_node() {
     let stamped = |core: &mut Core, x: f32| -> Vec<(Key, Option<Key>)> {
         kui_core::testing::click_at(core, x, 10.0)
             .into_iter()
-            .map(|e| (e.key, e.slot))
+            .map(|e| (e.key, e.instance))
             .collect()
     };
     let host = core.key_of("host").unwrap();
@@ -558,7 +558,7 @@ fn an_event_carries_the_instance_that_drew_its_node() {
     assert_eq!(stamped(&mut core, 60.0), [(pane1.str("box"), Some(pane1))]);
     let raw = kui_core::testing::click_at(&mut core, 100.0, 10.0);
     assert_eq!(
-        raw.iter().map(|e| (e.key, e.slot)).collect::<Vec<_>>(),
+        raw.iter().map(|e| (e.key, e.instance)).collect::<Vec<_>>(),
         [(pane2.str("box"), Some(pane2))]
     );
     // Routed, the extension's plain answer goes nowhere: only an `emit`
@@ -709,7 +709,7 @@ fn a_nested_instances_events_reach_whoever_placed_it() {
                 Some(&Value::map([("kind", "click".into())])),
                 Value::Null,
             );
-            ev.slot = Some(panel);
+            ev.instance = Some(panel);
             ev
         }],
         |ev| to_host.push(ev),

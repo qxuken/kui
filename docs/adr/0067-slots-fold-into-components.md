@@ -155,6 +155,26 @@ one meaning a component cannot have: a place the host declares where
 - `Instance::root()` replaces `Slot::root()` in about sixty tests and
   doctests.
 
+### What the building changed
+
+Settled while the fold was built, beyond the grilling:
+
+- **An extension's `root` is drawn fresh every frame**, never replayed:
+  an app's state moves through timers, tasks and dispatch, which no
+  replay check can see. A component placed inside it is replayed as any.
+- **A component nested in a kept fill journals its key**, so a replay
+  places it at the key it had and its own kept nodes are found.
+- **`MAX_REPLY_HOPS` is `MAX_EMIT_HOPS`**, kept for an emit that passes
+  from guest to guest.
+- **A devtools tab's props merge under the panel's facts** (the facts
+  win), and the tab's instance is recorded as placed by the host, so its
+  emits reach the host as the messages its `on*` props declare.
+- **An event's `slot` field is `instance`**, in every binding, so the
+  word is free for decision 9; Lua's envelope carries `component`, the
+  instance's full name, beside it.
+- `FillAnswer`'s codes are kept with `Moved` gone (Heard stays 6), and a
+  C placement answers `KUI_FILL_NONE` (-1) when nothing was kept.
+
 ### Migration
 
 | Was | Is |
@@ -172,5 +192,6 @@ one meaning a component cannot have: a place the host declares where
 | `EventKind::Reply` | `EventKind::Component` |
 | `devtools_tab { slot = }` | `devtools_tab { component = }` |
 | `Slot`, `SlotFill`, `Slot::root()` | `Instance`, `FillAnswer`, `Instance::root()` |
+| an event's `slot` (`UiEvent::slot`, `KuiEvent.slot`, `ev.slot`, `at.slot`) | `instance` (`at.component` beside it in Lua) |
 | `unknown-slot`, `recursive-slot`, `duplicate-slot` | `unknown-component`, `recursive-component`, — |
 | — | `slot(name, props)` + `contributes`: many providers |

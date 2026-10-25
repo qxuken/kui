@@ -127,27 +127,30 @@ and Windows x64.
 
 An Odin program can load plugins, and an Odin plugin loads into any host:
 Rust, C, Node, Lua or Odin. A host loads one with `ctx_add_extension`
-on a context of its own and declares where it draws with `slot`. A
-plugin is a shared library exporting the seven `kui_ext_*` symbols of
-kui.h's contract, each a line over `extension.odin`'s helpers:
+on a context of its own and places what it provides with `component`
+(ADR 0067). A plugin is a shared library exporting the `kui_ext_*`
+symbols of kui.h's contract, each a line over `extension.odin`'s helpers:
 
 ```odin
 @(export) kui_ext_abi      :: proc "c" () -> u32 { return kui.ABI_VERSION }
 @(export) kui_ext_view     :: proc "c" (user: rawptr, ui: ^kui.Ui) { kui.ext_view(user, ui, view) }
 @(export) kui_ext_on_event :: proc "c" (user: rawptr, ev: ^kui.Ext_Event) { kui.ext_on_event(user, ev, on_event) }
-// ...and name, slots, init, free: examples/odin/features/slots/panel.odin
+// ...and name, components, init, free: examples/odin/features/slots/panel.odin
 ```
 
-`view` and `on_event` have `run`'s shapes. `slot_params` reads what the
-host passed, and `reply(ev, msg)` answers it. Build with
+`view` and `on_event` have `run`'s shapes. `instance_name` says which
+component is being drawn and `instance_params` what the host placed it
+with; `emit(ev, prop, fields)` raises one of its events, which the host
+hears as the message it passed in that prop. Build with
 `-build-mode:shared -define:KUI_PLUGIN=true`, plus
 `-extra-linker-flags:"-Wl,-undefined,dynamic_lookup"` on macOS. The plugin
 then links no kui at all, and every `kui_*` resolves from whichever host
 loads it, as `panel.c` does.
 
 `nu scripts/odin.nu slots` runs the contract across languages, each pair's
-`--headless` drive: a click on the panel, routed to it and not the host,
-and its reply back with its origin and slot. The pairs are the Odin host
+`--headless` drive: the panel placed and replayed, a click on it routed
+to it and not the host, and its `on_toggle` back as the host's own
+message, about the panel's instance. The pairs are the Odin host
 with the Odin and C panels, and the C and Rust hosts with the Odin panel.
 
 ## Where each part comes from

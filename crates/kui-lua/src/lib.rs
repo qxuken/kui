@@ -1,18 +1,18 @@
 //! Lua scripts as kui extensions: a script returns its view as a table tree and gets events back as tables.
 //!
 //! `kui-lua` loads a Lua script as an [`Extension`] a kui host can place in
-//! its frame. The script defines `view(env, slot)`, which returns a plain
-//! table tree built with the `row` / `column` / `text` / `button` prelude,
-//! and optionally `on_event(ev)`, which receives the events the script's own
-//! nodes emit and may return replies for the host. Nothing but data crosses
+//! its frame. The script defines `view(env, inst)` or `components = { … }`,
+//! which return a plain table tree built with the `row` / `column` / `text` /
+//! `button` prelude, and optionally `on_event(ev)`, which receives the events
+//! the script's own nodes emit and may `emit` the host's messages. Nothing but data crosses
 //! the boundary: the host gets nodes, the script gets event tables, and no
 //! closure lives on either side. It sits beside [kui-ffi] (C plugins) and
 //! [kui-node] (the Node.js package) as one of the bindings over
 //! [`kui_core`]; most hosts run it inside [kui-native], the windowed runner.
 //!
 //! Two readers meet here. A Rust application wants scriptable panels or
-//! plugins: it declares a slot in its own view, loads a script under a
-//! namespace, and counts the replies that come back, without ever looking at
+//! plugins: it places the script's component in its own view, loads the
+//! script under a namespace, and counts the messages that come back, without ever looking at
 //! the script's UI. The author of such a script wants to know what `view`
 //! is handed, which builders exist and which props a table takes; the
 //! reference below is for them, and [`luals_meta`] turns it into completion
@@ -25,10 +25,10 @@
 //!
 //! # Quick start
 //!
-//! The Rust side: a kui-native app that reserves a position for the script
-//! and hears its replies. `extension_as` names the script's namespace, so the
-//! slot the view declares is `todos/panel` for a script whose `slots` global
-//! lists `"panel"`.
+//! The Rust side: a kui-native app that places the script's panel and hears
+//! its events (ADR 0067). `extension_as` names the script's namespace, so
+//! the component the view places is `todos/panel` for a script whose
+//! `components` table has a `panel`.
 //!
 //! ```rust,no_run
 //! use kui_lua::LuaExtension;
@@ -41,9 +41,9 @@
 //! impl App for Host {
 //!     fn view(&mut self, ui: &mut Ui<'_>) {
 //!         ui.configure_root(NodeSpec::row().fill().pad(16.0).gap(16.0));
-//!         // The script draws here. The params are its to read from
-//!         // `slot.params`; `on_toggle` is the reply shape the host wants.
-//!         ui.slot_with(
+//!         // The script draws here. The props are its to read; `on_toggle`
+//!         // is the message the host hears when the panel emits it.
+//!         ui.component(
 //!             "todos/panel",
 //!             &Value::map([
 //!                 ("title", "todos".into()),
@@ -68,20 +68,17 @@
 //! ```
 //!
 //! The Lua side, `panel.lua`: a todo list that keeps its own state, reads
-//! the title and the reply template the host passed, and answers a toggle by
-//! returning that template filled in.
+//! the title the host passed, and raises `on_toggle` on a toggle — the host
+//! hears it as the message it passed for that prop.
 //!
 //! ```lua
-//! slots = { "panel" }
-//!
 //! local todos = { "ship the layout solver", "wire up wgpu" }
 //! local done = {}
-//! local on_toggle -- the host's reply template, kept for on_event
 //!
-//! function view(env, slot)
+//! components = {}
+//!
+//! function components.panel(env, props, inst)
 //!   local t = env.theme
-//!   local params = slot.params or {}
-//!   on_toggle = params.on_toggle
 //!   local items = {}
 //!   for i, todo in ipairs(todos) do
 //!     items[#items + 1] = row {
@@ -93,7 +90,7 @@
 //!   return column {
 //!     width = 300, height = "grow", pad = 16, gap = 10,
 //!     bg = t.surface, radius = 10, border = { w = 1, color = t.border },
-//!     text(params.title or "todos", { size = 12, color = t.muted }),
+//!     text(props.title or "todos", { size = 12, color = t.muted }),
 //!     edit { key = "filter", label = "filter todos", initial = "", width = "grow" },
 //!     column { height = "grow", scroll = true, table.unpack(items) },
 //!     button { label = "add", on_click = { kind = "add" } },
@@ -103,11 +100,7 @@
 //! function on_event(ev)
 //!   if ev.kind == "toggle" then
 //!     done[ev.index] = not done[ev.index]
-//!     if on_toggle then
-//!       local reply = { index = ev.index, done = done[ev.index] }
-//!       for k, v in pairs(on_toggle) do reply[k] = v end
-//!       return reply -- a returned table is a reply the host hears
-//!     end
+//!     return emit("on_toggle", { index = ev.index, done = done[ev.index] })
 //!   elseif ev.kind == "add" then
 //!     todos[#todos + 1] = "todo #" .. (#todos + 1)
 //!   end
@@ -149,12 +142,11 @@
 //!   `reveal_row(env, key, i, row_h)` and `rows_in_view(env, key, row_h)` go
 //!   with them. `splitter(env, { key =, dir =, on_drag = })` is a draggable
 //!   divider.
-//! - Hosting: `fill { name = "ns/slot", params = }` is the position a C
-//!   plugin this script loaded draws in — `keep = true` keeps what it
-//!   built, `replay = true` asks for last frame's back while nothing the
-//!   script feeds it changed, `env.slot_fill(name)` says which it got
-//!   (ADR 0045); `devtools_tab { name =, label =,
-//!   slot = | view = }` adds a tab to the core's devtools panel.
+//! - Hosting: `component("ns/name", props, children)` places what a plugin
+//!   this script loaded provides — kept and replayed while nothing it read
+//!   moved (ADR 0060, ADR 0067); `devtools_tab { name =, label =,
+//!   component =, props = | view = }` adds a tab to the core's devtools
+//!   panel.
 //!
 //! ## The `env` table
 //!
@@ -240,15 +232,19 @@
 //! the frame opened with, so `env.is_focused(key)` is the query that answers
 //! about now.
 //!
-//! ## The `slot` argument
+//! ## Components and the `inst` argument
 //!
-//! `view`'s second argument says which slot the host is filling: `slot.name`
-//! (the slot in the script's own vocabulary), `slot.namespace` (what the host
-//! loaded the script under), `slot.params` (the host's table, nil when it
-//! passed none) and `slot.key` (the integer key events and `set_focus` use).
-//! A `slots` global lists the names the script fills: no global means
-//! `"root"`, `{ "*" }` means every name the host declares under the
-//! namespace.
+//! A `components` table lists what the script provides (ADR 0060, 0067):
+//! `components.panel = function(env, props, inst) … end` draws `ns/panel`
+//! wherever the host places it, and `components["*"]` every name under the
+//! namespace. `view(env, inst)` is the component `root`: with no
+//! `components`, the host's frame draws it after its own view unless the
+//! host places `ns/root` itself. `inst` says which instance is drawn:
+//! `inst.name` (the component in the script's own vocabulary),
+//! `inst.namespace` (what the host loaded the script under), `inst.key`
+//! (the integer key events and `set_focus` use) and, for `view`,
+//! `inst.params` (the host's props, nil when it passed none). A `slots`
+//! global is refused at load (ADR 0067).
 //!
 //! ## Events
 //!
@@ -261,13 +257,14 @@
 //! (the event kind: `"click"`, `"drag"`, `"change"`, …), `node_key` (the
 //! emitting node's integer key), `window` (the window it came from; a
 //! `window` event's own data is under that name, and it is the one kept)
-//! and `slot` (the full name of the slot the node was filled into). A message
+//! `instance` (the key of the component instance the node was drawn in)
+//! and `component` (that instance's full name). A message
 //! that is not a table arrives as `{ tag = message }`, and none as `{}`,
 //! so the envelope always has somewhere to go; a message's own field
 //! under one of the envelope's names is the message's. The envelope also
 //! comes alone as the second argument, `on_event(ev, at)`, which no
-//! message can hide: `at.event`, `at.node_key`, `at.window`, and `at.slot`
-//! and `at.from` where they apply.
+//! message can hide: `at.event`, `at.node_key`, `at.window`, and
+//! `at.instance`, `at.component` and `at.from` where they apply.
 //!
 //! A node hears only the events it declares a handler for. An `edit`
 //! reports through its own: `on_change` as `change = { text }` (the whole
@@ -320,9 +317,9 @@
 //! own: another script (a `.lua` file, or a folder holding `init.lua`), or a
 //! C extension, a `.so` / `.dylib` / `.dll` exporting the `kui_ext_*` entry
 //! points kui-ffi's `kui.h` describes, which the host's crate opens for it
-//! ([`set_native_loader`]; ADR 0059). `fill { name = "ns/slot", params = }`
-//! is the position it draws in among the script's children, and its
-//! replies reach `on_event` with `from` set to the namespace.
+//! ([`set_native_loader`]; ADR 0059). `component("ns/panel", props)` places
+//! what it provides among the script's children, and its emits reach
+//! `on_event` with `from` set to the namespace.
 //!
 //! # Every host loads a script
 //!
@@ -402,21 +399,22 @@ pub fn is_lua_path(path: &std::path::Path) -> bool {
 /// Load it with [`LuaExtension::from_file`] or [`LuaExtension::from_source`],
 /// then hand it to a host: `kui_native::app(..).extension_as(ns, ext)` for a
 /// window, or a [`kui_core::Extensions`] list for a headless
-/// [`kui_core::Core`]. The host places the script by declaring a slot named
-/// `ns/<slot>`; the script's `view(env, slot)` runs inside the host's frame
-/// and its `on_event(ev)` hears the events its own nodes emit.
+/// [`kui_core::Core`]. The host places the script's component `ns/<name>`;
+/// the script's function runs inside the host's frame and its
+/// `on_event(ev)` hears the events its own nodes emit.
 ///
 /// ```
 /// use kui_core::{Core, Extensions, NodeSpec, OriginId, Size, Value};
 /// use kui_lua::LuaExtension;
 ///
 /// let script = LuaExtension::from_source("panel.lua", r#"
-///     slots = { "panel" }
-///     function view(env, slot)
-///       return column { pad = 8, text(slot.params.title) }
-///     end
+///     components = {
+///       panel = function(env, props)
+///         return column { pad = 8, text(props.title) }
+///       end,
+///     }
 ///     function on_event(ev)
-///       if ev.kind == "pick" then return { kind = "picked" } end
+///       if ev.kind == "pick" then return emit("on_pick", {}) end
 ///     end
 /// "#)?;
 ///
@@ -426,7 +424,7 @@ pub fn is_lua_path(path: &std::path::Path) -> bool {
 /// let mut core = Core::new();
 /// let mut ui = core.frame_with(Size::new(400.0, 300.0), 1.0, &mut exts);
 /// ui.configure_root(NodeSpec::row().fill());
-/// ui.slot_with("fs/panel", &Value::map([("title", "files".into())]));
+/// ui.component("fs/panel", &Value::map([("title", "files".into())]));
 /// ui.finish();
 ///
 /// // The script's nodes carry its origin, so the host can tell them apart.
@@ -437,11 +435,6 @@ pub fn is_lua_path(path: &std::path::Path) -> bool {
 pub struct LuaExtension {
     lua: Lua,
     name: String,
-    /// The script's `slots` global, read once at load: the slot names it
-    /// fills. Empty — no global — means `"root"`;
-    /// `{ "*" }` means every name the host declares under the namespace,
-    /// for a script that registers its views after it loads.
-    slots: Vec<String>,
     /// The C extensions this script loaded (`env.add_extension`), in the
     /// order it asked for them. A `RefCell` because the loading happens
     /// inside `view`, where the script's own interpreter holds a shared
@@ -452,10 +445,11 @@ pub struct LuaExtension {
     /// [`CURRENT_FRAME`], and its facts are written again only when a fill
     /// reads them different from the last.
     env: std::cell::RefCell<Option<EnvCache>>,
-    /// The full name of every slot this script has filled, by the slot's
-    /// key — what `on_event` reads `ev.slot` off, since an event carries
-    /// the key and the script thinks in the names it was handed.
-    slot_names: std::cell::RefCell<std::collections::HashMap<kui_core::Key, String>>,
+    /// The full name of every instance this script has drawn, by its key
+    /// — what `on_event` reads `ev.component` off, since an event carries the
+    /// key and a script drawing one instance per pane routes by the name
+    /// it was handed.
+    instance_names: std::cell::RefCell<std::collections::HashMap<kui_core::Key, String>>,
     /// The script's `components` table's names, read once at load: what
     /// it provides as components (ADR 0060), each a function `(env,
     /// props, inst)` returning the instance's tree.
@@ -483,8 +477,8 @@ impl LuaExtension {
     /// Loads a script from its source text; `name` is what errors call it.
     ///
     /// The prelude is injected first, then the script runs once, and its
-    /// `slots` and `tokens` globals are read. A script with no `slots`
-    /// global fills `"root"`.
+    /// `components` and `tokens` globals are read. A script with no
+    /// `components` provides `"root"`, its `view`.
     ///
     /// ```
     /// use kui_core::{Core, Extension, Size, Instance};
@@ -495,7 +489,7 @@ impl LuaExtension {
     ///       return column { pad = 8, text("hello from Lua") }
     ///     end
     /// "#)?;
-    /// assert!(ext.slots().is_empty());
+    /// assert!(ext.components().is_empty());
     ///
     /// let mut core = Core::new();
     /// let mut ui = core.frame(Size::new(320.0, 240.0), 1.0);
@@ -552,16 +546,13 @@ impl LuaExtension {
             setup(&lua)?;
         }
         lua.load(source).set_name(chunk).exec()?;
-        let slots = match lua.globals().get::<mlua::Value>("slots")? {
-            mlua::Value::Nil => Vec::new(),
-            mlua::Value::Table(t) => t.sequence_values::<String>().collect::<mlua::Result<_>>()?,
-            other => {
-                return Err(mlua::Error::runtime(format!(
-                    "`slots` must be a list of slot names, not {}",
-                    other.type_name()
-                )));
-            }
-        };
+        if !lua.globals().get::<mlua::Value>("slots")?.is_nil() {
+            return Err(mlua::Error::runtime(
+                "`slots` is gone (ADR 0067): list what this script provides as `components = { \
+                 panel = function(env, props, inst) … end }` (`[\"*\"]` for any name), and draw \
+                 `view` as its root",
+            ));
+        }
         let components = match lua.globals().get::<mlua::Value>("components")? {
             mlua::Value::Nil => Vec::new(),
             mlua::Value::Table(t) => {
@@ -600,17 +591,16 @@ impl LuaExtension {
         Ok(Self {
             lua,
             name,
-            slots,
             loaded: Default::default(),
             env: Default::default(),
-            slot_names: Default::default(),
+            instance_names: Default::default(),
             components,
             dir: dir.map(|d| d.to_string_lossy().into()),
             tokens,
         })
     }
 
-    /// The namespace a reply's origin names, for a plugin this script
+    /// The namespace an emit's origin names, for a plugin this script
     /// loaded: what `on_event` puts on the event as `from`.
     fn loaded_as(&self, origin: kui_core::OriginId) -> Option<String> {
         self.loaded
@@ -681,20 +671,12 @@ impl Extension for LuaExtension {
         &self.name
     }
 
-    fn slots(&self) -> &[String] {
-        &self.slots
-    }
-
     fn view(&mut self, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         let view: mlua::Function = self
             .lua
             .globals()
             .get("view")
             .map_err(|_| "script defines no view()".to_string())?;
-        self.slot_names
-            .borrow_mut()
-            .entry(slot.key)
-            .or_insert_with(|| slot.full_name());
         self.draw(&view, slot, false, ui)
     }
 
@@ -716,10 +698,9 @@ impl Extension for LuaExtension {
         Some(Box::new(LuaExtension {
             lua: self.lua.clone(),
             name: self.name.clone(),
-            slots: self.slots.clone(),
             loaded: self.loaded.clone(),
             env: std::cell::RefCell::new(None),
-            slot_names: Default::default(),
+            instance_names: Default::default(),
             components: self.components.clone(),
             dir: self.dir.clone(),
             tokens: None,
@@ -752,38 +733,31 @@ impl Extension for LuaExtension {
                 if !t.contains_key("window")? {
                     t.set("window", ev.window.0)?;
                 }
-                // And the slot the node was filled into, by its full name
-                // — what the script declared with `fill { name = … }` —
-                // so a script filling one slot per pane routes by pane
-                // without stamping every payload (backlog K2). Absent for
-                // a node outside any fill.
-                if let Some(name) = ev
-                    .slot
-                    .and_then(|k| self.slot_names.borrow().get(&k).cloned())
-                {
-                    t.set("slot", name.as_str())?;
-                } else if let Some(k) = ev.slot {
-                    // A component instance's: its key, what its fill was
-                    // handed as `inst.key` (ADR 0060).
+                // And the instance the node was drawn in: its key, what
+                // its fill was handed as `inst.key` (ADR 0060), and its
+                // full name, so a script drawing one instance per pane
+                // routes by pane without stamping every payload (backlog
+                // K2). Absent for a node outside any fill.
+                if let Some(k) = ev.instance {
                     t.set("instance", k.0 as i64)?;
+                    if let Some(name) = self.instance_names.borrow().get(&k) {
+                        t.set("component", name.as_str())?;
+                    }
                 }
-                // And, when this is a reply from a plugin the script
-                // loaded, who is answering: the namespace it chose in
+                // And, when this is an emit from a plugin the script
+                // loaded, who raised it: the namespace it chose in
                 // `env.add_extension`. Absent for the script's own nodes,
-                // which is what tells the two apart. `node_key` on a reply
-                // is the key of the node *inside the plugin* whose event it
-                // answers, which is the plugin's business and not this
-                // script's — `from` is the useful half.
+                // which is what tells the two apart.
                 if let Some(ns) = self.loaded_as(ev.origin) {
                     t.set("from", ns)?;
                 }
             }
             Ok(mlua::Value::Table(t))
         });
-        // What `on_event` returns is the script's replies to the host (ADR
-        // 0014 decision 6): nothing, a table (one reply), or a sequence of
-        // tables (several) — the list-or-map reading `lua_to_value` already
-        // makes.
+        // What `on_event` returns is the script's emits (ADR 0067):
+        // nothing, one `emit(...)`, or a sequence of them — the list-or-map
+        // reading `lua_to_value` already makes. Anything else is dropped by
+        // the router.
         // The envelope again, whole, as the second argument: the fields
         // merged into the message above give way to the message's own, so
         // a message with an `event` or a `node_key` field of its own hid
@@ -796,10 +770,10 @@ impl Extension for LuaExtension {
         {
             Ok(mlua::Value::Nil) => Vec::new(),
             Ok(v) => match lua_to_value(&v) {
-                Ok(Value::List(replies)) => replies,
-                Ok(reply) => vec![reply],
+                Ok(Value::List(emits)) => emits,
+                Ok(emit) => vec![emit],
                 Err(e) => {
-                    eprintln!("kui-lua: '{}' on_event reply: {e}", self.name);
+                    eprintln!("kui-lua: '{}' on_event answer: {e}", self.name);
                     Vec::new()
                 }
             },
@@ -859,17 +833,21 @@ impl LuaExtension {
     /// Draws one component instance: the script's `components[name]`
     /// called as `(env, props, inst)` and its tree built (ADR 0060).
     fn draw_component(&self, inst: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        // The function by its name, or the wildcard's for any name.
         let f: mlua::Function = self
             .lua
             .globals()
             .get::<Table>("components")
-            .and_then(|t| t.get(inst.name))
+            .and_then(|t| match t.get::<Option<mlua::Function>>(inst.name)? {
+                Some(f) => Ok(f),
+                None => t.get(kui_core::ANY_COMPONENT),
+            })
             .map_err(|_| format!("script defines no components.{}", inst.name))?;
         self.draw(&f, inst, true, ui)
     }
 
     /// A view or a component's function called and its tree built: the
-    /// slot's table, the script's tokens declared under its origin once,
+    /// instance's table, the script's tokens declared under its origin once,
     /// the env scoped to the call, and — for a view — the host state the
     /// root may declare beside the tree.
     fn draw(
@@ -879,12 +857,15 @@ impl LuaExtension {
         component: bool,
         ui: &mut Ui<'_>,
     ) -> Result<(), String> {
-        // Which slot this is, as `view`'s second argument rather than a
-        // field of `env`: `env`'s value keys are pinned to
-        // `schema::ENV_FIELDS` across every binding, and a slot is the
-        // host's fact, not the driver's. A script written as `view(env)`
-        // never sees it.
-        let slot_table = slot_table(&self.lua, slot).map_err(|e| format!("slot: {e}"))?;
+        self.instance_names
+            .borrow_mut()
+            .entry(slot.key)
+            .or_insert_with(|| slot.full_name());
+        // Which instance this is, as an argument rather than a field of
+        // `env`: `env`'s value keys are pinned to `schema::ENV_FIELDS`
+        // across every binding, and an instance is the host's fact, not
+        // the driver's. A script written as `view(env)` never sees it.
+        let inst_table = instance_table(&self.lua, slot).map_err(|e| format!("instance: {e}"))?;
         // The table the script was loaded with, declared once per core
         // under this origin — a script that declares from `view` through
         // `env.set_tokens` has already, and is not overwritten.
@@ -910,10 +891,10 @@ impl LuaExtension {
                             _ => self.lua.create_table()?,
                         },
                     };
-                    slot_table.raw_remove("params")?;
-                    view.call((env, props, slot_table))
+                    inst_table.raw_remove("params")?;
+                    view.call((env, props, inst_table))
                 } else {
-                    view.call((env, slot_table))
+                    view.call((env, inst_table))
                 }
             })
             .map_err(|e| {
@@ -944,7 +925,7 @@ impl LuaExtension {
         // `"none"` declares nothing, as a root that leaves it out and as
         // Node's `optionAsAlt: 'none'` (`configure_root_from`): a script
         // writing its setting through does not take back the side a host
-        // or another slot declared this frame (backlog RG84).
+        // or another component declared this frame (backlog RG84).
         if let Some(name) = root
             .get::<Option<String>>("option_as_alt")
             .map_err(|e| format!("option_as_alt: {e}"))?
@@ -998,21 +979,19 @@ impl LuaExtension {
 
 impl LuaExtension {
     /// `on_event`'s second argument: the envelope alone, nothing of the
-    /// message in it — `event`, `node_key`, `window`, and `slot` and
-    /// `from` where they apply, as the first argument carries them when
-    /// the message leaves them free.
+    /// message in it — `event`, `node_key`, `window`, and `instance`,
+    /// `component` and `from` where they apply, as the first argument
+    /// carries them when the message leaves them free.
     fn envelope(&self, ev: &UiEvent) -> mlua::Result<Table> {
         let t = self.lua.create_table()?;
         t.set("event", ev.event.name())?;
         t.set("node_key", ev.key.0 as i64)?;
         t.set("window", ev.window.0)?;
-        if let Some(name) = ev
-            .slot
-            .and_then(|k| self.slot_names.borrow().get(&k).cloned())
-        {
-            t.set("slot", name.as_str())?;
-        } else if let Some(k) = ev.slot {
+        if let Some(k) = ev.instance {
             t.set("instance", k.0 as i64)?;
+            if let Some(name) = self.instance_names.borrow().get(&k) {
+                t.set("component", name.as_str())?;
+            }
         }
         if let Some(ns) = self.loaded_as(ev.origin) {
             t.set("from", ns)?;
@@ -1036,13 +1015,14 @@ fn event_payload(lua: &Lua, payload: &Value) -> mlua::Result<Table> {
     }
 }
 
-/// `view`'s second argument: `{ name = ..., namespace = ..., params = ...,
-/// key = ... }` — the slot in the script's own vocabulary, the namespace
-/// the host loaded the script under (what tells one instance from
-/// another), `params` absent for a slot declared without any
-/// (`Value::Null`), and the slot's key as the integer the events and
-/// `env.set_focus` use.
-fn slot_table(lua: &Lua, slot: &Instance<'_>) -> mlua::Result<Table> {
+/// `view`'s second argument and a component's third: `{ name = ...,
+/// namespace = ..., params = ..., key = ... }` — the component in the
+/// script's own vocabulary (`root` for `view`), the namespace the host
+/// loaded the script under (what tells one instance from another), `params`
+/// (`view`'s props, absent when the host passed none; a component gets
+/// them as its own argument), and the instance's key as the integer the
+/// events and `env.set_focus` use.
+fn instance_table(lua: &Lua, slot: &Instance<'_>) -> mlua::Result<Table> {
     let t = lua.create_table()?;
     t.set("name", slot.name)?;
     t.set("namespace", slot.namespace)?;
@@ -1555,16 +1535,6 @@ fn env_table(
         lua.create_function(move |_, why: String| {
             ui.borrow_mut()?.request_frame_for(&why);
             Ok(())
-        })?,
-    )?;
-    // What a `fill { replay = true }` of `name` got this frame (ADR
-    // 0045): `"replayed"`, or why it was filled fresh — `"not-kept"`,
-    // `"params"`, `"reads"`, `"not-replayable"`, `"moved"` — or nil
-    // when nothing asked.
-    t.set(
-        "slot_fill",
-        lua.create_function(move |_, name: String| {
-            Ok(ui.borrow_mut()?.core().slot_fill(&name).map(|f| f.name()))
         })?,
     )?;
     // The exit a node leaves by if it leaves this frame (backlog F136),
@@ -2190,7 +2160,7 @@ fn env_table(
         })?,
     )?;
     // The namespaces this script loaded, in the order it asked for them —
-    // what it can name in a `fill`, and what a reply's `from` will say.
+    // what it can place with `component`, and what an emit's `from` will say.
     t.set(
         "extension_namespaces",
         lua.create_function(move |lua, ()| {
@@ -2550,67 +2520,15 @@ fn check_props(ui: &mut Ui<'_>, t: &Table, element: &str) -> mlua::Result<()> {
     Ok(())
 }
 
-/// `fill { name = "todos/panel", params = {...} }`: a position an
-/// extension fills, in place. Not a node and so not a schema
-/// element — it draws nothing itself and takes none of the props a box
-/// takes, which is why it is checked here rather than by `check_props`.
-/// `name` is the full `namespace/slot`: the namespace this script loaded
-/// the plugin under (`env.add_extension`) and the slot in the plugin's own
-/// vocabulary. `params` is whatever the plugin should read this frame —
-/// plain data, declared every frame, retained by nobody, exactly like an
-/// `on_click` payload.
-fn build_fill(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
-    let name: String = t
-        .get::<Option<String>>("name")?
-        .filter(|n| !n.is_empty())
-        .ok_or_else(|| bad("fill needs a name (\"namespace/slot\")"))?;
-    if !name.contains(kui_core::NAMESPACE_SEPARATOR) {
-        return Err(bad(format!(
-            "bad slot name {name:?} (a full \"namespace/slot\")"
-        )));
-    }
-    for pair in t.pairs::<mlua::Value, mlua::Value>() {
-        let (k, _) = pair?;
-        let mlua::Value::String(k) = k else { continue };
-        let k = k.to_str()?;
-        if !matches!(k.as_ref(), "type" | "name" | "params" | "keep" | "replay") {
-            return Err(bad(format!(
-                "fill takes name, params, keep and replay, not {:?} — it is a position, not a box",
-                k.as_ref()
-            )));
-        }
-    }
-    let params = match t.get::<mlua::Value>("params")? {
-        mlua::Value::Nil => Value::Null,
-        v => lua_to_value(&v)?,
-    };
-    // A slot replayed by its host (ADR 0045): `keep = true` keeps what
-    // the fill builds, `replay = true` asks for last frame's back when
-    // the script's own side of it is unchanged; `env.slot_fill(name)`
-    // says which it got.
-    let keep: bool = t.get::<Option<bool>>("keep")?.unwrap_or(false);
-    let replay: bool = t.get::<Option<bool>>("replay")?.unwrap_or(false);
-    if keep && replay {
-        return Err(bad("fill takes keep or replay, not both"));
-    }
-    if replay {
-        ui.slot_replay(&name, &params);
-    } else if keep {
-        ui.slot_kept(&name, &params);
-    } else {
-        ui.slot_with(&name, &params);
-    }
-    Ok(())
-}
-
-/// `devtools_tab { name = , label = , slot = }` or `devtools_tab { name = ,
-/// label = , view = function() … end }`: a tab in the core's
-/// devtools panel, an extension's through the slot it names, or the
-/// script's own through `view`, which is called only while the tab is on
-/// show — the same rule the Rust closure and the C open answer — and
-/// whose returned tree is the tab's content. Not a node and not a schema
-/// element, like `fill`. A declaration the converter cannot read as
-/// either form warns `bad-devtools-tab` and declares nothing.
+/// `devtools_tab { name = , label = , component = , props = }` or
+/// `devtools_tab { name = , label = , view = function() … end }`: a tab in
+/// the core's devtools panel, an extension's component placed in its body
+/// with `props` and the panel's facts (ADR 0067), or the script's own
+/// through `view`, which is called only while the tab is on show — the
+/// same rule the Rust closure and the C open answer — and whose returned
+/// tree is the tab's content. Not a node and not a schema element. A
+/// declaration the converter cannot read as either form warns
+/// `bad-devtools-tab` and declares nothing.
 fn build_devtools_tab(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let name: String = t.get::<Option<String>>("name")?.unwrap_or_default();
     let refuse = |ui: &mut Ui<'_>, why: &str| {
@@ -2627,27 +2545,31 @@ fn build_devtools_tab(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         let (k, _) = pair?;
         let mlua::Value::String(k) = k else { continue };
         let k = k.to_str()?;
-        if !matches!(k.as_ref(), "type" | "name" | "label" | "slot" | "view") {
+        if !matches!(k.as_ref(), "type" | "name" | "label" | "component" | "props" | "view") {
             return refuse(
                 ui,
                 &format!(
-                    "it takes name, label and slot or view, not {:?}",
+                    "it takes name, label and component (with props) or view, not {:?}",
                     k.as_ref()
                 ),
             );
         }
     }
-    let slot = t.get::<Option<String>>("slot")?;
+    let component = t.get::<Option<String>>("component")?;
     let view = t.get::<mlua::Value>("view")?;
-    match (slot, view) {
-        (Some(slot), mlua::Value::Nil) => {
-            if !slot.contains(kui_core::NAMESPACE_SEPARATOR) {
+    match (component, view) {
+        (Some(component), mlua::Value::Nil) => {
+            if !component.contains(kui_core::NAMESPACE_SEPARATOR) {
                 return refuse(
                     ui,
-                    &format!("bad slot {slot:?} (a full \"namespace/slot\")"),
+                    &format!("bad component {component:?} (a full \"namespace/name\")"),
                 );
             }
-            ui.devtools_tab(&name, &label, &slot);
+            let props = match t.get::<mlua::Value>("props")? {
+                mlua::Value::Nil => Value::Null,
+                v => lua_to_value(&v)?,
+            };
+            ui.devtools_tab(&name, &label, &component, &props);
             Ok(())
         }
         (None, mlua::Value::Function(view)) => {
@@ -2659,8 +2581,10 @@ fn build_devtools_tab(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             });
             result
         }
-        (Some(_), mlua::Value::Function(_)) => refuse(ui, "it takes a slot or a view, not both"),
-        (None, mlua::Value::Nil) => refuse(ui, "it needs a slot or a view function"),
+        (Some(_), mlua::Value::Function(_)) => {
+            refuse(ui, "it takes a component or a view, not both")
+        }
+        (None, mlua::Value::Nil) => refuse(ui, "it needs a component or a view function"),
         (_, other) => refuse(
             ui,
             &format!("view is a {}, not a function", other.type_name()),
@@ -2798,6 +2722,11 @@ fn build_component(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 }
             });
         }
+        // No host children: a placement a kept fill can journal, so the
+        // fill placing it stays replayable.
+        None if groups.is_none() => {
+            ui.component(&name, &props);
+        }
         None => {
             ui.component_with(&name, &props, children);
         }
@@ -2839,7 +2768,6 @@ fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let ty = ty.to_str()?;
     let ty: &str = &ty;
     match ty {
-        "fill" => build_fill(ui, t),
         "devtools_tab" => build_devtools_tab(ui, t),
         "row" | "column" | "grid" => {
             open_box(ui, t, ty)?;
@@ -5367,7 +5295,7 @@ mod tests {
 
     /// `devtools_tab` (ADR 0032): the script's `view` is called only while
     /// its tab is on show, the tree it returns lands over the panel's tab
-    /// body as the script's own nodes, the slot form declares without
+    /// body as the script's own nodes, the component form declares without
     /// calling anything, and a declaration of neither form is the
     /// `bad-devtools-tab` warning rather than a build error.
     #[test]
@@ -5384,7 +5312,7 @@ mod tests {
                       return column { text("from lua"),
                         button { label = "jump", on_click = { kind = "jump" } } }
                     end },
-                    devtools_tab { name = "plug", label = "Plugin", slot = "ts/panel" },
+                    devtools_tab { name = "plug", label = "Plugin", component = "ts/panel" },
                     devtools_tab { name = "bad", label = "Bad" },
                   }
                 end

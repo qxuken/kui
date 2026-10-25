@@ -1624,14 +1624,15 @@ pub struct UiEvent {
     /// playback's tag, a file dialog's — with the event's data in one
     /// field named for the event ([`UiEvent::declared`]).
     pub payload: Value,
-    /// The slot whose fill drew the node — its key, the one `begin_slot`
-    /// returned and `key_of(full_name)` answers — or `None` for a node the
-    /// host drew itself. What `origin` cannot say: one extension fills
-    /// many slots (a Lua host with a view per pane), and an event routed
-    /// by pane needs the slot, not the extension. Stamped by the core on
-    /// the way out like `window`, from the fill ranges the last frame
-    /// recorded (`Tree::fills`); a producer leaves it `None`.
-    pub slot: Option<Key>,
+    /// The component instance whose fill drew the node — its key, the one
+    /// its placement got (`key_of` of a `key` prop answers it) — or `None`
+    /// for a node the host drew itself. What `origin` cannot say: one
+    /// extension is placed many times (a Lua host with a panel per pane),
+    /// and an event routed by pane needs the instance, not the extension.
+    /// Stamped by the core on the way out like `window`, from the fill
+    /// ranges the last frame recorded (`Tree::fills`); a producer leaves it
+    /// `None`.
+    pub instance: Option<Key>,
     /// The message already had a field named for the event, and the
     /// event's data replaced it: what the core raises
     /// `message-field-taken` for on the way out (ADR 0047, decision 4).
@@ -1698,7 +1699,7 @@ impl UiEvent {
             key,
             event,
             payload,
-            slot: None,
+            instance: None,
             taken,
             data: has_data,
             fact: false,
@@ -1739,7 +1740,7 @@ impl UiEvent {
             key,
             event: EventKind::Component,
             payload: Value::Map(entries),
-            slot: None,
+            instance: None,
             taken,
             data: has_data,
             fact: false,
@@ -1757,7 +1758,7 @@ impl UiEvent {
             key: Key::ROOT,
             event,
             payload: data,
-            slot: None,
+            instance: None,
             taken: false,
             data: false,
             fact: true,

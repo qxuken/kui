@@ -501,7 +501,7 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
       inTick = lastTick;
       try {
         // `event: 'tick'`: the loop's own clock, which no node declared.
-        if (apply(updateFrom(msg, { origin: 0, window: 0, key: '', event: 'tick', payload: msg, slot: null }))) {
+        if (apply(updateFrom(msg, { origin: 0, window: 0, key: '', event: 'tick', payload: msg, instance: null }))) {
           redraw = true;
         }
       } finally {
@@ -674,7 +674,7 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
       // handler's — has no node behind it, and `update` is still handed an
       // envelope that says so, as a tick's does: one that reads
       // `event.event` to tell a click from a submit must not throw here.
-      apply(updateFrom(msg, event ?? { origin: 0, window: 0, key: '', event: 'dispatch', payload: msg, slot: null }));
+      apply(updateFrom(msg, event ?? { origin: 0, window: 0, key: '', event: 'dispatch', payload: msg, instance: null }));
     },
     /** The end: the config's `teardown(model)`, once, with the model as it
      *  stands. `runWindowed` hands this to the window (`win.onTeardown`),

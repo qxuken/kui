@@ -6942,7 +6942,7 @@ test("index.d.ts's message types name exactly the fields the event payloads carr
   for (const { kind, field, payload, doc } of events) {
     const data = shapes(payload);
     assert.ok(!data.some((g) => g.includes('kind')), `the ${kind} payload spells no core \`kind\` (ADR 0048)`);
-    // `fonts`, `reply`: the message as declared, with no field.
+    // `fonts`: the message as declared, with no field.
     if (!field) {
       assert.equal(data.length, 0, `the ${kind} payload has no field, so it names no shape`);
       continue;
@@ -8100,7 +8100,7 @@ test('the devtools inspect chord is the app\'s to respell (setDevtoolsKey)', () 
 // child is the app's own content, called by the encoder only while the
 // tab is on show — `frame` reads which tab that is once, before encoding
 // — and drawn over the panel's tab body as the app's own nodes; with a
-// `slot` it is a plugin's, declared for the panel to mount. The facts
+// `component` it is a plugin's, placed by the panel while on show. The facts
 // doors beside it, and the throws for a malformed one.
 test('a devtoolsTab is lazy through its function child, and its content is the app\'s (ADR 0032)', () => {
   const btn = (key) => box({ width: 60, height: 20, onClick: { kind: key }, label: key }, [], key);
@@ -8118,7 +8118,7 @@ test('a devtoolsTab is lazy through its function child, and its content is the a
           return box({ gap: 4 }, [el('text', {}, ['from js']), btn('jump')]);
         },
       ]),
-      el('devtoolsTab', { name: 'plug', label: 'Plugin', slot: 'ts/panel' }),
+      el('devtoolsTab', { name: 'plug', label: 'Plugin', component: 'ts/panel', props: { onPick: { kind: 'pick' } } }),
     ]);
   ctx.frame(1040, 720, 1, view());
   ctx.frame(1040, 720, 1, view());
@@ -8203,7 +8203,9 @@ test('a devtoolsTab is lazy through its function child, and its content is the a
   assert.equal(ctx.devtoolsDock(), 'right');
   // Malformed declarations throw at the encoder, the app's own error.
   assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x' }, ['not a function'])), /function child/);
-  assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x', slot: 'a/b' }, [() => null])), /not both/);
+  assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x', component: 'a/b' }, [() => null])), /not both/);
+  assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x', slot: 'a/b' })), /takes component, not slot/);
+  assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { name: 'x', props: {} }, [() => null])), /props only with a component/);
   assert.throws(() => ctx.frame(100, 100, 1, el('devtoolsTab', { label: 'no name' })), /needs a name/);
 });
 
@@ -9758,35 +9760,18 @@ test('a tick that returns effects and no model hands them on without a frame (AD
   assert.deepEqual(app.effects(), [{ kind: 'poll' }]);
 });
 
-// -- Extensions (ADR 0014) --------------------------------------------------
+// -- Extensions (ADR 0059, 0060, 0067) ----------------------------------------------
 //
 // The mechanism is C shared libraries and only that: a plugin is a .so /
 // .dylib / .dll exporting the seven kui_ext_* entry points kui.h describes.
 // There is no script-loads-script path — a Lua extension is loaded by a Rust
 // host or not at all.
 
-test('a slot places its node with nothing loaded, and rejects what it is not', () => {
+test('<slot> is gone, and says what replaced it (ADR 0067)', () => {
   const ctx = new Ctx();
   assert.deepEqual(ctx.extensionNamespaces(), []);
-
-  // A slot with no extension behind it still places a node, so a view can
-  // declare its layout before it has a plugin to put in it.
   const enc = createEncoder(protocol());
-  const tree = box({ pad: 0 }, [el('slot', { name: 'todos/panel' })]);
-  const { stream, strings } = enc.encode(tree);
-  ctx.frameBinary(320, 240, 1, stream, strings);
-  assert.equal(ctx.warnings().length, 0, 'an unfilled slot is not a warning');
-
-  // A position, not a box.
-  assert.throws(() => enc.encode(box({}, [el('slot', {})])), /needs a name/);
-  assert.throws(
-    () => enc.encode(box({}, [el('slot', { name: 'panel' })])),
-    /a full "namespace\/slot"/,
-  );
-  assert.throws(
-    () => enc.encode(box({}, [el('slot', { name: 'todos/panel', bg: '#fff' })])),
-    /takes name, params, keep and replay/,
-  );
+  assert.throws(() => enc.encode(box({}, [el('slot', { name: 'todos/panel' })])), /<slot> is gone \(ADR 0067\).*<component/);
 });
 
 test('addExtension reports why a library is not a plugin, and keeps nothing', () => {
@@ -9807,7 +9792,7 @@ test('addExtension reports why a library is not a plugin, and keeps nothing', ()
 // The whole round trip needs a real plugin, which needs a C compiler, so it
 // runs only where `cargo run -p kui-devtools --bin cbuild` has been run. The C
 // half of the same check is examples/c/features/slots/host.c's --headless, which CI runs.
-test('a C extension fills the slot the view declares, and its reply comes back', (t) => {
+test('a C extension draws the component the view places, and its emit comes back as the view\'s message', (t) => {
   // Where both build scripts leave it, whichever profile was built: on
   // Windows this is the shape that imports kui_ffi.dll rather than a host
   // executable, which is the only one an addon can load.
@@ -9830,9 +9815,9 @@ test('a C extension fills the slot the view declares, and its reply comes back',
     // and its list collapses to nothing - which is what the first run of
     // this test found.
     const tree = box({ width: 'grow', height: 'grow', pad: 0 }, [
-      el('slot', {
+      el('component', {
         name: 'todos/panel',
-        params: { title: 'todos, from Node', on_toggle: { kind: 'toggled' } },
+        props: { key: 'todos/panel', title: 'todos, from Node', on_toggle: { kind: 'toggled' } },
       }),
     ]);
     const { stream, strings } = enc.encode(tree);
@@ -9845,7 +9830,7 @@ test('a C extension fills the slot the view declares, and its reply comes back',
   const row = ctx
     .accessTree()
     .nodes.find((n) => n.origin === 1 && typeof n.name === 'string' && n.name.startsWith('[ '));
-  assert.ok(row, 'the plugin drew no rows — did the slot fill?');
+  assert.ok(row, 'the plugin drew no rows — was the component placed?');
 
   ctx.cursor(row.rect.x + row.rect.w / 2, row.rect.y + row.rect.h / 2);
   ctx.mouse(true);
@@ -9853,12 +9838,15 @@ test('a C extension fills the slot the view declares, and its reply comes back',
   draw();
 
   const events = ctx.pollEvents();
-  const replies = events.filter((e) => e.payload?.kind === 'toggled');
-  assert.equal(replies.length, 1, 'the plugin replied once');
-  assert.equal(replies[0].origin, 1, 'and the reply carries the plugin’s origin');
-  // And which slot the row was filled into — the reply keeps the slot of
-  // the event it answers (backlog K2). `keyOf` answers the slot's key.
-  assert.equal(replies[0].slot, ctx.keyOf('todos/panel'), 'the reply names the slot it came from');
+  const emits = events.filter((e) => e.payload?.kind === 'toggled');
+  assert.equal(emits.length, 1, 'the plugin emitted once');
+  // The view's own message, on the instance it placed: the view is the
+  // placer, so the origin is the app's and the key is the instance's.
+  assert.equal(emits[0].event, 'component');
+  assert.equal(emits[0].origin, 0, 'the message is the view’s');
+  assert.equal(emits[0].key, ctx.keyOf('todos/panel'), 'on the instance the view placed');
+  assert.equal(emits[0].instance, null, 'which the view drew outside any instance');
+  assert.equal(typeof emits[0].payload.toggle?.index, 'number', 'the emit’s fields under the event’s field');
   assert.ok(
     !events.some((e) => e.payload?.kind === 'toggle'),
     'the plugin’s own event stayed with the plugin',
@@ -9866,23 +9854,24 @@ test('a C extension fills the slot the view declares, and its reply comes back',
 });
 
 // ADR 0059: the same door loads a Lua script, which needs no compiler, so
-// this one always runs: the script requires the module beside it, fills
-// the slot, and its reply reaches the app with its origin.
-test('a .lua extension loads through addExtension, fills its slot and replies (ADR 0059)', () => {
+// this one always runs: the script requires the module beside it, draws
+// the component, and its emit reaches the app as the app's message.
+test('a .lua extension loads through addExtension, draws its component and emits (ADR 0059)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'kui-lua-ext-'));
   try {
     writeFileSync(join(dir, 'words.lua'), "return { title = 'a script, from Node' }");
     writeFileSync(
       join(dir, 'panel.lua'),
       `local words = require('words')
-       slots = { 'panel' }
-       function view(env, slot)
-         return column { width = 'grow', height = 'grow',
-           row { key = 'go', role = 'button', label = words.title, pad = 8,
-                 on_click = { kind = 'go' }, text(words.title) } }
-       end
+       components = {
+         panel = function(env, props)
+           return column { width = 'grow', height = 'grow',
+             row { key = 'go', role = 'button', label = words.title, pad = 8,
+                   on_click = { kind = 'go' }, text(words.title) } }
+         end,
+       }
        function on_event(ev)
-         if ev.kind == 'go' then return { kind = 'went' } end
+         if ev.kind == 'go' then return emit('on_go', { at = 1 }) end
        end`,
     );
     const ctx = new Ctx();
@@ -9890,7 +9879,9 @@ test('a .lua extension loads through addExtension, fills its slot and replies (A
     assert.deepEqual(ctx.extensionNamespaces(), ['lua']);
     const enc = createEncoder(protocol());
     const draw = () => {
-      const tree = box({ width: 'grow', height: 'grow', pad: 0 }, [el('slot', { name: 'lua/panel' })]);
+      const tree = box({ width: 'grow', height: 'grow', pad: 0 }, [
+        el('component', { name: 'lua/panel', props: { on_go: { kind: 'went' } } }),
+      ]);
       const { stream, strings } = enc.encode(tree);
       ctx.frameBinary(400, 300, 1, stream, strings);
     };
@@ -9901,9 +9892,9 @@ test('a .lua extension loads through addExtension, fills its slot and replies (A
     ctx.mouse(true);
     ctx.mouse(false);
     draw();
-    const replies = ctx.pollEvents().filter((e) => e.payload?.kind === 'went');
-    assert.equal(replies.length, 1, 'the script replied once');
-    assert.equal(replies[0].origin, 1, 'with its origin');
+    const emits = ctx.pollEvents().filter((e) => e.payload?.kind === 'went');
+    assert.equal(emits.length, 1, 'the script emitted once');
+    assert.deepEqual(emits[0].payload, { kind: 'went', go: { at: 1 } }, 'the app’s message, the fields under `go`');
     assert.throws(() => ctx.addExtension('bad', join(dir, 'missing.lua')), /missing\.lua/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -10080,69 +10071,46 @@ test('a Channel hands rows to a Lua component by handle, and onRange reports the
   }
 });
 
-// A slot replayed by its host (ADR 0045), through the same C plugin.
-test('a replayed slot spares the plugin, and says why when it cannot (ADR 0045)', (t) => {
-  const name = process.platform === 'win32' ? 'panel.dll' : 'panel.so';
-  const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-  const plugin = ['debug', 'release']
-    .map((p) => join(root, 'target', p, name))
-    .find(existsSync);
-  if (!plugin) {
-    t.skip(`build examples/c first (no target/*/${name})`);
-    return;
+// A component is replayed by default (ADR 0067): the same props and
+// nothing it read changed, and last frame's nodes are pushed again without
+// calling the script; `fresh` asks for a fill every frame.
+test('a component is replayed by default, and fresh opts out (ADR 0067)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kui-lua-replay-'));
+  try {
+    writeFileSync(
+      join(dir, 'panel.lua'),
+      `fills = 0
+       components = {
+         panel = function(env, props)
+           fills = fills + 1
+           return column { text(props.title .. ' ' .. fills) }
+         end,
+       }`,
+    );
+    const ctx = new Ctx();
+    ctx.setInspect(true);
+    ctx.addExtension('p', join(dir, 'panel.lua'));
+    const draw = (props) => ctx.frame(300, 200, 1, box({}, [el('component', { name: 'p/panel', props })]));
+    const text = () => ctx.nodes().find((n) => typeof n.text === 'string' && n.text.startsWith('t'))?.text;
+    draw({ title: 't' });
+    assert.equal(text(), 't 1');
+    draw({ title: 't' });
+    draw({ title: 't' });
+    assert.equal(text(), 't 1', 'replayed: the script was not asked');
+    draw({ title: 'tt' });
+    assert.equal(text(), 'tt 2', 'other props: filled again');
+    draw({ title: 'tt', fresh: true });
+    draw({ title: 'tt', fresh: true });
+    assert.equal(text(), 'tt 4', 'fresh: filled every frame');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  const ctx = new Ctx();
-  ctx.addExtension('todos', plugin);
-  const enc = createEncoder(protocol());
-  const draw = (title, how) => {
-    const tree = box({ width: 'grow', height: 'grow', pad: 0 }, [
-      el('slot', { name: 'todos/panel', params: { title }, ...how }),
-    ]);
-    const { stream, strings } = enc.encode(tree);
-    ctx.frameBinary(900, 600, 1, stream, strings);
-  };
-  const row = () =>
-    ctx
-      .accessTree()
-      .nodes.find((n) => n.origin === 1 && typeof n.name === 'string' && n.name.startsWith('[ '));
-
-  draw('todos', { keep: true });
-  assert.ok(row(), 'the plugin drew its rows');
-  assert.equal(ctx.slotFill('todos/panel'), null, 'nothing asked yet');
-  draw('todos', { replay: true });
-  assert.equal(ctx.slotFill('todos/panel'), 'replayed');
-  assert.ok(row(), 'the rows are there, replayed');
-  draw('todos', { replay: true });
-  assert.equal(ctx.slotFill('todos/panel'), 'replayed');
-
-  // Other params: the plugin runs.
-  draw('chores', { replay: true });
-  assert.equal(ctx.slotFill('todos/panel'), 'params');
-  draw('chores', { replay: true });
-  assert.equal(ctx.slotFill('todos/panel'), 'replayed');
-
-  // A plain frame forgets what was kept.
-  draw('chores', {});
-  draw('chores', { replay: true });
-  assert.equal(ctx.slotFill('todos/panel'), 'not-kept');
-
-  // The pointer onto a row the plugin hover-tracks: a replay still, since
-  // the row's hover is declared, not read — and the row paints hovered.
-  const r = row();
-  ctx.cursor(r.rect.x + r.rect.w / 2, r.rect.y + r.rect.h / 2);
-  draw('chores', { replay: true });
-  assert.ok(['replayed', 'reads'].includes(ctx.slotFill('todos/panel')));
-
-  assert.throws(
-    () => enc.encode(box({}, [el('slot', { name: 'todos/panel', keep: true, replay: true })])),
-    /keep or replay, not both/,
-  );
 });
 
-test('an event names the slot its node was filled into, and null for the app’s own (K2)', () => {
+test('an event names the instance its node was drawn in, and null for the app’s own (K2)', () => {
   // Without a plugin: the stamp is the core's, from the fill ranges the
   // frame recorded, so a host's own node reads null and nothing else
-  // changes shape. (The C plugin test above reads a real slot.)
+  // changes shape.
   const ctx = new Ctx();
   ctx.frame(320, 240, 1, box({ pad: 4 }, [box({ width: 40, height: 20, onClick: 'hit' }, [], 'b')]));
   ctx.cursor(20, 20);
@@ -10151,9 +10119,9 @@ test('an event names the slot its node was filled into, and null for the app’s
   const [ev] = ctx.pollEvents();
   // A bare-string message arrives as `{tag}`, even with no data (ADR 0047).
   assert.deepEqual(ev.payload, { tag: 'hit' });
-  assert.deepEqual(Object.keys(ev).sort(), ['event', 'key', 'origin', 'payload', 'slot', 'window']);
+  assert.deepEqual(Object.keys(ev).sort(), ['event', 'instance', 'key', 'origin', 'payload', 'window']);
   assert.equal(ev.event, 'click');
-  assert.equal(ev.slot, null);
+  assert.equal(ev.instance, null);
 });
 
 test('a text size or line height of nothing frames, and dir null is absent', () => {

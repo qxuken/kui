@@ -8,10 +8,12 @@
  * its own clicks back - the host never sees them, and this file never sees
  * the host's.
  *
- * Where it draws is a slot the host declares - "panel", named below in
- * kui_ext_slots - and the host passes it a title and the shape of the reply
- * it wants when a todo is toggled. kui_slot_params reads those; kui_reply
- * sends the reply. (docs/adr/0014-slots-an-extension-fills-in-place.md)
+ * Where it draws is where the host places its "panel" component - named
+ * below in kui_ext_components - and the host passes it a title and the
+ * message it wants when a todo is toggled, as the `on_toggle` prop.
+ * kui_instance_params reads the props; kui_emit raises on_toggle, which the
+ * host hears as its own message.
+ * (docs/adr/0067-slots-fold-into-components.md)
  *
  * It links against nothing: every kui_* call here is left undefined and
  * resolved from the host executable at load, the way a Lua C module
@@ -28,17 +30,11 @@
 
 #define MAX_TODOS 32
 #define TODO_LEN 64
-#define KIND_LEN 32
 
 typedef struct Panel {
     char todos[MAX_TODOS][TODO_LEN];
     int done[MAX_TODOS];
     int count;
-    /* The `kind` of the reply the host asked for on a toggle, copied out
-     * of the slot's params each frame (they are borrowed for the view
-     * call, and the reply is made from on_event). Empty = the host wants
-     * no reply. */
-    char toggle_kind[KIND_LEN];
 } Panel;
 
 /* -- small helpers ------------------------------------------------------- */
@@ -72,18 +68,13 @@ uint32_t kui_ext_abi(void) { return KUI_ABI_VERSION; }
 
 const char *kui_ext_name(void) { return "c panel"; }
 
-/* The slot this panel fills. The array outlives every call - the host reads
- * it once at load and copies the names out. */
-static const KuiStr SLOTS[] = {{(const uint8_t *)"panel", 5}};
-const KuiStr *kui_ext_slots(size_t *count) {
-    *count = sizeof SLOTS / sizeof *SLOTS;
-    return SLOTS;
-}
-
-/* The component this panel provides (docs/adr/0060): a host places as many
- * badges as it likes with kui_component, and each is drawn by kui_ext_view
- * with "badge" as its kui_slot_name. */
-static const KuiStr COMPONENTS[] = {{(const uint8_t *)"badge", 5}};
+/* The components this panel provides (docs/adr/0060, 0067): the todo
+ * "panel", and a "badge" a host places as often as it likes. Each instance
+ * is drawn by kui_ext_view with its name as kui_instance_name. The array
+ * outlives every call - the host reads it once at load and copies the
+ * names out. */
+static const KuiStr COMPONENTS[] = {{(const uint8_t *)"panel", 5},
+                                    {(const uint8_t *)"badge", 5}};
 const KuiStr *kui_ext_components(size_t *count) {
     *count = sizeof COMPONENTS / sizeof *COMPONENTS;
     return COMPONENTS;
@@ -94,7 +85,7 @@ const KuiStr *kui_ext_components(size_t *count) {
  * origin. The press comes back to kui_ext_on_event, which raises the
  * badge's onPress for the host with kui_emit. */
 static void badge_view(KuiCtx *ui) {
-    const KuiValue *props = kui_slot_params(ui);
+    const KuiValue *props = kui_instance_params(ui);
     KuiStr label = str_of(props, "label", KUI_STR("badge"));
     KuiTheme t = KUI_THEME_INIT;
     kui_theme(ui, &t);
@@ -130,23 +121,18 @@ void kui_ext_view(void *user, KuiCtx *ui) {
     Panel *p = (Panel *)user;
     if (!p) return;
     KuiStr which = {0};
-    if (kui_slot_name(ui, &which) && kui_str_eq(which, "badge")) {
+    if (kui_instance_name(ui, &which) && kui_str_eq(which, "badge")) {
         badge_view(ui);
         return;
     }
 
-    /* What the host passed with the slot: a title, and the template of
-     * the reply it wants on a toggle. Both borrowed for this call. */
-    const KuiValue *params = kui_slot_params(ui);
+    /* What the host placed the panel with: a title, borrowed for this
+     * call. Its on_toggle is the host's business - kui_emit names the prop
+     * and the core finds the host's message for it. */
+    const KuiValue *params = kui_instance_params(ui);
     KuiStr title = str_of(params, "title", KUI_STR("c panel"));
-    const KuiValue *on_toggle =
-        params ? kui_value_get(params, KUI_STR("on_toggle")) : NULL;
-    KuiStr kind = str_of(on_toggle, "kind", KUI_STR(""));
-    size_t n = kind.len < KIND_LEN - 1 ? kind.len : KIND_LEN - 1;
-    memcpy(p->toggle_kind, kind.ptr, n);
-    p->toggle_kind[n] = 0;
 
-    /* Opened where the host declared the slot - here, as a child of its
+    /* Opened where the host placed the component - here, as a child of its
      * root row, to the right of its own column. Its colours come off the
      * *host's* theme (ADR 0019): a plugin is a guest in someone else's
      * frame, and reading the palette is how it looks like it belongs. */
@@ -242,16 +228,15 @@ void kui_ext_on_event(void *user, const KuiEvent *ev) {
         int64_t i = 0;
         if (index && kui_value_as_int(index, &i) && i >= 0 && i < p->count) {
             p->done[i] = !p->done[i];
-            /* The host asked to hear about this: the reply is its own
-             * template with the index filled in. Copied by kui_reply, so
-             * the value is ours to free. */
-            if (p->toggle_kind[0]) {
-                KuiValue *reply = msg(p->toggle_kind);
-                kui_value_map_set(reply, KUI_STR("index"), kui_value_int(i));
-                kui_value_map_set(reply, KUI_STR("done"), kui_value_bool(p->done[i]));
-                kui_reply(ev, reply);
-                kui_value_free(reply);
-            }
+            /* Raise on_toggle: the host hears the message it passed for
+             * it, with these fields under `toggle` - or nothing, when it
+             * passed none. Copied by kui_emit, so the value is ours to
+             * free. */
+            KuiValue *fields = kui_value_map();
+            kui_value_map_set(fields, KUI_STR("index"), kui_value_int(i));
+            kui_value_map_set(fields, KUI_STR("done"), kui_value_bool(p->done[i]));
+            kui_emit(ev, KUI_STR("on_toggle"), fields);
+            kui_value_free(fields);
         }
     } else if (kui_str_eq(s, "badge")) {
         /* A badge's dot: raise its onPress, which the host hears as the

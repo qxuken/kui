@@ -829,7 +829,7 @@ export type EventName =
   | 'scroll' | 'focus' | 'hover' | 'drop' | 'files' | 'open' | 'layout'
   | 'resize' | 'window' | 'system' | 'fonts' | 'modifiers' | 'change'
   | 'submit' | 'cancel' | 'boundary' | 'sound' | 'capture' | 'dismiss'
-  | 'reply' | 'component' | 'range';
+  | 'component' | 'range';
 // -- end generated --
 
 /** A position in an editor's text: one of its `runs` and a character
@@ -1094,8 +1094,8 @@ export type WarningCode =
    *  under different parents, so they have distinct keys and the name picked
    *  the first in tree order. Labels are unique among siblings, not across a
    *  tree. An extension asking from inside a fill is answered from the nodes
-   *  that fill opened and no one else's — not even its own other slots' — and
-   *  the host from its own first; so this is a clash among the asker's own.
+   *  that fill opened and no one else's — not even its own other instances' —
+   *  and the host from its own first; so this is a clash among the asker's own.
    *  Give the node meant a label nothing else declares, or pass the hex key an
    *  event carried. Two nodes with the *same* key are `duplicate-key`. */
   | 'ambiguous-key'
@@ -1376,12 +1376,6 @@ export type WarningCode =
    *  sessions; windows that share resources are built with `Core::new_in`
    *  against one `Session`. */
   | 'foreign-resource'
-  /** An extension names a slot no host declared this frame, so it drew nothing.
-   *  A slot is a position the host declares in its own view by full name,
-   *  `ui.slot("ns/name")` — the namespace the host gave the extension, then the
-   *  name the extension lists; one listing none fills `"ns/root"` after the
-   *  host's view. Declare the slot, or drop the name from the extension's list. */
-  | 'unknown-slot'
   /** A colour, length or family prop named a token — `bg = "$peach"` — that
    *  nothing declared and that is no theme, metrics or number role, or named
    *  one of another kind (a length in a colour slot). The slot is left at the
@@ -1416,8 +1410,8 @@ export type WarningCode =
    *  and key. */
   | 'unknown-component'
   /** A fill asked for its host's children (`children()`) where they cannot be:
-   *  outside a component instance's fill — a slot's — or a second time for one
-   *  group. Nothing is built. */
+   *  outside a fill, in one placed with none (an extension's root, a devtools
+   *  tab), or a second time for one group. Nothing is built. */
   | 'children-misplaced'
   /** An `svg` element's document did not parse (ADR 0063): the message carries
    *  the parser's reason. The element draws an empty box of the size its spec
@@ -1436,10 +1430,6 @@ export type WarningCode =
    *  px at its drawn size — a coordinate like `8e8` — which the rasterizer
    *  cannot hold, so the image draws nothing. Raised once per key. */
   | 'svg-too-large'
-  /** A slot name declared twice in one frame. The second declaration was
-   *  ignored: a fill is keyed by the slot's full name, so two fills of one name
-   *  would share every key. Two places for one extension are two names. */
-  | 'duplicate-slot'
   /** An extension returned from `view` with nodes still open. The core closed
    *  them at the depth the fill began, so the host's tree is what the host
    *  declared; outside the guard, the rest of the host's view would have landed
@@ -1447,14 +1437,15 @@ export type WarningCode =
    *  its `close`. */
   | 'unbalanced-extension'
   /** An extension's `view` returned an error. The message is drawn in red where
-   *  the fill would have been, and reported here once per extension and slot
-   *  rather than once per frame. */
+   *  the fill would have been, and reported here once per extension and
+   *  component rather than once per frame. */
   | 'extension-view-error'
-  /** An extension declared one of its *own* slots while it was drawing, so
-   *  filling it would have meant calling it inside itself. The slot is left
-   *  empty. An extension may host extensions (`Fill::add`), and may declare
-   *  their slots — what it cannot do is be its own guest. */
-  | 'recursive-slot'
+  /** An extension placed one of its *own* components while it was drawing, with
+   *  no spare handle to draw it (`Extension::reentry`), so drawing it would
+   *  have meant calling the extension inside itself. The instance is left
+   *  empty. An extension may host extensions (`Fill::add`) and place theirs —
+   *  what it cannot do is be its own guest. */
+  | 'recursive-component'
   /** `request_frame_for` was given more distinct names than a session keeps
    *  (256): the rest are recorded as `request_frame`. A name per call — a
    *  counter, an id — rather than per reason is the usual cause. Raised once
@@ -1481,10 +1472,10 @@ export type WarningCode =
    *  its own name. */
   | 'duplicate-tab'
   /** A `devtoolsTab` declaration a binding could not read as either form: a
-   *  child that is not a function, both a `slot` and a child, or a `view` that
-   *  is not a function in Lua. The tab was not declared. A tab names a slot for
-   *  an extension to fill, or carries a function the binding calls only when
-   *  the tab is shown. */
+   *  child that is not a function, both a `component` and a child, or a `view`
+   *  that is not a function in Lua. The tab was not declared. A tab names a
+   *  component an extension provides, or carries a function the binding calls
+   *  only when the tab is shown. */
   | 'bad-devtools-tab'
   /** A select's `current` names no option the field can show: an index past its
    *  options, or a separator's. The field is drawn as if none were in force —
@@ -1568,11 +1559,12 @@ export interface UiEvent<A = AppMsg> {
    *  under `tag` (`Arrived<A>`). A window's own events are messages its
    *  root, its `windows` entry or its `<menuBar>` declared (ADR 0048). */
   payload: Arrived<A>;
-  /** The slot whose fill drew the node, as its key (`keyOf` of the slot's
-   *  full name answers the same), or null for a node your app drew. One
-   *  extension fills many slots, so `origin` cannot say which; this is
-   *  what routes an event by the slot it came from. */
-  slot: string | null;
+  /** The component instance whose fill drew the node, as its key (`keyOf`
+   *  of the `key` prop it was placed with answers the same), or null for a
+   *  node your app drew. One extension is placed many times, so `origin`
+   *  cannot say which; this is what routes an event by the instance it
+   *  came from (ADR 0067). */
+  instance: string | null;
 }
 
 /** Window inner size in logical px plus the device pixel ratio. */
@@ -2742,8 +2734,8 @@ export declare class Ctx {
    * Loads an extension: a Lua script (a `.lua` file, or a folder
    * holding `init.lua`), or a C shared library exporting the seven
    * `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
-   * (ADR 0059). `namespace` is the word that fronts every slot name it
-   * fills — `<slot name="todos/panel"/>` for `addExtension('todos', …)`
+   * (ADR 0059). `namespace` is the word that fronts every component it
+   * provides — `<component name="todos/panel"/>` for `addExtension('todos', …)`
    * — and an empty one takes the extension's own name. Throws with the
    * reason if the script fails to load or run, or the library will not
    * load, declares no `kui_ext_abi` or one this build does not
@@ -3935,7 +3927,7 @@ export declare class Ctx {
    * the view. Two nodes on one label under different parents
    * resolve to the first in tree order and raise
    * `ambiguous-key` — among the host's own first, and a
-   * plugin filling a slot is answered from its own nodes only.
+   * plugin's component is answered from its own nodes only.
    */
   keyOf(label: string): string | null
   /**
@@ -3948,14 +3940,6 @@ export declare class Ctx {
    * rows of a list under different parents answer the same.
    */
   labelOf(key: string): string | null
-  /**
-   * What a `<slot replay>` of `name` got this frame, or the
-   * frame before while this one is being built (ADR 0045):
-   * `'replayed'`, or why it was filled fresh — `'not-kept'`,
-   * `'params'`, `'reads'`, `'not-replayable'`, `'moved'` — or
-   * null when nothing asked.
-   */
-  slotFill(name: string): string | null
   /**
    * The hex key of the first node in the last finished frame
    * whose accessible name is `name` (backlog F137) — its
@@ -5576,7 +5560,7 @@ export declare class KuiWindow {
    * the view. Two nodes on one label under different parents
    * resolve to the first in tree order and raise
    * `ambiguous-key` — among the host's own first, and a
-   * plugin filling a slot is answered from its own nodes only.
+   * plugin's component is answered from its own nodes only.
    */
   keyOf(label: string): string | null
   /**
@@ -5589,14 +5573,6 @@ export declare class KuiWindow {
    * rows of a list under different parents answer the same.
    */
   labelOf(key: string): string | null
-  /**
-   * What a `<slot replay>` of `name` got this frame, or the
-   * frame before while this one is being built (ADR 0045):
-   * `'replayed'`, or why it was filled fresh — `'not-kept'`,
-   * `'params'`, `'reads'`, `'not-replayable'`, `'moved'` — or
-   * null when nothing asked.
-   */
-  slotFill(name: string): string | null
   /**
    * The hex key of the first node in the last finished frame
    * whose accessible name is `name` (backlog F137) — its

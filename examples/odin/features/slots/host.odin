@@ -1,8 +1,9 @@
 // Odin as the host of an extension: the twin of examples/c/features/slots/host.c.
-// It loads a plugin under a namespace of its own choosing, declares that
-// plugin's slot in the middle of its own view, and counts what comes back.
-// The plugin may be the Odin panel beside this file or the C one - the
-// same contract, and the host cannot tell which it loaded.
+// It loads a plugin under a namespace of its own choosing, places that
+// plugin's `panel` component in the middle of its own view (docs/adr/0067)
+// with a title and the message it wants on a toggle, and counts what comes
+// back. The plugin may be the Odin panel beside this file or the C one -
+// the same contract, and the host cannot tell which it loaded.
 //
 //   nu scripts/odin.nu test                      builds the Odin panel and runs this --headless
 //   ./target/odin/host                           a window, with target/odin/panel.so
@@ -10,8 +11,9 @@
 //
 // --headless is the contract without a display: a frame, then a click on a
 // row the plugin drew, and checks that the click reached the plugin and not
-// the host, and that the plugin's reply reached the host with its origin
-// and its slot on it.
+// the host, and that the plugin's on_toggle reached the host as its own
+// message, about the panel's instance. A second frame with nothing moved
+// replays the panel without asking the plugin.
 package host
 
 import "core:fmt"
@@ -20,34 +22,44 @@ import "core:strings"
 import kui "../../../../packages/odin/kui"
 
 // The namespace the panel is loaded under: ours to choose, and what fronts
-// its slot's name. The plugin calls its slot "panel".
+// its component's name. The plugin calls its component "panel".
 NS :: "todos"
-PANEL_SLOT :: NS + "/panel"
+PANEL :: NS + "/panel"
 
 // Where `nu scripts/odin.nu` leaves the Odin panel.
 DEFAULT_PLUGIN :: "target/odin/panel.dll" when ODIN_OS == .Windows else "target/odin/panel.so"
 
 Host :: struct {
-	clicks:     int, // our own button
-	toggles:    int, // replies from the panel
-	reply_from: u16,
-	reply_slot: u64, // whose slot the reply is about
+	clicks:      int, // our own button
+	toggles:     int, // the panel's on_toggle, heard as our own message
+	toggled:     int, // which row it said
+	toggle_from: u64, // the instance the event is about: Event.key
+	panel_fill:  i32, // how the last frame filled the panel: a kui.FILL_* code
 }
 
 Count :: struct {}
-// The reply the panel sends on a toggle, in the shape we ask for below.
-Toggled :: struct {
+// What the panel says with its on_toggle, under the message's `toggle`.
+Toggle_Data :: struct {
 	index: int,
 	done:  bool,
+}
+// The message we pass for on_toggle: {kind = "toggled"}. The plugin's
+// fields come back in `toggle`; a field named `_` is never written, so the
+// declaration carries none of them.
+Toggled :: struct {
+	using _: struct {
+		toggle: Toggle_Data,
+	},
 }
 Msg :: union {
 	Count,
 	Toggled,
 }
 
-// What we pass with the slot: the panel's title, and the template of the
-// reply we want back.
-Panel_Params :: struct {
+// What we place the panel with: a key (so the instance is keyed by name,
+// not position), its title, and the message we want back on a toggle.
+Panel_Props :: struct {
+	key:       string,
 	title:     string,
 	on_toggle: Toggled,
 }
@@ -64,22 +76,27 @@ view :: proc(h: ^Host, ui: ^kui.Ui) {
 		kui.button(ui, "count", Count{})
 	}
 
-	// The plugin's half, in place: a position among our own children,
-	// filled then and there by whoever we loaded under `todos`.
-	kui.slot(ui, PANEL_SLOT, Panel_Params{title = "todos, from Odin", on_toggle = Toggled{}})
+	// The plugin's half, in place: a component among our own children,
+	// drawn then and there by whoever we loaded under `todos` - and
+	// replayed while nothing it read moved (ADR 0067).
+	h.panel_fill = kui.component(ui, PANEL, Panel_Props{key = PANEL, title = "todos, from Odin", on_toggle = Toggled{}})
 }
 
 on_event :: proc(h: ^Host, ev: kui.Event) {
-	// Our own nodes come back with origin 0; a reply carries the origin of
-	// the extension that made it, which is what tells the two apart.
+	// Our own nodes come back with origin 0, and so do the messages we
+	// passed a component, raised by the plugin with emit: `event` says
+	// "component". The plugin's own clicks carry its origin and never
+	// reach us.
+	if ev.origin != 0 do return
 	switch m in kui.message(ev, Msg) {
 	case Count:
-		if ev.origin == 0 do h.clicks += 1
+		h.clicks += 1
 	case Toggled:
+		if ev.event != "component" do return
 		h.toggles += 1
-		h.reply_from = ev.origin
-		// And which slot: one plugin may fill several.
-		h.reply_slot = ev.slot
+		h.toggled = m.toggle.index
+		// And which instance: one plugin may be placed many times.
+		h.toggle_from = ev.key
 	}
 }
 
@@ -115,9 +132,19 @@ headless :: proc(plugin: string) -> bool {
 	fmt.printfln("loaded %d extension(s)", kui.ctx_extension_count(ui))
 
 	kui.frame(ui, &h, view, 900, 600)
+	if h.panel_fill != kui.FILL_NOT_KEPT {
+		fmt.eprintfln("FAIL: the first frame did not fill the panel (%d)", h.panel_fill)
+		return false
+	}
+	// A second frame with nothing moved: the kept fill is replayed.
+	kui.frame(ui, &h, view, 900, 600)
+	if h.panel_fill != kui.FILL_REPLAYED {
+		fmt.eprintfln("FAIL: the second frame did not replay the panel (%d)", h.panel_fill)
+		return false
+	}
 	x, y, found := find_row(ui, 1)
 	if !found {
-		fmt.eprintln("FAIL: the panel drew no rows - did the slot fill?")
+		fmt.eprintln("FAIL: the panel drew no rows - was it placed?")
 		return false
 	}
 	// Click it, then build again so the press resolves into an event.
@@ -131,16 +158,18 @@ headless :: proc(plugin: string) -> bool {
 		ok = false
 	}
 	if h.toggles != 1 {
-		fmt.eprintfln("FAIL: expected one reply from the panel, got %d", h.toggles)
+		fmt.eprintfln("FAIL: expected the panel's on_toggle once, heard %d", h.toggles)
 		ok = false
 	}
-	ns, ns_ok := kui.ctx_extension_namespace(ui, h.reply_from)
+	// Placed with `key`, the instance is found by that name like a keyed node.
+	if ok && h.toggle_from != kui.key_of(ui, PANEL) {
+		fmt.eprintfln("FAIL: the on_toggle names instance %x, not %s's", h.toggle_from, PANEL)
+		ok = false
+	}
+	// Who drew the panel: the first extension, origin 1, named back.
+	ns, ns_ok := kui.ctx_extension_namespace(ui, 1)
 	if ok && !ns_ok {
-		fmt.eprintfln("FAIL: the reply's origin %d names no extension", h.reply_from)
-		ok = false
-	}
-	if ok && h.reply_slot != kui.key_of(ui, PANEL_SLOT) {
-		fmt.eprintfln("FAIL: the reply names slot %x, not %s's", h.reply_slot, PANEL_SLOT)
+		fmt.eprintln("FAIL: origin 1 names no extension")
 		ok = false
 	}
 	// The panel kept its own state: the row it ticked reads done now.
@@ -152,7 +181,7 @@ headless :: proc(plugin: string) -> bool {
 		ok = false
 	}
 	if ok {
-		fmt.printfln("ok: the slot filled, the click reached the plugin and not the host, and its reply came back from `%s`", ns)
+		fmt.printfln("ok: `%s/panel` placed and replayed, the click reached the plugin and not the host, and its on_toggle (row %d) arrived as our own message", ns, h.toggled)
 	}
 	return ok
 }

@@ -430,8 +430,18 @@ extern "C" {
  * (ADR 0063), kui_component, kui_children, kui_emit and the optional
  * kui_ext_components export (ADR 0060), and the channel's builder and
  * readers (ADR 0065).
+ *
+ * ABI 39 folds slots into components (ADR 0067). Gone: kui_slot,
+ * kui_slot_kept, kui_slot_replay, kui_slot_fill and the KUI_SLOT_* codes
+ * (kui_component answers a KUI_FILL_* code), kui_reply (kui_emit is the one
+ * way an extension speaks) and the kui_ext_slots export (a plugin that
+ * still exports it is refused with the reason). Renamed: kui_slot_name,
+ * kui_slot_namespace and kui_slot_params are kui_instance_name,
+ * kui_instance_namespace and kui_instance_params. kui_devtools_tab takes
+ * the component and its props in place of a slot. KuiEvent.slot is
+ * KuiEvent.instance, the same field renamed. No struct moved.
  */
-#define KUI_ABI_VERSION 38u
+#define KUI_ABI_VERSION 39u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -496,13 +506,13 @@ uint32_t kui_abi_version(void);
 
 typedef struct KuiCtx KuiCtx;
 typedef struct KuiValue KuiValue;
-/* Where a reply goes, carried on the event an extension's kui_ext_on_event
- * is handed and passed straight back to kui_reply. Opaque on purpose: it is
- * a function pointer into the copy of the library that opened it, which is
- * how a reply reaches the host even when the plugin was linked against a
- * different copy - the case Windows forces, since a DLL may not leave
- * kui_reply undefined and take it from the executable the way ELF does.
- * Never allocate, dereference or store one. */
+/* Where an extension's answer goes, carried on the event its
+ * kui_ext_on_event is handed and passed straight back to kui_emit. Opaque
+ * on purpose: it is a function pointer into the copy of the library that
+ * opened it, which is how an answer reaches the host even when the plugin
+ * was linked against a different copy - the case Windows forces, since a
+ * DLL may not leave kui_emit undefined and take it from the executable the
+ * way ELF does. Never allocate, dereference or store one. */
 typedef struct KuiReplySink KuiReplySink;
 
 typedef struct KuiStr {
@@ -515,7 +525,7 @@ typedef struct KuiStr {
 /* Whether a borrowed string is `lit`. Every string this API hands back is a
  * (ptr, len) pair into memory the library owns, NUL-terminated by nothing,
  * so `strcmp` is wrong on it and every C host writes this on its first day
- * - reading an event's `kind`, a slot's name. Here once instead. */
+ * - reading an event's `kind`, an instance's name. Here once instead. */
 static inline bool kui_str_eq(KuiStr s, const char *lit) {
     size_t n = strlen(lit);
     return s.len == n && memcmp(s.ptr, lit, n) == 0;
@@ -2161,18 +2171,18 @@ typedef struct KuiEvent {
     uint64_t key;
     const KuiValue *payload; /* borrowed; may be NULL */
     uint32_t window;         /* which window it came from: the KuiCtx's kui_env_set_window id */
-    /* Where kui_reply sends a reply to this event (ABI 10). NULL on every
+    /* Where kui_emit sends an answer to this event (ABI 10). NULL on every
      * event you polled yourself; set only on the one an extension's
      * kui_ext_on_event is handed, and only for that call. Not yours to
-     * read or write - pass the event back to kui_reply and it is used for
+     * read or write - pass the event back to kui_emit and it is used for
      * you. See KuiReplySink. */
     KuiReplySink *reply_sink;
-    /* The key of the slot whose fill drew the node - what kui_key_of answers
-     * for the slot's full name - or 0 for a node you drew yourself. One
-     * extension fills many slots, so `origin` cannot say which; this routes
-     * an event by the slot it came from. Appended under the [out] rule (no
-     * bump): a host reserving the older layout never sees it. */
-    uint64_t slot;
+    /* The key of the component instance whose fill drew the node - what
+     * kui_key_of answers for the `key` prop it was placed with - or 0 for a
+     * node you drew yourself. One extension is placed many times, so
+     * `origin` cannot say which; this routes an event by the instance it
+     * came from. Called `slot` before ABI 39 (ADR 0067); same place. */
+    uint64_t instance;
     /* What happened (ABI 33): the event's kind - "click", "drag", "key",
      * "change", "submit", "resize", ... (docs/props.md lists them). The
      * payload no longer says it: every payload is the message its handler
@@ -2662,8 +2672,8 @@ typedef struct KuiTheme {
 
 /* This window's palette as of the current or last frame. False for a bad
  * context, a NULL out, or a reservation below the ABI-1 layout. Read in a
- * fill kept with kui_slot_kept, the palette is checked before a replay: a
- * fill that drew from it runs again when it changes. */
+ * component's fill, the palette is checked before a replay: a fill that
+ * drew from it runs again when it changes. */
 bool kui_theme(KuiCtx *ctx, KuiTheme *out);
 /* Keep following the OS's light/dark, but paint this accent instead of the
  * OS's - a host with a brand colour. 0xRRGGBBAA; zero goes back to
@@ -3304,70 +3314,10 @@ uint64_t kui_open_indexed(KuiCtx *ctx, uint64_t index, const KuiSpec *spec, KuiV
  * row's length when that row was not built - cut it to the row. A new
  * symbol, so KUI_ABI_VERSION stays 15. */
 void kui_row_count(KuiCtx *ctx, uint64_t rows);
-/* A slot: a position among the current node's children that an extension
- * fills, in place.
- * `name` is the full name, `namespace/slot`: the namespace the host gave
- * the extension when it loaded it, and the slot in the extension's own
- * vocabulary ("fs/panel"). `params` may be NULL and is borrowed for the
- * call - you keep it; it is what the extension reads back with
- * kui_slot_params, declared every frame and retained by nothing. "ns/root"
- * is the fill after the view for an extension listing no slots, and
- * declaring it moves that fill here. Returns false when the name was
- * already declared this frame (a `duplicate-slot` warning).
- *
- * Whatever fills it is loaded with kui_ctx_add_extension, into a context
- * you build frames on yourself or hand to kui_run_with. With nothing loaded this
- * still records the position and kui_key_of still answers the slot's key,
- * so a host can declare its layout before it has a plugin to put in it.
- *
- * An extension may call this from its own kui_ext_view too: the slot is
- * declared inside its fill and keyed there, which is how a guest puts a
- * plugin in the middle of its own tree. What a plugin cannot do is load
- * the thing that fills it - its context has no list of its own - so the
- * name has to be one the host above it already loaded. Its own slot is
- * the one name that finds nobody, since a plugin is out of the list while
- * it draws: that warns (`recursive-slot`) and draws nothing. */
-bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
-
-/* A slot replayed by its host (docs/adr/0045-a-slot-replayed-by-its-host.md).
- * kui_slot_kept is kui_slot, and what the fill built is *kept* for
- * kui_slot_replay to push again next frame: every node as its door saw it
- * (before hover, accent and easing touched it), the slots declared inside,
- * and every fact of the frame the fill read while it ran. kui_slot_replay
- * is the host's claim that nothing *it* feeds the extension has changed;
- * the core checks what it can see - the params, every fact the kept fill
- * read (a hover, a focus, a scroll offset, the theme), that the slot is
- * declared where it was - and either pushes the kept nodes again without
- * asking the extension (KUI_SLOT_REPLAYED) or fills and keeps it as
- * kui_slot_kept would and says why. A kept fill's nested slots are
- * declared again and filled fresh either way. A slot not declared for a
- * frame, or filled with plain kui_slot, forgets what it kept. A fill that
- * declared something of the frame beyond its nodes (a title, a window, a
- * frame asked for, a devtools tab, a cells grid), or whose view failed,
- * is kept as not replayable. What the host vouches for is its own side
- * only: a view that reads the clock off a reading handed out whole is one
- * its host must not replay. kui_slot_fill reads back what the last
- * kui_slot_replay of the name answered this frame (the frame before's
- * while this one is built, until the slot is declared), and
- * KUI_SLOT_UNDECLARED after a frame that kept it with kui_slot_kept,
- * filled it with kui_slot or skipped it. New symbols, so KUI_ABI_VERSION
- * stays. */
-#define KUI_SLOT_UNDECLARED (-1)    /* not declared: a duplicate, or outside a frame */
-#define KUI_SLOT_REPLAYED 0         /* last frame's nodes, pushed again; the extension not asked */
-#define KUI_SLOT_NOT_KEPT 1         /* nothing kept: its first frame, or a frame skipped it */
-#define KUI_SLOT_PARAMS 2           /* the params differ from the kept fill's */
-#define KUI_SLOT_READS 3            /* a fact of the frame the fill read has moved */
-#define KUI_SLOT_NOT_REPLAYABLE 4   /* it declared of the frame, drew what the journal does not know, or failed */
-#define KUI_SLOT_MOVED 5            /* declared under another parent than the kept fill's */
-#define KUI_SLOT_HEARD 6            /* a component instance heard one of its own events since it was filled */
-bool kui_slot_kept(KuiCtx *ctx, KuiStr name, const KuiValue *params);
-int32_t kui_slot_replay(KuiCtx *ctx, KuiStr name, const KuiValue *params);
-int32_t kui_slot_fill(KuiCtx *ctx, KuiStr name);
-
 /* -- Extensions: loading one from C --------------------------- */
 
 /* Load the extension at `path` into this context, under `namespace` - the
- * word that fronts every slot name it fills ("namespace/panel"). A `.lua`
+ * word that fronts every component name it provides ("namespace/panel"). A `.lua`
  * file, or a directory holding init.lua, loads as a Lua extension; anything
  * else as a C shared library (ADR 0059). An empty `namespace` takes the
  * extension's own name: a plugin's kui_ext_name, a script's file name.
@@ -3454,7 +3404,7 @@ void kui_focus(KuiCtx *ctx, uint64_t key);
  * label under different parents resolve to the first in tree order, with an
  * "ambiguous-key" warning (kui_take_warnings). A plugin asking from inside
  * a fill is answered from the nodes that fill opened and no one else's -
- * not even its own other slots'; the host from its own first, and
+ * not even its own other instances'; the host from its own first, and
  * everyone's when it opened none. */
 uint64_t kui_key_of(KuiCtx *ctx, KuiStr label);
 /* The reverse of kui_key_of: the label `key` was opened under, in the frame
@@ -4273,12 +4223,12 @@ bool kui_set_devtools_key(KuiCtx *ctx, KuiStr key);
  * context. */
 bool kui_devtools_key(KuiCtx *ctx, KuiStr *out);
 /* A tab in the panel, in
- * one of two forms. kui_devtools_tab declares one an extension fills: name
- * is the tab's identity, label what the strip shows, slot the full
- * namespace/slot the extension names - while the tab is on show the panel
- * declares that slot in the tab's body and the fill is drawn there, and
- * otherwise the extension is not asked (and naming the slot raises no
- * unknown-slot). kui_devtools_tab_open declares one the host draws itself
+ * one of two forms. kui_devtools_tab declares one an extension draws: name
+ * is the tab's identity, label what the strip shows, component the full
+ * namespace/name of what the extension provides - while the tab is on
+ * show the panel places it in the tab's body with props (borrowed, NULL
+ * for none; its on* entries are the messages its events reach you as) and
+ * the panel's facts, and otherwise the extension is not asked. kui_devtools_tab_open declares one the host draws itself
  * and opens its content ONLY while the tab is on show: true means the
  * content node is open - build inside and kui_close - and false means the
  * tab was declared and nothing was opened, so skip the body and do not
@@ -4294,7 +4244,8 @@ bool kui_devtools_key(KuiCtx *ctx, KuiStr *out);
  * dock's focus region. Both forms are made every frame, panel on or off;
  * a name declared twice in a frame warns duplicate-tab and keeps the
  * first, which is what a false from either says. */
-bool kui_devtools_tab(KuiCtx *ctx, KuiStr name, KuiStr label, KuiStr slot);
+bool kui_devtools_tab(KuiCtx *ctx, KuiStr name, KuiStr label, KuiStr component,
+                      const KuiValue *props);
 bool kui_devtools_tab_open(KuiCtx *ctx, KuiStr name, KuiStr label);
 /* The panel's facts a tab reads: the node the tree
  * tab has selected, the tree row under the pointer, the node the picker is
@@ -4869,9 +4820,9 @@ typedef struct KuiRunConfig {
  * The extensions come along the same way: make a context,
  * kui_ctx_add_extension each plugin into it - kui_ctx_extension_error says
  * why one was refused, before any window opens - and hand it here. Your
- * view declares slots with kui_slot exactly as it would headless, and
- * what a plugin's nodes produce reaches your on_event as replies carrying
- * that plugin's origin.
+ * view places their components with kui_component exactly as it would
+ * headless, and what an instance emits reaches your on_event as the
+ * message you passed for it.
  *
  * The context's env.system comes along too, as the window's pin: whatever
  * you pushed with kui_env_set_system before handing the context here is
@@ -4898,9 +4849,9 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  * (examples/lua/features/slots/panel.lua), and the loader on the host's side is
  * kui_ffi::CExtension.
  *
- * YOU define these seven; the library only calls them. Two are required -
+ * YOU define these six; the library only calls them. Two are required -
  * kui_ext_abi and kui_ext_view - and the host refuses to load a plugin
- * without either. The other five are optional, and a missing one is not an
+ * without either. The other four are optional, and a missing one is not an
  * error:
  *
  *   kui_ext_abi      REQUIRED. Your KUI_ABI_VERSION. The host refuses a
@@ -4913,32 +4864,29 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  *                    = the library's file stem.
  *   kui_ext_init     Your state, handed back to every call below. Absent =
  *                    NULL, which is fine for a stateless panel.
- *   kui_ext_view     REQUIRED. Called once per frame per slot you fill,
- *                    with a context borrowing the host's frame. Call the
- *                    kui_open / kui_text / kui_close builders on it; the
- *                    nodes are tagged with the origin the host assigned you
- *                    and keyed under the slot. It is alive for that one
- *                    call only - store nothing - and the input, frame and
- *                    draw entry points do not apply to it, since the host
- *                    drives those. kui_slot_name says which slot this is
- *                    and kui_slot_params what the host passed with it.
- *   kui_ext_slots    The slots you fill: a pointer to an array of KuiStr
- *                    you keep alive for as long as you are loaded, and its
- *                    count through the out-pointer. Read once, at load.
- *                    Absent, or an empty array = you fill "root", once
- *                    after the host's view, where every extension drew
- *                    before slots existed.
- *   kui_ext_components The components you provide (ADR 0060), the same
- *                    shape as kui_ext_slots: placed by a host with
- *                    kui_component as often as it likes, each instance drawn
- *                    by kui_ext_view with the component's name as
- *                    kui_slot_name and its props as kui_slot_params; call
- *                    kui_children where the host's children go, and answer
- *                    an event with kui_emit to raise one of its events.
- *                    Absent = none.
+ *   kui_ext_view     REQUIRED. Called once per frame per instance of yours
+ *                    the host placed, with a context borrowing the host's
+ *                    frame. Call the kui_open / kui_text / kui_close
+ *                    builders on it; the nodes are tagged with the origin
+ *                    the host assigned you and keyed under the instance.
+ *                    It is alive for that one call only - store nothing -
+ *                    and the input, frame and draw entry points do not
+ *                    apply to it, since the host drives those.
+ *                    kui_instance_name says which component this is
+ *                    ("root" for your view) and kui_instance_params what
+ *                    the host passed with it.
+ *   kui_ext_components The components you provide (ADR 0060): a pointer to
+ *                    an array of KuiStr you keep alive for as long as you
+ *                    are loaded, and its count through the out-pointer.
+ *                    Read once, at load. Placed by a host with
+ *                    kui_component as often as it likes; call kui_children
+ *                    where the host's children go, and answer an event with
+ *                    kui_emit to raise one of its events. Absent, or an
+ *                    empty array = you provide only "root", drawn once
+ *                    after the host's view unless the host places it.
  *   kui_ext_on_event One event of yours, payload borrowed for the call.
- *                    Answer the host from inside it with kui_reply, as
- *                    often as the event deserves.
+ *                    Raise your instance's events from inside it with
+ *                    kui_emit, as often as the event deserves.
  *   kui_ext_free     Your state, at unload.
  *
  * On ELF and Mach-O you link against nothing: leave every kui_* symbol
@@ -4972,12 +4920,12 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, const KuiRunConfig *config,
  *
  * Shape 1 puts two copies of this library in one process, and that is fine:
  * everything crossing the boundary does so through a pointer the host hands
- * over, and the one thing that used to live in a static - kui_reply's sink -
+ * over, and the one thing that used to live in a static - the answer sink -
  * rides on the event as of ABI 10 (see KuiReplySink). It was not fine
  * before ABI 10: every reply landed in the copy nobody was reading.
  *
  * The other Windows difference is below: a DLL exports nothing unless it
- * says so, which is what KUI_EXT_EXPORT on these seven declarations is for.
+ * says so, which is what KUI_EXT_EXPORT on these six declarations is for.
  * It is on the declarations rather than left to you, so a plugin that
  * includes this header and defines them the ordinary way is already
  * exported and your source stays the source that builds everywhere.
@@ -4995,50 +4943,57 @@ typedef void (*KuiExtEventFn)(void *user, const KuiEvent *ev);
 KUI_EXT_EXPORT uint32_t kui_ext_abi(void);
 KUI_EXT_EXPORT const char *kui_ext_name(void);
 KUI_EXT_EXPORT void *kui_ext_init(void);
-KUI_EXT_EXPORT const KuiStr *kui_ext_slots(size_t *count);
 KUI_EXT_EXPORT const KuiStr *kui_ext_components(size_t *count);
 KUI_EXT_EXPORT void kui_ext_view(void *user, KuiCtx *ctx);
 KUI_EXT_EXPORT void kui_ext_on_event(void *user, const KuiEvent *ev);
 KUI_EXT_EXPORT void kui_ext_free(void *user);
 
 /* The library's side of the same contract - what an extension calls.
- * Which slot kui_ext_view is filling, in your own vocabulary (false, out
+ * Which component kui_ext_view is drawing an instance of, in your own
+ * vocabulary - "root" for your view after the host's (false, out
  * untouched, on a context that is not an extension's); the namespace the
- * host loaded you under, which is what makes the slot's full name
- * (`namespace/name`) and tells one instance of you from another when a
- * host loads you twice; and the params the host declared the slot with
- * (NULL when it passed none). All borrowed for the duration of the call,
- * like an event's payload. */
-bool kui_slot_name(KuiCtx *ctx, KuiStr *out);
-bool kui_slot_namespace(KuiCtx *ctx, KuiStr *out);
-const KuiValue *kui_slot_params(KuiCtx *ctx);
-/* A reply to the host, from inside kui_ext_on_event: `ev` is the event you
- * were handed, `reply` is copied (you keep ownership; free it as usual)
- * and reaches the host's on_event with your origin and the event's window
- * and key. The host authored what it expects - put its template in the
- * slot's params and fill in the fields. Outside the callback, or with an
- * event that is not the one in progress, it does nothing and returns
- * false. */
-bool kui_reply(const KuiEvent *ev, const KuiValue *reply);
+ * host loaded you under, which is what makes the full name
+ * (`namespace/name`) and tells one load of you from another when a host
+ * loads you twice; and the props the host placed the instance with (NULL
+ * when it passed none). All borrowed for the duration of the call, like an
+ * event's payload. */
+bool kui_instance_name(KuiCtx *ctx, KuiStr *out);
+bool kui_instance_namespace(KuiCtx *ctx, KuiStr *out);
+const KuiValue *kui_instance_params(KuiCtx *ctx);
 /* One of your component's events, from inside kui_ext_on_event (ADR
  * 0060): prop names the event prop the host passed its message in
  * (onSelect or on_select - either finds the host's), fields what rides
- * with it under the prop's field (NULL for nothing; you keep it). The host
- * hears its own message, about the instance the event came from. */
+ * with it under the prop's field (NULL for nothing; you keep it). Whoever
+ * placed the instance hears its own message, about the instance the event
+ * came from. It is the one way an extension speaks (ADR 0067); outside the
+ * callback, or with an event that is not the one in progress, it does
+ * nothing and returns false. */
 bool kui_emit(const KuiEvent *ev, KuiStr prop, const KuiValue *fields);
 /* Where the host's children of `group` go, from inside a component's
  * kui_ext_view (ADR 0060); empty for the unnamed group. Once per group;
  * elsewhere it builds nothing and raises children-misplaced. */
 void kui_children(KuiCtx *ctx, KuiStr group);
 
-/* A component an extension provides, placed at the cursor (ADR 0060): name
- * is namespace/component; props (borrowed, NULL for none) is what its fill
- * reads - "key" keys the instance, "fresh": true asks every frame, and its
- * on* entries are the messages its events arrive as. children builds your
- * own children where the component asks, with a context borrowing the
- * frame for the call and the group (empty for the unnamed one); NULL for
- * none. An unchanged instance is replayed without asking the extension.
- * Returns a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+/* A component an extension provides, placed at the cursor (ADR 0060, ADR
+ * 0067): name is namespace/component - "namespace/root" is that
+ * extension's view, drawn fresh every frame; props (borrowed, NULL for
+ * none) is what its fill reads - "key" keys the instance, "fresh": true
+ * asks every frame, and its on* entries are the messages its events arrive
+ * as. children builds your own children where the component asks, with a
+ * context borrowing the frame for the call and the group (empty for the
+ * unnamed one); NULL for none. Every placement keeps what its fill did,
+ * and the next at the same key with the same props pushes it again without
+ * asking the extension while nothing it read moved; a fill that declared
+ * something of the frame beyond its nodes (a title, a window, a frame
+ * asked for, a devtools tab, a cells grid), or whose view failed, is kept
+ * as not replayable. Returns how it was filled, a KUI_FILL_* code. */
+#define KUI_FILL_NONE (-1)          /* nothing provides it, or outside a frame */
+#define KUI_FILL_REPLAYED 0         /* last frame's nodes, pushed again; the extension not asked */
+#define KUI_FILL_NOT_KEPT 1         /* nothing kept: its first frame, fresh, a root, or a frame skipped it */
+#define KUI_FILL_PARAMS 2           /* the props differ from the kept fill's */
+#define KUI_FILL_READS 3            /* a fact of the frame the fill read has moved */
+#define KUI_FILL_NOT_REPLAYABLE 4   /* it declared of the frame, drew what the journal does not know, or failed */
+#define KUI_FILL_HEARD 6            /* the instance heard one of its own events since it was filled */
 typedef void (*KuiChildrenFn)(void *user, KuiCtx *ctx, KuiStr group);
 int32_t kui_component(KuiCtx *ctx, KuiStr name, const KuiValue *props,
                       KuiChildrenFn children, void *user);

@@ -1248,11 +1248,16 @@ surface :: proc() -> bool {
 		kui.set_inspect(ui, true)
 		kui.frame_begin(ui, 800, 600, 2)
 		surface_view(&k, ui)
-		// A declared tab of each form (ADR 0032): the extension form names a
-		// slot nobody loaded (harmless); the host form's open answers false,
+		// A declared tab of each form (ADR 0032, ADR 0067): the extension
+		// form names a component nobody loaded (harmless: not on show, so
+		// nothing is placed), with props whose on* entries are the messages
+		// its events would reach us as; the host form's open answers false,
 		// since "mine" is listed only from the panel's next frame. A second
 		// declaration of a name is refused.
-		check(kui.devtools_tab(ui, "plug", "Plugin", "ts/panel"), "devtools_tab")
+		Picked :: struct {}
+		check(kui.devtools_tab(ui, "plug", "Plugin", "ts/panel", struct {
+					onPick: Picked,
+				}{}), "devtools_tab")
 		check(!kui.devtools_tab(ui, "plug", "Again", "ts/again"), "a name twice is refused")
 		if kui.devtools_tab_open(ui, "mine", "Mine") {
 			check(false, "devtools_tab_open: not on show, so nothing opens")
@@ -1334,11 +1339,11 @@ surface :: proc() -> bool {
 		kui.free_ui(rec)
 	}
 
-	// A standalone context is nobody's slot.
+	// A standalone context is no component's instance.
 	{
-		_, name_ok := kui.slot_name(ui)
-		_, ns_ok := kui.slot_namespace(ui)
-		check(!name_ok && !ns_ok, "slot_name / slot_namespace are false outside an extension")
+		_, name_ok := kui.instance_name(ui)
+		_, ns_ok := kui.instance_namespace(ui)
+		check(!name_ok && !ns_ok, "instance_name / instance_namespace are false outside an extension")
 	}
 
 	// And none of that raised a diagnostic either.
@@ -1385,7 +1390,7 @@ Rest :: struct {
 	fragment: kui.Fragment,
 	sampler:  kui.Fragment,
 	ring:     []f32,
-	slot:     [2]bool,
+	fill:     i32,
 }
 
 // The OS's settings moving, in the message rest_view's root declares.
@@ -1408,9 +1413,11 @@ rest_view :: proc(r: ^Rest, ui: ^kui.Ui) {
 		kui.text(ui, "in a fragment", {size = 10})
 	}
 	kui.fragment_with(ui, "sampled", r.sampler, r.image, params[:4], {width = kui.px(16), height = kui.px(16)})
-	// A slot with nothing loaded still takes its place in the tree; the same
-	// name twice in a frame is refused, and the core says so.
-	r.slot = {kui.slot(ui, "ns/panel", "params"), kui.slot(ui, "ns/panel")}
+	// A component nothing loaded provides is placed nowhere, and the core
+	// says so (ADR 0067); the host's children asked for outside any
+	// instance build nothing, and it says that too.
+	r.fill = kui.component(ui, "ns/panel", "params")
+	kui.children(ui, "")
 }
 
 rest :: proc() {
@@ -1482,8 +1489,7 @@ rest :: proc() {
 	check(len(kui.path_parse("M10 10 L20")) == 0, "data that does not parse is no ops")
 
 	kui.frame(ui, &r, rest_view, 600, 400, 1)
-	check(r.slot[0] && !r.slot[1], "slot: declared once, refused the second time")
-	check(kui.key_of(ui, "ns/panel") != 0, "and keyed though nothing fills it")
+	check(r.fill == kui.FILL_NONE, "component: nothing provides it, FILL_NONE")
 	dd, dd_ok := kui.draw_data(ui)
 	segments, fragments, images := 0, 0, 0
 	for q in dd.quads {
@@ -1499,9 +1505,13 @@ rest :: proc() {
 	for label in ([]string{"elbow", "tri", "ring", "wedge", "card", "sampled"}) {
 		check(kui.key_of(ui, label) != 0, fmt.tprintf("the %s element is keyed by its label", label))
 	}
-	duplicate := false
-	for wr in kui.take_warnings(ui) do if wr.code == "duplicate-slot" do duplicate = true
-	check(duplicate, "the second is a duplicate-slot diagnostic")
+	unknown, misplaced := false, false
+	for wr in kui.take_warnings(ui) {
+		if wr.code == "unknown-component" do unknown = true
+		if wr.code == "children-misplaced" do misplaced = true
+	}
+	check(unknown, "and an unknown-component diagnostic")
+	check(misplaced, "children outside an instance is a children-misplaced diagnostic")
 
 	// A popup the host dismisses: the app hears it as the on_dismiss its
 	// declaration gave, which names it, with why and its id.
@@ -1568,9 +1578,9 @@ rest :: proc() {
 	check(!beneath, "an unknown preset is false")
 
 	// A plugin's own readers, outside a plugin: nothing to read, nobody to
-	// reply to.
-	check(kui.slot_params(ui) == nil, "slot_params outside an extension")
-	check(!kui.reply(kui.Event{}, "pong"), "reply: an event with no sink takes none")
+	// emit to.
+	check(kui.instance_params(ui) == nil, "instance_params outside an extension")
+	check(!kui.emit(kui.Event{}, "onPong", "pong"), "emit: an event with no sink takes none")
 }
 
 main :: proc() {
