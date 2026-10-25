@@ -81,6 +81,26 @@ end
 
 
 
+
+
+
+
+local function hand_on(c, seen)
+   local dir = seen.tab
+   if not dir then return end
+   seen.tab = nil
+   if dir > 0 then c.env.focus_next() else c.env.focus_prev() end
+end
+
+
+
+local function focus_edge(c, t)
+   local ok, here = pcall(c.env.is_focused, "rows")
+   if ok and here then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
+end
+
+
+
 local TONE_ROLE = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "muted" }
 
 local function tone_of(v)
@@ -127,12 +147,17 @@ function M.table(c, p)
    local env = c.env
    local selected = p.selected
    local seen = ctx.state(c, function() return {} end)
+   hand_on(c, seen)
    if selected ~= seen.selected then
       if selected then reveal(env, "rows", selected, row_h) end
       seen.selected = selected
    end
 
-   local head = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center", bg = ref(c, "panel") }
+
+
+   local framed = p.border == true
+   local head = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
+bg = ref(c, framed and "panel" or "sunken"), }
    for i, col in ipairs(cols) do
       local field = col.field
       local sorted = p.sort == field
@@ -154,13 +179,15 @@ function M.table(c, p)
    end
 
    local striped = p.striped == true
-   local view = body(c, "rows", n, row_h, {
+   local rows_t = {
       height = "grow",
       focusable = true,
       on_key = act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }),
       on_range = act(c, "table.range"),
       label = "rows",
-   }, function(i)
+   }
+   focus_edge(c, rows_t)
+   local view = body(c, "rows", n, row_h, rows_t, function(i)
       local sel = selected == i
       local line = {
          index = i,
@@ -212,11 +239,13 @@ function M.table(c, p)
       width = "grow",
       height = p.grow == true and "grow" or nil,
       bg = ref(c, "panel"),
+
+
+
+      border = framed and { w = "$kitHair", color = ref(c, "rule") } or nil,
+      pad = framed and "$kitHair" or nil,
       row(head),
-
-
-
-      ctx.rule(c, "rule", "$kitHair"),
+      framed and ctx.rule(c, "rule", "$kitHair") or nil,
       n == 0 and column({ width = "grow", pad = 16, ctx.muted(c, "No rows") }) or view,
    })
 end
@@ -228,16 +257,20 @@ function M.list(c, p)
    local row_h = two and 40 or (c.s.density == "compact" and 22 or 26)
    local selected = p.selected
    local seen = ctx.state(c, function() return {} end)
+   hand_on(c, seen)
    if selected ~= seen.selected then
       if selected then reveal(c.env, "rows", selected, row_h) end
       seen.selected = selected
    end
-   return body(c, "rows", n, row_h, {
+   local rows_t = {
       height = p.grow == true and "grow" or nil,
       role = "list",
+      label = str(p.label),
       focusable = true,
       on_key = act(c, "list.key", { selected = selected, n = n, page = 8 }),
-   }, function(i)
+   }
+   focus_edge(c, rows_t)
+   return body(c, "rows", n, row_h, rows_t, function(i)
       local sel = selected == i
       local title = cell_text(ch:get(i, p.title))
       local t = {
@@ -405,6 +438,33 @@ end
 
 
 
+
+
+
+local KEYED = 20000
+
+
+
+
+local function dropped_front(st, n, key_of)
+   local keys = st.keys
+   if not keys or #keys == 0 or n == 0 then return nil end
+   local first = key_of(0)
+   for j = 1, math.min(#keys, 1000) do
+      if keys[j] == first then
+         local k = j - 1
+         local overlap = #keys - k
+         if overlap <= n and key_of(overlap - 1) == keys[#keys] then return k end
+         return nil
+      end
+   end
+   return nil
+end
+
+
+
+
+
 local function following(st, g)
    if st.follow == nil then st.follow = true end
    if not g then return end
@@ -450,7 +510,7 @@ function M.log(c, p)
    local env = c.env
    local wrap = p.wrap == true
    local with_time = p.time ~= false
-   local st = ctx.state(c, function() return { n = 0, rev = -1 } end)
+   local st = ctx.state(c, function() return { n = 0, rev = "" } end)
    local function line(i)
       local level = cell_text(ch:get(i, "level"))
       local text_opts = { size = "$kitSizeLabel" }
@@ -475,6 +535,24 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
 
 
 
+   local rev = ch and (tostring(ch.id) .. ":" .. tostring(ch.rev)) or ""
+   local dropped = nil
+   if rev ~= st.rev then
+      local function key_of(i)
+         return cell_text(ch:get(i, "time")) .. "\31" .. cell_text(ch:get(i, "message"))
+      end
+      dropped = dropped_front(st, n, key_of)
+      if n <= KEYED then
+         local keys = {}
+         for i = 0, n - 1 do keys[i + 1] = key_of(i) end
+         st.keys = keys
+      else
+         st.keys = nil
+      end
+   end
+
+
+
    local function framed(t)
       local away = wants and not st.follow and n > 0
       return column({ width = "grow", height = p.grow == true and "grow" or nil, t, away and jump(c) or nil })
@@ -483,7 +561,11 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
       if wants and st.follow and n > 0 then
 
          env.set_scroll("rows", 0, 1e9)
+      elseif dropped and dropped > 0 then
+
+         env.shift_scroll("rows", -dropped * row_h, -dropped * row_h)
       end
+      st.rev = rev
       st.n = n
       return framed(body(c, "rows", n, row_h, {
          height = p.grow == true and "grow" or nil,
@@ -495,12 +577,36 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
 
 
 
-   local rev = ch and ch.rev or 0
    if not st.heights then st.heights = row_heights(n, row_h) end
    local g = env.scroll_geometry("rows")
+   local hold = nil
    if rev ~= st.rev then
-      if n <= st.n then st.heights:clear() end
-      st.heights:set_len(n)
+      if dropped == 0 then
+
+
+
+         st.heights:set_len(n)
+      elseif dropped then
+
+
+         local old = st.heights
+         local fresh = row_heights(n, old:estimate())
+         for i = 0, old:len() - dropped - 1 do
+            local h = old:measured(i + dropped)
+            if h and h > 0 then fresh:set(i, h) end
+         end
+         st.heights = fresh
+         if not (wants and st.follow) and g then
+
+
+            local top = math.max(0, g.offset.y - 4)
+            local at = old:row_at(top)
+            hold = { row = at - dropped, into = top - old:offset_of(at), top = top }
+         end
+      else
+         st.heights:clear()
+         st.heights:set_len(n)
+      end
    end
    local label_w = (with_time and 70 or 0) + 54 + 16
    local function measure(i, width)
@@ -532,6 +638,15 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
       pad = { y = 4 },
       selectable = true,
    }, measure, line)
+   if hold and hold.row >= 0 then
+
+
+
+      local want = st.heights:offset_of(math.floor(hold.row)) + hold.into
+      local at = env.scroll_offset("rows").y - 4
+      local by = want - math.max(0, at)
+      if math.abs(by) > 0.01 then env.shift_scroll("rows", by, by) end
+   end
    if pin then
 
 
@@ -555,11 +670,18 @@ function M.badge(c, p)
    local tone = str(p.tone) or "neutral"
    local accent = tone == "accent"
    local label = str(p.label) or ""
+   local fade = p.fade == true
    local t = {
       label = label,
+      tooltip = str(p.tooltip),
       height = 18,
 
       min_width = "fit",
+
+
+      enter = fade and { opacity = 0 } or nil,
+      exit = fade and { opacity = 0 } or nil,
+      transition = fade and 140 or nil,
       pad = { x = 6 },
       gap = 5,
       cross_align = "center",
@@ -675,7 +797,10 @@ function M.progress(c, p)
    local bar
    if v then
       v = math.max(0, math.min(1, v))
-      bar = { width = { pct = v * 100 }, height = "grow", bg = ref(c, "accent") }
+
+
+      bar = { key = "bar", width = { pct = v * 100 }, height = "grow", bg = ref(c, "accent"),
+transition = 320, easing = "snappy", }
    else
 
       bar = {
@@ -716,6 +841,11 @@ function M.event(m, kit)
    elseif kit == "table.key" or kit == "list.key" then
       local k = m.key
       if not k or k.phase ~= "down" then return nil end
+      if k.code == "tab" then
+         local seen = ctx.peek(m.inst)
+         if seen then seen.tab = k.shift == true and -1 or 1 end
+         return nil
+      end
       local n = (m.n or 0)
       if n == 0 then return nil end
       local s = step(k.code, m.selected, n, (m.page or 8))

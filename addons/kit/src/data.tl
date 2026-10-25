@@ -76,6 +76,26 @@ end
 local record Seen
   selected: integer
   n: integer
+  -- Tab heard by the list's key sink, to hand the focus on with when it
+  -- is next drawn: 1 forward, -1 back.
+  tab: integer
+end
+
+-- A list or a table is a key sink (its arrows move the selection), and a
+-- sink owns Tab, so Tab went in and never came out. Its handler notes the
+-- Tab and the next draw hands the focus on, as a sink is meant to.
+local function hand_on(c: Ctx, seen: Seen)
+  local dir = seen.tab
+  if not dir then return end
+  seen.tab = nil
+  if dir > 0 then c.env.focus_next() else c.env.focus_prev() end
+end
+
+-- The focus, drawn: the sink's own edge in the focus colour while it holds
+-- the keyboard (a scroller's ring was clipped by the pane around it).
+local function focus_edge(c: Ctx, t: kui.Props)
+  local ok, here = pcall(c.env.is_focused, "rows")
+  if ok and here then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
 end
 
 -- A tone a channel cell names, as the role its text is drawn in; nil for
@@ -126,12 +146,17 @@ function M.table(c: Ctx, p: P): kui.Node
   local env = c.env
   local selected = p.selected as integer
   local seen = ctx.state(c, function(): Seen return {} end)
+  hand_on(c, seen)
   if selected ~= seen.selected then
     if selected then reveal(env, "rows", selected, row_h) end
     seen.selected = selected
   end
 
-  local head: kui.Props = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center", bg = ref(c, "panel") }
+  -- The header on a plane of its own (the sunken colour) rather than over
+  -- a rule; `border` frames the whole table and rules the header instead.
+  local framed = p.border == true
+  local head: kui.Props = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
+    bg = ref(c, framed and "panel" or "sunken") }
   for i, col in ipairs(cols) do
     local field = col.field as string
     local sorted = p.sort == field
@@ -153,13 +178,15 @@ function M.table(c: Ctx, p: P): kui.Node
   end
 
   local striped = p.striped == true
-  local view = body(c, "rows", n, row_h, {
+  local rows_t: kui.Props = {
     height = "grow",
     focusable = true,
     on_key = act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }),
     on_range = act(c, "table.range"),
     label = "rows",
-  }, function(i: integer): kui.Node
+  }
+  focus_edge(c, rows_t)
+  local view = body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
     local sel = selected == i
     local line: kui.Props = {
       index = i,
@@ -211,11 +238,13 @@ function M.table(c: Ctx, p: P): kui.Node
     width = "grow",
     height = p.grow == true and "grow" or nil,
     bg = ref(c, "panel"),
+    -- Framed: a hairline in the soft rule colour around the table, inside
+    -- which the header sits (the border's width is padding, so the rule
+    -- under the header stops at the frame and does not cross it).
+    border = framed and { w = "$kitHair", color = ref(c, "rule") } or nil,
+    pad = framed and "$kitHair" or nil,
     row(head),
-    -- A hairline under the header in every skin: Ledger's 2 px ink here,
-    -- inside a panel already framed in it, drew a second frame across the
-    -- table and read heavier than the region it is in.
-    ctx.rule(c, "rule", "$kitHair"),
+    framed and ctx.rule(c, "rule", "$kitHair") or nil,
     n == 0 and column { width = "grow", pad = 16, ctx.muted(c, "No rows") } or view,
   }
 end
@@ -227,16 +256,20 @@ function M.list(c: Ctx, p: P): kui.Node
   local row_h = two and 40 or (c.s.density == "compact" and 22 or 26)
   local selected = p.selected as integer
   local seen = ctx.state(c, function(): Seen return {} end)
+  hand_on(c, seen)
   if selected ~= seen.selected then
     if selected then reveal(c.env, "rows", selected, row_h) end
     seen.selected = selected
   end
-  return body(c, "rows", n, row_h, {
+  local rows_t: kui.Props = {
     height = p.grow == true and "grow" or nil,
     role = "list",
+    label = str(p.label),
     focusable = true,
     on_key = act(c, "list.key", { selected = selected, n = n, page = 8 }),
-  }, function(i: integer): kui.Node
+  }
+  focus_edge(c, rows_t)
+  return body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
     local sel = selected == i
     local title = cell_text(ch:get(i, p.title as string))
     local t: kui.Props = {
@@ -390,7 +423,8 @@ end
 
 local record Follow
   n: integer
-  rev: integer
+  -- The channel and its revision drawn last: a new channel is a new revision too.
+  rev: string
   width: number
   heights: kui.RowHeights
   -- Kept at the end: on until the reader scrolls up, on again when they
@@ -398,6 +432,32 @@ local record Follow
   follow: boolean
   -- Where the scroll stood when the log was last drawn.
   last_y: number
+  -- Each row's identity (its time and message) as of the last revision:
+  -- what tells a log that only dropped its oldest rows from one whose
+  -- rows changed. Nil past `KEYED` rows.
+  keys: {string}
+end
+
+-- The most rows a log keeps identities for; past it, a new revision is
+-- taken as new rows throughout.
+local KEYED = 20000
+
+-- How many rows a new revision of a log dropped from its front, when the
+-- rest are the rows it had (the newest appended after them); nil when the
+-- rows are not the ones it had. 0 is the same rows, or rows only added.
+local function dropped_front(st: Follow, n: integer, key_of: function(integer): string): integer
+  local keys = st.keys
+  if not keys or #keys == 0 or n == 0 then return nil end
+  local first = key_of(0)
+  for j = 1, math.min(#keys, 1000) do
+    if keys[j] == first then
+      local k = j - 1
+      local overlap = #keys - k
+      if overlap <= n and key_of(overlap - 1) == keys[#keys] then return k end
+      return nil
+    end
+  end
+  return nil
 end
 
 -- Whether a log keeps to its end, from where its scroller stands: any
@@ -449,7 +509,7 @@ function M.log(c: Ctx, p: P): kui.Node
   local env = c.env
   local wrap = p.wrap == true
   local with_time = p.time ~= false
-  local st = ctx.state(c, function(): Follow return { n = 0, rev = -1 } end)
+  local st = ctx.state(c, function(): Follow return { n = 0, rev = "" } end)
   local function line(i: integer): kui.Node
     local level = cell_text(ch:get(i, "level"))
     local text_opts: {string:any} = { size = "$kitSizeLabel" }
@@ -471,6 +531,24 @@ function M.log(c: Ctx, p: P): kui.Node
   end
   local wants = ctx.flag(p.follow, true)
   following(st, env.scroll_geometry("rows"))
+  -- A new revision: the same rows (a feed republished each tick), rows
+  -- added at the end, or the oldest dropped from the front as the newest
+  -- came — or other rows altogether. Worked out from the rows' identities.
+  local rev = ch and (tostring(ch.id) .. ":" .. tostring(ch.rev)) or ""
+  local dropped: integer = nil
+  if rev ~= st.rev then
+    local function key_of(i: integer): string
+      return cell_text(ch:get(i, "time")) .. "\31" .. cell_text(ch:get(i, "message"))
+    end
+    dropped = dropped_front(st, n, key_of)
+    if n <= KEYED then
+      local keys: {string} = {}
+      for i = 0, n - 1 do keys[i + 1] = key_of(i) end
+      st.keys = keys
+    else
+      st.keys = nil
+    end
+  end
   -- The log and, while it is not at its end, the jump back there.
   -- Always the same box around the rows, so the scroller keeps its key
   -- (and its offset) whether or not the jump is in it.
@@ -482,7 +560,11 @@ function M.log(c: Ctx, p: P): kui.Node
     if wants and st.follow and n > 0 then
       -- Past the end: the core clamps it to the end as laid out.
       env.set_scroll("rows", 0, 1e9)
+    elseif dropped and dropped > 0 then
+      -- Read where it was: the rows in view stay put as the oldest go.
+      env.shift_scroll("rows", -dropped * row_h, -dropped * row_h)
     end
+    st.rev = rev
     st.n = n
     return framed(body(c, "rows", n, row_h, {
       height = p.grow == true and "grow" or nil,
@@ -494,12 +576,36 @@ function M.log(c: Ctx, p: P): kui.Node
   -- Wrapped: rows of their own heights, measured as they come into view.
   -- New rows at the end keep what was measured; rows that moved (a log
   -- that drops its oldest) or a new width measure again.
-  local rev = ch and ch.rev or 0
   if not st.heights then st.heights = row_heights(n, row_h) end
   local g = env.scroll_geometry("rows")
+  local hold: {string:number} = nil
   if rev ~= st.rev then
-    if n <= st.n then st.heights:clear() end
-    st.heights:set_len(n)
+    if dropped == 0 then
+      -- The same rows, or rows only added: what was measured stands. It
+      -- was cleared on every revision of no new rows, and every row came
+      -- back at the estimate and was measured again: the log blinked.
+      st.heights:set_len(n)
+    elseif dropped then
+      -- The oldest gone: the measured heights move up with their rows, and
+      -- a reader scrolled away keeps the rows they read where they are.
+      local old = st.heights
+      local fresh = row_heights(n, old:estimate())
+      for i = 0, old:len() - dropped - 1 do
+        local h = old:measured(i + dropped)
+        if h and h > 0 then fresh:set(i, h) end
+      end
+      st.heights = fresh
+      if not (wants and st.follow) and g then
+        -- The row at the top of the window and how far into it, to put
+        -- back where it was once the list has measured (below).
+        local top = math.max(0, g.offset.y - 4)
+        local at = old:row_at(top)
+        hold = { row = at - dropped, into = top - old:offset_of(at), top = top }
+      end
+    else
+      st.heights:clear()
+      st.heights:set_len(n)
+    end
   end
   local label_w = (with_time and 70 or 0) + 54 + 16
   local function measure(i: integer, width: number): number
@@ -531,6 +637,15 @@ function M.log(c: Ctx, p: P): kui.Node
     pad = { y = 4 },
     selectable = true,
   } as kui.List, measure, line)
+  if hold and hold.row >= 0 then
+    -- After the list has measured: the row the reader had at the top goes
+    -- back there, whatever the rows above it (and the estimate they stand
+    -- on) came to once the oldest left.
+    local want = st.heights:offset_of(math.floor(hold.row)) + hold.into
+    local at = env.scroll_offset("rows").y - 4
+    local by = want - math.max(0, at)
+    if math.abs(by) > 0.01 then env.shift_scroll("rows", by, by) end
+  end
   if pin then
     -- After the list, and past the end: the list keeps its window on the
     -- row it starts with when measuring moves the estimate (its own
@@ -554,11 +669,18 @@ function M.badge(c: Ctx, p: P): kui.Node
   local tone = str(p.tone) or "neutral"
   local accent = tone == "accent"
   local label = str(p.label) or ""
+  local fade = p.fade == true
   local t: kui.Props = {
     label = label,
+    tooltip = str(p.tooltip),
     height = 18,
     -- Whole or not at all: a status cut to half a word says nothing.
     min_width = "fit",
+    -- `fade`: in as it comes and out as it goes, over the time a switch
+    -- takes to cross, so a status that comes with an edit does not pop.
+    enter = fade and { opacity = 0 } or nil,
+    exit = fade and { opacity = 0 } or nil,
+    transition = fade and 140 or nil,
     pad = { x = 6 },
     gap = 5,
     cross_align = "center",
@@ -674,7 +796,10 @@ function M.progress(c: Ctx, p: P): kui.Node
   local bar: kui.Props
   if v then
     v = math.max(0, math.min(1, v))
-    bar = { width = { pct = v * 100 }, height = "grow", bg = ref(c, "accent") }
+    -- Eased to each new value on a short spring: a checklist ticked off
+    -- moves its bar, it does not jump.
+    bar = { key = "bar", width = { pct = v * 100 }, height = "grow", bg = ref(c, "accent"),
+      transition = 320, easing = "snappy" }
   else
     -- Under way: a third of the track sliding across it.
     bar = {
@@ -715,6 +840,11 @@ function M.event(m: P, kit: string): any
   elseif kit == "table.key" or kit == "list.key" then
     local k = m.key as P
     if not k or k.phase ~= "down" then return nil end
+    if k.code == "tab" then
+      local seen = ctx.peek(m.inst as integer) as Seen
+      if seen then seen.tab = k.shift == true and -1 or 1 end
+      return nil
+    end
     local n = (m.n or 0) as integer
     if n == 0 then return nil end
     local s = step(k.code as string, m.selected as integer, n, (m.page or 8) as integer)

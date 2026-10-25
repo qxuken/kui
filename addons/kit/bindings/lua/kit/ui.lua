@@ -347,6 +347,7 @@
 ---@field sort? string The field it is sorted by, marked in its header; the sorting is yours.
 ---@field descending? boolean Sorted from the top down.
 ---@field striped? boolean Every other row tinted.
+---@field border? boolean Framed in a hairline, the header ruled off inside it; left out, no frame and the header on a plane of its own (in a panel, which is framed already).
 ---@field grow? boolean Takes the room its parent leaves.
 ---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.TableSelect). A row was clicked or reached by the arrows.
 ---@field on_sort? any The message it arrives as: yours, with `sort = {…}` in it (kit.TableSort). A header was clicked.
@@ -375,6 +376,7 @@
 ---@field badge? string A field drawn as a pill before the title: a method, a state.
 ---@field tone? string A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`, `neutral`).
 ---@field badge_width? number The badge column's width in px, so the titles line up; each badge's own when left out.
+---@field label? string Its name, read and not drawn: what the list holds (History).
 ---@field selected? integer The selected row (0-based): yours to keep.
 ---@field grow? boolean Takes the room its parent leaves.
 ---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.ListSelect). A row was clicked or reached by the arrows.
@@ -412,6 +414,8 @@
 ---@field label string What it says.
 ---@field tone? kit.Tone Neutral when left out.
 ---@field dot? boolean A dot in the tone's colour before the label: a status.
+---@field tooltip? string A hint under the pointer: what the status means.
+---@field fade? boolean Fades in as it appears and out as it goes: a status that comes and goes with an edit (changed), not one of a table's.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -494,10 +498,11 @@
 ---The props of `kit/toast`.
 ---@class kit.ToastProps
 ---@field message string What happened.
----@field tone? kit.Tone Neutral when left out.
+---@field tone? kit.Tone neutral (info, the default), accent, ok (success), warn (warning) or danger (error).
 ---@field action? string One action on what happened, a button beside the message: `Undo`.
 ---@field action_name? string The action's accessible name when it says more than its label (Undo → Undo the delete).
 ---@field duration? number How long it stays, in ms, counted again from when the pointer leaves it; 5000 when left out, 0 to keep it until dismissed.
+---@field inline? boolean One of a `toaster`'s stack rather than floating in the corner on its own.
 ---@field on_dismiss? any The message it arrives as: yours, with `dismiss = {…}` in it (kit.ToastDismiss). Its close button, or its `duration` ran out.
 ---@field on_action? any The message it arrives as: yours, with `action = {…}` in it (kit.ToastAction). Its action was pressed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -508,6 +513,11 @@
 
 ---What `on_action`'s message carries under `action`.
 ---@class kit.ToastAction
+
+---The props of `kit/toaster`.
+---@class kit.ToasterProps
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
 ---The props of `kit/sparkline`.
 ---@class kit.SparklineProps
@@ -868,11 +878,25 @@ local function make(namespace)
     return component(namespace .. "/menu", props)
   end
 
-  ---A message in a window's corner that goes when dismissed.
+  ---A message in a window's corner: shown for `duration` (5 s) or until
+  ---dismissed (`duration = 0`), in its tone — info, success, warning or
+  ---error — as a bar down its edge and its icon; it slides out as it goes.
+  ---Several stack in a `toaster`.
   ---@param props kit.ToastProps
   ---@return kui.Node
   function M.toast(props)
     return component(namespace .. "/toast", props)
+  end
+
+  ---Toasts stacked in the window's corner, the newest at the foot, each
+  ---sliding into the room one that goes leaves.
+  ---
+  ---Your children: its list part are the toasts, each placed with `inline`.
+  ---@param props kit.ToasterProps
+  ---@param children? table
+  ---@return kui.Node
+  function M.toaster(props, children)
+    return component(namespace .. "/toaster", props, children)
   end
 
   ---A line with no axes, for a trend inline.

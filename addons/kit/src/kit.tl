@@ -70,7 +70,7 @@ provide(inputs as {string:any}, {
   "radio_group", "segmented", "slider", "text_area",
 })
 provide(data as {string:any}, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice" })
-provide(overlays as {string:any}, { "dialog", "popover", "menu", "toast" })
+provide(overlays as {string:any}, { "dialog", "popover", "menu", "toast", "toaster" })
 provide(charts as {string:any}, { "sparkline", "line_chart", "bar_chart", "histogram" })
 provide(waterfall as {string:any}, { "waterfall" })
 

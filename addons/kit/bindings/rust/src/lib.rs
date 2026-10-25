@@ -3088,6 +3088,10 @@ pub struct Table {
     pub descending: Option<bool>,
     /// Every other row tinted.
     pub striped: Option<bool>,
+    /// Framed in a hairline, the header ruled off inside it; left out, no frame
+    /// and the header on a plane of its own (in a panel, which is framed
+    /// already).
+    pub border: Option<bool>,
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
     /// The message `select` arrives as, with `select: TableSelect` in it. A row
@@ -3115,6 +3119,7 @@ impl Table {
             sort: None,
             descending: None,
             striped: None,
+            border: None,
             grow: None,
             on_select: None,
             on_sort: None,
@@ -3145,6 +3150,14 @@ impl Table {
     /// Every other row tinted.
     pub fn striped(mut self, v: bool) -> Self {
         self.striped = Some(v);
+        self
+    }
+
+    /// Framed in a hairline, the header ruled off inside it; left out, no frame
+    /// and the header on a plane of its own (in a panel, which is framed
+    /// already).
+    pub fn border(mut self, v: bool) -> Self {
+        self.border = Some(v);
         self
     }
 
@@ -3202,6 +3215,9 @@ impl Table {
         }
         if let Some(v) = &self.striped {
             m.push(("striped".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.border {
+            m.push(("border".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.grow {
             m.push(("grow".into(), Value::Bool(*v)));
@@ -3306,6 +3322,8 @@ pub struct List {
     /// The badge column's width in px, so the titles line up; each badge's own
     /// when left out.
     pub badge_width: Option<f64>,
+    /// Its name, read and not drawn: what the list holds (History).
+    pub label: Option<String>,
     /// The selected row (0-based): yours to keep.
     pub selected: Option<i64>,
     /// Takes the room its parent leaves.
@@ -3329,6 +3347,7 @@ impl List {
             badge: None,
             tone: None,
             badge_width: None,
+            label: None,
             selected: None,
             grow: None,
             on_select: None,
@@ -3360,6 +3379,12 @@ impl List {
     /// when left out.
     pub fn badge_width(mut self, v: f64) -> Self {
         self.badge_width = Some(v);
+        self
+    }
+
+    /// Its name, read and not drawn: what the list holds (History).
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
         self
     }
 
@@ -3410,6 +3435,9 @@ impl List {
         }
         if let Some(v) = &self.badge_width {
             m.push(("badge_width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
         }
         if let Some(v) = &self.selected {
             m.push(("selected".into(), Value::Int(*v)));
@@ -3672,6 +3700,11 @@ pub struct Badge {
     pub tone: Option<Tone>,
     /// A dot in the tone's colour before the label: a status.
     pub dot: Option<bool>,
+    /// A hint under the pointer: what the status means.
+    pub tooltip: Option<String>,
+    /// Fades in as it appears and out as it goes: a status that comes and goes
+    /// with an edit (changed), not one of a table's.
+    pub fade: Option<bool>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -3685,6 +3718,8 @@ impl Badge {
             label: label.into(),
             tone: None,
             dot: None,
+            tooltip: None,
+            fade: None,
             key: None,
             fresh: false,
         }
@@ -3699,6 +3734,19 @@ impl Badge {
     /// A dot in the tone's colour before the label: a status.
     pub fn dot(mut self, v: bool) -> Self {
         self.dot = Some(v);
+        self
+    }
+
+    /// A hint under the pointer: what the status means.
+    pub fn tooltip(mut self, v: impl Into<String>) -> Self {
+        self.tooltip = Some(v.into());
+        self
+    }
+
+    /// Fades in as it appears and out as it goes: a status that comes and goes
+    /// with an edit (changed), not one of a table's.
+    pub fn fade(mut self, v: bool) -> Self {
+        self.fade = Some(v);
         self
     }
 
@@ -3723,6 +3771,12 @@ impl Badge {
         }
         if let Some(v) = &self.dot {
             m.push(("dot".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.tooltip {
+            m.push(("tooltip".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.fade {
+            m.push(("fade".into(), Value::Bool(*v)));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -4476,12 +4530,16 @@ impl MenuDismiss {
     }
 }
 
-/// A message in a window's corner that goes when dismissed.
+/// A message in a window's corner: shown for `duration` (5 s) or until
+/// dismissed (`duration = 0`), in its tone — info, success, warning or error
+/// — as a bar down its edge and its icon; it slides out as it goes. Several
+/// stack in a `toaster`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Toast {
     /// What happened.
     pub message: String,
-    /// Neutral when left out.
+    /// neutral (info, the default), accent, ok (success), warn (warning) or
+    /// danger (error).
     pub tone: Option<Tone>,
     /// One action on what happened, a button beside the message: `Undo`.
     pub action: Option<String>,
@@ -4491,6 +4549,9 @@ pub struct Toast {
     /// How long it stays, in ms, counted again from when the pointer leaves it;
     /// 5000 when left out, 0 to keep it until dismissed.
     pub duration: Option<f64>,
+    /// One of a `toaster`'s stack rather than floating in the corner on its
+    /// own.
+    pub inline: Option<bool>,
     /// The message `dismiss` arrives as, with `dismiss: ToastDismiss` in it.
     /// Its close button, or its `duration` ran out.
     pub on_dismiss: Option<Value>,
@@ -4512,6 +4573,7 @@ impl Toast {
             action: None,
             action_name: None,
             duration: None,
+            inline: None,
             on_dismiss: None,
             on_action: None,
             key: None,
@@ -4519,7 +4581,8 @@ impl Toast {
         }
     }
 
-    /// Neutral when left out.
+    /// neutral (info, the default), accent, ok (success), warn (warning) or
+    /// danger (error).
     pub fn tone(mut self, v: Tone) -> Self {
         self.tone = Some(v);
         self
@@ -4542,6 +4605,13 @@ impl Toast {
     /// 5000 when left out, 0 to keep it until dismissed.
     pub fn duration(mut self, v: f64) -> Self {
         self.duration = Some(v);
+        self
+    }
+
+    /// One of a `toaster`'s stack rather than floating in the corner on its
+    /// own.
+    pub fn inline(mut self, v: bool) -> Self {
+        self.inline = Some(v);
         self
     }
 
@@ -4585,6 +4655,9 @@ impl Toast {
         }
         if let Some(v) = &self.duration {
             m.push(("duration".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.inline {
+            m.push(("inline".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_dismiss {
             m.push(("on_dismiss".into(), v.clone()));
@@ -4637,6 +4710,65 @@ impl ToastAction {
         let _d = payload.get("action")?;
         Some(Self {
         })
+    }
+}
+
+/// Toasts stacked in the window's corner, the newest at the foot, each sliding
+/// into the room one that goes leaves.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Toaster {
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Toaster {
+    /// What it needs; the rest by their setters.
+    pub fn new() -> Self {
+        Self {
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+/// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+/// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/toaster`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/toaster", &self.props())
+    }
+
+    /// Places it under `<namespace>/toaster`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/toaster"), &self.props())
+    }
+
+    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+        ui.component_with("kit/toaster", &self.props(), children)
     }
 }
 

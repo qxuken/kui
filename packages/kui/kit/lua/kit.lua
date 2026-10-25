@@ -71,7 +71,7 @@ provide(inputs, {
    "radio_group", "segmented", "slider", "text_area",
 })
 provide(data, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice" })
-provide(overlays, { "dialog", "popover", "menu", "toast" })
+provide(overlays, { "dialog", "popover", "menu", "toast", "toaster" })
 provide(charts, { "sparkline", "line_chart", "bar_chart", "histogram" })
 provide(waterfall, { "waterfall" })
 

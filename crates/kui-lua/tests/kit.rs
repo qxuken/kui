@@ -671,6 +671,8 @@ struct LuaRig {
     warnings: Vec<String>,
     /// Events that reached no extension: the host's.
     host: Vec<UiEvent>,
+    /// The app script's interpreter, for a test to call into.
+    app: mlua::Lua,
 }
 
 impl LuaRig {
@@ -678,14 +680,12 @@ impl LuaRig {
         let mut exts = Extensions::new();
         exts.push_as("kit", Box::new(LuaExtension::from_file(KIT).unwrap()))
             .unwrap();
-        exts.push_as(
-            "app",
-            Box::new(LuaExtension::from_source("app.lua", src).unwrap()),
-        )
-        .unwrap();
+        let app_ext = LuaExtension::from_source("app.lua", src).unwrap();
+        let app = app_ext.lua().clone();
+        exts.push_as("app", Box::new(app_ext)).unwrap();
         let mut core = Core::new();
         core.set_inspect(true);
-        LuaRig { core, exts, warnings: Vec::new(), host: Vec::new() }
+        LuaRig { core, exts, warnings: Vec::new(), host: Vec::new(), app }
     }
 
     fn frames(&mut self, n: usize) {
@@ -933,11 +933,14 @@ fn every_button_shades_under_the_pointer_and_the_press_and_stays_opaque() {
             r.frames(2);
             let rest = r.named("Go");
             let (x, y) = (rest.x + rest.w / 2.0, rest.y + rest.h / 2.0);
+            // The face where the button has one (Ledger's primary moves it
+            // inside a still box that takes the pointer), the box otherwise.
             let bg = |r: &mut LuaRig| {
-                r.core
-                    .nodes()
-                    .into_iter()
-                    .find(|n| n.rect.x == rest.x && n.rect.y == rest.y && n.rect.w == rest.w)
+                let nodes = r.core.nodes();
+                nodes
+                    .iter()
+                    .find(|n| n.label.as_deref() == Some("face"))
+                    .or_else(|| nodes.iter().find(|n| n.rect.x == rest.x && n.rect.y == rest.y && n.rect.w == rest.w))
                     .map(|n| n.bg)
                     .expect("the button")
             };
@@ -945,7 +948,7 @@ fn every_button_shades_under_the_pointer_and_the_press_and_stays_opaque() {
             use kui_core::{InputEvent, Vec2};
             let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
             r.route(e);
-            r.frames(1);
+            r.frames(3);
             let hover_bg = bg(&mut r);
             let e = r.core.handle_input(InputEvent::mouse_down(1));
             r.route(e);
@@ -956,6 +959,263 @@ fn every_button_shades_under_the_pointer_and_the_press_and_stays_opaque() {
             assert_eq!(press_bg.a, 1.0, "{skin} {variant}: the press is opaque: {press_bg:?}");
             assert_eq!(hover_bg.a, 1.0, "{skin} {variant}: the hover is opaque: {hover_bg:?}");
         }
+    }
+}
+
+/// The solid quads of the last frame whose rect is `w`×`h` (± half a px).
+fn quads_sized(core: &mut Core, w: f32, h: f32) -> Vec<kui_core::Quad> {
+    kui_core::testing::solids(core)
+        .into_iter()
+        .filter(|q| (q.rect.w - w).abs() < 0.6 && (q.rect.h - h).abs() < 0.6)
+        .collect()
+}
+
+#[test]
+fn a_switch_knob_slides_across_and_settles_without_a_flash() {
+    let mut r = LuaRig::new(
+        r#"
+        on = false
+        function on_event(ev) if ev.kind == "pin" then on = ev.toggle.on end end
+        function view(env)
+          return column { width = "grow", pad = 20,
+            component("kit/switch", { label = "Pinned", on = on, on_toggle = { kind = "pin" } }) }
+        end
+        "#,
+    );
+    r.core.set_time(1.0);
+    r.frames(3);
+    let sw = r.named("Pinned");
+    let mut t = 1.0;
+    r.click(sw.x + 8.0, sw.y + sw.h / 2.0);
+    let mut xs = Vec::new();
+    for _ in 0..16 {
+        t += 0.016;
+        r.core.set_time(t);
+        r.frames(1);
+        // The knob moved by layout (its alignment flips), which a
+        // `transition` alone does not ease: it needs `slide`.
+        let knobs = quads_sized(&mut r.core, 14.0, 14.0);
+        xs.push(knobs.first().map(|q| q.rect.x).unwrap_or(f32::NAN));
+    }
+    let (first, last) = (xs[0], xs[xs.len() - 1]);
+    assert!(last > first + 10.0, "it went across: {xs:?}");
+    let between = xs.iter().filter(|x| **x > first + 1.0 && **x < last - 1.0).count();
+    assert!(between >= 3, "it slid, frames in between: {xs:?}");
+}
+
+#[test]
+fn tab_leaves_a_list_and_its_focus_shows() {
+    // Relay's history: Tab went into the list and never out, with no ring.
+    let mut r = LuaRig::new(
+        r#"
+        local ch = channel({ title = { "one", "two", "three" } })
+        function view(env)
+          return column { width = "grow", gap = 8,
+            component("kit/button", { label = "Before" }),
+            column { width = 300, height = 120, component("kit/list", { rows = ch, title = "title", grow = true }) },
+            component("kit/button", { label = "After" }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let focused = |r: &mut LuaRig| -> Option<String> {
+        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone()).or(Some("?".into()))
+    };
+    let press_tab = |r: &mut LuaRig| {
+        use kui_core::testing::{key_press, tab};
+        use kui_core::KeyCode;
+        let e = r.core.handle_input(key_press(KeyCode::Tab));
+        r.route(e);
+        let e = tab(&mut r.core, false);
+        r.route(e);
+        r.frames(1);
+    };
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        press_tab(&mut r);
+        seen.push(focused(&mut r));
+    }
+    assert!(seen.iter().any(|f| f.as_deref() == Some("After")), "Tab got past the list: {seen:?}");
+}
+
+#[test]
+fn ledger_primary_face_lifts_on_hover_and_sinks_on_press_over_a_still_shadow() {
+    // The face and its hard shadow moved nowhere; the user wanted the
+    // face to lift and sink while the shadow's far edge stays put.
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = "grow", pad = 20,
+            component("kit/settings", { skin = "ledger" }),
+            component("kit/button", { label = "Go", variant = "primary" }) }
+        end
+        "#,
+    );
+    r.core.set_time(1.0);
+    r.frames(2);
+    let face_and_shadow = |r: &mut LuaRig| {
+        let face = r.node(|n| n.label.as_deref() == Some("face")).expect("the face").rect;
+        let quads = kui_core::testing::quads_of(&mut r.core, kui_core::QuadKind::Shadow);
+        let shadow = quads.first().map(|q| (q.rect.x + q.rect.w, q.rect.y + q.rect.h));
+        // The face as drawn: its solid quad (the keyframe offset is paint).
+        let drawn = kui_core::testing::solids(&mut r.core)
+            .into_iter()
+            .find(|q| (q.rect.w - face.w).abs() < 0.6 && (q.rect.h - face.h).abs() < 0.6)
+            .map(|q| (q.rect.x, q.rect.y))
+            .expect("the face's quad");
+        (drawn, shadow)
+    };
+    let (rest, rest_shadow) = face_and_shadow(&mut r);
+    let hit = r.named("Go");
+    use kui_core::{InputEvent, Vec2};
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(hit.x + hit.w / 2.0, hit.y + hit.h / 2.0)));
+    r.route(e);
+    r.frames(2);
+    let (hover, hover_shadow) = face_and_shadow(&mut r);
+    r.core.set_time(1.1);
+    let e = r.core.handle_input(InputEvent::mouse_down(1));
+    r.route(e);
+    r.core.set_time(1.2);
+    r.frames(1);
+    r.core.set_time(1.3);
+    r.frames(2);
+    let (press, press_shadow) = face_and_shadow(&mut r);
+    assert!(hover.0 < rest.0 && hover.1 < rest.1, "lifted: {rest:?} → {hover:?}");
+    assert!(press.0 > rest.0 && press.1 > rest.1, "pushed in: {rest:?} → {press:?}");
+    assert_eq!(rest_shadow, hover_shadow, "the shadow's far edge stays put under hover");
+    assert!(press_shadow.is_none() || press_shadow == rest_shadow, "pressed, the shadow is under the face: {press_shadow:?}");
+}
+
+#[test]
+fn a_slider_handle_stays_lit_while_held() {
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = 300, pad = 20,
+            component("kit/slider", { label = "Zoom", value = 0.5, min = 0, max = 1 }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let handle = |r: &mut LuaRig| r.node(|n| n.label.as_deref() == Some("handle")).expect("the handle");
+    let rest = handle(&mut r).bg;
+    let track = r.named("Zoom");
+    use kui_core::{InputEvent, Vec2};
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(track.x + track.w * 0.25, track.y + track.h / 2.0)));
+    r.route(e);
+    r.frames(1);
+    let over = handle(&mut r).bg;
+    let e = r.core.handle_input(InputEvent::mouse_down(1));
+    r.route(e);
+    r.frames(1);
+    let held = handle(&mut r).bg;
+    assert_ne!(rest, over, "lit under the pointer");
+    assert_ne!(rest, held, "still lit while held");
+}
+
+#[test]
+fn toasts_in_a_toaster_stack_without_overlapping() {
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = "grow", height = "grow",
+            component("kit/toaster", {}, {
+              component("kit/toast", { key = "a", inline = true, message = "Saved.", tone = "ok", duration = 0 }),
+              component("kit/toast", { key = "b", inline = true, message = "Could not reach the server.", tone = "danger", duration = 0 }),
+            }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let a = r.text("Saved.").expect("the first");
+    let b = r.text("Could not reach the server.").expect("the second");
+    assert!(b.y > a.y + a.h, "one above the other: {a:?} {b:?}");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn a_panel_title_rule_stays_inside_its_frame() {
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = "grow", pad = 20,
+            component("kit/settings", { skin = "ledger" }),
+            column { key = "outer", width = 300,
+              component("kit/panel", { title = "Throughput" }, { text("body") }) } }
+        end
+        "#,
+    );
+    r.frames(2);
+    let outer = r.node(|n| n.label.as_deref() == Some("outer")).unwrap().rect;
+    // Every one-px-tall solid (the hairline under the title) starts past
+    // the 2 px frame and ends before it.
+    let lines: Vec<_> = kui_core::testing::solids(&mut r.core)
+        .into_iter()
+        .filter(|q| q.rect.h <= 1.5 && q.rect.w > 100.0)
+        .collect();
+    assert!(!lines.is_empty(), "the title's rule");
+    for q in lines {
+        assert!(q.rect.x >= outer.x + 1.5 && q.rect.x + q.rect.w <= outer.x + outer.w - 1.5, "inside the frame: {:?} in {outer:?}", q.rect);
+    }
+}
+
+#[test]
+fn a_log_republished_with_the_same_rows_keeps_its_place_and_one_that_drops_its_oldest_too() {
+    // Watchtower's log republished its rows each second: every revision of
+    // no new rows cleared the measured heights and the log jumped; and once
+    // it was full, dropping the oldest moved what a reader scrolled up to.
+    let mut r = LuaRig::new(
+        r#"
+        rows = {}
+        for i = 1, 60 do rows[i] = i end
+        local function publish()
+          local cols = { time = {}, level = {}, message = {} }
+          for j, i in ipairs(rows) do
+            cols.time[j], cols.level[j] = string.format("t%03d", i), "info"
+            cols.message[j] = i % 4 == 0 and ("line " .. i .. " is long enough to wrap onto a second row in a narrow log, and a third") or ("line " .. i)
+          end
+          return channel(cols)
+        end
+        ch = publish()
+        function tick(drop)
+          if drop then table.remove(rows, 1); rows[#rows + 1] = rows[#rows] + 1 end
+          ch = publish()
+        end
+        function view(env)
+          return column { width = "grow", height = "grow",
+            column { key = "box", width = 360, height = 300,
+              component("kit/log", { rows = ch, grow = true, wrap = true }) } }
+        end
+        function on_event(ev) end
+        "#,
+    );
+    r.frames(6);
+    let bx = r.node(|n| n.label.as_deref() == Some("box")).unwrap().rect;
+    use kui_core::{InputEvent, Vec2};
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(bx.x + 100.0, bx.y + 100.0)));
+    r.route(e);
+    let e = r.core.handle_input(InputEvent::ScrollGesture { delta: Vec2::new(0.0, 400.0), begins: true });
+    r.route(e);
+    r.frames(4);
+    let first_seen = |r: &mut LuaRig| {
+        let bx = r.node(|n| n.label.as_deref() == Some("box")).unwrap().rect;
+        let mut seen: Vec<(f32, String)> = r
+            .core
+            .nodes()
+            .into_iter()
+            .filter_map(|n| n.text.filter(|t| t.starts_with("line ")).map(|t| (n.rect.y, t)))
+            .filter(|(y, _)| *y >= bx.y)
+            .collect();
+        seen.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        seen.first().cloned().expect("a row in view")
+    };
+    let before = first_seen(&mut r);
+    for drop in [false, true, true] {
+        r.app.globals().get::<mlua::Function>("tick").unwrap().call::<()>(drop).unwrap();
+        r.frames(3);
+        let now = first_seen(&mut r);
+        assert_eq!(now.1, before.1, "the same row at the top (drop {drop})");
+        assert!((now.0 - before.0).abs() < 1.0, "in the same place (drop {drop}): {before:?} → {now:?}");
     }
 }
 

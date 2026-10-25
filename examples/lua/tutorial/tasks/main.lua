@@ -88,7 +88,7 @@ function view(env)
         on_change = { kind = "draft" }, on_submit = { kind = "add" } }),
       kit.button({ label = "Add", variant = "primary", on_press = { kind = "add" } }),
       trailing = {
-        kit.button({ label = "Clear done", disabled = done == 0, on_press = { kind = "clear" } }),
+        kit.button({ label = "Clear done", icon = "trash", variant = "ghost", disabled = done == 0, on_press = { kind = "clear" } }),
       },
     }),
     kit.stat({ label = "Done", value = done .. " of " .. #model.tasks }),

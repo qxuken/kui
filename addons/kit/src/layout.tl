@@ -22,6 +22,10 @@ local function region(c: Ctx, t: kui.Props): kui.Props
   t.radius = "$kitRadius"
   t.clip = true
   t.border = { w = "$kitRuleW", color = ref(c, c.s.skin.ctl_border and "ink" or "rule") }
+  -- The frame's width as padding: a border is drawn over the box's edge
+  -- and its children are laid out from that edge, so the hairline under a
+  -- panel's title ran across the 2 px frame at both ends.
+  t.pad = "$kitRuleW"
   return t
 end
 

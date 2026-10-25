@@ -636,6 +636,8 @@ export interface TableProps {
   descending?: boolean;
   /** Every other row tinted. */
   striped?: boolean;
+  /** Framed in a hairline, the header ruled off inside it; left out, no frame and the header on a plane of its own (in a panel, which is framed already). */
+  border?: boolean;
   /** Takes the room its parent leaves. */
   grow?: boolean;
   /** The message select arrives as: yours, with `select: TableSelect` in it. A row was clicked or reached by the arrows. */
@@ -690,6 +692,8 @@ export interface ListProps {
   tone?: string;
   /** The badge column's width in px, so the titles line up; each badge's own when left out. */
   badgeWidth?: number;
+  /** Its name, read and not drawn: what the list holds (History). */
+  label?: string;
   /** The selected row (0-based): yours to keep. */
   selected?: number;
   /** Takes the room its parent leaves. */
@@ -758,6 +762,10 @@ export interface BadgeProps {
   tone?: Tone;
   /** A dot in the tone's colour before the label: a status. */
   dot?: boolean;
+  /** A hint under the pointer: what the status means. */
+  tooltip?: string;
+  /** Fades in as it appears and out as it goes: a status that comes and goes with an edit (changed), not one of a table's. */
+  fade?: boolean;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -914,7 +922,7 @@ export type MenuDismissMsg<T = {}> = T & { dismiss: MenuDismiss };
 export interface ToastProps {
   /** What happened. */
   message: string;
-  /** Neutral when left out. */
+  /** neutral (info, the default), accent, ok (success), warn (warning) or danger (error). */
   tone?: Tone;
   /** One action on what happened, a button beside the message: `Undo`. */
   action?: string;
@@ -922,6 +930,8 @@ export interface ToastProps {
   actionName?: string;
   /** How long it stays, in ms, counted again from when the pointer leaves it; 5000 when left out, 0 to keep it until dismissed. */
   duration?: number;
+  /** One of a `toaster`'s stack rather than floating in the corner on its own. */
+  inline?: boolean;
   /** The message dismiss arrives as: yours, with `dismiss: ToastDismiss` in it. Its close button, or its `duration` ran out. */
   onDismiss?: unknown;
   /** The message action arrives as: yours, with `action: ToastAction` in it. Its action was pressed. */
@@ -943,6 +953,16 @@ export interface ToastAction {
 }
 /** Your message `T` as `action` arrives. */
 export type ToastActionMsg<T = {}> = T & { action: ToastAction };
+
+/** The props of `kit/toaster`. */
+export interface ToasterProps {
+  /** are the toasts, each placed with `inline`. */
+  children?: KuiNode;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
 
 /** The props of `kit/sparkline`. */
 export interface SparklineProps {
@@ -1186,8 +1206,11 @@ export declare function Popover(props: PopoverProps, children?: KuiNode): KuiNod
 /** A menu of items floating under what opened it. */
 export declare function Menu(props: MenuProps, children?: KuiNode): KuiNode;
 
-/** A message in a window's corner that goes when dismissed. */
+/** A message in a window's corner: shown for `duration` (5 s) or until dismissed (`duration = 0`), in its tone — info, success, warning or error — as a bar down its edge and its icon; it slides out as it goes. Several stack in a `toaster`. */
 export declare function Toast(props: ToastProps, children?: KuiNode): KuiNode;
+
+/** Toasts stacked in the window's corner, the newest at the foot, each sliding into the room one that goes leaves. */
+export declare function Toaster(props: ToasterProps, children?: KuiNode): KuiNode;
 
 /** A line with no axes, for a trend inline. */
 export declare function Sparkline(props: SparklineProps, children?: KuiNode): KuiNode;
@@ -1238,6 +1261,7 @@ export interface Kit {
   Popover: typeof Popover;
   Menu: typeof Menu;
   Toast: typeof Toast;
+  Toaster: typeof Toaster;
   Sparkline: typeof Sparkline;
   LineChart: typeof LineChart;
   BarChart: typeof BarChart;

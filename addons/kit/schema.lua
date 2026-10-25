@@ -308,6 +308,7 @@ return {
         { "sort", "string?", doc = "The field it is sorted by, marked in its header; the sorting is yours." },
         { "descending", "boolean?", doc = "Sorted from the top down." },
         { "striped", "boolean?", doc = "Every other row tinted." },
+        { "border", "boolean?", doc = "Framed in a hairline, the header ruled off inside it; left out, no frame and the header on a plane of its own (in a panel, which is framed already)." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
       },
       events = {
@@ -327,6 +328,7 @@ return {
         { "badge", "string?", doc = "A field drawn as a pill before the title: a method, a state." },
         { "tone", "string?", doc = "A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`, `neutral`)." },
         { "badge_width", "number?", doc = "The badge column's width in px, so the titles line up; each badge's own when left out." },
+        { "label", "string?", doc = "Its name, read and not drawn: what the list holds (History)." },
         { "selected", "integer?", doc = "The selected row (0-based): yours to keep." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
       },
@@ -357,6 +359,8 @@ return {
         { "label", "string", doc = "What it says." },
         { "tone", "Tone?", doc = "Neutral when left out." },
         { "dot", "boolean?", doc = "A dot in the tone's colour before the label: a status." },
+        { "tooltip", "string?", doc = "A hint under the pointer: what the status means." },
+        { "fade", "boolean?", doc = "Fades in as it appears and out as it goes: a status that comes and goes with an edit (changed), not one of a table's." },
       } },
     { "stat",
       doc = "A number with its label, and how it moved.",
@@ -425,18 +429,23 @@ return {
         { "dismiss", doc = "Escape, or a press outside." },
       } },
     { "toast",
-      doc = "A message in a window's corner that goes when dismissed.",
+      doc = "A message in a window's corner: shown for `duration` (5 s) or until dismissed (`duration = 0`), in its tone — info, success, warning or error — as a bar down its edge and its icon; it slides out as it goes. Several stack in a `toaster`.",
       props = {
         { "message", "string", doc = "What happened." },
-        { "tone", "Tone?", doc = "Neutral when left out." },
+        { "tone", "Tone?", doc = "neutral (info, the default), accent, ok (success), warn (warning) or danger (error)." },
         { "action", "string?", doc = "One action on what happened, a button beside the message: `Undo`." },
         { "action_name", "string?", doc = "The action's accessible name when it says more than its label (Undo → Undo the delete)." },
         { "duration", "number?", doc = "How long it stays, in ms, counted again from when the pointer leaves it; 5000 when left out, 0 to keep it until dismissed." },
+        { "inline", "boolean?", doc = "One of a `toaster`'s stack rather than floating in the corner on its own." },
       },
       events = {
         { "dismiss", doc = "Its close button, or its `duration` ran out." },
         { "action", doc = "Its action was pressed." },
       } },
+
+    { "toaster",
+      doc = "Toasts stacked in the window's corner, the newest at the foot, each sliding into the room one that goes leaves.",
+      children = { { "", doc = "are the toasts, each placed with `inline`." } } },
 
     -- Charts ---------------------------------------------------------------
     { "sparkline",

@@ -325,6 +325,7 @@ function make(namespace) {
       if (props.sort !== undefined) wire.sort = props.sort;
       if (props.descending !== undefined) wire.descending = props.descending;
       if (props.striped !== undefined) wire.striped = props.striped;
+      if (props.border !== undefined) wire.border = props.border;
       if (props.grow !== undefined) wire.grow = props.grow;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
       if (props.onSort !== undefined) wire.on_sort = props.onSort;
@@ -345,6 +346,7 @@ function make(namespace) {
       if (props.badge !== undefined) wire.badge = props.badge;
       if (props.tone !== undefined) wire.tone = props.tone;
       if (props.badgeWidth !== undefined) wire.badge_width = props.badgeWidth;
+      if (props.label !== undefined) wire.label = props.label;
       if (props.selected !== undefined) wire.selected = props.selected;
       if (props.grow !== undefined) wire.grow = props.grow;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
@@ -389,6 +391,8 @@ function make(namespace) {
       if (props.label !== undefined) wire.label = props.label;
       if (props.tone !== undefined) wire.tone = props.tone;
       if (props.dot !== undefined) wire.dot = props.dot;
+      if (props.tooltip !== undefined) wire.tooltip = props.tooltip;
+      if (props.fade !== undefined) wire.fade = props.fade;
       const groups = undefined;
       return {
         type: 'component',
@@ -508,6 +512,7 @@ function make(namespace) {
       if (props.action !== undefined) wire.action = props.action;
       if (props.actionName !== undefined) wire.action_name = props.actionName;
       if (props.duration !== undefined) wire.duration = props.duration;
+      if (props.inline !== undefined) wire.inline = props.inline;
       if (props.onDismiss !== undefined) wire.on_dismiss = props.onDismiss;
       if (props.onAction !== undefined) wire.on_action = props.onAction;
       const groups = undefined;
@@ -515,6 +520,16 @@ function make(namespace) {
         type: 'component',
         key: props.key != null ? String(props.key) : undefined,
         props: { name: `${namespace}/toast`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Toaster(props = {}, children) {
+      const wire = {};
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/toaster`, props: wire, groups, fresh: props.fresh },
         children: flat(children ?? props.children),
       };
     },
@@ -610,6 +625,6 @@ function make(namespace) {
 }
 
 const kit = make('kit');
-export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Dialog, Popover, Menu, Toast, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
+export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
 export const at = make;
 export default kit;

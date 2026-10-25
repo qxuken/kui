@@ -136,6 +136,8 @@ function M.menu(c: Ctx, p: P): kui.Node
 end
 
 local TONE_ICON: {string:string} = { ok = "check", warn = "alert", danger = "alert", accent = "info", neutral = "info" }
+-- The bar down a toast's edge, by tone: neutral is the soft rule.
+local TONE_BAR: {string:string} = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "rule" }
 
 local record Shown
   message: string
@@ -169,20 +171,31 @@ function M.toast(c: Ctx, p: P): kui.Node
       env.request_frame_at(due)
     end
   end
+  local inline = p.inline == true
   return row(surface(c, {
     key = "toast",
     -- Its own bottom-right corner on the window's, 16 px in: with `self`
-    -- left at its start the toast hung off past the window's corner.
-    float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
+    -- left at its start the toast hung off past the window's corner. In a
+    -- `toaster` it is one of a column there, not a float of its own, so
+    -- several stack instead of lying on top of one another.
+    float = not inline and { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 } or nil,
     label = message,
-    min_width = 240,
-    max_width = 420,
-    pad = { x = 12, y = 10 },
+    min_width = 320,
+    max_width = 480,
+    pad = { r = 12 },
     gap = 10,
     cross_align = "center",
+    -- In from below, out to the side, fading both ways; the others in a
+    -- toaster slide into the room it leaves.
     enter = { opacity = 0, dy = 12 },
-    transition = 160,
-    icons.node(c, TONE_ICON[tone] or "info", 14, role),
+    exit = { opacity = 0, dx = 32 },
+    slide = inline or nil,
+    transition = 180,
+    -- The tone, as a bar down its leading edge in the tone's colour, and
+    -- the icon in it: an error reads as one before a word of it is read.
+    column { key = "tone", width = 4, height = "grow", bg = ref(c, TONE_BAR[tone] or "rule") },
+    row { width = "grow", min_width = 0, gap = 10, pad = { y = 10 }, cross_align = "center",
+      icons.node(c, TONE_ICON[tone] or "info", 14, role),
     -- Live on the message alone, so the close button stays a control.
     row { width = "grow", live = "polite", ctx.text(c, message, { wrap = "word" }) },
     -- One action on what just happened (Undo), quiet beside the message.
@@ -198,8 +211,21 @@ function M.toast(c: Ctx, p: P): kui.Node
       on_click = act(c, "toast.dismiss"),
       icons.node(c, "x", 12, "muted"),
     },
+    },
     expire,
   }))
+end
+
+-- Toasts stacked in the window's corner, the newest at the foot: its
+-- children are toasts placed with `inline`.
+function M.toaster(c: Ctx, _p: P): kui.Node
+  return column {
+    key = "toaster",
+    float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
+    gap = 8,
+    cross_align = "end",
+    children(""),
+  }
 end
 
 function M.event(m: P, kit: string): any

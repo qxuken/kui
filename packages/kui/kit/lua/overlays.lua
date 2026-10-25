@@ -138,6 +138,8 @@ end
 
 local TONE_ICON = { ok = "check", warn = "alert", danger = "alert", accent = "info", neutral = "info" }
 
+local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "rule" }
+
 
 
 
@@ -170,19 +172,30 @@ function M.toast(c, p)
          env.request_frame_at(due)
       end
    end
+   local inline = p.inline == true
    return row(surface(c, {
       key = "toast",
 
 
-      float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
+
+
+      float = not inline and { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 } or nil,
       label = message,
-      min_width = 240,
-      max_width = 420,
-      pad = { x = 12, y = 10 },
+      min_width = 320,
+      max_width = 480,
+      pad = { r = 12 },
       gap = 10,
       cross_align = "center",
+
+
       enter = { opacity = 0, dy = 12 },
-      transition = 160,
+      exit = { opacity = 0, dx = 32 },
+      slide = inline or nil,
+      transition = 180,
+
+
+      column({ key = "tone", width = 4, height = "grow", bg = ref(c, TONE_BAR[tone] or "rule") }),
+      row({ width = "grow", min_width = 0, gap = 10, pad = { y = 10 }, cross_align = "center",
       icons.node(c, TONE_ICON[tone] or "info", 14, role),
 
       row({ width = "grow", live = "polite", ctx.text(c, message, { wrap = "word" }) }),
@@ -199,8 +212,21 @@ function M.toast(c, p)
          on_click = act(c, "toast.dismiss"),
          icons.node(c, "x", 12, "muted"),
       }),
+      }),
       expire,
    }))
+end
+
+
+
+function M.toaster(c, _p)
+   return column({
+      key = "toaster",
+      float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
+      gap = 8,
+      cross_align = "end",
+      children(""),
+   })
 end
 
 function M.event(m, kit)

@@ -33,10 +33,29 @@ function init()
     draft = settings.copy(saved),
     problem = problem,
     confirm = nil,          -- "reset" while the reset waits on the dialog
-    toast = nil,
+    toast = nil,            -- the newest toast, the last of `toasts`
+    toasts = {},            -- every toast showing, oldest first: they stack
+    next_toast = 1,
     saved_at = nil,
     show_toml = false,
   }
+end
+
+-- A toast joins the stack in the corner; it goes by itself (Kit's
+-- `duration`) or by its close button. `undo` is the draft its Undo brings
+-- back, for a revert or a reset.
+local function toast(m, message, tone, undo)
+  local t = { id = m.next_toast, message = message, tone = tone, undo = undo }
+  m.next_toast = m.next_toast + 1
+  m.toasts[#m.toasts + 1] = t
+  m.toast = t
+end
+
+local function toast_off(m, id)
+  for i, t in ipairs(m.toasts) do
+    if t.id == id then table.remove(m.toasts, i) break end
+  end
+  m.toast = m.toasts[#m.toasts]
 end
 
 -- The rows a search leaves are the view's to know; it hands them back.
@@ -57,10 +76,9 @@ function update(msg)
   elseif k == "section" then m.section, m.query = msg.section, ""
   elseif k == "query" then m.query = msg.change.text
   elseif k == "save" then
-    m.undo = nil
     local errors = settings.check(m.draft)
     if next(errors) then
-      m.toast = { message = "Fix the highlighted settings first.", tone = "danger" }
+      toast(m, "Fix the highlighted settings first.", "danger")
       return
     end
     local ok, err = pcall(settings.save, boot.config, m.draft)
@@ -69,29 +87,36 @@ function update(msg)
       m.saved = settings.copy(m.draft)
       m.saved_at = kui.now()
       m.problem = nil
-      m.toast = { message = string.format("Saved %d change%s.", n, n == 1 and "" or "s"), tone = "ok" }
+      toast(m, string.format("Saved %d change%s.", n, n == 1 and "" or "s"), "ok")
     else
-      m.toast = { message = "Could not save: " .. tostring(err):match("^[^\n]*"), tone = "danger" }
+      toast(m, "Could not save: " .. tostring(err):match("^[^\n]*"), "danger")
     end
   elseif k == "revert" then
-    m.undo = settings.copy(m.draft)
+    local before = settings.copy(m.draft)
     m.draft = settings.copy(m.saved)
-    m.toast = { message = "Changes reverted.", tone = "neutral" }
+    toast(m, "Changes reverted.", "neutral", before)
   elseif k == "reset" then m.confirm = "reset"
   elseif k == "cancel" then m.confirm = nil
   elseif k == "confirm_reset" then
     m.confirm = nil
-    m.undo = settings.copy(m.draft)
+    local before = settings.copy(m.draft)
     m.draft = settings.copy(settings.DEFAULTS)
-    m.toast = { message = "Every setting is back to its default. Save to keep them.", tone = "accent" }
+    toast(m, "Every setting is back to its default. Save to keep them.", "accent", before)
   elseif k == "undo" then
-    -- The toast's Undo: the draft from before the revert or the reset.
-    if m.undo then m.draft, m.undo = m.undo, nil end
-    m.toast = nil
+    -- A toast's Undo: the draft from before its revert or reset.
+    for _, t in ipairs(m.toasts) do
+      if t.id == msg.id and t.undo then m.draft = t.undo end
+    end
+    toast_off(m, msg.id)
+  elseif k == "menu" then
+    -- The menu bar (and its accelerators, ⌘S / Ctrl+S among them).
+    local item = msg.menu and msg.menu.item
+    if item == "save" or item == "revert" then return update({ kind = item })
+    elseif item == "find" then m.focus_search = m.focus_search + 1 end
   elseif k == "show_toml" then m.show_toml = not m.show_toml
   elseif k == "skin" then m.skin = msg.change.value
   elseif k == "side" then m.side = msg.resize.fraction
-  elseif k == "toast_off" then m.toast, m.undo = nil, nil
+  elseif k == "toast_off" then toast_off(m, msg.id)
   end
 end
 

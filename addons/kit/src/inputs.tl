@@ -80,6 +80,67 @@ local function pressable(c: Ctx, variant: string, t: kui.Props): kui.Props
   return t
 end
 
+-- A button that casts a hard shadow (Ledger's primary) moves its face
+-- with the pointer: lifted a pixel toward the light under it, the shadow
+-- a pixel longer; pressed into the shadow's place, the shadow gone. The
+-- shadow's far edge never moves, so the face reads as sliding on it.
+-- Done as a still box that takes the pointer (and keeps its place, so the
+-- face moving out from under the pointer cannot flicker the hover) and a
+-- face inside it drawn offset by a one-stop keyframe, its shadow shortened
+-- by as much. Instant, not eased: an eased offset and an eased shadow
+-- would part for the frames between and the edge would wobble.
+local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
+  local sk = c.s.skin
+  if variant ~= "primary" or t.disabled == true or not c.s.shadows or sk.shadow <= 0 or sk.shadow_blur > 0 then
+    return row(t)
+  end
+  local function state(f: function(kui.KeyRef): boolean): boolean
+    local ok, v = pcall(f, "hit")
+    return ok and v == true
+  end
+  local pressed = state(c.env.is_pressed)
+  local over = pressed or state(c.env.is_hovered)
+  local d = pressed and sk.shadow or (over and -1 or 0)
+  local face: kui.Props = {
+    key = "face",
+    -- Its content's width in a box that fits it; the box's where it has one.
+    width = t.width and "grow" or nil,
+    height = "grow",
+    pad = t.pad,
+    gap = t.gap,
+    main_align = t.main_align,
+    cross_align = "center",
+    radius = t.radius,
+    bg = pressed and t.pressed_bg or (over and t.hover_bg or t.bg),
+    border = t.border,
+    shadow_color = t.shadow_color,
+    shadow_x = sk.shadow - d,
+    shadow_y = sk.shadow - d,
+    keyframes = d ~= 0 and { { dx = d, dy = d }, { dx = d, dy = d } } or nil,
+    iterations = d ~= 0 and 1 or nil,
+    -- A keyframe cycle runs over `transition`; one stop, so any length holds it.
+    transition = d ~= 0 and 1 or nil,
+  }
+  for i = 1, #t do face[i] = t[i] end
+  local hit: kui.Props = {
+    key = "hit",
+    -- Hover-tracked, so `is_hovered` answers for it (a box with only a
+    -- click is not).
+    hoverable = true,
+    role = t.role,
+    label = t.label,
+    tooltip = t.tooltip,
+    selected = t.selected,
+    on_click = t.on_click,
+    cursor = t.cursor,
+    width = t.width,
+    height = t.height,
+    min_width = t.min_width,
+    row(face),
+  }
+  return row(hit)
+end
+
 -- A toggle that is on: the selection's fill, read as selected.
 local function pressed_look(c: Ctx, t: kui.Props): string
   t.selected = true
@@ -114,7 +175,7 @@ function M.button(c: Ctx, p: P): kui.Node
     local quiet = ink_role == "fg" or ink_role == "ok"
     t[#t + 1] = ctx.data(c, p.shortcut as string, { size = "$kitSizeLabel", color = ref(c, quiet and "faint" or ink_role) })
   end
-  return row(t)
+  return pressed_face(c, variant, t)
 end
 
 function M.icon_button(c: Ctx, p: P): kui.Node
@@ -136,7 +197,7 @@ function M.icon_button(c: Ctx, p: P): kui.Node
   end
   if p.disabled == true then t.opacity = "$disabledOpacity" end
   t[#t + 1] = icons.node(c, str(p.icon) or "", 14, role)
-  return row(t)
+  return pressed_face(c, variant, t)
 end
 
 -- A field's well: an underline in Ledger and Phosphor, a box in Neutral.
@@ -219,9 +280,6 @@ function M.text_field(c: Ctx, p: P): kui.Node
       size = "$kitSize",
       family = p.mono == true and "$kitData" or "$kitUi",
       color = ref(c, "fg"),
-      -- The whole height of the field is the editor's, so a press above
-      -- or below the line still puts the caret in it.
-      height = "grow",
       disabled = p.disabled == true,
       -- The error is read after the name, as what to fix.
       description = err ~= "" and err or nil,
@@ -464,7 +522,7 @@ function M.switch(c: Ctx, p: P): kui.Node
   local sk = c.s.skin
   local ink_is_accent = sk.dark.ink == sk.dark.accent
   local knob = column {
-    key = "knob", width = 14, height = 14, radius = round and 7 or 0, transition = SLIDE,
+    key = "knob", width = 14, height = 14, radius = round and 7 or 0, transition = SLIDE, slide = true,
     bg = ref(c, round and "raised" or (ink_is_accent and "bg" or "ink")),
     border = (not round and ink_is_accent) and { w = "$kitHair", color = ref(c, "ink") } or nil,
   }
@@ -576,7 +634,13 @@ function M.slider(c: Ctx, p: P): kui.Node
   local step = (p.step or (hi - lo) / 100) as number
   -- The value as the host wrote it (`20 MB/s`), or the number itself.
   local shown = str(p.value_label) or string.format("%g", v)
+  -- The track and its handle share a hover group, so the handle lights
+  -- while the pointer is over the track and stays lit, a shade deeper,
+  -- while it is held there and dragged: it went dark the moment the press
+  -- began, as if let go.
+  local group = "kit-slider-" .. tostring(c.inst)
   local track = row {
+    hover_group = group,
     role = "slider",
     label = str(p.label),
     value_now = v,
@@ -591,8 +655,10 @@ function M.slider(c: Ctx, p: P): kui.Node
     cursor = "pointer",
     column { width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent") },
     column {
+      key = "handle", hover_group = group,
       width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
-      bg = ref(c, "panel"), border = { w = "$kitRuleW", color = ref(c, "ink") },
+      bg = ref(c, "panel"), hover_bg = ref(c, "accent"), pressed_bg = ref(c, "accent_press"),
+      border = { w = "$kitRuleW", color = ref(c, "ink") },
     },
     column { width = "grow", height = 4, radius = 2, bg = ref(c, "rule") },
   }

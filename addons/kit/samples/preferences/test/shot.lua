@@ -15,7 +15,13 @@ model.skin = skin
 
 local function set(key, v) model.draft[key] = v end
 
-if state == "sync" then
+if state == "toggle" then
+  -- for a recording (`--record`): a switch flipped and flipped back
+  kui.spawn(function()
+    kui.sleep(400); kui.dispatch({ kind = "set", key = "open_at_login", toggle = { on = false } })
+    kui.sleep(700); kui.dispatch({ kind = "set", key = "open_at_login", toggle = { on = true } })
+  end)
+elseif state == "sync" then
   update({ kind = "section", section = "sync" })
   set("desktop", true); set("versions", 60); set("mode", "upload")
 elseif state == "network" then

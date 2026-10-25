@@ -171,8 +171,8 @@ local function setting(m, r, errors, warnings)
       -- does not push the help line and the rows under it down.
       row { height = 18, gap = 6, cross_align = "center",
         text(r[4], { size = "$kitSize", family = "$kitUi", bold = true, color = "$kitFg" }),
-        dirty and row { tooltip = "Changed, not saved yet", role = "image", label = "changed",
-          kit.badge({ label = "changed", tone = "accent" }) } or nil,
+        dirty and kit.badge({ key = "changed", label = "changed", tone = "accent", fade = true,
+          tooltip = "Changed, not saved yet" }) or nil,
       },
       words(r[5]),
     },
@@ -325,12 +325,37 @@ local function foot(m, errors)
   }
 end
 
+-- The toasts, stacked in the corner, the newest at the foot.
+local function toasts(m)
+  if #m.toasts == 0 then return nil end
+  local kids = {}
+  for _, t in ipairs(m.toasts) do
+    kids[#kids + 1] = kit.toast({ key = "toast." .. t.id, inline = true, message = t.message, tone = t.tone,
+      action = t.undo and "Undo" or nil, action_name = t.undo and ("Undo: " .. t.message) or nil,
+      on_action = { kind = "undo", id = t.id }, on_dismiss = { kind = "toast_off", id = t.id } })
+  end
+  return kit.toaster({ key = "toasts" }, kids)
+end
+
+-- The menu bar: on macOS beside the standard menus, elsewhere drawn in the
+-- window; its accelerators are the window's shortcuts either way.
+local MENU = {
+  { label = "File", items = {
+    { label = "Save", id = "save", accel = "mod+s" },
+    { label = "Revert to Saved", id = "revert" },
+  } },
+  { label = "View", items = {
+    { label = "Find a Setting", id = "find", accel = "mod+f" },
+  } },
+}
+
 return function(m, env)
   local errors, warnings = settings.check(m.draft)
   ERRORS = errors
   local changed_from_default = #settings.diff(settings.DEFAULTS, m.draft)
   return column { window_title = "Tidewater Settings", width = "grow", height = "grow", bg = "$kitBg",
     kit.settings({ skin = m.skin }),
+    menu_bar { key = "menu", standard_menus = true, menu = MENU, on_menu = { kind = "menu" } },
     kit.toolbar({ key = "top" }, {
       text("Tidewater Settings", { size = "$kitSizeTitle", family = "$kitUi", bold = true, color = "$kitFg" }),
       trailing = {
@@ -355,8 +380,6 @@ return function(m, env)
         kit.button({ label = "Reset all", variant = "danger", icon = "reset", on_press = { kind = "confirm_reset" } }),
       },
     }) or nil,
-    m.toast and kit.toast({ key = "toast", message = m.toast.message, tone = m.toast.tone,
-      action = m.undo and "Undo" or nil, action_name = m.undo and ("Undo: " .. m.toast.message) or nil,
-      on_action = { kind = "undo" }, on_dismiss = { kind = "toast_off" } }) or nil,
+    toasts(m),
   }
 end

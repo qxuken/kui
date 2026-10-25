@@ -560,6 +560,10 @@ local record kit
     descending: boolean
     -- Every other row tinted.
     striped: boolean
+    -- Framed in a hairline, the header ruled off inside it; left out, no
+    -- frame and the header on a plane of its own (in a panel, which is framed
+    -- already).
+    border: boolean
     -- Takes the room its parent leaves.
     grow: boolean
     -- The message `select` arrives as. A row was clicked or reached by the
@@ -606,6 +610,8 @@ local record kit
     -- The badge column's width in px, so the titles line up; each badge's own
     -- when left out.
     badge_width: number
+    -- Its name, read and not drawn: what the list holds (History).
+    label: string
     -- The selected row (0-based): yours to keep.
     selected: integer
     -- Takes the room its parent leaves.
@@ -664,6 +670,11 @@ local record kit
     tone: Tone
     -- A dot in the tone's colour before the label: a status.
     dot: boolean
+    -- A hint under the pointer: what the status means.
+    tooltip: string
+    -- Fades in as it appears and out as it goes: a status that comes and goes
+    -- with an edit (changed), not one of a table's.
+    fade: boolean
     key: string
     fresh: boolean
   end
@@ -784,7 +795,8 @@ local record kit
   record ToastProps
     -- What happened.
     message: string
-    -- Neutral when left out.
+    -- neutral (info, the default), accent, ok (success), warn (warning) or
+    -- danger (error).
     tone: Tone
     -- One action on what happened, a button beside the message: `Undo`.
     action: string
@@ -794,6 +806,9 @@ local record kit
     -- How long it stays, in ms, counted again from when the pointer leaves
     -- it; 5000 when left out, 0 to keep it until dismissed.
     duration: number
+    -- One of a `toaster`'s stack rather than floating in the corner on its
+    -- own.
+    inline: boolean
     -- The message `dismiss` arrives as. Its close button, or its `duration`
     -- ran out.
     on_dismiss: any
@@ -809,6 +824,12 @@ local record kit
 
   -- What `on_action`'s message carries under `action`.
   record ToastAction
+  end
+
+  -- The props of `kit/toaster`.
+  record ToasterProps
+    key: string
+    fresh: boolean
   end
 
   -- The props of `kit/sparkline`.
@@ -1045,8 +1066,15 @@ local record kit
   -- A menu of items floating under what opened it.
   menu: function(props: MenuProps): kui.Node
 
-  -- A message in a window's corner that goes when dismissed.
+  -- A message in a window's corner: shown for `duration` (5 s) or until
+  -- dismissed (`duration = 0`), in its tone — info, success, warning or
+  -- error — as a bar down its edge and its icon; it slides out as it goes.
+  -- Several stack in a `toaster`.
   toast: function(props: ToastProps): kui.Node
+
+  -- Toasts stacked in the window's corner, the newest at the foot, each
+  -- sliding into the room one that goes leaves.
+  toaster: function(props: ToasterProps, children?: {any:any}): kui.Node
 
   -- A line with no axes, for a trend inline.
   sparkline: function(props: SparklineProps): kui.Node

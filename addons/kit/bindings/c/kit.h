@@ -1570,6 +1570,13 @@ typedef struct KitTable {
     bool striped;
     bool striped_set;
     /*
+     * Framed in a hairline, the header ruled off inside it; left out, no frame
+     * and the header on a plane of its own (in a panel, which is framed
+     * already).
+     */
+    bool border;
+    bool border_set;
+    /*
      * Takes the room its parent leaves.
      */
     bool grow;
@@ -1607,6 +1614,7 @@ static inline KuiValue *kit_table_props(const KitTable *p) {
     if (p->sort.len > 0) kui_value_map_set(m, KUI_STR("sort"), kui_value_str(p->sort));
     if (p->descending_set) kui_value_map_set(m, KUI_STR("descending"), kui_value_bool(p->descending));
     if (p->striped_set) kui_value_map_set(m, KUI_STR("striped"), kui_value_bool(p->striped));
+    if (p->border_set) kui_value_map_set(m, KUI_STR("border"), kui_value_bool(p->border));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
     if (p->on_sort != NULL) kui_value_map_set(m, KUI_STR("on_sort"), p->on_sort);
@@ -1656,6 +1664,10 @@ typedef struct KitList {
     double badge_width;
     bool badge_width_set;
     /*
+     * Its name, read and not drawn: what the list holds (History).
+     */
+    KuiStr label;
+    /*
      * The selected row (0-based): yours to keep.
      */
     int64_t selected;
@@ -1684,6 +1696,7 @@ static inline KuiValue *kit_list_props(const KitList *p) {
     if (p->badge.len > 0) kui_value_map_set(m, KUI_STR("badge"), kui_value_str(p->badge));
     if (p->tone.len > 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(p->tone));
     if (p->badge_width_set) kui_value_map_set(m, KUI_STR("badge_width"), kui_value_float(p->badge_width));
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->selected_set) kui_value_map_set(m, KUI_STR("selected"), kui_value_int(p->selected));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
@@ -1820,6 +1833,16 @@ typedef struct KitBadge {
      */
     bool dot;
     bool dot_set;
+    /*
+     * A hint under the pointer: what the status means.
+     */
+    KuiStr tooltip;
+    /*
+     * Fades in as it appears and out as it goes: a status that comes and goes
+     * with an edit (changed), not one of a table's.
+     */
+    bool fade;
+    bool fade_set;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -1831,6 +1854,8 @@ static inline KuiValue *kit_badge_props(const KitBadge *p) {
     kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->tone != 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(kit_tone_name(p->tone)));
     if (p->dot_set) kui_value_map_set(m, KUI_STR("dot"), kui_value_bool(p->dot));
+    if (p->tooltip.len > 0) kui_value_map_set(m, KUI_STR("tooltip"), kui_value_str(p->tooltip));
+    if (p->fade_set) kui_value_map_set(m, KUI_STR("fade"), kui_value_bool(p->fade));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -2214,7 +2239,10 @@ static inline int32_t kit_menu(KuiCtx *ctx, const KitMenu *p) {
 }
 
 /*
- * A message in a window's corner that goes when dismissed.
+ * A message in a window's corner: shown for `duration` (5 s) or until dismissed
+ * (`duration = 0`), in its tone — info, success, warning or error — as a
+ * bar down its edge and its icon; it slides out as it goes. Several stack in a
+ * `toaster`.
  */
 typedef struct KitToast {
     /*
@@ -2222,7 +2250,8 @@ typedef struct KitToast {
      */
     KuiStr message;
     /*
-     * Neutral when left out.
+     * neutral (info, the default), accent, ok (success), warn (warning) or
+     * danger (error).
      */
     KitTone tone;
     /*
@@ -2240,6 +2269,11 @@ typedef struct KitToast {
      */
     double duration;
     bool duration_set;
+    /*
+     * One of a `toaster`'s stack rather than floating in the corner on its own.
+     */
+    bool inline;
+    bool inline_set;
     /*
      * The message `dismiss` arrives as, consumed; NULL for none. Its close
      * button, or its `duration` ran out.
@@ -2263,6 +2297,7 @@ static inline KuiValue *kit_toast_props(const KitToast *p) {
     if (p->action.len > 0) kui_value_map_set(m, KUI_STR("action"), kui_value_str(p->action));
     if (p->action_name.len > 0) kui_value_map_set(m, KUI_STR("action_name"), kui_value_str(p->action_name));
     if (p->duration_set) kui_value_map_set(m, KUI_STR("duration"), kui_value_float(p->duration));
+    if (p->inline_set) kui_value_map_set(m, KUI_STR("inline"), kui_value_bool(p->inline));
     if (p->on_dismiss != NULL) kui_value_map_set(m, KUI_STR("on_dismiss"), p->on_dismiss);
     if (p->on_action != NULL) kui_value_map_set(m, KUI_STR("on_action"), p->on_action);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
@@ -2274,6 +2309,41 @@ static inline KuiValue *kit_toast_props(const KitToast *p) {
 static inline int32_t kit_toast(KuiCtx *ctx, const KitToast *p) {
     KuiValue *props = kit_toast_props(p);
     int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/toast"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * Toasts stacked in the window's corner, the newest at the foot, each sliding
+ * into the room one that goes leaves.
+ */
+typedef struct KitToaster {
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitToaster;
+
+static inline KuiValue *kit_toaster_props(const KitToaster *p) {
+    KuiValue *m = kui_value_map();
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/toaster: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_toaster(KuiCtx *ctx, const KitToaster *p) {
+    KuiValue *props = kit_toaster_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/toaster"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/* kit_toaster with your children: `children` builds the group it asks for. */
+static inline int32_t kit_toaster_with(KuiCtx *ctx, const KitToaster *p, KuiChildrenFn children,
+    void *user) {
+    KuiValue *props = kit_toaster_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/toaster"), props, children, user);
     kui_value_free(props);
     return fill;
 }

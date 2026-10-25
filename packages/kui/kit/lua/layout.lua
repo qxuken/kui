@@ -23,6 +23,10 @@ local function region(c, t)
    t.radius = "$kitRadius"
    t.clip = true
    t.border = { w = "$kitRuleW", color = ref(c, c.s.skin.ctl_border and "ink" or "rule") }
+
+
+
+   t.pad = "$kitRuleW"
    return t
 end
 

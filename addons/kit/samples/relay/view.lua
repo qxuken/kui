@@ -85,7 +85,7 @@ local function history_pane(m)
     body = kit.empty({ title = "Nothing matches “" .. m.query .. "”", detail = "The search reads methods and paths." },
       { kit.button({ label = "Clear the search", on_press = { kind = "query", change = { text = "" } } }) })
   else
-    body = kit.list({ key = "history", rows = history_channel(m), title = "title", detail = "detail",
+    body = kit.list({ key = "history", label = "History", rows = history_channel(m), title = "title", detail = "detail",
       badge = "method", tone = "tone", badge_width = 58,
       selected = m.selected, grow = true, on_select = { kind = "pick" } })
   end

@@ -1433,6 +1433,9 @@ Table :: struct {
 	descending: Maybe(bool),
 	// Every other row tinted.
 	striped: Maybe(bool),
+	// Framed in a hairline, the header ruled off inside it; left out, no frame and
+	// the header on a plane of its own (in a panel, which is framed already).
+	border: Maybe(bool),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
 	// The message `select` arrives as. A row was clicked or reached by the arrows.
@@ -1491,6 +1494,7 @@ table_props :: proc(p: Table) -> ^c.Value {
 	if p.sort != "" do c.value_map_set(m, "sort", c.value_str(p.sort))
 	if x, ok := p.descending.?; ok do c.value_map_set(m, "descending", c.value_bool(x))
 	if x, ok := p.striped.?; ok do c.value_map_set(m, "striped", c.value_bool(x))
+	if x, ok := p.border.?; ok do c.value_map_set(m, "border", c.value_bool(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
 	if p.on_sort != nil do c.value_map_set(m, "on_sort", (^c.Value)(kui.encode(p.on_sort)))
@@ -1527,6 +1531,8 @@ List :: struct {
 	// The badge column's width in px, so the titles line up; each badge's own when
 	// left out.
 	badge_width: Maybe(f64),
+	// Its name, read and not drawn: what the list holds (History).
+	label: string,
 	// The selected row (0-based): yours to keep.
 	selected: Maybe(i64),
 	// Takes the room its parent leaves.
@@ -1558,6 +1564,7 @@ list_props :: proc(p: List) -> ^c.Value {
 	if p.badge != "" do c.value_map_set(m, "badge", c.value_str(p.badge))
 	if p.tone != "" do c.value_map_set(m, "tone", c.value_str(p.tone))
 	if x, ok := p.badge_width.?; ok do c.value_map_set(m, "badge_width", c.value_float(x))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.selected.?; ok do c.value_map_set(m, "selected", c.value_int(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
@@ -1674,6 +1681,11 @@ Badge :: struct {
 	tone: Maybe(Tone),
 	// A dot in the tone's colour before the label: a status.
 	dot: Maybe(bool),
+	// A hint under the pointer: what the status means.
+	tooltip: string,
+	// Fades in as it appears and out as it goes: a status that comes and goes with
+	// an edit (changed), not one of a table's.
+	fade: Maybe(bool),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -1685,6 +1697,8 @@ badge_props :: proc(p: Badge) -> ^c.Value {
 	c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.tone.?; ok do c.value_map_set(m, "tone", c.value_str(TONE_NAMES[x]))
 	if x, ok := p.dot.?; ok do c.value_map_set(m, "dot", c.value_bool(x))
+	if p.tooltip != "" do c.value_map_set(m, "tooltip", c.value_str(p.tooltip))
+	if x, ok := p.fade.?; ok do c.value_map_set(m, "fade", c.value_bool(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -2092,11 +2106,15 @@ menu_in :: proc(ui: ^kui.Ui, namespace: string, p: Menu) -> i32 {
 	return c.component(ui, name, props, nil, nil)
 }
 
-// A message in a window's corner that goes when dismissed.
+// A message in a window's corner: shown for `duration` (5 s) or until dismissed
+// (`duration = 0`), in its tone — info, success, warning or error — as a
+// bar down its edge and its icon; it slides out as it goes. Several stack in a
+// `toaster`.
 Toast :: struct {
 	// What happened.
 	message: string,
-	// Neutral when left out.
+	// neutral (info, the default), accent, ok (success), warn (warning) or danger
+	// (error).
 	tone: Maybe(Tone),
 	// One action on what happened, a button beside the message: `Undo`.
 	action: string,
@@ -2106,6 +2124,8 @@ Toast :: struct {
 	// How long it stays, in ms, counted again from when the pointer leaves it;
 	// 5000 when left out, 0 to keep it until dismissed.
 	duration: Maybe(f64),
+	// One of a `toaster`'s stack rather than floating in the corner on its own.
+	inline: Maybe(bool),
 	// The message `dismiss` arrives as. Its close button, or its `duration` ran
 	// out.
 	on_dismiss: any,
@@ -2142,6 +2162,7 @@ toast_props :: proc(p: Toast) -> ^c.Value {
 	if p.action != "" do c.value_map_set(m, "action", c.value_str(p.action))
 	if p.action_name != "" do c.value_map_set(m, "action_name", c.value_str(p.action_name))
 	if x, ok := p.duration.?; ok do c.value_map_set(m, "duration", c.value_float(x))
+	if x, ok := p.inline.?; ok do c.value_map_set(m, "inline", c.value_bool(x))
 	if p.on_dismiss != nil do c.value_map_set(m, "on_dismiss", (^c.Value)(kui.encode(p.on_dismiss)))
 	if p.on_action != nil do c.value_map_set(m, "on_action", (^c.Value)(kui.encode(p.on_action)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
@@ -2158,6 +2179,51 @@ toast_in :: proc(ui: ^kui.Ui, namespace: string, p: Toast) -> i32 {
 	defer c.value_free(props)
 	name := concat(namespace, "/toast")
 	return c.component(ui, name, props, nil, nil)
+}
+
+// Toasts stacked in the window's corner, the newest at the foot, each sliding
+// into the room one that goes leaves.
+Toaster :: struct {
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+toaster_props :: proc(p: Toaster) -> ^c.Value {
+	m := c.value_map()
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+toaster :: proc(ui: ^kui.Ui, p: Toaster) -> i32 {
+	return toaster_in(ui, NAMESPACE, p)
+}
+
+toaster_in :: proc(ui: ^kui.Ui, namespace: string, p: Toaster) -> i32 {
+	props := toaster_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/toaster")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// toaster with your children: `children` builds the group it asks for.
+toaster_with :: proc(ui: ^kui.Ui, p: Toaster, data: ^$T, children: proc(data: ^T, ui: ^kui.Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^kui.Ui, group: string),
+		ctx:      Body_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	props := toaster_props(p)
+	defer c.value_free(props)
+	return c.component(ui, concat(NAMESPACE, "/toaster"), props, call, &b)
 }
 
 // A line with no axes, for a trend inline.

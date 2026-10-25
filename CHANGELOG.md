@@ -318,6 +318,32 @@ for lua-language-server, and a new runner beside the window's.
   height is its editor. Ledger's table header takes a hairline, not a
   second 2 px frame inside its panel, and a panel's header leaves 4 px
   around the controls in it.
+  A second pass from running them: a switch's knob slides — it moved by
+  layout, which `transition` alone does not ease, so it took `slide` —
+  and a `badge` with `fade` comes and goes with it (Preferences'
+  "changed" popped in a frame while the knob was still crossing). Ledger's
+  primary button lifts its face a pixel under the pointer and presses it
+  into its hard shadow, whose far edge stays put; the face moves inside a
+  still box that takes the pointer, so it cannot flicker its own hover. A
+  slider's handle lights while the track is hovered and stays lit while
+  held. Toasts are wider, carry their tone as a bar and an icon, slide
+  out as they go, and stack in a `toaster` (each `inline`); `duration` is
+  documented as the way to show one for a time or until dismissed. A
+  determinate `progress` bar eases to its value on a short spring. A list
+  or a table hands Tab on (a key sink owns Tab, so it went in and never
+  came out) and draws its edge in the focus colour while it holds the
+  keyboard; a list takes a `label`. A wrapped log keeps its measured rows
+  when a revision brings the same ones (it blinked on every republish),
+  and when the oldest rows drop off a reader scrolled away keeps the rows
+  they were reading where they are; a new channel counts as a new
+  revision. A table takes `border` (a hairline frame, the header ruled
+  inside it) and otherwise sets its header on a plane of its own, with no
+  rule; a panel's frame is padding, so the rule under its title stops at
+  the frame instead of crossing it. A text field's text is centred in its
+  box again. `kui run --shot out.gif --record ms` records an animation
+  headless. Preferences' ⌘S / Ctrl+S saves (a menu bar it never had), its
+  toasts stack with an Undo each; the book's task list clears done tasks
+  with a ghost button beside the primary Add.
 
 - **Contribution slots** (backlog C86, [ADR
   0067](docs/adr/0067-slots-fold-into-components.md)'s second step): a
