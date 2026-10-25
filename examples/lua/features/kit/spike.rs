@@ -18,7 +18,7 @@ mod scene;
 
 use kui_devtools::Example;
 use kui_native::{App, Core, Extensions, InputEvent, OriginId, Size, Theme, Ui, UiEvent, Vec2};
-use scene::{Msg, Scene};
+use scene::Scene;
 
 struct Spike(Scene);
 
@@ -28,9 +28,7 @@ impl App for Spike {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if let Some(m) = ev.message::<Msg>() {
-            self.0.on_message(m);
-        }
+        self.0.on_event(&ev);
     }
 }
 
@@ -108,7 +106,7 @@ impl Example for Spike {
                 return Err(format!("{name}: Run reached the app {} times", app.0.runs));
             }
 
-            let row = find(core, "5 · ").ok_or("no row 5")?;
+            let row = find(core, "5, ").ok_or("no row 5")?;
             click(core, &mut exts, &mut app, row);
             if app.0.selected != Some(5) {
                 return Err(format!("{name}: selected {:?}, not row 5", app.0.selected));

@@ -260,7 +260,10 @@ pub trait Fill {
     /// An instance was placed this frame, filled or replayed: what lets
     /// [`Extensions::route`] find the host's message for an event prop
     /// after the frame. `slot` is the slot the placer's own nodes are in
-    /// (`None` for the host's view). The default keeps nothing.
+    /// (`None` for the host's view). Answers whether the instance heard
+    /// one of its own events since it was last filled, which a replay
+    /// cannot know about ([`SlotFill::Heard`](crate::SlotFill::Heard)).
+    /// The default keeps nothing and heard nothing.
     fn placed(
         &mut self,
         full_name: &str,
@@ -268,8 +271,9 @@ pub trait Fill {
         props: &Value,
         placer: OriginId,
         slot: Option<Key>,
-    ) {
+    ) -> bool {
         let _ = (full_name, key, props, placer, slot);
+        false
     }
 }
 
@@ -283,6 +287,11 @@ struct Entry {
     /// own that it declares while filling therefore finds nobody, which
     /// is the cycle warning rather than a borrow panic.
     ext: Option<Box<dyn Extension>>,
+    /// Second handles onto the extension (`Extension::reentry`), for a
+    /// component of its own placed while it draws — inside a host's
+    /// children of one of its instances. One deeper than the deepest
+    /// nesting so far; each comes back after its fill.
+    spares: Vec<Box<dyn Extension>>,
     /// `Extension::name` and `Extension::slots` as they answered at load.
     /// Copied because both are read while `ext` is taken — and because
     /// every binding already reads `slots` once, at load, so there was
@@ -310,6 +319,10 @@ pub struct Extensions {
     instances: rustc_hash::FxHashMap<Key, Instance>,
     /// Bumped by every `finish`: an instance not placed since is dropped.
     generation: u32,
+    /// Instances an event reached since they were last placed: their
+    /// extension may have changed what it would draw, so the next
+    /// placement asks it rather than replaying.
+    heard: rustc_hash::FxHashSet<Key>,
 }
 
 /// What [`Extensions::route`] needs of a placed instance after the frame.
@@ -333,7 +346,10 @@ impl Instance {
             return self.events.is_empty();
         };
         let mut mine = self.events.iter();
-        for (k, v) in entries.iter().filter(|(k, _)| is_event_prop(k)) {
+        for (k, v) in entries
+            .iter()
+            .filter(|(k, v)| is_event_prop(k) && *v != Value::Null)
+        {
             match mine.next() {
                 Some((field, mv)) if prop_is_field(k, field) && mv == v => {}
                 _ => return false,
@@ -346,7 +362,9 @@ impl Instance {
         match props {
             Value::Map(entries) => entries
                 .iter()
-                .filter(|(k, _)| is_event_prop(k))
+                // A null message is none declared: a binding that spells an
+                // unset prop as null leaves the event undeclared.
+                .filter(|(k, v)| is_event_prop(k) && *v != Value::Null)
                 .map(|(k, v)| (event_field(k), v.clone()))
                 .collect(),
             _ => Vec::new(),
@@ -418,12 +436,19 @@ impl Extensions {
             ));
         }
         let origin = OriginId(self.list.len() as u16 + 1);
+        let mut ext = ext;
+        let spares = if ext.components().is_empty() {
+            Vec::new()
+        } else {
+            ext.reentry().into_iter().collect()
+        };
         self.list.push(Entry {
             namespace,
             name: ext.name().to_owned(),
             slots: ext.slots().to_vec(),
             components: ext.components().to_vec(),
             ext: Some(ext),
+            spares,
             asked_by: OriginId::HOST,
         });
         Ok(origin)
@@ -504,6 +529,11 @@ impl Extensions {
                 continue;
             };
             let replies = ext.on_event(&ev);
+            if let Some(inst) = ev.slot
+                && self.instances.contains_key(&inst)
+            {
+                self.heard.insert(inst);
+            }
             if replies.is_empty() {
                 continue;
             }
@@ -570,17 +600,35 @@ impl Extensions {
     ) {
         let ns = self.list[i].namespace.clone();
         let ext_name = self.list[i].name.clone();
-        let Some(mut ext) = self.list[i].ext.take() else {
-            let full = full_name(&ns, name);
-            let warning = if children.is_some() {
-                crate::diag::recursive_component(&ext_name, &full, key)
-            } else {
-                crate::diag::recursive_slot(&ext_name, &full, key)
-            };
-            ui.core().warn(warning);
-            return;
+        let instance = children.is_some();
+        // Busy drawing: a component of its own placed inside one of its
+        // instances' host children is drawn by a spare handle.
+        let (mut ext, spare) = match self.list[i].ext.take() {
+            Some(ext) => (ext, false),
+            None => match self.list[i].spares.pop().filter(|_| instance) {
+                Some(mut s) => {
+                    if self.list[i].spares.is_empty()
+                        && let Some(deeper) = s.reentry()
+                    {
+                        self.list[i].spares.push(deeper);
+                    }
+                    (s, true)
+                }
+                None => {
+                    let full = full_name(&ns, name);
+                    let warning = if instance {
+                        crate::diag::recursive_component(&ext_name, &full, key)
+                    } else {
+                        crate::diag::recursive_slot(&ext_name, &full, key)
+                    };
+                    ui.core().warn(warning);
+                    return;
+                }
+            },
         };
-        // Who put it here, and so where its replies go.
+        // Who put it here, and so where its replies go — the busy
+        // handle's own placer once a spare is done.
+        let asked_before = self.list[i].asked_by;
         self.list[i].asked_by = ui.origin();
         let slot = Slot {
             name,
@@ -589,7 +637,6 @@ impl Extensions {
             key,
         };
         let origin = OriginId(i as u16 + 1);
-        let instance = children.is_some();
         let body = |ui: &mut Ui<'_>| {
             let drawn = if instance {
                 ext.component(&slot, ui)
@@ -615,7 +662,12 @@ impl Extensions {
             Some(children) => ui.fill_instance(origin, &slot, self, children, body),
             None => ui.fill_within(origin, &slot, self, body),
         }
-        self.list[i].ext = Some(ext);
+        if spare {
+            self.list[i].spares.push(ext);
+            self.list[i].asked_by = asked_before;
+        } else {
+            self.list[i].ext = Some(ext);
+        }
     }
 }
 
@@ -664,6 +716,10 @@ impl Fill for Extensions {
         // still arrive; the rest are gone (ADR 0060).
         let generation = self.generation;
         self.instances.retain(|_, r| r.generation == generation);
+        if !self.heard.is_empty() {
+            let instances = &self.instances;
+            self.heard.retain(|k| instances.contains_key(k));
+        }
         self.generation = generation.wrapping_add(1);
         // By index rather than over a snapshot: a root fill here may load
         // an extension of its own, which joins the end of the list, and
@@ -734,8 +790,9 @@ impl Fill for Extensions {
         props: &Value,
         placer: OriginId,
         slot: Option<Key>,
-    ) {
+    ) -> bool {
         let generation = self.generation;
+        let heard = !self.heard.is_empty() && self.heard.remove(&key);
         match self.instances.get_mut(&key) {
             Some(rec) => {
                 if !rec.same_events(props) {
@@ -760,6 +817,7 @@ impl Fill for Extensions {
                 }
             }
         }
+        heard
     }
 }
 
@@ -790,8 +848,8 @@ impl<F: Fill + ?Sized> Fill for &mut F {
         props: &Value,
         placer: OriginId,
         slot: Option<Key>,
-    ) {
-        F::placed(&mut **self, full_name, key, props, placer, slot);
+    ) -> bool {
+        F::placed(&mut **self, full_name, key, props, placer, slot)
     }
 }
 
@@ -822,8 +880,8 @@ impl<F: Fill + ?Sized> Fill for Box<F> {
         props: &Value,
         placer: OriginId,
         slot: Option<Key>,
-    ) {
-        F::placed(&mut **self, full_name, key, props, placer, slot);
+    ) -> bool {
+        F::placed(&mut **self, full_name, key, props, placer, slot)
     }
 }
 

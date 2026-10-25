@@ -1582,6 +1582,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kui-addon-schema"
+version = "0.1.0-alpha.67"
+dependencies = [
+ "mlua",
+]
+
+[[package]]
 name = "kui-core"
 version = "0.1.0-alpha.67"
 dependencies = [
@@ -1644,13 +1651,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kui-kit"
+version = "0.1.0-alpha.67"
+dependencies = [
+ "kui-core",
+]
+
+[[package]]
 name = "kui-lua"
 version = "0.1.0-alpha.67"
 dependencies = [
  "divan",
+ "kui-addon-schema",
  "kui-core",
  "kui-devtools",
  "kui-ffi",
+ "kui-kit",
  "kui-native",
  "mlua",
  "serde_json",

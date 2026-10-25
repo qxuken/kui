@@ -1,0 +1,423 @@
+-- Kit's components, described once (docs/adr/0066). `kui-addon-schema gen
+-- addons/kit/schema.lua addons/kit/bindings` writes the typed wrappers every
+-- binding places them with; Kit's Teal (src/) draws them. Props are
+-- snake_case on the wire; events are `on_<name>` and arrive as the host's
+-- own message with the event's fields under `<name>`.
+
+return {
+  addon = "kit",
+  doc = "Kit: a UI kit for kui, tuned for dense tool UIs — inputs, data views, overlays, layout, charts and a trace waterfall, drawn by a skin (Ledger, Phosphor, Neutral) the host picks.",
+
+  enums = {
+    { name = "Variant", doc = "How loud a control is.", "default", "primary", "ghost", "danger" },
+    { name = "Tone", doc = "What a badge, a stat or a toast is about.", "neutral", "accent", "ok", "warn", "danger" },
+    { name = "Align", doc = "Where a cell's content sits.", "start", "center", "end" },
+    { name = "Axis", doc = "Which way a split divides.", "row", "column" },
+    { name = "Skin", doc = "The look: Ledger's paper and ink, Phosphor's terminal, or Neutral's quiet chrome.", "ledger", "phosphor", "neutral" },
+    { name = "Density", doc = "Row and control heights: 22 and 26 px, or 20 and 22 px compact.", "comfortable", "compact" },
+    { name = "Level", doc = "A log line's level.", "debug", "info", "warn", "error" },
+  },
+
+  records = {
+    { name = "Choice", doc = "A choice: what it is, and what it reads as.",
+      fields = {
+        { "value", "string", doc = "What the choice is; what the event carries." },
+        { "label", "string", doc = "What it reads as." },
+        { "disabled", "boolean?", doc = "Shown, not choosable." },
+      } },
+    { name = "Column", doc = "A table's column: which field of the channel it shows, and how.",
+      fields = {
+        { "field", "string", doc = "The channel column it reads." },
+        { "title", "string", doc = "Its header." },
+        { "width", "number?", doc = "Its width in px; shares the rest when left out." },
+        { "align", "Align?", doc = "Where its cells sit; numbers read best at the end." },
+        { "mono", "boolean?", doc = "Its cells in the data face: ids, timings, hashes." },
+      } },
+    { name = "Tab", doc = "A tab: its value and its label.",
+      fields = {
+        { "value", "string", doc = "What it is; what `change` carries." },
+        { "label", "string", doc = "What it reads as." },
+        { "count", "integer?", doc = "A count beside the label." },
+      } },
+    { name = "Item", doc = "A menu row.",
+      fields = {
+        { "value", "string", doc = "What `choose` carries." },
+        { "label", "string", doc = "What it reads as." },
+        { "shortcut", "string?", doc = "The chord beside it, as text: `⌘K`." },
+        { "disabled", "boolean?", doc = "Shown, not choosable." },
+        { "danger", "boolean?", doc = "A destructive action, drawn as one." },
+      } },
+    { name = "Entry", doc = "One row of an inspector: a key and its value.",
+      fields = {
+        { "key", "string", doc = "The field's name." },
+        { "value", "string", doc = "Its value, as text." },
+        { "mono", "boolean?", doc = "The value in the data face." },
+      } },
+    { name = "Series", doc = "One line of a line chart.",
+      fields = {
+        { "field", "string", doc = "The channel column holding its values." },
+        { "name", "string", doc = "Its name in the legend." },
+        { "color", "color?", doc = "Its colour; the skin's series colours in order when left out." },
+      } },
+  },
+
+  components = {
+    -- Settings -------------------------------------------------------------
+    { "settings",
+      doc = "Kit's look for this window: the skin, the density, the hard shadows and any role the brand overrides. Place it once a frame, before the components; it draws nothing.",
+      props = {
+        { "skin", "Skin?", doc = "The skin; Ledger when left out." },
+        { "density", "Density?", doc = "Comfortable when left out." },
+        { "shadows", "boolean?", doc = "The skin's hard shadows; on when left out." },
+        { "roles", "any?", doc = "Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel = \"$brandSurface\" }` — a colour or a token each." },
+      } },
+
+    -- Layout ---------------------------------------------------------------
+    { "panel",
+      doc = "A titled region: a header with the title and its actions, the body, an optional footer.",
+      props = {
+        { "title", "string?", doc = "Its title, as the skin labels regions." },
+        { "subtitle", "string?", doc = "A line under the title." },
+        { "scroll", "boolean?", doc = "The body scrolls rather than grows." },
+        { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+      },
+      children = {
+        { "", doc = "is the body." },
+        { "actions", doc = "goes in the header, after the title." },
+        { "footer", doc = "goes under the body." },
+      } },
+    { "toolbar",
+      doc = "A row of controls at the control height, its trailing group pushed to the far side.",
+      children = {
+        { "", doc = "starts it." },
+        { "trailing", doc = "ends it, at the far side." },
+      } },
+    { "statusbar",
+      doc = "A thin row at a window's foot for state: counts, the connection, the clock.",
+      children = { { "", doc = "fills it, in order." } } },
+    { "split",
+      doc = "Two panes and a draggable rule between them.",
+      props = {
+        { "axis", "Axis?", doc = "Side by side (row, the default) or stacked." },
+        { "fraction", "number", doc = "How much of the room the first pane takes, 0 to 1: yours to keep and pass back." },
+        { "min", "number?", doc = "The least either pane is, in px; 80 when left out." },
+      },
+      events = {
+        { "resize", doc = "The rule was dragged: the fraction it asks for.", fields = { { "fraction", "number", doc = "0 to 1." } } },
+      },
+      children = {
+        { "first", doc = "is the first pane." },
+        { "second", doc = "is the second pane." },
+      } },
+    { "tabs",
+      doc = "A strip of tabs over the body of the one chosen.",
+      props = {
+        { "tabs", "{Tab}", doc = "The tabs, in order." },
+        { "value", "string", doc = "The one shown: yours to keep." },
+      },
+      events = {
+        { "change", doc = "Another tab was chosen.", fields = { { "value", "string", doc = "Its value." } } },
+      },
+      children = { { "", doc = "is the chosen tab's body." } } },
+    { "section",
+      doc = "A heading that folds what is under it.",
+      props = {
+        { "title", "string", doc = "The heading." },
+        { "collapsed", "boolean?", doc = "Folded: yours to keep." },
+        { "count", "integer?", doc = "A count beside the heading." },
+      },
+      events = {
+        { "toggle", doc = "The heading was pressed.", fields = { { "collapsed", "boolean", doc = "What it asks to be." } } },
+      },
+      children = { { "", doc = "is what it folds." } } },
+    { "divider", doc = "A rule between groups, as the skin draws regions." },
+
+    -- Inputs ---------------------------------------------------------------
+    { "button",
+      doc = "A button. Space, Enter and assistive technology press it as a click does.",
+      props = {
+        { "label", "string", doc = "The text on it; its accessible name." },
+        { "variant", "Variant?", doc = "Default when left out." },
+        { "icon", "string?", doc = "An icon's name before the label (Kit's icon set)." },
+        { "shortcut", "string?", doc = "The chord, shown faintly after the label: `⌘R`." },
+        { "disabled", "boolean?", doc = "Drawn and read as unavailable; presses nothing." },
+      },
+      events = { { "press", doc = "Pressed." } } },
+    { "icon_button",
+      doc = "A square button holding an icon.",
+      props = {
+        { "icon", "string", doc = "The icon's name (Kit's icon set)." },
+        { "label", "string", doc = "What it does: its accessible name and its tooltip." },
+        { "variant", "Variant?", doc = "Ghost when left out." },
+        { "disabled", "boolean?", doc = "Unavailable." },
+      },
+      events = { { "press", doc = "Pressed." } } },
+    { "text_field",
+      doc = "A one-line text field, the skin's field style (an underline in Ledger).",
+      props = {
+        { "value", "string", doc = "Its text: yours to keep, from `change`." },
+        { "label", "string?", doc = "Its label, above it." },
+        { "placeholder", "string?", doc = "Shown while it is empty." },
+        { "mono", "boolean?", doc = "In the data face." },
+        { "disabled", "boolean?", doc = "Unavailable." },
+        { "width", "number?", doc = "Its width in px; grows when left out." },
+      },
+      events = {
+        { "change", doc = "The text changed.", fields = { { "text", "string", doc = "The whole text." } } },
+        { "submit", doc = "Enter.", fields = { { "text", "string", doc = "The whole text." } } },
+      } },
+    { "search",
+      doc = "A search field: a glass, the query, and a clear button while it has one.",
+      props = {
+        { "value", "string", doc = "The query: yours to keep." },
+        { "placeholder", "string?", doc = "Shown while it is empty; `Search` when left out." },
+        { "count", "string?", doc = "A count after the query: `12 of 340`." },
+      },
+      events = {
+        { "change", doc = "The query changed; cleared is the empty string.", fields = { { "text", "string", doc = "The query." } } },
+        { "submit", doc = "Enter.", fields = { { "text", "string", doc = "The query." } } },
+      } },
+    { "select",
+      doc = "A field that opens a menu of options.",
+      props = {
+        { "options", "{Choice}", doc = "The options, in order." },
+        { "value", "string?", doc = "The one chosen: yours to keep." },
+        { "placeholder", "string?", doc = "Shown with nothing chosen." },
+        { "label", "string?", doc = "Its label, above it." },
+        { "width", "number?", doc = "Its width in px." },
+      },
+      events = {
+        { "change", doc = "An option was chosen.", fields = { { "value", "string", doc = "Its value." } } },
+      } },
+    { "checkbox",
+      doc = "A box and its label.",
+      props = {
+        { "label", "string", doc = "Its label; its name." },
+        { "checked", "boolean", doc = "Ticked: yours to keep." },
+        { "mixed", "boolean?", doc = "Some of what it stands for: drawn as a dash." },
+        { "disabled", "boolean?", doc = "Unavailable." },
+      },
+      events = {
+        { "toggle", doc = "Pressed.", fields = { { "checked", "boolean", doc = "What it asks to be." } } },
+      } },
+    { "switch",
+      doc = "An on/off switch and its label.",
+      props = {
+        { "label", "string", doc = "Its label; its name." },
+        { "on", "boolean", doc = "On: yours to keep." },
+        { "disabled", "boolean?", doc = "Unavailable." },
+      },
+      events = {
+        { "toggle", doc = "Pressed.", fields = { { "on", "boolean", doc = "What it asks to be." } } },
+      } },
+    { "radio_group",
+      doc = "One of a few options, each a radio and its label.",
+      props = {
+        { "options", "{Choice}", doc = "The options, in order." },
+        { "value", "string?", doc = "The one chosen: yours to keep." },
+        { "label", "string?", doc = "The group's name." },
+      },
+      events = {
+        { "change", doc = "An option was chosen.", fields = { { "value", "string", doc = "Its value." } } },
+      } },
+    { "segmented",
+      doc = "A row of joined buttons, one of them chosen: a view switch, a range.",
+      props = {
+        { "options", "{Choice}", doc = "The segments, in order." },
+        { "value", "string", doc = "The one chosen: yours to keep." },
+      },
+      events = {
+        { "change", doc = "A segment was chosen.", fields = { { "value", "string", doc = "Its value." } } },
+      } },
+    { "slider",
+      doc = "A value on a track, dragged, clicked or stepped by the arrows.",
+      props = {
+        { "value", "number", doc = "The value: yours to keep." },
+        { "min", "number", doc = "The least." },
+        { "max", "number", doc = "The most." },
+        { "step", "number?", doc = "What an arrow moves it by; a hundredth of the range when left out." },
+        { "label", "string?", doc = "Its label; its name." },
+      },
+      events = {
+        { "change", doc = "It asks for another value.", fields = { { "value", "number", doc = "The value it asks for." } } },
+      } },
+
+    -- Data -----------------------------------------------------------------
+    { "table",
+      doc = "A virtual table over a channel: its columns, a sticky header, the rows in view only, a selection, sortable headers.",
+      props = {
+        { "columns", "{Column}", doc = "The columns, in order." },
+        { "rows", "channel", doc = "The rows: a channel whose columns the `field`s name." },
+        { "selected", "integer?", doc = "The selected row (0-based): yours to keep." },
+        { "sort", "string?", doc = "The field it is sorted by, marked in its header; the sorting is yours." },
+        { "descending", "boolean?", doc = "Sorted from the top down." },
+        { "striped", "boolean?", doc = "Every other row tinted." },
+        { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+      },
+      events = {
+        { "select", doc = "A row was clicked or reached by the arrows.", fields = { { "row", "integer", doc = "Its index, 0-based." } } },
+        { "sort", doc = "A header was clicked.", fields = { { "field", "string", doc = "The column's field." } } },
+        { "range", doc = "The rows in view changed: page your source by it.", fields = {
+          { "first", "integer", doc = "The first row in view." },
+          { "last", "integer", doc = "The last row in view." },
+        } },
+      } },
+    { "list",
+      doc = "A virtual list over a channel: a title line and a detail line a row.",
+      props = {
+        { "rows", "channel", doc = "The rows." },
+        { "title", "string", doc = "The field each row's title reads." },
+        { "detail", "string?", doc = "The field its second line reads." },
+        { "selected", "integer?", doc = "The selected row (0-based): yours to keep." },
+        { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+      },
+      events = {
+        { "select", doc = "A row was clicked or reached by the arrows.", fields = { { "row", "integer", doc = "Its index, 0-based." } } },
+      } },
+    { "inspector",
+      doc = "Keys and their values, aligned: a request's headers, a record's fields.",
+      props = {
+        { "entries", "{Entry}", doc = "The rows, in order." },
+        { "key_width", "number?", doc = "The keys' column in px; 140 when left out." },
+      } },
+    { "log",
+      doc = "A log over a channel: time, level and message a line, following the end unless scrolled away.",
+      props = {
+        { "rows", "channel", doc = "The lines: fields `time`, `level` and `message`." },
+        { "follow", "boolean?", doc = "Kept at the end as lines arrive; on when left out." },
+        { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+      },
+      events = {
+        { "select", doc = "A line was clicked.", fields = { { "row", "integer", doc = "Its index." } } },
+      } },
+    { "badge",
+      doc = "A short label in a pill: a status, a method, a count.",
+      props = {
+        { "label", "string", doc = "What it says." },
+        { "tone", "Tone?", doc = "Neutral when left out." },
+      } },
+    { "stat",
+      doc = "A number with its label, and how it moved.",
+      props = {
+        { "label", "string", doc = "What it counts." },
+        { "value", "string", doc = "The number, as text." },
+        { "delta", "string?", doc = "How it moved: `+12%`." },
+        { "tone", "Tone?", doc = "Whether the move is good news." },
+      } },
+    { "code",
+      doc = "Text in the data face on the panel colour: a payload, a command, a stack.",
+      props = {
+        { "text", "string", doc = "The text." },
+        { "wrap", "boolean?", doc = "Wraps rather than scrolls sideways." },
+      } },
+    { "empty",
+      doc = "What a view shows with nothing in it: a title, a sentence, and what to do.",
+      props = {
+        { "title", "string", doc = "What is missing." },
+        { "detail", "string?", doc = "Why, or what fills it." },
+      },
+      children = { { "", doc = "are its actions." } } },
+    { "progress",
+      doc = "A bar that fills; with no value it moves to say work is going on.",
+      props = {
+        { "value", "number?", doc = "0 to 1; indeterminate when left out." },
+        { "label", "string?", doc = "What is under way." },
+      } },
+
+    -- Overlays -------------------------------------------------------------
+    { "dialog",
+      doc = "A modal dialog: a title, its body and its actions; Escape and a press outside ask it to close.",
+      props = {
+        { "title", "string", doc = "Its title; its name." },
+        { "width", "number?", doc = "Its width in px; 420 when left out." },
+      },
+      events = { { "dismiss", doc = "Escape, or a press outside." } },
+      children = {
+        { "", doc = "is the body." },
+        { "actions", doc = "are its buttons, at the end of its foot." },
+      } },
+    { "popover",
+      doc = "A panel floating beside what opened it; Escape and a press outside ask it to close.",
+      props = {
+        { "width", "number?", doc = "Its width in px." },
+      },
+      events = { { "dismiss", doc = "Escape, or a press outside." } },
+      children = { { "", doc = "is what it holds." } } },
+    { "menu",
+      doc = "A menu of items floating under what opened it.",
+      props = {
+        { "items", "{Item}", doc = "The rows, in order." },
+      },
+      events = {
+        { "choose", doc = "A row was chosen.", fields = { { "value", "string", doc = "Its value." } } },
+        { "dismiss", doc = "Escape, or a press outside." },
+      } },
+    { "toast",
+      doc = "A message in a window's corner that goes when dismissed.",
+      props = {
+        { "message", "string", doc = "What happened." },
+        { "tone", "Tone?", doc = "Neutral when left out." },
+      },
+      events = { { "dismiss", doc = "Its close button." } } },
+
+    -- Charts ---------------------------------------------------------------
+    { "sparkline",
+      doc = "A line with no axes, for a trend inline.",
+      props = {
+        { "data", "channel", doc = "The values." },
+        { "field", "string", doc = "The column to draw." },
+        { "color", "color?", doc = "The accent when left out." },
+        { "width", "number?", doc = "In px; 80 when left out." },
+        { "height", "number?", doc = "In px; 18 when left out." },
+      } },
+    { "line_chart",
+      doc = "Lines over time with axes and a legend; `live` keeps the newest window in view.",
+      props = {
+        { "data", "channel", doc = "The rows: an x column and a column a series." },
+        { "x", "string", doc = "The x column (time, an index)." },
+        { "series", "{Series}", doc = "The lines." },
+        { "height", "number?", doc = "In px; 160 when left out." },
+        { "area", "boolean?", doc = "Filled under the first line." },
+        { "window", "number?", doc = "With it, only the last `window` of x is shown: a live chart." },
+      },
+      events = {
+        { "hover", doc = "The pointer moved over a row.", fields = { { "row", "integer", doc = "The row under it." } } },
+      } },
+    { "bar_chart",
+      doc = "Bars by label.",
+      props = {
+        { "data", "channel", doc = "The rows." },
+        { "label", "string", doc = "The column naming each bar." },
+        { "value", "string", doc = "The column of their values." },
+        { "height", "number?", doc = "In px; 160 when left out." },
+      },
+      events = {
+        { "select", doc = "A bar was clicked.", fields = { { "row", "integer", doc = "Its row." } } },
+      } },
+    { "histogram",
+      doc = "How a column's values fall into bins.",
+      props = {
+        { "data", "channel", doc = "The rows." },
+        { "field", "string", doc = "The column to bin." },
+        { "bins", "integer?", doc = "How many; 24 when left out." },
+        { "height", "number?", doc = "In px; 120 when left out." },
+      } },
+    { "waterfall",
+      doc = "A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group, zoomed and panned by the wheel and a drag.",
+      props = {
+        { "bars", "channel", doc = "The spans: fields `name`, `start`, `len` (ms), `depth`, `group`, and `target` (a label)." },
+        { "marks", "channel?", doc = "Points in time, fields `at` and `label`: a navigation, a paint." },
+        { "start", "number?", doc = "The window's start in ms: yours to keep, from `zoom`." },
+        { "length", "number?", doc = "The window's length in ms; the whole trace when left out." },
+        { "selected", "integer?", doc = "The selected span (its row)." },
+        { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+      },
+      events = {
+        { "select", doc = "A span was clicked.", fields = { { "row", "integer", doc = "Its row." } } },
+        { "zoom", doc = "The wheel or a drag asks for another window.", fields = {
+          { "start", "number", doc = "Its start in ms." },
+          { "length", "number", doc = "Its length in ms." },
+        } },
+      } },
+  },
+}

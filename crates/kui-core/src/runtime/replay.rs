@@ -70,6 +70,10 @@ pub enum SlotFill {
     /// The slot was declared under another parent than the kept fill's,
     /// so its keys would not be the kept ones.
     Moved,
+    /// The component instance heard one of its own events since it was
+    /// filled, so its extension's state may have moved with it: a wheel
+    /// that zoomed a waterfall, a drag that moved a split.
+    Heard,
 }
 
 impl SlotFill {
@@ -79,7 +83,7 @@ impl SlotFill {
     }
 
     /// A short name, the one the bindings hand out: `replayed`,
-    /// `not-kept`, `params`, `reads`, `not-replayable`, `moved`.
+    /// `not-kept`, `params`, `reads`, `not-replayable`, `moved`, `heard`.
     pub fn name(self) -> &'static str {
         match self {
             Self::Replayed => "replayed",
@@ -88,6 +92,7 @@ impl SlotFill {
             Self::Reads => "reads",
             Self::NotReplayable => "not-replayable",
             Self::Moved => "moved",
+            Self::Heard => "heard",
         }
     }
 
@@ -105,6 +110,7 @@ impl SlotFill {
             3 => Self::Reads,
             4 => Self::NotReplayable,
             5 => Self::Moved,
+            6 => Self::Heard,
             _ => return None,
         })
     }
@@ -250,6 +256,11 @@ pub(crate) enum Read {
     /// The sizes, read as the palette is (`Core::metrics`, `kui_metrics`,
     /// a length role by name).
     Metrics(u64),
+    /// A token looked up by name: the tables' revision
+    /// (`Core::tokens_rev`), so a fill that painted with `$kitPanel` runs
+    /// again when an origin declares its tokens anew — an add-on's skin
+    /// switched, a brand loaded.
+    Tokens(u64),
     /// Whether anyone chose the accent (`Core::has_accent`).
     Accent(bool),
     /// Something the core does not compare (the selection's text): a
@@ -262,6 +273,7 @@ pub(crate) enum Read {
 pub(crate) const ONCE_THEME: u8 = 1;
 pub(crate) const ONCE_METRICS: u8 = 2;
 pub(crate) const ONCE_ACCENT: u8 = 4;
+pub(crate) const ONCE_TOKENS: u8 = 8;
 
 /// The fill being kept, while it runs.
 pub(crate) struct Recording {
@@ -526,6 +538,7 @@ impl Core {
             // A palette's every field is no ledger line.
             Read::Theme(_) => "Theme".to_owned(),
             Read::Metrics(_) => "Metrics".to_owned(),
+            Read::Tokens(_) => "Tokens".to_owned(),
             r => format!("{r:?}"),
         })
     }
@@ -555,6 +568,7 @@ impl Core {
             Read::Measure(rev) => self.text_rev() == *rev,
             Read::Theme(g) => *g == self.theme_gen,
             Read::Metrics(g) => *g == self.metrics_gen,
+            Read::Tokens(rev) => *rev == self.tokens_rev,
             Read::Accent(a) => self.has_accent_raw() == *a,
             Read::Opaque => false,
         }

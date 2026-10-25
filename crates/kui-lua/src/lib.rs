@@ -672,6 +672,26 @@ impl Extension for LuaExtension {
         self.draw_component(inst, ui)
     }
 
+    /// The same interpreter under a second handle: a component function
+    /// has returned before its tree is built, so a host's children placing
+    /// this script's components while it builds call into an idle state.
+    /// The handle keeps an env table of its own (the functions reach the
+    /// frame through [`CURRENT_FRAME`] either way); its events come back
+    /// to this one, whose origin they carry.
+    fn reentry(&mut self) -> Option<Box<dyn Extension>> {
+        Some(Box::new(LuaExtension {
+            lua: self.lua.clone(),
+            name: self.name.clone(),
+            slots: self.slots.clone(),
+            loaded: self.loaded.clone(),
+            env: std::cell::RefCell::new(None),
+            slot_names: Default::default(),
+            components: self.components.clone(),
+            dir: self.dir.clone(),
+            tokens: None,
+        }))
+    }
+
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
         let Ok(f) = self.lua.globals().get::<mlua::Function>("on_event") else {
             return Vec::new();

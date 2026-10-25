@@ -65,12 +65,16 @@ impl Extension for Kit {
                 });
             }
             "button" => {
-                ui.leaf(
+                // The count is the extension's own state: what a replay
+                // would miss after a click.
+                let clicks = self.clicks.get();
+                ui.with(
                     NodeSpec::row()
                         .size(60.0, 20.0)
                         .bg(Color::hex(0x3355ffff))
                         .on_click(Value::str("pressed"))
                         .label("Kit button"),
+                    |ui| ui.text(&format!("clicks {clicks}"), TextStyle::new(10.0)),
                 );
             }
             // A component that places another, forwarding its own host's
@@ -385,4 +389,29 @@ fn children_are_refused_in_a_slot_and_twice_and_an_unknown_component_says_so() {
         2,
         "{codes:?}"
     );
+}
+
+#[test]
+fn an_instance_that_heard_its_own_event_is_asked_again() {
+    let mut r = rig(Kit::default());
+    let props = Value::map([("onClick", Value::str("saved"))]);
+    let texts = |r: &mut Rig| -> Vec<String> {
+        r.core.nodes().iter().filter_map(|n| n.text.clone()).collect()
+    };
+    let mut answers = Vec::new();
+    for _ in 0..2 {
+        r.frame(|ui| answers.push(ui.component("kit/button", &props)));
+    }
+    assert_eq!(answers, [Some(SlotFill::NotKept), Some(SlotFill::Replayed)]);
+    assert_eq!(r.click(12.0, 12.0).len(), 1);
+    answers.clear();
+    for _ in 0..2 {
+        r.frame(|ui| answers.push(ui.component("kit/button", &props)));
+    }
+    assert_eq!(
+        answers,
+        [Some(SlotFill::Heard), Some(SlotFill::Replayed)],
+        "the click moved the extension's count, so the props alone do not vouch for it"
+    );
+    assert!(texts(&mut r).contains(&"clicks 1".to_string()), "{:?}", texts(&mut r));
 }

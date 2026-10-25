@@ -9,6 +9,10 @@ members = [
     "crates/kui-lua",
     "crates/kui-ffi",
     "crates/kui-node",
+    # Typed wrappers for an add-on's components, from its schema (ADR 0066).
+    "crates/kui-addon-schema",
+    # Kit's typed wrappers, generated from addons/kit/schema.lua.
+    "addons/kit/bindings/rust",
     # The examples' devtools (docs/adr/0021): a dev-dependency of the crates
     # whose examples run inside it, never published.
     "examples/devtools",
@@ -45,6 +49,10 @@ kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.67" }
 kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.67", default-features = false }
 kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.67" }
 kui-devtools = { path = "examples/devtools" }
+# Kit's generated Rust wrappers and the generator itself (ADR 0066); never
+# published yet.
+kui-kit = { path = "addons/kit/bindings/rust" }
+kui-addon-schema = { path = "crates/kui-addon-schema" }
 
 slotmap = "1.1.1"
 rustc-hash = "2"
@@ -61,8 +69,18 @@ pollster = "1"
 mlua = { version = "0.12", features = ["lua55", "vendored"] }
 divan = "0.1"
 
+# File and line in backtraces, no variables: full debug info was 70–85% of
+# target/'s bytes, and on macOS each incremental rebuild leaves its objects
+# behind for the debugger. `CARGO_PROFILE_DEV_DEBUG=full` brings it back
+# for a debugging session (a separate set of builds).
+[profile.dev]
+debug = "line-tables-only"
+
+# Dependencies optimised and without debug info: they are not stepped into
+# at opt-level 2, and without it rustc keeps no loose objects for them.
 [profile.dev.package."*"]
 opt-level = 2
+debug = false
 
 [profile.bench]
 debug = true

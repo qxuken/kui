@@ -532,19 +532,24 @@ impl<'a> Ui<'a> {
         if let Some(by) = by {
             // The fill is the caller's: the instance is the current
             // origin's, filled in place.
-            if let Some(filler) = self.filler.as_deref_mut() {
-                filler.placed(name, key, props, placer, slot_now);
-            }
+            let heard = self
+                .filler
+                .as_deref_mut()
+                .is_some_and(|f| f.placed(name, key, props, placer, slot_now));
             let replayed = if !fresh && !keeping {
                 match self.core.take_replayable_instance(key, props) {
-                    Ok(kept) => {
+                    Ok(kept) if !heard => {
                         let filler = self.filler.as_deref_mut().map(shorter_fill);
                         self.core.replay_instance(&slot, kept, filler, &mut placed);
                         Some(SlotFill::Replayed)
                     }
+                    Ok(_) => {
+                        self.core.keep_next_instance(key, props);
+                        Some(SlotFill::Heard)
+                    }
                     Err((fill, _)) => {
                         self.core.keep_next_instance(key, props);
-                        Some(fill)
+                        Some(if heard { SlotFill::Heard } else { fill })
                     }
                 }
             } else {
@@ -561,15 +566,19 @@ impl<'a> Ui<'a> {
                 }
             };
         } else if let Some(filler) = self.filler.as_deref_mut() {
-            filler.placed(name, key, props, placer, slot_now);
+            let heard = filler.placed(name, key, props, placer, slot_now);
             if !fresh && !keeping {
                 match self.core.take_replayable_instance(key, props) {
-                    Ok(kept) => {
+                    Ok(kept) if !heard => {
                         self.core
                             .replay_instance(&slot, kept, Some(filler), &mut placed);
                         answer = Some(SlotFill::Replayed);
                     }
-                    Err((fill, _why)) => {
+                    kept => {
+                        let fill = match kept {
+                            Err((fill, _why)) if !heard => fill,
+                            _ => SlotFill::Heard,
+                        };
                         self.core.keep_next_instance(key, props);
                         let filled = filler.component(
                             name,

@@ -80,6 +80,17 @@ was the first bare bump to break an app in five releases).
   stored its own fields on `env` finds them there next fill, and one of
   `env`'s functions called outside a view or a component's function is an
   error, as it was once the view's scope ended.
+- Every node's key is a different number: `Key::str` and `Key::index` mix
+  their tag in as a leading byte (backlog C71). A key printed, stored or
+  compared against a literal across versions is a different key; keys
+  derived in the same build are as stable as before.
+- `slot::Fill::placed` returns a `bool`, whether the instance heard one of
+  its own events since it was filled (backlog C68): an implementation
+  outside kui returns `false`.
+- `SlotFill` gained `Heard` (C: `KUI_SLOT_HEARD`, 6): an exhaustive
+  `match` adds an arm.
+- A fill being kept that looked a `$token` up is filled again when any
+  origin declares its tokens anew, where it was replayed (backlog C69).
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -120,6 +131,16 @@ the script's `env.add_extension` answers nil and a message naming the
 path, as it did for a missing file. A script loading another script
 needs nothing.
 
+Kit found four faults in the instance path while it was being built, and
+three of them change answers. An instance whose own event moved its
+extension's state — a select opening, a waterfall zoomed by the wheel —
+was replayed with the frame before; it is now asked again, and says
+`Heard`. A kept fill that painted with `$kitPanel` was replayed after
+the add-on declared another skin; token lookups are now a read the replay
+checks. And a component's 84th host child had the key of the component's
+first node, because a label's tag and an index's traded inside FNV's
+first round; the tag is now a byte of its own, which moves every key.
+
 The rest of this release breaks nothing: a fix to text
 at a size no screen shows, a declaration file for Teal beside the one
 for lua-language-server, and a new runner beside the window's.
@@ -142,6 +163,46 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
   spawn for "Show in folder" or a link.
+- **Kit** (backlog C67, [ADR 0066](docs/adr/0066-an-addon-describes-its-components-once.md)),
+  kui's UI kit for dense tool windows, in `addons/kit`: 36 components
+  written once in Teal and placed from every binding — layout (`panel`,
+  `toolbar`, `statusbar`, `split`, `tabs`, `section`, `divider`), inputs
+  (`button`, `icon_button`, `text_field`, `search`, `select`, `checkbox`,
+  `switch`, `radio_group`, `segmented`, `slider`), data over a channel
+  (`table`, `list`, `log`) and beside it (`inspector`, `badge`, `stat`,
+  `code`, `empty`, `progress`), overlays (`dialog`, `popover`, `menu`,
+  `toast`), charts (`sparkline`, `line_chart`, `bar_chart`, `histogram`)
+  and a trace `waterfall`. Three skins — Ledger (paper and ink, the
+  default), Phosphor (a terminal) and Neutral (quiet chrome) — in light
+  and dark, two densities, and brand roles by colour or `$token`, all
+  through one `settings` component. Each binding places them through
+  typed wrappers generated from Kit's `schema.lua`:
+    - Rust: the `kui-kit` crate — `kit::Button::new("Run").variant(kit::Variant::Primary).on_press(Msg::Run).place(ui)`,
+      events read with `kit::TableSelect::from_payload`.
+    - Node: `import { Button, Table } from '.../kit.js'`, functions that
+      are JSX components, with their `.d.ts`.
+    - Lua: `require("kit.ui")` with LuaLS annotations, and Teal
+      declarations.
+    - C: `kit.h` — `KitButton b = {.label = KUI_STR("Run")}; kit_button(ui, &b);`.
+    - Odin: the `kit` package — `kit.button(ui, {label = "Run"})`, event
+      data through `kit.With_Segmented_Change`.
+
+  A Kit table follows a selection through 100,000 rows in 1.1 ms a frame
+  and the waterfall pans 18,000 spans in 1.3 ms; an unchanged instance is
+  replayed for about 1 µs.
+
+- **Typed wrappers for any add-on's components** (backlog C67,
+  [ADR 0066](docs/adr/0066-an-addon-describes-its-components-once.md)).
+  `cargo run -p kui-addon-schema -- gen <schema.lua> <out>` writes the
+  wrappers above from an add-on's schema; `--check` fails on a stale one,
+  and `nu scripts/gen.nu` runs it for every add-on under `addons/`.
+
+- **A component inside a component of the same extension, through the
+  host's children** (backlog C70): `Extension::reentry` gives the list a
+  second handle onto a busy extension, so a host's Kit buttons inside a
+  Kit toolbar are drawn and heard. A Lua script answers it by itself; a
+  Rust or C extension that wants the same implements it.
+
 - **A data channel** (backlog C66,
   [ADR 0065](docs/adr/0065-a-data-channel.md)). Hand a component a
   hundred thousand rows as one small value: a channel is named columns of
@@ -491,6 +552,13 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Changed
 
+- **A debug build is about a quarter the size on disk** (backlog C72):
+  the workspace's dev profile keeps file and line (`debug =
+  "line-tables-only"`) and dependencies none. One worktree's `target/`
+  had reached 85 GB in a day — on macOS every incremental rebuild leaves
+  its objects behind for the debugger. `CARGO_PROFILE_DEV_DEBUG=full`
+  brings full debug info back for a session.
+
 - **Extension fills are much cheaper** (backlog C62–C65). Measured on
   M0's bench, a frame of 200 Kit buttons, each per button:
     - a replayed slot whose host keeps its params: 1.03 → 0.85 µs, against
@@ -593,6 +661,16 @@ for lua-language-server, and a new runner beside the window's.
   line of one that does not wrap, the longest word of one that does —
   so the line counts in the box's content, as CSS counts unbreakable
   overflow, and a text that wraps still wraps at the box.
+- A component whose own event changed what it draws — a select opening, a
+  section folding, a waterfall zoomed by the wheel — shows it on the next
+  frame; it was replayed unchanged while its props held (backlog C68).
+- A component that paints with an add-on's `$tokens` repaints when the
+  add-on declares new ones — Kit switching skin — instead of being
+  replayed in the old (backlog C69).
+- A component's host children past the 83rd keep keys of their own; the
+  84th shared the component's first node's, with `duplicate-key` (backlog
+  C71).
+
 - An editor of your own types ⌥- and every other character a Mac's Option
   composes: a key sink's press carries it as `text` beside the chord its
   `code` and `alt` spell, as kui's own editor inserts it (backlog F195,

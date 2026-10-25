@@ -29,6 +29,10 @@ divan.workspace = true
 kui-native.workspace = true
 # The examples' devtools (docs/adr/0021), for the Rust host of the panel.
 kui-devtools.workspace = true
+# Kit (addons/kit) placed through its generated wrappers, and its schema
+# read back, for tests/kit.rs.
+kui-kit.workspace = true
+kui-addon-schema.workspace = true
 # tests/conformance.rs drives the scene corpus, which kui-core keeps behind a
 # feature; on here only, so the published extension does not carry it.
 kui-core = { workspace = true, features = ["conformance"] }

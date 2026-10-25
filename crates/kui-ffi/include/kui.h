@@ -3359,6 +3359,7 @@ bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
 #define KUI_SLOT_READS 3            /* a fact of the frame the fill read has moved */
 #define KUI_SLOT_NOT_REPLAYABLE 4   /* it declared of the frame, drew what the journal does not know, or failed */
 #define KUI_SLOT_MOVED 5            /* declared under another parent than the kept fill's */
+#define KUI_SLOT_HEARD 6            /* a component instance heard one of its own events since it was filled */
 bool kui_slot_kept(KuiCtx *ctx, KuiStr name, const KuiValue *params);
 int32_t kui_slot_replay(KuiCtx *ctx, KuiStr name, const KuiValue *params);
 int32_t kui_slot_fill(KuiCtx *ctx, KuiStr name);

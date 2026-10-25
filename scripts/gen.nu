@@ -13,6 +13,9 @@
 #
 #   lua    packages/lua/kui.lua (lua-language-server) and kui.d.tl (Teal),
 #          from the schema and the prelude (the `lua-types` example)
+#   addons every add-on under addons/: its typed wrappers from schema.lua
+#          (kui-addon-schema, ADR 0066), then its Teal built to Lua
+#          (build.lua, which needs a Lua 5.4+ on PATH)
 #   node   npm run gen in packages/kui: jsx-runtime.d.ts, index.d.ts and
 #          docs/props.md, from the schema and the addon's #[napi] surface
 #   odin   nu scripts/odin.nu gen: packages/odin from kui.h and the schema
@@ -23,7 +26,7 @@
 # release-prep.nu runs this, in write mode on a clean tree, before a tag.
 
 const ROOT = path self | path dirname | path dirname
-const STEPS = [lua node odin book]
+const STEPS = [lua addons node odin book]
 
 def --wrapped must [cmd: string, ...args] {
     ^$cmd ...$args
@@ -63,6 +66,16 @@ def main [
         [lua "the Lua type files (packages/lua)" {
             written [packages/lua/kui.lua packages/lua/kui.d.tl] $check {
                 must cargo run -q -p kui-lua --example lua-types -- packages/lua
+            }
+        }]
+        [addons "the add-ons' wrappers and Lua (addons/*)" {
+            for dir in (ls addons | where type == dir | get name) {
+                if ($"($dir)/schema.lua" | path exists) {
+                    must cargo run -q -p kui-addon-schema -- gen $"($dir)/schema.lua" $"($dir)/bindings" ...$check_flag
+                }
+                if ($"($dir)/build.lua" | path exists) {
+                    must lua $"($dir)/build.lua" ...$check_flag
+                }
             }
         }]
         [node "npm run gen (jsx-runtime.d.ts, index.d.ts, docs/props.md)" {

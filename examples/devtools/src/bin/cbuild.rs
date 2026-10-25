@@ -239,6 +239,9 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
             &format!("/DKUI_PROFILE_DIR={profile_dir}"),
             "/I",
             "crates/kui-ffi/include",
+            // Kit's generated header (docs/adr/0066), for features/kit.
+            "/I",
+            "addons/kit/bindings/c",
             "/std:c11",
             "/W3",
         ]
@@ -249,6 +252,8 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
         [
             "-I",
             "crates/kui-ffi/include",
+            "-I",
+            "addons/kit/bindings/c",
             "-std=c11",
             &format!("-DKUI_PROFILE_DIR={profile_dir}"),
             "-Wall",
@@ -364,6 +369,8 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
     exe("examples/c/tools/surface.c", "surface")?;
     exe("examples/c/tools/conformance.c", "conformance")?;
     exe("examples/c/features/slots/host.c", "host")?;
+    // Kit through the header its schema generates (docs/adr/0066).
+    exe("examples/c/features/kit/kit.c", "kit")?;
 
     // --- the panel --------------------------------------------------------
     // The other direction: C as an extension inside a host that already
@@ -461,6 +468,12 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
             exe: format!("{ex}/{}", exe_name("c_panel")),
             args: vec![s("--headless")],
             note: "the Rust host, loading the same plugin from the other side",
+            must_fail: None,
+        },
+        Step {
+            exe: format!("{bin}/{}", exe_name("kit")),
+            args: vec![s("--headless")],
+            note: "Kit's components through kit.h: a Kit button in a Kit toolbar, heard",
             must_fail: None,
         },
     ];

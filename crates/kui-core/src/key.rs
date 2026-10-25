@@ -105,6 +105,16 @@ pub fn mix_content(h: u64, bytes: &[u8]) -> u64 {
     }
 }
 
+/// The byte a child key's derivation starts with, which separates the
+/// label namespace from the index one. Mixed as a byte, not XORed into the
+/// parent: FNV's first round is `(h ^ b) * p`, so a tag XORed into `h`
+/// trades against the first byte — `k.str("")` was `k ^ 0x53`, a second
+/// empty label undid it, and `k.str("").index(83)` was `k.index(0)` (83
+/// being 0x53): a component's 84th host child had the key of its first
+/// node.
+const TAG_STR: u8 = 0x53;
+const TAG_INDEX: u8 = 0x49;
+
 impl Key {
     pub const ROOT: Key = Key(FNV_OFFSET);
 
@@ -114,15 +124,12 @@ impl Key {
 
     /// Child key derived from a string label.
     pub fn str(self, label: &str) -> Key {
-        // Tag byte separates the str/index namespaces.
-        let h = Self::mix_bytes(self.0 ^ 0x53, label.as_bytes());
-        Key(h)
+        Key(Self::mix_bytes(fnv(self.0, &[TAG_STR]), label.as_bytes()))
     }
 
     /// Child key derived from a sibling index (auto-keys).
     pub fn index(self, i: u64) -> Key {
-        let h = Self::mix_bytes(self.0 ^ 0x49, &i.to_le_bytes());
-        Key(h)
+        Key(Self::mix_bytes(fnv(self.0, &[TAG_INDEX]), &i.to_le_bytes()))
     }
 }
 
@@ -253,6 +260,24 @@ impl LabelIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_label_and_an_index_never_trade_against_each_other() {
+        let k = Key::ROOT.str("toolbar");
+        assert_ne!(k.str("").str(""), k, "two empty labels are two levels down");
+        assert_ne!(k.str(""), k);
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..1024 {
+            assert!(seen.insert(k.index(i)), "index {i}");
+        }
+        for i in 0..1024 {
+            assert!(seen.insert(k.str("").index(i)), "the empty group's child {i} is its own");
+        }
+        for b in 0..=255u8 {
+            let label = String::from_utf8_lossy(&[b]).into_owned();
+            assert!(seen.insert(k.str(&label)) || label == "\u{fffd}", "label {b}");
+        }
+    }
 
     /// The word hash tells apart what a word-at-a-time reading could
     /// confuse: a text and the same with a zero byte after it, a change

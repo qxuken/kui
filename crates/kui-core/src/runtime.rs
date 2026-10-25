@@ -1140,12 +1140,14 @@ impl Core {
     ///
     /// A lookup can answer a theme or metrics role, and a binding bakes
     /// what it answers into the spec, so a fill being kept that looks a
-    /// name up has read both (ADR 0045, backlog F155).
+    /// name up has read both (ADR 0045, backlog F155) — and the token
+    /// tables themselves, which an origin may declare anew.
     pub fn token_lookup(&self) -> crate::tokens::TokenLookup<'_> {
         self.note_read_once(replay::ONCE_THEME, || replay::Read::Theme(self.theme_gen));
         self.note_read_once(replay::ONCE_METRICS, || {
             replay::Read::Metrics(self.metrics_gen)
         });
+        self.note_read_once(replay::ONCE_TOKENS, || replay::Read::Tokens(self.tokens_rev));
         let own = self.tokens.get(&self.origin);
         let host = if self.origin == OriginId::HOST {
             None
@@ -2333,6 +2335,17 @@ pub trait Extension {
     fn component(&mut self, inst: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         self.view(inst, ui)
     }
+    /// A second handle onto this extension, sharing its state: what the
+    /// list draws one of its components with when that component is placed
+    /// while this handle is still drawing — a host's Kit buttons inside a
+    /// Kit toolbar, built when the toolbar asks for its children. The list
+    /// asks once at load and again only when instances nest deeper than
+    /// ever before, and hands the handles back when they are done. `None`
+    /// (the default) leaves such a placement empty, with
+    /// `recursive-component`.
+    fn reentry(&mut self) -> Option<Box<dyn Extension>> {
+        None
+    }
 }
 
 /// A boxed extension is one: what a host that learns the kind only at run
@@ -2357,5 +2370,8 @@ impl<E: Extension + ?Sized> Extension for Box<E> {
     }
     fn component(&mut self, inst: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         (**self).component(inst, ui)
+    }
+    fn reentry(&mut self) -> Option<Box<dyn Extension>> {
+        (**self).reentry()
     }
 }

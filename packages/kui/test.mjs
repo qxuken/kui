@@ -9969,6 +9969,47 @@ test('a Lua component holds the host\'s children and its events arrive as the ho
   }
 });
 
+test('Kit through its generated wrappers: a Kit button in a Kit toolbar, pressed, is the host\'s message (ADR 0066)', async () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const kit = await import(join(here, '..', '..', 'addons/kit/bindings/node/kit.js'));
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.addExtension('kit', join(here, '..', '..', 'addons/kit/lua/kit.lua'));
+  const enc = createEncoder(protocol());
+  const draw = () => {
+    const tree = box({ fill: true, pad: 8, gap: 6 }, [
+      kit.Settings({ skin: 'neutral', density: 'compact' }),
+      kit.Toolbar({ trailing: [kit.Badge({ label: 'live', tone: 'ok' })] }, [
+        kit.Button({ label: 'Run', variant: 'primary', onPress: { kind: 'run' } }),
+      ]),
+      kit.Segmented({ options: [{ value: 'a', label: 'Alpha' }, { value: 'b', label: 'Beta' }], value: 'a', onChange: { kind: 'seg' } }),
+    ]);
+    const { stream, strings } = enc.encode(tree);
+    ctx.frameBinary(800, 400, 1, stream, strings);
+  };
+  draw();
+  draw();
+  assert.deepEqual(ctx.warnings(), []);
+  const named = (name) => ctx.accessTree().nodes.find((n) => n.name === name);
+  const press = (name) => {
+    const n = named(name);
+    assert.ok(n, `no node named ${name}`);
+    ctx.cursor(n.rect.x + n.rect.w / 2, n.rect.y + n.rect.h / 2);
+    ctx.mouse(true);
+    ctx.mouse(false);
+    draw();
+    return ctx.pollEvents().filter((e) => e.event === 'component');
+  };
+  assert.ok(named('Run'), 'the Neutral skin keeps the label\'s case');
+  let events = press('Run');
+  assert.equal(events.length, 1, JSON.stringify(events));
+  assert.equal(events[0].payload.kind, 'run');
+  assert.deepEqual(events[0].payload.press, {});
+  events = press('Beta');
+  assert.equal(events[0].payload.kind, 'seg');
+  assert.deepEqual(events[0].payload.change, { value: 'b' });
+});
+
 test('a Channel hands rows to a Lua component by handle, and onRange reports the rows in view (ADR 0065)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'kui-channel-'));
   try {

@@ -230,6 +230,7 @@ library the hosts link.
 | [`features/slots/panel.c`](c/features/slots/panel.c) | C as the *extension*: a `dlopen`ed plugin filling the slot a host declares, the same panel as the Lua one | through its hosts |
 | [`features/slots/panel.rs`](c/features/slots/panel.rs) | The Rust host of that plugin: `cargo run -p kui-ffi --example c_panel` | ✓ `c_panel --headless` |
 | [`features/slots/host.c`](c/features/slots/host.c) | C on both sides: a C host loading the same plugin through `kui_ctx_add_extension` | ✓ `host --headless` |
+| [`features/kit/kit.c`](c/features/kit/kit.c) | Kit from C through the header its schema generates (`addons/kit/bindings/c/kit.h`): a Kit button in a Kit toolbar and a segmented control, heard as the host's messages | ✓ `kit --headless` |
 | [`tools/surface.c`](c/tools/surface.c) | The header walk: every prototype in `kui.h` called once and checked — the FFI self-test, not an example | ✓ `surface` |
 | [`tools/conformance.c`](c/tools/conformance.c) | The C adapter over the scene corpus | ✓ `conformance <report>` |
 
@@ -258,7 +259,7 @@ panel is three languages deep.
 | Example | Run | Shows | Headless |
 |---|---|---|---|
 | [`features/slots/panel.rs`](lua/features/slots/panel.rs) + [`panel.lua`](lua/features/slots/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the slot filled, the title from the params, the reply on a toggle, clicks routed by origin | ✓ `lua_panel --headless` |
-| [`features/kit/spike.rs`](lua/features/kit/spike.rs) + [`scene.rs`](lua/features/kit/scene.rs) | `cargo run -p kui-lua --example lua_kit_spike` | Kit's M0 spike ([`addons/kit`](../addons/kit)): a toolbar, a table of 100,000 rows and a trace waterfall of 18,000 bars, written in Teal and painted by the Ledger skin, every event arriving as the app's own message; its budgets are `cargo bench -p kui-lua --bench kit` | ✓ `lua_kit_spike --headless` |
+| [`features/kit/spike.rs`](lua/features/kit/spike.rs) + [`scene.rs`](lua/features/kit/scene.rs) | `cargo run -p kui-lua --example lua_kit_spike` | Kit ([`addons/kit`](../addons/kit)) from Rust through the `kui-kit` wrappers: a toolbar, a table of 100,000 rows and a trace waterfall of 18,000 spans from channels, every event arriving as the app's own message; its budgets are `cargo bench -p kui-lua --bench kit` | ✓ `lua_kit_spike --headless` |
 | [`tools/bench.rs`](lua/tools/bench.rs) | `cargo run -p kui-lua --example bench --release` | Frontend-lowering shootout: the same ~900-node view from Rust and from Lua | |
 | [`tools/types.rs`](lua/tools/types.rs) | `cargo run -p kui-lua --example lua-types -- packages/lua` | Writes the Lua DSL's type files, `kui.lua` for lua-language-server and `kui.d.tl` for Teal, from the schema — what `nu scripts/gen.nu` commits under [`packages/lua`](../packages/lua) | |
 
@@ -306,6 +307,7 @@ run by [`scripts/odin.nu`](../scripts/odin.nu) against this checkout's
 | [`apps/counter.odin`](odin/apps/counter.odin) | The counter from Odin, the same shape as the other three: state, a typed message union, a context menu as a modal float | ✓ `--headless`, the Rosetta drive, and a typed message's round trip |
 | [`features/slots/panel.odin`](odin/features/slots/panel.odin) | Odin as the *extension*: the same panel as the C and Lua ones, a shared library linked against nothing, loaded by the Odin, C and Rust hosts alike | through its hosts |
 | [`features/slots/host.odin`](odin/features/slots/host.odin) | Odin as the host of an extension, the twin of `c/features/slots/host.c`: loads the Odin panel, or the C one, under `todos` and declares its slot | ✓ `--headless`, and `nu scripts/odin.nu slots` for every language pair |
+| [`features/kit/kit.odin`](odin/features/kit/kit.odin) | Kit from Odin through the generated `kit` package, the twin of `c/features/kit/kit.c`, its events read with the generated `With_` types | ✓ `--headless` |
 | [`tools/conformance.odin`](odin/tools/conformance.odin) | `tools/conformance.c` through the typed layer: every scene of the corpus rebuilt through package `kui`'s `Spec` and doors, its report diffed byte for byte against the reference | ✓ against `KUI_CONFORMANCE`, or a reference `odin.nu test` makes |
 | [`tools/surface.odin`](odin/tools/surface.odin) | `tools/surface.c` through the typed layer, plus what the C binding walks in its other programs: every door of package `kui` called and checked | ✓ |
 

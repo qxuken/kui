@@ -1,95 +1,101 @@
--- Kit's entry: the script a host loads. Every slot under its namespace is
--- an instance, named `<component>` or `<component>#<n>` (`button#3`), so
--- one extension serves all of them (`slots = { "*" }`). That naming is
--- M0's stand-in for position-keyed instances (ADR B, decision 1).
+-- Kit's entry: the script a host loads. It provides components (ADR 0060)
+-- and nothing else: a host places `kit/<name>` as often as it likes, each
+-- instance keyed by where it is and replayed while its props hold, and
+-- hears Kit's events as its own messages. `schema.lua` beside `src/` is
+-- the API these functions answer to; every binding's typed wrappers are
+-- generated from it (ADR 0066).
 --
--- `settings` is a slot of its own that draws nothing: the app's Kit
--- settings ride in its params, and the skin's tokens are declared from
--- them whenever they change.
+-- `settings` draws nothing: it holds the window's skin, density, shadows
+-- and brand roles, and declares Kit's tokens whenever they move — which
+-- re-asks every instance that painted with them.
 --
 -- The modules beside this file are found through `package.path`, which
 -- every host's loader starts with this file's folder (ADR 0059).
 
 local skin = require("skin")
-local ledger = require("ledger")
 local ctx = require("ctx")
-local button = require("button")
-local toolbar = require("toolbar")
-local datatable = require("datatable")
+local ledger = require("ledger")
+local phosphor = require("phosphor")
+local neutral = require("neutral")
+local layout = require("layout")
+local inputs = require("inputs")
+local data = require("data")
+local overlays = require("overlays")
+local charts = require("charts")
 local waterfall = require("waterfall")
 
-global slots: {string} = { "*" }
+local type P = {string:any}
+local type View = function(ctx.Ctx, P): kui.Node
 
-local settings: skin.Settings = { shadows = true, density = "comfortable" }
+local SKINS: {string:skin.Skin} = { ledger = ledger, phosphor = phosphor, neutral = neutral }
+
+local settings: skin.Settings = { skin = ledger, density = "comfortable", shadows = true }
 local declared: string = nil
-local params: {string:any} = {}
-
-local function settings_key(s: skin.Settings): string
-  return tostring(s.shadows) .. "/" .. tostring(s.density)
-end
 
 local function ensure_tokens(env: kui.Env)
-  local k = settings_key(settings)
+  local k = skin.key(settings)
   if declared ~= k then
-    env.set_tokens(skin.tokens(ledger, settings))
+    env.set_tokens(skin.tokens(settings))
     declared = k
   end
 end
 
-local function component(id: string): string
-  return id:match("^([^#]+)") or id
+local function apply(p: P)
+  local roles = p.roles
+  settings = {
+    skin = SKINS[p.skin as string] or ledger,
+    density = p.density == "compact" and "compact" or "comfortable",
+    shadows = p.shadows ~= false,
+    roles = roles is {string:any} and roles or nil,
+  }
 end
 
-global function view(env: kui.Env, slot: kui.Slot): kui.Node
-  local id = slot.name
-  local p = slot.params or {}
-  local kind = component(id)
-  if kind == "settings" then
-    settings = {
-      shadows = p.shadows ~= false,
-      density = p.density == "compact" and "compact" or "comfortable",
-    }
+-- Each component's view, by the module that draws it.
+local VIEWS: {string:View} = {}
+-- Each component's module's event handler, by component name.
+local EVENTS: {string:function(P, string): any} = {}
+
+local function provide(module: {string:any}, names: {string})
+  for _, name in ipairs(names) do
+    VIEWS[name] = module[name] as View
+    EVENTS[name] = module.event as function(P, string): any
   end
-  ensure_tokens(env)
-  params[id] = p
-  local c: ctx.Ctx = { env = env, skin = ledger, settings = settings, id = id }
-  if kind == "button" then
-    return button.view(p as button.Params, c)
-  elseif kind == "toolbar" then
-    return toolbar.view(p as toolbar.Params, c)
-  elseif kind == "table" then
-    return datatable.view(p as datatable.Params, c)
-  elseif kind == "waterfall" then
-    return waterfall.view(p as waterfall.Params, c)
-  end
-  return column { width = 0, height = 0 }
 end
 
--- The components (ADR 0060): placed by a host as `kit/<name>` as often as
--- it likes, each instance keyed by where it is and replayed while its
--- props hold. M2 moves the button here; M3 moves the rest.
-global components: {string:function(kui.Env, {string:any}, kui.Slot): kui.Node} = {
-  button = function(env: kui.Env, props: {string:any}, inst: kui.Slot): kui.Node
+provide(layout as {string:any}, { "panel", "toolbar", "statusbar", "split", "tabs", "section", "divider" })
+provide(inputs as {string:any}, {
+  "button", "icon_button", "text_field", "search", "select", "checkbox", "switch",
+  "radio_group", "segmented", "slider",
+})
+provide(data as {string:any}, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress" })
+provide(overlays as {string:any}, { "dialog", "popover", "menu", "toast" })
+provide(charts as {string:any}, { "sparkline", "line_chart", "bar_chart", "histogram" })
+provide(waterfall as {string:any}, { "waterfall" })
+
+local type Component = function(kui.Env, P, kui.Slot): kui.Node
+
+global components: {string:Component} = {
+  settings = function(env: kui.Env, props: P, _inst: kui.Slot): kui.Node
+    apply(props or {})
     ensure_tokens(env)
-    local c: ctx.Ctx = { env = env, skin = ledger, settings = settings, id = "button" }
-    return button.view(props as button.Params, c)
+    return column { width = 0, height = 0 }
   end,
 }
 
-global function on_event(ev: kui.Event): {string:any}
-  local m = ev as {string:any}
-  local id = m.id as string
-  if not id then return nil end
-  local kind = component(id)
-  local p = params[id] or {}
-  if kind == "button" then
-    return button.event(ev, p as button.Params)
-  elseif kind == "toolbar" then
-    return toolbar.event(ev, p as toolbar.Params)
-  elseif kind == "table" then
-    return datatable.event(ev, p as datatable.Params)
-  elseif kind == "waterfall" then
-    return waterfall.event(ev, p as waterfall.Params, id)
+for name, view in pairs(VIEWS) do
+  components[name] = function(env: kui.Env, props: P, inst: kui.Slot): kui.Node
+    ensure_tokens(env)
+    local c: ctx.Ctx = { env = env, s = settings, inst = inst.key }
+    return view(c, props or {})
   end
-  return nil
+end
+
+global function on_event(ev: kui.Event): any
+  local m = ev as P
+  local kit = m.kit as string
+  if not kit then return nil end
+  local name = kit:match("^([%w_]+)%.")
+  local handler = name and EVENTS[name]
+  if not handler then return nil end
+  return handler(m, kit)
 end

@@ -1,20 +1,19 @@
-//! Kit's M0 budgets (addons/kit, the M0 brief): a whole host frame with
-//! Kit's fills in it — the host's view, the script's views, the walk from
-//! its tables to the tree, layout and emission — against what each
-//! component is allowed.
+//! Kit's budgets (addons/kit): a whole host frame with Kit's components in
+//! it — the host's view, the script's functions, the walk from its tables
+//! to the tree, layout and emission — against what each is allowed.
 //!
-//! - `buttons`: twenty buttons in one toolbar fill, as twenty slots of one
-//!   each, and as those slots replayed (ADR 0045): what one instance costs.
-//! - `table_*`: 100,000 rows, still and scrolling 37 px a frame
-//!   (budget 1.5 ms).
-//! - `waterfall_*`: 18,000 bars fully zoomed out, at a 2 s window, and
+//! - `buttons`: stock buttons, Kit buttons in a row, and Kit buttons as the
+//!   host's children of a Kit toolbar, at 0, 20 and 200: what one instance
+//!   costs is the slope.
+//! - `table_*`: 100,000 rows from a channel, still and following a
+//!   selection that moves a row a frame (budget 1.5 ms).
+//! - `waterfall_*`: 18,000 spans fully zoomed out, at a 2 s window, and
 //!   panning across one (budget 1.5 ms).
-//! - `handover`: the frame on which the rows and bars cross to the script
-//!   again, by a new revision.
+//! - `handover`: the frame after the rows are published again as a new
+//!   revision.
 //! - `channel_*` (ADR 0065): the same 100,000 rows as a channel — built
 //!   once from Rust vectors, and a frame of a Lua table component that
-//!   reads the forty rows it draws by index, asked fresh every frame —
-//!   against `handover`'s conversion.
+//!   reads the forty rows it draws by index, asked fresh every frame.
 //!
 //! Run: cargo bench -p kui-lua --bench kit
 
@@ -56,20 +55,14 @@ fn only(table: bool, waterfall: bool) -> Scene {
 
 /// Each placement at 0, 20 and 200 buttons: the frame around them is the
 /// 0 row, so what one instance costs is the slope, not the total over 20.
-#[divan::bench(
-    consts = [0, 20, 200],
-    args = ["native", "one_fill", "slots", "slots_replayed", "slots_replayed_kept", "components"]
-)]
+#[divan::bench(consts = [0, 20, 200], args = ["native", "components", "toolbar"])]
 fn buttons<const N: usize>(bencher: divan::Bencher, how: &str) {
     let mut s = only(false, false);
     s.n_buttons = N;
     s.buttons = match how {
         "native" => Buttons::Native,
-        "one_fill" => Buttons::OneFill,
-        "slots" => Buttons::Slots,
-        "slots_replayed" => Buttons::SlotsReplayed,
         "components" => Buttons::Components,
-        _ => Buttons::SlotsReplayedKept,
+        _ => Buttons::Toolbar,
     };
     let (mut core, mut exts) = setup(&mut s);
     bencher.bench_local(|| frame(&mut core, &mut s, &mut exts));
@@ -82,19 +75,6 @@ fn components_only(bencher: divan::Bencher) {
     let mut s = only(false, false);
     s.n_buttons = 200;
     s.buttons = Buttons::Components;
-    s.settings_replayed = true;
-    let (mut core, mut exts) = setup(&mut s);
-    bencher.bench_local(|| frame(&mut core, &mut s, &mut exts));
-}
-
-/// 200 replayed slots with kept params and nothing else Kit fills fresh:
-/// the replay path alone, for a profiler (`--bench replay_only`).
-#[divan::bench]
-fn replay_only(bencher: divan::Bencher) {
-    let mut s = only(false, false);
-    s.n_buttons = 200;
-    s.buttons = Buttons::SlotsReplayedKept;
-    s.settings_replayed = true;
     let (mut core, mut exts) = setup(&mut s);
     bencher.bench_local(|| frame(&mut core, &mut s, &mut exts));
 }
@@ -106,14 +86,16 @@ fn table_still(bencher: divan::Bencher) {
     bencher.bench_local(|| frame(&mut core, &mut s, &mut exts));
 }
 
+/// The selection moving a row a frame, the table scrolling to keep it in
+/// view once it reaches the edge.
 #[divan::bench]
-fn table_scroll(bencher: divan::Bencher) {
+fn table_follow(bencher: divan::Bencher) {
     let mut s = only(true, false);
     let (mut core, mut exts) = setup(&mut s);
-    let mut y = 0.0;
+    let mut i = 0i64;
     bencher.bench_local(|| {
-        y = (y + 37.0) % 2_000_000.0;
-        s.scroll_top = Some(y);
+        i = (i + 1) % 99_000;
+        s.selected = Some(i);
         frame(&mut core, &mut s, &mut exts);
     });
 }
@@ -150,7 +132,7 @@ fn handover(bencher: divan::Bencher) {
     let mut s = only(true, true);
     let (mut core, mut exts) = setup(&mut s);
     bencher.bench_local(|| {
-        s.rev += 1;
+        s.republish();
         frame(&mut core, &mut s, &mut exts);
     });
 }
