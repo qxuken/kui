@@ -270,7 +270,7 @@
 //! A node hears only the events it declares a handler for. An `edit`
 //! reports through its own: `on_change` as `change = { text }` (the whole
 //! text after the edit), `on_submit` (Enter) and `on_cancel` (Escape) as
-//! declared, `on_boundary` as `boundary = { key, edge, word, doc }`. Its
+//! declared, `on_boundary` as `boundary = { key, edge, word, doc, ctrl }`. Its
 //! `value =` is the text the view declares every frame — the editor is
 //! brought to it where they differ — so a script that stores
 //! `ev.change.text` and declares it back owns the field's text; `initial`

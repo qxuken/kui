@@ -682,7 +682,9 @@ enum {
     KUI_KEY_SELECT_ALL, KUI_KEY_ESCAPE, KUI_KEY_UNDO, KUI_KEY_REDO,
 };
 /* Modifier bits (kui_input_key) */
-enum { KUI_MOD_SHIFT = 1u << 0, KUI_MOD_WORD = 1u << 1, KUI_MOD_DOC = 1u << 2 };
+/* KUI_MOD_CTRL is Control itself: off a Mac set with KUI_MOD_DOC, on one
+ * the key Command is not (backlog C94). */
+enum { KUI_MOD_SHIFT = 1u << 0, KUI_MOD_WORD = 1u << 1, KUI_MOD_DOC = 1u << 2, KUI_MOD_CTRL = 1u << 3 };
 /* Physical modifier bits (kui_input_modifiers) */
 enum {
     KUI_KMOD_SHIFT = 1u << 0,
@@ -1427,7 +1429,7 @@ typedef struct KuiSpec {
      * field's Enter, arriving as this message as declared. on_cancel:
      * Escape letting go of the editor - a draft abandoned - as declared.
      * on_boundary: an editing key that met the edge of the text and did
-     * nothing, as this message with boundary:{key, edge, word, doc} in it
+     * nothing, as this message with boundary:{key, edge, word, doc, ctrl} in it
      * (key "up" | "down" | "left" | "right" | "backspace" | "delete",
      * edge "start" | "end"). Borrowed while the node opens. ABI 33. */
     const KuiValue *on_submit;

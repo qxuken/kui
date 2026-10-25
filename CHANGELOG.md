@@ -170,6 +170,12 @@ was the first bare bump to break an app in five releases).
   browser's :focus-visible is after a key: a list clicked and then walked
   with the arrows showed no ring. A surface that shows its own focus
   turns the ring off with `focusRing` transparent (below) or `focusBg`.
+- The editing keys' `Mods` gained `ctrl`, Control itself (backlog C94),
+  and so did `event::Boundary` and a `boundary` event's data (`{key,
+  edge, word, doc, ctrl}`): a struct literal adds `ctrl: false`. Off a Mac
+  it is held whenever `doc` is; on one it is the key ⌘ is not, and Ctrl+Tab
+  there is `ctrl` and no longer `doc`. Node's `key(name, mods)` takes
+  `ctrl`, and C has `KUI_MOD_CTRL` (8).
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press

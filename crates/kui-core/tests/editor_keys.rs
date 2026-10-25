@@ -124,6 +124,7 @@ const NONE: Mods = Mods {
     shift: false,
     word: false,
     doc: false,
+    ctrl: false,
 };
 
 #[test]
@@ -372,4 +373,35 @@ fn an_editors_caret_is_readable_and_placeable_by_point() {
     assert_eq!(core.edit.caret_and_selection(field), Some((0, None)));
     assert_eq!(core.focus(), Some(field));
     assert!(!core.edit_caret_to(Key::ROOT, Vec2::new(0.0, 0.0)));
+}
+
+/// Control reaches the editing channel as itself (backlog C94): a press
+/// under Ctrl says `ctrl`, which on macOS is not the primary `doc`, and an
+/// edge the key met reports it beside `word` and `doc`.
+#[test]
+fn ctrl_reaches_the_editor_and_its_boundary_event() {
+    let ev = KeyPress::new(KeyCode::Up, KeyMods::NONE.with_ctrl()).edit_event();
+    let Some(InputEvent::Key(EditKey::Up, mods)) = ev else {
+        panic!("an editing key: {ev:?}");
+    };
+    assert!(mods.ctrl, "ctrl carried");
+    assert_eq!(
+        mods.doc,
+        !cfg!(target_os = "macos"),
+        "doc only where Ctrl is primary"
+    );
+    let tab = KeyPress::new(KeyCode::Tab, KeyMods::NONE.with_ctrl()).edit_event();
+    assert!(
+        matches!(tab, Some(InputEvent::Key(EditKey::Tab, m)) if m.ctrl),
+        "ctrl+tab is ctrl, not a stand-in doc"
+    );
+    let (mut core, _, field) = rig(EditOptions::default(), false);
+    // At the start of "ab", Ctrl+Left meets the edge.
+    edit(&mut core, EditKey::Home, NONE);
+    let out = edit(&mut core, EditKey::Left, Mods::NONE.with_ctrl());
+    let e = out
+        .iter()
+        .find(|e| e.key == field && e.is(EventKind::Boundary))
+        .expect("a boundary");
+    assert_eq!(e.data().and_then(|d| d.get_bool("ctrl")), Some(true));
 }

@@ -423,6 +423,8 @@ export interface BoundaryEvent {
   edge: 'start' | 'end';
   word: boolean;
   doc: boolean;
+  /** Control itself (backlog C94): on macOS not the primary `doc`. */
+  ctrl: boolean;
 }
 
 /** A playback with a message (`play(id, { tag })` or `<audio tag>`)
@@ -2145,6 +2147,8 @@ export interface KeyMods {
   word?: boolean;
   /** Document-wise motion (cmd/ctrl). */
   doc?: boolean;
+  /** Control itself, which on macOS is not `doc` (backlog C94). */
+  ctrl?: boolean;
 }
 
 export interface KeySinkMods {
@@ -2909,7 +2913,8 @@ export declare class Ctx {
   preedit(text: string, cursor?: [number, number] | null): void
   /**
    * Editing key by name ("left", "backspace", "enter", ...) with optional
-   * modifiers `{shift, word, doc}`.
+   * modifiers `{shift, word, doc, ctrl}` (`ctrl` is Control itself,
+   * which on macOS is not the primary `doc`).
    */
   key(name: EditKeyName, mods?: KeyMods): void
   /**

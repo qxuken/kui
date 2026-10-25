@@ -278,6 +278,7 @@ Edit_Mod :: enum u32 {
 	Shift = 0, // KUI_MOD_SHIFT
 	Word = 1, // KUI_MOD_WORD
 	Doc = 2, // KUI_MOD_DOC
+	Ctrl = 3, // KUI_MOD_CTRL
 }
 Edit_Mods :: bit_set[Edit_Mod;u32]
 
@@ -1008,7 +1009,7 @@ Spec :: struct {
 	// blur is neither.
 	on_cancel: any,
 	// An editing key that met the edge of an editor's text and did nothing, as
-	// this message with `boundary: {key, edge, word, doc}` in it (ADR 0047,
+	// this message with `boundary: {key, edge, word, doc, ctrl}` in it (ADR 0047,
 	// backlog F145): ↑ on the first line, ← or Backspace at the start (`edge:
 	// "start"`), ↓ on the last line, → or Delete at the end (`"end"`) —
 	// from a caret with no selection and without Shift.

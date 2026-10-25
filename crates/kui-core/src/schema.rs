@@ -1449,7 +1449,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_BOUNDARY,
         kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_boundary(v)),
-        doc: "An editing key that met the edge of an editor's text and did nothing, as this message with `boundary: {key, edge, word, doc}` in it (ADR 0047, backlog F145): ↑ on the first line, ← or Backspace at the start (`edge: \"start\"`), ↓ on the last line, → or Delete at the end (`\"end\"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried.",
+        doc: "An editing key that met the edge of an editor's text and did nothing, as this message with `boundary: {key, edge, word, doc, ctrl}` in it (ADR 0047, backlog F145): ↑ on the first line, ← or Backspace at the start (`edge: \"start\"`), ↓ on the last line, → or Delete at the end (`\"end\"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried.",
     },
     PropDef {
         name: "onMenu",
@@ -2618,7 +2618,7 @@ pub const EVENTS: &[EventDef] = &[
         kind: "boundary",
         handler: "onBoundary",
         field: Some("boundary"),
-        payload: "`boundary: { key: \"up\" | \"down\" | \"left\" | \"right\" | \"backspace\" | \"delete\", edge: \"start\" | \"end\", word, doc }` in the `onBoundary` message",
+        payload: "`boundary: { key: \"up\" | \"down\" | \"left\" | \"right\" | \"backspace\" | \"delete\", edge: \"start\" | \"end\", word, doc, ctrl }` in the `onBoundary` message",
         doc: "An editing key that met the edge of an editor's text and did nothing: ↑ on the first line, ← or Backspace at the start (`edge: \"start\"`), ↓ on the last line, → or Delete at the end (`\"end\"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried (Option or Ctrl, ⌘ or Ctrl — `docs/adr/0002`).",
     },
     EventDef {

@@ -912,7 +912,7 @@ pub struct KuiSpec {
     pub on_cancel: *const KuiValue,
     /// An editing key that met the edge of an editor's text and did
     /// nothing (`onBoundary`): this message with `boundary: {key, edge,
-    /// word, doc}` in it. ABI 33.
+    /// word, doc, ctrl}` in it. ABI 33.
     pub on_boundary: *const KuiValue,
     /// A menu row chosen from a menu opened on this node (`onMenu`): this
     /// message with `menu: {role, item}` in it. A node without one hears
@@ -2658,6 +2658,9 @@ pub const KUI_TURNED: u32 = 0x100;
 pub const KUI_MOD_SHIFT: u32 = 1 << 0;
 pub const KUI_MOD_WORD: u32 = 1 << 1;
 pub const KUI_MOD_DOC: u32 = 1 << 2;
+/// Control itself (backlog C94): off a Mac set with `KUI_MOD_DOC`, on one
+/// the key ⌘ is not — Ctrl+Tab leaves a multiline editor whose Tab types.
+pub const KUI_MOD_CTRL: u32 = 1 << 3;
 
 /// `KUI_KEY_*`: the editing keys `kui_input_key` takes, in the header's
 /// order — which is not `EditKey`'s declaration order, so the table is

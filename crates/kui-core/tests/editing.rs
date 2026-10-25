@@ -9,11 +9,13 @@ const SHIFT: Mods = Mods {
     shift: true,
     word: false,
     doc: false,
+    ctrl: false,
 };
 const WORD: Mods = Mods {
     shift: false,
     word: true,
     doc: false,
+    ctrl: false,
 };
 
 struct Rig {

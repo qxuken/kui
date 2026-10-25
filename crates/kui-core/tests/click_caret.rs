@@ -21,6 +21,7 @@ const NONE: Mods = Mods {
     shift: false,
     word: false,
     doc: false,
+    ctrl: false,
 };
 
 /// One field, "hello world", 300 by 40 at (10, 10), or a document of

@@ -1092,7 +1092,7 @@ pub enum Handler {
     /// message as declared.
     Cancel,
     /// An editing key that met the edge of an editor's text and did
-    /// nothing, as this message with `boundary: {key, edge, word, doc}`
+    /// nothing, as this message with `boundary: {key, edge, word, doc, ctrl}`
     /// in it (backlog F145).
     Boundary,
     /// A choice from a menu opened for this node — a `select`'s, or one

@@ -663,6 +663,7 @@ package kui_c
 #assert(MOD_SHIFT == 1)
 #assert(MOD_WORD == 2)
 #assert(MOD_DOC == 4)
+#assert(MOD_CTRL == 8)
 #assert(KMOD_SHIFT == 1)
 #assert(KMOD_CTRL == 2)
 #assert(KMOD_ALT == 4)

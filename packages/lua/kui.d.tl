@@ -474,7 +474,7 @@ global type kui = record
     on_submit: any
     -- Escape letting go of a focused editor, as this message — a map as declared, any other message under `tag`, none as `{}` (ADR 0047): the keyboard leaves it, as it does for a click elsewhere, and this says it was Escape — a draft abandoned, where `onSubmit` is one confirmed and a plain blur is neither. A field that commits on blur cancels here instead.
     on_cancel: any
-    -- An editing key that met the edge of an editor's text and did nothing, as this message with `boundary: {key, edge, word, doc}` in it (ADR 0047, backlog F145): ↑ on the first line, ← or Backspace at the start (`edge: "start"`), ↓ on the last line, → or Delete at the end (`"end"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried.
+    -- An editing key that met the edge of an editor's text and did nothing, as this message with `boundary: {key, edge, word, doc, ctrl}` in it (ADR 0047, backlog F145): ↑ on the first line, ← or Backspace at the start (`edge: "start"`), ↓ on the last line, → or Delete at the end (`"end"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried.
     on_boundary: any
     -- A choice from a menu opened for this node — a `select`'s, or one `openMenu` named it the target of — as this message with `menu: {role, item}` in it (ADR 0047): `item` is the row's `id`, else its label. The stock right-click menu, whose roles the core performs itself, sends nothing.
     on_menu: any
@@ -1088,6 +1088,7 @@ global type kui = record
     edge: BoundaryEventEdge
     word: boolean
     doc: boolean
+    ctrl: boolean
   end
 
   -- A message that carries a `boundary` event: its `boundary` field alone.

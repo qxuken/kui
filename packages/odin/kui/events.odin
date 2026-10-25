@@ -198,6 +198,7 @@ Boundary_Event :: struct {
 	key:       string, // "up" | "down" | "left" | "right" | "backspace" | "delete"
 	edge:      string, // "start" | "end"
 	word, doc: bool, // the editing modifiers the key carried
+	ctrl:      bool, // Control itself, on macOS not doc (backlog C94)
 }
 
 Sound_Event :: struct {

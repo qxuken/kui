@@ -941,7 +941,8 @@ impl Ctx {
     }
 
     /// Editing key by name ("left", "backspace", "enter", ...) with optional
-    /// modifiers `{shift, word, doc}`.
+    /// modifiers `{shift, word, doc, ctrl}` (`ctrl` is Control itself,
+    /// which on macOS is not the primary `doc`).
     #[napi(ts_args_type = "name: EditKeyName, mods?: KeyMods")]
     pub fn key(&mut self, name: String, mods: Option<Json>) -> Result<()> {
         let key = edit_key_of(&name)?;
@@ -953,6 +954,7 @@ impl Ctx {
             shift: bool_prop(m, "shift"),
             word: bool_prop(m, "word"),
             doc: bool_prop(m, "doc"),
+            ctrl: bool_prop(m, "ctrl"),
         };
         self.input(InputEvent::Key(key, mods));
         Ok(())

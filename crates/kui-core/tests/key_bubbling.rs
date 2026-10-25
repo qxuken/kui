@@ -95,6 +95,7 @@ fn window_press(
             shift: mods.shift,
             word: mods.alt,
             doc: mods.primary(),
+            ctrl: false,
         };
         out.extend(core.handle_input(InputEvent::Key(ek, m)));
     }

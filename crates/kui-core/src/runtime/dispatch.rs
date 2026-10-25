@@ -376,7 +376,7 @@ impl Core {
         // press, the editing `Mods` are what there is.
         let chord = |mods: Option<crate::input::Mods>| match pressed {
             Some(m) => m.ctrl || m.alt || m.super_key,
-            None => mods.is_some_and(|m| m.word || m.doc),
+            None => mods.is_some_and(|m| m.word || m.doc || m.ctrl),
         };
         // A paste's answer is a commit with the pasteboard's markers beside
         // it (backlog F84), and a bare commit is one whose pasteboard marked
@@ -546,7 +546,7 @@ impl Core {
                     && match self.edit.focused() {
                         Some(k) if self.edit.keeps_tab(k) => false,
                         Some(k) if self.edit.inserts_tab(k) => {
-                            mods.word || mods.doc || self.tab_moves_focus || armed == Some(k)
+                            mods.word || mods.doc || mods.ctrl || self.tab_moves_focus || armed == Some(k)
                         }
                         Some(_) => true,
                         None => !sink,
@@ -571,6 +571,7 @@ impl Core {
                             ("edge", Value::str(edge.name())),
                             ("word", Value::Bool(mods.word)),
                             ("doc", Value::Bool(mods.doc)),
+                            ("ctrl", Value::Bool(mods.ctrl)),
                         ]);
                         self.push_editor_event(key, EventKind::Boundary, data, &mut out);
                     }

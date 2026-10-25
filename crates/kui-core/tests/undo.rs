@@ -7,6 +7,7 @@ const SHIFT: Mods = Mods {
     shift: true,
     word: false,
     doc: false,
+    ctrl: false,
 };
 
 struct Rig {

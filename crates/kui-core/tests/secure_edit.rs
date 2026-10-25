@@ -16,11 +16,13 @@ const SHIFT: Mods = Mods {
     shift: true,
     word: false,
     doc: false,
+    ctrl: false,
 };
 const WORD: Mods = Mods {
     shift: false,
     word: true,
     doc: false,
+    ctrl: false,
 };
 
 /// A field keyed "pw", focused, `secure` as asked; its key.

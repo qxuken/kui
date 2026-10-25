@@ -543,12 +543,17 @@ impl EditKey {
 }
 
 /// Modifier state for editing keys. `word` is Alt/Option (word-wise motion),
-/// `doc` is the platform primary modifier (line/document-wise motion).
+/// `doc` is the platform primary modifier (line/document-wise motion), and
+/// `ctrl` is Control itself, whatever the platform (backlog C94): off a Mac
+/// it is held whenever `doc` is, and on one it is the key ⌘ is not — what
+/// an app's binding of Ctrl+Tab or Ctrl+Enter, and Tab's way out of a
+/// multiline editor, read.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Mods {
     pub shift: bool,
     pub word: bool,
     pub doc: bool,
+    pub ctrl: bool,
 }
 
 impl Mods {
@@ -558,6 +563,7 @@ impl Mods {
         shift: false,
         word: false,
         doc: false,
+        ctrl: false,
     };
 
     pub const fn with_shift(mut self) -> Self {
@@ -572,6 +578,11 @@ impl Mods {
 
     pub const fn with_doc(mut self) -> Self {
         self.doc = true;
+        self
+    }
+
+    pub const fn with_ctrl(mut self) -> Self {
+        self.ctrl = true;
         self
     }
 }
@@ -1418,17 +1429,19 @@ impl KeyPress {
                     .then(|| InputEvent::Text(text.to_string()));
             }
         };
-        // `word` is Alt and `doc` the platform primary, which is the whole
-        // of what the editing vocabulary normalizes (see [`Mods`]). Tab
-        // under Ctrl is `doc` on every platform: the way out of an editor
-        // whose plain Tab types (`EditOptions::tab_moves_focus`), and Ctrl is
-        // not the primary on macOS, where ⌘Tab is the system's.
+        // `word` is Alt and `doc` the platform primary, which is what the
+        // editing vocabulary normalizes (see [`Mods`]); `ctrl` is Control
+        // as pressed (backlog C94), which on macOS is not the primary —
+        // Ctrl+Tab, the way out of an editor whose plain Tab types
+        // (`EditOptions::tab_moves_focus`), reads it there, ⌘Tab being
+        // the system's.
         Some(InputEvent::Key(
             key,
             Mods {
                 shift: self.mods.shift,
                 word: self.mods.alt,
-                doc: self.mods.primary() || (key == EditKey::Tab && self.mods.ctrl),
+                doc: self.mods.primary(),
+                ctrl: self.mods.ctrl,
             },
         ))
     }

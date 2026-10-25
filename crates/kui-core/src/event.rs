@@ -515,6 +515,7 @@ fn read_boundary(p: &Value) -> Option<Boundary> {
         },
         word: p.get_bool("word").unwrap_or(false),
         doc: p.get_bool("doc").unwrap_or(false),
+        ctrl: p.get_bool("ctrl").unwrap_or(false),
     })
 }
 
@@ -727,6 +728,8 @@ pub struct Boundary {
     pub edge: TextEdge,
     pub word: bool,
     pub doc: bool,
+    /// Control was held (backlog C94): on macOS not the same key as `doc`.
+    pub ctrl: bool,
 }
 
 /// How a tagged playback came to its `sound`.
@@ -1229,6 +1232,7 @@ fn write_boundary(b: Boundary) -> Value {
         ("edge", Value::str(edge)),
         ("word", Value::Bool(b.word)),
         ("doc", Value::Bool(b.doc)),
+        ("ctrl", Value::Bool(b.ctrl)),
     ])
 }
 
@@ -1574,6 +1578,7 @@ mod field_tests {
             edge: TextEdge::Start,
             word: true,
             doc: false,
+            ctrl: true,
         };
         assert_eq!(round_trip(boundary), Event::Boundary(boundary));
         let sound = Sound {

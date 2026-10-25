@@ -202,7 +202,8 @@ pub extern "C" fn kui_input_modifiers(ptr: *mut KuiCtx, mods: u32) {
     );
 }
 
-/// Editing key with modifier bits (1 = shift, 2 = word/alt, 4 = doc/primary).
+/// Editing key with modifier bits (1 = shift, 2 = word/alt, 4 = doc/primary,
+/// 8 = Control itself).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
     if let Some(k) = edit_key_of(key) {
@@ -210,6 +211,7 @@ pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
             shift: mods & KUI_MOD_SHIFT != 0,
             word: mods & KUI_MOD_WORD != 0,
             doc: mods & KUI_MOD_DOC != 0,
+            ctrl: mods & KUI_MOD_CTRL != 0,
         };
         push_input(ptr, InputEvent::Key(k, mods));
     }

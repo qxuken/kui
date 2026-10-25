@@ -439,6 +439,7 @@ pub(crate) const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
             ("edge", true, "\"start\"|\"end\""),
             ("word", true, "boolean"),
             ("doc", true, "boolean"),
+            ("ctrl", true, "boolean"),
         ],
     ),
     (

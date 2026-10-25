@@ -458,6 +458,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_MOD_SHIFT,
             KUI_MOD_WORD,
             KUI_MOD_DOC,
+            KUI_MOD_CTRL,
             KUI_MENU_ITEM_ENABLED,
             KUI_MENU_ITEM_CHECKED,
             KUI_MENU_ITEM_SUBMENU,

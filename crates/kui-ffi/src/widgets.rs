@@ -566,7 +566,7 @@ pub extern "C" fn kui_slider(ptr: *mut KuiCtx, label: KuiStr, spec: *const KuiSp
 /// the box around it, and its `on_change`, `on_submit`, `on_cancel` and
 /// `on_boundary` are the messages the editor reports in — `{...on_change,
 /// change: {text}}`, the other two as declared, `{...on_boundary,
-/// boundary: {key, edge, word, doc}}`. An editor that declares none sends
+/// boundary: {key, edge, word, doc, ctrl}}`. An editor that declares none sends
 /// nothing. Read the text with [`kui_edit_text`] too. Returns the key, or
 /// 0 on failure.
 #[unsafe(no_mangle)]

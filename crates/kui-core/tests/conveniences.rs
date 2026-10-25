@@ -102,7 +102,8 @@ fn modifier_steps_match_the_literals() {
         Mods {
             shift: true,
             word: true,
-            doc: false
+            doc: false,
+            ctrl: false,
         }
     );
     assert_eq!(
