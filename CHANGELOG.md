@@ -45,6 +45,10 @@ was the first bare bump to break an app in five releases).
   before the panel's own.
 - The devtools' tree arrows select the row they land on, and Enter puts
   the selection down rather than picking it (backlog F201).
+- A mouse wheel's plain notch over a scroller that moves only sideways
+  scrolls it, while it has room, where it went to the page around it;
+  and a notch with Shift held scrolls sideways off macOS, where it
+  scrolled down (backlog F202, ADR 0050).
 - A function key pressed in a focused editor goes to the `onKey` sink
   above it, where the editor kept it and did nothing with it.
 - Under custom chrome a press on the drawn menu bar's empty room starts
@@ -73,7 +77,11 @@ into a 4 px zone. The devtools' three
 breaks are the panel's: a test that drove it and read a selection's
 outline, counted `Ctrl+Shift+N` presses to a declared tab, or walked
 the tree's rows by arrow and expected no selection, is the one that
-notices; an app's own tree, keys and events are as they were.
+notices; an app's own tree, keys and events are as they were. A
+mouse wheel's notch over a row that scrolls only sideways, or turned
+with Shift held, moves that row now: a test that sent one and read the
+page's offset reads the row's, and a Windows or Linux user scrolls
+what was out of reach before.
 The rest of this release breaks nothing: a fix to text
 at a size no screen shows, a declaration file for Teal beside the one
 for lua-language-server, and a new runner beside the window's.
@@ -269,6 +277,20 @@ for lua-language-server, and a new runner beside the window's.
   frames alone; **whole recording** goes back.
 
   *What you can delete:* nothing — a look, not a door.
+- **A mouse wheel reaches what scrolls sideways** (backlog F202,
+  [ADR 0050's amendment](docs/adr/0050-a-wheel-notch-glides.md#amended-2026-10-25-a-wheel-reaches-what-scrolls-sideways)).
+  On Windows and Linux a mouse could not scroll a row that moves only
+  sideways — the devtools' Perf chart among them — since a wheel turns
+  only down and up. A plain notch over such a row now moves it, down
+  toward its end, and at its end the next turn goes on to the page
+  around it. Shift turns any notch sideways, as a browser's wheel does;
+  macOS did both of these already for Shift, and still does. A handler
+  whose `scroll_mods` names Shift hears the turn as it came, and a
+  trackpad's swipe goes the way it is swiped.
+
+  *What you can delete:* a Shift+wheel swap an app did in its own
+  `on_scroll`, and a horizontal list's handler that turned `dy` into its
+  own offset.
 
 ### Fixed
 

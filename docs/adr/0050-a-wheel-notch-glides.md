@@ -364,3 +364,40 @@ Tests: `wheel_glide.rs` (`presets_go_by_name`,
 Node's wheel test, and kui-native's `kui_wheel_reads_a_preset_or_numbers`.
 Not yet felt by hand: which preset the user keeps, and whether
 `standard` should stay the default, is theirs to say after trying them.
+
+## Amended 2026-10-25: a wheel reaches what scrolls sideways
+
+Raised by the user on Windows with a mouse: the devtools' Perf chart,
+a row that scrolls only sideways, could not be scrolled at all (backlog
+F202). A notch's turn is all `y`, and `y` went only to a scroller that
+moves along `y`: the chart was passed over for the tab's page. macOS
+turns Shift+wheel into `x` before kui hears it; Windows and Linux leave
+that to the app, and kui did nothing with it.
+
+- **Shift turns a notch sideways.** A `Wheel` whose turn is all `y`,
+  in a gesture begun with Shift held, is routed as the same turn along
+  `x`, as a browser's wheel is off macOS. On macOS the turn arrives
+  sideways already and nothing changes. A handler around the pointer
+  whose `scroll_mods` names Shift hears the turn as it came, down: it
+  asked for that gesture (backlog F122).
+- **A plain notch moves a scroller that goes only sideways.** Walking
+  out from the pointer for the `y` target, a container that scrolls
+  along `x` and not `y`, and still has room the way the turn goes, takes
+  it, to move along `x`: down is toward its end, up toward its start, as
+  a turned trackpad's swipe would. At its end it passes, and the walk
+  goes on to the page around it, as a list at its end hands a gesture
+  on. The latch keeps the pick for the rest of the turn, so the page
+  moves on a new turn, not mid-spin. Only notches: a trackpad's pixels
+  carry an `x` of their own, and a handler is never asked, since the
+  core cannot know its room.
+- The trade-off taken with the user: with the pointer over such a
+  scroller, a page's scroll stops there first, until it reaches its end
+  — what an editor's tab bar does, not what a browser's carousel does.
+  Shift alone was the other choice.
+
+Tests: `wheel_sideways.rs` (a plain notch moves the strip and the page
+stays; at its end a new turn goes on to the page and a turn under way
+keeps the strip; Shift turns a notch sideways over a box that scrolls
+both ways and moves nothing over a page that goes only down; a handler
+naming Shift hears the turn unturned; a trackpad's pixels go to the
+page). Not yet felt by hand on Windows.
