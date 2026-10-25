@@ -185,7 +185,7 @@ EDIT_WRAP :: 4
 EDIT_KEEP_TAB :: 8
 EDIT_SECURE :: 16
 EDIT_VALUE :: 32
-EDIT_TAB_INSERTS :: 64
+EDIT_TAB_MOVES_FOCUS :: 64
 
 FLOAT_NONE :: 0
 FLOAT_PARENT :: 1
@@ -1262,6 +1262,7 @@ foreign lib {
 	focus_next :: proc(ctx: ^Ctx, forward: bool) ---
 	focused :: proc(ctx: ^Ctx) -> u64 ---
 	focus_visible :: proc(ctx: ^Ctx) -> bool ---
+	tab_moves_focus :: proc(ctx: ^Ctx) -> bool ---
 	caret_visible :: proc(ctx: ^Ctx) -> bool ---
 	set_caret_visible :: proc(ctx: ^Ctx, visible: bool) ---
 	has_caret :: proc(ctx: ^Ctx) -> bool ---

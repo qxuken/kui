@@ -3681,16 +3681,7 @@ shortcut) does nothing and the menu stays. **Do.** While a core menu is
 open, a press matching an enabled item's accelerator activates that item
 and closes the menu, as a native one does.
 
-### `.` C99 — Tab in a multiline editor: insert, with a way out
-
-Round 5 made Tab leave a multiline editor unless `tab_inserts`. The user
-wants a text area to take Tab, with a way out — the editors' model, not
-the browser textarea's: CodeMirror leaves on Escape then Tab, Monaco and
-CodeMirror toggle "Tab moves focus" with Ctrl+M (Ctrl+Shift+M on macOS),
-which is what WCAG's no-keyboard-trap criterion asks for. **Do.** A
-multiline editor inserts Tab by default; Escape then Tab, and the toggle,
-move focus; a `tab_moves_focus` opt-out (replacing the unreleased
-`tab_inserts`) gives the textarea behaviour.
+- `.` **C99** — [Tab in a multiline editor: insert, with a way out](backlog/closed-2026-09.md#-c99--tab-in-a-multiline-editor-insert-with-a-way-out--done-2026-10-26) — done (2026-10-26) — a multiline editor takes Tab; Escape then Tab, the Ctrl+M (Ctrl+Shift+M on macOS) toggle and Ctrl+Tab leave it; `tab_moves_focus` replaces `tab_inserts`
 
 ### `.` C100 — A view guesses its size, and re-runs for every hover
 
@@ -5655,3 +5646,7 @@ move.
 - `.` **T7** — [A palette of one's own follows nothing, so a skin cannot follow light and dark](backlog/closed-2026-09.md#-t7--a-palette-of-ones-own-follows-nothing-so-a-skin-cannot-follow-light-and-dark--done-2026-10-25) — done (2026-10-25) — `ThemeSource::Pair`, Node `setTheme({ light, dark })`, C `kui_theme_set_pair` + `kui_theme_derive`
 - `.` **T8** — [A design team's token export cannot reach a kui app without copying it by hand](backlog/closed-2026-09.md#-t8--a-design-teams-token-export-cannot-reach-a-kui-app-without-copying-it-by-hand--done-2026-10-25) — done (2026-10-25) — `kui_core::dtcg` + `json`, Node `loadTokens`, Lua `env.load_tokens`, C `kui_tokens_load_dtcg`
 - `.` **V12** — [An SVG file reaches a kui app only as `path` strings converted by hand](backlog/closed-2026-09.md#-v12--an-svg-file-reaches-a-kui-app-only-as-path-strings-converted-by-hand--done-2026-10-25) — done (2026-10-25) — the `svg` element: paths when it can, one shared raster when it cannot (`kui_core::svg`, usvg/resvg 0.46), `<svg>`, Lua `svg {}`, C `kui_svg`, Odin `kui.svg`
+
+**From Kit's sample rounds (2026-10-26)** — C89–C94, C98 and C99, built the same day
+
+- `.` **C99** — [Tab in a multiline editor: insert, with a way out](backlog/closed-2026-09.md#-c99--tab-in-a-multiline-editor-insert-with-a-way-out--done-2026-10-26) — done (2026-10-26) — a multiline editor takes Tab; Escape then Tab, the Ctrl+M (Ctrl+Shift+M on macOS) toggle and Ctrl+Tab leave it; `tab_moves_focus` replaces `tab_inserts`

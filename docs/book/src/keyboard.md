@@ -11,6 +11,11 @@ to the next node in the *ring*: every button, control and editor, in
 tree order. Shift-Tab moves back. Enter or space presses the focused
 button.
 
+A multiline editor keeps Tab for indentation, as a code editor does.
+Escape then Tab moves on from it, and Ctrl+M (Ctrl+Shift+M on macOS)
+turns "Tab moves focus" on for the window; `ui.tab_moves_focus()` reads
+it, for a status label.
+
 You get all of that without writing anything. The stock widgets are in
 the ring. A plain box joins it with `.focusable()`.
 

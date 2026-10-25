@@ -1061,7 +1061,7 @@ export function createEncoder(P) {
         strRef(label);
         strRef(editText(p, 'edit'));
         f[fi++] =
-          (p.multiline ? 1 : 0) | (p.autofocus ? 2 : 0) | (p.keepTab ? 8 : 0) | (p.secure ? 16 : 0) | (p.tabInserts ? 128 : 0) | valueFlags(p);
+          (p.multiline ? 1 : 0) | (p.autofocus ? 2 : 0) | (p.keepTab ? 8 : 0) | (p.secure ? 16 : 0) | (p.tabMovesFocus ? 128 : 0) | valueFlags(p);
         strRef(p.placeholder ?? null);
         props(p, null, false);
         return;

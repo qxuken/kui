@@ -1594,6 +1594,13 @@ impl<'a> Ui<'a> {
         self.core.focus_visible()
     }
 
+    /// Whether the window's "Tab moves focus" toggle is on: a multiline
+    /// editor whose Tab would type walks the ring instead (see
+    /// [`Core::tab_moves_focus`]). What a status label reads.
+    pub fn tab_moves_focus(&self) -> bool {
+        self.core.tab_moves_focus()
+    }
+
     /// The key of the node opened under the key label `label` — in this
     /// frame so far, then in the last finished one. The key label is the
     /// name the view opened the node under (`with_keyed`, a `key` prop),

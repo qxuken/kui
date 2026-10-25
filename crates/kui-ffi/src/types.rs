@@ -2636,10 +2636,12 @@ pub const KUI_EDIT_SECURE: u32 = 1 << 4;
 /// as a splice. Declare `on_change` with it, or the field reverts every
 /// keystroke (`edit-value-without-handler`).
 pub const KUI_EDIT_VALUE: u32 = 1 << 5;
-/// A multiline editor whose Tab types indentation instead of walking the
-/// focus ring (Ctrl+Tab still walks it); without it Tab leaves a multiline
-/// editor as it leaves a field.
-pub const KUI_EDIT_TAB_INSERTS: u32 = 1 << 6;
+/// A multiline editor whose Tab and Shift-Tab walk the focus ring, as a
+/// browser's textarea does; without it a multiline editor's Tab types
+/// indentation and the keyboard leaves by Escape then Tab, the window's
+/// "Tab moves focus" toggle (`kui_tab_moves_focus`), or Ctrl+Tab
+/// (backlog C99).
+pub const KUI_EDIT_TAB_MOVES_FOCUS: u32 = 1 << 6;
 
 /// OR'd into `kui_path`'s and `kui_path_d`'s `fill_rule`: the path turns,
 /// so a `rotate` of 0 is declared and keeps the swept box (ABI 34, backlog

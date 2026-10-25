@@ -211,6 +211,7 @@ pub(crate) enum Read {
     Focus(Option<Key>),
     Focused(Key, bool),
     FocusVisible(bool),
+    TabMovesFocus(bool),
     Caret(bool),
     /// The frame clock: never the same twice.
     Clock,
@@ -338,6 +339,7 @@ fn env_same(a: &EnvFacts, b: &EnvFacts) -> bool {
         && a.focus == b.focus
         && a.focus_visible == b.focus_visible
         && a.region == b.region
+        && a.tab_moves_focus == b.tab_moves_focus
 }
 
 impl Core {
@@ -528,6 +530,7 @@ impl Core {
             Read::Focus(k) => self.focus == *k,
             Read::Focused(k, v) => (self.focus == Some(*k)) == *v,
             Read::FocusVisible(v) => self.focus_visible == *v,
+            Read::TabMovesFocus(v) => self.tab_moves_focus == *v,
             Read::Caret(v) => self.edit.blink_visible() == *v,
             Read::Clock => false,
             Read::Mods(m) => self.interaction.modifiers() == *m,

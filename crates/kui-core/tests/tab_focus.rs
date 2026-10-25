@@ -1,10 +1,13 @@
 //! Tab focus traversal: cycling between edit widgets in tree order,
-//! multiline editors left by Tab unless they declare `tab_inserts`, sink precedence, and the
+//! multiline editors that take Tab with three ways out (backlog C99), sink precedence, and the
 //! ring confined to a modal subtree
 //! (`docs/adr/0003-modal-surfaces.md`).
 
 use kui_core::testing::tab;
-use kui_core::{Align, Core, EditOptions, FloatConfig, InputEvent, Key, NodeSpec, Size, Value};
+use kui_core::{
+    Align, Core, EditOptions, FloatConfig, InputEvent, Key, KeyCode, KeyMods, KeyPress, NodeSpec,
+    Size, Value,
+};
 
 /// Three single-line fields and one multiline, in order.
 fn frame(core: &mut Core, autofocus_first: bool) -> Vec<Key> {
@@ -45,50 +48,182 @@ fn tab_cycles_and_shift_tab_reverses() {
     assert_eq!(core.edit.focused(), Some(keys[3]));
 }
 
-/// A multiline editor is left by Tab and Shift-Tab, as a browser's
-/// textarea is: it kept Tab as indentation, and a text area was a trap
-/// the keyboard could not leave.
-#[test]
-fn tab_leaves_a_multiline_editor() {
-    let mut core = Core::new();
-    let keys = frame(&mut core, false);
-    core.set_focus(Some(keys[3]));
-    tab(&mut core, true);
-    assert_eq!(core.edit.focused(), Some(keys[2]), "shift-tab goes back");
-    tab(&mut core, false);
-    tab(&mut core, false);
-    assert_eq!(core.edit.focused(), Some(keys[0]), "tab goes on, round to the first");
-    assert!(!core.edit_text(keys[3]).unwrap().contains(' '), "nothing typed");
-}
-
-/// `tab_inserts` keeps Tab as indentation in a multiline editor, and Tab
-/// under a modifier still walks the ring: the way out.
-#[test]
-fn tab_inserts_types_indentation_and_ctrl_tab_still_leaves() {
-    let mut core = Core::new();
+/// A field, a multiline editor and a button after it: what the C99 tests
+/// below Tab through. `moves` declares `tab_moves_focus` on the editor.
+fn area_frame(core: &mut Core, moves: bool) -> (Key, Key, Key) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().pad(10.0).gap(8.0));
-    let field = ui.text_edit("a", "a", &EditOptions::default(), NodeSpec::column().grow_width());
-    let code = ui.text_edit(
-        "code",
+    let field = ui.text_edit(
+        "a",
+        "a",
+        &EditOptions::default(),
+        NodeSpec::column().grow_width(),
+    );
+    let area = ui.text_edit(
+        "notes",
         "",
         &EditOptions {
             multiline: true,
-            tab_inserts: true,
+            tab_moves_focus: moves,
             ..Default::default()
         },
         NodeSpec::column().grow_width(),
     );
+    let after = ui.leaf_keyed("after", NodeSpec::row().size(80.0, 20.0).on_click("after"));
     ui.finish();
-    core.set_focus(Some(code));
+    (field, area, after)
+}
+
+fn key(code: KeyCode, mods: KeyMods) -> KeyPress {
+    KeyPress::new(code, mods)
+}
+
+/// A multiline editor takes Tab as indentation by default — the editors'
+/// model, not the textarea's (backlog C99) — and Shift-Tab takes the
+/// indent back from the start of the line.
+#[test]
+fn a_multiline_editor_takes_tab_and_shift_tab_takes_it_back() {
+    let mut core = Core::new();
+    let (_, area, _) = area_frame(&mut core, false);
+    core.set_focus(Some(area));
     tab(&mut core, false);
-    assert_eq!(core.edit.focused(), Some(code), "focus stays");
-    assert_eq!(core.edit_text(code).as_deref(), Some("    "), "tab indented");
+    assert_eq!(core.edit.focused(), Some(area), "focus stays");
+    assert_eq!(
+        core.edit_text(area).as_deref(),
+        Some("    "),
+        "tab indented"
+    );
+    core.handle_input(InputEvent::Text("x".into()));
+    tab(&mut core, true);
+    assert_eq!(core.edit.focused(), Some(area), "shift-tab stays too");
+    assert_eq!(
+        core.edit_text(area).as_deref(),
+        Some("x"),
+        "shift-tab outdented"
+    );
+    tab(&mut core, true);
+    assert_eq!(
+        core.edit_text(area).as_deref(),
+        Some("x"),
+        "nothing left to take"
+    );
+}
+
+/// Escape then Tab moves focus on from the editor (CodeMirror's way out),
+/// and Escape then Shift-Tab back: the Escape keeps the keyboard where it
+/// is and arms the next Tab only.
+#[test]
+fn escape_then_tab_leaves_a_multiline_editor() {
+    let mut core = Core::new();
+    let (field, area, after) = area_frame(&mut core, false);
+    core.set_focus(Some(area));
+    core.press(key(KeyCode::Escape, KeyMods::NONE));
+    assert_eq!(
+        core.focus(),
+        Some(area),
+        "the escape keeps the editor focused"
+    );
+    core.press(key(KeyCode::Tab, KeyMods::NONE));
+    assert_eq!(core.focus(), Some(after), "the armed tab went on");
+    assert_eq!(core.edit_text(area).as_deref(), Some(""), "nothing typed");
+    core.set_focus(Some(area));
+    core.press(key(KeyCode::Escape, KeyMods::NONE));
+    core.handle_input(InputEvent::KeyDown(key(
+        KeyCode::Shift,
+        KeyMods::NONE.with_shift(),
+    )));
+    core.press(key(KeyCode::Tab, KeyMods::NONE.with_shift()));
+    assert_eq!(core.focus(), Some(field), "shift held between them, back");
+}
+
+/// The Escape arms the next Tab only: any other key in between disarms
+/// it, so the Tab types again; and a second Escape lets go, as Escape
+/// does in a field.
+#[test]
+fn any_other_key_disarms_the_escape_and_a_second_escape_lets_go() {
+    let mut core = Core::new();
+    let (_, area, _) = area_frame(&mut core, false);
+    core.set_focus(Some(area));
+    core.press(key(KeyCode::Escape, KeyMods::NONE));
+    core.press(key(KeyCode::Char('x'), KeyMods::NONE).with_text("x"));
+    core.press(key(KeyCode::Tab, KeyMods::NONE));
+    assert_eq!(core.focus(), Some(area));
+    assert_eq!(
+        core.edit_text(area).as_deref(),
+        Some("x    "),
+        "the tab typed"
+    );
+    core.press(key(KeyCode::Escape, KeyMods::NONE));
+    core.press(key(KeyCode::Left, KeyMods::NONE));
+    core.press(key(KeyCode::Tab, KeyMods::NONE));
+    assert_eq!(core.focus(), Some(area), "an arrow disarms too");
+    core.press(key(KeyCode::Escape, KeyMods::NONE));
+    core.press(key(KeyCode::Escape, KeyMods::NONE));
+    assert_eq!(core.focus(), None, "the second escape blurs");
+}
+
+/// Ctrl+M (Ctrl+Shift+M on macOS) in such an editor flips the window's
+/// "Tab moves focus" toggle, which the app reads; while it is on, Tab
+/// walks the ring from every multiline editor, and the chord reaches no
+/// sink.
+#[test]
+fn the_toggle_makes_tab_move_focus_and_an_app_reads_it() {
+    let mut core = Core::new();
+    let (_, area, after) = area_frame(&mut core, false);
+    let chord = if cfg!(target_os = "macos") {
+        KeyMods::NONE.with_ctrl().with_shift()
+    } else {
+        KeyMods::NONE.with_ctrl()
+    };
+    let m = if cfg!(target_os = "macos") { 'M' } else { 'm' };
+    assert!(!core.tab_moves_focus());
+    core.set_focus(Some(area));
+    let out = core.press(key(KeyCode::Char(m), chord).with_physical(KeyCode::Char('m')));
+    assert!(out.is_empty(), "nobody hears the chord: {out:?}");
+    assert!(core.tab_moves_focus(), "toggled on");
+    assert!(core.animating(), "a status label is owed a frame");
+    core.press(key(KeyCode::Tab, KeyMods::NONE));
+    assert_eq!(core.focus(), Some(after), "tab moves focus while it is on");
+    // Off a multiline editor the chord is whoever's it was: no toggle.
+    core.press(key(KeyCode::Char(m), chord).with_physical(KeyCode::Char('m')));
+    assert!(core.tab_moves_focus(), "not toggled from a button");
+    core.set_tab_moves_focus(false);
+    core.set_focus(Some(area));
+    tab(&mut core, false);
+    assert_eq!(core.focus(), Some(area), "off again, tab types");
+}
+
+/// `tab_moves_focus` gives the textarea's behaviour: Tab and Shift-Tab
+/// leave the editor as they leave a field, and Escape lets go at once.
+#[test]
+fn tab_moves_focus_leaves_as_a_field_does() {
+    let mut core = Core::new();
+    let (field, area, after) = area_frame(&mut core, true);
+    core.set_focus(Some(area));
+    tab(&mut core, false);
+    assert_eq!(core.focus(), Some(after));
+    core.set_focus(Some(area));
+    tab(&mut core, true);
+    assert_eq!(core.focus(), Some(field));
+    assert_eq!(core.edit_text(area).as_deref(), Some(""), "nothing typed");
+    core.set_focus(Some(area));
+    core.press(key(KeyCode::Escape, KeyMods::NONE));
+    assert_eq!(core.focus(), None, "escape blurs it at once");
+}
+
+/// Tab under a modifier walks the ring from any multiline editor: the
+/// way out a code editor always keeps.
+#[test]
+fn ctrl_tab_still_leaves_a_multiline_editor() {
+    let mut core = Core::new();
+    let (_, area, after) = area_frame(&mut core, false);
+    core.set_focus(Some(area));
     core.handle_input(InputEvent::Key(
         kui_core::EditKey::Tab,
         kui_core::Mods::NONE.with_doc(),
     ));
-    assert_eq!(core.edit.focused(), Some(field), "ctrl-tab walks the ring");
+    assert_eq!(core.edit.focused(), None);
+    assert_eq!(core.focus(), Some(after), "ctrl-tab walks the ring");
 }
 
 #[test]

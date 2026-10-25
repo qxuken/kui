@@ -145,6 +145,12 @@ was the first bare bump to break an app in five releases).
   slide — is followed at once, and `slide` on a node that does not move
   within its parent (a wrapper's child, where the wrapper is reordered)
   no longer animates.
+- Escape in a multiline editor whose Tab types keeps the keyboard there
+  and arms the next Tab to move focus on (backlog C99), where it blurred
+  the editor; a second Escape blurs it as before. Shift-Tab there takes an
+  indent back from the start of the line, where it typed four spaces.
+  A multiline editor declared `tab_moves_focus` (or a field) still blurs
+  on the first Escape.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -1032,12 +1038,25 @@ for lua-language-server, and a new runner beside the window's.
 - A composite is entered on its `checked` item after a `selected` one
   (ADR 0007 amended): a radio group and a segmented control were entered
   on their first item whichever was chosen.
-- Tab and Shift-Tab leave a multiline editor as they leave a field, as a
-  browser's textarea does; the keyboard could not leave a text area. An
-  editor declared `tab_inserts` (Lua `tab_inserts`, JSX `tabInserts`, C
-  `KUI_EDIT_TAB_INSERTS`, Odin `EDIT_TAB_INSERTS`) keeps Tab as
-  indentation, and Tab under Ctrl, Alt or the primary still walks the
-  ring from it. `keep_tab` now holds for a multiline editor too.
+- The keyboard can leave a multiline editor (backlog C99, which replaced
+  this round's first answer, `tab_inserts`, before it shipped): the
+  editor still takes Tab as indentation, the editors' model rather than
+  the browser textarea's, and gives three ways out, as WCAG's
+  no-keyboard-trap criterion asks. Escape then Tab moves focus on
+  (CodeMirror's; the Escape arms the next Tab only, any other key disarms
+  it, and Shift-Tab after it goes back); Ctrl+M — Ctrl+Shift+M on macOS,
+  as Monaco binds it — flips the window's "Tab moves focus" toggle, under
+  which every such editor walks the ring (`Core::tab_moves_focus` /
+  `set_tab_moves_focus`, `Ui::tab_moves_focus`, Lua
+  `env.tab_moves_focus`, Node `tabMovesFocus()`, C `kui_tab_moves_focus`,
+  Odin `tab_moves_focus`, for a status label); and Tab under Ctrl, Alt or
+  the primary walks it always. Shift-Tab takes up to four spaces (or a
+  tab) back from the start of the caret's line. An editor declared
+  `tab_moves_focus` (JSX `tabMovesFocus`, C `KUI_EDIT_TAB_MOVES_FOCUS`,
+  Odin `EDIT_TAB_MOVES_FOCUS`) is left by Tab and Shift-Tab as a field
+  is, as a browser's textarea is. `keep_tab` now holds for a multiline
+  editor too. While the devtools are open their Ctrl+Shift+M (the menus
+  toggle) comes first.
 - `key_focus` on an editor takes focus as the editor first shows, in Lua
   and Node: the editor path does not open through `open_from`, where the
   row is honoured, and dropped it (Kit's `autofocus` never took the

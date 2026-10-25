@@ -403,6 +403,14 @@ pub const DOORS: &[Door] = &[
         doc: "Whether focus came from the keyboard and the ring should show.",
     },
     Door {
+        rust: "Ui::tab_moves_focus",
+        c: Is("kui_tab_moves_focus"),
+        odin: Is("tab_moves_focus"),
+        node: Is("tabMovesFocus"),
+        lua: As("`env.tab_moves_focus`, a reading"),
+        doc: "Whether the window's \"Tab moves focus\" toggle is on (backlog C99): a multiline editor whose Tab would type walks the ring instead. Ctrl+M flips it in such an editor (Ctrl+Shift+M on macOS); what a status label reads.",
+    },
+    Door {
         rust: "Ui::key_of",
         c: Is("kui_key_of"),
         odin: Is("key_of"),

@@ -492,6 +492,7 @@ static int surface(void) {
     check(kui_focused(ui) != first, "Tab moves on");
     kui_focus_next(ui, false);
     check(kui_focused(ui) == first, "Shift-Tab comes back");
+    check(!kui_tab_moves_focus(ui), "the Tab toggle starts off");
 
     /* The key sink is focusable and takes focus like anything else, and a
      * host drives its raw keys directly: kui_input_key carries the editing

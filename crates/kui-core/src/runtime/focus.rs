@@ -862,6 +862,9 @@ impl Core {
         // lands there.
         if key != self.focus {
             self.region_held = false;
+            // An Escape armed the editor it was pressed in, and only that
+            // one (backlog C99).
+            self.tab_armed = None;
         }
         if self.tree.any_region
             && let Some(k) = key
@@ -875,6 +878,45 @@ impl Core {
         }
         self.focus = key;
         self.edit.set_focus(edit_key);
+    }
+
+    /// Whether the window's "Tab moves focus" toggle is on (backlog C99):
+    /// a multiline editor whose Tab would type indentation walks the focus
+    /// ring instead, as one declared `tab_moves_focus` does. Ctrl+M in
+    /// such an editor flips it — Ctrl+Shift+M on macOS, where Monaco binds
+    /// it, since Ctrl+M is Return in a Mac's text system — and an app reads
+    /// it here to show a status label ("Tab moves focus"), as an editor
+    /// does. Off when a window opens; it lasts as long as the window.
+    pub fn tab_moves_focus(&self) -> bool {
+        self.note_read(|| replay::Read::TabMovesFocus(self.tab_moves_focus));
+        self.tab_moves_focus
+    }
+
+    /// Sets the window's "Tab moves focus" toggle, as the chord flips it —
+    /// for an app that offers it as a menu item or a setting.
+    pub fn set_tab_moves_focus(&mut self, on: bool) {
+        if self.tab_moves_focus != on {
+            self.tab_moves_focus = on;
+            self.owe_frame("set_tab_moves_focus");
+        }
+    }
+
+    /// Whether the press `kp` is the "Tab moves focus" chord where it
+    /// means something: Ctrl+M (Ctrl+Shift+M on macOS) with a multiline
+    /// editor focused whose Tab types. Anywhere else the chord is
+    /// whoever's it always was — a terminal's Return, an app's shortcut.
+    pub(crate) fn toggles_tab_focus(&self, kp: &crate::input::KeyPress) -> bool {
+        let m = kp.mods;
+        let shift = cfg!(target_os = "macos");
+        m.ctrl
+            && !m.alt
+            && !m.super_key
+            && m.shift == shift
+            && matches!(kp.code, crate::input::KeyCode::Char(c) if c.eq_ignore_ascii_case(&'m'))
+            && self
+                .edit
+                .focused()
+                .is_some_and(|k| self.edit.inserts_tab(k))
     }
 
     /// Asks for a Tab step (`forward`) / Shift-Tab step at the end of the

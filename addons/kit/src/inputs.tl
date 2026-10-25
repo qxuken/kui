@@ -396,7 +396,9 @@ function M.text_area(c: Ctx, p: P): kui.Node
       key = "edit",
       value = value,
       multiline = true,
-      tab_inserts = p.tab_inserts == true or nil,
+      -- The core's multiline editor takes Tab by default now (backlog
+      -- C99); Kit's prop keeps its meaning until Kit adopts the default.
+      tab_moves_focus = p.tab_inserts ~= true or nil,
       width = "grow",
       height = grow and "grow" or nil,
       min_height = rows * line_h + 2 * pad,

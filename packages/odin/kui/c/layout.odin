@@ -678,7 +678,7 @@ package kui_c
 #assert(EDIT_KEEP_TAB == 8)
 #assert(EDIT_SECURE == 16)
 #assert(EDIT_VALUE == 32)
-#assert(EDIT_TAB_INSERTS == 64)
+#assert(EDIT_TAB_MOVES_FOCUS == 64)
 #assert(FLOAT_NONE == 0)
 #assert(FLOAT_PARENT == 1)
 #assert(FLOAT_VIEWPORT == 2)

@@ -857,11 +857,13 @@ export interface EditProps extends TextProps, Omit<GeneratedSpecProps, 'onChange
    *  ring from it, and the press goes to the `onKey` sink above it — so a
    *  list built from fields indents on Tab. */
   keepTab?: boolean;
-  /** A `multiline` editor's Tab types indentation (four spaces) instead of
-   *  leaving it, as a code editor's does; Ctrl+Tab (or Alt, or the
-   *  platform primary) still walks the focus ring. Without it Tab and
-   *  Shift-Tab leave a multiline editor as they leave a field. */
-  tabInserts?: boolean;
+  /** A `multiline` editor's Tab and Shift-Tab walk the focus ring, as a
+   *  browser's textarea does. Without it a multiline editor takes Tab as a
+   *  code editor does — Tab types four spaces, Shift-Tab takes them back —
+   *  and the keyboard leaves it by Escape then Tab, by the window's "Tab
+   *  moves focus" toggle (Ctrl+M, Ctrl+Shift+M on macOS; `tabMovesFocus()`
+   *  reads it), or by Tab under Ctrl, Alt or the platform primary. */
+  tabMovesFocus?: boolean;
   /** What the editor shows, faint, while it is empty: never part of its
    *  text, and its accessible description when it declares none. */
   placeholder?: string;

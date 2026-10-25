@@ -741,6 +741,16 @@ pub struct Core {
     /// fresh search, which is the useful half of type-ahead.
     type_ahead: String,
     type_ahead_at: Option<f64>,
+    /// The window's "Tab moves focus" toggle (backlog C99): while on, a
+    /// multiline editor whose Tab would type walks the focus ring instead,
+    /// as one declared `tab_moves_focus` does. Ctrl+M (Ctrl+Shift+M on
+    /// macOS) in such an editor flips it, Monaco's binding; it lasts as
+    /// long as the window, and an app reads it to show a status label.
+    tab_moves_focus: bool,
+    /// The editor an Escape armed (backlog C99): its next Tab walks the
+    /// ring rather than typing, CodeMirror's escape hatch. Any other key,
+    /// and focus moving, disarms it.
+    tab_armed: Option<Key>,
     /// Reused by the composite walks (the ring, arrow motion), so a frame
     /// with composites in it pays one allocation rather than one each.
     items_scratch: Vec<usize>,
@@ -908,6 +918,7 @@ impl Core {
             focus: self.focus(),
             focus_visible: self.focus_visible(),
             region: self.region(),
+            tab_moves_focus: self.tab_moves_focus,
             // Read raw, not through the noting doors: the reading carries
             // both for a binding to hand out, and a kept fill compares the
             // reading less these two (`replay::env_same`); a view that
@@ -1411,6 +1422,8 @@ impl Core {
             modal_focus: Vec::new(),
             type_ahead: String::new(),
             type_ahead_at: None,
+            tab_moves_focus: false,
+            tab_armed: None,
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),
             ghost_clip: Vec::new(),

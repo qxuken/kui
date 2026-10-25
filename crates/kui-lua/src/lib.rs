@@ -160,7 +160,8 @@
 //!   `viewport_h`, `now` (the frame clock in seconds). A fact the host
 //!   cannot tell is left out rather than nil.
 //! - Focus: `focused` (the window has the keyboard), `focus` (the focused
-//!   node's key, nil for none), `focus_visible`, `caret_visible`, `region`.
+//!   node's key, nil for none), `focus_visible`, `caret_visible`, `region`,
+//!   `tab_moves_focus` (the window's "Tab moves focus" toggle, backlog C99).
 //! - Window: `window.id`, `window.fullscreen`, `window.maximized`,
 //!   `window.always_on_top`, `window.custom_chrome`, `window.controls_w` /
 //!   `window.controls_h` (the keep-out extent of OS-drawn controls).
@@ -3416,7 +3417,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 multiline: t.get::<Option<bool>>("multiline")?.unwrap_or(false),
                 autofocus: t.get::<Option<bool>>("autofocus")?.unwrap_or(false),
                 keep_tab: t.get::<Option<bool>>("keep_tab")?.unwrap_or(false),
-                tab_inserts: t.get::<Option<bool>>("tab_inserts")?.unwrap_or(false),
+                tab_moves_focus: t.get::<Option<bool>>("tab_moves_focus")?.unwrap_or(false),
                 secure: t.get::<Option<bool>>("secure")?.unwrap_or(false),
                 placeholder: t.get::<Option<String>>("placeholder")?,
                 wrap: p.wrap,
@@ -6353,19 +6354,19 @@ mod tests {
         assert_eq!(core.focus(), core.edit.focused());
     }
 
-    /// `tab_inserts` lowers: a multiline editor's Tab types; without it Tab
-    /// leaves the editor for the next stop.
+    /// `tab_moves_focus` lowers: a multiline editor's Tab leaves it for the
+    /// next stop; without it Tab types (backlog C99).
     #[test]
-    fn tab_inserts_keeps_a_documents_tab_and_without_it_tab_leaves() {
-        for inserts in [true, false] {
+    fn tab_moves_focus_leaves_a_document_and_without_it_tab_types() {
+        for moves in [false, true] {
             let mut ext = LuaExtension::from_source(
-                "tab_inserts",
+                "tab_moves_focus",
                 &format!(
                     r#"
                     function view(env)
                       return column {{
                         edit {{ key = "doc", initial = "", multiline = true, autofocus = true,
-                                tab_inserts = {inserts}, width = 200 }},
+                                tab_moves_focus = {moves}, width = 200 }},
                         edit {{ key = "next", initial = "", width = 200 }},
                       }}
                     end
@@ -6378,7 +6379,7 @@ mod tests {
             frame(&mut core, &mut ext);
             let doc = core.focus();
             core.handle_input(InputEvent::Key(kui_core::EditKey::Tab, Default::default()));
-            if inserts {
+            if !moves {
                 assert_eq!(core.focus(), doc, "focus stays");
                 assert_eq!(core.edit_text(doc.unwrap()).as_deref(), Some("    "));
             } else {

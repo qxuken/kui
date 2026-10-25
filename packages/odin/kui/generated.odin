@@ -251,7 +251,7 @@ Edit_Flag :: enum u32 {
 	Keep_Tab = 3, // KUI_EDIT_KEEP_TAB
 	Secure = 4, // KUI_EDIT_SECURE
 	Value = 5, // KUI_EDIT_VALUE
-	Tab_Inserts = 6, // KUI_EDIT_TAB_INSERTS
+	Tab_Moves_Focus = 6, // KUI_EDIT_TAB_MOVES_FOCUS
 }
 Edit_Flags :: bit_set[Edit_Flag;u32]
 
@@ -2859,6 +2859,13 @@ focused :: proc(ui: ^Ui) -> u64 {
 // Rust: Ui::focus_visible.
 focus_visible :: proc(ui: ^Ui) -> bool {
 	return c.focus_visible(ui)
+}
+
+// Whether the window's "Tab moves focus" toggle is on (backlog C99): a
+// multiline editor whose Tab would type walks the ring instead.
+// Rust: Ui::tab_moves_focus.
+tab_moves_focus :: proc(ui: ^Ui) -> bool {
+	return c.tab_moves_focus(ui)
 }
 
 // The blink phase a custom editor draws its caret on.

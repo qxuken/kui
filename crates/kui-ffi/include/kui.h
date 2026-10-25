@@ -710,10 +710,12 @@ enum {
  * keyboard - Enter submits, no newline is admitted, the caret opens at
  * the end. A MULTILINE editor wraps either way. KEEP_TAB makes an editor's
  * Tab the app's: the press goes to the on_key sink above it instead of
- * walking the focus ring. Tab leaves a MULTILINE editor as it leaves a
- * field, as a browser's textarea does, unless it declares TAB_INSERTS:
- * then its plain Tab types indentation and Tab under Ctrl, Alt or the
- * platform primary still walks the ring.
+ * walking the focus ring. A MULTILINE editor takes Tab as indentation
+ * (Shift-Tab takes it back) and is left by Escape then Tab, by the
+ * window's "Tab moves focus" toggle (Ctrl+M, Ctrl+Shift+M on macOS;
+ * kui_tab_moves_focus reads it), or by Tab under Ctrl, Alt or the
+ * platform primary; one that declares TAB_MOVES_FOCUS is left by Tab and
+ * Shift-Tab as a field is, as a browser's textarea is.
  * SECURE is a password field: drawn as a bullet per grapheme, no copy or
  * cut, no composition, no undo history, read as KUI_ROLE_PASSWORD_INPUT
  * with the bullets as its value, and kui_secure_input_get and
@@ -738,7 +740,7 @@ enum {
      * Declare on_change with it, or the field reverts every keystroke
      * (edit-value-without-handler). ABI 33. */
     KUI_EDIT_VALUE = 1u << 5,
-    KUI_EDIT_TAB_INSERTS = 1u << 6
+    KUI_EDIT_TAB_MOVES_FOCUS = 1u << 6
 };
 /* Float modes (KuiSpec.float_mode). For the named presets the other
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */
@@ -3457,6 +3459,10 @@ void kui_focus_next(KuiCtx *ctx, bool forward);
  * there by keyboard or assistive technology, not a click). */
 uint64_t kui_focused(KuiCtx *ctx);
 bool kui_focus_visible(KuiCtx *ctx);
+/* Whether the window's "Tab moves focus" toggle is on: a MULTILINE editor
+ * whose Tab would type walks the focus ring instead. Ctrl+M flips it in
+ * such an editor (Ctrl+Shift+M on macOS); what a status label reads. */
+bool kui_tab_moves_focus(KuiCtx *ctx);
 /* The caret's blink. kui_caret_visible is the phase - true
  * draws it - which a custom editor reads in its view to skip its caret
  * node on the off phase, keeping the `caret` row on its KUI_ROLE_LINE

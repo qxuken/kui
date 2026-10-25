@@ -78,14 +78,21 @@ pub struct EditOptions {
     /// With no sink above, Tab does nothing here. A `multiline` editor
     /// takes it too: its Tab then goes to the sink as well.
     pub keep_tab: bool,
-    /// A `multiline` editor whose Tab types indentation (four spaces)
-    /// rather than walking the focus ring — a code editor's. Without it
-    /// Tab and Shift-Tab leave a multiline editor as they leave a field,
-    /// as a browser's textarea does: a text area was a trap the keyboard
-    /// could not leave. With it, Tab held with Ctrl, Alt or ⌘ still walks
-    /// the ring, so the keyboard always has a way out. A single-line
-    /// field ignores it.
-    pub tab_inserts: bool,
+    /// A `multiline` editor whose Tab and Shift-Tab walk the focus ring,
+    /// as a browser's textarea does, instead of typing indentation.
+    ///
+    /// Without it a multiline editor takes Tab — the editors' model, not
+    /// the textarea's (backlog C99): Tab types four spaces and Shift-Tab
+    /// takes up to four back from the start of the caret's line, and the
+    /// keyboard still has three ways out, which is what WCAG's
+    /// no-keyboard-trap criterion asks for. Escape then Tab moves focus
+    /// (CodeMirror's escape hatch: the Escape arms the next Tab only); the
+    /// window's "Tab moves focus" toggle, Ctrl+M or Ctrl+Shift+M on macOS
+    /// as Monaco binds it, makes every such editor walk the ring
+    /// ([`crate::Core::tab_moves_focus`]); and Tab held with Ctrl, Alt or
+    /// ⌘ walks it always. A single-line field ignores this: its Tab walks
+    /// the ring either way.
+    pub tab_moves_focus: bool,
     /// What an empty editor shows where its text would be, in the theme's
     /// `faint` (backlog F149): never part of the value, gone with the
     /// first character typed or composed, and read by assistive
@@ -201,8 +208,8 @@ pub(crate) struct EditState {
     pub(crate) multiline: bool,
     /// `EditOptions::keep_tab`, as last declared.
     keep_tab: bool,
-    /// `EditOptions::tab_inserts`, as last declared.
-    tab_inserts: bool,
+    /// `EditOptions::tab_moves_focus`, as last declared.
+    tab_moves_focus: bool,
     /// A secure editor's text (`EditOptions::secure`), whose buffer holds
     /// a [`SECURE_BULLET`] per grapheme of it. `None` for any other: the
     /// buffer is the text.
@@ -340,6 +347,9 @@ fn wipe(s: &mut String) {
 }
 
 const UNDO_CAP: usize = 1000;
+/// What Tab types in a multiline editor whose Tab is its own, and the
+/// most Shift-Tab takes back from the start of a line.
+const TAB_INDENT: &str = "    ";
 /// Max bytes one coalesced op absorbs before a new unit starts.
 const COALESCE_MAX: usize = 64;
 
@@ -484,6 +494,59 @@ impl EditState {
     /// Caret motion, clicks, blur: the next edit starts a new undo unit.
     fn break_coalesce(&mut self) {
         self.coalesce = None;
+    }
+
+    /// Whether this editor's Tab types (`EditOptions::tab_moves_focus`):
+    /// multiline, and neither walking the ring by declaration nor handing
+    /// Tab to the sink above (`keep_tab`).
+    fn types_tab(&self) -> bool {
+        self.multiline && !self.tab_moves_focus && !self.keep_tab
+    }
+
+    /// Shift-Tab's half of indentation: takes up to one indent — four
+    /// spaces, or one tab character — from the start of the caret's line,
+    /// as one recorded op, the caret keeping its place in the text.
+    /// False when the line starts with neither.
+    fn outdent_recorded(&mut self) -> bool {
+        if self.secret.is_some() {
+            return false;
+        }
+        let cursor = self.editor.cursor();
+        let deleted = self.editor.with_buffer(|b| {
+            let Some(line) = b.lines.get(cursor.line) else {
+                return String::new();
+            };
+            let t = line.text();
+            let lead = if t.starts_with('\t') {
+                1
+            } else {
+                t.bytes()
+                    .take(TAB_INDENT.len())
+                    .take_while(|&c| c == b' ')
+                    .count()
+            };
+            t[..lead].to_string()
+        });
+        if deleted.is_empty() {
+            return false;
+        }
+        let at = Cursor::new(cursor.line, 0);
+        self.splice(at, &deleted, "");
+        let after = Cursor::new(cursor.line, cursor.index.saturating_sub(deleted.len()));
+        self.editor.set_cursor(after);
+        self.break_coalesce();
+        self.record(
+            EditOp {
+                at,
+                deleted,
+                inserted: String::new(),
+                cursor_before: cursor,
+                cursor_after: after,
+                joins: false,
+            },
+            None,
+        );
+        true
     }
 
     /// Replaces `[at .. at+remove]` with `insert`, no recording — the raw
@@ -1239,7 +1302,7 @@ impl EditStore {
                 accent: opts.accent.unwrap_or(crate::select::TINT),
                 multiline,
                 keep_tab: opts.keep_tab,
-                tab_inserts: opts.tab_inserts,
+                tab_moves_focus: opts.tab_moves_focus,
                 was_secure: secret.is_some(),
                 secret,
                 placeholder: None,
@@ -1267,7 +1330,7 @@ impl EditStore {
         state.origin = origin;
         state.multiline = multiline;
         state.keep_tab = opts.keep_tab;
-        state.tab_inserts = opts.tab_inserts;
+        state.tab_moves_focus = opts.tab_moves_focus;
         // Masked or shown again: a "show password" toggle on the same
         // editor, the caret on the same grapheme.
         if opts.secure != state.secret.is_some() {
@@ -1880,10 +1943,18 @@ impl EditStore {
                     submit = true;
                 }
             }
+            // Only an editor whose Tab is its own types with one (the core
+            // walked the ring for the rest before it got here): Tab
+            // indents, and Shift-Tab takes an indent back rather than
+            // typing one.
             EditKey::Tab => {
-                if s.multiline && s.tab_inserts {
-                    s.insert_recorded("    ");
-                    changed = true;
+                if s.types_tab() {
+                    if mods.shift {
+                        changed |= s.outdent_recorded();
+                    } else {
+                        s.insert_recorded(TAB_INDENT);
+                        changed = true;
+                    }
                 }
             }
             EditKey::Undo => changed |= s.undo_one(),
@@ -2094,12 +2165,13 @@ impl EditStore {
         self.states.get(&key).is_some_and(|s| s.keep_tab)
     }
 
-    /// Whether Tab in `key` types indentation: a multiline editor
-    /// declared with `tab_inserts`.
+    /// Whether Tab in `key` types indentation by its declaration: a
+    /// multiline editor that declares neither `tab_moves_focus` nor
+    /// `keep_tab`. The core still walks the ring from one when the
+    /// keyboard asks for a way out — an armed Escape, the window's
+    /// toggle, a modifier (`Core::route_input`).
     pub fn inserts_tab(&self, key: Key) -> bool {
-        self.states
-            .get(&key)
-            .is_some_and(|s| s.multiline && s.tab_inserts)
+        self.states.get(&key).is_some_and(EditState::types_tab)
     }
 
     /// Whether `key` lays its text out to its box's width: a document, or

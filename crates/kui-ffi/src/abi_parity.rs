@@ -453,7 +453,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_EDIT_KEEP_TAB,
             KUI_EDIT_SECURE,
             KUI_EDIT_VALUE,
-            KUI_EDIT_TAB_INSERTS,
+            KUI_EDIT_TAB_MOVES_FOCUS,
             KUI_TURNED,
             KUI_MOD_SHIFT,
             KUI_MOD_WORD,

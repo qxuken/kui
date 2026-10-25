@@ -408,6 +408,8 @@ impl Core {
                 self.route_scroll(delta, begins, Some(whole), &mut out)
             }
             InputEvent::Text(s) => {
+                // Typing is another key: an Escape's arming is spent.
+                self.tab_armed = None;
                 if let Some(key) = self.edit.focused() {
                     if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
                         self.push_edit_event(key, EventKind::Change, &mut out);
@@ -464,6 +466,7 @@ impl Core {
                 // rule says whether this *is* the answer: a `Paste`, or any
                 // commit while an ask is out (backlog DX14).
                 let pasted = std::mem::replace(&mut self.awaiting_paste, false) || paste;
+                self.tab_armed = None;
                 if let Some(key) = self.edit.focused() {
                     if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
                         self.push_edit_event(key, EventKind::Change, &mut out);
@@ -507,6 +510,10 @@ impl Core {
                 }
             }
             InputEvent::Key(ek, mods) => {
+                // An Escape arms the next Tab only (backlog C99): whatever
+                // this key is, the arming is spent on it — the Tab it was
+                // for, or any other key, which disarms it.
+                let armed = self.tab_armed.take();
                 // Inside one of the core's menus a submenu comes first: the
                 // arrows open and close one, and Escape closes the innermost
                 // before it would close the menu (backlog F128).
@@ -526,17 +533,21 @@ impl Core {
                 // key sink holds focus: a sink is an app that owns its
                 // keyboard, Tab included (it hands focus on with
                 // `focus_next`). With nothing focused Tab enters the ring.
-                // An editor walks it too, a multiline one included, as a
-                // browser's textarea does — but for one declared
-                // `tab_inserts`, whose plain Tab types indentation (with a
-                // modifier held it still walks, a way out), and one
-                // declared `keep_tab`, whose Tab goes to the sink above it
-                // as a press (backlog F146).
+                // A single-line editor walks it too, and so does a
+                // multiline one declared `tab_moves_focus`, as a browser's
+                // textarea does. Any other multiline editor takes Tab as
+                // indentation — the editors' model (backlog C99) — and the
+                // keyboard still has its ways out: an Escape just before
+                // (CodeMirror's), the window's "Tab moves focus" toggle
+                // (Monaco's), or a modifier held. One declared `keep_tab`
+                // hands Tab to the sink above it as a press (backlog F146).
                 let sink = self.focused_sink();
                 let traverse = ek == EditKey::Tab
                     && match self.edit.focused() {
                         Some(k) if self.edit.keeps_tab(k) => false,
-                        Some(k) if self.edit.inserts_tab(k) => mods.word || mods.doc,
+                        Some(k) if self.edit.inserts_tab(k) => {
+                            mods.word || mods.doc || self.tab_moves_focus || armed == Some(k)
+                        }
                         Some(_) => true,
                         None => !sink,
                     };
@@ -565,7 +576,18 @@ impl Core {
                     }
                     if ek == EditKey::Escape {
                         self.push_edit_event(key, EventKind::Cancel, &mut out);
-                        self.move_focus(None);
+                        // An editor whose Tab types keeps the keyboard on
+                        // Escape, and the Escape arms its next Tab to move
+                        // focus on from here — CodeMirror's way out, which
+                        // a blur would lose the place for (Tab from nothing
+                        // enters the ring at its start). A second Escape
+                        // lets go, as Escape does in every other editor.
+                        if self.edit.inserts_tab(key) && !self.tab_moves_focus && armed != Some(key)
+                        {
+                            self.tab_armed = Some(key);
+                        } else {
+                            self.move_focus(None);
+                        }
                     }
                 } else if let Some(i) = self.focused_control()
                     // A key this control does not claim has already gone to
@@ -652,6 +674,19 @@ impl Core {
             }
             InputEvent::KeyDown(kp) => {
                 self.pressed_mods = Some(kp.mods);
+                // Any key but the Tab it is for (and the Escape that arms
+                // it) disarms an Escape (backlog C99); a modifier is not a
+                // key here, so Shift-Tab after Escape goes back.
+                if !kp.code.is_modifier() && !matches!(kp.code, KeyCode::Escape | KeyCode::Tab) {
+                    self.tab_armed = None;
+                }
+                // The toggle is the editor's chord, and nobody else hears it
+                // — not the sink above, which would hear it as a shortcut.
+                if self.toggles_tab_focus(&kp) {
+                    self.tab_moves_focus = !self.tab_moves_focus;
+                    self.owe_frame("tab_moves_focus");
+                    return out;
+                }
                 if self.route_key(&kp, KeyPhase::Down, &mut out) {
                     // Held from here until its release, focus moving, or
                     // the window losing the keyboard. A repeat of a key

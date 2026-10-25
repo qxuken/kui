@@ -109,6 +109,17 @@ pub extern "C" fn kui_focus_visible(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Whether the window's "Tab moves focus" toggle is on (backlog C99): a
+/// multiline editor whose Tab would type walks the focus ring instead.
+/// Ctrl+M flips it in such an editor (Ctrl+Shift+M on macOS); what a
+/// status label reads.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_tab_moves_focus(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().tab_moves_focus())
+    })
+}
+
 /// The caret's blink phase: `true` draws it. A custom
 /// editor reads it in its view and skips its caret node on the off phase,
 /// keeping the `caret` row on its `KUI_ROLE_LINE` either way. Under

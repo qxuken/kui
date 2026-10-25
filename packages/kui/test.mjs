@@ -758,13 +758,13 @@ test('keyFocus on an edit takes focus as it shows', () => {
   assert.equal(focused && focused.role, 'textInput', 'the editor has the keyboard');
 });
 
-// Tab leaves a multiline editor as it leaves a field; `tabInserts` keeps it
-// as indentation.
-test('tab leaves a multiline edit unless it declares tabInserts', () => {
-  for (const tabInserts of [true, false]) {
+// A multiline editor takes Tab as indentation (backlog C99); `tabMovesFocus`
+// makes Tab leave it as it leaves a field.
+test('a multiline edit takes tab unless it declares tabMovesFocus', () => {
+  for (const tabMovesFocus of [false, true]) {
     const view = () =>
       box({ pad: 8 }, [
-        el('edit', { initial: '', multiline: true, autofocus: true, tabInserts, width: 200 }, [], 'doc'),
+        el('edit', { initial: '', multiline: true, autofocus: true, tabMovesFocus, width: 200 }, [], 'doc'),
         el('edit', { initial: '', width: 200 }, [], 'next'),
       ]);
     const ctx = new Ctx();
@@ -772,8 +772,29 @@ test('tab leaves a multiline edit unless it declares tabInserts', () => {
     ctx.frame(320, 240, 1, view());
     ctx.key('tab');
     ctx.frame(320, 240, 1, view());
-    assert.equal(ctx.editText('doc'), tabInserts ? '    ' : '', `typed with tabInserts ${tabInserts}`);
+    assert.equal(ctx.editText('doc'), tabMovesFocus ? '' : '    ', `typed with tabMovesFocus ${tabMovesFocus}`);
   }
+});
+
+// The window's "Tab moves focus" toggle: Ctrl+M in a multiline editor
+// (Ctrl+Shift+M on macOS) flips it, and `tabMovesFocus()` reads it.
+test('ctrl+m toggles tab moves focus and the context reads it', () => {
+  const view = () =>
+    box({ pad: 8 }, [
+      el('edit', { initial: '', multiline: true, autofocus: true, width: 200 }, [], 'doc'),
+      el('edit', { initial: '', width: 200 }, [], 'next'),
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, view());
+  ctx.frame(320, 240, 1, view());
+  assert.equal(ctx.tabMovesFocus(), false);
+  const mac = process.platform === 'darwin';
+  ctx.keyDown(mac ? 'M' : 'm', { ctrl: true, shift: mac }, false, 'm');
+  assert.equal(ctx.tabMovesFocus(), true, 'toggled on');
+  ctx.frame(320, 240, 1, view());
+  ctx.key('tab');
+  ctx.frame(320, 240, 1, view());
+  assert.equal(ctx.editText('doc'), '', 'tab moved on');
 });
 
 // `secure` makes an editor a password field (backlog F167): read, drawn as

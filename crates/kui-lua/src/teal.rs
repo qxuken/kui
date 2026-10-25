@@ -65,6 +65,7 @@ const ENV_FACTS: &[(&str, &str)] = &[
     ("caret_visible", "boolean"),
     ("now", "number"),
     ("region", "integer"),
+    ("tab_moves_focus", "boolean"),
 ];
 
 /// The calls `env` carries, by the name `schema::DOORS`' Lua column gives

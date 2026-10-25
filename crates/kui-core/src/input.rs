@@ -1421,7 +1421,7 @@ impl KeyPress {
         // `word` is Alt and `doc` the platform primary, which is the whole
         // of what the editing vocabulary normalizes (see [`Mods`]). Tab
         // under Ctrl is `doc` on every platform: the way out of an editor
-        // whose plain Tab types (`EditOptions::tab_inserts`), and Ctrl is
+        // whose plain Tab types (`EditOptions::tab_moves_focus`), and Ctrl is
         // not the primary on macOS, where ⌘Tab is the system's.
         Some(InputEvent::Key(
             key,
