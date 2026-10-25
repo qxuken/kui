@@ -1,0 +1,55 @@
+-- What a new notebook file starts with: a few weeks of someone's notes.
+-- Times are relative to now, so the list always reads as recent.
+
+local DAY = 86400000
+
+return function(now)
+  local function ago(days, hours) return now - days * DAY - (hours or 0) * 3600000 end
+  return {
+    { notebook = "work", pinned = true, created = ago(9), updated = ago(0, 1),
+      title = "Q4 planning — checkout reliability",
+      body = "Goal: checkout p95 under 400 ms all quarter, no sev-1s.\n\nWhat moved it last quarter: the basket-totals cache, connection pooling to payments.\nWhat hurt: the 3.18.2 deploy (INC-2292) — an N+1 in basket totals that the load test never hit, because the test baskets have three items.\n\nProposal: load-test with production basket sizes (median 11, p95 38 items).",
+      items = { { "Pull basket size distribution from last 30 days", true }, { "Draft the load-test change with Ada", false },
+        { "Ask payments team for their p95 budget", false }, { "Review with Maren on Thursday", false } } },
+    { notebook = "work", created = ago(1), updated = ago(0, 3),
+      title = "Postmortem draft: INC-2291 inventory sync",
+      body = "Timeline (UTC)\n13:36 first 503 from wms-eu-2\n13:37 circuit opened after 3 failures\n13:38 paged #oncall-fulfilment\n13:41 acknowledged (j.weber)\n\nImpact: stock levels stale for 2 h 10 min; 41 orders accepted for items out of stock.\n\nOpen question: why did the circuit never close? Half-open probes go to the same pod.",
+      items = { { "Confirm order count with support", true }, { "Get the WMS vendor's incident report", false } } },
+    { notebook = "work", created = ago(3), updated = ago(2, 5),
+      title = "1:1 with Ada — 22 Oct",
+      body = "- Wants to own the load-testing rework; good fit.\n- Feels on-call rotation is too thin on fulfilment (two people).\n- Conference talk accepted (Berlin, March) — needs a week off-sprint to prepare.\n\nFollow up: rotation headcount with Maren." },
+    { notebook = "work", created = ago(6), updated = ago(5, 2),
+      title = "Interview loop: senior backend",
+      body = "Candidate: Tomás Ibarra. Systems design round on Thursday 14:00.\nPrompt: design the slot-booking service (delivery windows, 2 h slots, capacity per van).\n\nLook for: how he handles double booking, what he caches, what he'd page on." },
+    { notebook = "home", pinned = true, created = ago(2), updated = ago(0, 6),
+      title = "Groceries for Saturday",
+      body = "Dinner for six. Risotto + chard, cardamom buns for after.",
+      items = { { "Arborio rice, 1 kg", true }, { "Rainbow chard, 2 bunches", false }, { "Cultured butter", false },
+        { "Parmesan (the good one)", false }, { "Cardamom buns, 4 pack", false }, { "Oat drink for Linnea", true } } },
+    { notebook = "home", created = ago(14), updated = ago(4),
+      title = "Flat: before winter",
+      body = "Landlord says the boiler service is booked for 3 Nov, morning.",
+      items = { { "Bleed the radiators", true }, { "Reseal the bathroom window", false }, { "Replace the hallway bulb (E14, warm)", false },
+        { "Find the spare key for the cellar", false } } },
+    { notebook = "home", created = ago(20), updated = ago(11),
+      title = "Gift ideas",
+      body = "Mum: the ceramics course at the Volkshochschule (spring term).\nJonas: a proper chef's knife — he keeps borrowing ours.\nLinnea: the Ursula K. Le Guin box set." },
+    { notebook = "garden", created = ago(30), updated = ago(7),
+      title = "Allotment plan 2027",
+      body = "Bed 1: brassicas (moved from bed 3).\nBed 2: tomatoes and basil, again — best spot for sun.\nBed 3: beans + squash.\nBed 4: rest it, green manure over winter (phacelia).\n\nCompost bay: turn in November.",
+      items = { { "Order phacelia seed", true }, { "Fix the water butt tap", false } } },
+    { notebook = "garden", created = ago(40), updated = ago(18),
+      title = "Tomatoes that did well this year",
+      body = "Sungold — earliest, kept going until October.\nBlack Krim — splits after rain but the taste.\nGardener's Delight — reliable, heavy cropper.\n\nSkip: Brandywine (blight by August, three years running)." },
+    { notebook = "reading", created = ago(12), updated = ago(1, 2),
+      title = "DDIA, chapter 5 — replication",
+      body = "Leader-based replication; sync vs async followers.\nRead-your-writes: route a user's reads to the leader for a minute after they write.\nMonotonic reads: pin a user to one replica.\n\nThis is exactly the stale-stock bug in INC-2291: reads went to a lagging replica." },
+    { notebook = "reading", created = ago(25), updated = ago(9),
+      title = "The Mythical Man-Month",
+      body = "\"Adding manpower to a late software project makes it later.\"\nSecond-system effect — watch for it in the pricing-engine 5.0 rewrite.\nConceptual integrity: one mind (or a small group) designs, many build." },
+    { notebook = "reading", created = ago(16), updated = ago(13),
+      title = "Books to borrow from Linnea",
+      items = { { "The Dispossessed", true }, { "Piranesi", false }, { "A Psalm for the Wild-Built", false } },
+      body = "" },
+  }
+end

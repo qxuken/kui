@@ -1,0 +1,8 @@
+[
+  { name: "field-notes-note", size: "1180x760", after: 1200, args: ["ledger", "note"] }
+  { name: "field-notes-checklist", size: "1180x760", after: 1200, args: ["neutral", "checklist"] }
+  { name: "field-notes-search", size: "1180x760", after: 1200, args: ["phosphor", "search"] }
+  { name: "field-notes-delete", size: "1180x760", after: 1200, args: ["neutral", "delete"] }
+  { name: "field-notes-empty", size: "880x540", after: 1200, args: ["ledger", "empty"] }
+  { name: "field-notes-error", size: "880x540", after: 1200, args: ["neutral", "error"] }
+]
