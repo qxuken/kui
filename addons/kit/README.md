@@ -57,6 +57,18 @@ kit_button(ui, &run);
 kit.button(ui, {label = "Run", variant = .Primary, on_press = Run{}})
 ```
 
+## The Kit app
+
+```bash
+kui run addons/kit/app
+```
+
+`app/` is Kit on the `kui` runner (ADR 0064): every component on seven
+pages, three skins, a worker building 100,000 rows as a channel, live
+chart and log feeds, and an HTTP server — a living reference, and the
+template for an app of your own (`kui run --watch addons/kit/app`, then
+edit `pages.lua`).
+
 Working hosts: `crates/kui-lua/tests/kit.rs` (Rust),
 `examples/lua/features/kit/` (the spike scene and its benches),
 `examples/c/features/kit/kit.c`, `examples/odin/features/kit/kit.odin`, and
@@ -70,6 +82,7 @@ the Kit test in `packages/kui/test.mjs`.
 | `src/*.tl` | The Teal source: `kit` (the entry), `skin` and the three skins, `ctx` (what every component paints through), `icons`, and the components by group: `layout`, `inputs`, `data`, `overlays`, `charts`, `waterfall`. |
 | `lua/*.lua` | What a host loads, generated from `src/`. Edit the `.tl`, never these. |
 | `bindings/` | The wrappers generated from `schema.lua`. Never edit these either. |
+| `app/` | The Kit app, on the `kui` runner. |
 | `build.lua` | Type-checks `src/` against `packages/lua/kui.d.tl` with the Teal compiler kui-lua vendors, and writes `lua/`. `--check` fails on a stale `lua/` instead. |
 | `M0.md` | The spike that came first: its findings and numbers. |
 

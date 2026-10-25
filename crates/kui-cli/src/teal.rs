@@ -1,0 +1,162 @@
+//! Teal, built in and optional (ADR 0064, decision 8): `require` finds a
+//! `.tl` module and compiles it as it loads, an entry may be `main.tl`,
+//! and `kui check` type-checks an app against kui's declarations, Kit's
+//! and the runner's own. The compiler is the one file kui-lua vendors,
+//! loaded only when a `.tl` file is actually found.
+
+use std::path::{Path, PathBuf};
+
+use mlua::Lua;
+
+const TL: &str = include_str!("../../kui-lua/tests/tl/tl.lua");
+const KUI_DECLS: &str = include_str!("../../../packages/lua/kui.d.tl");
+const KIT_DECLS: &str = include_str!("../../../addons/kit/bindings/teal/kit/ui.d.tl");
+const RUNNER_DECLS: &str = include_str!("lua/runner.d.tl");
+
+/// The searcher, in Lua: a `.tl` beside the `.lua` path would be.
+const SEARCHER: &str = r#"
+local searchers = package.searchers
+table.insert(searchers, 2, function(name)
+  local path = package.searchpath(name, (package.path:gsub("%.lua", ".tl")))
+  if not path or path:match("%.d%.tl$") then return nil end
+  local tl = require("tl")
+  local f = assert(io.open(path, "rb"))
+  local src = f:read("a")
+  f:close()
+  local chunk, err = tl.load(src, "@" .. path, "t")
+  if not chunk then error(err, 0) end
+  return chunk, path
+end)
+"#;
+
+/// Makes `require("tl")` the compiler and adds the `.tl` searcher.
+pub fn install(lua: &Lua) -> mlua::Result<()> {
+    let preload: mlua::Table = lua.globals().get::<mlua::Table>("package")?.get("preload")?;
+    preload.set(
+        "tl",
+        lua.create_function(|lua, ()| lua.load(TL).set_name("@tl.lua").call::<mlua::Value>(()))?,
+    )?;
+    lua.load(SEARCHER).set_name("@kui:teal").exec()
+}
+
+/// The Lua to run for `file`: its own text, or the text Teal compiles a
+/// `.tl` file to. A syntax error is an error; a type error is `kui
+/// check`'s to report, as `tl run` does.
+pub fn source_for(file: &Path, source: &str) -> mlua::Result<String> {
+    if file.extension().and_then(|e| e.to_str()) != Some("tl") {
+        return Ok(source.to_string());
+    }
+    let lua = Lua::new();
+    let tl: mlua::Table = lua.load(TL).set_name("@tl.lua").call(())?;
+    let generate: mlua::Function = tl.get("gen")?;
+    let (code, result): (Option<String>, mlua::Table) = generate.call(source)?;
+    match code {
+        Some(code) => Ok(code),
+        None => {
+            let errs: mlua::Table = result.get("syntax_errors")?;
+            let mut out = Vec::new();
+            for e in errs.sequence_values::<mlua::Table>() {
+                let e = e?;
+                out.push(format!(
+                    "{}:{}:{}: {}",
+                    file.display(),
+                    e.get::<i64>("y")?,
+                    e.get::<i64>("x")?,
+                    e.get::<String>("msg")?
+                ));
+            }
+            Err(mlua::Error::runtime(out.join("\n")))
+        }
+    }
+}
+
+/// `kui.d.tl` with the runner's API spliced into its `kui` record.
+fn kui_decls() -> String {
+    let start = KUI_DECLS.find("global type kui = record").unwrap_or(0);
+    // The record's own `end`: the first one at the start of a line after it.
+    match KUI_DECLS[start..].find("\nend\n") {
+        Some(rel) => {
+            let at = start + rel + 1;
+            format!("{}{}\n{}", &KUI_DECLS[..at], RUNNER_DECLS, &KUI_DECLS[at..])
+        }
+        None => KUI_DECLS.to_string(),
+    }
+}
+
+const KUI_META: &str = include_str!("../../../packages/lua/kui.lua");
+const KIT_META: &str = include_str!("../../../addons/kit/bindings/lua/kit/ui.lua");
+const RUNNER_META: &str = include_str!("lua/runner_meta.lua");
+
+/// Writes every declaration an editor reads into `dir`: Teal's `kui.d.tl`
+/// (with the runner's API) and `kit/ui.d.tl`, and lua-language-server's
+/// `kui.lua`, `kui_runner.lua` and Kit's `kit/ui.lua`.
+pub fn write_types(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir.join("kit"))?;
+    std::fs::write(dir.join("kui.d.tl"), kui_decls())?;
+    std::fs::write(dir.join("kit").join("ui.d.tl"), KIT_DECLS)?;
+    std::fs::write(dir.join("kui.lua"), KUI_META)?;
+    std::fs::write(dir.join("kui_runner.lua"), RUNNER_META)?;
+    std::fs::write(dir.join("kit").join("ui.lua"), KIT_META)?;
+    Ok(())
+}
+
+/// Writes the declarations `kui check` reads into a cache folder of this
+/// version's.
+fn decls_dir() -> std::io::Result<PathBuf> {
+    let dir = std::env::temp_dir().join(format!("kui-{}-types", env!("CARGO_PKG_VERSION")));
+    write_types(&dir)?;
+    Ok(dir)
+}
+
+/// One problem `kui check` found.
+pub struct Problem {
+    pub file: PathBuf,
+    pub line: i64,
+    pub col: i64,
+    pub msg: String,
+}
+
+/// Type-checks every `.tl` file under `dir` (not `.d.tl`), against kui's,
+/// Kit's and the runner's declarations.
+pub fn check(dir: &Path, files: &[PathBuf]) -> Result<Vec<Problem>, String> {
+    let types = decls_dir().map_err(|e| format!("writing the type declarations: {e}"))?;
+    let lua = Lua::new();
+    let run = || -> mlua::Result<Vec<Problem>> {
+        let tl: mlua::Table = lua.load(TL).set_name("@tl.lua").call(())?;
+        tl.set(
+            "path",
+            format!("{}/?.lua;{}/?.lua", types.display(), dir.display()),
+        )?;
+        let new_env: mlua::Function = tl.get("new_env")?;
+        let check_string: mlua::Function = tl.get("check_string")?;
+        let mut out = Vec::new();
+        for file in files {
+            let source = std::fs::read_to_string(file)
+                .map_err(|e| mlua::Error::runtime(format!("{}: {e}", file.display())))?;
+            let opts = lua.create_table()?;
+            let defaults = lua.create_table()?;
+            defaults.set("gen_target", "5.4")?;
+            defaults.set("gen_compat", "off")?;
+            opts.set("defaults", defaults)?;
+            opts.set("predefined_modules", lua.create_sequence_from(["kui"])?)?;
+            let env: mlua::Value = new_env.call(opts)?;
+            let name = file.to_string_lossy().into_owned();
+            let result: mlua::Table = check_string.call((source, env, name))?;
+            for key in ["syntax_errors", "type_errors"] {
+                let Ok(errs) = result.get::<mlua::Table>(key) else { continue };
+                for e in errs.sequence_values::<mlua::Table>() {
+                    let e = e?;
+                    let at: Option<String> = e.get("filename")?;
+                    out.push(Problem {
+                        file: at.map(PathBuf::from).unwrap_or_else(|| file.clone()),
+                        line: e.get::<Option<i64>>("y")?.unwrap_or(0),
+                        col: e.get::<Option<i64>>("x")?.unwrap_or(0),
+                        msg: e.get::<Option<String>>("msg")?.unwrap_or_default(),
+                    });
+                }
+            }
+        }
+        Ok(out)
+    };
+    run().map_err(|e| e.to_string())
+}

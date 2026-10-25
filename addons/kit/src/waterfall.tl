@@ -297,6 +297,9 @@ function M.waterfall(c: Ctx, p: P): kui.Node
     scroll_y = p.grow == true,
     gap = 2,
     on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
+    -- Kept for `layout_of` (the width the window maps onto), and a resize
+    -- redraws.
+    on_layout = act(c, "waterfall.layout"),
     on_scroll = act(c, "waterfall.wheel", { v0 = v0, v1 = v1, x = st.x, w = width }),
   }
   for _, lane in ipairs(st.index.lanes) do

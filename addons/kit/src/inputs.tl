@@ -12,6 +12,11 @@ local ref, act = ctx.ref, ctx.act
 
 local M = {}
 
+-- Under what opened it, its left edge on the opener's: a menu reads down
+-- from where the eye already is (the `below` preset centres, as a tooltip
+-- does). `fit` flips and clamps it onto the screen.
+local MENU_FLOAT: {any:any} = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true }
+
 local function str(v: any): string
   return v is string and v or nil
 end
@@ -204,7 +209,7 @@ function M.select(c: Ctx, p: P): kui.Node
     local list: kui.Props = {
       key = "menu",
       role = "menu",
-      float = { anchor = "below", fit = true },
+      float = MENU_FLOAT,
       modal = act(c, "select.dismiss"),
       min_width = 160,
       pad = 4,

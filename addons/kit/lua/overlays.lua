@@ -13,6 +13,11 @@ local ref, act = ctx.ref, ctx.act
 
 local M = {}
 
+
+
+
+local MENU_FLOAT = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true }
+
 local function str(v)
    return type(v) == "string" and v or nil
 end
@@ -68,7 +73,7 @@ function M.popover(c, p)
    return column(surface(c, {
       key = "popover",
       role = "dialog",
-      float = { anchor = "below", fit = true },
+      float = MENU_FLOAT,
       modal = act(c, "popover.dismiss"),
       width = p.width,
       pad = 10,
@@ -84,7 +89,7 @@ function M.menu(c, p)
    local t = surface(c, {
       key = "menu",
       role = "menu",
-      float = { anchor = "below", fit = true },
+      float = MENU_FLOAT,
       modal = act(c, "menu.dismiss"),
       min_width = 180,
       pad = 4,

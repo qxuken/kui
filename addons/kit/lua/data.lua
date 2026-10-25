@@ -113,7 +113,7 @@ function M.table(c, p)
          key = "h" .. i,
          role = "button",
          label = (col.title) .. (sorted and (p.descending == true and ", sorted descending" or ", sorted ascending") or ""),
-         width = i == #cols and not col.width and "grow" or ((col.width) or 120),
+         width = (col.width) or "grow",
          height = "grow",
          gap = 4,
          cross_align = "center",
@@ -152,7 +152,7 @@ function M.table(c, p)
          local s = cell_text(ch:get(i, col.field))
          name[#name + 1] = s
          line[#line + 1] = row({
-            width = j == #cols and not col.width and "grow" or ((col.width) or 120),
+            width = (col.width) or "grow",
             main_align = col.align == "end" and "end" or (col.align == "center" and "center" or "start"),
             text(s, {
                size = "$kitSize",
@@ -296,7 +296,9 @@ function M.badge(c, p)
       cross_align = "center",
       radius = c.s.skin.radius > 0 and 9 or 0,
       bg = ref(c, accent and "accent" or "sunken"),
-      ctx.caption(c, label, { size = 10.5, family = "$kitData", color = ref(c, tone_ink(tone)) }),
+
+
+      ctx.data(c, label, { size = 10.5, bold = true, color = ref(c, tone_ink(tone)), max_lines = 1 }),
    }
    if tone ~= "neutral" and not accent then
       t.border = { w = "$kitHair", color = ref(c, tone) }
@@ -337,6 +339,8 @@ function M.empty(c, p)
    local t = {
       width = "grow",
       height = "grow",
+
+      min_height = "fit",
       main_align = "center",
       cross_align = "center",
       gap = 6,

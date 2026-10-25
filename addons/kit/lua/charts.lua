@@ -175,7 +175,10 @@ function M.line_chart(c, p)
    lo = math.floor(lo / step) * step
    hi = math.ceil(hi / step) * step
 
-   local plot = { key = "plot", width = "grow", height = h, clip = true }
+
+
+   local plot = { key = "plot", width = "grow", height = h, clip = true,
+on_layout = act(c, "line_chart.layout"), }
 
    local labels = { width = 44, height = h }
    local v = lo

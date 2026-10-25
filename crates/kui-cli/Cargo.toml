@@ -1,0 +1,23 @@
+[package]
+name = "kui-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The kui runner: run a Lua or Teal app with Kit and a standard library (ADR 0064)"
+publish = false
+
+[[bin]]
+name = "kui"
+path = "src/main.rs"
+
+[dependencies]
+kui-core.workspace = true
+kui-native.workspace = true
+kui-lua.workspace = true
+mlua.workspace = true
+toml = "0.9"
+yaml-rust2 = "0.10"
+ureq = "3"
+tiny_http = "0.12"
+rusqlite = { version = "0.37", features = ["bundled"] }

@@ -12,6 +12,11 @@ local ref, act = ctx.ref, ctx.act
 
 local M = {}
 
+-- Under what opened it, its left edge on the opener's: a menu reads down
+-- from where the eye already is (the `below` preset centres, as a tooltip
+-- does). `fit` flips and clamps it onto the screen.
+local MENU_FLOAT: {any:any} = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true }
+
 local function str(v: any): string
   return v is string and v or nil
 end
@@ -67,7 +72,7 @@ function M.popover(c: Ctx, p: P): kui.Node
   return column(surface(c, {
     key = "popover",
     role = "dialog",
-    float = { anchor = "below", fit = true },
+    float = MENU_FLOAT,
     modal = act(c, "popover.dismiss"),
     width = p.width as number,
     pad = 10,
@@ -83,7 +88,7 @@ function M.menu(c: Ctx, p: P): kui.Node
   local t = surface(c, {
     key = "menu",
     role = "menu",
-    float = { anchor = "below", fit = true },
+    float = MENU_FLOAT,
     modal = act(c, "menu.dismiss"),
     min_width = 180,
     pad = 4,

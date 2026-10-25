@@ -87,6 +87,9 @@ local Settings = {}
 
 
 
+
+
+
 local ROLES = {
    "bg", "side", "panel", "raised", "sunken", "hover", "press", "rule", "ink",
    "fg", "muted", "faint", "sel", "sel_fg", "accent", "on_accent", "focus",
@@ -154,6 +157,7 @@ function M.tokens(s)
          kitSizeTitle = skin.size_title,
       },
       families = { kitUi = skin.font_ui, kitData = skin.font_data },
+      export = true,
    }
 end
 

@@ -287,3 +287,45 @@ fn hundreds_of_host_children_keep_keys_of_their_own() {
     let w = r.core.take_warnings();
     assert!(w.is_empty(), "{w:#?}");
 }
+
+#[test]
+fn a_lua_host_puts_kit_inside_kit_and_kit_draws_it() {
+    // A Lua host's children are built while Kit's toolbar builds: the
+    // button they name is still the host's to place, through the list, so
+    // Kit draws it under Kit's origin with Kit's tokens.
+    let mut exts = Extensions::new();
+    exts.push_as("kit", Box::new(LuaExtension::from_file(KIT).unwrap()))
+        .unwrap();
+    exts.push_as(
+        "app",
+        Box::new(
+            LuaExtension::from_source(
+                "app.lua",
+                r#"
+                function view(env)
+                  return column { width = "grow",
+                    component("kit/toolbar", {}, { component("kit/button", { label = "Go" }) }) }
+                end
+                "#,
+            )
+            .unwrap(),
+        ),
+    )
+    .unwrap();
+    let mut core = Core::new();
+    for _ in 0..2 {
+        let mut ui = core.frame_with(VIEW, 1.0, &mut exts);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.finish();
+        let w = core.take_warnings();
+        assert!(w.is_empty(), "{w:#?}");
+    }
+    let go = core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Go"))
+        .map(|n| n.origin)
+        .expect("the button drew");
+    assert_eq!(go, kui_core::OriginId(1), "Kit's own origin");
+}

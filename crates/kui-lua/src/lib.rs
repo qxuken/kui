@@ -506,16 +506,32 @@ impl LuaExtension {
     pub fn from_source(name: impl Into<String>, source: &str) -> mlua::Result<Self> {
         let name = name.into();
         let chunk = name.clone();
-        Self::load(name, &chunk, source, None)
+        Self::load(name, &chunk, source, None, None)
+    }
+
+    /// [`Self::from_source`], with `setup` run on the script's interpreter
+    /// after the prelude and before the script: how a host gives its
+    /// scripts modules of its own (the `kui` runner's `kui.*`, ADR 0064)
+    /// or preloads the ones they `require`.
+    pub fn from_source_with(
+        name: impl Into<String>,
+        source: &str,
+        mut setup: impl FnMut(&Lua) -> mlua::Result<()>,
+    ) -> mlua::Result<Self> {
+        let name = name.into();
+        let chunk = name.clone();
+        Self::load(name, &chunk, source, None, Some(&mut setup))
     }
 
     /// The script loaded under `name`, its chunk called `chunk`, with `dir`
-    /// first on `package.path` when it came from a file.
+    /// first on `package.path` when it came from a file and `setup` run
+    /// before it.
     fn load(
         name: String,
         chunk: &str,
         source: &str,
         dir: Option<&std::path::Path>,
+        setup: Option<&mut dyn FnMut(&Lua) -> mlua::Result<()>>,
     ) -> mlua::Result<Self> {
         let lua = Lua::new();
         rows::register(&lua)?;
@@ -531,6 +547,9 @@ impl LuaExtension {
             package.set("path", format!("{d}/?.lua;{d}/?/init.lua;{rest}"))?;
             // What `env.load_tokens` resolves a relative path against.
             lua.set_named_registry_value("kui:dir", d.as_ref())?;
+        }
+        if let Some(setup) = setup {
+            setup(&lua)?;
         }
         lua.load(source).set_name(chunk).exec()?;
         let slots = match lua.globals().get::<mlua::Value>("slots")? {
@@ -614,7 +633,22 @@ impl LuaExtension {
     /// file's directory goes first on `package.path`, so the script's
     /// `require "skin"` finds `skin.lua` beside it (ADR 0059).
     pub fn from_file(path: impl AsRef<std::path::Path>) -> mlua::Result<Self> {
-        let path = path.as_ref();
+        Self::file(path.as_ref(), None)
+    }
+
+    /// [`Self::from_file`], with `setup` run before the script as
+    /// [`Self::from_source_with`] runs it.
+    pub fn from_file_with(
+        path: impl AsRef<std::path::Path>,
+        mut setup: impl FnMut(&Lua) -> mlua::Result<()>,
+    ) -> mlua::Result<Self> {
+        Self::file(path.as_ref(), Some(&mut setup))
+    }
+
+    fn file(
+        path: &std::path::Path,
+        setup: Option<&mut dyn FnMut(&Lua) -> mlua::Result<()>>,
+    ) -> mlua::Result<Self> {
         let source = std::fs::read_to_string(path)
             .map_err(|e| mlua::Error::runtime(format!("{}: {e}", path.display())))?;
         let name = path
@@ -622,7 +656,7 @@ impl LuaExtension {
             .map_or_else(|| "lua".into(), |n| n.to_string_lossy().into_owned());
         let dir = path.parent().filter(|d| !d.as_os_str().is_empty());
         let dir = dir.unwrap_or(std::path::Path::new("."));
-        Self::load(name, &format!("@{}", path.display()), &source, Some(dir))
+        Self::load(name, &format!("@{}", path.display()), &source, Some(dir), setup)
     }
 
     /// Loads a script from a `.lua` file, or from a directory holding
@@ -2688,10 +2722,31 @@ fn build_component(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     };
     let groups: Option<Table> = t.get("children")?;
     let failed: std::cell::RefCell<Option<mlua::Error>> = Default::default();
+    // The script building this node: its children are its own, built when
+    // the component asks — by then the component's own build has set the
+    // thread-locals to itself, and a child naming the component's
+    // namespace would be taken for the component's own, drawn in place
+    // under this script's origin.
+    let host_ext = BUILD_EXT.get();
+    let host_dir = {
+        let d = BUILD_DIR.take();
+        BUILD_DIR.set(d.clone());
+        d
+    };
     let children = |group: &str, ui: &mut Ui<'_>| {
         let Some(groups) = &groups else {
             return;
         };
+        let outer_ext = BUILD_EXT.replace(host_ext);
+        let outer_dir = BUILD_DIR.replace(host_dir.clone());
+        struct Restore(Option<BuildExt>, Option<std::rc::Rc<str>>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                BUILD_EXT.set(self.0);
+                BUILD_DIR.set(self.1.take());
+            }
+        }
+        let _restore = Restore(outer_ext, outer_dir);
         let list = if group.is_empty() {
             Some(groups.clone())
         } else {
@@ -3792,11 +3847,15 @@ pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
     let mut out = kui_core::Tokens::new();
     for pair in t.pairs::<String, mlua::Value>() {
         let (k, _) = pair?;
-        if k != "colors" && k != "lengths" && k != "families" {
+        if k != "colors" && k != "lengths" && k != "families" && k != "export" {
             return Err(bad(format!(
-                "tokens: unknown key {k:?} (colors, lengths, families)"
+                "tokens: unknown key {k:?} (colors, lengths, families, export)"
             )));
         }
+    }
+    // Readable from every origin (an add-on's palette, Kit's `$kitPanel`).
+    if t.get::<Option<bool>>("export")? == Some(true) {
+        out = out.exported();
     }
     if let Some(colors) = t.get::<Option<Table>>("colors")? {
         let mut entries: Vec<(String, mlua::Value)> = colors
@@ -4910,6 +4969,15 @@ fn to_value(v: &mlua::Value, path: &mut ValuePath) -> mlua::Result<Value> {
             )));
         }
     })
+}
+
+/// Installs the data half of the prelude — `channel {}` (ADR 0065) and
+/// `row_heights` — into a Lua state that draws nothing: a host's worker
+/// thread (the `kui` runner's, ADR 0064) builds channels and hands their
+/// handles back without the UI's builders.
+pub fn install_data(lua: &Lua) -> mlua::Result<()> {
+    rows::register(lua)?;
+    channel::register(lua)
 }
 
 /// Converts a [`kui_core::Value`] to a Lua value: the inverse of

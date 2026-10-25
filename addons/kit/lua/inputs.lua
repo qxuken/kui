@@ -13,6 +13,11 @@ local ref, act = ctx.ref, ctx.act
 
 local M = {}
 
+
+
+
+local MENU_FLOAT = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true }
+
 local function str(v)
    return type(v) == "string" and v or nil
 end
@@ -205,7 +210,7 @@ function M.select(c, p)
       local list = {
          key = "menu",
          role = "menu",
-         float = { anchor = "below", fit = true },
+         float = MENU_FLOAT,
          modal = act(c, "select.dismiss"),
          min_width = 160,
          pad = 4,

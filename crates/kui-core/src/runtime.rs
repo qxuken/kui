@@ -234,6 +234,9 @@ pub struct Core {
     /// [`Core::token_lookup`], which puts the running origin's table over
     /// the host's.
     tokens: rustc_hash::FxHashMap<OriginId, crate::tokens::Tokens>,
+    /// The exported tables ([`crate::Tokens::exported`]), in origin order:
+    /// what every lookup reads after its own table and the host's.
+    exported_tokens: Vec<crate::tokens::Tokens>,
     /// Moves whenever any origin's token table is declared or re-picked:
     /// what a binding that mirrors the tables (Lua's `env.tokens`) checks
     /// before it builds them again.
@@ -1051,8 +1054,23 @@ impl Core {
             .flatten();
         let missed = tokens.pick_families_over(prev, |n| self.session.register_family(n));
         self.warn_unpicked_families(missed);
+        let shares = tokens.is_exported() || self.tokens.get(&self.origin).is_some_and(|t| t.is_exported());
         self.tokens.insert(self.origin, tokens);
+        if shares {
+            self.share_tokens();
+        }
         self.tokens_rev += 1;
+    }
+
+    /// Rebuilds the exported tables every lookup falls back to.
+    fn share_tokens(&mut self) {
+        let mut shared: Vec<_> = self
+            .tokens
+            .iter()
+            .filter(|(o, t)| **o != OriginId::HOST && t.is_exported())
+            .collect();
+        shared.sort_by_key(|(o, _)| o.0);
+        self.exported_tokens = shared.into_iter().map(|(_, t)| t.clone()).collect();
     }
 
     /// The token tables' revision: moves whenever one is declared or
@@ -1073,6 +1091,9 @@ impl Core {
         let mut missed = Vec::new();
         for tokens in self.tokens.values_mut() {
             missed.extend(tokens.pick_families(|n| self.session.register_family(n)));
+        }
+        if !self.exported_tokens.is_empty() {
+            self.share_tokens();
         }
         self.tokens_rev += 1;
         self.warn_unpicked_families(missed);
@@ -1157,6 +1178,7 @@ impl Core {
         crate::tokens::TokenLookup {
             own,
             host,
+            shared: &self.exported_tokens,
             theme: &self.theme,
             metrics: &self.metrics,
             session: Some(&self.session),
@@ -1274,6 +1296,7 @@ impl Core {
             theme: Theme::default(),
             theme_gen: 0,
             tokens: Default::default(),
+            exported_tokens: Vec::new(),
             tokens_rev: 0,
             metrics: crate::metrics::Metrics::default(),
             metrics_gen: 0,

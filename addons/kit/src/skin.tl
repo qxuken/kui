@@ -84,6 +84,9 @@ local record Decl
   colors: {string:{string:integer}}
   lengths: {string:number}
   families: {string:{string}}
+  -- Readable from every origin, so an app paints its own nodes with
+  -- `$kitPanel` and follows the skin.
+  export: boolean
 end
 
 local ROLES: {string} = {
@@ -153,6 +156,7 @@ function M.tokens(s: Settings): Decl
       kitSizeTitle = skin.size_title,
     },
     families = { kitUi = skin.font_ui, kitData = skin.font_data },
+    export = true,
   }
 end
 

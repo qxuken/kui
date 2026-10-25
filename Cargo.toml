@@ -11,6 +11,8 @@ members = [
     "crates/kui-node",
     # Typed wrappers for an add-on's components, from its schema (ADR 0066).
     "crates/kui-addon-schema",
+    # The `kui` runner (ADR 0064).
+    "crates/kui-cli",
     # Kit's typed wrappers, generated from addons/kit/schema.lua.
     "addons/kit/bindings/rust",
     # The examples' devtools (docs/adr/0021): a dev-dependency of the crates

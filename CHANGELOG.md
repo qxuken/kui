@@ -163,6 +163,31 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
   spawn for "Show in folder" or a link.
+- **The `kui` runner** (backlog C61, [ADR 0064](docs/adr/0064-the-kui-runner.md)):
+  `kui run app.lua` runs a Lua or Teal app with Kit built in and a
+  standard library — `json`/`toml`/`yaml`, `.env`, `fs`, `process`,
+  timers, an HTTP client and server, SQLite and workers — whose waiting
+  calls yield inside a task (`kui.spawn`) and never stop a frame. An app
+  is `view(env)` plus `update(msg)`, which hears its events and every
+  `kui.dispatch`; `init()` makes the `model` a `kui run --watch` reload
+  keeps. `kui check` type-checks Teal against kui's, Kit's and the
+  runner's declarations; `kui new` starts an app; `kui types` writes the
+  declarations for lua-language-server and Teal; `--headless` and `--shot
+  out.png` run with no window. `kui run addons/kit/app` is the Kit app:
+  every component live, 100,000 rows built by a worker and handed over as
+  a channel, a live chart, a log, and an HTTP server.
+
+- **Exported tokens** (backlog C74): an extension's token table marked
+  exported (`Tokens::exported`, Lua's `export = true`) is read by every
+  origin after its own table and the host's, so an app paints its own
+  nodes in an add-on's palette — Kit exports its `kit…` names, and `bg =
+  "$kitPanel"` follows the skin.
+
+- `LuaExtension::from_source_with` / `from_file_with` run a setup on the
+  script's interpreter before the script (how a host gives its scripts
+  modules of its own), and `kui_lua::install_data` puts `channel {}` and
+  `row_heights` in a state that draws nothing (a worker's).
+
 - **Kit** (backlog C67, [ADR 0066](docs/adr/0066-an-addon-describes-its-components-once.md)),
   kui's UI kit for dense tool windows, in `addons/kit`: 36 components
   written once in Teal and placed from every binding — layout (`panel`,
@@ -661,6 +686,15 @@ for lua-language-server, and a new runner beside the window's.
   line of one that does not wrap, the longest word of one that does —
   so the line counts in the box's content, as CSS counts unbreakable
   overflow, and a text that wraps still wraps at the box.
+- A Lua host's children inside another script's component are placed as
+  the host's: a Kit button the app puts in a Kit toolbar is drawn by Kit,
+  under Kit's origin and palette, where it was taken for the toolbar's
+  own and drawn in place under the app's, with every `$kit…` token
+  missing (backlog C73).
+- Kit's line chart and waterfall fill the width they are given; they read
+  their width with `layout_of`, which keeps a rect only for a node that
+  declares `on_layout`, and now they do.
+
 - A component whose own event changed what it draws — a select opening, a
   section folding, a waterfall zoomed by the wheel — shows it on the next
   frame; it was replayed unchanged while its props held (backlog C68).

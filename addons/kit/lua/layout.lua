@@ -89,27 +89,35 @@ end
 function M.split(c, p)
    local column_axis = p.axis == "column"
    local f = math.max(0, math.min(1, (p.fraction or 0.5)))
+
+
+   local line = { bg = ref(c, c.s.skin.ctl_border and "ink" or "rule") }
    local handle = {
       key = "rule",
       role = "none",
       keep_focus = true,
-      bg = ref(c, c.s.skin.ctl_border and "ink" or "rule"),
-      hover_bg = ref(c, "accent"),
+      main_align = "center",
+      cross_align = "center",
+      hover_bg = ref(c, "hover"),
       cursor = column_axis and "nsResize" or "ewResize",
       on_drag = act(c, "split.drag", { column = column_axis, min = (p.min or 80) }),
    }
    local first = { key = "first", clip = true, children("first") }
    local second = { key = "second", clip = true, children("second") }
    if column_axis then
-      handle.width, handle.height = "grow", 4
+      handle.width, handle.height = "grow", 6
+      line.width, line.height = "grow", "$kitRuleW"
+      handle[1] = column(line)
       first.width, first.height = "grow", { pct = f * 100 }
       second.width, second.height = "grow", "grow"
       return column({ width = "grow", height = "grow", column(first), column(handle), column(second) })
    end
-   handle.width, handle.height = 4, "grow"
+   handle.width, handle.height = 6, "grow"
+   line.width, line.height = "$kitRuleW", "grow"
+   handle[1] = column(line)
    first.width, first.height = { pct = f * 100 }, "grow"
    second.width, second.height = "grow", "grow"
-   return row({ width = "grow", height = "grow", column(first), column(handle), column(second) })
+   return row({ width = "grow", height = "grow", column(first), row(handle), column(second) })
 end
 
 function M.tabs(c, p)

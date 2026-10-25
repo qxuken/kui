@@ -349,11 +349,31 @@ pub struct Tokens {
     /// Derived tokens dropped because a source did not resolve, kept for
     /// the same reason.
     unresolved: Vec<Unresolved>,
+    /// Readable from every origin, after its own table and the host's:
+    /// an add-on's palette an app paints its own surfaces with (Kit's
+    /// `$kitPanel`). See [`Tokens::exported`].
+    exported: bool,
 }
 
 impl Tokens {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Makes the table readable from every origin: a name an origin's own
+    /// table and the host's do not hold resolves here next, so an app
+    /// placing an add-on's components can paint its own nodes in the
+    /// add-on's palette (Kit's `$kitPanel`, `$kitFg`), and they follow it
+    /// when it changes. Prefix the names — every exported table shares
+    /// one space, the first declared winning a name two hold.
+    pub fn exported(mut self) -> Self {
+        self.exported = true;
+        self
+    }
+
+    /// Whether [`Tokens::exported`] was asked.
+    pub fn is_exported(&self) -> bool {
+        self.exported
     }
 
     /// A colour with one value for both bases.
@@ -755,6 +775,9 @@ fn stock_family(name: &str) -> Option<FontFamily> {
 pub struct TokenLookup<'a> {
     pub(crate) own: Option<&'a Tokens>,
     pub(crate) host: Option<&'a Tokens>,
+    /// Every other origin's exported table ([`Tokens::exported`]), read
+    /// after the two above.
+    pub(crate) shared: &'a [Tokens],
     pub(crate) theme: &'a Theme,
     pub(crate) metrics: &'a Metrics,
     /// The session a named `family` registers in; none for a
@@ -770,15 +793,21 @@ impl<'a> TokenLookup<'a> {
     }
 
     /// What a name resolves to: a role under either spelling, then the
-    /// running origin's table, then the host's.
+    /// running origin's table, then the host's, then the exported ones.
     pub fn resolve(&self, name: &str) -> Option<TokenRef> {
         if let Some(r) = role_ref(name) {
             return Some(r);
         }
-        if let Some(r) = self.own.and_then(|t| t.id(name)) {
-            return Some(r);
-        }
-        self.host.and_then(|t| t.id(name))
+        self.holder(name).and_then(|t| t.id(name))
+    }
+
+    /// The table a name is read from, in [`Self::resolve`]'s order.
+    fn holder(&self, name: &str) -> Option<&'a Tokens> {
+        [self.own, self.host]
+            .into_iter()
+            .flatten()
+            .chain(self.shared.iter())
+            .find(|t| t.id(name).is_some())
     }
 
     /// The colour a name resolves to this frame.
@@ -822,8 +851,7 @@ impl<'a> TokenLookup<'a> {
                 wanted: TokenKind::Family,
             }),
             Some(TokenRef::Family(i)) => {
-                let own = self.own.filter(|t| t.id(name) == Some(TokenRef::Family(i)));
-                let t = own.or(self.host).expect("resolved in a table");
+                let t = self.holder(name).expect("resolved in a table");
                 Ok(t.families[i as usize].1.family)
             }
             Some(_) => unreachable!(),
@@ -833,14 +861,12 @@ impl<'a> TokenLookup<'a> {
     // A by-name hit came from whichever table holds the name; the index
     // is only meaningful in that table, so it is re-read by name.
     fn color_in(&self, name: &str, i: u16) -> Color {
-        let own = self.own.filter(|t| t.id(name) == Some(TokenRef::Color(i)));
-        let t = own.or(self.host).expect("resolved in a table");
+        let t = self.holder(name).expect("resolved in a table");
         t.resolve_color(i, self.theme)
     }
 
     fn length_in(&self, name: &str, i: u16) -> f32 {
-        let own = self.own.filter(|t| t.id(name) == Some(TokenRef::Length(i)));
-        let t = own.or(self.host).expect("resolved in a table");
+        let t = self.holder(name).expect("resolved in a table");
         t.lengths[i as usize].1
     }
 
@@ -1137,6 +1163,7 @@ mod tests {
         let look = TokenLookup {
             own: Some(&t),
             host: None,
+            shared: &[],
             theme: &theme,
             metrics: &metrics,
             session: None,
@@ -1339,6 +1366,7 @@ mod tests {
         let look = TokenLookup {
             own: Some(&t),
             host: None,
+            shared: &[],
             theme: &theme,
             metrics: &metrics,
             session: None,
