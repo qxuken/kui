@@ -440,9 +440,8 @@ function M.badge(c, p)
 bg = ref(c, tone == "neutral" and "faint" or (accent and "on_accent" or tone)), }) or nil,
       ctx.text(c, label, { size = "$kitSizeLabel", bold = c.s.skin.label_bold, color = ref(c, tone_ink(tone)), max_lines = 1 }),
    }
-   if tone ~= "neutral" and not accent then
-      t.border = { w = "$kitHair", color = ref(c, tone) }
-   end
+
+
    return row(t)
 end
 
@@ -507,7 +506,7 @@ function M.notice(c, p)
       cross_align = "center",
       radius = "$kitRadius",
       bg = ref(c, "sunken"),
-      border = { w = c.s.skin.ctl_border and "$kitRuleW" or "$kitHair", color = ref(c, role == "muted" and "rule" or role) },
+      border = { w = "$kitHair", color = ref(c, role == "muted" and "rule" or role) },
       icons.node(c, tone == "ok" and "check" or (tone == "neutral" or tone == "accent") and "info" or "alert", 14, role),
       column(body),
       row({ gap = 8, cross_align = "center", children("") }),

@@ -125,7 +125,9 @@ end
 
 local function underline(c, focused)
    if c.s.skin.field_box then return nil end
-   return ctx.rule(c, focused and "accent" or "ink", focused and "$kitRuleW" or "$kitHair")
+
+
+   return ctx.rule(c, focused and "accent" or "rule", focused and "$kitRuleW" or "$kitHair")
 end
 
 
@@ -388,21 +390,22 @@ end
 
 function M.segmented(c, p)
    local options = (p.options or {})
+
+
+
    local bordered = c.s.skin.ctl_border
    local t = {
       role = "radioGroup",
       label = str(p.label),
       height = "$kitCtl",
       radius = "$kitRadius",
-      pad = bordered and 0 or 2,
-      gap = bordered and 0 or 2,
-      bg = ref(c, bordered and "panel" or "sunken"),
+      pad = 2,
+      gap = 2,
+      bg = ref(c, "sunken"),
       clip = true,
    }
-   if bordered then t.border = { w = "$kitRuleW", color = ref(c, "ink") } end
    for i, o in ipairs(options) do
       local here = o.value == p.value
-      if bordered and i > 1 then t[#t + 1] = ctx.rule(c, "ink", "$kitHair", true) end
       t[#t + 1] = row({
          key = "s" .. i,
          role = "radio",
@@ -412,7 +415,7 @@ function M.segmented(c, p)
          height = "grow",
          pad = { x = 10 },
          cross_align = "center",
-         radius = bordered and 0 or "$kitRadius",
+         radius = "$kitRadius",
          bg = here and ref(c, bordered and "accent" or "panel") or nil,
          hover_bg = here and ref(c, bordered and "accent" or "panel") or ref(c, "hover"),
          cursor = "pointer",

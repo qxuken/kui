@@ -227,7 +227,12 @@ for lua-language-server, and a new runner beside the window's.
   and `search` take a `label` that names them without drawing (backlog
   C78); a spacer among a toolbar's or statusbar's items pushes what follows
   to the end, where it stopped midway, and `tabs` take a `trailing` group
-  for what acts on the chosen tab (backlog C82).
+  for what acts on the chosen tab (backlog C82). Ledger draws fewer edges
+  (backlog C85): its 2 px ink rules are for regions only — toolbars, tabs,
+  dividers, a panel's title and an idle field's underline take a hairline
+  in the soft rule colour, the split's rule is a hairline, a segmented
+  control is a track with the chosen segment filled, and badges and
+  notices carry their tone without an outline.
 
 - **Kit in the npm package** (backlog C77): `import { Button, extension }
   from '@qxuken/kui/kit'`, then `runWindowed(app, { extensions: [extension]

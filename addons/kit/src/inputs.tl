@@ -124,7 +124,9 @@ end
 -- The underline under a field in the skins that draw one.
 local function underline(c: Ctx, focused: boolean): kui.Node
   if c.s.skin.field_box then return nil end
-  return ctx.rule(c, focused and "accent" or "ink", focused and "$kitRuleW" or "$kitHair")
+  -- At rest in the soft rule colour, in the accent and thicker when focused:
+  -- an underline in the ink is a line as loud as the text above it.
+  return ctx.rule(c, focused and "accent" or "rule", focused and "$kitRuleW" or "$kitHair")
 end
 
 local record Asked
@@ -387,21 +389,22 @@ end
 
 function M.segmented(c: Ctx, p: P): kui.Node
   local options = (p.options or {}) as {P}
+  -- A track with the chosen segment filled, in every skin: an outline and
+  -- a rule between each segment drew a cage of edges around three words.
+  -- Where controls are outlined (Ledger) the chosen one takes the accent.
   local bordered = c.s.skin.ctl_border
   local t: kui.Props = {
     role = "radioGroup",
     label = str(p.label),
     height = "$kitCtl",
     radius = "$kitRadius",
-    pad = bordered and 0 or 2,
-    gap = bordered and 0 or 2,
-    bg = ref(c, bordered and "panel" or "sunken"),
+    pad = 2,
+    gap = 2,
+    bg = ref(c, "sunken"),
     clip = true,
   }
-  if bordered then t.border = { w = "$kitRuleW", color = ref(c, "ink") } end
   for i, o in ipairs(options) do
     local here = o.value == p.value
-    if bordered and i > 1 then t[#t + 1] = ctx.rule(c, "ink", "$kitHair", true) end
     t[#t + 1] = row {
       key = "s" .. i,
       role = "radio",
@@ -411,7 +414,7 @@ function M.segmented(c: Ctx, p: P): kui.Node
       height = "grow",
       pad = { x = 10 },
       cross_align = "center",
-      radius = bordered and 0 or "$kitRadius",
+      radius = "$kitRadius",
       bg = here and ref(c, bordered and "accent" or "panel") or nil,
       hover_bg = here and ref(c, bordered and "accent" or "panel") or ref(c, "hover"),
       cursor = "pointer",

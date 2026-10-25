@@ -38,7 +38,7 @@ function M.panel(c, p)
       head[#head + 1] = ctx.grow()
       head[#head + 1] = row({ gap = 4, cross_align = "center", children("actions") })
       t[#t + 1] = row(head)
-      t[#t + 1] = ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair")
+      t[#t + 1] = ctx.rule(c, "rule", "$kitHair")
    end
    t[#t + 1] = column({
       key = "body",
@@ -72,7 +72,7 @@ function M.toolbar(c, _p)
          row({ width = "grow", gap = 6, cross_align = "center", children("") }),
          row({ gap = 6, cross_align = "center", children("trailing") }),
       }),
-      ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
+      ctx.rule(c, "rule", "$kitHair"),
    })
 end
 
@@ -80,7 +80,7 @@ function M.statusbar(c, _p)
    return column({
       width = "grow",
       bg = ref(c, "side"),
-      ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
+      ctx.rule(c, "rule", "$kitHair"),
       row({
          width = "grow", height = 22, pad = { x = 10 }, gap = 14, cross_align = "center",
          row({ width = "grow", gap = 14, cross_align = "center", children("") }),
@@ -94,7 +94,9 @@ function M.split(c, p)
    local f = math.max(0, math.min(1, (p.fraction or 0.5)))
 
 
-   local line = { bg = ref(c, c.s.skin.ctl_border and "ink" or "rule") }
+
+
+   local line = { bg = ref(c, "rule") }
    local handle = {
       key = "rule",
       role = "none",
@@ -109,14 +111,14 @@ function M.split(c, p)
    local second = { key = "second", clip = true, children("second") }
    if column_axis then
       handle.width, handle.height = "grow", 6
-      line.width, line.height = "grow", "$kitRuleW"
+      line.width, line.height = "grow", "$kitHair"
       handle[1] = column(line)
       first.width, first.height = "grow", { pct = f * 100 }
       second.width, second.height = "grow", "grow"
       return column({ width = "grow", height = "grow", column(first), column(handle), column(second) })
    end
    handle.width, handle.height = 6, "grow"
-   line.width, line.height = "$kitRuleW", "grow"
+   line.width, line.height = "$kitHair", "grow"
    handle[1] = column(line)
    first.width, first.height = { pct = f * 100 }, "grow"
    second.width, second.height = "grow", "grow"
@@ -159,7 +161,7 @@ function M.tabs(c, p)
       width = "grow",
       height = "grow",
       row(strip),
-      ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
+      ctx.rule(c, "rule", "$kitHair"),
       column({ key = "body", width = "grow", height = "grow", children("") }),
    })
 end
@@ -196,7 +198,7 @@ function M.section(c, p)
 end
 
 function M.divider(c, _p)
-   return ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair")
+   return ctx.rule(c, "rule", "$kitHair")
 end
 
 function M.event(m, kit)

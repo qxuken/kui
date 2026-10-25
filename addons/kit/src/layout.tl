@@ -37,7 +37,7 @@ function M.panel(c: Ctx, p: P): kui.Node
     head[#head + 1] = ctx.grow()
     head[#head + 1] = row { gap = 4, cross_align = "center", children("actions") }
     t[#t + 1] = row(head)
-    t[#t + 1] = ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair")
+    t[#t + 1] = ctx.rule(c, "rule", "$kitHair")
   end
   t[#t + 1] = column {
     key = "body",
@@ -71,7 +71,7 @@ function M.toolbar(c: Ctx, _p: P): kui.Node
       row { width = "grow", gap = 6, cross_align = "center", children("") },
       row { gap = 6, cross_align = "center", children("trailing") },
     },
-    ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
+    ctx.rule(c, "rule", "$kitHair"),
   }
 end
 
@@ -79,7 +79,7 @@ function M.statusbar(c: Ctx, _p: P): kui.Node
   return column {
     width = "grow",
     bg = ref(c, "side"),
-    ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
+    ctx.rule(c, "rule", "$kitHair"),
     row {
       width = "grow", height = 22, pad = { x = 10 }, gap = 14, cross_align = "center",
       row { width = "grow", gap = 14, cross_align = "center", children("") },
@@ -93,7 +93,9 @@ function M.split(c: Ctx, p: P): kui.Node
   local f = math.max(0, math.min(1, (p.fraction or 0.5) as number))
   -- A 6 px strip to grab, drawing the region rule down its middle; the
   -- strip lights in the accent while hovered or held.
-  local line: kui.Props = { bg = ref(c, c.s.skin.ctl_border and "ink" or "rule") }
+  -- A hairline in the soft rule colour: the panes are told apart by it,
+  -- and the strip lights to say where to grab.
+  local line: kui.Props = { bg = ref(c, "rule") }
   local handle: kui.Props = {
     key = "rule",
     role = "none",
@@ -108,14 +110,14 @@ function M.split(c: Ctx, p: P): kui.Node
   local second: kui.Props = { key = "second", clip = true, children("second") }
   if column_axis then
     handle.width, handle.height = "grow", 6
-    line.width, line.height = "grow", "$kitRuleW"
+    line.width, line.height = "grow", "$kitHair"
     handle[1] = column(line)
     first.width, first.height = "grow", { pct = f * 100 }
     second.width, second.height = "grow", "grow"
     return column { width = "grow", height = "grow", column(first), column(handle), column(second) }
   end
   handle.width, handle.height = 6, "grow"
-  line.width, line.height = "$kitRuleW", "grow"
+  line.width, line.height = "$kitHair", "grow"
   handle[1] = column(line)
   first.width, first.height = { pct = f * 100 }, "grow"
   second.width, second.height = "grow", "grow"
@@ -158,7 +160,7 @@ function M.tabs(c: Ctx, p: P): kui.Node
     width = "grow",
     height = "grow",
     row(strip),
-    ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
+    ctx.rule(c, "rule", "$kitHair"),
     column { key = "body", width = "grow", height = "grow", children("") },
   }
 end
@@ -195,7 +197,7 @@ function M.section(c: Ctx, p: P): kui.Node
 end
 
 function M.divider(c: Ctx, _p: P): kui.Node
-  return ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair")
+  return ctx.rule(c, "rule", "$kitHair")
 end
 
 function M.event(m: P, kit: string): any
