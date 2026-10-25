@@ -51,7 +51,8 @@ far over CPU time), *wasted* (it drew nothing new) or part of a *burn*
 screen leg by leg and its spans as a flame chart; a span or a holder
 with a node lights it in the app. Drag across the bars, or click one and
 shift-click another, and the summary and the tables read just those
-frames. When your app won't go idle, this is
+frames; hold the drag at the chart's edge and the bars scroll on under
+it. A plain click goes back to the whole recording. When your app won't go idle, this is
 the tab: the frames marked "drew nothing new" are the ones you can stop
 asking for, and the holders say who asked.
 
@@ -66,7 +67,9 @@ speedscope's or the Firefox Profiler's format, and `kui-trace diff
 before.kuitrace after.kuitrace --fail-over 10%` fails a CI job when a
 change made things slower. The camera saves a screenshot of the window
 and the film camera records it as a GIF, to the desktop (or
-`KUI_CAPTURE_DIR`), the path in the events tab.
+`KUI_CAPTURE_DIR`). The file it saved last — a screenshot, a GIF, a
+trace — shows under the toolbar: click its name to copy the path, or
+*open folder* to see it in Finder or Explorer.
 
 ## Warnings
 

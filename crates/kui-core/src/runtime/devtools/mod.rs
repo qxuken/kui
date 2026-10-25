@@ -473,7 +473,9 @@ pub(crate) struct Perf {
     /// inclusive: dragged across the bars or shift-clicked; `None` is the
     /// whole recording.
     range: Option<(usize, usize)>,
-    /// A drag across the bars: where it began and where it is, window px.
+    /// A drag across the bars: where it began, in the bars' content px —
+    /// so the range keeps its start while the bars scroll under the
+    /// pointer — and where the pointer is, window px.
     drag: Option<(f32, f32)>,
     /// The drag let go: the next build keeps its range and forgets it.
     drag_ended: bool,
@@ -488,6 +490,31 @@ pub(crate) struct Perf {
     /// Captures asked and not answered: what tells the panel's `capture`
     /// event from an app's with the same message.
     awaiting: usize,
+    /// The last file the tab saved — a screenshot, a GIF, a trace —
+    /// shown under its toolbar to copy or open the folder of.
+    saved: Option<Saved>,
+}
+
+/// A file the Perf tab saved, or is saving.
+pub(crate) struct Saved {
+    pub(crate) path: String,
+    /// `screenshot`, `screen recording`, `trace`.
+    pub(crate) what: &'static str,
+    /// Asked and not answered yet: a screenshot until the frame is
+    /// served, a recording until it is stopped and written.
+    pub(crate) pending: bool,
+    pub(crate) error: Option<String>,
+}
+
+impl Saved {
+    fn asked(path: &str, what: &'static str) -> Option<Saved> {
+        Some(Saved {
+            path: path.to_string(),
+            what,
+            pending: true,
+            error: None,
+        })
+    }
 }
 
 /// The session's devtools state.
@@ -915,6 +942,7 @@ impl State {
             "screenshot" => {
                 let path = capture_path("png");
                 self.note(format!("screenshot: saving {path}"));
+                self.perf.saved = Saved::asked(&path, "screenshot");
                 self.perf.asks.push(CaptureAsk::Still(path));
             }
             "screen-record" => {
@@ -923,6 +951,7 @@ impl State {
                 } else {
                     let path = capture_path("gif");
                     self.note(format!("screen recording: {path}, until it is stopped"));
+                    self.perf.saved = Saved::asked(&path, "screen recording");
                     self.perf.asks.push(CaptureAsk::Record(path));
                 }
                 self.perf.screen_recording = !self.perf.screen_recording;
@@ -1003,7 +1032,9 @@ impl State {
                     .strip_prefix("perf-frame:")
                     .and_then(|n| n.parse().ok())
                 {
-                    // A bar of the timeline: look at it, or stop looking.
+                    // A bar of the timeline: look at it, or stop looking;
+                    // either way the whole recording again.
+                    self.perf.range = None;
                     self.perf.selected = if self.perf.selected == Some(n) {
                         None
                     } else {
@@ -1085,6 +1116,30 @@ fn capture_path(ext: &str) -> String {
     dir.join(format!("kui-{}.{ext}", utc_stamp(secs)))
         .to_string_lossy()
         .into_owned()
+}
+
+/// Shows `path` in the system's file manager: the file selected in
+/// Finder or Explorer, its folder elsewhere. The devtools' own button,
+/// not a door: an app opens files through what it runs on.
+fn reveal(path: &str) -> std::io::Result<()> {
+    use std::process::Command;
+    let mut cmd = if cfg!(target_os = "macos") {
+        let mut c = Command::new("open");
+        c.arg("-R").arg(path);
+        c
+    } else if cfg!(target_os = "windows") {
+        let mut c = Command::new("explorer");
+        c.arg(format!("/select,{path}"));
+        c
+    } else {
+        let dir = std::path::Path::new(path)
+            .parent()
+            .map_or_else(|| ".".into(), |d| d.to_path_buf());
+        let mut c = Command::new("xdg-open");
+        c.arg(dir);
+        c
+    };
+    cmd.spawn().map(|_| ())
 }
 
 /// `secs` since the epoch as `YYYY-MM-DD-HHMMSS`, UTC (Howard Hinnant's
@@ -2040,7 +2095,11 @@ impl Core {
     /// for: its marker, while one of its captures is unanswered. An app's
     /// message that happens to spell the same map is the app's whenever
     /// the panel has nothing outstanding.
-    pub(crate) fn devtools_capture_answer(&mut self, message: &Value) -> bool {
+    pub(crate) fn devtools_capture_answer(
+        &mut self,
+        message: &Value,
+        result: &crate::event::Captured,
+    ) -> bool {
         if message.get_str("dt") != Some("captured") {
             return false;
         }
@@ -2050,6 +2109,12 @@ impl Core {
             return false;
         }
         p.awaiting -= 1;
+        if let Some(saved) = p.saved.as_mut().filter(|s| s.path == result.path) {
+            saved.pending = false;
+            saved.error = result.error.clone();
+        }
+        drop(s);
+        self.devtools_redraw_others();
         true
     }
 
@@ -2092,11 +2157,19 @@ impl Core {
                         Some(v) => v.trace.to_bytes(),
                         None => self.perf_trace(),
                     };
-                    let note = match std::fs::write(&path, bytes) {
+                    let written = std::fs::write(&path, bytes);
+                    let note = match &written {
                         Ok(()) => format!("trace saved: {path}"),
                         Err(e) => format!("trace not saved: {path}: {e}"),
                     };
-                    self.session.state().devtools.note(note);
+                    let mut s = self.session.state();
+                    s.devtools.note(note);
+                    s.devtools.perf.saved = Some(Saved {
+                        what: "trace",
+                        pending: false,
+                        error: written.err().map(|e| e.to_string()),
+                        path,
+                    });
                 }
             }
         }
@@ -2316,6 +2389,31 @@ impl Core {
             }
             _ => what,
         };
+        // The saved file's row: copy its path, or open its folder.
+        if matches!(what, "copy-saved" | "reveal-saved") {
+            let path = self
+                .session
+                .state()
+                .devtools
+                .perf
+                .saved
+                .as_ref()
+                .map(|s| s.path.clone());
+            if let Some(path) = path {
+                let note = if what == "copy-saved" {
+                    self.set_clipboard(path.clone(), None);
+                    format!("copied: {path}")
+                } else {
+                    match reveal(&path) {
+                        Ok(()) => format!("opened the folder of {path}"),
+                        Err(e) => format!("could not open the folder of {path}: {e}"),
+                    }
+                };
+                self.session.state().devtools.note(note);
+                self.devtools_redraw_others();
+            }
+            return;
+        }
         let (acted, focus_main) = {
             let mut s = self.session.state();
             let acted = s.devtools.act(what);
@@ -2411,14 +2509,23 @@ impl Core {
                         let phase = data.and_then(|d| d.get_str("phase"));
                         if let Some(x) = x {
                             let x = x as f32;
+                            let content = perf::bars_content_x(self, x);
+                            let shift = self.modifiers().shift;
                             let mut s = self.session.state();
                             let p = &mut s.devtools.perf;
                             match (phase, p.drag) {
-                                (Some("start"), _) | (_, None) => p.drag = Some((x, x)),
-                                (_, Some((x0, _))) => p.drag = Some((x0, x)),
+                                (Some("start"), _) | (_, None) => p.drag = Some((content, x)),
+                                (_, Some((c0, _))) => p.drag = Some((c0, x)),
                             }
                             if phase == Some("end") {
                                 p.drag_ended = true;
+                                // A click on the chart, not a drag: back to
+                                // the whole recording — a shift-click's
+                                // range is the bar's to set.
+                                let c0 = p.drag.map_or(content, |d| d.0);
+                                if (content - c0).abs() < perf::DRAG_SLOP && !shift {
+                                    p.range = None;
+                                }
                             }
                         }
                     }

@@ -78,7 +78,7 @@ impl Core {
         use crate::message::MessageField;
         // A capture the devtools asked for answers the panel, never the
         // app (its event is taken back on the way out).
-        let origin = if self.devtools_capture_answer(&message) {
+        let origin = if self.devtools_capture_answer(&message, &result) {
             OriginId::DEVTOOLS
         } else {
             OriginId::HOST
