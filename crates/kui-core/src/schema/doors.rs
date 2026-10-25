@@ -565,7 +565,7 @@ pub const DOORS: &[Door] = &[
         odin: Is("edge_scroll"),
         node: Is("edgeScroll"),
         lua: Is("edge_scroll"),
-        doc: "Scrolls a node for a drag the app holds with the pointer in the edge zone inside a rect, by the edge scroll's feel; returns what moved and asks for the next frame while it moves (ADR 0029).",
+        doc: "Scrolls a node for a drag the app holds with the pointer in the edge zone inside a rect, by the edge scroll's feel — on an axis it cannot move, the container around it, as the wheel chains, unless one says `overscroll: contain`; returns what moved and asks for the next frame while it moves (ADR 0029).",
     },
     Door {
         rust: "Ui::reveal",
@@ -1911,6 +1911,22 @@ pub const DOORS: &[Door] = &[
         doc: "Straight RGBA as a file's bytes with the runner's encoders: PNG (lossless, fast), JPEG (a quality; alpha dropped), WebP (lossless) or GIF (256 colours) — a capture or a decoded image kept as a file by a test or a probe with no encoder of its own (ADR 0054). C's frees with `kui_pixels_free`.",
     },
     Door {
+        rust: "kui_native::show_in_folder",
+        c: Is("kui_show_in_folder"),
+        odin: Is("show_in_folder"),
+        node: Is("kui.showInFolder"),
+        lua: No(GUEST),
+        doc: "Shows a file or folder in the system's file manager — selected in Finder or Explorer, its folder opened elsewhere — and returns once it has started (backlog F203): \"Show in folder\" beside a file the app saved, and what a host applies the devtools' `ShowInFolder` menu action with. Fails, naming why, for a path that does not exist.",
+    },
+    Door {
+        rust: "kui_native::open_external",
+        c: Is("kui_open_external"),
+        odin: Is("open_external"),
+        node: Is("kui.openExternal"),
+        lua: No(GUEST),
+        doc: "Opens a file, a folder or a URL (`https:`, `mailto:`, …) with what the system opens it with, and returns once that has started (backlog F203): a saved report in its app, a link in the browser. Fails, naming why, for a path that does not exist.",
+    },
+    Door {
         rust: "AnimationEncoder::new",
         c: Is("kui_animation_encoder_new"),
         odin: Is("animation_encoder_new"),
@@ -2002,7 +2018,7 @@ mod tests {
     /// `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` and
     /// `Waker::` in the
     /// `kui-native` crate, `kui_native::` and `Animation::` in its
-    /// `decode.rs`, and `App::` a method of that crate's `App` trait (a
+    /// `decode.rs` (or `capture.rs`, `encode.rs`, `system.rs`), and `App::` a method of that crate's `App` trait (a
     /// trait's `fn` is public without the word) — so a renamed or
     /// removed verb is a red row and not a stale one, which is the pin
     /// Rust's column can have without reflection.
@@ -2029,7 +2045,8 @@ mod tests {
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
-            + &read(root.join("../../kui-native/src/encode.rs"));
+            + &read(root.join("../../kui-native/src/encode.rs"))
+            + &read(root.join("../../kui-native/src/system.rs"));
         // The `App` trait's body: a method of it is a callback the app
         // writes, spelled `fn name(` and public by being the trait's.
         let app_trait = launcher

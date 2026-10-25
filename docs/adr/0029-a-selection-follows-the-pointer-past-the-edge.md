@@ -649,3 +649,49 @@ the C surface round, Node's `edgeScroll` test, Lua's
 `a_script_scrolls_a_container_at_its_edge`, kui-native's
 `kui_edge_scroll_reads_a_preset_or_numbers`, and the `edge_scroll`
 example's self-check. Not yet felt by hand in a full-screen window.
+
+## Amended 2026-10-25: a held drag hands on
+
+Raised by the user after F196: a drag held at an edge scrolled the one
+scroller the press found and no other (backlog F204). Selecting from a
+code block that scrolls sideways down a page could not scroll the page;
+a short log scrolled to its end and stopped with the page still; an
+app's board-in-a-page drag needed an `edge_scroll` call per container.
+The user asked whether handing on should be opt-in.
+
+- **It is on, and `overscroll: contain` keeps it in.** Chromium's
+  selection autoscroll scrolls through `ScrollRectToVisible`, which
+  moves every scrolling box around the target; AppKit's `autoscroll:`
+  goes to the superview when a clip view cannot move; and kui's own
+  wheel chains, stopped by `contain`. F196 had not shipped, so nothing
+  released moves under it, and an opt-in would leave the common case —
+  a page with code blocks, Carnet's page selection — broken until each
+  app found the switch. One rule for the wheel and the drag, and no new
+  prop or door.
+- **Per axis, from the scroller out.** Each frame, on each axis — over
+  the finished frame's scroll regions, the wheel's, which a view being
+  built leaves whole — the first container walking out from the press's
+  scroller that scrolls
+  along it, has the pointer in its edge zone — measured against its own
+  rect — and room the way that zone scrolls, is stepped on that axis.
+  One that does not scroll that way, is at its end, or has the pointer
+  clear of its zones hands the axis to the container around it; one
+  that says `contain` keeps it whether or not it can move. The walk ends
+  at an `on_scroll` handler, whose room the core cannot read, and at a
+  modal's edge. A pointer held at a page's middle, below a short log at
+  its end, scrolls nothing: the page's zones are at its edges.
+- **A ramp per container**, kept while it is stepped every frame and
+  started again after a frame it was not (`Core::step_edge_chain`, with
+  the core's `edge_ramps` that `Ui::edge_scroll` already kept). The live
+  end is placed again after any frame that stepped, since a container
+  further out moved the text under the pointer without the scroller's
+  own reading moving.
+- **`Ui::edge_scroll(key, pointer, rect)` hands on the same way** from
+  `key`, the containers around it measured by their laid rects, and
+  returns what moved summed over them.
+
+Tests: `tests/edge_scroll_chain.rs` (a log at its end hands a caret drag
+to the page; `contain` keeps it in the log and idle at its end; a strip
+that scrolls sideways hands down to the page; an app's `edge_scroll` on
+the strip moves the page with one call), with `edge_scroll.rs` and
+`follow.rs` unchanged. Not yet felt by hand.

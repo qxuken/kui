@@ -1838,6 +1838,10 @@ enum {
      * clipboard as the platform's image type; a host that cannot drops
      * it. ABI 37. */
     KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE = 4,
+    /* The file at `text` to show in the system's file manager - the
+     * devtools' "open folder" under a file the Perf tab saved. Apply it
+     * with kui_show_in_folder; a host that cannot drops it. */
+    KUI_MENU_ACTION_SHOW_IN_FOLDER = 5,
 };
 
 /* kui_input_paste's markers: what the pasteboard said about the text a
@@ -4651,6 +4655,18 @@ enum { KUI_ENCODE_PNG = 0, KUI_ENCODE_JPEG = 1, KUI_ENCODE_WEBP = 2, KUI_ENCODE_
  * pixels a side. */
 uint8_t *kui_encode_image(uint32_t format, const uint8_t *rgba, uint32_t width, uint32_t height,
                           uint32_t quality, size_t *len);
+/* Shows the file or folder at `path` in the system's file manager:
+ * selected in Finder or Explorer, its folder opened elsewhere. Returns
+ * once the file manager has started; false, with the reason on stderr,
+ * for a path that does not exist or a tool that would not start. What a
+ * host applies a KUI_MENU_ACTION_SHOW_IN_FOLDER with. */
+bool kui_show_in_folder(KuiStr path);
+/* Opens `target` with what the system opens it with: a file in its app,
+ * a folder in the file manager, a URL (https:, mailto:, ...) in the
+ * browser or mail client. Returns once that has started; false, with the
+ * reason on stderr, for a path that does not exist or a tool that would
+ * not start. */
+bool kui_open_external(KuiStr target);
 /* An animated PNG or GIF written a frame at a time (ADR 0054): each frame
  * the whole width x height canvas as straight RGBA, of which the encoder
  * keeps the rectangle that changed; a frame that changed nothing adds its

@@ -2637,6 +2637,15 @@ fn the_panel_s_captures_answer_the_panel_and_an_app_s_the_app() {
         ),
         "the path on the clipboard"
     );
+    // Open folder asks the runner: the core touches no system.
+    let reveal = core.key_of("kui-devtools/reveal-saved").unwrap();
+    access_click(&mut core, reveal);
+    assert!(
+        core.take_menu_actions()
+            .iter()
+            .any(|a| matches!(a, crate::menu::MenuAction::ShowInFolder { path: p } if *p == path)),
+        "the runner is asked to show it"
+    );
     // The app's own, the same message: the app's.
     core.captured(
         message,

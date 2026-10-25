@@ -618,7 +618,9 @@ impl DynHeadless<'_> {
             match action {
                 MenuAction::SetClipboard { text, .. } => self.clipboard = text,
                 MenuAction::SetClipboardSecret { text } => self.clipboard = text,
-                MenuAction::SetClipboardImage { .. } | MenuAction::LookUp { .. } => {}
+                MenuAction::SetClipboardImage { .. }
+                | MenuAction::LookUp { .. }
+                | MenuAction::ShowInFolder { .. } => {}
                 MenuAction::Paste => {
                     let text = self.clipboard.clone();
                     self.dispatch(InputEvent::Paste {

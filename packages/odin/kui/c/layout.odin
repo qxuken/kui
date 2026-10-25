@@ -830,6 +830,7 @@ package kui_c
 #assert(MENU_ACTION_LOOK_UP == 2)
 #assert(MENU_ACTION_SET_CLIPBOARD_SECRET == 3)
 #assert(MENU_ACTION_SET_CLIPBOARD_IMAGE == 4)
+#assert(MENU_ACTION_SHOW_IN_FOLDER == 5)
 #assert(PASTE_CONCEALED == 1)
 #assert(PASTE_TRANSIENT == 2)
 #assert(AUDIO_PLAY == 1)

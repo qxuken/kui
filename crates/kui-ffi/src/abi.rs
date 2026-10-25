@@ -201,7 +201,10 @@
 ///   struct: `KUI_QUAD_GROUP_BEGIN` and `KUI_QUAD_GROUP_END`, a faded
 ///   subtree drawn as one picture, after `kui_set_opacity_groups` (ADR
 ///   0056). Still 37 with the recording's functions and the runner's
-///   waker (ADR 0058), the opaque `KuiWaker`: new functions, no struct.
+///   waker (ADR 0058), the opaque `KuiWaker`: new functions, no struct;
+///   and with `kui_show_in_folder`, `kui_open_external` and
+///   `KUI_MENU_ACTION_SHOW_IN_FOLDER` (backlog F203), new functions and a
+///   new kind whose path rides in `text`.
 pub const KUI_ABI_VERSION: u32 = 37;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

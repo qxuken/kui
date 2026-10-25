@@ -1118,30 +1118,6 @@ fn capture_path(ext: &str) -> String {
         .into_owned()
 }
 
-/// Shows `path` in the system's file manager: the file selected in
-/// Finder or Explorer, its folder elsewhere. The devtools' own button,
-/// not a door: an app opens files through what it runs on.
-fn reveal(path: &str) -> std::io::Result<()> {
-    use std::process::Command;
-    let mut cmd = if cfg!(target_os = "macos") {
-        let mut c = Command::new("open");
-        c.arg("-R").arg(path);
-        c
-    } else if cfg!(target_os = "windows") {
-        let mut c = Command::new("explorer");
-        c.arg(format!("/select,{path}"));
-        c
-    } else {
-        let dir = std::path::Path::new(path)
-            .parent()
-            .map_or_else(|| ".".into(), |d| d.to_path_buf());
-        let mut c = Command::new("xdg-open");
-        c.arg(dir);
-        c
-    };
-    cmd.spawn().map(|_| ())
-}
-
 /// `secs` since the epoch as `YYYY-MM-DD-HHMMSS`, UTC (Howard Hinnant's
 /// civil-from-days).
 fn utc_stamp(secs: u64) -> String {
@@ -2404,10 +2380,10 @@ impl Core {
                     self.set_clipboard(path.clone(), None);
                     format!("copied: {path}")
                 } else {
-                    match reveal(&path) {
-                        Ok(()) => format!("opened the folder of {path}"),
-                        Err(e) => format!("could not open the folder of {path}: {e}"),
-                    }
+                    // The core touches no system: the runner shows it.
+                    self.menu_actions
+                        .push(crate::menu::MenuAction::ShowInFolder { path: path.clone() });
+                    format!("showing {path} in its folder")
                 };
                 self.session.state().devtools.note(note);
                 self.devtools_redraw_others();

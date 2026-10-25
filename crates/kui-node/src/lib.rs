@@ -1909,6 +1909,28 @@ pub fn encode_image(
         .map_err(err)
 }
 
+/// Shows the file or folder at `path` in the system's file manager —
+/// selected in Finder or Explorer, its folder opened elsewhere — and
+/// returns once it has started (backlog F203): "Show in folder" beside a
+/// file the app saved. Throws, naming why, for a path that does not exist
+/// or a file manager that would not start.
+#[napi]
+pub fn show_in_folder(path: String) -> Result<()> {
+    kui_native::show_in_folder(&path)
+        .map_err(|e| napi::Error::from_reason(format!("showInFolder: {e}")))
+}
+
+/// Opens `target` with what the system opens it with — a file in its
+/// app, a folder in the file manager, a URL (`https:`, `mailto:`, …) in
+/// the browser or mail client — and returns once that has started
+/// (backlog F203). Throws, naming why, for a path that does not exist or
+/// a tool that would not start.
+#[napi]
+pub fn open_external(target: String) -> Result<()> {
+    kui_native::open_external(&target)
+        .map_err(|e| napi::Error::from_reason(format!("openExternal: {e}")))
+}
+
 /// What an `AnimationEncoder` takes beside its size: `loops`, how many
 /// times it plays (absent or 0: for ever).
 #[napi(object)]
@@ -4407,6 +4429,10 @@ macro_rules! core_methods {
                             }
                             kui_core::MenuAction::Paste => {
                                 o.insert("kind".into(), Json::from("paste"));
+                            }
+                            kui_core::MenuAction::ShowInFolder { path } => {
+                                o.insert("kind".into(), Json::from("showInFolder"));
+                                o.insert("path".into(), Json::from(path));
                             }
                             kui_core::MenuAction::LookUp { text, at } => {
                                 o.insert("kind".into(), Json::from("lookUp"));

@@ -457,6 +457,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_MENU_ACTION_LOOK_UP,
             KUI_MENU_ACTION_SET_CLIPBOARD_SECRET,
             KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE,
+            KUI_MENU_ACTION_SHOW_IN_FOLDER,
             KUI_PASTE_CONCEALED,
             KUI_PASTE_TRANSIENT,
             KUI_BUTTONS_SECONDARY,
@@ -1367,7 +1368,7 @@ fn every_entry_point_is_pinned() {
             }
         }
     }
-    // The runner's fifteen are pinned only in a build that has them.
+    // The runner's seventeen are pinned only in a build that has them.
     let runner = [
         "kui_run",
         "kui_run_with",
@@ -1379,6 +1380,8 @@ fn every_entry_point_is_pinned() {
         "kui_animation_at",
         "kui_capture",
         "kui_encode_image",
+        "kui_show_in_folder",
+        "kui_open_external",
         "kui_animation_encoder_new",
         "kui_animation_encoder_add",
         "kui_animation_encoder_finish",

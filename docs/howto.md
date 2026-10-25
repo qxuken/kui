@@ -590,7 +590,10 @@ starts the ramp again; a press that has not moved scrolls nothing. The
 core also places the live end again whenever the layout under the
 pointer moves — that nudge, a wheel notch under the held press, a
 virtual list re-slicing its rows. A Shift-press keeps the anchor and
-moves the live end, in all three, by characters. Nothing to declare; a
+moves the live end, in all three, by characters. On an axis the
+scroller cannot move — a code block that scrolls only sideways, a log
+at its end — the drag hands on to the scroller around it, as the wheel
+does; a scroller with `overscroll: contain` keeps it. Nothing to declare; a
 headless test sees the nudge as `scrollOffset` moving a frame at a time
 under `animating()` — a sixtieth's step with no clock, the clock's own
 share with one (`app.advance(ms)` in Node, `Drive::advance` in Rust).
@@ -615,8 +618,10 @@ reorder — scrolls by the same feel with one call a frame while it is
 held: `ui.edge_scroll(key, pointer, rect)` (Node `ctx.edgeScroll(key,
 x, y, rect)`, C `kui_edge_scroll`, Lua `env.edge_scroll`), with `rect`
 the area whose edges scroll, usually `scroll_geometry(key).rect`. It
-moves the container at once, returns what moved, and asks for the next
-frame while it moves; place your drag's end under the pointer after.
+moves the container at once — or, on an axis it cannot move, the
+container around it, as kui's own drags hand on — returns what moved,
+and asks for the next frame while it moves; place your drag's end under
+the pointer after.
 Only call it once your press has become a drag.
 
 [`onScroll` row](props.md#container-props) ·

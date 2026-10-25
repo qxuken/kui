@@ -267,6 +267,11 @@ impl DynShell<'_> {
                     let marks = crate::clipboard::marks();
                     self.dispatch(event_loop, i, InputEvent::Paste { text, marks });
                 }
+                MenuAction::ShowInFolder { path } => {
+                    if let Err(e) = crate::show_in_folder(&path) {
+                        eprintln!("kui: show in folder: {e}");
+                    }
+                }
                 MenuAction::LookUp { text, at } => {
                     // Only macOS has a panel to show. Everywhere else the
                     // core never offers the row and never asks, so this is

@@ -1047,7 +1047,10 @@ export type MenuAction =
    *  headless host holds the pixels it asked with or `capture()`s them. */
   | { kind: 'setClipboardImage'; width: number; height: number }
   | { kind: 'paste' }
-  | { kind: 'lookUp'; text: string; x: number; y: number };
+  | { kind: 'lookUp'; text: string; x: number; y: number }
+  /** A file to show in the system's file manager: the devtools' "open
+   *  folder" (backlog F203). Apply it with `showInFolder(path)`. */
+  | { kind: 'showInFolder'; path: string };
 
 /** What text measures (`measureText`): logical px at the scale of the
  *  current or last frame; `lines` after wrapping. The same numbers layout
@@ -4338,6 +4341,24 @@ export interface EncodeOptions {
  * pixels that are not that size.
  */
 export declare function encodeImage(format: 'png' | 'jpeg' | 'webp' | 'gif', width: number, height: number, rgba: Buffer, options?: EncodeOptions): Buffer
+
+/**
+ * Shows the file or folder at `path` in the system's file manager —
+ * selected in Finder or Explorer, its folder opened elsewhere — and
+ * returns once it has started (backlog F203): "Show in folder" beside a
+ * file the app saved. Throws, naming why, for a path that does not exist
+ * or a file manager that would not start.
+ */
+export declare function showInFolder(path: string): void
+
+/**
+ * Opens `target` with what the system opens it with — a file in its
+ * app, a folder in the file manager, a URL (`https:`, `mailto:`, …) in
+ * the browser or mail client — and returns once that has started
+ * (backlog F203). Throws, naming why, for a path that does not exist or
+ * a tool that would not start.
+ */
+export declare function openExternal(target: string): void
 
 /**
  * What an `AnimationEncoder` takes beside its size: `loops`, how many
