@@ -2118,12 +2118,12 @@ impl TextArea {
     }
 
     /// Places it under `kit/text_area`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
         ui.component("kit/text_area", &self.props())
     }
 
     /// Places it under `<namespace>/text_area`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
         ui.component(&format!("{namespace}/text_area"), &self.props())
     }
 }

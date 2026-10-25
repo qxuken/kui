@@ -284,6 +284,17 @@ for lua-language-server, and a new runner beside the window's.
   a line of its own when both do not fit. `kui run --appearance
   light|dark` pins the appearance, which a headless `--shot` has no OS to
   ask for.
+  From the samples: a dialog shows its body (it was laid out at zero
+  height); a popover takes a `label`; a field's `focus` no longer replays
+  when the field comes back after the counter moved, and `autofocus`
+  focuses one as it first appears; a wrapped log follows to its end; a
+  notice wraps its actions under the message when narrow; a toast sits
+  inside the window's corner. New: `text_area`; `text_field`'s `error`;
+  table columns toned by a `tone` column or drawn as `badge` pills, and a
+  list row's toned `badge`; `line_chart`'s round x ticks with `x_format`
+  (`number`, `ago`, `clock`), `x_unit` and `y_unit`; `bar_chart`'s value
+  axis, value labels, wrapping names, `unit` and `horizontal`; `slider`'s
+  `value_label`, `radio_group`'s `hide_label`, a toast's `action`.
 
 - **Kit samples** ([`addons/kit/samples`](addons/kit/samples)): four
   apps on the runner to look at Kit in something like real use — Relay,
