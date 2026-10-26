@@ -695,7 +695,7 @@ fn sentinel() -> NodeSpec {
     spec.transition = Some(crate::anim::Transition::ms(S));
     spec.slide = true;
     spec.hidden = true;
-    spec.dx(S).dy(S)
+    spec
 }
 
 /// The move a spec declares off its laid place (`dx`, `dy`).
@@ -800,10 +800,24 @@ impl Patch {
         cmp!(field::TRANSITION, transition);
         cmp!(field::SLIDE, slide);
         cmp!(field::HIDDEN, hidden);
+        // The move (backlog C105). Not in the sentinel: a move there gave
+        // it an interaction box, which every capture then cloned and
+        // compared, and `frame_1k_rules` read +70%. Both bases sit at 0, so
+        // a lane set to 0 reads as unset: a builder that touched the
+        // transform without moving a lane off 0 is asked once more, from a
+        // base moved both ways.
         let (oa, ob) = (offset_of(&out_a), offset_of(&out_b));
-        let (ba, bb) = (offset_of(&base_a), offset_of(&base_b));
-        mark(field::DX, differ(&oa.x, &ba.x), differ(&ob.x, &bb.x));
-        mark(field::DY, differ(&oa.y, &ba.y), differ(&ob.y, &bb.y));
+        let mut dx = oa.x != 0.0 || ob.x != 0.0;
+        let mut dy = oa.y != 0.0 || ob.y != 0.0;
+        let touched = out_a.transform_spec().is_some() || out_b.transform_spec().is_some();
+        if touched && !(dx && dy) {
+            const S: f32 = 7777.25;
+            let oc = offset_of(&f(NodeSpec::default().dx(S).dy(S)));
+            dx |= oc.x != S;
+            dy |= oc.y != S;
+        }
+        mark(field::DX, dx, false);
+        mark(field::DY, dy, false);
         let (ra, rb) = (out_a.rules_spec(), out_b.rules_spec());
         mark(
             field::MIN_COLUMN,

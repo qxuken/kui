@@ -130,3 +130,19 @@ fn an_entry_that_sets_one_lane_keeps_the_other() {
     let [f, ..] = frame(&mut core, face());
     assert_eq!(f, (6.0, 3.0), "dx kept, dy set");
 }
+
+#[test]
+fn an_entry_may_move_a_node_back_to_its_place() {
+    let mut core = Core::new();
+    testing::hover(&mut core, Vec2::new(50.0, 10.0));
+    let face = || {
+        NodeSpec::column()
+            .dx(4.0)
+            .dy(5.0)
+            .on_click(Value::str("go"))
+            .when(Cond::Hovered, |p| p.dy(0.0))
+    };
+    frame(&mut core, face());
+    let [f, ..] = frame(&mut core, face());
+    assert_eq!(f, (4.0, 0.0), "a lane set to 0 is set, the other kept");
+}
