@@ -590,6 +590,10 @@ pub struct AnimStore {
     /// from the flag above so a test can wait for the transitions to run
     /// out under a cycle that never will.
     owes_cycle: bool,
+    /// The nodes whose cycle was sampled running this frame (backlog
+    /// C137): once the frame is emitted, a cycle owes a frame only while
+    /// one of them is drawn ([`Self::settle_cycles`]).
+    cycled: Vec<Key>,
 }
 
 impl AnimStore {
@@ -623,6 +627,7 @@ impl AnimStore {
         self.drove_at = self.now;
         self.owes_transition = false;
         self.owes_cycle = false;
+        self.cycled.clear();
         // Tweens nothing has driven for a while go (`retain::sweep_cutoff`).
         if !self.tweens.is_empty()
             && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
@@ -762,6 +767,7 @@ impl AnimStore {
             frame_no: self.frame_no,
             active: &mut self.owes_transition,
             cycling: &mut self.owes_cycle,
+            cycled: &mut self.cycled,
         }
     }
 
@@ -861,8 +867,30 @@ impl AnimStore {
         let (v, running) = sample_track(track, transition, Some(now), finite)?;
         if running {
             self.owes_cycle = true;
+            note_cycled(&mut self.cycled, key);
         }
         Some(v)
+    }
+
+    /// Once the frame is emitted (backlog C137): a running cycle owes the
+    /// next frame only while `drawn` says one of the nodes it was sampled
+    /// on is on screen. A spinner scrolled out of its scroller, or clipped
+    /// away, stops asking for frames at the display's rate; it is sampled
+    /// again, at the clock, the frame it comes back in — a scroll, a
+    /// resize, whatever brings it back draws that frame.
+    pub(crate) fn settle_cycles(&mut self, mut drawn: impl FnMut(Key) -> bool) {
+        if self.owes_cycle {
+            self.owes_cycle = self.cycled.iter().any(|&k| drawn(k));
+        }
+    }
+}
+
+/// `key` among the nodes whose cycle ran this frame, once: a node samples
+/// a slot at a time, one after another.
+#[inline]
+fn note_cycled(cycled: &mut Vec<Key>, key: Key) {
+    if cycled.last() != Some(&key) {
+        cycled.push(key);
     }
 }
 
@@ -969,6 +997,8 @@ pub(crate) struct NodeAnim<'a> {
     active: &'a mut bool,
     /// The store's "a cycle is running" flag (F64).
     cycling: &'a mut bool,
+    /// The store's nodes whose cycle ran this frame (C137).
+    cycled: &'a mut Vec<Key>,
 }
 
 impl NodeAnim<'_> {
@@ -1003,6 +1033,7 @@ impl NodeAnim<'_> {
         let (v, running) = sample_track(track, transition, Some(now), finite)?;
         if running {
             *self.cycling = true;
+            note_cycled(self.cycled, self.key);
         }
         Some(v)
     }

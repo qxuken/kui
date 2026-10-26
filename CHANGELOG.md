@@ -1692,6 +1692,19 @@ for lua-language-server, and a new runner beside the window's.
   the box over every line, and it carries the skin's shadow, as a raised
   float does. Kit's test draws it in every skin and half over a sliding
   window: an opaque fill, no segment over it, its text at 4.5:1.
+- **A keyframe cycle out of view stops drawing the window** (backlog
+  C137). A cycle is sampled as its node is built, wherever it lands, so a
+  spinner or a pulse scrolled out of its scroller, or clipped away, kept
+  the window drawing at the display's rate. A running cycle now owes a
+  frame only while the frame drew its node, or something under it,
+  inside its clip and the window; it is sampled again, at the clock, on
+  the frame that brings it back. A cycle that moves its node (`dx`, `dy`,
+  a turn, a scale) is measured over the reach of its stops, and one of a
+  width or a height always runs, since it moves what is laid out beside
+  it.
+
+  *What you can delete:* a view's own check of a cycling node's rect
+  against the viewport, as Kit's live line chart makes before it slides.
 - **A click on a control inside an app shell focuses the control**
   (backlog C135). A press anywhere inside a key sink gave the sink the
   keyboard, so a clicked button stayed unfocused, Space and the arrows

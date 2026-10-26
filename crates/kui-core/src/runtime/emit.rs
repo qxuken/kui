@@ -619,6 +619,8 @@ impl Core {
         let span = self.span_begin_as(analysis::EMIT, Origin::Kui);
         self.emit_frame();
         self.span_end(span);
+        // A cycle whose node the frame culled owes no frame (backlog C137).
+        self.settle_cycles();
         self.building = false;
         // This frame's departures are ghosts now: the rooms the next build
         // keeps for them, and for whatever may depart next (backlog C110).
@@ -644,6 +646,71 @@ impl Core {
         // than through `fill`, which restores it) must not leave its
         // `set_tokens` landing in that extension's table (ADR 0027).
         self.origin = crate::tree::OriginId::HOST;
+    }
+
+    /// A keyframe cycle owes the next frame only while the frame drew
+    /// its node (backlog C137): the cycle is sampled as its node is built,
+    /// wherever it lands, so a spinner scrolled out of its scroller or
+    /// clipped away kept the window drawing at the display's rate. Read
+    /// against what emission culled: a node counts as drawn when it, or
+    /// anything under it — a child overflowing a culled box still shows
+    /// the box's opacity — meets its clip and the window. A cycle that
+    /// moves its node (`dx`, `dy`, a turn or a scale) is measured over the
+    /// reach of its stops, and one that cycles a width or a height always
+    /// counts: it moves what is laid out beside it, which may be on
+    /// screen. A culled cycle is sampled again, at the clock, on the frame
+    /// that brings it back.
+    fn settle_cycles(&mut self) {
+        if !self.anim.owes().1 {
+            return;
+        }
+        let window = Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h);
+        let mut anim = std::mem::take(&mut self.anim);
+        anim.settle_cycles(|key| self.cycle_drawn(key, window));
+        self.anim = anim;
+    }
+
+    /// Whether the cycling node `key` is drawn, for [`Self::settle_cycles`].
+    fn cycle_drawn(&self, key: Key, window: Rect) -> bool {
+        let Some(i) = self.tree.index_of(key) else {
+            return false;
+        };
+        let frames = &self.tree.specs[i].anim().keyframes;
+        if frames
+            .iter()
+            .any(|k| k.slots.width.is_some() || k.slots.height.is_some())
+        {
+            return true;
+        }
+        // How far the stops can carry the node from where it is drawn now.
+        let size = self.tree.size[i];
+        let reach = frames.iter().fold(0.0f32, |r, k| {
+            let mut r = r
+                .max(k.dx.unwrap_or(0.0).abs())
+                .max(k.dy.unwrap_or(0.0).abs());
+            if k.slots.rotate.is_some() || k.slots.scale.is_some() {
+                let grow = k.slots.scale.unwrap_or(1.0).abs().max(1.0);
+                r = r.max(size.w.max(size.h) * grow);
+            }
+            r
+        }) * 2.0;
+        (i..self.tree.subtree_end(i)).any(|j| {
+            let rect = Rect::from_pos_size(self.tree.pos[j], self.tree.size[j]);
+            let rect = Rect::new(
+                rect.x - reach,
+                rect.y - reach,
+                rect.w + 2.0 * reach,
+                rect.h + 2.0 * reach,
+            );
+            let seen = match self.clips.get(j) {
+                // Under a turn the clip is in the node's own space; the
+                // window is not.
+                Some(c) if c.turned() => rect.intersect(&c.visible()),
+                Some(c) => rect.intersect(&c.visible()).intersect(&window),
+                None => rect.intersect(&window),
+            };
+            seen.w > 0.0 && seen.h > 0.0
+        })
     }
 
     /// The frame's first half: layout, then everything that resolves

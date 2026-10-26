@@ -3669,6 +3669,7 @@ filed the same day for the round that builds them.
 - `.` **C134** — [An app cannot name its own nodes inside a component](backlog/closed-2026-09.md#-c134--an-app-cannot-name-its-own-nodes-inside-a-component--done-2026-10-26) — done (2026-10-26) — host children are labelled in the placer's scope: `layout_of`, `edit_text` and the rest find them
 - `.` **C135** — [A press on a control inside a key sink gives the sink the keyboard](backlog/closed-2026-09.md#-c135--a-press-on-a-control-inside-a-key-sink-gives-the-sink-the-keyboard--done-2026-10-26) — done (2026-10-26) — a press on a Tab stop inside a key sink focuses the stop; the sink keeps its chords, which bubble; `keepFocus` for a surface that must not take it; ADR 0002 decision 9 amended
 - `.` **C136** — [Focus left on a node the frame no longer has stays there](backlog/closed-2026-09.md#-c136--focus-left-on-a-node-the-frame-no-longer-has-stays-there--done-2026-10-26) — done (2026-10-26) — a focus on a vanished node nothing recovers goes to the nearest sink it had, or is dropped for a `keyFocus` shell
+- `.` **C137** — [A keyframe cycle out of view still owes frames](backlog/closed-2026-09.md#-c137--a-keyframe-cycle-out-of-view-still-owes-frames--done-2026-10-26) — done (2026-10-26) — a running cycle owes a frame only while the frame drew its node inside its clip and the window; sampled again when it comes back
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3785,16 +3786,6 @@ beside their docs, no design system to try, no place to craft a repro.
 (proposed): `kui play` — Kit's gallery, a page per primitive with its doc
 and an editable live example, the design system with the Theme panel, a
 scratchpad saving a folder or a `.kui` archive, one search.
-
-### `.` C137 — A keyframe cycle out of view still owes frames
-
-**Found** building the line chart's slide (2026-10-26): a node's
-keyframe cycle is sampled as the node is built, wherever it is drawn, so
-a looping animation scrolled out of its scroller or clipped away keeps
-the window drawing at the display's rate. Kit's chart reads its plot's
-rect against the viewport and does not slide out of view; a spinner or a
-pulse cannot. **Do.** Owe no frame for a cycle whose node the last frame
-culled (outside every clip), and sample it again when it comes back.
 
 ### `.` C138 — A frame owed only by an animation runs the host's whole view
 
