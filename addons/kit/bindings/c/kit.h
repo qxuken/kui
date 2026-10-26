@@ -2366,6 +2366,40 @@ static inline int32_t kit_code(KuiCtx *ctx, const KitCode *p) {
 }
 
 /*
+ * A document written in Markdown, drawn in the skin: `#` to `####` headings,
+ * paragraphs, `-` / `*` / `1.` lists nested by two spaces, `>` quotes, `---`
+ * rules, fenced code (as `code`), pipe tables (the first row their header), and
+ * inline `code`, **bold**, *italic* and links (drawn as their text). Raw HTML,
+ * images and footnotes stay text. Selectable.
+ */
+typedef struct KitMarkdown {
+    /*
+     * The Markdown.
+     */
+    KuiStr text;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitMarkdown;
+
+static inline KuiValue *kit_markdown_props(const KitMarkdown *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("text"), kui_value_str(p->text));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/markdown: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_markdown(KuiCtx *ctx, const KitMarkdown *p) {
+    KuiValue *props = kit_markdown_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/markdown"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
  * A message in the flow of the page: an error to act on, a warning, a note; its
  * actions after it.
  */

@@ -902,6 +902,14 @@ local record kit
     fresh: boolean
   end
 
+  -- The props of `kit/markdown`.
+  record MarkdownProps
+    -- The Markdown.
+    text: string
+    key: string
+    fresh: boolean
+  end
+
   -- The props of `kit/notice`.
   record NoticeProps
     -- What happened, or what to know.
@@ -1315,6 +1323,13 @@ local record kit
 
   -- Text in the data face on the panel colour: a payload, a command, a stack.
   code: function(props: CodeProps): kui.Node
+
+  -- A document written in Markdown, drawn in the skin: `#` to `####`
+  -- headings, paragraphs, `-` / `*` / `1.` lists nested by two spaces, `>`
+  -- quotes, `---` rules, fenced code (as `code`), pipe tables (the first row
+  -- their header), and inline `code`, **bold**, *italic* and links (drawn as
+  -- their text). Raw HTML, images and footnotes stay text. Selectable.
+  markdown: function(props: MarkdownProps): kui.Node
 
   -- A message in the flow of the page: an error to act on, a warning, a note;
   -- its actions after it.

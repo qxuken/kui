@@ -8,7 +8,7 @@ Lua places a component with `kit.<name>(props, children)` after `local kit = req
 
 ## Contents
 
-Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.checklist`](#kitchecklist), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
+Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.checklist`](#kitchecklist), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.markdown`](#kitmarkdown), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
 
 Types: [`Variant`](#variant), [`Tone`](#tone), [`Align`](#align), [`Axis`](#axis), [`Skin`](#skin), [`Density`](#density), [`Level`](#level), [`Browse`](#browse), [`XFormat`](#xformat), [`Appearance`](#appearance), [`ShaderPreset`](#shaderpreset), [`Selection`](#selection), [`SkeletonShape`](#skeletonshape), [`Choice`](#choice), [`Column`](#column), [`Tab`](#tab), [`Item`](#item), [`Check`](#check), [`Entry`](#entry), [`RowRange`](#rowrange), [`Series`](#series).
 
@@ -508,6 +508,16 @@ Lua `kit.code(props)` · Node `<Code />`
 | `line_numbers` | `lineNumbers` | boolean? | Each line's number in a gutter beside it, outside the selection (not with `wrap`). |
 | `copy` | `copy` | boolean? | A Copy button over the text that puts it on the clipboard and says Copied for a moment. |
 | `label` | `label` | string? | A caption over the text (a file's name), and the block's accessible name. |
+
+## kit.markdown
+
+A document written in Markdown, drawn in the skin: `#` to `####` headings, paragraphs, `-` / `*` / `1.` lists nested by two spaces, `>` quotes, `---` rules, fenced code (as `code`), pipe tables (the first row their header), and inline `code`, **bold**, *italic* and links (drawn as their text). Raw HTML, images and footnotes stay text. Selectable.
+
+Lua `kit.markdown(props)` · Node `<Markdown />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `text` | `text` | string | The Markdown. |
 
 ## kit.notice
 

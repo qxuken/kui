@@ -2154,6 +2154,39 @@ code_in :: proc(ui: ^kui.Ui, namespace: string, p: Code) -> i32 {
 	return c.component(ui, name, props, nil, nil)
 }
 
+// A document written in Markdown, drawn in the skin: `#` to `####` headings,
+// paragraphs, `-` / `*` / `1.` lists nested by two spaces, `>` quotes, `---`
+// rules, fenced code (as `code`), pipe tables (the first row their header), and
+// inline `code`, **bold**, *italic* and links (drawn as their text). Raw HTML,
+// images and footnotes stay text. Selectable.
+Markdown :: struct {
+	// The Markdown.
+	text: string,
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+markdown_props :: proc(p: Markdown) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "text", c.value_str(p.text))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+markdown :: proc(ui: ^kui.Ui, p: Markdown) -> i32 {
+	return markdown_in(ui, NAMESPACE, p)
+}
+
+markdown_in :: proc(ui: ^kui.Ui, namespace: string, p: Markdown) -> i32 {
+	props := markdown_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/markdown")
+	return c.component(ui, name, props, nil, nil)
+}
+
 // A message in the flow of the page: an error to act on, a warning, a note; its
 // actions after it.
 Notice :: struct {

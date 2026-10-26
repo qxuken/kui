@@ -1319,6 +1319,222 @@ function M.progress(c: Ctx, p: P): kui.Node
   return column { width = "grow", gap = 4, ctx.muted(c, p.label as string), track }
 end
 
+-- Markdown, the part a guideline and a brand book are written in: `#` to
+-- `####` headings, paragraphs, `-` / `*` / `1.` lists (nested by two
+-- spaces), `>` quotes, `---` rules, fenced code (as `code`), pipe tables
+-- (as a table element, the first row its header), and inline `code`,
+-- **bold**, *italic* and [links](url), a link drawn as its text. Raw HTML,
+-- images and footnotes are left as text. A long document is a column of
+-- these, each selectable.
+
+-- A line's inline markup as spans in `base`'s size and colour.
+local function inline(c: Ctx, s: string, bold: boolean): {any}
+  local spans: {any} = {}
+  local function plain(t: string, b: boolean, it: boolean)
+    if t == "" then return end
+    if b or it then
+      spans[#spans + 1] = { t, bold = (b or bold) or nil, italic = it or nil }
+    elseif bold then
+      spans[#spans + 1] = { t, bold = true }
+    else
+      spans[#spans + 1] = t
+    end
+  end
+  local at = 1
+  local n = #s
+  local buf = ""
+  while at <= n do
+    local ch = s:sub(at, at)
+    if ch == "`" then
+      local e = s:find("`", at + 1, true)
+      if e then
+        plain(buf, false, false)
+        buf = ""
+        spans[#spans + 1] = { s:sub(at + 1, e - 1), family = "$kitData", bold = bold or nil }
+        at = e + 1
+      else
+        buf = buf .. ch
+        at = at + 1
+      end
+    elseif s:sub(at, at + 1) == "**" then
+      local e = s:find("**", at + 2, true)
+      if e then
+        plain(buf, false, false)
+        buf = ""
+        plain(s:sub(at + 2, e - 1), true, false)
+        at = e + 2
+      else
+        buf = buf .. "**"
+        at = at + 2
+      end
+    elseif (ch == "*" or ch == "_") and s:sub(at + 1, at + 1) ~= " " and s:sub(at + 1, at + 1) ~= "" then
+      local e = s:find(ch, at + 1, true)
+      -- An underscore inside a word (`snake_case`) is a letter.
+      local inword = ch == "_" and at > 1 and s:sub(at - 1, at - 1):match("%w") ~= nil
+      if e and e > at + 1 and not inword then
+        plain(buf, false, false)
+        buf = ""
+        plain(s:sub(at + 1, e - 1), false, true)
+        at = e + 1
+      else
+        buf = buf .. ch
+        at = at + 1
+      end
+    elseif ch == "[" then
+      local label, close = s:match("^%[([^%]]*)%]%(([^%)]*)%)", at)
+      if label then
+        buf = buf .. label
+        at = at + #label + #close + 4
+      else
+        buf = buf .. ch
+        at = at + 1
+      end
+    else
+      buf = buf .. ch
+      at = at + 1
+    end
+  end
+  plain(buf, false, false)
+  return spans
+end
+
+local function prose(c: Ctx, s: string, o?: {string:any}): kui.Node
+  local t: {string:any} = { size = "$kitSize", family = "$kitUi", color = ref(c, "fg"), wrap = "word" }
+  if o then for k, v in pairs(o) do t[k] = v end end
+  return text(inline(c, s, t.bold == true), t as kui.text)
+end
+
+-- The cells of a pipe table's line.
+local function cells(line: string): {string}
+  local s = line:match("^%s*|?(.-)|?%s*$")
+  local out: {string} = {}
+  for cell in (s .. "|"):gmatch("([^|]*)|") do out[#out + 1] = cell:match("^%s*(.-)%s*$") end
+  return out
+end
+
+local HEADING_SIZE: {number} = { 1.6, 1.3, 1.12, 1.0 }
+
+-- One item of a list: how deep, its mark, its text.
+local record Item
+  depth: integer
+  mark: string
+  text: string
+end
+
+function M.markdown(c: Ctx, p: P): kui.Node
+  local src = (str(p.text) or ""):gsub("\r\n", "\n")
+  local lines: {string} = {}
+  for l in (src .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = l end
+  local base = c.s.skin.size as number
+  -- Selectable a stretch at a time: a code block is a selection scope of
+  -- its own, and scopes do not nest.
+  local out: kui.Props = { width = "grow", gap = 10 }
+  local seg: kui.Props = { width = "grow", gap = 10, selectable = true }
+  local function close_seg()
+    if #seg > 0 then out[#out + 1] = column(seg) end
+    seg = { width = "grow", gap = 10, selectable = true }
+  end
+  local i = 1
+  local para: {string} = {}
+  local function flush()
+    if #para > 0 then
+      seg[#seg + 1] = prose(c, table.concat(para, " "))
+      para = {}
+    end
+  end
+  while i <= #lines do
+    local l = lines[i]
+    local fence = l:match("^%s*```")
+    local level, head = l:match("^(#+)%s+(.*)$")
+    if fence then
+      flush()
+      local body: {string} = {}
+      i = i + 1
+      while i <= #lines and not lines[i]:match("^%s*```") do
+        body[#body + 1] = lines[i]
+        i = i + 1
+      end
+      close_seg()
+      out[#out + 1] = M.code(c, { text = table.concat(body, "\n") })
+    elseif level and #level <= 6 then
+      flush()
+      local k = math.min(#level, #HEADING_SIZE)
+      seg[#seg + 1] = row { width = "grow", pad = { t = k <= 2 and 6 or 2 },
+        prose(c, head, { size = math.floor(base * HEADING_SIZE[k] + 0.5), bold = true }) }
+      if k == 1 then seg[#seg + 1] = ctx.rule(c, "rule", "$kitHair") end
+    elseif l:match("^%s*%-%-%-+%s*$") or l:match("^%s*%*%*%*+%s*$") then
+      flush()
+      seg[#seg + 1] = ctx.rule(c, "rule", "$kitHair")
+    elseif l:match("^%s*|") then
+      flush()
+      local tbl: kui.Props = { width = "grow", gap = 4 }
+      local first = true
+      while i <= #lines and lines[i]:match("^%s*|") do
+        local cs = cells(lines[i])
+        local rule = lines[i]:match("^[%s|:%-]+$") ~= nil
+        if not rule then
+          local r: kui.Props = { width = "grow", gap = 16 }
+          for _, cell in ipairs(cs) do
+            r[#r + 1] = column { min_width = 0, width = "grow",
+              prose(c, cell, { size = "$kitSizeLabel", bold = first or nil }) }
+          end
+          tbl[#tbl + 1] = row(r)
+          if first then tbl[#tbl + 1] = ctx.rule(c, "rule", "$kitHair") end
+          first = false
+        end
+        i = i + 1
+      end
+      seg[#seg + 1] = grid(tbl)
+      i = i - 1
+    elseif l:match("^%s*>") then
+      flush()
+      local q: {string} = {}
+      while i <= #lines and lines[i]:match("^%s*>") do
+        q[#q + 1] = lines[i]:match("^%s*>%s?(.*)$")
+        i = i + 1
+      end
+      i = i - 1
+      seg[#seg + 1] = row { width = "grow", gap = 10,
+        ctx.rule(c, "rule", 2, true),
+        column { width = "grow", min_width = 0, prose(c, table.concat(q, " "), { color = ref(c, "muted") }) } }
+    elseif l:match("^%s*[%-%*]%s+") or l:match("^%s*%d+[.)]%s+") then
+      flush()
+      local items: {Item} = {}
+      while i <= #lines do
+        local li = lines[i]
+        local indent, mark, body = li:match("^(%s*)([%-%*])%s+(.*)$")
+        if not mark then indent, mark, body = li:match("^(%s*)(%d+[.)])%s+(.*)$") end
+        if mark then
+          items[#items + 1] = { depth = #indent // 2, mark = mark:match("^%d") and mark or "•", text = body }
+          i = i + 1
+        else
+          -- A continuation line, indented under the item, joins it.
+          local more = li:match("^%s%s+(%S.*)$")
+          if not more or #items == 0 then break end
+          items[#items].text = items[#items].text .. " " .. more
+          i = i + 1
+        end
+      end
+      i = i - 1
+      local list: kui.Props = { width = "grow", gap = 4 }
+      for _, it in ipairs(items) do
+        list[#list + 1] = row { width = "grow", gap = 6, pad = { l = 14 * it.depth },
+          column { width = 14, ctx.muted(c, it.mark, { size = "$kitSize" }) },
+          column { width = "grow", min_width = 0, prose(c, it.text) } }
+      end
+      seg[#seg + 1] = column(list)
+    elseif l:match("^%s*$") then
+      flush()
+    else
+      para[#para + 1] = l:match("^%s*(.-)%s*$")
+    end
+    i = i + 1
+  end
+  flush()
+  close_seg()
+  return column(out)
+end
+
 function M.event(m: P, kit: string): any
   if kit == "log.select" then
     return emit("on_select", { row = m.row })

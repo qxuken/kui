@@ -441,6 +441,11 @@ return {
         { "copy", "boolean?", doc = "A Copy button over the text that puts it on the clipboard and says Copied for a moment." },
         { "label", "string?", doc = "A caption over the text (a file's name), and the block's accessible name." },
       } },
+    { "markdown",
+      doc = "A document written in Markdown, drawn in the skin: `#` to `####` headings, paragraphs, `-` / `*` / `1.` lists nested by two spaces, `>` quotes, `---` rules, fenced code (as `code`), pipe tables (the first row their header), and inline `code`, **bold**, *italic* and links (drawn as their text). Raw HTML, images and footnotes stay text. Selectable.",
+      props = {
+        { "text", "string", doc = "The Markdown." },
+      } },
     { "notice",
       doc = "A message in the flow of the page: an error to act on, a warning, a note; its actions after it.",
       props = {

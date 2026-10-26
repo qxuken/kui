@@ -286,6 +286,7 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)
         "section",
         kit::Section::new("More").count(2).place_with(ui, |_, ui| {
             kit::Code::new("let x = 1;").place(ui);
+            kit::Markdown::new("## Notes\n\n- **one** and `two`").place(ui);
         }),
     );
     put(
@@ -4790,4 +4791,54 @@ fn a_list_that_selects_nothing_still_walks_and_activates() {
     click_row(&mut r, "row 4", KeyMods::default(), 1);
     assert_eq!(heard(&mut r), ["cur 1", "act 1", "cur 4"]);
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+/// Kit's Markdown: headings, a paragraph joined from its lines, inline
+/// code, bold, italic and a link drawn as its text, a nested list, a
+/// quote, a rule, a fenced block drawn as `code` and a pipe table whose
+/// rows line up — every text there, no markup left in sight, no warning.
+#[test]
+fn markdown_draws_a_document_in_the_skin() {
+    let doc = "# Kit\n\nA kit for **dense** tool UIs,\nwritten `once` and *placed* from [every](https://example.com) binding.\n\n## Use\n\n- one\n  - two, nested\n- three\n1. first\n\n> A quote.\n\n---\n\n```lua\nkit.button({ label = \"Run\" })\n```\n\n| Prop | Type |\n|---|---|\n| `label` | string |\n| `name` | string? |\n";
+    let mut r = rig();
+    r.frame(|ui| {
+        kit::Markdown::new(doc).place(ui);
+    });
+    r.frame(|ui| {
+        kit::Markdown::new(doc).place(ui);
+    });
+    let texts = r.texts().join("\n");
+    for want in [
+        "Kit",
+        "Use",
+        // The snapshot cuts a text at 60 characters.
+        "A kit for dense tool UIs, written once and placed from every",
+        "one",
+        "two, nested",
+        "three",
+        "first",
+        "A quote.",
+        "kit.button({ label = \"Run\" })",
+        "Prop",
+        "label",
+        "string?",
+    ] {
+        assert!(texts.contains(want), "{want:?} drawn:\n{texts}");
+    }
+    for gone in ["**", "](", "```", "|---", "https://example.com", "# "] {
+        assert!(!texts.contains(gone), "{gone:?} left as markup:\n{texts}");
+    }
+    // The table's cells line up: `label` and `string` share a column each.
+    let nodes = r.core.nodes();
+    let at = |s: &str| {
+        nodes
+            .iter()
+            .find(|n| n.text.as_deref() == Some(s))
+            .map(|n| n.rect)
+            .unwrap_or_else(|| panic!("no {s}"))
+    };
+    assert_eq!(at("Prop").x, at("label").x, "the first column lines up");
+    assert_eq!(at("Type").x, at("string?").x, "the second column lines up");
+    let w = r.core.take_warnings();
+    assert!(w.is_empty(), "{w:#?}");
 }

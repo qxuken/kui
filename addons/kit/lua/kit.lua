@@ -89,7 +89,7 @@ provide(inputs, {
    "button", "icon_button", "text_field", "search", "select", "checkbox", "checklist", "switch",
    "radio_group", "segmented", "slider", "text_area",
 })
-provide(data, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice", "skeleton", "shader" })
+provide(data, { "table", "list", "inspector", "log", "badge", "stat", "code", "markdown", "empty", "progress", "notice", "skeleton", "shader" })
 provide(overlays, { "dialog", "popover", "menu", "toast", "toaster" })
 provide(charts, { "sparkline", "line_chart", "bar_chart", "histogram" })
 provide(waterfall, { "waterfall" })

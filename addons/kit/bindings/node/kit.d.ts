@@ -963,6 +963,16 @@ export interface CodeProps {
   fresh?: boolean;
 }
 
+/** The props of `kit/markdown`. */
+export interface MarkdownProps {
+  /** The Markdown. */
+  text: string;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
 /** The props of `kit/notice`. */
 export interface NoticeProps {
   /** What happened, or what to know. */
@@ -1406,6 +1416,9 @@ export declare function Stat(props: StatProps, children?: KuiNode): KuiNode;
 /** Text in the data face on the panel colour: a payload, a command, a stack. */
 export declare function Code(props: CodeProps, children?: KuiNode): KuiNode;
 
+/** A document written in Markdown, drawn in the skin: `#` to `####` headings, paragraphs, `-` / `*` / `1.` lists nested by two spaces, `>` quotes, `---` rules, fenced code (as `code`), pipe tables (the first row their header), and inline `code`, **bold**, *italic* and links (drawn as their text). Raw HTML, images and footnotes stay text. Selectable. */
+export declare function Markdown(props: MarkdownProps, children?: KuiNode): KuiNode;
+
 /** A message in the flow of the page: an error to act on, a warning, a note; its actions after it. */
 export declare function Notice(props: NoticeProps, children?: KuiNode): KuiNode;
 
@@ -1479,6 +1492,7 @@ export interface Kit {
   Badge: typeof Badge;
   Stat: typeof Stat;
   Code: typeof Code;
+  Markdown: typeof Markdown;
   Notice: typeof Notice;
   Empty: typeof Empty;
   Progress: typeof Progress;

@@ -480,6 +480,17 @@ function make(namespace) {
         children: flat(children ?? props.children),
       };
     },
+    Markdown(props = {}, children) {
+      const wire = {};
+      if (props.text !== undefined) wire.text = props.text;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/markdown`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
     Notice(props = {}, children) {
       const wire = {};
       if (props.message !== undefined) wire.message = props.message;
@@ -716,6 +727,6 @@ function make(namespace) {
 }
 
 const kit = make('kit');
-export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Checklist, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
+export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Checklist, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Markdown, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
 export const at = make;
 export default kit;

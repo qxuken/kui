@@ -533,6 +533,12 @@
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
+---The props of `kit/markdown`.
+---@class kit.MarkdownProps
+---@field text string The Markdown.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
 ---The props of `kit/notice`.
 ---@class kit.NoticeProps
 ---@field message string What happened, or what to know.
@@ -951,6 +957,17 @@ local function make(namespace)
   ---@return kui.Node
   function M.code(props)
     return component(namespace .. "/code", props)
+  end
+
+  ---A document written in Markdown, drawn in the skin: `#` to `####`
+  ---headings, paragraphs, `-` / `*` / `1.` lists nested by two spaces, `>`
+  ---quotes, `---` rules, fenced code (as `code`), pipe tables (the first row
+  ---their header), and inline `code`, **bold**, *italic* and links (drawn as
+  ---their text). Raw HTML, images and footnotes stay text. Selectable.
+  ---@param props kit.MarkdownProps
+  ---@return kui.Node
+  function M.markdown(props)
+    return component(namespace .. "/markdown", props)
   end
 
   ---A message in the flow of the page: an error to act on, a warning, a note;

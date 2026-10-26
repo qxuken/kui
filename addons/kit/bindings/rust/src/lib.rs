@@ -4779,6 +4779,67 @@ impl Code {
     }
 }
 
+/// A document written in Markdown, drawn in the skin: `#` to `####` headings,
+/// paragraphs, `-` / `*` / `1.` lists nested by two spaces, `>` quotes, `---`
+/// rules, fenced code (as `code`), pipe tables (the first row their header),
+/// and inline `code`, **bold**, *italic* and links (drawn as their text). Raw
+/// HTML, images and footnotes stay text. Selectable.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Markdown {
+    /// The Markdown.
+    pub text: String,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Markdown {
+    /// What it needs; the rest by their setters.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+/// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+/// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("text".into(), Value::str((&self.text).as_str())));
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/markdown`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/markdown", &self.props())
+    }
+
+    /// Places it under `<namespace>/markdown`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/markdown"), &self.props())
+    }
+}
+
 /// A message in the flow of the page: an error to act on, a warning, a note;
 /// its actions after it.
 #[derive(Clone, Debug, PartialEq)]
