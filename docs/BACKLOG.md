@@ -3865,6 +3865,30 @@ run with `MallocStackLogging=1`, which this round could not start.
 `malloc_history <pid> -allBySize`), and then a look at what churns the
 small blocks enough to leave a third of the zone empty.
 
+### `.` C147 — A channel cannot be appended to
+
+**Found** capping the Kit gallery's log (2026-10-26): `Channel::publish`
+replaces the whole column set, so a log that grows by a line republishes
+every line it keeps (the gallery caps it at 500). **Do.** `append(rows)`
+in every binding, with a cap that drops the oldest, so a growing log
+costs one line a tick.
+
+### `.` C148 — A channel has no filter, sort or take
+
+**Found** moving the gallery's worker onto its channel: with the rows read
+back into Lua per view (no 21 MB copy kept), a filter on "api" sorted by
+ms went 80 → 122 ms. **Do.** In Rust, in every binding: a filter (equality
+and substring on a column) returning row indices, a sort order (indices
+sorted by a column), and a take (a new channel of chosen rows) — so a
+worker builds a view without copying into Lua.
+
+### `.` C149 — The line chart's y glide runs the view each frame
+
+**Found** checking Kit for clock reads (C138): when the rounded y range
+changes, the chart asks for a frame every frame for 240 ms, and each runs
+the view. **Do.** The glide as a transition on the plot's vertical scale
+and offset, gridlines and labels keyed by value, so a reframe carries it.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
