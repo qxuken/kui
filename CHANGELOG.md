@@ -46,6 +46,11 @@ was the first bare bump to break an app in five releases).
 - Kit's line chart's readout box is placed inside the plot's width and
   height, where it could hang past the plot's right edge or foot
   (backlog C153).
+- A Kit `text_field`'s `error` shows whole: beside the text while the
+  field has room for it, and under the field, wrapping, while it has not
+  — where it was cut short at the field's end with the whole message in a
+  tooltip. A narrow field in error is taller by the message's lines
+  (backlog C156).
 
 - A key sink's press under a Mac's Option carries what the Option typed
   in `text` — ⌥- `–`, ⌥⇧- `—`, ⌥m `µ` — where it carried null; under an
@@ -1778,6 +1783,19 @@ for lua-language-server, and a new runner beside the window's.
   and `tests/toast_exit.rs` check the × against the toast's face on every
   frame from rest through the exit, gone by its duration and dismissed by
   a click on it.
+- **A Kit field's error reads whole** (backlog C156). A `text_field`'s
+  message sat at the end of its well, cut short past 60% of it: the
+  gallery's version field read "⚠ Three numbers: 1…" on the value's line.
+  It shows whole now: beside the text while the well has room for all of
+  it (measured with `env.measure_text`), under the field and wrapping to
+  as many lines as it takes while it has not, the row growing to fit.
+  The choice is the field's own-size rule (ADR 0069), so a resize moves
+  it in layout without a view run; a toolbar with room keeps its height.
+  The mark on a wrapped message sits on its first line, in a text area's
+  too. Kit's test lays out a long message in a field, a field with a
+  Choose… button, a text area and a field in a settings row that stacks
+  below 640 px, at 150 to 900 px, in Ledger and Neutral: every glyph of it
+  drawn, inside the field's column, what follows under it.
 - **A Kit waterfall reads on a dark skin.** Its spans were navy and
   forest blocks on near-black (1.3:1), the selected one a bright block
   that drowned them. Every group's bar now reads at 3:1 on every surface

@@ -1171,11 +1171,12 @@ typedef struct KitTextField {
     bool autofocus;
     bool autofocus_set;
     /*
-     * What is wrong with the text: drawn at the end of the field in the danger
-     * colour (cut short past half its width, the whole message its tooltip),
-     * its edge in danger too, and read after its name. It takes no room of its
-     * own, so a field in a toolbar keeps its height. An empty string marks the
-     * field only, for fields that share one message.
+     * What is wrong with the text, in the danger colour, its edge in danger
+     * too, and read after its name. It is shown whole: at the end of the field
+     * while the field has room for it beside the text, so a field in a wide
+     * toolbar keeps its height, and under the field, wrapping, while it has
+     * not, the row growing to fit. An empty string marks the field only, for
+     * fields that share one message.
      */
     KuiStr error;
     /*

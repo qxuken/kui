@@ -3680,6 +3680,7 @@ filed the same day for the round that builds them.
 - `.` **C153** — [Kit's live line chart draws over the bar and into its gutter](backlog/closed-2026-09.md#-c153--kits-live-line-chart-draws-over-the-bar-and-into-its-gutter--done-2026-10-27) — done (2026-10-27) — its sliding layer was an unclipped float; the plot's clip holds the lines, areas, ticks, hover layer and crosshair; the readout placed inside the plot
 - `.` **C154** — [A Kit toast seems to leave its edge behind as it goes](backlog/closed-2026-09.md#-c154--a-kit-toast-seems-to-leave-its-edge-behind-as-it-goes--done-2026-10-27) — done (2026-10-27) — every quad moved together; a card's border under its right edge showed through the fade; it slides out past the window's edge opaque
 - `.` **C155** — [A Kit toast's close button jumps left as it starts to leave](backlog/closed-2026-09.md#-c155--a-kit-toasts-close-button-jumps-left-as-it-starts-to-leave--done-2026-10-27) — done (2026-10-27) — the node raising a timed-out toast's dismiss took a gap in its row on the frame the exit holds; a float now
+- `.` **C156** — [A Kit field's error is cut off](backlog/closed-2026-09.md#-c156--a-kit-fields-error-is-cut-off--done-2026-10-27) — done (2026-10-27) — whole beside the text with room, under the field and wrapping without, by the field's own-size rule
 
 ### `.` C101 — A table or list has no keyboard range selection
 

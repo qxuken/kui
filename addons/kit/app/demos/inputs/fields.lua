@@ -1,11 +1,11 @@
 -- Fields: controlled — the value is the app's, a change proposes the next
--- one. An error sits at the field's end and takes no room.
+-- one. An error shows whole: at the field's end with room, under it without.
 
 local kit = require("kit.ui")
 
 local demo = {
   title = "Fields",
-  note = "controlled: the value is yours, change proposes the next; an error sits at the field's end and takes no room",
+  note = "controlled: the value is yours, change proposes the next; an error shows whole, at the field's end with room and under it without",
   call = 'kit.text_field({ label = "Name", value = model.name, on_change = { kind = "name" } })\nkit.text_field({ label = "Version", value = model.version, mono = true,\n  error = version_error(model.version), on_change = { kind = "version" } })',
   -- What the card keeps in the app's model.
   state = { name = "kit", version = "1.4", query = "", mode = "auto" },

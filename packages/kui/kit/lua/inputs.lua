@@ -236,28 +236,45 @@ ctx.rule(c, role, (focused or bad) and "$kitRuleW" or "$kitHair"), })
 end
 
 
+local function error_style(c)
+   return { size = "$kitSizeLabel", family = "$kitUi", color = ref(c, "danger") }
+end
+
+
+
 
 
 
 
 local function error_tag(c, msg)
    if not msg or msg == "" then return nil end
-   return row({ key = "error", max_width = "60%", min_width = 0, gap = 4, cross_align = "center",
-tooltip = msg,
+   return row({ key = "error", gap = 4, cross_align = "center",
 icons.node(c, "alert", 12, "danger"),
-row({ min_width = 0,
-ctx.text(c, msg, { size = "$kitSizeLabel", color = ref(c, "danger"), max_lines = 1, ellipsis = true }), }), })
+ctx.text(c, msg, error_style(c)), })
 end
 
 
 
 
-local function error_line(c, msg)
+local function error_line(c, msg, key)
    if not msg or msg == "" then return nil end
-   return row({ width = "grow", gap = 5, pad = { t = 4 }, cross_align = "center",
-icons.node(c, "alert", 12, "danger"),
-row({ width = "grow", min_width = 0,
-ctx.text(c, msg, { size = "$kitSizeLabel", color = ref(c, "danger"), wrap = "word" }), }), })
+   local style = error_style(c)
+   local line = c.env.measure_text("Ag", style, nil).height
+   style.wrap = "word"
+   return row({ key = key, width = "grow", gap = 5, pad = { t = 4 }, cross_align = "start",
+
+row({ height = math.max(line, 12), cross_align = "center", icons.node(c, "alert", 12, "danger") }),
+row({ width = "grow", min_width = 0, ctx.text(c, msg, style) }), })
+end
+
+
+
+
+local function error_room(c, msg, value, mono, pad)
+   local env = c.env
+   local said = env.measure_text(msg, error_style(c), nil).width
+   local typed = env.measure_text(value, { size = "$kitSize", family = mono and "$kitData" or "$kitUi" }, nil).width
+   return 2 * pad + math.max(80, typed + 16) + 6 + 12 + 4 + math.ceil(said) + 1
 end
 
 
@@ -327,10 +344,11 @@ function M.text_field(c, p)
    local focused = c.env.is_focused("edit")
    local value = str(p.value) or ""
    local err = str(p.error)
+   local pad_x = c.s.skin.field_box and 8 or 2
    local box = {
       height = "$kitCtl",
       width = "grow",
-      pad = { x = c.s.skin.field_box and 8 or 2 },
+      pad = { x = pad_x },
       cross_align = "center",
       edit({
          key = "edit",
@@ -350,13 +368,24 @@ function M.text_field(c, p)
       }),
       error_tag(c, err),
    }
-   if err and err ~= "" then box.gap = 6 end
+
+
+
+
+   local room = nil
+   if err and err ~= "" then
+      box.gap = 6
+      room = error_room(c, err, value, p.mono == true, pad_x)
+      box.when = { { width = { below = room }, hidden = { "error" } } }
+   end
    well(c, box, focused, err ~= nil)
    local chooser = browse_button(c, p, value)
 
 
-   local field = column(ctx.up_to({ gap = 0, row(box), underline(c, focused, err ~= nil) },
-   not chooser and p.width or nil, 80))
+   local field_t = ctx.up_to({ gap = 0, row(box), underline(c, focused, err ~= nil),
+room and error_line(c, err, "error_below") or nil, }, not chooser and p.width or nil, 80)
+   if room then field_t.when = { { width = { above = room }, hidden = { "error_below" } } } end
+   local field = column(field_t)
    if chooser then
 
 

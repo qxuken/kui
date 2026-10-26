@@ -234,29 +234,46 @@ local function underline(c: Ctx, focused: boolean, bad: boolean): kui.Node
     ctx.rule(c, role, (focused or bad) and "$kitRuleW" or "$kitHair") }
 end
 
--- What is wrong with a one-line field, at the end of its well in the
--- danger colour: under the field it made the field's row taller, and a
--- toolbar holding the field grew and moved its buttons off the field's
--- line. Cut short past half the field, the whole message its tooltip and
--- its description.
-local function error_tag(c: Ctx, msg: string): kui.Node
-  if not msg or msg == "" then return nil end
-  return row { key = "error", max_width = "60%", min_width = 0, gap = 4, cross_align = "center",
-    tooltip = msg,
-    icons.node(c, "alert", 12, "danger"),
-    row { min_width = 0,
-      ctx.text(c, msg, { size = "$kitSizeLabel", color = ref(c, "danger"), max_lines = 1, ellipsis = true }) } }
+-- The style of a field's error message.
+local function error_style(c: Ctx): {string:any}
+  return { size = "$kitSizeLabel", family = "$kitUi", color = ref(c, "danger") }
 end
 
--- What is wrong with a field of several lines, under it in the danger
--- colour. An empty message marks the field without a line: fields that
--- share one message.
-local function error_line(c: Ctx, msg: string): kui.Node
+-- What is wrong with a one-line field, at the end of its well in the
+-- danger colour, whole: under the field it made the field's row taller,
+-- and a toolbar holding the field grew and moved its buttons off the
+-- field's line. Shown only while the well has room for all of it beside
+-- the text (`error_room`); cut short past 60% of the field, as it was,
+-- it read "Three numbers: 1…" and said nothing.
+local function error_tag(c: Ctx, msg: string): kui.Node
   if not msg or msg == "" then return nil end
-  return row { width = "grow", gap = 5, pad = { t = 4 }, cross_align = "center",
+  return row { key = "error", gap = 4, cross_align = "center",
     icons.node(c, "alert", 12, "danger"),
-    row { width = "grow", min_width = 0,
-      ctx.text(c, msg, { size = "$kitSizeLabel", color = ref(c, "danger"), wrap = "word" }) } }
+    ctx.text(c, msg, error_style(c)) }
+end
+
+-- What is wrong with a field, under it in the danger colour, wrapping to
+-- as many lines as it takes. An empty message marks the field without a
+-- line: fields that share one message.
+local function error_line(c: Ctx, msg: string, key?: string): kui.Node
+  if not msg or msg == "" then return nil end
+  local style = error_style(c)
+  local line = c.env.measure_text("Ag", style as kui.Props, nil).height
+  style.wrap = "word"
+  return row { key = key, width = "grow", gap = 5, pad = { t = 4 }, cross_align = "start",
+    -- The mark on the first line's middle, however many lines there are.
+    row { height = math.max(line, 12), cross_align = "center", icons.node(c, "alert", 12, "danger") },
+    row { width = "grow", min_width = 0, ctx.text(c, msg, style) } }
+end
+
+-- How wide a one-line field's well must be to hold its error whole beside
+-- its text: the padding, the text with room to type (80 px at least, the
+-- field's least), the gap, the mark and the message.
+local function error_room(c: Ctx, msg: string, value: string, mono: boolean, pad: number): number
+  local env = c.env
+  local said = env.measure_text(msg, error_style(c) as kui.Props, nil).width
+  local typed = env.measure_text(value, { size = "$kitSize", family = mono and "$kitData" or "$kitUi" } as kui.Props, nil).width
+  return 2 * pad + math.max(80, typed + 16) + 6 + 12 + 4 + math.ceil(said) + 1
 end
 
 local record Asked
@@ -326,10 +343,11 @@ function M.text_field(c: Ctx, p: P): kui.Node
   local focused = c.env.is_focused("edit")
   local value = str(p.value) or ""
   local err = str(p.error)
+  local pad_x = c.s.skin.field_box and 8 or 2
   local box: kui.Props = {
     height = "$kitCtl",
     width = "grow",
-    pad = { x = c.s.skin.field_box and 8 or 2 },
+    pad = { x = pad_x },
     cross_align = "center",
     edit {
       key = "edit",
@@ -349,13 +367,24 @@ function M.text_field(c: Ctx, p: P): kui.Node
     },
     error_tag(c, err),
   }
-  if err and err ~= "" then box.gap = 6 end
+  -- The message whole, beside the text while the well has room for it
+  -- and under the field, wrapping, while it has not (ADR 0069: decided in
+  -- layout from the field's own width, the well and the field reading
+  -- the same width, each hiding the place the other shows).
+  local room: number = nil
+  if err and err ~= "" then
+    box.gap = 6
+    room = error_room(c, err, value, p.mono == true, pad_x)
+    box.when = { { width = { below = room }, hidden = { "error" } } }
+  end
   well(c, box, focused, err ~= nil)
   local chooser = browse_button(c, p, value)
   -- The field takes what its row leaves, down to 80 px (its text scrolls
   -- in the editor); a Choose… button beside it keeps its whole label.
-  local field: kui.Node = column(ctx.up_to({ gap = 0, row(box), underline(c, focused, err ~= nil) },
-    not chooser and p.width or nil, 80))
+  local field_t = ctx.up_to({ gap = 0, row(box), underline(c, focused, err ~= nil),
+    room and error_line(c, err, "error_below") or nil }, not chooser and p.width or nil, 80)
+  if room then field_t.when = { { width = { above = room }, hidden = { "error_below" } } } end
+  local field: kui.Node = column(field_t)
   if chooser then
     -- Beside the field while the row is wide enough for both, under it
     -- when it is not (ADR 0069, the row's own width): the field keeps a

@@ -1601,7 +1601,9 @@ fn focusing_a_field_moves_nothing() {
 #[test]
 fn a_fields_error_takes_no_room_of_its_own() {
     // The error line under a field made the toolbar holding it taller, and
-    // its buttons, centred on the taller row, left the field's line.
+    // its buttons, centred on the taller row, left the field's line. In a
+    // toolbar with room the message sits whole beside the text; one too
+    // narrow for it puts it under the field (the next test).
     let mut r = LuaRig::new(
         r#"
         err = nil
@@ -4933,5 +4935,89 @@ fn a_leaving_toasts_close_button_keeps_its_place_on_its_face() {
             "the × against the face, from rest through the exit (by click {by_click}): {seen:?}"
         );
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
+
+#[test]
+fn a_fields_error_is_laid_out_whole_at_any_width() {
+    // A version field's error read "⚠ Three numbers: 1…": cut short at the
+    // end of the well, on the value's line. The whole message shows, every
+    // glyph of it inside the field's column: beside the text while the well
+    // has room, under the field and wrapping when it has not, the rows
+    // under the field moved down to make room. A field with a Choose…
+    // button, a text area, and a field in a settings row that stacks below
+    // 640 px (the preferences sample's) the same.
+    const MSG: &str = "Three numbers, as in 1.4.0: major, minor and patch";
+    let glyphs = MSG.chars().filter(|c| !c.is_whitespace()).count();
+    for skin in ["ledger", "neutral"] {
+        for kind in ["field", "browse", "area", "setting"] {
+            for w in [150.0f32, 230.0, 420.0, 900.0] {
+                let mut r = LuaRig::new(&format!(
+                    r#"
+                    MSG = "{MSG}"
+                    function view(env)
+                      local f
+                      if "{kind}" == "field" then
+                        f = component("kit/text_field", {{ label = "Version", value = "1.4", mono = true, error = MSG }})
+                      elseif "{kind}" == "browse" then
+                        f = component("kit/text_field", {{ label = "Folder", value = "/tmp", browse = "folder", error = MSG }})
+                      elseif "{kind}" == "area" then
+                        f = component("kit/text_area", {{ label = "Notes", value = "x", error = MSG }})
+                      else
+                        f = row {{ width = "grow", gap = 24,
+                          when = {{ {{ width = {{ below = 640, band = 16 }}, dir = "column", gap = 8 }} }},
+                          column {{ width = 250, text("Device name") }},
+                          column {{ width = "grow",
+                            component("kit/text_field", {{ label = "Device name", hide_label = true, value = "x", width = 320,
+                              error = MSG }}) }} }}
+                      end
+                      return column {{ width = "grow", height = "grow",
+                        component("kit/settings", {{ skin = "{skin}" }}),
+                        column {{ key = "col", label = "col", width = {w}, f }},
+                        row {{ key = "below", label = "below", width = 10, height = 10 }} }}
+                    end
+                    "#
+                ));
+                r.frames(4);
+                let at = format!("{skin}, {kind}, {w} px");
+                let col = r.node(|n| n.label.as_deref() == Some("col")).unwrap().rect;
+                let shown: Vec<_> = r
+                    .core
+                    .nodes()
+                    .into_iter()
+                    .filter(|n| n.text.as_deref() == Some(MSG) && n.rect.w > 0.0 && n.rect.h > 0.0)
+                    .collect();
+                assert_eq!(shown.len(), 1, "{at}: the message shows once: {shown:#?}");
+                let msg = shown[0].rect;
+                assert!(
+                    msg.x >= col.x - 0.5 && msg.x + msg.w <= col.x + col.w + 0.5,
+                    "{at}: the message inside the field's column: {msg:?} in {col:?}"
+                );
+                let drawn = kui_core::testing::quads_of(&mut r.core, kui_core::QuadKind::GlyphMask)
+                    .into_iter()
+                    .filter(|q| {
+                        let (cx, cy) = (q.rect.x + q.rect.w / 2.0, q.rect.y + q.rect.h / 2.0);
+                        cx >= msg.x && cx <= msg.x + msg.w && cy >= msg.y && cy <= msg.y + msg.h
+                    })
+                    .count();
+                assert_eq!(drawn, glyphs, "{at}: every glyph of the message, none cut short: {msg:?}");
+                let below = r.node(|n| n.label.as_deref() == Some("below")).unwrap().rect;
+                assert!(below.y >= msg.y + msg.h, "{at}: what follows is under the message: {below:?} {msg:?}");
+                let edit = r
+                    .core
+                    .nodes()
+                    .into_iter()
+                    .find(|n| n.kind == kui_core::NodeKind::Edit)
+                    .unwrap()
+                    .rect;
+                let beside = msg.y < edit.y + edit.h;
+                match (kind, w) {
+                    ("area", _) | (_, 150.0) => assert!(!beside, "{at}: under the field: {msg:?} {edit:?}"),
+                    ("field", 900.0) => assert!(beside, "{at}: beside the text, with room: {msg:?} {edit:?}"),
+                    _ => {}
+                }
+                assert!(r.warnings.is_empty(), "{at}: {:#?}", r.warnings);
+            }
+        }
     }
 }
