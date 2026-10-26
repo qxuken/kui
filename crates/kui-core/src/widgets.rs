@@ -426,8 +426,10 @@ pub(crate) fn select_tag() -> Value {
 }
 
 /// A choice among a few named options: a field that shows the one in
-/// force and, clicked, drops a menu of them all with the current one
-/// checked. `options` are the labels, `current` the index in force (or
+/// force and, pressed, drops a menu of them all with the current one
+/// checked — a press held and dragged onto an option and released there
+/// picks it, a quick click leaves the menu open (`opens_on_press`,
+/// backlog C108). `options` are the labels, `current` the index in force (or
 /// none). Keyed by `label`, which is the accessible name too.
 ///
 /// The menu is the core's own — the same one a right-click opens
@@ -576,6 +578,9 @@ pub fn select_with(
         spec.border(1.0, border)
             .cursor(CursorShape::Pointer)
             .on_click(select_tag())
+            // A press opens the menu and a release over a row picks it, as a
+            // pop-up button's does (backlog C108).
+            .opens_on_press()
             // A button named by the field, described by the choice: what
             // a reader says of a pop-up button, in the two slots a button
             // has (`value` is a slider's and an editor's).

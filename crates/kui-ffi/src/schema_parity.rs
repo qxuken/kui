@@ -370,6 +370,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "essentialMotion" => s.essential_motion = 1,
             "dx" => s.dx = F,
             "dy" => s.dy = F,
+            "opensOnPress" => s.opens_on_press = 1,
             "onQuery" => s.on_query = &layout_tag,
             "minColumn" => s.min_column = F,
             "hidden" => s.hidden = 1,
@@ -584,6 +585,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         essential_motion: 1,
         dx: 2.0,
         dy: -1.0,
+        opens_on_press: 1,
         min_column: 0.0,
         hidden: 0,
         on_query: std::ptr::null(),
@@ -705,6 +707,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .essential_motion()
         .dx(2.0)
         .dy(-1.0)
+        .opens_on_press()
         .reveal_on_hover()
         .floats_in_order()
         .modifier_keys()

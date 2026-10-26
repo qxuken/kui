@@ -450,8 +450,8 @@ extern "C" {
  * focus ring's colour (backlog C93), then min_column, hidden, on_query and
  * when (840 bytes; ADR 0069), then on_typeahead and active_index (856
  * bytes; ADR 0070, kui_answer_typeahead answering the first), then
- * essential_motion (864 bytes; backlog C107), then dx and dy (872 bytes;
- * backlog C105);
+ * essential_motion (864 bytes; backlog C107), then dx and dy (backlog
+ * C105) and opens_on_press (backlog C108), 872 bytes;
  * kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92) are new
  * functions.
@@ -1529,6 +1529,13 @@ typedef struct KuiSpec {
      * transition_ms, and settable by a `when` entry. 0 for none. ABI 39,
      * appended (872 bytes on 64-bit). */
     float dx, dy;
+    /* Non-zero: on_click arrives on the primary press, and the press
+     * carries on into what it opens (opensOnPress, backlog C108) - released
+     * over a menuItem row of the menu it put up, that row is clicked; on
+     * the node, or before moving, the menu stays open; elsewhere after
+     * moving, the modal is dismissed. A native pop-up button's press, drag
+     * and release. ABI 39, appended (872 bytes on 64-bit). */
+    uint32_t opens_on_press;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

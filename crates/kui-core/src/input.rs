@@ -2429,6 +2429,9 @@ pub struct Interaction {
     /// instead: still drawn pressed while the pointer is over it, as it
     /// was when it kept the press itself.
     press_via: Option<Key>,
+    /// The press clicked its node already, on the way down (an
+    /// `opens_on_press` node, backlog C108): its release is no click.
+    pub(crate) clicked_on_press: bool,
     /// Hover group of the hovered / pressed region, for group styling.
     hovered_group: Option<u64>,
     pressed_group: Option<u64>,
@@ -3055,8 +3058,10 @@ impl Interaction {
                     pointer_made += 1;
                 });
                 // A press that actually dragged is not a click, and a
-                // press on a slider's track is the slide, never a click.
-                let click_ok = !dragged.is_some_and(|d| d.moved) && slid.is_none();
+                // press on a slider's track is the slide, never a click;
+                // nor is one that clicked on the way down (backlog C108).
+                let early = std::mem::take(&mut self.clicked_on_press);
+                let click_ok = !dragged.is_some_and(|d| d.moved) && slid.is_none() && !early;
                 // Released over the pressed node, or over a region that
                 // hands its press to it (backlog C91).
                 if click_ok

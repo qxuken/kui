@@ -202,6 +202,7 @@ pub const P_ACTIVE_INDEX: u32 = 150;
 pub const P_ESSENTIAL_MOTION: u32 = 151;
 pub const P_DX: u32 = 152;
 pub const P_DY: u32 = 153;
+pub const P_OPENS_ON_PRESS: u32 = 154;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1064,6 +1065,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.reveal_on_hover()),
         doc: "Draw this node only while its anchor — the nearest ancestor that tracks the pointer: an `onClick` row, a `hoverBg` card, a `hoverable` group header — is hovered (the pointer over it or anything inside it), holds a press begun inside it, or holds keyboard-visible focus inside it; and while focus of any kind is inside the node itself (ADR 0051). A row's secondary actions, shown for the row under the pointer with no `onHover` and no redraw of the view: the core decides it each frame as it decides `hoverBg`. Hidden is `opacity` 0, eased by a `transition`: the node keeps its room and its hit regions, and stays in the access tree and the Tab ring, so a control in it is there for the pointer that reaches it, the keyboard that tabs to it and a screen reader, and shows for each. With no anchor above it, it is always drawn and `reveal-without-anchor` says so.",
+    },
+    PropDef {
+        name: "opensOnPress",
+        id: P_OPENS_ON_PRESS,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.opens_on_press()),
+        doc: "The node's `onClick` arrives on the primary press rather than the release, and the press carries on into what that click opens (backlog C108) — a native pop-up button's press, drag and release. Released over a `menuItem` the frames since have drawn (the menu the click put up, its rows `role: \"menuItem\"`), the item is clicked, as a click on it would; released on the node itself, or before the pointer moved past the click slop, nothing more happens and the menu stays open for a second click; released anywhere else after moving, the `modal` the click opened is dismissed with `reason: \"outside\"`, as a press outside it would be. The release over the node is never a second click. A press on the node while its menu is open is outside the modal and closes it, as a pop-up button's does. The keyboard is unchanged: Enter and Space click it as before. The stock `select` opens this way.",
     },
     PropDef {
         name: "onHover",

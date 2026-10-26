@@ -765,6 +765,8 @@ impl Core {
                 let primary = button == MouseButton::Primary;
                 let mut owner = None;
                 let mut lent = None;
+                let mut opens = None;
+                self.press_opened = None;
                 // A scrollbar wins what it was painted over — its own
                 // scroller's content, not a float over it (ADR 0023): a
                 // thumb press starts a drag, a track press jumps there
@@ -838,6 +840,14 @@ impl Core {
                             .handle(InputEvent::MouseDown { button, clicks }, &mut out);
                         self.attach_pointer(&mut out, n);
                         return out;
+                    }
+                    // A node that opens on the press clicks now, after the
+                    // press has done what any press does (backlog C108).
+                    if primary
+                        && let Some((key, ..)) = hit
+                        && self.opens_on_press(key)
+                    {
+                        opens = Some((key, p));
                     }
                     // A press moves focus (to a focusable node, or to the
                     // key sink the press landed inside) or drops it; either
@@ -973,6 +983,14 @@ impl Core {
                         .handle(InputEvent::MouseDown { button, clicks }, &mut out),
                 };
                 self.attach_pointer(&mut out, n);
+                // The click an `opens_on_press` node makes on the way down,
+                // its release then no click, and the press remembered for
+                // the release to carry into what the click opens.
+                if let Some((key, at)) = opens {
+                    self.click_node(key, &mut out);
+                    self.interaction.clicked_on_press = true;
+                    self.press_opened = Some((key, at));
+                }
                 // A right-click the app did not claim with `onContextMenu`
                 // or `onButton` gets the stock menu, where there is
                 // anything standard to put in one (ADR 0017, decision 5).
@@ -1018,6 +1036,11 @@ impl Core {
                     .interaction
                     .handle(InputEvent::MouseUp { button }, &mut out);
                 self.attach_pointer(&mut out, n);
+                if button == MouseButton::Primary
+                    && let Some((trigger, at)) = self.press_opened.take()
+                {
+                    self.release_opened(trigger, at, &mut out);
+                }
             }
             InputEvent::ForceClick(p) => self.force_click(p, &mut out),
             InputEvent::Access(req) => self.handle_access(req, &mut out),
@@ -1840,6 +1863,52 @@ impl Core {
         }
         if takes_focus {
             self.move_focus(Some(key));
+        }
+    }
+
+    /// Whether node `key` clicks on the press (`opens_on_press`, backlog
+    /// C108), read off the last frame's tree, which the press was made
+    /// against.
+    fn opens_on_press(&self, key: Key) -> bool {
+        self.tree.index_of(key).is_some_and(|i| {
+            self.tree.specs[i]
+                .interact
+                .as_deref()
+                .is_some_and(|s| s.opens_on_press)
+        })
+    }
+
+    /// The release of a press that opened something on the way down
+    /// (backlog C108), the press having landed on `trigger` at `at`:
+    /// over a `menuItem` the frames since have drawn — the row of the menu
+    /// the press put up — the item is clicked, as a native pop-up button's
+    /// press, drag and release picks an option. Over the trigger, or before
+    /// the pointer moved, nothing: a quick click leaves the menu open for a
+    /// second one. Anywhere else after moving, the modal the press opened
+    /// is dismissed, as a press outside it would be.
+    fn release_opened(&mut self, trigger: Key, at: Vec2, out: &mut Vec<UiEvent>) {
+        let Some(p) = self.interaction.cursor() else {
+            return;
+        };
+        let over = self.interaction.hit_at(p).map(|h| h.key);
+        let item = over.filter(|&k| {
+            k != trigger
+                && self.tree.index_of(k).is_some_and(|i| {
+                    crate::composite::role(&self.tree, i) == Some(crate::access::Role::MenuItem)
+                })
+        });
+        if let Some(k) = item {
+            self.click_node(k, out);
+            return;
+        }
+        let moved = (p.x - at.x).abs() + (p.y - at.y).abs() > crate::input::DRAG_SLOP;
+        if !moved || over == Some(trigger) {
+            return;
+        }
+        if let Some(modal) = self.modal()
+            && !over.is_some_and(|k| self.within_modal(k))
+        {
+            self.dismiss(modal, "outside", out);
         }
     }
 

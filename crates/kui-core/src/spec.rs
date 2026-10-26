@@ -1647,6 +1647,16 @@ pub struct InteractSpec {
     /// appear for each. With no anchor it is always drawn, and warned
     /// about (`reveal-without-anchor`).
     pub reveal_on_hover: bool,
+    /// The node's click arrives on the primary press, not the release,
+    /// and the press carries on into what that click opens (backlog C108):
+    /// released over a `menuItem` — the row of the menu the click put up —
+    /// the item is clicked, as a native pop-up button's press, drag and
+    /// release picks an option; released on the node itself, or before the
+    /// pointer moved, nothing more happens and what it opened stays open
+    /// for a second click; released anywhere else after moving, a modal
+    /// that opened is dismissed as a press outside it would be. The
+    /// release over the node is never a second click.
+    pub opens_on_press: bool,
     /// How this node's scrollbars look, when it scrolls (see
     /// [`Scrollbar`]). Cold: read once per scroller when its layer's
     /// chrome is emitted, which is why it lives in this box rather than
@@ -1904,6 +1914,7 @@ impl InteractSpec {
         selectable: false,
         focus_region: false,
         reveal_on_hover: false,
+        opens_on_press: false,
         scrollbar: Scrollbar::DEFAULT,
         overscroll: Overscroll::Auto,
         rules: None,
@@ -2659,6 +2670,21 @@ impl NodeSpec {
     /// secondary actions, shown for the row under the pointer.
     pub fn reveal_on_hover(mut self) -> Self {
         self.interact_mut().reveal_on_hover = true;
+        self
+    }
+
+    /// Clicks on the press and hands the press on to what the click opens
+    /// (see the `opens_on_press` field, backlog C108): a select field whose
+    /// press opens its menu, a drag onto an option and a release picking
+    /// it, as NSPopUpButton does.
+    ///
+    /// ```
+    /// # use kui_core::NodeSpec;
+    /// let field = NodeSpec::row().on_click("open").opens_on_press();
+    /// assert!(field.interact().opens_on_press);
+    /// ```
+    pub fn opens_on_press(mut self) -> Self {
+        self.interact_mut().opens_on_press = true;
         self
     }
 

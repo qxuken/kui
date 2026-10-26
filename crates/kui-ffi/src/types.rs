@@ -972,6 +972,9 @@ pub struct KuiSpec {
     /// backlog C105); 0 is none. ABI 39.
     pub dx: f32,
     pub dy: f32,
+    /// Non-zero: the click arrives on the press, which carries on into
+    /// what it opens (`opensOnPress`, backlog C108). ABI 39.
+    pub opens_on_press: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

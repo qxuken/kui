@@ -544,6 +544,9 @@ pub(crate) fn spec_of(
     if s.dy != 0.0 {
         spec = spec.dy(s.dy);
     }
+    if s.opens_on_press != 0 {
+        spec = spec.opens_on_press();
+    }
     if let Some(msg) = unsafe { s.on_query.as_ref() } {
         spec = spec.on_query(msg.0.clone());
     }

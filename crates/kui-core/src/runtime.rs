@@ -782,6 +782,10 @@ pub struct Core {
     /// as a frame begins (backlog C106): what `group_focused` and
     /// `group_focus_visible` test a node's own group against.
     focus_group: Option<u64>,
+    /// A primary press that clicked an `opens_on_press` node on the way
+    /// down (backlog C108): that node and where the press landed, until the
+    /// release, which a `menuItem` under it then clicks.
+    press_opened: Option<(Key, Vec2)>,
     /// The data row (and, in a table, the column) focus last held in each
     /// windowed composite, by its key (ADR 0070): where Tab enters it
     /// again, unless it declares `active_index`. Pruned to the composites
@@ -1464,6 +1468,7 @@ impl Core {
             typeahead_asked: None,
             typeahead_answer: None,
             focus_group: None,
+            press_opened: None,
             composite_rows: FxHashMap::default(),
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),

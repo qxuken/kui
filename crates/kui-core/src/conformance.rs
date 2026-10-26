@@ -7868,6 +7868,8 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             // A move off its place (backlog C105), on whole pixels.
             .dx(2.0)
             .dy(-1.0)
+            // Its click on the press (backlog C108).
+            .opens_on_press()
             .keyframes(vec![
                 Keyframe::default().bg(Color::hex(0x1b1d27ff)),
                 Keyframe::default()

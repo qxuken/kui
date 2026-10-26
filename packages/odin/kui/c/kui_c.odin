@@ -731,6 +731,7 @@ Spec :: struct {
 	essential_motion: u32,
 	dx: f32,
 	dy: f32,
+	opens_on_press: u32,
 }
 
 Announcement :: struct {

@@ -1,5 +1,5 @@
 //! The stock select (`widgets::select`): a field that shows the choice in
-//! force and, clicked, opens the core's own menu of the choices under it.
+//! force and, pressed, opens the core's own menu of the choices under it.
 //! The app holds no open state and hears one event: the choice, on the
 //! field's key.
 

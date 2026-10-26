@@ -189,6 +189,7 @@ package kui_c
 #assert(offset_of(Spec, essential_motion) == 856)
 #assert(offset_of(Spec, dx) == 860)
 #assert(offset_of(Spec, dy) == 864)
+#assert(offset_of(Spec, opens_on_press) == 868)
 #assert(size_of(Announcement) == 24)
 #assert(align_of(Announcement) == 8)
 #assert(offset_of(Announcement, text) == 0)
