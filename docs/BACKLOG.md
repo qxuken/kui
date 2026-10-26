@@ -3658,6 +3658,10 @@ filed the same day for the round that builds them.
 - `.` **C118** — [The docs do not travel with kui](backlog/closed-2026-09.md#-c118--the-docs-do-not-travel-with-kui--done-2026-10-26) — done (2026-10-26) — ADR 0071 built: `kui docs` over the docs the runner carries, opt-in `--docs` / `--agents` remembered as `tooling`, `.kui/` kept at the runner's version, `kui_native::docs`, the book's text and Kit's reference on npm
 - `.` **C120** — [A composite cannot hear a key its items do not claim](backlog/closed-2026-09.md#-c120--a-composite-cannot-hear-a-key-its-items-do-not-claim--done-2026-10-26) — done (2026-10-26) — `onItemKey` on the composite: the keys its focused item leaves, as `itemkey: {the press, item, index, column?}`; no Tab stop, the arrows kept, every binding
 - `.` **C123** — [A clipped float seems cut by its parent](backlog/closed-2026-09.md#-c123--a-clipped-float-seems-cut-by-its-parent--done-2026-10-26) — done (2026-10-26) — it is cut where a child of its parent is; Kit's ring was cut by the Tasks tutorial's unpadded scroller; docs say so, tests pin both cuts
+- `.` **C125** — [Removing a composite's focused last item drops focus](backlog/closed-2026-09.md#-c125--removing-a-composites-focused-last-item-drops-focus--done-2026-10-26) — done (2026-10-26) — the frame without the item lands focus on the item now at its place, else the one before; `focus_item(key, index)` in every binding
+- `.` **C126** — [`transition = 0` with a spring easing draws the eased value at 0](backlog/closed-2026-09.md#-c126--transition--0-with-a-spring-easing-draws-the-eased-value-at-0--done-2026-10-26) — done (2026-10-26) — a zero-length transition jumps to its target whatever its easing
+- `.` **C127** — [Lua has no display scale in `env`](backlog/closed-2026-09.md#-c127--lua-has-no-display-scale-in-env--done-2026-10-26) — done (2026-10-26) — `env.scale` in Lua, `Ui::scale` / `kui_scale` / Odin `scale`; Kit's area cuts on whole device pixels
+- `.` **C129** — [A danger menu item's hover hides its label](backlog/closed-2026-09.md#-c129--a-danger-menu-items-hover-hides-its-label--done-2026-10-26) — done (2026-10-26) — Kit: the hovered or pressed danger row's label in `on_danger`; a loud fill's press no longer shades toward its label past 4.5:1
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3743,32 +3747,6 @@ A lead from Kit's round (2026-10-26): a live line chart's y gutter eases
 which moves the plot's width each tick and fires `line_chart.layout` — a
 stream of layout events from the chart, not the progress track.
 
-### `.` C125 — Removing a composite's focused last item drops focus
-
-**Found** in Kit's checklist (C120 adoption, 2026-10-26): Delete on the
-last item leaves focus on the vanished row's key, and nothing focuses
-the row before it; `env.set_focus` cannot name a list item either, since
-items are keyed by `index` (`"i0"` errors "no node is keyed"). Kit's
-workaround records each row's key while focused, which fails when Tab
-lands on the last row and Delete follows at once. **Do.** When a
-composite's focused item vanishes, focus moves to the item now at its
-place, else the one before it (as roving focus in ARIA practice); and a
-door to focus an item by index.
-
-### `.` C126 — `transition = 0` with a spring easing draws the eased value at 0
-
-**Found** in Kit's slider spring: a zero transition with `snappy` easing
-collapsed the fill to zero width. Kit drops the easing whenever it zeroes
-the transition. **Do.** A zero-length transition jumps to the target
-whatever its easing.
-
-### `.` C127 — Lua has no display scale in `env`
-
-**Found** in Kit's area chart: its polygon chunks end on whole window
-pixels to hide seams, which is exact only at integer scales because Lua
-cannot read the scale. **Do.** `env.scale` (and the same fact where a
-binding lacks it).
-
 ### `.` C128 — A test UI for `kui test`
 
 **Filed** as ADR 0072's later follow-up (2026-10-26): Playwright's trace
@@ -3777,13 +3755,6 @@ tests, runs one and steps through it with the frame before and after each
 driving call, the events and messages it produced, the I/O it asked for,
 tree and snapshot diffs, and an optional perf recording. **Do.** After
 ADR 0072 is built.
-
-### `.` C129 — A danger menu item's hover hides its label
-
-**Found** while writing Kit's design system (2026-10-26): Kit paints a
-danger menu item's hover in `danger` with its text also in `danger`, so
-the label vanishes under the pointer. **Do.** The hovered danger item's
-label in `on-danger` (Kit, `addons/kit/src/overlays.tl`).
 
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 

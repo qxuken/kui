@@ -818,6 +818,20 @@ for lua-language-server, and a new runner beside the window's.
   a Mac), from a key sink around the app that a text field keeps them
   from. The Tasks tutorial's list is padded so its checkboxes' rings are
   not cut at the scroller's edge.
+  A fourteenth, adopting C125–C127 and fixing C129: the checklist leaves
+  a removed row's focus to the core (its record of each row's key gone;
+  Tab straight onto the last row and Delete at once lands on the row
+  before, which the record missed); the slider keeps `snappy` while it
+  zeroes the fill's transition for a drag; a line chart's area chunks end
+  on whole device pixels by `env.scale`, so its seams are gone at 1.5 as
+  at 1 and 2; a hovered or pressed danger menu row's label and chord are
+  `on_danger` on its `danger` fill, where they were `danger` and
+  vanished, and a plain row's chord is `fg` on its hover; and a loud
+  fill's hover and press shades lean toward its label only while the
+  label still reads at 4.5:1 on the press, else away from it (Ledger's
+  light danger button and row pressed to 3.7:1). Kit's contrast test
+  draws every menu row tone, a danger button and a toast's action
+  hovered and pressed.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
@@ -1393,6 +1407,27 @@ for lua-language-server, and a new runner beside the window's.
   ring's, and a chord still goes to the sink above. The container stays
   one Tab stop and its items keep their arrows, where an `onKey` on
   either took them; a control inside an item reports the item.
+- **Focus stays in a composite whose focused item goes** (backlog C125):
+  the frame that no longer has a list's, a table's or another
+  composite's focused item lands focus on the item now at its place,
+  else the one before it, else the first — a table in the column kept —
+  where focus was left on a key no node had. A windowed list keys its
+  rows by data index, so only a row past the new end moves focus (to the
+  last row, reached for when unbuilt), and a row scrolled out of the
+  window keeps it. The focus shows as it did. A composite gone or empty
+  leaves focus where it was. And `focus_item(key, index)` names an item
+  by its data `index` (else its place), landing when the frame ends and
+  reaching for a row a windowed list did not build: `Ui::focus_item`,
+  `kui_focus_item`, Odin `focus_item`, Node `focusItem`, Lua
+  `env.focus_item`.
+
+  *What you can delete:* a checklist's record of each row's key, kept to
+  move focus to the row before when the last one went.
+- **The display scale in Lua** (backlog C127): `env.scale`, device pixels
+  per logical px of the window being built, what a script lands an edge
+  on a whole physical pixel with; `Ui::scale`, `kui_scale` and Odin's
+  `scale` read it for a plugin's view (Node's `env().viewport.scale`
+  already did).
 
 ### Changed
 
@@ -1497,6 +1532,16 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- A zero-length transition jumps to its target whatever its easing
+  (backlog C126): with a spring (`snappy`, `spring`, `bouncy`, `smooth`,
+  or a bounce on a timed curve) the integration at no response time blew
+  up, and Kit's slider fill drew at zero width while dragged. A reach for
+  an unbuilt row begun at a frame's end — a type-ahead answer, a
+  `focus_item` — is landed by the frame it owes rather than scrolled for
+  twice in the frame it began in.
+
+  *What you can delete:* an easing dropped whenever the transition is
+  zeroed.
 - A `when` entry that sets a shadow's offsets keeps the node's shadow
   colour, blur and spread (backlog C114): an entry patched the shadow
   whole, from a probe whose colour was transparent, so `shadowX` /
