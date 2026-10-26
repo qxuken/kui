@@ -107,9 +107,10 @@ export interface EventRect {
 }
 
 /** What a click on a `cells` grid, or inside an `onKey` sink that draws
- *  `role="line"` rows, can say beyond "it was clicked". A plain click
- *  arrives as declared (a bare message under `tag`), with no `click`
- *  field; this is there only where the node can say more. */
+ *  `role="line"` rows, can say beyond "it was clicked" — and, on a map
+ *  message, what it was made with. A plain click arrives as declared (a
+ *  bare message under `tag`), with no `click` field; this is there only
+ *  where the click can say more. */
 export interface ClickEvent {
   /** On a `cells` grid: the cell under the pointer, clamped to the grid. */
   cell?: { row: number; col: number };
@@ -120,6 +121,11 @@ export interface ClickEvent {
   byte?: number;
   inside?: boolean;
   clicks?: number;
+  /** On a map message: the modifiers held for a ⌘-click or a
+   *  Shift-click (backlog C101's facts). */
+  mods?: { shift: boolean; ctrl: boolean; alt: boolean; super: boolean };
+  /** On a map message: the key that made the click, Enter or Space. */
+  key?: 'enter' | 'space';
 }
 
 /** A pointer-captured drag on an `onDrag` node. `x`/`y` are where the
@@ -331,6 +337,8 @@ export interface ScrollEvent {
 export interface FocusEvent {
   phase: 'in' | 'out';
   by: 'pointer' | 'keyboard' | 'assistive' | 'program';
+  /** A move the keyboard or the pointer made with a modifier held. */
+  mods?: { shift: boolean; ctrl: boolean; alt: boolean; super: boolean };
 }
 
 /** The pointer entered or left an `onHover` node — also when a new frame

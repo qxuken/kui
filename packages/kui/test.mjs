@@ -1096,7 +1096,8 @@ test('tab reaches a button and enter presses it', () => {
   ctx.key('enter');
   const evs = ctx.pollEvents();
   assert.equal(evs.length, 1, 'enter pressed the button');
-  assert.deepEqual(evs[0].payload, { kind: 'go' });
+  // A map message's click says the key that made it (backlog C101's facts).
+  assert.deepEqual(evs[0].payload, { kind: 'go', click: { key: 'enter' } });
   ctx.blur();
   assert.equal(ctx.focused(), null);
   ctx.focus(focused);
