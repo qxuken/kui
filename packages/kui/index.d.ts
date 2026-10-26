@@ -619,8 +619,19 @@ export interface WithTypeahead {
  *  `key` event's (always `down`); `item` is the focused item's key,
  *  `index` its data `index` (else its place among the items), `column` a
  *  table cell's column. */
-export interface ItemKeyEvent extends KeyEvent {
+export interface ItemKeyEvent {
   phase: 'down';
+  code: string;
+  physical: string;
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  super: boolean;
+  text: string | null;
+  repeat: boolean;
+  location: KeyLocationName;
+  caps_lock: boolean;
+  num_lock: boolean;
   item: number;
   index: number;
   column?: number;
