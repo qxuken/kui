@@ -19,6 +19,9 @@
 #          (build.lua, which needs a Lua 5.4+ on PATH)
 #   node   npm run gen in packages/kui: jsx-runtime.d.ts, index.d.ts and
 #          docs/props.md, from the schema and the addon's #[napi] surface
+#   docs   crates/kui-native/docs: props.md and howto.md as the crate's
+#          rustdoc pages read them (kui_native::docs, ADR 0071), and an
+#          index of the ADRs linking to them and to the book
 #   odin   nu scripts/odin.nu gen: packages/odin from kui.h and the schema
 #          (needs odin, or ODIN, and clang)
 #   book   nu scripts/book-examples.nu: the book's Examples part
@@ -27,7 +30,7 @@
 # release-prep.nu runs this, in write mode on a clean tree, before a tag.
 
 const ROOT = path self | path dirname | path dirname
-const STEPS = [lua addons node odin book]
+const STEPS = [lua addons node docs odin book]
 
 def --wrapped must [cmd: string, ...args] {
     ^$cmd ...$args
@@ -50,9 +53,71 @@ def written [files: list<string>, check: bool, write: closure] {
     }
 }
 
+const GITHUB = "https://github.com/qxuken/kui/blob/main"
+const BOOK = "https://kui-book.qxuken.dev"
+
+# A Markdown file from docs/ as rustdoc reads it in the kui-native crate:
+# a bare fence is text and a `rust` one is not run (neither is a doctest),
+# a link to props.md or howto.md is the crate's own page, and a link to
+# the rest of the repository goes to it on GitHub.
+def rustdoc-page [text: string]: nothing -> string {
+    mut fence = false
+    mut out = []
+    for line in ($text | lines) {
+        let t = $line | str trim --left
+        mut l = $line
+        if ($t | str starts-with "```") {
+            if not $fence {
+                let lang = $t | str substring 3.. | str trim
+                if $lang == "" {
+                    $l = $line | str replace "```" "```text"
+                } else if $lang == "rust" {
+                    $l = $line | str replace "```rust" "```rust,ignore"
+                }
+            }
+            $fence = not $fence
+        }
+        $out = ($out | append $l)
+    }
+    $out
+    | str join "\n"
+    | str replace --all "](props.md" "](crate::docs::props"
+    | str replace --all "](howto.md" "](crate::docs::howto"
+    | str replace --all "](book/src/SUMMARY.md)" $"]\(($BOOK))"
+    | str replace --all "](adr/" $"]\(($GITHUB)/docs/adr/"
+    | str replace --all "](../" $"]\(($GITHUB)/"
+    | $in + "\n"
+}
+
+# What crates/kui-native/docs holds: the two pages and the ADR index.
+def crate-docs []: nothing -> list<record<path: string, text: string>> {
+    let adrs = ls docs/adr/*.md | get name | sort | each {|f|
+        let title = open --raw $f | lines | where {|l| $l | str starts-with "# " } | first | str substring 2..
+        $"- [($f | path basename | str substring 0..3) ($title)]\(($GITHUB)/($f))"
+    }
+    let index = [
+        "# kui's design records"
+        ""
+        "Every decision that shaped kui is written down as an architecture"
+        "decision record — the context, what was decided and why, the options"
+        "turned down — and the numbers below are the ones the rest of these docs"
+        "cite (\"ADR 0047\"). They are read on GitHub, at the head of `main`; [the"
+        $"kui book]\(($BOOK)) is the path in, one concept a chapter, and"
+        "[`props`](crate::docs::props) and [`howto`](crate::docs::howto) are the"
+        "reference and the task index this crate carries (ADR 0071)."
+        ""
+        ...$adrs
+    ]
+    [
+        {path: "crates/kui-native/docs/props.md", text: (rustdoc-page (open --raw docs/props.md))}
+        {path: "crates/kui-native/docs/howto.md", text: (rustdoc-page (open --raw docs/howto.md))}
+        {path: "crates/kui-native/docs/adr.md", text: ($index | str join "\n" | $in + "\n")}
+    ]
+}
+
 def main [
     --check  # fail, writing nothing, if a rerun would change a generated file
-    --skip: string = ""  # steps to leave out, comma-separated: lua,node,odin,book
+    --skip: string = ""  # steps to leave out, comma-separated: lua,addons,node,docs,odin,book
 ] {
     cd $ROOT
     let skip = $skip | split row "," | str trim | where {|s| $s != "" }
@@ -83,7 +148,8 @@ def main [
             # is hand-written beside them).
             let copies = (
                 [[from to]; [addons/kit/bindings/node/kit.js packages/kui/kit/components.js]
-                    [addons/kit/bindings/node/kit.d.ts packages/kui/kit/components.d.ts]]
+                    [addons/kit/bindings/node/kit.d.ts packages/kui/kit/components.d.ts]
+                    [addons/kit/bindings/reference.md packages/kui/kit/reference.md]]
                 | append (ls addons/kit/lua/*.lua | get name | each {|f| {from: $f, to: $"packages/kui/kit/lua/($f | path basename)"} })
             )
             let stale = $copies | where {|c| not ($c.to | path exists) or (open --raw $c.from) != (open --raw $c.to) }
@@ -105,6 +171,19 @@ def main [
                 rm -rf target/napi-type-defs
                 cd packages/kui
                 must npm run gen
+            }
+        }]
+        [docs "the kui-native crate's rustdoc pages (crates/kui-native/docs)" {
+            # After `node`, which writes docs/props.md.
+            let want = crate-docs
+            let stale = $want | where {|f| not ($f.path | path exists) or (open --raw $f.path) != $f.text }
+            if $check {
+                if ($stale | is-not-empty) {
+                    error make {msg: $"stale: ($stale | get path | str join ', ') — run nu scripts/gen.nu"}
+                }
+            } else {
+                mkdir crates/kui-native/docs
+                for f in $stale { $f.text | save -f --raw $f.path }
             }
         }]
         [odin "the Odin binding (packages/odin)" {

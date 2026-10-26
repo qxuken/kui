@@ -1,0 +1,3120 @@
+# How do I…
+
+A task index. [`props.md`](crate::docs::props) is the reference — every prop, element
+and event, sorted by name — and this page is the other door: the question a
+developer arrives with, two sentences of answer, and the row, the release
+entry or the ADR that says the rest. New to kui, with no question yet?
+[The book](https://kui-book.qxuken.dev) is the path in, one concept a chapter.
+
+It exists because both field-report apps filed a wish for something that had
+already shipped and was documented in their own `node_modules`. The examples
+are JSX; the Lua and C spellings of every row named here are in the same
+`props.md` table, one column over.
+
+- [Draw and animate](#draw-and-animate)
+- [Interaction, focus and reading](#interaction-focus-and-reading)
+- [Sound and effects](#sound-and-effects)
+- [Test it](#test-it)
+- [Ship and upgrade](#ship-and-upgrade)
+
+## Draw and animate
+
+### How do I animate a removal?
+
+Give the node a stable `key` and a `transition`, then declare `exit` —
+where it should end up — and the frame after the view stops declaring it the
+subtree is copied out of the last frame that had it and replayed frozen in
+its place, inert, while those slots ease. It plays when that node is
+removed and its parent stays: a node that goes because an ancestor went —
+a tab switched away, a panel closed around it — goes at once, so put `exit` on the node that leaves. The rule reads the parent's
+key, so give the tab bodies you swap in one slot keys of their own; two
+bodies that share an auto key look like one parent that stayed. A frame
+that removes more than 4096 nodes declaring `exit` animates none of them,
+because the removal is judged whole rather than half-animated, and the
+`exit-budget` warning names the frame's count.
+
+[`exit` row](crate::docs::props#container-props) ·
+[ADR 0012](https://github.com/qxuken/kui/blob/main/docs/adr/0012-the-exit-budget.md) ·
+[alpha.8](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha8-2026-09-07)
+
+### How do I throw a card left or right from a button?
+
+Aim the exit in the handler that removes the card:
+`ui.exit_with(key, Enter::from(400.0, 0.0).opacity(0.0))` in Rust
+(`env.exit_with` in Lua, `kui_exit_with` in C, `ctx.exitWith(key, { dx:
+400, opacity: 0 })` in Node), then stop declaring the card. The exit a
+node leaves by is otherwise the one its last frame declared, so a Like
+button pressed with the card at rest would send it the default way; the
+named exit wins for the frame the card goes in, and lapses when that
+frame finishes if the card stayed. It aims a node that declares an
+`exit` and a `transition`, and plays with that transition — so give the
+card a default `exit`, and a drag that already aims it by the lean on
+every frame needs nothing more.
+
+[`exit` row](crate::docs::props#container-props) ·
+[`Ui::exit_with` door](crate::docs::props#doors)
+
+### How do I tilt a card as it is dragged?
+
+`rotate` on the card, in turns clockwise (`0.03` is a tilt, `0.25` a
+quarter turn), read from the drag's `dx` in `on_event`; `scale` and
+`pivotX` / `pivotY` (fractions of the box, the centre by default) sit
+beside it. The turn is paint-only — the card keeps the room its upright
+self takes — and everything under it turns with it: the photo it clips
+inside its rounded corners, a badge floating on its corner, its text,
+and its hit region, so it is grabbed on its tilted edge. Leave the
+`transition` off while the pointer holds the card, so the tilt follows
+at once, and put it back on release: the turn is a slot like `bg` or
+`width`, so the spring brings it home. `enter: { scale: 0.8 }` settles
+a chip in, `exit: { rotate: 0.1, scale: 0 }` spins one away, and a
+spinner is a box with `keyframes: [{ rotate: 0 }, { rotate: 1 }]`. A
+`path`'s own `rotate` is ADR 0041's and does not tween; put the path in
+a box for one that does.
+
+[`rotate` row](crate::docs::props#container-props) ·
+[ADR 0043](https://github.com/qxuken/kui/blob/main/docs/adr/0043-a-node-turns-about-its-pivot.md) ·
+[`transform` example](https://github.com/qxuken/kui/blob/main/examples/rust/features/transform.rs)
+
+### How do I make a node bob, drift or shake by itself?
+
+Give it `keyframes` whose stops name `dx` / `dy`: logical px from where
+layout put it, sampled off the cycle like any other slot, so the view
+declares the stops once and never redraws for them. `[{ dy: 0 }, { dy:
+-6 }]` with `repeat: 'alternate'` bobs it; stops that rise and fade drift
+a sparkle up; a few small alternating `dx` stops on a short cycle shake
+it. The node and everything under it are drawn and hit where the stop
+puts them, and the offset adds to a `slide`, but the room it takes is its
+place's: siblings do not move, and `onLayout` reports the layout rect
+rather than a cycle that would post an event every frame. A cycle runs
+for as long as the node is declared and asks for a frame every vsync,
+unless `iterations` says how many times.
+
+[`keyframes` row](crate::docs::props#container-props) ·
+[`transition` example](https://github.com/qxuken/kui/blob/main/examples/rust/features/transition.rs)
+
+### How do I play a keyframe animation once?
+
+`iterations: 1` on the node with the `keyframes` (CSS's
+`animation-iteration-count`). The cycle plays from the first frame the
+node is declared with it, rests where it ended — the last stop, or the
+first for `reverse`, or the start again for `2` alternating — and then
+asks for nothing, so `animating()` goes quiet and a test's `advance` runs
+it out. Before its `delay` it holds its first stop, so a row of stars
+given `delay: i * 150` and `iterations: 1` pops in one after another
+without showing their own values first. To play it again, drop the
+stops for a frame and declare them again, or give the node a new key: a
+finite cycle restarts whenever a frame went without it. A blinking caret
+is still not keyframes (see the caret how-to): it is a cycle with no end.
+
+[`iterations` row](crate::docs::props#container-props) ·
+[`keyframes` row](crate::docs::props#container-props) ·
+[`transition` example](https://github.com/qxuken/kui/blob/main/examples/rust/features/transition.rs)
+
+### How do I show a photo or a GIF my app ships?
+
+Decode it with the runner, which links the decoder it draws its
+wallpaper with: `kui_native::decode_image(bytes)` turns PNG, JPEG, WebP
+or GIF bytes into straight RGBA and a size, which `add_image` takes as it
+is (`decodeImage` in Node, `kui_decode_image` in C, freed with
+`kui_pixels_free`). No `image` dependency of the app's own, and no
+resampling to the size it is shown at: register the photo as decoded
+and declare the box, and a photo drawn smaller is drawn from a level the
+core halves it to (ADR 0044), the page holding that level and not the
+whole photo. For an
+animated GIF, APNG or WebP, `decode_animation` keeps every frame — the
+whole canvas each, as a browser composites it — with the seconds each
+shows. Play it on the frame clock: keep when it started, ask
+`anim.at(ui.now() - started)` which frame shows and when the next
+is due, `update_image_with` the pixels when the index moved, and
+`request_frame_at(started + next)`. Nothing is owed between steps, so a
+spinner at 80 ms a step costs twelve frames a second and an idle window
+otherwise, and a paused one asks for nothing. A GIF frame that says 10 ms
+or less shows for 100, the way browsers show it; a finite loop count
+rests on the last frame. Lua is a guest and gets the handle from its
+host.
+
+[`decode` example](https://github.com/qxuken/kui/blob/main/examples/rust/features/decode.rs) ·
+[`image` element](crate::docs::props#elements)
+
+### How do I draw a connector between two boxes?
+
+`<line from={[x, y]} to={[x, y]} width color/>` is one round-capped stroke,
+`<line points={[[x, y], …]} curve/>` a polyline or a smooth curve through
+the points; a line is always a float in its parent's box space, sized to its
+own bounding box, so it takes no room in a row or column — and it paints
+where a child declared there would, in its parent's layer, over the siblings
+before it and under those after (a connector meant to sit under two cards is
+declared before them; one meant to sit over them, after). With `onClick`,
+`onDrag` or `hoverable` it is hit by its stroke, at least 4 px wide
+([ADR 0026](https://github.com/qxuken/kui/blob/main/docs/adr/0026-hit-testing-by-shape.md)). Budget its quads: one per segment, and a curve is flattened
+in the core at one piece per 6 logical px of chord, at most 32 per span — so
+a nine-point curve over ~50 px spans is ~60 quads.
+
+[`line` element](crate::docs::props#elements) ·
+[ADR 0010](https://github.com/qxuken/kui/blob/main/docs/adr/0010-a-segment-primitive.md) ·
+[alpha.7](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha7-2026-09-06)
+
+### How do I draw a dashed line, a dotted one, or a marquee's marching ants?
+
+`dash` on a `<line>` or on a `<path>`'s stroke: `dash={[6, 4]}` is 6 px
+marks with 4 px gaps, `dash={4}` the same length for both, and four
+lengths are a dash-dot. The lengths are what you see — every mark has the
+stroke's round caps — so a mark no longer than the stroke is wide is a
+dot: `width={3} dash={[3, 5]}` is a dotted line. A dot is as wide as the
+stroke, so a gap the dots overlap closes: `width={8} dash={[2, 2]}` is a
+solid line. The pattern runs along
+the whole stroke, round corners and along a `curve`. For marching ants,
+grow `dashOffset` from a tick; the marks move towards the first point.
+A dashed line costs a quad per mark, and is still hit in its gaps.
+
+[`line` element](crate::docs::props#elements) ·
+[ADR 0010's amendment](https://github.com/qxuken/kui/blob/main/docs/adr/0010-a-segment-primitive.md#amendment-a-dash-is-cut-in-the-core) ·
+`cargo run --example line`
+
+### How do I make a tab bar whose tabs stop shrinking at their labels?
+
+Give every tab `width="grow"` and `minWidth="fit"`: they split the bar evenly
+while they fit and sit at their own label's width once they do not, which is
+CSS's `flex: 1 0 auto`. It is opt-in rather than the default because a fit
+width is the *unwrapped* one — a paragraph in a grow column would stop
+wrapping under it.
+
+[`minWidth` row](crate::docs::props#container-props) ·
+[alpha.8](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha8-2026-09-07)
+
+### How do I push a toolbar's last button to the far end, or space items evenly?
+
+`mainAlign="spaceBetween"` on the row: the free space goes between the
+children and none at the ends, so the first sits at the start and the last
+at the end. `spaceAround` gives each child an equal share split to its two
+sides, and `spaceEvenly` makes every gap and both ends equal. The spread is
+added to `gap`, and none is dealt when nothing is free — a `grow` child takes
+the space, and a row that overflows keeps its gaps. To push only the last of
+several, a `<box width="grow"/>` spacer before it is still the way.
+
+### How do I set a label and a large number on one line?
+
+`crossAlign="baseline"` on the row: the first baselines of the children's
+text line up, so `Total` in 13 px and `1,284` in 32 px read as one line
+instead of two tops or two bottoms. Each child's baseline is its first
+text's, found down its first-child chain through any wrapper box; a child
+with no text — an icon — aligns by its bottom edge, and a `grow` or percent
+height fills the row from its top. A fit-height row grows to hold the
+aligned children. On a column it is `start`, with a warning.
+
+### How do I keep a box 16:9, or square, whatever width it gets?
+
+`aspectRatio={16/9}` with the height left `fit`: the height is the final
+width over the ratio, so `width="grow"` and a ratio keeps its shape as the
+window resizes (cap it with `maxWidth`). Under a fixed height a fit width is
+that height times the ratio, which is how `height={40} aspectRatio={1}`
+makes a square. The derived axis is not fitted to the children, which
+overflow it — `minHeight="fit"` floors it at them — and with both axes
+declared the ratio has nothing to set and warns (`aspect-ignored`).
+[`examples/rust/features/align.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/features/align.rs)
+shows all three.
+
+### How do I make a box 80% of its parent, but never under 400 or over 1000?
+
+Write it as CSS does: `width="clamp(400px, 80%, 1000px)"`. `min(…)`,
+`max(…)` and `clamp(MIN, TARGET, MAX)` take lengths and percentages and
+nest, and layout resolves them against the parent's content box — the box
+a `"50%"` takes its cut of, padding off — so a column inside a row gets
+the row's room, not the window's, and nothing is measured in the view.
+They work on `minWidth` / `maxWidth` / `minHeight` / `maxHeight` too:
+`maxWidth="90%"` is never wider than nine tenths of the parent. As in CSS
+the minimum wins when it is over the maximum, and a percentage clamp is
+no clamp until the parent is sized (a fit parent is not held back by it).
+The same expression as data is never parsed —
+`width={{ clamp: [400, { percent: 80 }, 1000] }}` in JSX, `width = {
+clamp = { 400, { pct = 80 }, 1000 } }` in Lua, `kui_size_clamp(kui_size_px(400),
+kui_size_pct(80), kui_size_px(1000))` in C — though a spelling is cheap
+too: it is parsed the first frame it is seen and found by its text after
+that. A `calc` does not ease under `transition`.
+
+Declare an expression once per layout, not once per frame. Every window
+shares one table of them, which keeps 65 536 and never lets one go, so
+`{ max: [dragX, { percent: 30 }] }` fed a splitter's fractional drag
+spends an entry per pixel moved. Past the cap a new expression leaves its
+prop at its default (a width fit, a clamp none) and warns
+`size-expressions-full` once, while the ones kept still resolve. Give the
+moving part a px size of its own, beside an expression that does not
+move.
+
+### How do I lay a row out as a column when it is narrow?
+
+Give the row a `when` entry over its own width ([ADR
+0069](https://github.com/qxuken/kui/blob/main/docs/adr/0069-props-by-condition.md)):
+
+```tsx
+<box dir="row" width="grow" gap={16}
+     when={[{ width: { below: 600, band: 16 }, dir: 'column', gap: 8, hidden: ['hint'] }]}>
+  <box key="field" width="grow">…</box>
+  <text key="hint">Press Enter to save</text>
+</box>
+```
+
+```lua
+row { width = "grow", gap = 16,
+      when = { { width = { below = 600, band = 16 }, dir = "column", gap = 8, hidden = { "hint" } } },
+      … }
+```
+
+```rust,ignore
+NodeSpec::row().grow_width().gap(16.0).when(Cond::width_below(600.0).band(16.0), |p| {
+    p.dir(Dir::Column).gap(8.0).hide("hint")
+})
+```
+
+The core reads the row's width in layout, once it is final and before
+the children are laid across it, so the frame the window crosses 600 is
+already a column — the view is not run again, and nothing reads a size
+a frame late. The `band` holds the column until 616, so a width resting
+on the threshold does not flip every frame. An entry over the node's own
+size sets the layout of its children only (direction, gaps, padding,
+wrap, alignment, `minColumn`, and `hidden` naming keyed children to drop);
+it cannot set the row's own width, which would loop, and a row whose
+width comes from its content (`fit`) is refused that and grows instead
+(`query-on-fit`). `window: { width: { below: 600 } }` reads the window
+instead, and that entry may set anything. `onQuery` tells the view when
+what matched changed, for a model that keeps it.
+
+### How do I colour a control by its hover, press or the theme without running the view again?
+
+`when` entries on state and the environment: `{ hovered: true, bg:
+'$hover' }`, `{ pressed: true, shadowY: 0 }`, `{ focusVisible: true,
+borderW: 2, borderColor: '$focus' }`, `{ dark: true, … }`, `{
+reducedMotion: true, transition: 0 }`, `{ contrast: 'more', borderW: 2
+}`. The core resolves them as the node opens, as it always resolved
+`hoverBg` — which is an entry ahead of the list, so an explicit entry
+wins over it — and eases what they set under the node's `transition`. A
+pointer move repaints; it does not run the view, and a component whose
+looks depend on the pointer is replayed (ADR 0067) where reading
+`is_hovered` in its view refilled it on every move. Every entry that
+matches applies, in order, so `{ dark: true }` and `{ hovered: true }`
+compose without an entry for the pair.
+
+### How do I make a grid of cards with as many columns as fit?
+
+`minColumn={240}` on a row: it wraps into equal columns, as many as fit
+at 240 or more — `max(1, floor((w + gap) / (240 + gap)))` — every card as
+wide as a column, the last line's too, so a short last line does not
+stretch. CSS's `repeat(auto-fill, minmax(240px, 1fr))`. The lines are
+`crossGap` apart.
+
+### How do I build a chart only when there is room for it?
+
+The lazy form: `<Lazy needs={{ w: 320 }} render={() => <Chart/>}
+fallback={() => <text>…</text>}/>`, `{ needs = { w = 320 }, render =
+function() … end, fallback = … }` as a child table in Lua,
+`ui.lazy(Needs::w(320.0), |ui| …).fallback(|ui| …)` in Rust, `kui_lazy`
+in C. `render` runs when the parent offers that much — its content box
+less its other children and gaps — and the branch is laid out at exactly
+that size; `fallback` runs otherwise, and the branch not built has no
+nodes and no state. `query: { width: { below: 700 } }` picks by the
+parent's size, the window's or the environment's instead. The decision
+is taken from the last layout's room; when this frame's layout says
+otherwise the runner builds the frame once more before drawing it
+(`rerunOwed()` for a loop of your own), and on the first frame it lays
+out before it builds.
+
+### Why do two `"50%"` columns with a gap fit their row?
+
+A percentage is cut from the parent's content box before the gap between
+the children takes its share, so two halves and a 20 px gap ask for 20 px
+more than the row has. A share of the room gives when the room is spent,
+as a CSS flex item does: a percentage or a size expression shrinks when
+the row overflows — 90 and 90 in a row of 200 — so write the share you
+mean (`"50%"`, not `"48%"`). Every child of that row that can give gives
+in proportion to its size (60% and 40% of 500 beside a 100 px child are
+240 and 160), and none goes below its content: the widest thing in it
+that cannot wrap — a button, a label's longest word, its padding and the
+gaps between what it holds. That is CSS's `min-width: auto`, and the way
+out is CSS's too: `minWidth: 0` lets a share go below its content, a px
+`minWidth` is its floor in place of its content, and a child that scrolls
+its overflow has no content floor. The lower bound of a `clamp()` or `max()`
+width is where it starts, not a floor. A px width keeps its own, a
+`scrollX` row overflows on purpose, a row of fit children alone squeezes
+its largest first, and in a `wrapChildren` row two halves and a gap take
+a line each instead. A table's percent columns take their cut of the row
+less its gaps and never shrink, so past 100% a table's overflow and a
+plain row's squeeze part ways.
+
+### Why do the rows of a column too short for them overflow it instead of squeezing?
+
+Because nothing in a row gives vertically: a text is as tall as its
+lines, a button as its padding and label. Down a column that overflows,
+a fit child gives no less than its content — CSS's `min-height: auto` —
+so a pane's header in a short window keeps its lines and pushes past the
+bottom, where a squeezed one drew its text over the rows under it. What
+gives is what can: a `grow` child first (to 0), then a child that scrolls
+or clips, down to 0, so a dialog's list under its title still takes what
+the title leaves it. Put the column in a scroller, or clip it, to keep
+the overflow in its box. `minHeight: 0` asks for the squeeze back, and
+a px `minHeight` is a floor in place of the content. Across nothing
+changed: a row of fit labels still squeezes them, largest first, into
+their ellipses.
+
+[`minHeight` row](crate::docs::props#container-props)
+
+### Why does the text in a card with a `maxWidth` wrap at the card, however deep it sits?
+
+Because a fit box across a column is its content's width but no wider
+than the column's box — CSS's `fit-content`. A dialog capped at 400
+holding a row of a message and a button holds the row to 400, the row's
+message gives along it, and the message wraps; no `width="grow"` on the
+wrapper is needed for it. A fit child that fits keeps its own width, so
+a centred button stays a button, not a bar. The child gives down to its
+`minWidth`, 0 when none is declared, so a title with `ellipsis` is cut
+to the card. `minWidth: "fit"` keeps the content's width and runs past
+the card, and a column that scrolls x leaves its children their widths,
+since that overflow is what it scrolls. A `fixed` width is kept too,
+and so is a terminal grid's or an image's, whose content is their size.
+
+[`minWidth` row](crate::docs::props#container-props)
+
+### How do I line up the columns of a key/value list, or any table?
+
+`<box dir="table">`, `grid { }` (Lua's `table` is its own), a `KuiSpec`
+with `dir = KUI_TABLE`, `NodeSpec::table()`: a column whose rows'
+children line up in columns — the nth in-flow child of every row is
+column n (a float in a row is not a cell), and a column is as wide as
+its widest cell — so a label column sits at
+its longest label with no width picked by hand and nothing measured
+([ADR 0033](https://github.com/qxuken/kui/blob/main/docs/adr/0033-a-table-is-a-column-whose-cells-align.md)). Put
+the rows in as rows: `<box dir="row" width="grow" gap={8}><text>{k}
+</text><text>{v}</text></box>`, a bare text a cell held to its column.
+The table itself needs no width — its `fit` is its columns', whatever
+the rows' sizing, so that snippet with no width on the table is the
+aligned list, as wide as its longest key and its longest value. A
+cell's `width` sizes its column — `fit` (the default) and a number are
+content, `grow` makes the whole column grow with the table, a percent
+takes its cut of the row — and its `minWidth` / `maxWidth` clamp the
+column; a `grow` cell in a header row is enough to make its column the
+one that stretches. The rows keep everything a row has: their own `gap`
+between cells, padding, `bg`, `hoverBg`, `onClick` and `label` — so a
+clickable settings row, a hovered inspector row and a header that sorts
+are rows with those props — and a number right-aligns in its column
+with a `mainAlign="end"` row around the text. Only a `row` straight
+under the table is a row: a `column` there (a section heading over its
+own rows), a text or a nested table is a child with its own width, and
+its children are not cells. An image straight in a row is a cell held
+to its column like a text is — its box the column wide and its own
+aspect tall, the pixels meeting it by the image's `fit` — so an icon
+that must keep its width sits in a box. Everything else is the
+column's: `gap` is between rows, `scrollY` scrolls them. Fit columns
+that overflow the row are compressed largest first, as a row's children
+are, unless the table scrolls x, where the rows are at least as wide as
+the columns and the table scrolls to them; a row of a table never
+wraps. The devtools' Facts, tokens, legend and inspector lists are
+tables.
+
+[`table` element](crate::docs::props#elements) ·
+[examples/rust/widgets/table.rs](https://github.com/qxuken/kui/blob/main/examples/rust/widgets/table.rs) ·
+[examples/node/widgets/table.tsx](https://github.com/qxuken/kui/blob/main/examples/node/widgets/table.tsx)
+
+### How do I clamp text to one line, or to three with an ellipsis?
+
+`wrap="none"` breaks nowhere, `maxLines={3}` lays out at most three lines,
+and `ellipsis` ends the last one with an ellipsis when the text is cut off.
+All three are text props, so they read on `<text>` and `<edit>`, and a span's
+styles do not interrupt them — spans shape as one paragraph.
+
+[`wrap` / `maxLines` / `ellipsis` rows](crate::docs::props#text-props)
+
+### How do I underline a diagnostic in red, with a squiggle?
+
+`underlineColor` and `underlineStyle` on a `<span>` (or on a text's style
+rows): `<span underlineColor="#ff0000" underlineStyle="wavy">value</span>`
+draws a red wave under the span alone, following it across a wrap, and
+leaves the glyphs their own colour; either row implies `underline`. The
+shapes are `solid`, `wavy` and `dotted`. A terminal's undercurl is the
+same on a cell — the wave bit (32) in its flags and the underline colour
+as a fifth entry (SGR 4:3 and 58). No `line` float under the run, no rect
+arithmetic; a wave is pieces of the segment primitive a `line` draws.
+
+[`underlineColor` / `underlineStyle` rows](crate::docs::props#text-props) ·
+[alpha.13](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha13-2026-09-15)
+
+### How do I draw a selection over several lines as one rounded shape?
+
+Give each selected span its background and a radius:
+`<span bg="#3b5bd466" bgRadius={4}>…</span>` on every row the selection
+covers. Rounded backgrounds of one colour and radius that meet are one
+shape, whichever text drew them: an editor's rows, the wrapped lines of
+one paragraph, a line and the cell after it for its newline. The corners
+are convex where a line reaches past the one above or below, filleted
+where it falls short, and round where nothing meets them. It is worked
+out from the frame's own layout once every text is painted, so it is
+never a frame behind a wrap or a scroll, and the view names no shape and
+measures no line. Give a second selection another colour, or leave a
+gap, to keep it apart.
+
+[`text` element](crate::docs::props#elements) ·
+[ADR 0035](https://github.com/qxuken/kui/blob/main/docs/adr/0035-a-rounded-background-is-joined-by-meeting.md) ·
+[alpha.22 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha22-2026-09-28)
+
+### How do I set inline code in monospace inside a paragraph?
+
+Give the span a face of its own: `<span family="mono">cargo test</span>`,
+`Span::new("cargo test").mono()` in Rust, `{ "cargo test", family = "mono" }`
+in Lua, `.flags = KUI_SPAN_FAMILY, .family = KUI_FONT_MONO` on a C
+`KuiSpan` (`.font` for a registered font, which wins). Any family name the
+text's `family` takes works, and `size` gives a span its own size — a
+larger first word, a smaller footnote mark — with the line as tall as its
+tallest span. The paragraph still shapes as one flow, and its carets, hit
+tests and selection are measured in the face each glyph is drawn in, so a
+byte position means the same thing on either side of the change. Add a
+`bg` and a `bgRadius` for the usual wash; it is the span's own height,
+not the line's.
+
+[`text` element](crate::docs::props#elements) ·
+[`text.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/widgets/text.rs)
+
+### How do I open a paragraph with a drop cap?
+
+Set `initialLetter` on the text to the lines the letter drops through:
+`<text initialLetter={3}>`, `TextStyle::new(17.0).initial_letter(3)` in
+Rust, `initial_letter = 3` in Lua, `.initial_letter = 3` on a C
+`KuiTextStyle`. The first letter, with an opening quote before it, is
+sized so its top meets the first line's capitals and its foot the third
+line's baseline; the lines beside it move in past it and the rest are at
+full width. Give the letter's span a `family` and a `color` for the
+usual serif in an accent; kui sets its size. It is still one text, so
+`caretRect`, `textHit`, a selection and a screen reader read every byte
+where it is drawn, and the caret before the letter is as tall as it.
+
+[`initialLetter` row](crate::docs::props#text-props)
+
+### How do I list the installed fonts, the monospaced ones first?
+
+`ctx.systemFonts()` (Rust `Core::system_fonts()`, C `kui_system_fonts`)
+lists every family the core can see, installed or loaded, sorted by
+name, each as `{family, monospaced, weights, italic}`: `monospaced` when
+every face says it is fixed-pitch, the weights its faces come in (400
+regular, 700 bold) and whether one is italic. Filter or sort on
+`monospaced` and hand the chosen `family` to `addSystemFont`, or name it
+in the view — `family="JetBrains Mono"` (ADR 0037) — which resolves to
+the same handle. The name is matched exactly as the list spells it. It is read
+from what the font database recorded when it scanned each face, so six
+hundred families answer at once; measuring an `i` against an `M` in each
+instead loads and shapes every file — seconds — and calls a symbol font
+monospaced because its glyphs share an advance. `systemFontFamilies()`
+is the names alone.
+
+[Doors](crate::docs::props#doors) ·
+[alpha.21 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha21-2026-09-26)
+
+### How do I choose what stands in for a character my font lacks?
+
+Name the fonts, in the order they should be asked:
+`ctx.setFallbackFonts([icons, shipped, mono])` (Rust
+`Core::set_fallback_fonts(&[..])`, C `kui_font_set_fallback`), each an id
+from `addFont`, `addSystemFont` or `loadFontFile`. A character the
+text's own family has no glyph for goes to the first of them that has
+it, and only then to the platform's list — whose first choice on macOS
+is the system's interface face, so Cyrillic in a Latin-only monospaced
+family comes out proportional. The list is the session's, for every
+family and every kind of text; `[]` is the platform's alone. `mono`
+text asks it straight after its own face, ahead of the machine's other
+monospaced faces, which it walks first when there is no list. Set it
+when the choice changes, not every frame with a new list: a new list
+shapes every text again (the same one twice costs nothing). A cell grid
+goes one step further by itself: with no fallback of yours that has the
+character it asks a monospaced face before the platform's, and fits and
+centres whatever it got in the cell.
+
+### How do I see a font the user installed while the app runs?
+
+On macOS and Windows a window app does nothing: the runner hears the OS
+say the installed fonts changed, scans them again, and draws, and a view
+that names the new family (`family="…"`) or lists `systemFonts()` sees
+it on that frame. An app that holds the list in its model — a font
+picker's rows — re-reads it on the message its root declares as
+`windowEvents.onFonts` (one per window that declares it, ADR 0048),
+which every rescan that found a change raises. Elsewhere — Linux, where fontconfig sends no such
+signal, or a host with its own windowing — call `ctx.reloadSystemFonts()`
+(Rust `Core::reload_system_fonts()`, C `kui_font_reload_system`). kui
+scans the system's fonts once a process and every session starts from
+that scan; the call rescans, brings the session up to it — what came
+joins, what went leaves, everything else keeps its handle — and returns
+how many faces changed, and every window shapes its text again on its
+next frame. It opens every font file on the system, tens of
+milliseconds, so call it when the set may have changed: when a font
+picker opens, or when the window takes focus back after the user was
+elsewhere.
+
+[Doors](crate::docs::props#doors) ·
+[alpha.32 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha32-2026-10-02)
+
+### How do I show a 100k-character line, or a paragraph that long?
+
+Hand it over as one `text` node, plain or as spans. A text of 4096 bytes or
+more with no line breaks is shaped in ~1 KB chunks as they come on screen,
+so it costs the screenful it shows and a keystroke into it costs the chunk
+it lands in — and so does a span moving along it, which is what an editor's
+caret row is (a background under one character, the syntax colours around
+it); under `wrap: word` the rows are broken from the chunks' positions, so a
+paragraph costs the rows it shows. Its size is an estimate until the chunks
+shape (exact under monospace), so a scrollbar can move a little as they do.
+Do not slice the line yourself to spare the toolkit: the chunk is the slice.
+
+[`text` row](crate::docs::props#elements) ·
+[alpha.9](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha9-2026-09-08)
+
+### How do I show a list of ten thousand rows?
+
+`uniformList` (JSX), `uniform_list` (Lua, Rust): declare the rows that
+can be seen and two spacers holding the height of the rest, so the frame
+costs a screenful however long the list is — about 16 µs against 3.9 ms
+for ten thousand rows built whole. It takes the row count and one row's height;
+the rows come from a callback it runs for the ones it slices, and it keys
+each by its data `index`, so a row keeps its hover, focus, edit buffer and
+tweens as the built range slides over it. `setScroll(key, 0, i * rowH)` is
+"scroll to row `i`" — `reveal` finds nothing for a row nobody declared.
+It slices by the frame before, and the core asks for the frame that
+closes the lag when the container came out otherwise (taller after a
+resize, scrolled elsewhere by a reveal), so nothing to request yourself.
+
+In Node it also declares the node that makes `view` run again when the
+container scrolls: the wheel raises no event and a window redraws by
+re-lowering the tree it was handed, so nothing else would. Those events
+never reach `update`.
+
+```jsx
+uniformList(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
+  <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
+    <text>{lines[i]}</text>
+  </box>
+))
+```
+
+[`index` row](crate::docs::props#composite-props-hand-written-per-binding) ·
+[`virtual_list.tsx`](https://github.com/qxuken/kui/blob/main/examples/node/widgets/virtual_list.tsx)
+
+### How do I do that when the rows are not all the same height?
+
+`list` (JSX, Lua), `widgets::list` (Rust): the same list over prefix sums
+instead of a stride. It calls a `measure(ui, i, width)` for the rows it is about to build
+and nothing else — `ui.measure_text(text, &style, Some(width))` is what
+layout would give that row, wrap included, through the same shaping cache
+its draw will hit — and every row it has not measured stands at the mean of
+the ones it has. What `measure` returns is the height the row *gets*, so the
+spacers can never disagree with the layout.
+
+The heights live in a `RowHeights` the app owns and hands back each frame
+(`set_len` when the list grows, `clear` when the rows change under the same
+indices). Measuring changes the height of every row still standing at the
+mean, the ones above the window included, so the widget puts the row the
+window starts in back where it was before it re-slices — the frame that
+learns is drawn already corrected. To stay at the end of a growing log, ask
+for it: one `set_scroll(key, huge)` after the widget, every frame.
+
+In Node and Lua the heights are the core's own `RowHeights` too — `new
+RowHeights(rows, estimate)`, `row_heights(rows, estimate)` — kept in the
+model or a script global, and `measure` is `(i, width) => height` over
+`ctx.measureText` / `env.measure_text`. The slicing and the anchor are the
+core's arithmetic in every binding; the port is the loop around your
+`measure`, and the correction is `shiftScroll` / `shift_scroll`, which a
+list composed by hand (C's `kui_shift_scroll` included) calls the same way.
+
+```jsx
+const heights = new RowHeights(lines.length, 24); // once, kept in the model
+list(ctx, { key: 'log', heights },
+  (i, width) => ctx.measureText(lines[i], { size: 13 }, width - 12).height + 12,
+  (i) => <box pad={6}><text size={13}>{lines[i]}</text></box>)
+```
+
+[`exit_budget.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/features/exit_budget.rs) ·
+[`virtual_list.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/widgets/virtual_list.rs) ·
+[`virtual_list.tsx`](https://github.com/qxuken/kui/blob/main/examples/node/widgets/virtual_list.tsx) (`--variable`)
+
+### How do I draw a line chart of a hundred thousand points?
+
+Put the series in a channel and ask it for one bucket per pixel column:
+`reduce(col, from, to, buckets)` answers each bucket's least, greatest,
+first and last value and the row each came from, in Rust, about 0.1 ms
+for 100,000 rows into 720 buckets, and nothing but the buckets crosses
+into the binding. Draw each bucket's four points in row order (first,
+then the least and the greatest in whichever order their rows came, then
+last) and the line is the one the rows would draw: every peak and trough
+is there, which an average or every n-th row loses. `from` and `to` are
+the rows in view, so a zoom is a smaller range; with fewer rows than
+buckets each row is a bucket of its own. A NaN is a gap the reduction
+skips, and a bucket of only NaN reads NaN, a place to break the line.
+
+```lua
+local r = series:reduce("y", first, last + 1, plot_w)
+local pts = {}
+for i = 1, #r.min do
+  local a, b = r.min_row[i], r.max_row[i]
+  local lo, hi = r.min[i], r.max[i]
+  if a > b then a, b, lo, hi = b, a, hi, lo end
+  for _, p in ipairs { { r.first_row[i], r.first[i] }, { a, lo }, { b, hi }, { r.last_row[i], r.last[i] } } do
+    pts[#pts + 1] = { x_of(p[1]), y_of(p[2]) }
+  end
+end
+return line { points = pts, width = 1.5, color = "$accent" }
+```
+
+Node has it as `channel.reduce(...)`, a typed array per field (`min`,
+`minRow`, …); C as `kui_channel_reduce`, `KUI_CHANNEL_BUCKET` doubles a
+bucket; Odin as `channel_reduce`.
+
+[`Channel::reduce`](crate::docs::props#doors) ·
+[ADR 0065](https://github.com/qxuken/kui/blob/main/docs/adr/0065-a-data-channel.md)
+
+### How do I draw a terminal's screen?
+
+`cells`: rows × cols of `{ch, fg, bg, flags}` and a cursor, one node — a
+200×50 screen costs ~60 µs a frame with every character new, against ~2 ms
+as a text node per cell. A click or drag on it carries `cell: {row, col}`
+in its `click` or `drag` field, and the node reads as a `terminal` with the rows joined as
+its value. Inverse, dim and a wide cell's blank spacer are the app's.
+
+So is the scrollback: a grid is one screenful, and `originLine` says which.
+Declare `onScroll` on it and the wheel arrives as its message with
+`scroll: {lines, …}` in it — the whole lines the notch covers, positive toward later history, the
+fraction carried to the next notch — and you re-declare the grid with
+`originLine + lines`. A drag-select held past the grid's top or bottom
+edge arrives the same way, once a frame with the lines that frame scrolled
+by, and the selection's ends are absolute lines, so they stay put through
+the scroll you answer with. `examples/rust/widgets/cells.rs` does both.
+
+[`cells` row](crate::docs::props#elements) ·
+[`scroll` event](crate::docs::props#events) ·
+[ADR 0029](https://github.com/qxuken/kui/blob/main/docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md) ·
+[alpha.12](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha12-2026-09-14) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How does a selection follow the pointer past the edge?
+
+On its own. A press-drag in an `edit`, a `selectable` scope or a `cells`
+grid keeps following a held pointer near the scroller's edge and past
+it: in an edge zone inside the nearest scrolling ancestor (60 px, or a
+quarter of a short one) the core scrolls it toward the pointer, slowly
+at the zone's inner edge, 500 px/s at the scroller's, faster still past
+it, and up to six times that the longer the pointer is held there,
+within a cap of 3000 px/s. A pointer pinned against the window's edge —
+a maximised window's bottom, where the monitor stops the hand — counts
+as all the way in. Easing back by more than 8 px slows it at once and
+starts the ramp again; a press that has not moved scrolls nothing. The
+core also places the live end again whenever the layout under the
+pointer moves — that nudge, a wheel notch under the held press, a
+virtual list re-slicing its rows. A Shift-press keeps the anchor and
+moves the live end, in all three, by characters. On an axis the
+scroller cannot move — a code block that scrolls only sideways, a log
+at its end — the drag hands on to the scroller around it, as the wheel
+does; a scroller with `overscroll: contain` keeps it. Nothing to declare; a
+headless test sees the nudge as `scrollOffset` moving a frame at a time
+under `animating()` — a sixtieth's step with no clock, the clock's own
+share with one (`app.advance(ms)` in Node, `Drive::advance` in Rust).
+The wheel over any node that declares `onScroll` is its message
+instead, with `scroll: {x, y, dx, dy, lines}` in it, and the node takes
+it from the scroller above, on the axes its `scrollAxes` names; a
+gesture that began over it stays its own, and one that began over a
+scroller inside it at its limit comes to it; a `cells` grid gets its
+edge drag the same way, since its history is yours.
+
+The numbers are the edge scroll's feel, the app's like the wheel's:
+presets `gentle`, `standard` (the default) and `brisk`, or
+`EdgeScrollFeel`'s seven numbers. `Launcher::edge_scroll_feel(
+EdgeScrollFeel::BRISK)`, `edgeScrollFeel: 'brisk'` to `runWindowed`,
+`kui_set_edge_scroll_preset(ctx, KUI_STR("brisk"))`; to try one without
+a rebuild, `KUI_EDGE_SCROLL=brisk` or `KUI_EDGE_SCROLL=72,600` (the
+numbers in the struct's order, the rest standard). The `edge_scroll`
+example tunes one by hand.
+
+A drag your app holds itself — a selection over your own text, a
+reorder — scrolls by the same feel with one call a frame while it is
+held: `ui.edge_scroll(key, pointer, rect)` (Node `ctx.edgeScroll(key,
+x, y, rect)`, C `kui_edge_scroll`, Lua `env.edge_scroll`), with `rect`
+the area whose edges scroll, usually `scroll_geometry(key).rect`. It
+moves the container at once — or, on an axis it cannot move, the
+container around it, as kui's own drags hand on — returns what moved,
+and asks for the next frame while it moves; place your drag's end under
+the pointer after.
+Only call it once your press has become a drag.
+
+[`onScroll` row](crate::docs::props#container-props) ·
+[`scroll` event](crate::docs::props#events) ·
+[ADR 0029](https://github.com/qxuken/kui/blob/main/docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md) ·
+[alpha.12](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha12-2026-09-14) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I pan a canvas with a drag?
+
+An `onDrag` message arrives with `drag: {phase, x, y, dx, dy, parent}` in
+it, and `dx`/`dy` are measured **from the press point** in every phase, so a pan handler is `offset = offsetAtPress + dx` rather than a sum of
+deltas, and `end` alone is enough to commit. Cards that carry `slide` and a
+`transition` may keep them: a tween whose target moves every frame trails it
+by about one transition's worth of travel instead of freezing, as of
+alpha.7.
+
+[`drag` event](crate::docs::props#events) ·
+[`slide` row](crate::docs::props#container-props) ·
+[alpha.7](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha7-2026-09-06) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### Why does a tab moved left glide under its neighbour, and right over it?
+
+Siblings paint in tree order, and a row's tree order is its places' order,
+so where two `slide` tabs cross, the one in the later place is drawn on top.
+Moved right, the tab you moved lands later and slides over the one making
+room. Moved left, it lands earlier and passes under it, covered first from
+one side and then the other: it looks like a block shrinking to its middle
+and growing back from the next place's middle.
+
+Declare `overSiblings` on the tab that should stay on top. It paints after
+its siblings, so it passes over the neighbour whichever way it moved, and it
+takes the press where the two overlap:
+
+```jsx
+{tabs.map((t) => (
+  <box key={t.id} transition={160} slide overSiblings={t.id === selected}>
+    <text>{t.title}</text>
+  </box>
+))}
+```
+
+The tab you move is usually the selected one, so tie `overSiblings` to the
+selection and leave it on: when no tab overlaps another it changes nothing,
+and there is no glide to track. It reorders siblings only. The strip still
+paints under the tab, whatever follows the strip still paints over it, the
+strip's clip still cuts it, and a tooltip or a menu still opens above it.
+There is no number to outbid. Two siblings that both declare it paint in
+tree order between themselves.
+
+[`overSiblings` row](crate::docs::props#container-props) ·
+[`slide` row](crate::docs::props#container-props) ·
+[ADR 0046](https://github.com/qxuken/kui/blob/main/docs/adr/0046-a-node-over-its-siblings-paints-after-them.md)
+
+### Why does a sliding knob keep to its track while the window resizes?
+
+`slide` eases a node's place **within its parent**, not its place in the
+window. A switch's knob that slides between the ends of its track moves
+with the track at once when a resize, a scroll or the track's own `slide`
+moves it, and eases only when it moves along the track. Eased in the
+window's terms, as it was before alpha.68, the knob trailed its track by
+its own transition through every resize.
+
+So put `slide` on the node that changes place within its parent. A row
+that moves in a list slides; the text inside it rides along without one. A
+row wrapped in a box that the list reorders wants `slide` on the box, since
+the row does not move within the box. A child that slides inside a sliding
+parent adds its own move to its parent's, measured from where the parent
+is drawn. A card that keeps its key when it moves to another column
+glides from where it was drawn into its place in the new one.
+
+```jsx
+<box transition={120} mainAlign={on ? "end" : "start"} width={36} height={20}>
+  <box key="knob" transition={120} slide width={16} height={16} />
+</box>
+```
+
+[`slide` row](crate::docs::props#container-props) ·
+[alpha.68](https://github.com/qxuken/kui/blob/main/CHANGELOG.md)
+
+### How do I stack a canvas's items in the order my document lists them?
+
+Floats stack in the order they open: a key the stack has not seen goes on
+top. That suits menus, and not a drawing whose items are floats, where an
+item that pans into view (or is added) would land over the rest, and
+moving an item in the tree would move nothing. Declare `floatsInOrder` on
+the canvas:
+
+```jsx
+<box width="grow" height="grow" clip floatsInOrder>
+  {items.map((it) => (
+    <box key={it.id} float={{ anchor: 'parent', clip: true, dx: it.x - pan.x, dy: it.y - pan.y }}>
+      …
+    </box>
+  ))}
+</box>
+```
+
+Every float under it, at any depth, paints in tree order, the last
+declared on top, worked out each frame; a label floated inside an item is
+over that item and under the items after it. To bring an item forward,
+move it later in the list. The press follows the same order. As a group
+the items keep their place among the window's other floats: a menu that
+opened after them is over all of them, a newcomer included.
+
+A menu or popup declared under the canvas is one of its floats and paints
+by its place, so declare popups outside it, after it, where they open on
+top. The hover hint of a `tooltip` on an item is the core's and goes over
+every item. There is no need to re-key the canvas when its items change.
+
+[`floatsInOrder` row](crate::docs::props#container-props) ·
+[ADR 0053](https://github.com/qxuken/kui/blob/main/docs/adr/0053-floats-under-a-node-paint-in-tree-order.md) ·
+[ADR 0023](https://github.com/qxuken/kui/blob/main/docs/adr/0023-layers-stack-in-the-order-they-open.md)
+
+### How do I follow the OS's dark mode, accent or reduce-motion setting?
+
+Read `env.system`: `appearance` (`"light"` / `"dark"` / `"unknown"`),
+`accent` (`0xRRGGBBAA`, or null), `motion` (`"reduced"` when the user asked
+for less animation) and `locale` (a BCP-47 tag). The Rust runner asks the
+OS for all four on macOS and Windows, and re-asks when the app takes focus
+back; on X11 and Wayland it answers the locale from `LANG` and the rest
+read `"unknown"` — as they do in any driver that owns its own window until
+it pushes what it knows. So branch on the setting you got and keep your own
+default for the unknown, which is a reading and not a missing value. The core acts on
+none of it: nothing repaints because the appearance changed and no animation
+shortens itself, because only the view knows which of its colours is the
+background.
+
+The fifth row is not a setting: `assistive` reads `"listening"` once an
+accessibility client has asked the window for its tree, `"none"` while the
+bridge is up and nobody has, and `"unknown"` where there is no bridge (a
+headless `Ctx`). It is the reading that changes what a view *says* rather
+than what it draws — `announce` the alert when it is `"listening"`, blink
+it otherwise — and it arrives through the same `system` event as the other
+four when it changes. Any client counts, and on macOS and Windows nothing
+reports a client leaving, so once risen it stays; only AT-SPI says
+`"none"` again. Headless, `ctx.setEnv({ system: { assistive: 'listening' } })`
+declares it, so a test can assert the announcement.
+
+Mostly you do not have to. The **theme** is that branch, written once: the
+appearance picks a base and the accent recolours it, and the palette comes
+back as named roles — `ctx.theme()` in Node, `ui.theme()` in Rust,
+`env.theme` in Lua, `kui_theme` in C. The stock widgets already read it, so
+a button, the context menu, a tooltip, a field, the scrollbars, the focus
+ring and a `<text>` with no `color` follow the OS with nothing written at
+all. Paint your own boxes from the same roles and they agree:
+
+```tsx
+const t = ctx.theme();
+<box bg={t.surface} radius={10} borderColor={t.border} borderW={1}>
+  <text color={t.muted}>seventeen items</text>
+</box>
+```
+
+`ctx.setAccent('#d2691e')` keeps following the OS's light/dark while
+painting your own colour — what an app with a brand colour wants — and
+`ctx.setTheme({ appearance: 'dark', surface: '#101014' })` pins a palette
+that follows nothing. Every role, and its value on both bases, is in the
+[Theme table](crate::docs::props#theme).
+
+A stock button follows the accent on its own: `<button accent>` takes the
+theme's accent, derives its hover and pressed shades from it, and picks a
+black or white label by its luminance — falling back to the stock blue
+where nobody, the OS included, has said what the accent is. Any other node
+can carry `accent` too, which substitutes its `bg` and nothing else;
+`Color::mix` and `Color::luminance` are there for a colour of your own that
+is not a role.
+
+The reading is there before your first view — a window fills it in as it
+opens, not on its first frame — and a change to it arrives as the message
+the root declares for it in its `windowEvents` group (ADR 0048), carrying
+the whole of `env.system` as it now reads under `system`:
+
+```tsx
+<box windowEvents={{ onSystemSettingsChange: { kind: 'settings' } }}>…</box>
+
+update(m, msg) {
+  if (msg.kind === 'settings') return { ...m, dark: msg.system.appearance === 'dark' };
+  ...
+}
+```
+
+Declare it rather than only reading `env`, because a driver's redraw
+re-lowers the tree it was handed and does not re-run your `view`: an app
+that paints only on input would otherwise hold the palette its first frame
+picked for as long as the user leaves it alone, and nothing arrives that
+the root did not ask for. A Rust `App`, whose `view` *is* what the runner
+calls every frame, can read `env` and declare nothing. Lua spells it
+`window_events = { on_system_settings_change = … }` on the root table, C
+`kui_root_with` with a `KuiWindowEvents`.
+
+[`system.*` rows](crate::docs::props#env) ·
+[Theme table](crate::docs::props#theme) ·
+[`system` event](crate::docs::props#events) ·
+[`accent` row](crate::docs::props#container-props) ·
+[ADR 0019](https://github.com/qxuken/kui/blob/main/docs/adr/0019-a-theme-derived-from-appearance-and-accent.md) ·
+[alpha.10](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha10-2026-09-09)
+
+### How do I use the theme in a component without passing `ctx` down to it?
+
+Name the value instead of reading it. Every theme role, metric and token of
+your own is reachable as a `'$name'` string in any prop that takes one, and
+the core swaps in this frame's value as it lowers the node — so the string
+is a constant, written at module scope, and it follows a light/dark flip or
+a host's re-theme without the view running again:
+
+```tsx
+import { defineTokens, roles } from '@qxuken/kui';
+
+export const T = defineTokens({
+  colors: { peach: '#ffcc99', ink: { light: '#111111', dark: '#eeeeee' } },
+  lengths: { sideW: 132 },
+  families: { code: ['JetBrains Mono', 'Cascadia Code', 'mono'] },
+});
+// once, where the app starts: ctx.setTokens(<the same declaration>)
+
+const Card = ({ off, children }) => (
+  <box bg={roles.surface} radius={roles.radius} borderColor={T.peach} borderW={1}
+       opacity={off ? roles.disabledOpacity : 1}>
+    <text family={T.code} color={roles.muted}>{children}</text>
+  </box>
+);
+```
+
+`roles` is every colour role, every metric and the theme's
+`disabledOpacity` — the one theme value that is a number, which dims a node
+of yours as a disabled stock control is dimmed. `defineTokens` types your
+own names, so `T.peech` does not compile and `width={T.peach}` neither. A
+number token fits any number prop, `opacity` and `scale` as much as a
+`width`. A family token is a fallback list: the core picks the first name
+that is `sans`, `serif`, `mono` or an installed or loaded family, and picks
+again when a font loads, so the list is where "is JetBrains Mono here?" goes.
+
+Lua writes the same strings — `bg = "$surface"`, `opacity =
+"$disabled_opacity"`, `family = "$code"` — with the table as a `tokens`
+global. Rust and C have no reference in a prop: read the value by name
+(`ui.token_color("peach")`, `ui.token_family("code")`, `kui_token_length`)
+and write it, which is what a module constant does there anyway.
+
+What a name cannot do is arithmetic. `opacity * 0.8`, a colour mixed in
+code, or a ternary on the colour itself still reads `ctx.theme()` /
+`env.theme` — or declare the result as a [derived
+token](https://github.com/qxuken/kui/blob/main/docs/adr/0028-derived-tokens.md) and name that.
+
+[Theme table](crate::docs::props#theme) · [Metrics](crate::docs::props#metrics) ·
+[ADR 0027](https://github.com/qxuken/kui/blob/main/docs/adr/0027-tokens-beside-the-theme.md) ·
+[ADR 0049](https://github.com/qxuken/kui/blob/main/docs/adr/0049-the-disabled-opacity-and-font-families-by-token.md)
+
+### How do I show the blurred desktop through my sidebar, like a Mac app?
+
+Ask the launcher for the effect — `kui_native::app("Notes")
+.backdrop(Backdrop::Blur)`, or `backdrop: 'blur'` in Node's window options
+— and paint the regions that should show it with alpha:
+`bg(t.raised.with_alpha(0.5))` on the sidebar, an opaque `bg` on the page
+beside it. kui puts the effect behind the whole window and knows nothing of
+sidebars; what you paint decides where it shows. `Blur` is a live blur of
+what is behind the window (macOS vibrancy, Windows 11's Acrylic, KDE's
+compositor blur), `Tinted` the desktop's colour, steady (Mica, macOS's
+window-background material), `Transparent` the desktop as it is. Then read
+what the window got, every frame, from `ui.env().window.backdrop` (Node
+`env().window.backdrop`): where the OS has no effect — GNOME, Windows 10 —
+it reads `Tinted`, the wallpaper kui reads, blurs once and draws under the
+frame, or `Opaque` where no wallpaper could be read; paint the sidebar
+opaque then. Hyprland, SwayFX and picom blur translucent windows
+themselves: ask for `Transparent` there. Glyphs are grayscale under a
+backdrop; `KUI_BACKDROP_EMULATE=1` shows the wallpaper path on Windows and Linux
+(macOS reads no wallpaper, so the window there is `Opaque`).
+
+[`window.backdrop` row](crate::docs::props#env) ·
+[`backdrop.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/features/backdrop.rs)
+
+In C, `KuiRunConfig.backdrop` asks (`KUI_BACKDROP_BLUR`) and
+`kui_ctx_backdrop(ctx)` in the view reads what the window got.
+
+### How do I move the traffic lights down, like a Mac app with a toolbar?
+
+Ask for a taller titlebar: `kui_native::app("Notes").custom_titlebar()
+.titlebar(Titlebar::Tall)`, or `titlebar: 'tall'` beside `chrome:
+'custom'` in Node's window options. `Medium` is a compact toolbar's
+titlebar (40 pt, the lights at 12,13 on macOS 27) and `Tall` a full
+toolbar's (52 pt about the lights, at 19,19), against `Standard`'s 32 pt
+at 9,9. kui does not move the buttons: it gives the window an empty
+`NSToolbar` in the style that makes AppKit's own titlebar that tall, so
+AppKit keeps the lights where they belong through resizing, fullscreen
+and focus. The runner measures where they landed into
+`env.window.native_controls`, and `widgets::titlebar` takes its height
+and inset from it, so a strip of tabs or a search field centres on the
+lights with nothing else to change. The toolbar takes no clicks: a
+button in the strip is pressed as before, and the empty strip still
+drags. The window's `titlebar_h` metric is the measured height, so
+`ui.metrics().titlebar_h` and `$titlebar_h` say how tall the strip is
+(32 for `Standard` on macOS 27, where the stock number is 34). On
+Windows and Linux the same ask draws the same strip: there it
+is the app's, as tall as the `titlebar_h` metric, and `Medium` and
+`Tall` make that window's metric 40 and 52 in place of the caption's 32
+or 34 — `ui.metrics().titlebar_h` and `$titlebar_h` read it, and the
+drawn buttons grow to it. An app that sets its own metrics keeps it as
+long as their `titlebar_h` is the stock number (`Metrics::compact()`,
+Node's `base`); a number of its own wins.
+
+[`titlebar.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/widgets/titlebar.rs) (`-- --titlebar tall`) ·
+[`window.native_controls` row](crate::docs::props#env)
+
+In C, `KuiRunConfig.titlebar` asks (`KUI_TITLEBAR_TALL`); in Odin,
+`Run_Config.titlebar`.
+
+### How do I frost a toolbar over content that scrolls under it?
+
+Give the toolbar a `backdropBlur` and a translucent `bg`:
+`NodeSpec::row().backdrop_blur(16.0).bg(Color::WHITE.with_alpha(0.25))`
+in Rust, `backdropBlur: 16` in JSX, `backdrop_blur` in Lua, Odin and C's
+`KuiSpec`. What blurs is everything painted before the node — the page,
+the rows scrolling under it, the window's backdrop where there is one —
+inside the node's rounded box and its clip, by the radius in logical px
+(CSS's `backdrop-filter: blur()`). The node's own `bg`, border and
+children lie on top, so an opaque `bg` hides the blur, and a
+`backdrop-blur-hidden` warning says so. Float the toolbar over the
+scroller, after it in the tree, so the scroller paints first. It costs a
+copy and three small passes per blurred node on a frame that has one, and
+nothing on a frame that does not; a renderer of your own that cannot read
+back its frame draws the node unblurred.
+
+[`backdropBlur` row](crate::docs::props#container-props) ·
+[`backdrop_blur.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/features/backdrop_blur.rs)
+
+## Interaction, focus and reading
+
+### How do I open a popup, and when is a modal enough?
+
+A `modal` node is one tree: the Tab ring becomes its subtree, everything
+outside it is inert to the pointer, the wheel and assistive technology, and
+Escape or an outside press arrives as the `modal` message with `dismiss:
+{reason}` in it, which the app answers by not declaring it. Reach for a `kind: "popup"` window only for
+the placements a float cannot make — a list taller than the window, a panel
+beside the app — because a popup is an OS surface where a `fit` float plus a
+`modal` costs one tree; it reports the same `dismiss` event, as its
+`windows` entry's `onDismiss` message with `dismiss: {reason, id}` in it
+(ADR 0048), so the handler stays when the declaration changes.
+
+[`modal` row](crate::docs::props#container-props) ·
+[`windows` row](crate::docs::props#composite-props-hand-written-per-binding) ·
+[ADR 0003](https://github.com/qxuken/kui/blob/main/docs/adr/0003-modal-surfaces.md) ·
+[ADR 0004](https://github.com/qxuken/kui/blob/main/docs/adr/0004-multi-window.md) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I offer a choice among a few options?
+
+`<select label="language" options={["English", "Deutsch"]} current={i}/>`,
+`dropdown { label = "language", options = { "English", "Deutsch" }, current = i }`
+(Lua's `select` is its own, so the table is `dropdown`, and `current`
+counts from 1), `kui_select(ctx, label, items, count, current)`,
+`widgets::select(ui, "language", &["English", "Deutsch"], Some(i))`: a
+field that shows the choice in force and, clicked, drops the core's own
+menu of the options with the current one checked — the menu a right-click
+opens, drawn in the frame or the platform's where the host shows menus
+itself, dismissed by Escape or a press outside, walked by the arrows. You
+hold no open state. The choice arrives on the field's key with the row in
+`menu` — `{menu:{role:"custom", item:"Deutsch"}}`, or inside the `on_menu`
+message a Rust `select_with` spec declares — and drawing the field again
+with the new index is the whole loop. An
+option may be a menu item instead of a string — `{ label: "18 pt", id: 18 }`,
+`enabled: false` for a dead row — so a choice can post an `id` of its own
+(a size in points, an enum's tag) instead of its label; in Rust that is
+`select_items`, and `select_with` takes the field's spec and text style
+for a dense panel. The field reads no other row; one that needs any is a
+`role="button"` box and `openMenu`. What is checked: the options may not
+be empty (refused where they are written), a `current` past them or on a
+separator is none with a `select-current-ignored` warning on the field,
+a key of an option object no row reads (`disabled` for `enabled: false`)
+is an `unknown-prop` warning, and a dead row reported chosen through
+`activateMenuItem` / `kui_activate_menu_item` is refused — false, nothing
+posted, the menu still open — as the pointer never reaches it.
+
+[`select` element](crate::docs::props#elements) ·
+[examples/rust/widgets/select.rs](https://github.com/qxuken/kui/blob/main/examples/rust/widgets/select.rs) ·
+[examples/node/widgets/select.tsx](https://github.com/qxuken/kui/blob/main/examples/node/widgets/select.tsx) ·
+[the context menu](#how-do-i-open-a-popup-and-when-is-a-modal-enough) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I show a row's buttons only while the pointer is on the row?
+
+`revealOnHover` on the box that holds them (`reveal_on_hover = true` in
+Lua, `.reveal_on_hover = 1` in C, `NodeSpec::reveal_on_hover()` in
+Rust): it is drawn only while its row is hovered — the pointer over the
+row or anything in it, the buttons included — or holds a press, or holds
+keyboard focus. Nothing else to declare: no `onHover`, no hovered row in
+the model, no redraw of the view; the core decides it each frame as it
+decides a `hoverBg`.
+
+```tsx
+<box dir="row" hoverable gap={6} crossAlign="center">
+  <checkbox checked={m.on[i]} ellipsis onClick={{ kind: 'pick', i }}>{name}</checkbox>
+  <box width="grow" />
+  <box dir="row" gap={4} revealOnHover>
+    <button onClick={{ kind: 'rename', i }}>Rename</button>
+    <button onClick={{ kind: 'delete', i }}>Delete</button>
+  </box>
+</box>
+```
+
+The row is the box's nearest ancestor that tracks the pointer: one with
+`hoverable`, `onClick`, `hoverBg`, `focusable` — a group header is a
+`hoverable` row. A row of controls wants `hoverable` (or a role of its
+own) rather than `onClick`: a box with `onClick` and no role reads as a
+button named by its content, and the buttons inside it would be part of
+that name. With nothing above it that tracks the pointer the box is
+always drawn, and `reveal-without-anchor` says so.
+
+Hidden is opacity 0, so the row does not reflow as the pointer crosses
+it, and the buttons stay where a screen reader and the Tab key find them:
+Tab onto the row's checkbox and its buttons show, Tab onto one of them
+and it stays shown, and a field in there keeps the row's actions up while
+it has the keyboard. A `transition` on the box fades it in and out.
+
+[`revealOnHover` row](crate::docs::props#container-props) ·
+[ADR 0051](https://github.com/qxuken/kui/blob/main/docs/adr/0051-a-node-shown-while-its-row-is-hovered.md)
+
+### How do I add a checkbox, a radio group, a switch or a slider?
+
+The stock controls ([ADR 0034](https://github.com/qxuken/kui/blob/main/docs/adr/0034-stock-controls-over-the-roles.md))
+are drawn from your model and hold nothing of their own. A toggle —
+`<checkbox checked={m.sync} onClick={{kind: 'sync'}}>Sync</checkbox>`,
+`<radio>`, `<switch>`; `checkbox { label = "Sync", checked = …, on_click
+= … }` in Lua; `kui_checkbox(ctx, text, spec, payload)` in C;
+`widgets::checkbox(ui, "Sync", on, payload)` in Rust — posts its
+`onClick` when the pointer, Space, Enter or a screen reader presses it,
+and your `update` flips the model. A select-all box over a partial
+selection says `mixed`. Put radios in a `<radioGroup label="Theme">`: it
+is one Tab stop whose arrows move the choice and press the radio they
+land on, so radios that each set the choice answer the keyboard with no
+more code (`widgets::radio_group(ui, "Theme", &options, Some(i), |i|
+payload)` in Rust).
+
+A slider says its range and step and asks the core for its changes:
+`<slider label="Volume" valueNow={v} valueMin={0} valueMax={100}
+valueStep={5} onChange={{kind: 'volume'}}/>`. A press proposes the value
+under the pointer, a drag each new step, the arrows one step, PageUp /
+PageDown ten, Home / End the ends — clamped, snapped, and the decimal the
+step names (`0.3`, not `0.30000001`) — as `{kind: 'volume', change: {value,
+phase: 'move' | 'end'}}`. Store `change.value` and declare it as `valueNow`;
+nothing moves until you do. A slider without `onChange` does not move for
+the pointer, the keys or a screen reader, and the core warns
+`slider-without-handler`.
+
+The controls' look is their spec, so they read only their own rows, and
+a paint row on one is an `unknown-prop` warning; a control that needs a
+look of its own is a box with the role and the same rows. Their size
+follows the metrics: the box is the control text plus one, so `compact`
+moves them with the stock button.
+
+[the elements](crate::docs::props#elements) ·
+[examples/rust/widgets/controls.rs](https://github.com/qxuken/kui/blob/main/examples/rust/widgets/controls.rs) ·
+[examples/node/widgets/controls.tsx](https://github.com/qxuken/kui/blob/main/examples/node/widgets/controls.tsx) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I keep a long checkbox label on one line?
+
+`ellipsis` on the toggle — `<checkbox ellipsis>`, `checkbox { ellipsis =
+true }`, `kui_checkbox_with(ctx, text, spec, &(KuiTextStyle){.ellipsis =
+1}, payload)`, `widgets::toggle_with_style(…, &TextStyle { ellipsis: true,
+..Default::default() })` — and the same on `<radio>` and `<switch>`. The
+label stays on one line and ends in an ellipsis wherever the toggle is
+squeezed: in a row narrower than the name, beside a `grow` spacer, in a
+list column. It is still the toggle: a press on the cut text toggles it,
+its accessible name is the whole text, and while it is cut the whole
+text floats as its hint on hover (a `tooltip` you declare wins). A label
+that fits floats nothing. `maxLines` and `wrap` read too, as on a
+`<text>`: `maxLines={2} ellipsis` is a two-line clamp. The label's size,
+colour and face stay the stock's.
+
+[the elements](crate::docs::props#elements)
+
+### How do I match my app's messages as types, in Rust?
+
+`#[derive(Message)]` on an enum: each variant becomes a `{kind, …fields}`
+payload (the kind is the variant's name in snake_case, or `#[message(kind
+= "…")]`), so `on_click(Msg::Save)` builds it, and `ev.message::<Msg>()`
+reads it back into an exhaustive `match`. Every event delivers the message
+as its payload, with the event's data in one field named for the event, and
+a field the enum does not name is not read, so one message decodes whatever
+brought it. The data is read beside it — `ev.drag()` and the other views,
+or `ev.split::<Msg>()`, the message and an `Event` (`Event::Drag(d)` with
+its `d.phase`, `Event::SliderChange(c)` with its `c.value`) in one `match`.
+Field types are the numbers, `bool`, `String`, `Option`, `Vec`, `Value`
+and other messages. An enum of unit variants marked `#[message(string)]`
+is a bare string where it is a field (`dir: SplitDir` as `"h"`).
+
+The payload stays plain data, so Lua, C and JSX read it as they always did.
+`MessageError` says what did not fit. The derive is `kui-native`'s default
+`derive` feature; from kui-core alone it is `kui-core/derive` and
+`#[message(crate = "kui_core")]`.
+
+```rust,ignore
+#[derive(Message, Clone, Debug)]
+enum Msg { Focus { pane: u64 }, TabNew, Split { path: String, dir: SplitDir } }
+
+ui.with(NodeSpec::column().on_click(Msg::Focus { pane: id }), |ui| { … });
+
+fn on_event(&mut self, ev: UiEvent) {
+    match ev.message::<Msg>() {
+        Some(Msg::Focus { pane }) => self.focused = pane,
+        Some(Msg::Split { path, dir }) => self.drag_divider(&ev, path, dir),
+        Some(Msg::TabNew) => self.new_tab(),
+        None => {} // no message of ours
+    }
+}
+```
+
+[`splitmux.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/apps/splitmux.rs) ·
+[alpha.19 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha19-2026-09-26) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I let the user pick a file, or where to save one?
+
+Ask for the platform's dialog: `ctx.requestFiles({ mode: 'open', multiple:
+true, filters: [{ name: 'Images', extensions: ['png', 'jpg'] }], tag })`
+(`'save'` with a `fileName`, or `'folder'`). The answer is the `tag`
+message on the root with `files: {paths}` in it — the paths a `drop`
+carries, none when the user cancelled — so a list that takes dropped files takes picked
+ones with the same code. An Open or folder answer carries only what
+exists: a name typed into Windows' multi-select panel that is not there
+is left out. One dialog at a time: asking again while one is
+up does nothing. The window's runner shows it (a sheet on macOS, through
+rfd); a headless test takes the ask with `takeFileRequests()` and answers
+with `answerFiles(paths)`. Rust asks from its view with
+`ui.request_files(FileDialog::open()…)`, Lua with `env.request_files{…}`,
+C with `kui_request_files`.
+
+[`files` event](crate::docs::props#events) ·
+[`drop.tsx`](https://github.com/qxuken/kui/blob/main/examples/node/features/drop.tsx) ·
+[`drop.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/features/drop.rs) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I give my app a menu bar?
+
+One call, in the view, wherever the strip belongs: `<menuBar menu={[…]}/>`,
+`menu_bar { menu = {…} }`, `kui_menu_bar(ctx, menus, count)`,
+`widgets::menu_bar(ui, bar)`. The menu is a list of `{ label, items }`
+whose items are the rows a context menu takes (`id`, `role`, `accel`,
+`enabled`, `checked`). On macOS the call draws nothing and the driver hands
+the same declaration to the OS; everywhere else it draws those menus in the
+window. Choosing a row arrives as the bar's `onMenu` message with
+`menu: {role, item}` either way — a bar that declares none posts nothing
+— and a standard `role` is performed by the core — an Edit menu's Copy
+is the right-click Copy.
+Declare it every frame: it is diffed, so an unchanged bar costs a
+comparison, and an empty list takes it away.
+
+Declare nothing and a macOS app still has the menus a Mac app is expected
+to have: the application menu, an Edit menu whose rows are the ⌘ chords
+the runner already performs (greyed when the chord would do nothing), and a Window menu with Minimize, Zoom, Enter
+Full Screen and — added by AppKit because the menu is registered as the
+platform's — Fill, Center and the tiling submenus, so fn+ctrl+F and fn+F
+work. A declared bar is exactly what you declared; name a menu `Window`
+and it is the platform's, with those rows and shortcuts in it.
+
+To add a menu and keep the rest, say `standardMenus`: `<menuBar
+standardMenus menu={[{ label: 'Packages', items: […] }]}/>`, `menu_bar {
+standard_menus = true, … }`, `kui_menu_bar_standard_menus(ctx, menus,
+count, on_menu)`, `MenuBar::standard_menus(true)`. On macOS the bar is
+then the application menu, the standard Edit menu, your menus in order,
+and the standard Window menu with its tiling and full-screen rows — none
+of yours is the application menu, and an `accel` binds as on any row.
+Where the bar is drawn in the window there are no standard menus to
+keep, and it is your menus alone, so the same view is portable. The
+standard menus read in English; an app that needs them in its own
+language still declares them ([ADR
+0052](https://github.com/qxuken/kui/blob/main/docs/adr/0052-a-declared-bar-beside-the-standard-menus.md)). An `Edit`
+menu, standard or declared, also carries the two rows AppKit appends
+that work in a kui window — Emoji & Symbols and Dictation both type
+into the focused editor or key sink, the palette's pick and a dictated
+phrase arriving as the `text` a composition's commit is — and not the
+two that cannot: Writing Tools finds no selection to read and AutoFill
+wants a platform text field, so the runner removes them. ⌃⌘Space opens
+the same palette from the keyboard and types the same way.
+
+[`menuBar` element](crate::docs::props#elements) ·
+[ADR 0018](https://github.com/qxuken/kui/blob/main/docs/adr/0018-a-menu-bar-the-app-declares.md) ·
+[ADR 0030](https://github.com/qxuken/kui/blob/main/docs/adr/0030-the-standard-menus-the-runner-keeps.md) ·
+[ADR 0052](https://github.com/qxuken/kui/blob/main/docs/adr/0052-a-declared-bar-beside-the-standard-menus.md) ·
+[examples/rust/widgets/menu_bar.rs](https://github.com/qxuken/kui/blob/main/examples/rust/widgets/menu_bar.rs)
+
+### How do I make my own dropdown open on the press, as a native pop-up button does?
+
+Give the field `opensOnPress` (`opens_on_press` in Lua and C,
+`NodeSpec::opens_on_press` in Rust) beside its `onClick`: the click then
+arrives on the press, so the view draws the menu while the button is
+still down, and the press carries on into it — released over a row whose
+role is `menuItem`, that row is clicked, as a press, drag and release
+picks an option on a Mac. A quick click (press and release on the field)
+leaves the menu open for a second click; a drag released anywhere else
+dismisses the `modal` the menu declares. Draw the menu as a `modal`
+float with `role: "menu"` and its rows `role: "menuItem"` with their own
+`onClick`; a press on the field while it is open lands outside the modal
+and closes it. The stock `select` works this way already. Two more
+things come with `role: "menu"` on the modal: an accelerator pressed
+while it is open (⌘C, Ctrl+C off a Mac) dismisses it with `reason:
+"accelerator"` and goes to the window, focus back on the field it was
+opened from; and to open with the current option over the field, offset
+the float up by that row's place in it — the rows are yours, so their
+heights are known.
+
+### How do I put a submenu in a menu — "Move to ▸", "Sort by ▸"?
+
+Give the row `items`: `MenuItem::submenu("Move to", rows)` in Rust,
+`{ label: 'Move to', items: [...] }` in Node and Lua. The row draws a
+chevron and opens its rows beside it when the pointer rests on it, it is
+clicked, or Enter or the Right arrow is pressed; Left or Escape closes
+it, and Escape again closes the menu. It nests, in a context menu and in
+a menu bar, drawn or the platform's. A row inside is chosen like any
+row: one `menu: {role, item}` with its own `id`, in the `onMenu` message
+of the node the menu is about, or of the `menuBar` element for a row of
+the bar (ADR 0048). Give the rows inside an `id`: a row without one posts its
+label, and "Name" under "Sort by ▸" and "Name" under "Group by ▸" would
+post the same `item`. A host that shows menus itself reports one with
+`Core::activate_menu_path(&[1, 0])` (Node `activateMenuPath`, C
+`kui_activate_menu_path` with a path of `size_t`s). In C a row's
+`submenu` / `submenu_count` nest the same `KuiMenuItem`s, and
+`KUI_MENU_ITEM_SUBMENU` in a row's flags says it has rows, read with
+`kui_menu_item_path`. An
+`accel` in the portable spelling (`"mod+shift+n"`) is drawn the
+platform's way, and the menu widens to its longest row, up to the window
+less a margin (and never below the metric's menu width), where a longer
+label ends in an ellipsis — and past the label's 48 px floor, the
+accelerator does. On the frame
+clock, an open submenu waits 0.3 s before giving way to a row the
+pointer crosses, so a diagonal path into it does not close it.
+
+[ADR 0018](https://github.com/qxuken/kui/blob/main/docs/adr/0018-a-menu-bar-the-app-declares.md) ·
+[`tests/submenu.rs`](https://github.com/qxuken/kui/blob/main/crates/kui-core/tests/submenu.rs) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I take files dropped from the Finder?
+
+Declare `onDrop` (Rust and Lua `on_drop`, C `KuiSpec.on_drop`) on the box
+that takes them, and its message arrives with `drop: {phase, paths, x, y}`
+in four phases — `enter`, `move`, `leave`, `drop`, with the OS paths as
+strings and the pointer in viewport coordinates. Add `dropBg` and the box
+lights while the files hover, the way `hoverBg` does, with nothing kept in
+your model. A button or field inside the box is the box's; the banner you
+float over it in answer to `enter` is looked past, so the zone does not
+flicker between `leave` and `enter` the way an HTML drop target does. A
+release over no zone is refused by the runner — the icon slides home — and
+no `leave` follows a `drop`. Headless, `dragFiles(paths, x, y)`,
+`dropFiles` and `dragCancel` on the `Ctx` (or their C spellings) are the
+drive, and `dropTarget()` is what a driver answers the OS with.
+
+[ADR 0031](https://github.com/qxuken/kui/blob/main/docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md) ·
+[`onDrop` row](crate::docs::props#container-props) ·
+[`drop` event](crate::docs::props#events) ·
+[`examples/rust/features/drop.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/features/drop.rs) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I hear the documents the OS opens: Finder's Open With, the Dock icon?
+
+Declare the message they arrive as on the main window's root —
+`windowEvents={{ onOpen: { kind: 'open' } }}` (Rust
+`ui.window_events(WindowEvents::default().on_open(Msg::Open))`, Lua
+`window_events = { on_open = … }`, C `kui_root_with`) — and handle it in
+`update` (Rust `on_event`, C's event callback) with `open: {paths}` in
+it: the file-system paths of the documents the Finder's Open With, a file dropped on the Dock
+icon, `open -a YourApp file.rs` or a double-click handed the app. The
+macOS runner hears them from the application delegate's
+`application:openURLs:` — at launch, where AppKit sends them before the
+window exists and puts none in the arguments, the paths wait for the main
+window, and are held until its first frame has declared the message;
+while the app runs, at once. One
+`open` per request, several paths when the user opened several.
+
+The app's bundle has to say it opens documents, or the Finder will not
+offer it: an `Info.plist` with `CFBundleDocumentTypes`, one entry per
+kind — `LSItemContentTypes` the UTIs (`public.plain-text`,
+`public.source-code`, `public.data` for anything), `CFBundleTypeRole`
+`Editor` or `Viewer`, and `LSHandlerRank` `Alternate` to be listed in Open
+With without taking the type's double-click from its owner (`Default` or
+`Owner` to take it). Re-register a bundle you rebuilt in place with
+`lsregister -f YourApp.app` if the Finder still has the old list.
+
+On Windows and Linux the documents are in the process's arguments (a
+file association, a `.desktop` file's `%F`), and nothing sends `open`.
+Headless, `ctx.openDocuments(paths)` (C `kui_input_open`, Rust
+`InputEvent::Open`) is the drive.
+
+[`open` payload](crate::docs::props#events) ·
+[alpha.40 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha40-2026-10-07) ·
+[ADR 0048](https://github.com/qxuken/kui/blob/main/docs/adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)
+
+### How do I have global shortcuts and a Tab ring at once?
+
+Put the keymap on an `onKey` sink that encloses the controls: a focused
+control claims only the keys the core acts on for it (Enter and Space where
+there is something to click, the arrows on a slider), and everything else
+bubbles to the nearest enclosing sink. Chords always bubble, Tab always stays
+the ring's, and bubbling stops at a modal boundary so a dialog's shortcuts do
+not leak to the app behind it.
+
+[ADR 0011](https://github.com/qxuken/kui/blob/main/docs/adr/0011-keys-bubble-to-the-enclosing-sink.md) ·
+[`onKey` / `keyUp` rows](crate::docs::props#container-props) ·
+[alpha.7](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha7-2026-09-06)
+
+### How do I make a scroll glide instead of jumping?
+
+A mouse wheel's notch already glides, in every scroll container: each
+notch moves a target and the content eases after it, most of the way
+in a tenth of a second, a spun wheel speeding up rather than stepping. A
+trackpad's swipe, which the OS smooths itself, and a fraction of a
+notch (a precision touchpad on Windows, a high-resolution wheel) land
+as they come. To make notches jump instead, for the whole app, turn it
+off once: `Launcher::smooth_wheel(false)`, `smoothWheel: false` to
+`runWindowed`, `kui_set_smooth_wheel(ctx, false)`; the system's reduced
+motion makes them jump either way.
+
+A row that scrolls only sideways takes a mouse wheel's plain turn,
+down toward its end, while it has room; at its end the turn goes on to
+the page around it. Shift turns any notch sideways, as a browser's
+wheel does, where Windows and Linux leave that to the app (macOS does
+it itself). A trackpad's swipe goes the way it is swiped.
+
+How far a notch goes and how quickly it lands is the wheel feel, also
+the app's: a preset by name, slow to fast `gentle`, `standard` (the
+default, 40 px a notch), `brisk` (a touch faster, 48 px) and `swift`
+(64 px), or the numbers themselves — `line_px`, the glide's `response`
+in seconds and its `kick`. `Launcher::wheel_feel(WheelFeel::BRISK)`,
+`wheelFeel: 'brisk'` to `runWindowed`, `kui_set_wheel_preset(ctx,
+KUI_STR("brisk"))`. To try one without a rebuild, run the app with
+`KUI_WHEEL=brisk`, or `KUI_WHEEL=56,0.25,0.6` for numbers of your own:
+it overrides the feel the app opens with, so a user who wants another
+can have it, and only the app's own settings screen, changing it while
+it runs, comes after. The `wheel_feel` example tunes one by hand and
+spells its line to copy.
+
+For the app's own moves, declare a `transition` on the scroll
+container. A `reveal` or a `set_scroll` then eases the offset over it —
+the ribbon a keyboard walks, a list a shortcut jumps to — while the
+scrollbar's thumb and a drag past the edge keep landing whole, since
+neither may lag a finger; either interrupts a leg or a glide in flight
+and takes the content where it stands. `scroll_offset` is where it is
+going and `scroll_geometry`'s offset is where the content is, which is
+what a virtual list slices by, so a long list glides without drawing
+the wrong rows.
+
+[ADR 0050](https://github.com/qxuken/kui/blob/main/docs/adr/0050-a-wheel-notch-glides.md) ·
+[`transition` row](crate::docs::props#container-props) ·
+[alpha.17](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha17-2026-09-25)
+
+### How do I zoom with Ctrl or ⌘ and the wheel?
+
+Put an `onScroll` on the node that zooms and say which keys it is for:
+`<box onScroll={{ kind: 'zoom' }} scrollMods="ctrl super">` (Rust
+`.on_scroll(msg).scroll_mods(KeyMods::NONE.with_ctrl().with_super())`,
+C `.scroll_mods = KUI_KMOD_CTRL | KUI_KMOD_SUPER`, Lua `scroll_mods =
+"ctrl super"`). A wheel turned with one of them held is then that
+node's message with `scroll` in it wherever under the pointer it began — over a
+list inside it, and the list does not move — and a plain wheel passes
+the node by, so the lists go on scrolling — the node itself too, if it
+is the list: a scroll container that names a key for its own zoom
+scrolls for every other wheel. On the window's root it is
+the whole window's zoom; a canvas inside can name the same key and take
+the gesture for itself, the innermost winning. Positive `dy` is the
+wheel rolling up, "bigger". A mouse's notch is 40 px and a trackpad's
+swipe comes in small pixel steps, so add `dy` up and step when the sum
+crosses your notch rather than once an event. The `scroll` field's `mods` are
+the keys held when the gesture began: a swipe begun with the key held
+stays yours to the end of its glide even if the key was let go, and
+one begun without it never becomes yours, so there is nothing to latch
+yourself. Without the row an `onScroll` cannot do this: every scroll
+container inside it takes the wheel first.
+
+[`scrollMods` row](crate::docs::props#container-props) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### Why does a swipe down not move the strip sideways?
+
+A trackpad swipe keeps to the axis it started on, so nothing is yours
+to filter. A finger never moves straight: a swipe down carries a few
+pixels sideways, and a `scrollY` list passes the x it does not scroll
+to the `scrollX` strip around it, so every swipe used to nudge the
+strip. The native runner locks a swipe to the larger of the two axes
+once it has travelled 4 px and drops the other while the swipe and its
+glide last; a pause of 200 ms ends it, and a hand that turns without
+lifting — the other axis carrying three times the locked one's recent
+travel — turns the lock with it. A diagonal swipe therefore moves one
+axis at a time, as macOS's own scroll views do. A mouse wheel's notches
+are not locked: they come one axis at a time already, and Shift turns
+them sideways on purpose. An `onScroll` node hears the locked delta.
+
+[`scroll` event](crate::docs::props#events) ·
+[alpha.22](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha22-2026-09-28)
+
+### Which scroller does a swipe move, and how does a terminal let a sideways one through?
+
+The one it started on. A scroll gesture — a swipe and its glide, or a
+wheel spun without a pause — picks its target when it starts and keeps
+it until it ends, so a swipe that moves the strip goes on moving it
+when a terminal comes under the still pointer. The pick is the
+innermost scroller under the pointer that can still move the way the
+gesture goes: a list at its end passes a new gesture to the scroller
+around it, unless it says `overscroll: "contain"`, and a gesture that
+reaches the end midway stops there. An `onScroll` node cannot be asked
+whether it can move, so it takes every gesture that starts over it on
+the axes its `scrollAxes` names — unless it scrolls that axis as a
+container too (`scrollX` on the node, the offset yours to set from what
+it hears, as a code view's sideways scroll is): there it is answered by
+its room, and at its edge a gesture that way passes to the scroller
+around it (since alpha.33). A terminal that scrolls only its
+history says `y`, and a sideways swipe that starts over it moves the
+strip:
+
+```jsx
+<box onScroll={{ kind: 'term' }} scrollAxes="y" />
+```
+
+`scroll_axes = "y"` in Lua, `.scroll_axes(ScrollAxes::Y)` in Rust,
+`KUI_SCROLL_AXES_Y` in C. The native runner begins a new gesture after
+a 200 ms pause, and for a wheel when the pointer moves. A driver of your
+own sends `ScrollGesture { delta, begins }` (C's
+`kui_input_scroll_gesture`); a bare `Scroll` is a gesture of its own.
+
+[`overscroll` / `scrollAxes` rows](crate::docs::props#container-props) ·
+[ADR 0038](https://github.com/qxuken/kui/blob/main/docs/adr/0038-a-scroll-gesture-latches-its-target.md) ·
+[alpha.22](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha22-2026-09-28)
+
+### Does a pane off the edge of a scroller still hear its keys?
+
+Yes, since alpha.17. A key reaches a node by holding focus, not by being
+somewhere a pointer could land, so a sink scrolled out of its container,
+or drawn part-way to its place by `slide` or an `enter` offset, hears
+every press as its message as usual — you can give the keyboard to a
+column on a ribbon and type into it before the reveal has brought it
+back, and animate the ribbon while you do. A `disabled` sink and one a
+modal shut out hear nothing, wherever they are drawn, and the pointer is
+unchanged: a click past the clip finds nothing. Before alpha.17 the
+delivery read the pointer's hit list, so those keys fell silently on the
+floor.
+
+[ADR 0011 decision 9](https://github.com/qxuken/kui/blob/main/docs/adr/0011-keys-bubble-to-the-enclosing-sink.md) ·
+[alpha.17](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha17-2026-09-25)
+
+### How do I get an IME into an editor I own?
+
+An `onKey` sink drawing `line` rows with `caret` hears a composition as
+data: its message with `preedit: {text, cursor}` while it is composed (an
+empty `text` is the composition ending) and with `text: {text}` on the
+commit. Plain typing is not a commit — the `key` event already carries what
+the press would insert — so nothing arrives twice. The candidate window is
+anchored at the `line` carrying `caret` for you.
+
+[`text` and `preedit` events](crate::docs::props#events) ·
+[alpha.9](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha9-2026-09-08) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How does copy and paste work?
+
+The clipboard is the host's — the core never reads it — so every copy is
+someone working out *what* and handing the host the text, and every
+paste is the host reading the clipboard and handing the text back as
+input. There are four ways onto it, and they end in one queue:
+
+1. **The chords.** `Cmd/Ctrl-C/X/V/A` are the windowed runner's own,
+   performed while an `edit` or a `selectable` scope (a `cells` grid is
+   one) has focus: Copy reads the selection — an editor's, or a scope's
+   runs in reading order with the bold and italic beside as HTML — and
+   writes the clipboard directly; Paste is typing into the editor. No
+   queue, so a headless test sees nothing from a chord: it reads
+   `requestCopy()` / `selectionText()` / `selectionHtml()` instead.
+2. **The stock menus.** The context menu over an editor (Cut / Copy /
+   Paste / Select All) or a scope (Copy / Select All), and `role: copy |
+   cut | paste` rows in your own menus or the menu bar. The core performs
+   the row and queues a `setClipboard` (with `text` and `html`) or a
+   `paste`.
+3. **A virtual list's ask.** A copy whose selection reaches rows no frame
+   built cannot be answered by the core: `requestCopy()` says `asked`, the
+   scope's `onSelectionRange` message arrives with `selectionrange:
+   {from:{index, byte}, to:{index, byte}}` in it, and `answerSelectionRange(text)` — the
+   rows are yours — queues the `setClipboard`. Select All in such a list
+   spans the whole of it — rows `0..rowCount`, which `uniformList` and
+   its siblings declare for you (`rowCount` on a list you compose by
+   hand) — and asks the same way, `to.byte` past the last row's length
+   when that row was never built: cut it to the row.
+4. **Your own.** `setClipboard(text, html?)` and `requestPaste()` (Rust
+   `ui.set_clipboard` / `ui.request_paste`, Lua `env.set_clipboard` /
+   `env.request_paste`, C `kui_set_clipboard` / `kui_request_paste`)
+   queue the same two actions from anywhere — an `onKey` sink that hears
+   `Cmd-C` raw and wants a yank register, an "export" button, a
+   `withEffects` handler that calls `surface.setClipboard` the way it
+   calls `surface.play`.
+
+**The queue.** In a window the runner drains it after every input and
+every frame and does the work: a `setClipboard` goes to the OS, a `paste`
+reads the OS and comes back as a **commit** — typing into the focused
+editor, or the focused `onKey` sink's message with `text: {text}` (the
+nearest one above a focused control, or the root sink with nothing
+focused), the same message an IME's commit arrives on, so one arm handles
+both. Headless, `takeMenuActions()` (`Core::take_menu_actions`,
+`kui_take_menu_action`) is the queue and `commit(text)` the answer; a C
+host driving its own window drains it the same way and reads the
+clipboard itself. A paste with no editor and no sink to land on is
+dropped.
+
+`examples/rust/features/clipboard.rs` and `examples/node/features/clipboard.tsx`
+do all four, with a headless drive that pins what each leaves in the
+queue — and, on the way to the copy, the drag held past the log's edge,
+the wheel under the held press and the Shift-click that extends
+(ADR 0029).
+
+[`selectionrange` and `text` events](crate::docs::props#events) ·
+[ADR 0017](https://github.com/qxuken/kui/blob/main/docs/adr/0017-selection-as-a-scope.md) ·
+[alpha.12](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha12-2026-09-14) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I give the editor I own a mouse and a clipboard?
+
+Put `onDrag` on the same `onKey` sink. Every drag inside it then carries,
+in its `drag` field, `line` (which of the sink's `role="line"` rows the
+pointer is on — the same numbering its `select` requests use), `byte` (where on that line,
+as `textHit` would answer) and `clicks` (the press's count), so the press
+places the caret, a `move` extends the selection from where it pressed,
+and a count of two takes the word — all arithmetic in the handler, with
+no query and no frame of lag. A click gains the same three in a `click`
+field.
+
+The clipboard is the host's, and the sink hears the raw `Ctrl-c` /
+`Ctrl-v`: bind `y` to `setClipboard(text)` (Lua `env.set_clipboard`, C
+`kui_set_clipboard`, Rust `ui.set_clipboard`) and `p` to `requestPaste()`
+— the paste comes back as the same `text: {text}` an IME's commit does, so one arm inserts both. A window applies both after every
+input and every frame; headless, `takeMenuActions()` hands them out and
+`commit(text)` answers the paste.
+
+[`drag` and `text` events](crate::docs::props#events) ·
+[alpha.12](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha12-2026-09-14) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I hear the middle button, or give a terminal's program the mouse?
+
+Declare `onButton` on the pane. A middle press over it — or over anything
+inside it that claims no button of its own — is the pane's message with
+`button: {phase:"press", button:"middle", x, y, clicks}` in it, and the
+button is then the pane's until it comes up: every move while it is held
+is `phase:"move"` and the release `phase:"release"`, on the pane wherever
+the pointer went, so a drag that leaves the pane still ends there. On a
+`cells` grid each carries `cell: {row, col}`, clamped to the grid, which
+is what a terminal's mouse report needs; a paste is the middle press
+answered with `requestPaste()`. The answer goes to the focused sink, and
+no non-primary press moves focus, so when the pane pressed may not be
+the one focused, focus it first (`focus(label)` in the handler) or
+insert the `text` event's text into the pane that was pressed.
+
+The secondary button is claimed too unless you narrow it: `buttons:
+"middle"` leaves the right button to the pane's `onContextMenu` and the
+stock menu, and `buttons: "secondary middle"` takes both, which is what a
+terminal whose program turned mouse reporting on wants — declare the one
+or the other each frame from that mode. A further button (back, forward)
+is `"other"`, and its events carry its number. None of these presses
+moves focus or the caret; the primary button presses, drags and clicks as
+it always did.
+
+[`onButton` and `buttons` rows](crate::docs::props#container-props) ·
+[`button` event](crate::docs::props#events) ·
+[alpha.22 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha22-2026-09-28) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I keep a pasted password out of my editor's history, and copy one?
+
+Read the markers on the paste. A password manager copies a secret with
+the pasteboard marked concealed and transient, and the answer to
+`requestPaste()` says so: the sink's `text: {text}` carries
+`concealed: true` (a secret — show it to no one, log it nowhere) and
+`transient: true` (keep it in no history), each only when it is set.
+Insert the text as usual and leave it out of whatever you remember —
+a register, an undo you persist, a paste history. The runner reads the
+markers on macOS and Windows; on Linux, and from a host that answers
+with a bare `commit`, a paste arrives unmarked.
+
+To put a secret on the clipboard yourself, call
+`setClipboardSecret(text)` (Rust `ui.set_clipboard_secret`, Lua
+`env.set_clipboard_secret`, C `kui_set_clipboard_secret`) instead of
+`setClipboard`: the runner writes it marked the same way, so clipboard
+managers neither show nor keep it. Headless, it comes out of
+`takeMenuActions()` as `{kind:"setClipboardSecret", text}`, and a test
+answers a paste with `paste(text, {concealed, transient})`.
+
+[`text` events](crate::docs::props#events) ·
+[alpha.17](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha17-2026-09-25) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I make a password field?
+
+Declare `secure` on the editor (`<edit secure>`, Lua `secure = true`,
+C `KUI_EDIT_SECURE`, Odin `.Secure`, Rust `EditOptions { secure: true,
+.. }`). The field draws a bullet (•) for each character, refuses a copy
+and a cut (a paste goes in), lets no input method compose into it,
+keeps no undo history, and reads to a screen reader as a password field
+whose value is the bullets. While it has the keyboard the window turns
+on macOS's Secure Keyboard Entry and the input method off, as
+`secureInput` and `imeOff` would — nothing to declare on the root, and
+nothing to undo when focus leaves it. Read the password with
+`editText(key)` as from any editor; never mirror it into your model
+except where you need it.
+
+kui forgets the field on the first frame that does not declare it, and
+zeroes the text it held: a sign-in form closed and opened again starts
+empty, with no `setEditText` to wipe it first. An ordinary field keeps
+its draft while it is hidden; a password field does not. What kui handed
+you — each `change`'s text and `editText`'s answer — is your copy, and
+yours to clear when the form goes.
+
+A "show password" eye is the same editor declared with `secure` off
+while the eye is open: the text is drawn again, the caret where it was,
+and declared on again it is masked, its history gone with it. The
+editor keeps its key and its draft across the toggle, so there is no
+second field to keep in step.
+
+Keeping the field out of a screenshot or a screen recording is not a
+field's to ask: macOS can only leave a whole window out of capture
+(`NSWindow.sharingType`), and Windows the same
+(`SetWindowDisplayAffinity`). kui does not offer that switch yet
+(backlog F168).
+
+[`edit` element](crate::docs::props#elements) ·
+[alpha.56](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha56-2026-10-11)
+
+### How do I protect a password as it is typed?
+
+Declare `secureInput` on the root (Rust `ui.secure_input(true)`, Lua
+`secure_input = true` on the root table, C `kui_set_secure_input`) on
+every frame the prompt is up — a terminal whose pty turned echo off, a
+password field drawn by your own code (a `secure` editor asks for it by
+itself while it has the keyboard). The runner turns on macOS's Secure Keyboard
+Entry while that window has the keyboard, so no other process can read
+the keys, and turns it off when the window loses the keyboard, closes,
+or the frame stops declaring it; you never call the platform and never
+balance anything. Keep it to the prompt: while it is on, no other app
+sees the keyboard at all, a launcher's hotkey and a text expander
+included. Other platforms have no such switch and ignore it.
+`Ctx.secureInput()` / `kui_secure_input_get` read the ask back — what a
+test asserts on, and what a C host driving its own window reads to
+make the call itself.
+
+[`secureInput`](crate::docs::props#composite-props-hand-written-per-binding) ·
+[alpha.17](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha17-2026-09-25)
+
+### How do I make ⌥u reach my keymap on a Mac?
+
+Declare `optionAsAlt` on the root (Rust
+`ui.option_as_alt(OptionAsAlt::Left)`, Lua `option_as_alt = "left"` on
+the root table, C `kui_set_option_as_alt(ctx, KUI_OPTION_AS_ALT_LEFT)`)
+on every frame — from a setting, if your users choose. On a Mac, Option
+composes: ⌥m types `µ`, which still arrives as the chord `<A-m>` with
+`µ` as its `text` (so an editor of your own types it), but
+⌥u, ⌥e, ⌥i, ⌥n and ⌥` are dead keys that start an accent and wait for
+the next key, and the press never arrives as a key at all. The Option
+key you name is Alt instead: those presses arrive as `<A-u>` and the
+rest, and a key under it types nothing, as under Control. Name one side
+and the other still composes — a user who types `ü` keeps the right
+Option for it — or `"both"`. The frame that stops declaring it gives the
+keys back to the layout, and the runner applies it on change, so
+declaring it every frame costs nothing. Other platforms' Alt composes
+nothing and they ignore it. `Ctx.optionAsAlt()` / `kui_option_as_alt_get`
+read the ask back — what a test asserts on, and what a C host driving its
+own window reads to apply it itself.
+
+[`optionAsAlt`](crate::docs::props#composite-props-hand-written-per-binding) ·
+[alpha.27](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha27-2026-09-29)
+
+### Why does my caret go past the edge on a wrapped line's trailing space?
+
+Because under `wrap="word"` a space at the end of a row hangs over the
+edge, as a browser's does, and the space a row breaks at is dropped from
+the layout: a caret you place with `caretRect` on those bytes lands
+past the box, or at the end of the row it broke. That suits a label. An
+editor, whose caret stands on every byte, wants `wrap="break-spaces"`
+(Rust `TextWrap::BreakSpaces`, C `KUI_WRAP_BREAK_SPACES`): whitespace
+takes its room like a letter, so a space that does not fit starts the
+next row, every byte's `caretRect` is inside the box, and a background
+you put on a space — a block caret, a selection — is drawn where the
+space is. A text with its own line breaks, a `maxLines` or an
+`ellipsis` wraps as `word`, and so does an `edit`.
+
+[`wrap` row](crate::docs::props#text-props) ·
+[alpha.22](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha22-2026-09-28)
+
+### How do I place my caret on the frame its text changes?
+
+Ask `caretInText(content, style, maxWidth, byte)` (Rust
+`ui.caret_in_text` / `ui.caret_in_rich_text`, Lua `env.caret_in_text`, C
+`kui_caret_in_text` / `kui_caret_in_rich_text`) with the text you are
+about to draw and the width its box has, and add where the text node
+sits. `caretRect(key, byte)` reads the layout the node was given, which
+during a build is last frame's: on the frame a letter is typed, or a
+line turns to its source as the caret comes, that layout is the old
+text's, and a caret placed by it is a letter behind — on a wrapped
+line's later rows, in a place no measure of the prefix can find. The
+query shapes and wraps the text as layout will (the same text cache, so
+asking and then drawing shapes once), each span in its own face, and
+answers from the text's own top-left. A line past 4 KiB answers as its
+layout does, by the mean advance in a chunk not shaped yet, until a
+frame has drawn it.
+
+[alpha.58 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha58-2026-10-18)
+
+### How do I make the caret I draw blink?
+
+Read `caretVisible()` (Rust `ui.caret_visible()`, Lua `env.caret_visible`,
+C `kui_caret_visible`) in `view` and draw your caret node only when it is
+true — keeping the `caret` row on the `line` either way, because that
+row is what arms the clock (and anchors the IME). The window's runner
+runs the clock while a focused `edit`, or a `caret` line under the
+focused `onKey` sink, has a caret: half a second on, half off, re-armed
+solid whenever the caret moves, and parked hidden while the window has
+no keyboard — so the stock editor and yours blink in step and neither
+blinks in the background. Headless the phase stays true;
+`setCaretVisible(false)` / `kui_set_caret_visible` is how a test sees
+the off phase drawn, and how a C host with its own window drives it
+(`kui_has_caret`, `kui_caret_stamp` are the clock's inputs). Never use
+`keyframes` for this: a blink has no end, and an endless cycle asks for a
+frame every vsync.
+
+A caret that does not blink — the block of a modal editor's normal mode —
+declares `caretSolid` (Lua `caret_solid = true`, C `KUI_VALUE_CARET_SOLID`
+in `value_set`) beside `caret` on the same line: the row still anchors
+the IME and is still the caret assistive technology hears, but it is no
+caret to blink, so the clock is not armed and an editor idling in normal
+mode asks for no frame at all. Without it the clock runs for as long as
+the `caret` row is declared, whether or not the view reads the phase —
+the one thing that asks an idle app for a frame twice a second.
+
+[`caret_visible`](crate::docs::props#env) ·
+[`caretSolid`](crate::docs::props#container-props) ·
+[alpha.12](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha12-2026-09-14)
+
+### Why does a held key not repeat on a Mac?
+
+macOS's press-and-hold: holding a letter offers its accents (`e` → `é è
+ê`) instead of repeating it, and a letter with no accents does nothing
+at all — on by default, and off only on a machine whose owner turned it
+off, which is why it works on one Mac and not the next. Every other
+platform repeats. The setting is the user's — the read that decides is
+HIToolbox's, of the user's global preference by name, and no
+per-process default reaches it (F69 built a door that pinned one; RG15
+found it inert and RG16 removed it — the backlog archive has the
+measurements) — but press-and-hold is an *input method*, and a window
+can take the keyboard with its input method off. Declare `imeOff` on the
+root while your keys are commands (Rust `ui.ime_off(true)`, Lua
+`ime_off = true` on the root table, C `kui_set_ime_off(ctx, true)`):
+
+```rust,ignore
+// Normal mode is a keymap; insert mode types text.
+ui.ime_off(self.mode == Mode::Normal);
+```
+
+A held `j` then repeats, a held `e` opens nothing, and an IME left on
+no longer eats the keymap — nor, on a Mac, a dead key; each key still
+carries the layout's character as its `text`. On Windows and Linux a
+dead key is the layout's and still composes: winit composes it whatever
+the IME says. Stop declaring it and insert mode has
+accents, dead keys and the IME back. A key held across the switch — the
+`i` that enters insert mode — keeps repeating until it comes up, so the
+picker comes from the next fresh press. It is frame state: declare it on
+every frame the mode wants it.
+
+The user can still turn press-and-hold off for every app:
+
+```text
+defaults write -g ApplePressAndHoldEnabled -bool false
+```
+
+and a relaunch.
+
+[`imeOff`](crate::docs::props#composite-props-hand-written-per-binding) ·
+[`examples/rust/apps/modal_editor.rs`](https://github.com/qxuken/kui/blob/main/examples/rust/apps/modal_editor.rs)
+
+### How do I tell the keypad from the main keys, or hear a lone Shift?
+
+Every `key` field says which of a key's twins it was, `location`:
+`"numpad"` for the keypad's digits, operators and Enter — `code` still
+`"1"` or `"enter"`, so a keymap that does not care reads nothing new —
+`"left"` or `"right"` for a modifier, else `"standard"`; `caps_lock` and
+`num_lock` say what was locked. The modifier and lock keys themselves
+(`shift`, `ctrl`, `alt`, `super`, `capslock`, `numlock`, `scrolllock`)
+arrive only on a sink that says `modifierKeys` — with `keyUp` for their
+releases — because a keymap in the middle of `Space F` must not read the
+Shift as a key between the two. F13–F35, `printscreen`, `menu` and the
+media keys (`mediaplaypause`, `volumeup`, …) need nothing: they are keys.
+
+[`modifierKeys`](crate::docs::props#container-props) ·
+[`key`](crate::docs::props#events) ·
+[ADR 0002](https://github.com/qxuken/kui/blob/main/docs/adr/0002-keyboard-focus-as-data.md#amendment-where-a-key-is-the-modifier-keys-the-locks-built-2026-09-28) ·
+[alpha.24](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha24-2026-09-28)
+
+### Which field did this edit come from?
+
+The one whose message it is. An event arrives as the message its handler
+declared, with the event's data in one field named for the event ([ADR
+0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)), so
+an editor declared `onChange={{kind: 'rename', id: row.id}}` hands `update`
+`{kind: 'rename', id, change: {text}}` — the row and the text, with no key
+to look up. A list of fields is a list of messages; `keyOf` never enters
+into it. `onSubmit` and `onCancel` arrive as declared, and an editor that
+declares none of the four rows hears nothing, as a box without `onClick`
+is no button. In TypeScript the message is typed where it is declared:
+
+```tsx
+type Rename = EditChangeMsg<{ kind: 'rename'; id: string }>;
+// or: interface Rename extends WithEditChange { kind: 'rename'; id: string }
+
+<edit key={`name:${r.id}`} value={r.name} onChange={{ kind: 'rename', id: r.id }} />
+
+case 'rename': return renameRow(model, msg.id, msg.change.text);
+```
+
+`onChange` takes only a message that declares `change`, so pairing one
+with the wrong handler fails at the node. In Rust, `ev.split::<Msg>()`
+reads the message beside an `Event`, or `#[message(on = change)]` on the
+variant makes the derive's arriving twin carry the text inside it.
+
+[`onChange` row](crate::docs::props#container-props) ·
+[`change` event](crate::docs::props#events) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I keep an editor's text in my model?
+
+Declare it as the editor's `value`, and store what `onChange` brings back.
+On every frame the declared value differs from the editor's text, the
+editor is brought to it as a splice: only the span that differs changes,
+so a caret before it stays, one after it moves with the text, and undo
+still steps back through the user's own typing. A correction made in
+`update` — an uppercasing filter, a digits-only field, a length cap —
+joins the undo step of the keystroke it corrected, so one undo takes back
+both. Make it in `update`, not in an effect that resolves later: a
+correction that lands frames after the edit is an undo step of its own,
+and undoing it lets the effect correct it again. While an input method is
+composing, the value waits for the commit.
+
+```tsx
+<edit value={model.code} onChange={{ kind: 'code' }} />
+
+case 'code': return { ...model, code: msg.change.text.replace(/\D/g, '').slice(0, 6) };
+```
+
+A `value` without `onChange` reverts every keystroke, and the core warns
+`edit-value-without-handler`; `value` beside `initial` warns
+`edit-value-and-initial`, since the seed is never read. An equal value — every
+frame of ordinary typing — costs a string compare: 1.25 µs a frame for a
+40-byte field in the core, the same as a seed, and about 5 µs over a seed
+for a 100 KB document, which in Node also crosses the wire every frame. So
+`value` is for fields; a document keeps `initial` and `onChange`, and the
+imperative way below stays for it.
+
+[`edit` element](crate::docs::props#elements) ·
+[`edit-value-without-handler`](crate::docs::props#warnings) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I reset an editor's text?
+
+An editor with a `value` resets when the model does: declare the new value.
+For one without, `initial` seeds a *new* editor only — a key declared again
+keeps the draft the user typed — and `setEditText(name, text)` is what
+resets one, leaving the caret at the end and clearing its undo. Name it by the label the editor's own `key` prop
+declares, `setEditText('edit-n13', text)`, and it can be called from the
+`update` that *opens* the editor: no frame has declared it yet, so the text
+is held and the frame that draws it takes it, over `initial`. That is the
+spelling to reach for, because the other one — the 16-digit hex key — comes
+from an event the editor has not fired. It reaches an editor that is coming
+back too: one retained while its key was off screen takes the text over the
+draft left in it, so a second rename opens on the model's text and not on an
+abandoned edit. A name nothing declares by the end of that frame drops its
+text with an `edit-text-without-editor` warning.
+
+[`edit` element](crate::docs::props#elements) ·
+[`edit-text-without-editor`](crate::docs::props#warnings) ·
+[alpha.10](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha10-2026-09-09)
+
+### How do I make a rename field break where its label breaks?
+
+Declare `wrap` on the field: `<edit width="fit" maxWidth={w} wrap="word">`.
+A single-line editor is a field — one line whatever its box, scrolled under
+the caret — until it says `wrap`, when it folds to its width like a document
+and keeps a field's keyboard: Enter submits, no newline goes in, the caret
+opens at the end. With `fit` and `maxWidth` the box hugs a short draft,
+stops growing sideways at the clamp and grows down from there, on the frame
+that lays out the keystroke — so no headroom to declare past the widest
+glyph. `wrap="none"` is the plain field; a `multiline` editor wraps either
+way.
+
+[`edit` element](crate::docs::props#elements) · [`wrap`](crate::docs::props#text-props) ·
+[alpha.12](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha12-2026-09-14)
+
+### How do I keep a panel's controls out of my app's Tab ring?
+
+Declare the panel `focusRegion`. Its subtree becomes a Tab ring of its own:
+the app's ring never enters it, and inside it Tab wraps over the panel's
+controls alone. Bind a chord to `focusRegion('panel')` to move the keyboard
+in — it lands on what the panel last held, else its `initialFocus`, else its
+first stop, and shows the ring — and to `focusRegion(null)` to come back; a
+click on the panel enters it too. The call resolves on the next frame, so
+the `update` that turns the panel on may enter it in the same turn, by the
+label the `key` prop declares. Keys still bubble through the boundary to the
+sink above, so the app's own shortcut layer keeps hearing the chord while
+focus is in the panel. Do not reach for `role="none"`: it keeps the panel
+out of the ring by making it invisible to every keyboard and screen-reader
+user.
+
+[ADR 0022](https://github.com/qxuken/kui/blob/main/docs/adr/0022-focus-regions.md) ·
+[`focusRegion` row](crate::docs::props#container-props) ·
+[`focus-region-without-node`](crate::docs::props#warnings)
+
+### How do I say which control a dialog opens focused?
+
+`initialFocus` on that control: it is where focus lands when the enclosing
+`modal` scope is entered, so a destructive confirm opens on its Cancel rather
+than on whichever control the view declares first. It is read on entry only —
+a Tab press afterwards stands — and declaring it on nothing leaves entry at
+the ring's first node.
+
+[`initialFocus` row](crate::docs::props#container-props) ·
+[ADR 0003](https://github.com/qxuken/kui/blob/main/docs/adr/0003-modal-surfaces.md)
+
+### How do I give a hint that is spoken and never drawn?
+
+`description` is the accessible description on its own — the extra sentence a
+reader says after the name — and `tooltip` is that same sentence plus the
+float drawn while hovered and the hover tracking it needs. Both write one
+slot, so a node declaring both keeps whichever its binding applied last, and
+neither reads on a plain box that the access tree elides.
+
+[`description` row](crate::docs::props#container-props) ·
+[`tooltip` row](crate::docs::props#composite-props-hand-written-per-binding) ·
+[alpha.8](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha8-2026-09-07)
+
+### How do I have a screen reader announce something?
+
+Put `live="polite"` on the smallest node that holds the message and a reader
+reads it when the text inside changes, without being asked; everything inside
+a live node is live, which is why it goes on the smallest one. For a one-off
+with no node behind it — "Saved" — the binding's `announce(text, live?)` verb
+is the other half.
+
+[ADR 0008](https://github.com/qxuken/kui/blob/main/docs/adr/0008-live-regions-and-announcements.md) ·
+[`live` row](crate::docs::props#container-props) ·
+[alpha.7](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha7-2026-09-06)
+
+### How do I name a node from outside the view?
+
+Every verb that takes a node takes either spelling: the label a `key` prop
+declared, or the 16-digit hex key an event carried. `focus`, `isFocused`,
+`reveal`, `access`, `editText`, `setEditText`, `setScroll`, `scrollOffset`,
+`scrollGeometry`, `textHit`, `caretRect`, `isHovered` and `isPressed` all
+resolve a label through the frame being built so far and then the last
+finished one, so a node the user has never touched can be named. `keyOf(label)`
+(Node) and `kui_key_of` (C) hand back that hex key when one is wanted to hold
+on to, and null / 0 when no recent frame declared the label; Lua's focus,
+scroll and editor verbs take the label itself, so a script needs neither.
+The way back is `labelOf(key)` (Node), `kui_label_of` (C), `label_of`
+(Odin) and `env.label_of` (Lua): the label a key from an event, `focused()`
+or a log was opened under, and null for an auto-keyed node. It is the local
+label, so two rows of a list under different parents answer the same. One verb goes further:
+`setEditText` accepts a label *no* frame has declared, and holds the text for
+the frame that does — that is how the `update` opening an editor names it.
+A label declared by two nodes under different parents raises `ambiguous-key`
+and picks the first in tree order: labels are unique among siblings, not
+across a tree. The lookup is the asker's: a plugin drawing a component (a
+Lua script, a C extension) is answered from the nodes it opened and no one
+else's, so its `filter` and the host's never meet; the host sees its own
+first, and everyone's when it declared none. A plugin placed many times —
+one pane an instance — is answered from the instance asking alone, so two
+of its panes can both call their scroller `list`; to reach a node in
+another of its instances, pass the hex key.
+
+[`key` row](crate::docs::props#composite-props-hand-written-per-binding) ·
+[`ambiguous-key`](crate::docs::props#warnings) ·
+[alpha.10](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha10-2026-09-09)
+
+## Sound and effects
+
+### How do I play a sound when the model changes?
+
+Register the bytes once (`ctx.addSound(buffer)` in `setup`, wav / ogg / mp3 /
+flac) and declare `<audio key src>` for as long as it should play: present is
+playing, gone is stopped, so a chime is one node under a key that changes
+when the event does. Give it a `tag` and the playback's own end arrives as
+that message with `sound: {phase:"ended", playback}` in it — which is what to keep the node declared
+until, rather than a guessed duration.
+
+Guess it short and the sound is cut off mid-chime, which is what
+`truncated-playback` is for: a windowed run warns when a one-shot's node goes
+away while the device is still playing it. Either keep the node declared
+until the `ended` event, or add `finish` — the removal then *releases* the
+playback to play itself out, and a `tag` still reports when it gets there.
+Headless there is no device and so no warning; the same fact from the test's
+end is `audioCommands()` holding a `stop` for the node.
+
+`finish` plays a one-shot out after its node goes, and a released playback
+is not free: it holds one of the device's 128 voices until its file ends,
+released or not, and the 129th play is refused. A refused play never starts
+and so never ends — it arrives as the `tag` message with `sound:
+{phase:"refused"}` in it, and as a `playback-refused` warning either way, so nothing waits on
+an `ended` that cannot come. In the app's units, voices held = sound length
+× release rate: a 1.4 s chime released four times a second holds 6 of the
+128 at any moment, a 10 s ambience released once a second holds 10, and every
+playback still declared (a loop included) counts beside them — a `refused`
+`sound` event is what arriving at 128 sounds like. Stop what the view no
+longer needs instead of releasing it, and release short sounds.
+
+[`audio` element](crate::docs::props#elements) ·
+[sound resources](crate::docs::props#resources) ·
+[`sound` event](crate::docs::props#events) ·
+[`truncated-playback`](crate::docs::props#warnings) ·
+[`playback-refused`](crate::docs::props#warnings) ·
+[ADR 0047](https://github.com/qxuken/kui/blob/main/docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I do the thing my app defines — a file write, a request?
+
+`update` returns `withEffects(model, ...effects)`: the effects are the app's
+own data, the loop hands them to the `effects` handler it was built with, and
+whatever that handler dispatches goes back through `update` like any other
+message. kui's own effects stay where they are — a sound is `<audio>` or
+`surface.play`, a window is `windows` — and a test reads `app.effects()`
+whether or not a handler ran.
+
+[ADR 0013](https://github.com/qxuken/kui/blob/main/docs/adr/0013-effects-as-data.md) ·
+[alpha.8](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha8-2026-09-07)
+
+### How do I show a video frame, a camera, or a plot I drew myself?
+
+Make it an image and replace its pixels. Register once (`add_image` /
+`addImage` / `kui_image_add`), then each time you have a new frame call
+`update_image(id, w, h, rgba)` (`updateImage`, `kui_image_update`): the
+handle is unchanged, so every `<image src={id}>` shows the new pixels next
+frame with no view change, and from the first update on the image draws
+from a texture of its own rather than the glyph atlas — as does one too big
+for a page, which used to draw nothing. `sampling="nearest"` keeps an
+emulator's or a pixel-art texel square; `fit="contain"` or `"cover"` meets
+a box of another aspect without stretching. kui composes, clips, rounds,
+fades and hit-tests the box; what is inside it is yours, rasterised with
+whatever you like. In Rust, prefer `update_image_with(id, w, h, |px| …)`
+and render straight into the slice it hands you. It is a buffer the core
+recycles, so a stream stops allocating after its second frame and skips
+your copy too. `updateImage` and `kui_image_update` copy your bytes into
+that same recycled buffer. At 1080p that copy is ~275 µs, where a fresh
+8 MB buffer a frame cost ~870 on Windows, whose heap faults every new
+block in page by page (fixed in alpha.21). The upload to the GPU comes on top.
+
+[`image` element](crate::docs::props#elements) ·
+[ADR 0025](https://github.com/qxuken/kui/blob/main/docs/adr/0025-the-image-is-the-canvas.md) ·
+`cargo run --example image`
+
+### How many pixels should I render for this box?
+
+`w × scale` by `h × scale`, from the `layout` event: put `onLayout` on the
+box, and its `layout` field carries the logical rect and `scale`, the physical px
+per logical px at that node. Render that many pixels, `update_image`, and
+the next frame shows them one texel per pixel — the loop the `image`
+example runs. It is one frame late, which is the frame model: until the
+first report the previous pixels show, stretched. `scale` is the frame's
+today, and where a zoom would compose in if the core ever takes one.
+
+[`layout` event](crate::docs::props#events) ·
+[ADR 0025](https://github.com/qxuken/kui/blob/main/docs/adr/0025-the-image-is-the-canvas.md)
+
+### How do I fill a shape — a pie wedge, an icon, a map's region, the area under a curve?
+
+`<path d="M … Z" bg/>`: SVG path data (`M L H V C S Q T A Z`, absolute or
+relative — what an icon editor or a chart library exports) in the
+parent's box space, filled with `bg`, placed like a `line` (a float sized
+to its own bounding box, taking no room). `fillRule="evenodd"` makes a
+ring's hole a hole; `width` and `color` stroke the outline over the fill,
+as a `line`'s rows do. `transition` eases the fill, and with `slide` the
+position; a hover or a colour tween re-tints the same mask. It is hit by
+its outline under the fill rule ([ADR
+0026](https://github.com/qxuken/kui/blob/main/docs/adr/0026-hit-testing-by-shape.md)): give a wedge `onClick` or
+`hoverable` and a press inside it is its own, one in its bounding box past
+the arc is the neighbour's — no hit boxes — and a clickable wedge is a
+button to a screen reader, so give it a `label`. Two paths that share an
+edge meet without the background showing through: a fill bleeds half a
+pixel, so a pie needs no overlap and no hairline stroke. In Rust,
+`Path::sector(cx, cy, outer, inner, from, sweep)` is a wedge, a donut's
+segment or a ring in one call, and `Path::parse(d)` is the same parser
+every binding's `d` goes through.
+
+On the wire a path is one glyph-mask quad per paint, from the glyph
+atlas: the outline is rasterized once per shape, scale and quarter-pixel
+position, and a host that draws text draws paths. A mask a quarter of the
+biggest atlas page or more, or a path whose `d` changes twice within a
+few frames, draws from a texture of its own instead; a shape that must
+move cheaply every frame at any size is a `polygon`
+([ADR 0040](https://github.com/qxuken/kui/blob/main/docs/adr/0040-a-path-is-a-mask-in-the-atlas.md)).
+
+A shape that only *turns* — a spinner's arc, a gauge's needle — is not a
+different shape each frame: `rotate={turns}` turns it about `pivot={[x,
+y]}` (the centre of its box without one), and the turn is the quad's.
+The mask is rasterized once and stays in the atlas at every angle, so a
+turning path costs what a still one does
+([ADR 0041](https://github.com/qxuken/kui/blob/main/docs/adr/0041-a-mask-turns-about-its-centre.md)). Its edges are
+resampled while it is turned, a tenth of a pixel softer; `rotate` does
+not tween.
+
+`<polygon points={[[x, y], …]} bg/>` is the eight-point fill that came
+first ([ADR 0025](https://github.com/qxuken/kui/blob/main/docs/adr/0025-the-image-is-the-canvas.md)): one `fragment`
+quad painted by a signed-distance source the core registers, so it costs
+nothing per frame however it moves, and it is still the right element for
+an arrowhead on a tweening connector or a strip of quads under a live
+sparkline. It fills even-odd, takes at most eight points, and two of
+them sharing an edge show a hairline of the background through it.
+
+[`path` element](crate::docs::props#elements) ·
+[`polygon` element](crate::docs::props#elements) ·
+[ADR 0040](https://github.com/qxuken/kui/blob/main/docs/adr/0040-a-path-is-a-mask-in-the-atlas.md) ·
+`cargo run --example path` · `cargo run --example polygon`
+
+### How do I give a box a gradient background?
+
+`gradient` on the box: `gradient={{ to: 'bottom', stops: ['#1e2030',
+'#14161e'] }}` runs to a side or a corner, `{ angle: 0.125, stops }` along
+a direction in turns clockwise from east, and `{ radial: true, at: [0.5,
+0], stops }` out from a centre. A stop is a colour or `[colour, position]`,
+the colour a `$token` too; a token that misses is raised as
+`unknown-token` and its stop left out, so a two-stop gradient with a
+typo draws nothing over its `bg`. It paints over `bg` and under the border and the children, so a scrim is
+a gradient with a transparent stop over whatever is beneath. The geometry
+is the box's unit square stretched to the box — a corner is CSS's corner,
+and an `angle` runs corner to corner at an eighth of a turn whatever the
+aspect, which CSS's `45deg` does not.
+
+It costs one image quad and is rasterized once per distinct gradient, so
+it does not tween and `hoverBg` does not replace it: to move a gradient,
+move the box that has it (the rainbow in `loaders` is one gradient slid
+under a clip); to animate its colours, write a fragment.
+
+[`gradient` row](crate::docs::props#container-props) ·
+[ADR 0042](https://github.com/qxuken/kui/blob/main/docs/adr/0042-a-gradient-is-an-image-the-core-paints.md) ·
+`cargo run --example loaders`
+
+### How do I draw a ring, noise, a shimmer, or anything the paint props cannot?
+
+Write a fragment. `add_fragment(wgsl)` validates one WGSL function and hands
+back a handle; `<fragment src={id} params={[…]} animate>` is a box that
+function paints. The app writes only
+
+```wgsl
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32>
+```
+
+and reads `in.local`, `in.size`, `in.time` and up to sixteen `params`. kui
+owns the rest — the node's rounded box, the clip, the group opacity, the
+blend — so it lays out, clips, fades, takes input and holds children like
+any box. `animate` is what a fragment reading `time` needs. It has no
+intrinsic size, so give it one.
+
+[ADR 0015](https://github.com/qxuken/kui/blob/main/docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) ·
+`cargo run --example fragment`
+
+### How do I draw fifty thousand points, a spectrogram, a heatmap?
+
+Put the data in an image and read it from a fragment. `add_image` once,
+`update_image` with the new values whenever they change, and `<fragment
+src={fn} image={id}>` — `ui.fragment(fn.with_image(id), ..)`,
+`kui_fragment_with` — draws a box whose function reads the image:
+`kui_sample_nearest(uv)` is the texel under `uv` (a cell, a sample, a
+bin), `kui_sample(uv)` the bilinear blend, and `in.image.zw` how many
+texels there are. One node, one quad, however many values; the "canvas"
+is the image and the drawing is the function. The core binds the atlas or
+the image's own texture, whichever holds it, and the function never knows
+which. The same input is every image effect — read the pixels, return
+different ones. A removed image under a live fragment draws nothing.
+
+[`fragment` element](crate::docs::props#elements) ·
+[ADR 0025](https://github.com/qxuken/kui/blob/main/docs/adr/0025-the-image-is-the-canvas.md) ·
+`cargo run --example fragment`
+
+### My chat prepends history and the view jumps — how do I keep the row I was reading still?
+
+Declare `anchor` on the scroller: `NodeSpec::column().scroll_y().anchor()`,
+`<box scrollY anchor>`, `scroll_y = true, anchor = true`,
+`KuiSpec.anchor = 1`. The core remembers which child was first in view
+and moves the offset by however far that child's edge moved when the
+content before it changed size, before the clamp — so a page of history
+prepended above the viewport, a row above it growing as its text wraps,
+or a virtual list correcting an estimate leaves what you were reading
+where it was. Give the rows stable keys (the anchor is found by key), and
+know that content *after* the anchor moves nothing: a log that tails
+still `set_scroll`s to the end itself. It is CSS's `overflow-anchor`, and
+one frame of it is in the corpus.
+
+[`anchor`](crate::docs::props#container-props) · `crates/kui-core/tests/anchor.rs`
+
+### How do I make my own controls agree with the stock ones on size?
+
+Read `ui.metrics()` — `env.metrics` in Lua, `ctx.metrics()` in Node,
+`kui_metrics` in C — and build from it: `m.radius` is the corner every
+stock surface has, `m.control_pad_x` / `m.control_pad_y` the button's
+padding, `m.control_text` its label's size, and so on for the field, the
+tooltip and the menus. The stock widgets are built from the same struct,
+so a density change reaches both at once: `core.set_metrics(Metrics::compact())`
+for a dense tool, `Metrics::default().scaled(1.25)` for a slider,
+`ctx.setMetrics({ base: 'compact', radius: 3 })` for overrides in Node.
+Nothing scales by itself — a metric is logical px before `env.scale`,
+which is the renderer's — and nothing in the OS is followed; the stock
+set is what the widgets always drew, so an app that sets nothing changes
+nothing.
+
+[Metrics](crate::docs::props#metrics) ·
+`cargo run --example metrics`
+
+### How do I let an extension draw inside my view?
+
+Place what it provides: `ui.component("fs/panel", &props)` is a position
+among the host's own children, drawn then and there by the extension the
+namespace addresses, with props in and the host's own messages out — an
+`on_toggle` prop is the message the host hears when the extension emits
+`on_toggle`. The host decides the namespace an extension is loaded under
+(`extension_as("fs", ext)`), so the same plugin loaded twice is two
+namespaces. An extension lists what it provides (`components()`, Lua's
+`components` table, C's `kui_ext_components`), `"*"` for every name under
+its namespace — views registered at runtime, one per pane; one that lists
+nothing provides `root`, its `view`, drawn after the host's view unless
+the host places `fs/root`. Every event says which instance drew its node
+(`ev.instance`), so a host with one extension across many panes routes by
+pane without the extension stamping its payloads.
+
+[ADR 0060](https://github.com/qxuken/kui/blob/main/docs/adr/0060-components-an-extension-provides.md) ·
+[ADR 0067](https://github.com/qxuken/kui/blob/main/docs/adr/0067-slots-fold-into-components.md)
+
+### How do I let several extensions add to one place — a toolbar, a menu, a status bar?
+
+Declare a slot: `ui.slot("app.toolbar", &props)` (Lua `slot("app.toolbar",
+props)`, Node `<slot name="app.toolbar" props={…}/>`, C `kui_slot`) places
+every component the loaded extensions contribute to that name, as
+siblings in the current container — wrap the slot for a box. An extension
+contributes by naming the slot and one of its own components:
+`Extension::contributions()`, Lua's `contributes = { ["app.toolbar"] =
+"save" }` (or a list of `{ slot =, component =, order = }`), C's
+`kui_ext_contributions`. They are placed in load order, then by `order`.
+Every contributor gets the slot's props and its `inst.slot` says where it
+is; its events arrive as the messages in those props, and `from` names
+the extension that raised one (`ev.from`, Lua's `at.from`, C's
+`ev->from`). Each contribution is its own instance, keyed by the slot,
+its provider and its component, so loading another plugin moves nobody's
+focus or scroll. The name is any string — by convention `owner.place`,
+the owner the declarer's own stable name — and an empty or undrawn slot
+is silent: not drawing it is the app's call.
+
+[ADR 0067](https://github.com/qxuken/kui/blob/main/docs/adr/0067-slots-fold-into-components.md) ·
+`crates/kui-core/tests/contributions.rs`
+
+### My plugin's pane costs every frame, even when nothing in it moved — how do I stop asking it?
+
+You already don't: a component is replayed by default (ADR 0067). When
+its props are the same, every fact of the frame its last fill read is the
+same (which node was hovered, where its scroller stood, the theme and the
+metrics, the focus) and nothing it emitted was heard since, the core
+pushes last frame's nodes again through the doors they came in by,
+resolving hover and a transition's easing for this frame, and never calls
+the plugin. What it cannot see is what *you* feed the plugin outside kui —
+your buffers, your settings — so pass what changes as a prop, or a
+revision number of it, and the placement fills again when it does. Pass
+`fresh: true` in the props to fill every frame. In Rust and C the
+placement answers why it filled (`FillAnswer::Params`, `Reads`, `NotKept`,
+`NotReplayable`, `Heard`; C's `KUI_FILL_*`); the devtools tree shows it
+everywhere. A component inside the plugin's tree is placed again on a
+replay and answers for itself, so a caret still blinks inside a pane that
+is not rebuilt. A fill that declares something of the frame beyond its
+nodes (a title, a window, a frame it wants next, a devtools tab), draws a
+`cells` grid, or fails, is kept as not replayable and runs every frame. An
+extension's `root` is always drawn fresh. A view that reads the clock or
+the caret phase off `env` as a plain field is one the core cannot vouch
+for — a reading handed out whole cannot say which fields were used — and
+the explicit doors (`ui.now()`, `env.caret_visible()` as a call) still
+count.
+
+[ADR 0067](https://github.com/qxuken/kui/blob/main/docs/adr/0067-slots-fold-into-components.md) ·
+`crates/kui-core/tests/instance_replay.rs`
+
+### How do I redraw when a thread has new data?
+
+Take the `Waker` the loop hands `App::setup` and clone it into the thread —
+a PTY reader, a file watcher, a socket — and call `wake()` when what `view`
+will show has changed; the loop draws, and nothing else ever wakes it. A
+host that owns the loop blocks on the same three things with
+`pump_until(deadline)`: an OS event, a wake, or the deadline.
+
+A window nobody can see — minimized, or covered where the platform says
+so — still runs its view on a wake, and at a time the view asked for
+with `request_frame_at`: the frame is built at the size the window last
+drew at, its events reach the app, and nothing is drawn until the window
+is back. Where the platform delivers such a window no frame at all — a
+minimized one on Windows — at most four a second, however often the
+thread wakes. So the work a view does with what a thread brought — taking in a
+sync's notes, a watcher's changes — goes on while the app sits on the
+taskbar. A test says the same with `Drive::hide`, `wake`, `due` and
+`show`.
+
+[alpha.9](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha9-2026-09-08) ·
+`crates/kui-native/tests/unseen.rs`
+
+### How do I save something as the window goes?
+
+`App::teardown(&mut self)`: called once as the main window goes for good
+— its close button, Quit from the menu or the dock, `WindowCommand::Close`
+on it, a pumped runner ended — before `run` returns or the process exits.
+A `:q` of your own that already saved sets a flag and skips it. There is
+no `Ui` by then and nothing draws. A `Drop` on the app is not the same
+thing: on a Mac, Quit ends the process from `applicationWillTerminate`
+and `run` never returns. A crash under `run` does not reach it; under a
+pumped runner the drop retires the runner, so a panic unwinding through
+the host does.
+
+Node: `teardown(model)` in `runWindowed`'s config, run once with the
+model from inside the pump that saw the window go — under ⌘Q the
+promise never resolves and nothing after `await runWindowed(...)` runs,
+not even `process.on('exit')`, so this is the only place. `createApp`
+takes the same field and `app.teardown()` runs it for a headless
+drive. C: `kui_on_teardown(fn)` before `kui_run`, called once with the
+run's `user`; nothing after `kui_run` runs under ⌘Q either.
+
+[alpha.16](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha16-2026-09-20)
+
+### How do I draw kui into a texture my own engine composites?
+
+A host with a wgpu device of its own — a game engine, a 3D panel, a
+runner that puts kui beside its own content — opens a renderer with no
+window on its `Gpu` and hands it a texture each frame. The texture is
+the renderer's format with `RENDER_ATTACHMENT` usage, the frame's size
+in physical px. It comes back cleared to `clear_color` and holding
+premultiplied colour, ready to sample:
+
+```rust,ignore
+let mut renderer = Renderer::windowless(&gpu, wgpu::TextureFormat::Rgba8Unorm)?;
+core.set_subpixel_text(renderer.subpixel_text());
+// each frame
+let (list, atlas) = core.output();
+renderer.render_to(list, atlas, &texture)?;
+```
+
+`gpu` is `Gpu::from_parts(instance, adapter, device, queue)` over the
+engine's own device, so kui's texture is one the engine samples with no
+copy, or `Gpu::windowless()` when kui may open its own. `render_to` is
+that core's renderer: it uploads the atlas and clears its `dirty` flag,
+as `render` does on a window.
+
+[ADR 0054](https://github.com/qxuken/kui/blob/main/docs/adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
+[alpha.66 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha66-2026-10-24)
+
+## Test it
+
+### How do I get the settled frame instead of frame 0 of a transition?
+
+Headless, `app.runOut(maxMs?, stepMs?)` draws once, then advances in frame
+steps until `animating()` is false, and returns the milliseconds it spent —
+a frame that applies a change is frame 0 of its transitions, so a `render()`
+straight after a dispatch is the *start* of the motion. A window runs on the
+wall clock and cannot be advanced, so the loop `runWindowed` builds answers
+the same question with two promises its own pump resolves: `await
+app.settled(maxMs = 10_000)` is `runOut` for a window, and `await
+app.frame()` is the next pump, whether or not it drew —
+`win.frameStats().framesTotal` moving is the paint. The cap resolves rather than throws,
+with `animating()` still true and the milliseconds it waited — a view
+holding a `repeat` keyframe never settles, and that number is how a test
+says so.
+
+[alpha.8 `runOut` entry](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha8-2026-09-07) ·
+[alpha.9](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha9-2026-09-08)
+
+### How do I move time in a test?
+
+`app.advance(ms)` is the window's timer by hand: every `tick` inside the span
+fires, the frame clock behind `transition` moves with it, and the app
+re-renders. `ctx.setTime` under a loop throws and names `advance` — the loop
+owns the clock — and `startTime` in the options pins where that clock starts
+so assertions on `tick.msg(now)` are exact.
+
+Keep the app's own deadlines on that clock too. `now()` — `ui.now()` in
+Rust, `env.now` in Lua, `kui_now` in C, `ctx.now()` in Node — is the
+frame clock in seconds, the one `transition` and `keyframes` read (0
+before a driver sets it), so a toast due at `shownAt + 3` and the fade
+that takes it away agree, and `advance` or `Drive::advance` moves both.
+A view that reads `Instant::now()` or `Date.now()` keeps
+a second clock no test can move.
+
+[alpha.8 `**What breaks.**`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha8-2026-09-07) ·
+[`now` in the env](crate::docs::props#env)
+
+### How do I hide a toast after three seconds without a timer thread?
+
+Keep the time it is due on the frame clock, and ask for a frame then:
+`ui.request_frame_at(shown_at + 3.0)` in Rust (`env.request_frame_at` in
+Lua, `kui_request_frame_at` in C, `ctx.requestFrameAt` in Node), read
+`now()` in the view, and stop drawing the toast once it is past. The
+runner sleeps to that time and runs the view, and nothing is owed in
+between, so `animating()` stays false and an idle app stays idle. The
+earliest time asked for wins and is kept until a frame reaches it, so a
+view may ask every frame or once. From a thread that is not the view's —
+a download finishing on its own schedule — `Waker::wake_at(instant)`
+says the same thing to every window. A test moves the clock past the
+time and draws; a host driving its own window reads
+`kui_next_frame_at` and sleeps to it.
+
+[`now` in the env](crate::docs::props#env)
+
+### How do I press "the button named Like" in a test?
+
+Look it up by the name a reader hears: `Drive::key_named("Like")` in
+Rust (`Core::key_named` under it, `ctx.keyNamed` in Node, `kui_key_named`
+in C), then `click_key` it. The name is the node's `label` row, else the
+text inside a control, so a test that finds a button this way also checks
+that a screen reader can. `key_of` asks a different question: the *key
+label*, the name the view opened the node under (`with_keyed("like",
+..)`, a `key` prop), which a reader never hears and `texts_under` reads
+too. Two nodes with one name resolve to the first in tree order and raise
+`ambiguous-name` — the same two a reader cannot tell apart. When one of
+them is a caption under the control it repeats (a round "like" button
+over the word "like"), either the caption is decorative — `role="none"`
+on the box around it, `NodeSpec::role(Role::None)` in Rust, takes it out
+of the tree — or the control's `label` says what it does ("like this
+bear"), which a reader is better off with when the caption is all the
+button says.
+
+[`label` row](crate::docs::props#container-props) ·
+[`role` row](crate::docs::props#container-props) ·
+[`ambiguous-name`](crate::docs::props#warnings)
+
+### How do I test the real window, not a headless core?
+
+`win.quads()` hands back the frame the shipping driver actually painted
+(`decodeQuads` turns the buffer into rects), because `quads()` lives on the
+shared surface rather than on the headless `Ctx`. Drive that window with
+`access(key, action)` — `access(key, 'click')` activates a node,
+`access(key, 'setValue', text)` types into an editor — since `click`, `type`
+and `key` are refused on a window, which the OS drives and which says so
+rather than pretending.
+
+To run one in CI it has to close itself. `setup` is handed both the window
+and the loop, so a test counts pumps and then closes it —
+`runWindowed`'s promise resolves with the final model, and the process
+exits with a code:
+
+```ts
+await runWindowed(app, {
+  setup: (win, loop) => (async () => {
+    for (let i = 0; i < 5; i += 1) await loop.frame();
+    assert.equal(win.env().system.motion, 'full');
+    assert.ok(decodeQuads(win.quads()).length > 0);
+    win.close();
+  })(),
+});
+```
+
+`loop.frame()` resolves after the next pump, whether or not it drew —
+`win.frameStats().framesTotal` moving is the paint, so a test that needs one
+loops on `frame()` until it moves; `loop.settled()` waits for a pump that
+left nothing animating, and returns how long it waited.
+Neither needs an environment variable and neither is a build of kui: the
+app asks, in its own code, which is the only place that knows a window is
+being opened to be looked at rather than used. (`KUI_SMOKE_FRAMES` is the
+Rust runner's own version of this, live in a dev build — for the examples
+in this repository, which have no test around them to do the asking.)
+
+A test of the window's idle pace ("a stopped window paints about once a
+second") reads `frameStats()` twice, a second apart. `framesTotal` and
+`pumps` give the rates. `wokenPumps` says whether the desktop touched the
+window in that second: a focus change, the pointer crossing, a resize.
+Each of those resets the driver's backoff exactly as a regression would.
+If `wokenPumps` did not move, every frame in the second was the app's
+own. If it moved, measure another second instead of failing.
+
+Run under `KUI_DEVTOOLS=1` and the frame holds the dock's quads too.
+`win.hostArea()` is where the frame put the app, `{x, y, w, h}` in
+logical px — right of the pane under a left dock — and the quads are
+physical px, so a check that nothing of the app's overflows filters by
+the rect times the scale. The one quad of the app's outside it is the
+root's `bg`, which is the window's background too and fills the whole
+window beneath the pane:
+
+```ts
+const r = win.hostArea();
+const s = win.env().viewport.scale;
+const mine = decodeQuads(win.quads()).filter((q) =>
+  q.x >= r.x * s && q.y >= r.y * s && q.x + q.w <= (r.x + r.w) * s && q.y + q.h <= (r.y + r.h) * s);
+```
+
+[`access` input](crate::docs::props#doors) ·
+[alpha.8](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha8-2026-09-07) ·
+[alpha.19 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha19-2026-09-26)
+
+### How do I check the pixels a frame drew?
+
+`capture()` draws the last finished frame again on a GPU device of the
+process's own and hands the pixels back: `{width, height, scale, rgba}`,
+physical px, straight RGBA, row by row from the top left, over the
+theme's `bg`. It works on a headless `Ctx` after `frame()` and on a
+`KuiWindow` between pumps, where it is the frame the shipping driver
+painted:
+
+```ts
+ctx.frame(40, 20, 2, view(model));
+const shot = ctx.capture();
+const at = (x, y) => [...shot.rgba.subarray((y * shot.width + x) * 4, (y * shot.width + x) * 4 + 4)];
+assert.deepEqual(at(5, 20), [0, 0, 255, 255]);
+```
+
+To keep it as a file, `encodeImage('png', shot.width, shot.height,
+shot.rgba)` returns PNG bytes from the runner's own encoder (`'jpeg'`,
+`'webp'` and `'gif'` too), so a failing test can write what it saw with
+no image package:
+
+```ts
+writeFileSync('target/shot.png', encodeImage('png', shot.width, shot.height, shot.rgba));
+```
+
+Rust: `kui_native::capture(&drive.core)` and `kui_native::encode_image`;
+C: `kui_capture(ctx, &w, &h)` and `kui_encode_image(KUI_ENCODE_PNG, …)`,
+each freed with `kui_pixels_free`; Odin: `kui.capture(ui)` and
+`kui.encode_image(.Png, …)`. The first capture
+in a process opens the device (40–100 ms); later ones are about 10 ms
+for a 3456×2234 frame. A machine with no GPU adapter — a CI container
+with no software Vulkan — fails it, saying so, and a test there skips
+rather than fails. What the OS draws behind a translucent window, and
+the wallpaper kui draws for it, are not in it. A headless core draws
+grayscale text; a window's follows its device's subpixel text unless
+`textAa` pins it, so a test comparing whole images across machines pins
+it.
+
+[ADR 0054](https://github.com/qxuken/kui/blob/main/docs/adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
+[alpha.66 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha66-2026-10-24)
+
+### How do I record a transition as an animated PNG or a GIF?
+
+Headless, on a stepped clock: frame, capture, add the capture for the
+step, move the clock, again. Every frame is the one the clock says, and
+none is dropped however long a capture takes. An `AnimationEncoder`
+writes the file a frame at a time:
+
+```ts
+const enc = new AnimationEncoder('png', 800 * 2, 600 * 2, { loops: 0 });
+for (let i = 0; i <= 30; i += 1) {
+  ctx.setTime(i / 60);
+  ctx.frame(800, 600, 2, view(model));
+  enc.add(ctx.capture().rgba, 1 / 60);
+}
+writeFileSync('target/slide.png', enc.finish());
+```
+
+`'png'` is an animated PNG, every colour exact; `'gif'` is 256 colours,
+smaller and slower to finish, and shows a frame for at least 20 ms, so
+at 60 fps every other frame gives its time to the next. The encoder
+keeps only the rectangle each frame changed, and a frame that changed
+nothing adds its time to the one before, so a mostly still UI records
+small. Thirty retina frames of a card sliding over a page took about 12
+ms a frame to capture and add, and 15 ms to finish as an 804 KB APNG.
+
+A real window records with `recordTo` (next how-to), which the runner
+serves after every frame it draws; each capture takes its milliseconds
+out of that frame, so it is a clip of what was on screen rather than an
+exact one.
+
+Rust: `kui_native::AnimationEncoder::new(AnimationEncoding::Png, w, h,
+None)`; C: `kui_animation_encoder_new(KUI_ENCODE_PNG, w, h, 0)`, `_add`,
+`_finish` (freed with `kui_pixels_free`) or `_free`; Odin:
+`kui.animation_encoder_new(.Png, w, h)`.
+
+[ADR 0054](https://github.com/qxuken/kui/blob/main/docs/adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
+[alpha.66 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha66-2026-10-24)
+
+### How does an app save a screenshot or a recording of its own window?
+
+Ask the core, and the runner does it after the next frame it draws:
+`captureTo(path, message)` for a picture, `recordTo(path, message)` to
+start a recording and `stopRecording()` to end it. The path's extension
+is the format — `.png`, `.jpg`, `.webp` or `.gif` for a picture, `.png`
+/ `.apng` (an animated PNG) or `.gif` for a recording — and the answer is
+a `capture` event in the message you named, with the path, not the
+pixels: `capture: {phase: 'saved' | 'failed', path, width, height,
+frames, seconds, error}`. That is the whole of a "Save screenshot" menu
+row or a bug report's attachment:
+
+```rust,ignore
+fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
+    match ev.split::<Msg>() {
+        (Some(Msg::Shot), _) => core.capture_to("/tmp/shot.png", Some(Msg::Saved.into())),
+        (Some(Msg::Saved), Event::Capture(c)) => self.attach(c.path),
+        _ => {}
+    }
+}
+```
+
+A "record 5 seconds" toggle is `record_to`, then `request_frame_at(now +
+5.0)`, and `stop_recording()` from the view that runs then. Each frame
+shows from when it was drawn until the next on the frame clock, and the
+runner draws only when something changes, so an idle stretch is one
+frame held. The frame drawn at the stop is left out. One recording runs
+at a time per window; a window that closes while recording has its file
+written and nothing hears it.
+
+The same three verbs in every binding: Node `win.captureTo(path, msg)`,
+`recordTo`, `stopRecording` (on a `KuiWindow` from `update` or an
+effect, served by the runner; on a headless `Ctx` call
+`ctx.serveCaptures()` after `frame()`); C `kui_capture_to(ctx, path,
+msg)`, `kui_record_to`, `kui_stop_recording` from a view under
+`kui_run` (a standalone context calls `kui_serve_captures(ctx)` after
+`kui_frame_finish`); Odin `kui.capture_to(ui, path, Msg{})` and the rest;
+Rust `Core::capture_to` from `on_event_with` or `Ui::capture_to` from the
+view, and `kui_native::Captures::serve(&mut core)` for a headless core.
+Lua has none: the host keeps a guest's frames.
+
+"Copy screenshot" is a fourth: `captureToClipboard(msg)` (Rust
+`capture_to_clipboard`, C `kui_capture_to_clipboard`, Odin
+`kui.capture_to_clipboard`) puts the next frame on the clipboard as a
+picture and answers the same way, `path` empty. Pixels you already hold
+— a `capture()`, a `decodeImage` — go with `setClipboardImage(width,
+height, rgba)`. Both are menu actions like a Copy's text: the runner
+writes the picture as the platform's image type; a C host driving its
+own window reads it from `KuiMenuAction`'s `width`, `height` and `rgba`.
+
+A still is drawn again and written on the thread that draws: about
+25 ms of a frame for a retina PNG. A window's recording draws each frame
+again there too, about 0.6 ms at 1720×1200, and waits for it, encodes
+and writes on a thread of its own, so the window records at its
+display's refresh; a headless `serveCaptures` does it all on its own
+thread. Finishing an APNG is milliseconds and a retina GIF about 0.4 s,
+so record APNG unless only a GIF will do. A machine with no GPU answers
+`failed`, its `error` starting "no GPU". `examples/rust/features/capture.rs`
+is the three buttons.
+
+[ADR 0055](https://github.com/qxuken/kui/blob/main/docs/adr/0055-an-app-asks-for-its-window-as-a-file.md) ·
+[alpha.66 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha66-2026-10-24)
+
+### How do I run my app with no window?
+
+Open it headless: the same launcher, `open_headless` in place of `run`,
+and a size and scale for the frames it draws. The app runs on the real
+clock, its threads wake it through the `Waker` its `setup` was given,
+and it draws for nobody — and keeps a frame as a file when it asks, as
+a window does (previous how-to). No display is needed, so it runs over
+ssh or in a container; a capture needs a GPU.
+
+```rust,ignore
+let runner = kui_native::app("editor")
+    .core(core)
+    .open_headless(Editor::new(), 1100.0, 760.0, 2.0);
+let input = runner.input(); // Clone + Send: keys, clicks, resize, close
+std::thread::spawn(move || {
+    input.send(InputEvent::Text("hello".into()));
+    input.close();
+});
+runner.run(); // until the close; teardown has run
+```
+
+`run` parks between turns. To read the app between them, turn it
+yourself: `turn()` does what is owed and returns, `turn_until(deadline)`
+waits for something to do first, and `app_mut()`, `core_mut()`,
+`frames()` and `idle()` read what the turn left. Everything sent through
+`input()` before a turn is handled before that turn's frame, so a driver
+that sends keys and then asks the app something reads the frame after
+all of them.
+
+The run touches nothing of the desktop's: its clipboard is its own
+(`runner.clipboard()`, `input.set_clipboard`), sounds are dropped, a file
+dialog answers with no files, and `env.system` is what you pinned with
+`Launcher::system` — the OS is not asked, so the pictures are the same on
+every machine. While something animates it draws 60 frames a second;
+idle, it parks. For a test on a stepped clock, `testing::Drive` is still
+the tool: a headless run's timings are the machine's.
+
+[ADR 0057](https://github.com/qxuken/kui/blob/main/docs/adr/0057-an-app-runs-with-no-window.md) ·
+[alpha.68 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha68-unreleased)
+
+### How do I trade smoothness for latency, or the other way?
+
+You mostly do not have to (since alpha.19). A window keeps two frames queued
+ahead of the one on screen, so every vsync gets a frame even when little
+is drawn. On macOS 14+ the Rust and C runners start frames that run back to
+back (an animation, a drag, a scroll) at the display's vsync, so the queued
+slot is slack and not a delay: 17.5–19.2 ms from a frame's state to the
+screen on an M3 Pro, as quick as the old single-frame queue. A frame drawn
+from idle, such as a keystroke, is drawn at once either way.
+
+A Node window turns its event loop from a timer, where the display cannot
+start the frames, so there the queued frame costs a vsync (27.6 ms against
+19.3). For a view where a drag must track the pointer as closely as
+possible, such as a drawing canvas or a splitter, ask for one:
+`frameLatency: 1` in `WindowOptions`, `kui_native::app("t").frame_latency(1)`, or
+`frame_latency = 1` in `KuiRunConfig`. It loses the odd vsync at light load
+(1–6% of them). `KUI_FRAME_LATENCY=1` or `2` and `KUI_FRAME_PACING=0` in the
+environment compare the options on the same build.
+
+On Windows a window keeps one frame queued, not two: there
+one already delivers every vsync, light load or heavy, so the second would
+only be a vsync of latency. `frame_latency(2)` asks for it anyway.
+
+### How do I see what a window draws for a user who asked for less motion?
+
+Pin it at the launcher. A window's `env.system` is the OS's — the runner
+writes the real reading before every frame, which is why a window has no
+`setEnv` and never will: anything pushed at its core is gone by the next
+view. So the pin goes in where the window is opened, as the app asking in
+its own code, and the runner merges it over the OS's reading inside that
+per-frame write:
+
+```ts
+await runWindowed(app, {
+  system: { motion: 'reduced' },
+  setup: (win, loop) => (async () => {
+    for (let i = 0; i < 5; i += 1) await loop.frame();
+    assert.equal(win.env().system.motion, 'reduced');
+    win.close();
+  })(),
+});
+```
+
+Rust is `kui_native::app("mine").system(SystemEnv { motion: MotionPref::Reduced,
+..Default::default() })`; C calls `kui_env_set_system` on the context it
+hands `kui_run_with`. The partial is the one `Ctx.setEnv` takes, so the
+branch you assert headless and the window you then look at read one
+spelling — and every field you leave out, `'unknown'` or null is *not
+pinned*: the appearance, accent and locale stay the OS's, a change to one
+of them still arrives as the root's `onSystemSettingsChange` message, and
+that message carries your pin with it, since it is the whole reading. The examples' harnesses
+take `--motion reduced` for the same look at any example.
+
+It is an option and not an environment variable on purpose, for the reason
+`KUI_SMOKE_FRAMES` is kept out of a shipped build: an app you ship should
+not change its motion because of a variable in the environment it was
+launched from. If the user *did* ask for less motion, the OS says so and
+nothing needs pinning; the pin is for looking, on a machine whose owner
+did not.
+
+[`system.*` rows](crate::docs::props#env) ·
+[`system` event](crate::docs::props#events) ·
+[alpha.12](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha12-2026-09-14)
+
+### How do I see what the core thinks is misconfigured?
+
+Every silent misconfiguration comes back as data — `{ code, key, message }`,
+one per distinct (code, node) pair — and the loop drains the surface's
+`warnings()` after each frame into `app.warnings`, which is the assertion
+point (a driver of your own calls `ctx.warnings()` / `win.warnings()`
+itself). A test that asserts it is empty catches a grow weight with nothing
+to split, a transition on an unkeyed list item, two nodes sharing a key, a
+prop an element does not read.
+
+[Warnings table](crate::docs::props#warnings)
+
+### Why is my window drawing frames when nothing moves?
+
+Ask each frame why it runs. `ui.core().frame_cause()` in the view is
+every reason that reached the window since the last frame began: the
+input by kind (`key`, `pointerMove`, `wheel` — a swipe's momentum
+included), what the runner saw and the view never hears (`wake`,
+`resize`, `caret`, `retry`, `overdue`, `appearance`, …), and `owed` when
+the frame before left one owed. Turn on `set_frame_trace(true)` and two
+more readings come with it: `owed_by()` names who held that owed frame —
+the nodes mid-transition by label path and slot, the cycles, the exits,
+the easing scrollers, the `animate` nodes, and the file and line of
+every `request_frame`, kui's own asks (`scrollbar fade`, `resliced`)
+named for what they are — and `frame_unchanged()` says whether the last
+frame drew exactly what the one before did, which is a frame that cost
+you and changed nothing.
+
+```rust,ignore
+fn view(&mut self, ui: &mut Ui<'_>) {
+    let core = ui.core();
+    let why = core.frame_cause();
+    if why.contains(FrameCause::OWED) {
+        for h in &core.owed_by().transitions {
+            eprintln!("{why:?}: {} {:?}", h.name, h.slots);
+        }
+    }
+    // …
+}
+```
+
+Node reads the same as `frameCause()`, `owedBy()` and `frameUnchanged()`
+after `setFrameTrace(true)`; C as the `KUI_FRAME_CAUSE_*` bits of
+`kui_frame_cause`, a driver of its own adding what it saw with
+`kui_note_frame_cause`. The trace is off by default and costs nothing
+off; the reasons are always kept.
+
+[alpha.26](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha26-2026-09-29)
+
+### How do I use one font in every headless core of a suite?
+
+Register it in `setup` and read its id in `init(surface)` into the model, and
+every core in the file gets the same treatment without a global: `setup` runs
+against that surface before the first frame, `init` is handed that surface
+after it, and `addSystemFont` is idempotent per family, so one `setup` shared
+by every core registers `"Antonio"` once per session and hands back that
+session's id — whether the family came from `loadFontsDir` or was already
+installed. What does not work is a module variable set once and read by every
+view: a font id belongs to the session that registered it, and a core from
+another one shapes it as sans and raises `foreign-resource`. A helper that
+re-points that global at each core before rendering it is the shape this
+answer replaces — it leaves the cores rendered earlier holding an id from a
+session they are not in. Since ADR 0037 the view can skip the id and name
+the family — `family="Antonio"` — which every core resolves in its own
+session, once the file is loaded there (`setup` still loads it).
+
+It is also what makes a baseline portable. Headless text is shaped against
+the machine's installed fonts — a text that names no font gets the first
+family of a per-OS list the machine has — so the same label measures a
+fraction of a pixel apart on two machines, and a width or a quad recorded on
+one fails on the other. A suite that compares against numbers taken
+elsewhere loads its font file (`loadFontFile`, or `loadFontsDir` and
+`addSystemFont`) and names that font on every text.
+
+[Resources](crate::docs::props#resources) ·
+[`foreign-resource`](crate::docs::props#warnings) ·
+[alpha.7](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha7-2026-09-06)
+
+### How do I size something to its text before the frame exists?
+
+`measureText(content, style, maxWidth)` on the surface returns what layout
+would give the same `<text>`, so a breakpoint assertion is arithmetic rather
+than a screenshot. It is the same object `view`'s third argument is, so a
+test measures exactly what the view measured. (A column sized to its widest
+label no longer needs it: that is
+[a table](#how-do-i-line-up-the-columns-of-a-keyvalue-list-or-any-table).)
+
+[`text` element](crate::docs::props#elements) ·
+[alpha.5](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha5-2026-09-03)
+
+## Ship and upgrade
+
+### How do I get completion for the Lua views in my editor?
+
+Put [`packages/lua`](https://github.com/qxuken/kui/blob/main/packages/lua)'s `kui.lua` — or what
+`kui_lua::luals_meta()` returns, the same text — in a directory on
+lua-language-server's `workspace.library`. The file declares every
+prelude constructor with its doc and a `kui.Props` class of every prop,
+typed and documented from the schema, so `row {` completes its props
+and `row`, `text` and the rest are no longer undefined globals. Write
+it again after an upgrade; it is generated, never edited.
+
+[`props.md`](crate::docs::props) ·
+[alpha.17](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha17-2026-09-25)
+
+### How do I type-check a Lua view, or write it in Teal?
+
+Copy [`packages/lua`](https://github.com/qxuken/kui/blob/main/packages/lua)'s `kui.d.tl` — or write what
+`kui_lua::teal_decls()` returns — to `types/kui.d.tl` and name it the
+global environment in the project's `tlconfig.lua`:
+
+```lua
+return { include_dir = { "types" }, global_env_def = "kui" }
+```
+
+A view in [Teal](https://teal-language.org) is then checked against
+every builder and prop — a misspelt prop, a wrong-typed value, a word no
+enum has, an `env` read that is not there — by `tl check view.tl`, and
+`tl gen view.tl` writes the `view.lua` the host loads with
+`LuaExtension::from_file`; kui runs plain Lua either way, so a project
+can mix typed and untyped scripts. `view` takes `env: kui.Env` and
+`inst: kui.Instance`. A message is a record that extends `kui.Event`, and
+the `kui.With…` field its event fills, cast from what `on_event` hears:
+
+```lua
+local record Pan is kui.Event, kui.WithDrag end
+
+global function on_event(ev: kui.Event): {string:any}
+  if ev.kind == "pan" then
+    local p = ev as Pan
+    if p.drag.phase == "start" then ... end
+  end
+end
+```
+
+`inst.params` (and a component's `props`) is the host's own table, so
+what a view reads from it is cast too (`props.title as string`). The file is checked against
+Teal 0.24.8; copy it again after an upgrade.
+
+[alpha.68 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha68-unreleased)
+
+### How do I give my windows the app's icon?
+
+Tell the launcher, once, and every window it creates carries it:
+`kui_native::app("t").icon(rgba, w, h)` with straight RGBA pixels, row by row
+— something a taskbar shrinks cleanly, 64 to 256 px, rendered from your
+drawing at build time — or `.icon_bytes(include_bytes!("icon.png"))` for
+a PNG you ship, decoded by the runner — and, for a
+Windows program, `.icon_resource(1)` too. A Windows program's icon is a
+resource linked into its executable (a `1 ICON "app.ico"` line in its
+`.rc`, compiled by `embed-resource` or the like in `build.rs`), which is
+what Explorer and a shortcut draw; the window gets it only when told,
+since winit registers its window class with none. The resource wins
+there, and the title bar and the taskbar each load the `.ico`'s frame
+for their size; X11 shows the pixels. Pass both and let each platform
+take its own: Wayland draws the `.desktop` file's icon and has no window
+icon, so both calls are nothing there. A macOS window has no icon
+either, so there the pixels are the app's, in the Dock and ⌘Tab while it
+runs — what lets a `cargo run`, or a Node CLI run with
+`node`, show its own icon rather than the executable's — unless the app
+is a bundle whose `Info.plist` names an icon, which wins: an `.icns`
+has a frame drawn for each size, and the Finder shows it whatever the
+Dock does. Only the icon: the name in the menu bar and under the Dock
+tile is the executable's however the process names itself, and only a
+bundle changes it. Node: `icon: {rgba, width, height, resource}`
+in the window's options — under `node.exe` the resource is Node's, so
+only a packaged app has one of its own. C: `kui_set_icon(rgba, w, h,
+resource)` before `kui_run`. Pixels that are not the size are refused
+with the reason (`Launcher::try_icon` for pixels from outside the
+program).
+
+On Linux the icon a desktop shows for a running window is the `Icon=` of
+the app's `.desktop` file, and Wayland has no other: the compositor
+finds the file by the window's `app_id`, which a window has only when the
+launcher names one — `.app_id("org.example.Notes")` for an app installed
+as `org.example.Notes.desktop`. The same id is both halves of the X11
+`WM_CLASS`, which a window manager matches to the file's
+`StartupWMClass`. Node: `appId` in the window's options. C:
+`kui_set_app_id(KUI_STR("org.example.Notes"))` before `kui_run`.
+
+[alpha.18 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha18-2026-09-25),
+[alpha.59 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha59-2026-10-19)
+
+### How do I stop the console window on Windows?
+
+A Windows binary is built for one of two subsystems, and Rust picks
+*console* unless told otherwise: the app gets a console the moment it
+starts — the black window that pops up beside its own when it is opened
+from the Explorer — made by the loader before a line of the app has run,
+so nothing the app does at runtime can prevent it, only close it after
+it has been seen. The one way not to have it is to say so in the binary
+crate, at the top of `main.rs`:
+
+```rust,ignore
+#![cfg_attr(windows, windows_subsystem = "windows")]
+```
+
+(A C host says the same to its linker, `/SUBSYSTEM:WINDOWS`; a Node or
+Lua app runs inside `node.exe` or `lua.exe`, whose console it is.) What
+that used to cost is the terminal: a windows-subsystem process started
+from a shell has no standard output at all, so `println!`, a panic and
+the runner's own `kui:` lines went nowhere. The runner attaches such a
+process to the console of the shell that launched it, once, when it
+starts the shell — so what prints from then on lands there, after the
+prompt, since a shell does not wait for a windowed process. Two things
+it cannot bring back: a Rust app's own `println!` *before* it calls the
+runner's `run` (there was no console yet), and a C host's own `printf`,
+whose C runtime set its stdio up at startup with no handle and does
+not look again — the runner's `kui:` lines reach the terminal, the
+host's own lines need its own `AttachConsole` and `freopen`. A Ctrl+C typed at that prompt is
+the shell's and the app ignores it; closing that terminal ends the app,
+as it ends a console build — Windows terminates every process on a
+console it closes, and nothing an app does prevents it — so a session
+meant to outlive the terminal is opened from the Explorer or a launcher.
+From the Explorer there is no parent console and nothing is shown;
+`cargo run`, the smoke round and `> log.txt` hand the process its output
+and it keeps what it was given.
+
+[alpha.17 `### Added`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha17-2026-09-25)
+
+### How do I pin the version I tested?
+
+Write the exact version: `^0.1.0-alpha.7` and `~0.1.0-alpha.7` both admit any
+prerelease of the same `0.1.0` tuple, so without a lockfile both float to the
+newest alpha — that is npm's semver, not a difference between the two
+spellings. The template's `^` is a floor on purpose; an app that wants the
+release it tested pins it exactly and commits its lockfile.
+
+[alpha.9 `### Changed`](https://github.com/qxuken/kui/blob/main/CHANGELOG.md#010-alpha9-2026-09-08) ·
+[every release](https://github.com/qxuken/kui/blob/main/CHANGELOG.md)
+
+### How do I find out a release happened?
+
+`npm view @qxuken/kui version` is the query, and `npm outdated` inside your
+app is the same answer against what you have installed: every alpha takes the
+`latest` dist-tag as well as `alpha`, so the default-tag commands every other
+package answers work here too. `npm view @qxuken/kui@alpha version` is the
+fallback if `latest` is ever missing — a package without one prints nothing
+and exits 0, which reads like "no such release" and is not. The repository
+README's *Releases* section is what the registries and the tags are written
+down in.
+
+[every release](https://github.com/qxuken/kui/blob/main/CHANGELOG.md)
+
+### How do I upgrade to a new alpha?
+
+Read the release's `**What breaks.**` list first — from alpha.9 on it opens
+with one bullet per break, naming the symbol, so it can be grepped before the
+paragraphs are read — and then its "what you can delete". That second list
+names the *behaviour* the release removed the need for, not the code you
+wrote around it: a workaround that accreted two purposes only sheds the one
+the release addressed, and your own tests are what say which.
+
+[Changelog](https://github.com/qxuken/kui/blob/main/CHANGELOG.md)

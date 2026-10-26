@@ -188,7 +188,9 @@ is where a doc comment pointing at `docs/adr/0003-modal-surfaces.md`
 resolves from inside `node_modules`. [howto.md](howto.md) ships with them:
 about twenty questions — playing a sound, animating a removal, resetting an
 editor, driving a real window in a test — answered in two sentences each and
-pointing into the other three.
+pointing into the other three. The book's chapters are under `docs/book/`
+as text, and Kit's components are listed in
+[kit/reference.md](kit/reference.md).
 
 - **Hover and pressed colors** are props, not queries: `hoverBg`,
   `pressedBg`, and `hoverGroup="name"` to light connected pieces together.

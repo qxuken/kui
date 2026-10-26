@@ -211,6 +211,26 @@ pub mod testing;
 mod unseen;
 mod windows;
 
+/// kui's reference documents, carried with the crate so they read as this
+/// version wrote them (ADR 0071): [`props`](docs::props) — every prop,
+/// element, event, warning, env fact, theme role and door, in each
+/// binding's spelling — [`howto`](docs::howto), the task index, and
+/// [`adr`](docs::adr), the design records listed and linked. Copies of
+/// `docs/` in the repository that `scripts/gen.nu` writes and checks.
+///
+/// The pages are written for GitHub and the npm package as much as for
+/// rustdoc: a `<A-u>` in their prose, or a Rust fragment shown rather than
+/// compiled, is meant as it is.
+#[allow(rustdoc::invalid_html_tags, rustdoc::invalid_rust_codeblocks)]
+pub mod docs {
+    #[doc = include_str!("../docs/props.md")]
+    pub mod props {}
+    #[doc = include_str!("../docs/howto.md")]
+    pub mod howto {}
+    #[doc = include_str!("../docs/adr.md")]
+    pub mod adr {}
+}
+
 use pane::{
     Pane, appearance_of, apply_ime_off, ime_off_change, level_change, level_supported,
     option_as_alt_change, sync_env, theme_appearance,

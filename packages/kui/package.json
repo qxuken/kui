@@ -44,7 +44,8 @@
     "props.md",
     "howto.md",
     "CHANGELOG.md",
-    "docs/adr/"
+    "docs/adr/",
+    "docs/book/"
   ],
   "scripts": {
     "build:native": "cargo build -p kui-node --release",
