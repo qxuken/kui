@@ -2,6 +2,7 @@
 
 pub mod c;
 pub mod lua;
+pub mod markdown;
 pub mod node;
 pub mod odin;
 pub mod rust;

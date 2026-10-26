@@ -111,6 +111,7 @@ fn it_writes_a_file_for_every_binding() {
             "node/demo.d.ts",
             "node/demo.js",
             "odin/demo/demo.odin",
+            "reference.md",
             "rust/Cargo.toml",
             "rust/src/lib.rs",
             "teal/demo/ui.d.tl",
@@ -122,6 +123,20 @@ fn it_writes_a_file_for_every_binding() {
             assert!(f.text.contains("chip"), "{} has no chip", f.path);
         }
     }
+}
+
+#[test]
+fn the_reference_has_a_section_a_component_with_its_props_events_and_children() {
+    let s = Schema::from_lua(SMALL).unwrap();
+    let md = generate(&s).into_iter().find(|f| f.path == "reference.md").unwrap().text;
+    assert!(md.contains("## demo.chip\n\nA chip."), "{md}");
+    assert!(md.contains("| `label` | `label` | string | Its text. |"), "{md}");
+    assert!(md.contains("| `size` | `size` | [Size](#size)? |"), "{md}");
+    assert!(md.contains("{[Choice](#choice)}?"), "{md}");
+    assert!(md.contains("| `on_pick` | `onPick` | `pick` = { `value`: string"), "{md}");
+    assert!(md.contains("- `trailing` goes at the end."), "{md}");
+    assert!(md.contains("### Size\n\nHow big.") && md.contains("`\"small\"`"), "{md}");
+    assert!(md.contains("### Choice") && md.contains("| `hint` | `hint` | string? |"), "{md}");
 }
 
 #[test]

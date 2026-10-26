@@ -376,10 +376,13 @@ impl Schema {
 }
 
 /// Every wrapper file for every binding, paths relative to the output
-/// folder: `lua/`, `teal/`, `node/`, `rust/`, `c/`, `odin/`.
+/// folder: `lua/`, `teal/`, `node/`, `rust/`, `c/`, `odin/` — and the
+/// component reference every binding's reader shares, `reference.md`
+/// (ADR 0071).
 pub fn generate(schema: &Schema) -> Vec<File> {
     let mut out = Vec::new();
     out.extend(emit::lua::files(schema));
+    out.extend(emit::markdown::files(schema));
     out.extend(emit::node::files(schema));
     out.extend(emit::rust::files(schema));
     out.extend(emit::c::files(schema));

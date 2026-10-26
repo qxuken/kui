@@ -13,8 +13,9 @@
 #
 #   lua    packages/lua/kui.lua (lua-language-server) and kui.d.tl (Teal),
 #          from the schema and the prelude (the `lua-types` example)
-#   addons every add-on under addons/: its typed wrappers from schema.lua
-#          (kui-addon-schema, ADR 0066), then its Teal built to Lua
+#   addons every add-on under addons/: its typed wrappers and its component
+#          reference (bindings/reference.md) from schema.lua
+#          (kui-addon-schema, ADRs 0066 and 0071), then its Teal built to Lua
 #          (build.lua, which needs a Lua 5.4+ on PATH)
 #   node   npm run gen in packages/kui: jsx-runtime.d.ts, index.d.ts and
 #          docs/props.md, from the schema and the addon's #[napi] surface
