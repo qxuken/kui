@@ -81,22 +81,28 @@ app of your own (`kui run --watch addons/kit/app`, then edit a card).
   takes — skin, appearance, density, shadows, accent, radius, hairline,
   rule, faces and the key colour roles — with every card following, and
   prints the result as the `kit.settings` call to copy.
+- `app/.luarc.json` (and each sample's) points lua-language-server at
+  the repository's declarations by relative path, with nothing to
+  generate; an app of your own gets one from `kui types`.
 
-## Skeletons and the shimmer fragment
+## Shaders
 
-`skeleton` sweeps a gradient band across its bars by keyframes, which
-every host can draw. A host that registers fragments can hand Kit its
-shimmer instead — one fragment a bar, the band drawn per pixel:
+Kit carries its own fragment shaders in `shaders/*.wgsl`, which
+`build.lua` embeds (`{{wgsl:name}}` in a module) and Kit registers itself
+with `env.add_fragment`, so they work under every host:
 
-```rust
-let shimmer = core.add_fragment(include_str!("addons/kit/shaders/shimmer.wgsl")).unwrap();
-kit::Settings::new().shimmer(shimmer.to_ffi() as i64).place(ui);
+- `skeleton` draws each bar as the shimmer, the band crossing it per
+  pixel, one period for every bar.
+- `shader` paints a box with a preset (`shimmer`, or `noise`: gradient
+  noise drifting between the well and the accent, both in the skin's
+  colours), with WGSL handed over as `source`, or with a fragment the host
+  registered (`id`). Kit rounds the box by the skin and keeps a shader
+  that reads `time` still under reduced motion.
+
+```lua
+kit.shader({ preset = "noise", height = 120 })
+kit.shader({ source = MY_WGSL, params = { 0.2, 0.4, 0.9, 1 }, animate = true, height = 120 })
 ```
-
-`shader` is the same door for any WGSL: the host registers it and passes
-the handle, Kit rounds the box by the skin and keeps `animate` off under
-reduced motion. A script cannot register a fragment, so a Lua host (the
-runner's apps included) draws the well a `shader` with no handle is.
 
 Working hosts: `crates/kui-lua/tests/kit.rs` (Rust),
 `examples/lua/features/kit/` (the spike scene and its benches),
@@ -112,7 +118,7 @@ the Kit test in `packages/kui/test.mjs`.
 | `lua/*.lua` | What a host loads, generated from `src/`. Edit the `.tl`, never these. |
 | `bindings/` | The wrappers generated from `schema.lua`. Never edit these either. |
 | `app/` | The Kit app, on the `kui` runner: `main.lua` the shell, `pages.lua` the pages, `theme.lua` the Theme panel, a card a file under `demos/`. |
-| `shaders/` | WGSL a host registers for Kit: `shimmer.wgsl`, the skeletons' sweep (`settings.shimmer`). |
+| `shaders/` | Kit's own WGSL, embedded by `build.lua` and registered by Kit: `shimmer.wgsl` (the skeletons' sweep), `noise.wgsl`. |
 | `build.lua` | Type-checks `src/` against `packages/lua/kui.d.tl` with the Teal compiler kui-lua vendors, and writes `lua/`. `--check` fails on a stale `lua/` instead. |
 | `M0.md` | The spike that came first: its findings and numbers. |
 

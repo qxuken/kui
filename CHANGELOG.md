@@ -249,6 +249,10 @@ was the first bare bump to break an app in five releases).
   Phosphor's focus ring, a first chart series — and works out what reads
   on it, unless the brand names those roles too; an accent given as a
   token name changes nothing else, as before.
+- Kit's `select` opens on the press, its menu over the field with the
+  current option on it, where it opened on the click and hung under the
+  field; a test that clicks an option by a press and a release elsewhere
+  presses on the option.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -677,15 +681,17 @@ for lua-language-server, and a new runner beside the window's.
   new value range glides in over 240 ms, jumping under reduced motion
   (`line_chart_live_300` 457 µs and `line_chart_100k` 2.5 ms, as
   before). Two components: `skeleton`, placeholder lines, a block or a
-  circle in the skin's well, rounded by `$kitRadius`, a shimmer crossing
-  every bar in step and still under reduced motion — a gradient band, or
-  the host's fragment from `addons/kit/shaders/shimmer.wgsl` named by
-  `settings.shimmer`; and `shader`, a box a host's fragment paints
-  (`id`, `params`, `image`, `animate`). `code` takes `copy` (a Copy
-  button that says Copied), `line_numbers` and `label`. `settings` takes
-  `appearance` (`system`, `light`, `dark`: Kit's colours held to one
-  half), `hair`, `rule`, `font_ui`, `font_data` and `shimmer`, and an
-  accent given as a colour brings the skin's accent-painted roles along.
+  circle in the skin's well, rounded by `$kitRadius`, Kit's shimmer
+  fragment (`addons/kit/shaders/shimmer.wgsl`, which Kit registers
+  itself) crossing every bar in step, still under reduced motion; and
+  `shader`, a box a fragment paints — a preset (`shimmer`, `noise`, in the
+  skin's colours), WGSL handed over as `source`, both registered by Kit,
+  or a host's `id` — rounded by the skin, the well with none. `code` takes
+  `copy` (a Copy button that says Copied), `line_numbers` and `label`.
+  `settings` takes `appearance` (`system`, `light`, `dark`: Kit's colours
+  held to one half, and its own `dark` / `light` rules with them), `hair`,
+  `rule`, `font_ui` and `font_data`, and an accent given as a colour
+  brings the skin's accent-painted roles along.
   The Kit app is a card a file under `app/demos/`, each with a Source
   button that shows its whole file read from the app's folder (and the
   app's modules it requires) with line numbers and a Copy button; a Theme
@@ -695,6 +701,21 @@ for lua-language-server, and a new runner beside the window's.
   an ADR. *What you can delete:* a brand's `on_accent`, `sel` and `focus`
   worked out by hand to go with its accent, and an app's own placeholder
   bars for what is loading.
+  A ninth, adopting C104–C113: no Kit control reads its hover, press or
+  focus in Lua to pick a look — Ledger's primary face moves by `dx` /
+  `dy` from rules on the hover group it shares with the still box that
+  casts its shadow, and a checkbox's, a switch's and a radio's ring shows
+  on `group_focus_visible`; the under-way bar and the skeleton leave a
+  loop to the core under reduced motion; a `select` opens on the press
+  with its current option over the field, so a press, drag and release
+  picks and a quick click leaves the menu open; ⌘C closes an open select;
+  a leaving toast keeps its room until it has gone and the toaster
+  glides; a type-ahead answer reaches a row past the window. The Kit app's
+  shader box shows real shaders, its Theme panel reads Kit's tokens as
+  they resolve, and its own `dark` / `light` rules follow the appearance
+  the panel holds. The Kit app and the samples carry a `.luarc.json`
+  pointing lua-language-server at the repository's declarations, and are
+  clean under it.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
