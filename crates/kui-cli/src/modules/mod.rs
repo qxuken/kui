@@ -452,8 +452,8 @@ pub fn drain(lua: &Lua) -> mlua::Result<bool> {
                 }
             }
         }
-        dispatch_drain.call::<()>(())?;
-        any |= fresh;
+        let delivered: u64 = dispatch_drain.call(())?;
+        any |= fresh || delivered > 0;
         if !fresh {
             break;
         }

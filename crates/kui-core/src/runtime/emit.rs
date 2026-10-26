@@ -641,6 +641,7 @@ impl Core {
         self.devtools_after_frame();
         self.trace_finish_frame();
         self.perf_frame_end();
+        self.reframe_finish();
         // Between frames the host is who talks to the core: a driver that
         // tagged the last nodes with an extension's origin by hand (rather
         // than through `fill`, which restores it) must not leave its

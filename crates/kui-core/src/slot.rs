@@ -333,6 +333,11 @@ struct Entry {
     /// The generation its `root` was last placed in by someone: a root
     /// placed this frame is not placed again after the host's view.
     root_placed: u32,
+    /// The extension's [`Extension::root_state`] as its `root` was last
+    /// drawn, and the generation it was drawn in (backlog C138): what
+    /// [`Extensions::roots_unchanged`] compares.
+    root_kept: Option<u64>,
+    root_drawn: u32,
 }
 
 /// The runner's extensions, each under the namespace the host gave it.
@@ -503,6 +508,8 @@ impl Extensions {
             ext: Some(ext),
             spares,
             root_placed: self.generation.wrapping_sub(1),
+            root_kept: None,
+            root_drawn: self.generation.wrapping_sub(2),
         });
         Ok(origin)
     }
@@ -609,6 +616,20 @@ impl Extensions {
         }
     }
 
+    /// Whether every extension whose `root` the last build drew says its
+    /// root's state is what it was then ([`Extension::root_state`]): a
+    /// frame only an animation of the core's asks for may then be built
+    /// from the last tree (`Core::reframe`, backlog C138). An extension
+    /// that does not say is never still.
+    pub fn roots_unchanged(&self) -> bool {
+        let last = self.generation.wrapping_sub(1);
+        self.list.iter().all(|e| {
+            e.root_drawn != last
+                || e.root_kept.is_some()
+                    && e.ext.as_ref().and_then(|x| x.root_state()) == e.root_kept
+        })
+    }
+
     /// Draws `name` of the extension at `i` as its origin, at the cursor.
     ///
     /// The extension comes *out* of the list for the duration, so the
@@ -678,6 +699,10 @@ impl Extensions {
             }
         };
         ui.fill_instance(origin, &slot, self, children, body);
+        if name == ROOT_COMPONENT {
+            self.list[i].root_kept = ext.root_state();
+            self.list[i].root_drawn = self.generation;
+        }
         if spare {
             self.list[i].spares.push(ext);
         } else {

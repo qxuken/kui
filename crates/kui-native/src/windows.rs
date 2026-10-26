@@ -517,6 +517,7 @@ impl DynShell<'_> {
             cause: crate::pane::Causes::new(FrameCause::FIRST),
             pacer,
             unseen: Default::default(),
+            view_state: None,
             access,
             #[cfg(target_os = "windows")]
             anim_timer,

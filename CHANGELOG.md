@@ -1692,6 +1692,27 @@ for lua-language-server, and a new runner beside the window's.
   the box over every line, and it carries the skin's shadow, as a raised
   float does. Kit's test draws it in every skin and half over a sliding
   window: an opaque fill, no segment over it, its text at 4.5:1.
+- **A frame only an animation asks for no longer runs the view**
+  (backlog C138). Every frame a keyframe cycle or a transition owed ran
+  the host's whole view again at the display's rate — the Kit gallery's
+  Charts page, whose chart slides between samples, ran the app's `view`
+  57 times a second where its data changed ten. While an animation of
+  the core's own runs, a build now keeps the spec each node whose look
+  the frame decides declared (a `transition`, `keyframes`, a `when` list)
+  and every fact of the frame it read; a frame that only that animation
+  asks for — no input, no wake, no resize — while every fact reads the
+  same and the app says its state held is built from the last tree
+  (`Core::reframe`): those nodes go through the frame's pipeline again,
+  so the cycles and transitions are sampled at its clock, and it is laid
+  out and emitted as any. An app says what its view reads beyond the
+  core with `App::view_state`, an extension its root's with
+  `Extension::root_state`; both default to `None`, which runs the view
+  every frame as before. The `kui` runner says it for every app — its
+  revision moves with each wake, event and drain that did something
+  (`kui_lua::keep_root`, `root_moved`) — so the Charts page, headless,
+  went from 57 views and 10.7% of a core a second to 26 and 8.2%. `cargo
+  bench -p kui-lua --bench kit -- line_chart_live_window` has a
+  `reframed` row: 14.5 µs against 22.5 for the replayed fill.
 - **A keyframe cycle out of view stops drawing the window** (backlog
   C137). A cycle is sampled as its node is built, wherever it lands, so a
   spinner or a pulse scrolled out of its scroller, or clipped away, kept

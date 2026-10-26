@@ -153,6 +153,7 @@ impl Core {
             return;
         }
         if !self.tree.is_empty() {
+            self.reframe_note_root(&spec);
             self.resolve_rules(Key::ROOT, &mut spec);
             self.ease_spec(Key::ROOT, &mut spec);
             self.tree.note(&spec, &NodeContent::Container);
@@ -922,6 +923,18 @@ impl Core {
     /// ones.
     #[inline]
     fn prepare_spec(&mut self, key: Key, spec: &mut NodeSpec) {
+        // A node whose look the frame decides keeps its declared spec
+        // while the build may be built again (backlog C138).
+        if self.reframe.logging && (spec.transition.is_some() || spec.rules_ref().is_some()) {
+            self.reframe_note(key, spec);
+        }
+        self.prepare_spec_again(key, spec);
+    }
+
+    /// [`Self::prepare_spec`]'s pipeline itself, which `Core::reframe`
+    /// runs again on the specs it kept.
+    #[inline]
+    pub(super) fn prepare_spec_again(&mut self, key: Key, spec: &mut NodeSpec) {
         if spec.accent && self.has_accent_raw() {
             spec.style.bg = self.theme.accent;
         }

@@ -69,6 +69,10 @@ pub fn load_app(
         Err(e) => return Err(e.to_string()),
     };
     init(ext.lua()).map_err(|e| e.to_string())?;
+    // The app's root fill is kept while an animation runs and replayed on
+    // a frame only that animation asks for (backlog C138): the runner says
+    // when the app's state may have moved (`kui_lua::root_moved`).
+    kui_lua::keep_root(ext.lua());
     Ok((ext, baseline, None))
 }
 
@@ -293,6 +297,7 @@ impl Runner {
         })();
         match result {
             Ok(()) => {
+                kui_lua::root_moved(&self.lua);
                 if self.load_error.take().is_some() {
                     eprintln!("kui: reloaded");
                 }
@@ -419,6 +424,8 @@ impl App for Runner {
     // for, which waits for the display: a task requesting its own server
     // took two refreshes a round trip.
     fn on_wake(&mut self) {
+        // A wake is the app's own work arriving: its state may move.
+        kui_lua::root_moved(&self.lua);
         if let Err(e) = modules::drain(&self.lua) {
             self.shared.error(e.to_string());
         }
@@ -436,8 +443,13 @@ impl App for Runner {
         if self.watch.as_ref().is_some_and(Watch::take) {
             self.reload();
         }
-        if let Err(e) = modules::drain(&self.lua) {
-            self.shared.error(e.to_string());
+        match modules::drain(&self.lua) {
+            Ok(true) => kui_lua::root_moved(&self.lua),
+            Ok(false) => {}
+            Err(e) => {
+                kui_lua::root_moved(&self.lua);
+                self.shared.error(e.to_string());
+            }
         }
         if let Some(shot) = &mut self.shot
             && let Some(len) = shot.record
@@ -492,7 +504,15 @@ impl App for Runner {
         self.overlay(ui);
     }
 
+    /// The app's state as the frames see it (backlog C138): the script's
+    /// revision, which the runner moves with every wake, every event and
+    /// every drain that did something.
+    fn view_state(&self) -> Option<u64> {
+        kui_lua::root_rev(&self.lua)
+    }
+
     fn on_event(&mut self, ev: UiEvent) {
+        kui_lua::root_moved(&self.lua);
         match ev.payload.get_str("kui") {
             Some("dismiss") => self.dismissed = self.shared.errors.lock().unwrap().len(),
             // The default menu's Toggle Developer Tools: on at the Log tab

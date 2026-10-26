@@ -130,6 +130,7 @@ function kui.__drain()
       queue = {}
     end
   end
+  return n
 end
 
 -- An event the app's nodes raised: to `update` unless the app defines its

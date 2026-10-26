@@ -65,6 +65,7 @@ mod dispatch;
 mod emit;
 mod fills;
 mod focus;
+mod reframe;
 pub mod follow;
 mod gesture;
 mod groups;
@@ -811,6 +812,8 @@ pub struct Core {
     /// focus moves to the nearest of those sinks the frame still has, or
     /// is dropped.
     focus_home: Option<focus::FocusHome>,
+    /// What a build keeps for a frame built from its tree (backlog C138).
+    reframe: reframe::Reframe,
     /// A `focus_item` asked for since the last frame's end (backlog C125):
     /// the composite and the item's index, landed when the frame ends.
     pending_item_focus: Option<(Key, u64)>,
@@ -1522,6 +1525,7 @@ impl Core {
             typeahead_answer: None,
             focus_place: None,
             focus_home: None,
+            reframe: Default::default(),
             pending_item_focus: None,
             focus_group: None,
             press_opened: None,
@@ -2274,6 +2278,7 @@ impl Core {
         self.framed = true;
         self.frame_no += 1;
         self.replay_begin_frame();
+        self.reframe_begin();
         // A build owed by a lazy branch's crossing is this one; a second
         // crossing in it waits for the next frame (ADR 0069).
         self.in_rerun = std::mem::take(&mut self.rerun_owed);
@@ -2506,6 +2511,19 @@ pub trait Extension {
     fn reentry(&mut self) -> Option<Box<dyn Extension>> {
         None
     }
+    /// A revision of everything this extension's `root` view reads that
+    /// the core does not see — its model, what its timers and threads
+    /// leave it — moved whenever any of it may have (backlog C138).
+    /// `Some` lets the core keep the root's fill while an animation of
+    /// its own runs (a keyframe cycle, a transition) and replay it on a
+    /// frame only that animation asks for
+    /// ([`Core::frame_animates_only`]), while the revision and every fact
+    /// of the frame the fill read stay put. `None`, the default, runs the
+    /// root fresh every frame, as a root always was: the core cannot know
+    /// what a view reads beyond its own doors.
+    fn root_state(&self) -> Option<u64> {
+        None
+    }
 }
 
 /// A boxed extension is one: what a host that learns the kind only at run
@@ -2537,5 +2555,8 @@ impl<E: Extension + ?Sized> Extension for Box<E> {
     }
     fn reentry(&mut self) -> Option<Box<dyn Extension>> {
         (**self).reentry()
+    }
+    fn root_state(&self) -> Option<u64> {
+        (**self).root_state()
     }
 }

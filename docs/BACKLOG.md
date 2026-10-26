@@ -3670,6 +3670,7 @@ filed the same day for the round that builds them.
 - `.` **C135** — [A press on a control inside a key sink gives the sink the keyboard](backlog/closed-2026-09.md#-c135--a-press-on-a-control-inside-a-key-sink-gives-the-sink-the-keyboard--done-2026-10-26) — done (2026-10-26) — a press on a Tab stop inside a key sink focuses the stop; the sink keeps its chords, which bubble; `keepFocus` for a surface that must not take it; ADR 0002 decision 9 amended
 - `.` **C136** — [Focus left on a node the frame no longer has stays there](backlog/closed-2026-09.md#-c136--focus-left-on-a-node-the-frame-no-longer-has-stays-there--done-2026-10-26) — done (2026-10-26) — a focus on a vanished node nothing recovers goes to the nearest sink it had, or is dropped for a `keyFocus` shell
 - `.` **C137** — [A keyframe cycle out of view still owes frames](backlog/closed-2026-09.md#-c137--a-keyframe-cycle-out-of-view-still-owes-frames--done-2026-10-26) — done (2026-10-26) — a running cycle owes a frame only while the frame drew its node inside its clip and the window; sampled again when it comes back
+- `.` **C138** — [A frame owed only by an animation runs the host's whole view](backlog/closed-2026-09.md#-c138--a-frame-owed-only-by-an-animation-runs-the-hosts-whole-view--done-2026-10-26) — done (2026-10-26) — a frame only a core animation asks for is built from the last tree (`Core::reframe`) while the app (`App::view_state`) and its roots say their state held; the runner says it
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3787,17 +3788,19 @@ beside their docs, no design system to try, no place to craft a repro.
 and an editable live example, the design system with the Theme panel, a
 scratchpad saving a folder or a `.kui` archive, one search.
 
-### `.` C138 — A frame owed only by an animation runs the host's whole view
+### `.` C140 — Node's windows run the view for every frame an animation owes
 
-**Found** measuring the line chart's slide (2026-10-26): between two
-samples the chart's fill replays (21 µs a frame, `cargo bench -p kui-lua
---bench kit -- line_chart_live_window`), but every frame the keyframe
-cycle owes runs the app's root view again — a runner's root fill is never
-kept — so the Kit gallery's Charts page with Live on went from 22.8 views
-and 5.1% of a core a second, headless, to 57 views and 10.4%. **Do.** A
-frame whose only cause is an animation the core runs (a keyframe cycle, a
-transition) built from the last tree with the animation sampled again,
-or the root fill kept while nothing it read moved.
+**Found** building C138 (2026-10-26): a frame only an animation of the
+core's asks for is built from the last tree when the driver's `App` says
+its state held (`App::view_state`), and the runner says it for every Lua
+app. Node's `KuiWindow` runs on the same driver, and its view is already
+a tree the addon retains and hands over only when a message changed the
+model — but the addon's `App` answers `None`, so every animation frame
+rebuilds the retained tree into the core. A C host builds by hand and
+could call `Core::reframe` itself. **Do.** kui-node's `App::view_state`
+answers the retained tree's revision (moved with every new tree, every
+event routed to JS); then a door for C (`kui_reframe`), if a C host
+wants it, with the DOORS row's `No` cells updated.
 
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 

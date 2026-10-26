@@ -288,8 +288,11 @@ fn line_chart_live_300(bencher: divan::Bencher) {
 /// frame clock): `sample` is the frame a sample lands in — a new revision,
 /// the chart asked again and its slide started — and `between` a frame
 /// between two, which the slide's keyframe cycle draws with no view run
-/// (the fill replayed, the core moving the content).
-#[divan::bench(args = ["sample", "between"])]
+/// (the fill replayed, the core moving the content); `reframed` the same
+/// frame built from the last tree with no view and no fill at all, as a
+/// driver whose app says its state held builds it (`Core::reframe`,
+/// backlog C138).
+#[divan::bench(args = ["sample", "between", "reframed"])]
 fn line_chart_live_window(bencher: divan::Bencher, frame: &str) {
     let mut ch = kui_core::channel::Channel::table(chart_columns(0, 300)).unwrap();
     let mut exts = Extensions::new();
@@ -315,7 +318,7 @@ fn line_chart_live_window(bencher: divan::Bencher, frame: &str) {
             core.set_time(t);
             chart_frame(&mut core, &mut exts, &chart_props(&ch, Some(30.0)));
         });
-    } else {
+    } else if frame == "between" {
         // A sixtieth of the pace a frame, a fresh slide each hundred
         // milliseconds' worth of frames' clock, never a new sample.
         let mut k = 0u32;
@@ -323,6 +326,16 @@ fn line_chart_live_window(bencher: divan::Bencher, frame: &str) {
             k = (k + 1) % 5;
             core.set_time(t + 0.016 * f64::from(k + 1));
             chart_frame(&mut core, &mut exts, &props);
+        });
+    } else {
+        // The frame after one built with the view keeps what it needs.
+        core.set_time(t + 0.008);
+        chart_frame(&mut core, &mut exts, &props);
+        let mut k = 0u32;
+        bencher.bench_local(|| {
+            k = (k + 1) % 5;
+            core.set_time(t + 0.016 * f64::from(k + 1));
+            assert!(core.reframe(Size::new(1400.0, 500.0), 1.0), "built again");
         });
     }
 }

@@ -680,9 +680,48 @@ impl LuaExtension {
     }
 }
 
+/// The revision of a script's state a host keeps for its `root` fill
+/// (backlog C138): see [`keep_root`].
+struct RootState(std::cell::Cell<u64>);
+
+/// Lets the `root` fill of the script running in `lua` be kept while an
+/// animation of the core's own runs, and replayed on a frame only that
+/// animation asks for, while nothing moved the script's state
+/// (`Extension::root_state`, backlog C138). The host promises to call
+/// [`root_moved`] whenever it runs code in the script's state outside the
+/// script's own `view` and `on_event` — a timer's callback, a reply, a
+/// message from a thread — as the `kui` runner does. A script that
+/// loaded an extension of its own (`env.add_extension`) is never kept.
+pub fn keep_root(lua: &Lua) {
+    if lua.app_data_ref::<RootState>().is_none() {
+        lua.set_app_data(RootState(std::cell::Cell::new(0)));
+    }
+}
+
+/// The revision [`keep_root`] keeps, `None` when it was not called: what a
+/// host that runs the script as its app answers `App::view_state` with.
+pub fn root_rev(lua: &Lua) -> Option<u64> {
+    lua.app_data_ref::<RootState>().map(|s| s.0.get())
+}
+
+/// The script's state may have moved: its kept `root` fill runs again on
+/// the next frame. Nothing when [`keep_root`] was not called.
+pub fn root_moved(lua: &Lua) {
+    if let Some(s) = lua.app_data_ref::<RootState>() {
+        s.0.set(s.0.get().wrapping_add(1));
+    }
+}
+
 impl Extension for LuaExtension {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn root_state(&self) -> Option<u64> {
+        if !self.loaded.borrow().is_empty() {
+            return None;
+        }
+        self.lua.app_data_ref::<RootState>().map(|s| s.0.get())
     }
 
     fn view(&mut self, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
@@ -727,6 +766,8 @@ impl Extension for LuaExtension {
     }
 
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
+        // Whatever the script does with it moves its state (C138).
+        root_moved(&self.lua);
         let Ok(f) = self.lua.globals().get::<mlua::Function>("on_event") else {
             return Vec::new();
         };

@@ -365,6 +365,9 @@ pub(crate) struct Trace {
     /// [`Core::begin_frame_cause`] took the next frame's reasons ahead of
     /// its `begin_frame`, which keeps them.
     begun: bool,
+    /// What the last frame left owed, by kind, as this one began: whether
+    /// the build keeps what `Core::reframe` needs (backlog C138).
+    owed_begin: Owed,
 }
 
 impl Trace {
@@ -426,6 +429,23 @@ impl Core {
             self.take_frame_cause();
             self.trace.begun = true;
         }
+    }
+
+    /// The causes the next frame would begin with, as noted so far —
+    /// what [`Self::reframe`] reads before it begins one.
+    pub(crate) fn trace_pending_cause(&self) -> FrameCause {
+        if self.trace.begun {
+            self.trace.cause
+        } else {
+            self.trace.since
+        }
+    }
+
+    /// Whether the last frame left an animation of the core's own owed:
+    /// a transition, a cycle, a departure or an eased scroll.
+    pub(crate) fn core_animated(&self) -> bool {
+        let o = self.trace.owed_begin;
+        o.transition || o.cycle || o.depart || o.scroll
     }
 
     /// Adds to the next frame's reasons — the driver's door, for what it
@@ -508,6 +528,7 @@ impl Core {
     /// [`Self::begin_frame_cause`]'s ahead of it.
     fn take_frame_cause(&mut self) {
         let owed = self.owed();
+        self.trace.owed_begin = owed;
         let mut cause = std::mem::take(&mut self.trace.since);
         if owed.any() {
             cause |= FrameCause::OWED;

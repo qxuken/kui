@@ -300,6 +300,18 @@ pub trait App {
     /// request a server thread queued, handing a reply to a task. The
     /// frame still follows. The default does nothing.
     fn on_wake(&mut self) {}
+    /// A revision of everything [`Self::view`] reads that the core does
+    /// not see — the app's model, what its threads left it — moved
+    /// whenever any of it may have (backlog C138). `Some` lets the runner
+    /// build a frame only an animation of the core's own asks for (a
+    /// keyframe cycle, a transition) from the last frame's tree without
+    /// calling `view`, while the revision, every extension root's state
+    /// (`Extension::root_state`) and every fact of the frame the build
+    /// read stay put (`Core::reframe`). `None`, the default, calls `view`
+    /// for every frame.
+    fn view_state(&self) -> Option<u64> {
+        None
+    }
     /// Called once, when the main window is going for good (its close
     /// button, Quit, `WindowCommand::Close` on it, a pumped runner ending),
     /// before `run` returns. Save a session, a draft or a position here;
@@ -2725,20 +2737,35 @@ impl DynShell<'_> {
         // place (`Ui::component`), and each one's `"root"` after it unless
         // the host placed that too — `finish` below does the latter (ADR
         // 0067). The core numbers their origins.
-        let mut ui = pane.core.frame_with(viewport, scale, extensions);
-        app.view(&mut ui);
-        let view_ms = t_view.elapsed().as_secs_f32() * 1e3;
-
-        let t_layout = std::time::Instant::now();
-        ui.finish();
-        // A lazy branch whose decision this layout overturned: the frame
-        // is built once more before it is drawn (ADR 0069, decision 15).
-        if pane.core.rerun_owed() {
+        //
+        // A frame only an animation of the core's asks for, while the app
+        // and its extensions say nothing they read has moved, is built from
+        // the last frame's tree, with no view (backlog C138).
+        let state = app.view_state();
+        let (view_ms, layout_ms) = if state.is_some()
+            && state == pane.view_state
+            && extensions.roots_unchanged()
+            && pane.core.reframe(viewport, scale)
+        {
+            (0.0, t_view.elapsed().as_secs_f32() * 1e3)
+        } else {
             let mut ui = pane.core.frame_with(viewport, scale, extensions);
             app.view(&mut ui);
+            let view_ms = t_view.elapsed().as_secs_f32() * 1e3;
+
+            let t_layout = std::time::Instant::now();
             ui.finish();
-        }
-        let layout_ms = t_layout.elapsed().as_secs_f32() * 1e3;
+            // A lazy branch whose decision this layout overturned: the
+            // frame is built once more before it is drawn (ADR 0069,
+            // decision 15).
+            if pane.core.rerun_owed() {
+                let mut ui = pane.core.frame_with(viewport, scale, extensions);
+                app.view(&mut ui);
+                ui.finish();
+            }
+            pane.view_state = app.view_state();
+            (view_ms, t_layout.elapsed().as_secs_f32() * 1e3)
+        };
 
         // Silent misconfigurations the core noticed (a grow weight with
         // nothing to split against, a transition on a positional key, two

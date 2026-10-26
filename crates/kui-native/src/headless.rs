@@ -205,6 +205,9 @@ struct Headless<A: App + ?Sized> {
     /// When the last frame was drawn, for an animation's pace.
     drawn_at: Option<Instant>,
     frames: u64,
+    /// What the app's `view_state` said after the last frame built with
+    /// its view (backlog C138).
+    view_state: Option<u64>,
     ended: bool,
     torn_down: bool,
     /// Last, so a `Box<Headless<A>>` unsizes to a `Box<DynHeadless>`.
@@ -273,6 +276,7 @@ impl Launcher {
             owed: FrameCause::FIRST,
             drawn_at: None,
             frames: 0,
+            view_state: None,
             ended: false,
             torn_down: false,
             app,
@@ -572,20 +576,34 @@ impl DynHeadless<'_> {
         core.set_time(now);
         core.note_frame_cause(why);
         let t_view = Instant::now();
-        let mut ui = core.frame_with(self.viewport, self.scale, &mut self.extensions);
-        self.app.view(&mut ui);
-        let view_ms = t_view.elapsed().as_secs_f32() * 1e3;
-        let t_layout = Instant::now();
-        ui.finish();
-        // Built once more when a lazy branch's decision crossed (ADR 0069).
-        if self.core.rerun_owed() {
-            let mut ui = self
-                .core
-                .frame_with(self.viewport, self.scale, &mut self.extensions);
+        // Built from the last tree when only an animation asks and nothing
+        // the build read moved (backlog C138).
+        let state = self.app.view_state();
+        let (view_ms, layout_ms) = if state.is_some()
+            && state == self.view_state
+            && self.extensions.roots_unchanged()
+            && self.core.reframe(self.viewport, self.scale)
+        {
+            (0.0, t_view.elapsed().as_secs_f32() * 1e3)
+        } else {
+            let core = &mut self.core;
+            let mut ui = core.frame_with(self.viewport, self.scale, &mut self.extensions);
             self.app.view(&mut ui);
+            let view_ms = t_view.elapsed().as_secs_f32() * 1e3;
+            let t_layout = Instant::now();
             ui.finish();
-        }
-        let layout_ms = t_layout.elapsed().as_secs_f32() * 1e3;
+            // Built once more when a lazy branch's decision crossed (ADR
+            // 0069).
+            if self.core.rerun_owed() {
+                let mut ui = self
+                    .core
+                    .frame_with(self.viewport, self.scale, &mut self.extensions);
+                self.app.view(&mut ui);
+                ui.finish();
+            }
+            self.view_state = self.app.view_state();
+            (view_ms, t_layout.elapsed().as_secs_f32() * 1e3)
+        };
         for w in self.core.take_warnings() {
             eprintln!(
                 "kui: warning [{}] node {:016x}: {}",

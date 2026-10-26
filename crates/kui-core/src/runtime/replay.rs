@@ -201,7 +201,7 @@ pub(crate) enum Op {
 
 /// A fact of the frame a kept fill read, with what it read: the replay
 /// holds only while every one reads the same.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Read {
     Hover(Key, bool),
     Pressed(Key, bool),
@@ -384,13 +384,26 @@ impl Core {
         r.ops.push(op);
     }
 
-    /// Notes a fact of the frame the fill being kept read.
+    /// Notes a fact of the frame the fill being kept read — and, while
+    /// the frame may be built again from its tree (backlog C138), a fact
+    /// any part of the build read, whoever read it.
     #[inline]
     pub(crate) fn note_read(&self, read: impl FnOnce() -> Read) {
-        if let Some(r) = self.recording.as_ref()
-            && r.paused == 0
-        {
-            r.reads.borrow_mut().push(read());
+        let kept = self.recording.as_ref().filter(|r| r.paused == 0);
+        if kept.is_none() && !self.reframe.logging {
+            return;
+        }
+        self.note_read_slow(kept, read());
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn note_read_slow(&self, kept: Option<&Recording>, read: Read) {
+        if self.reframe.logging {
+            self.reframe.reads.borrow_mut().push(read.clone());
+        }
+        if let Some(r) = kept {
+            r.reads.borrow_mut().push(read);
         }
     }
 
@@ -399,12 +412,22 @@ impl Core {
     /// `bit` says which, one of the `ONCE_*` bits.
     #[inline]
     pub(crate) fn note_read_once(&self, bit: u8, read: impl FnOnce() -> Read) {
-        if let Some(r) = self.recording.as_ref()
-            && r.paused == 0
-            && r.once.get() & bit == 0
-        {
+        let frame = self.reframe.logging && self.reframe.once.get() & bit == 0;
+        let kept = self
+            .recording
+            .as_ref()
+            .filter(|r| r.paused == 0 && r.once.get() & bit == 0);
+        if !frame && kept.is_none() {
+            return;
+        }
+        let read = read();
+        if frame {
+            self.reframe.once.set(self.reframe.once.get() | bit);
+            self.reframe.reads.borrow_mut().push(read.clone());
+        }
+        if let Some(r) = kept {
             r.once.set(r.once.get() | bit);
-            r.reads.borrow_mut().push(read());
+            r.reads.borrow_mut().push(read);
         }
     }
 
@@ -511,6 +534,19 @@ impl Core {
             frame: self.frame_no,
         };
         self.kept_instances.insert(kept.slot_key, kept);
+    }
+
+    /// Whether every fact `reads` names still reads the same.
+    pub(crate) fn reads_hold(&self, reads: &[Read]) -> bool {
+        reads.iter().all(|r| self.read_holds(r))
+    }
+
+    /// Whether every fill kept from this frame — replayed in it or run
+    /// fresh — still reads what it read (backlog C138).
+    pub(crate) fn kept_reads_hold(&self) -> bool {
+        self.kept_instances
+            .values()
+            .all(|k| k.frame != self.frame_no || self.reads_hold(&k.reads))
     }
 
     /// The first fact the kept fill read that reads otherwise now, as

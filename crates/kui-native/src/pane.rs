@@ -435,6 +435,9 @@ pub(crate) struct Pane {
     /// The frames built for this window while it cannot draw, and not
     /// drawn (`mod unseen`).
     pub(crate) unseen: crate::unseen::Unseen,
+    /// What the app's [`crate::App::view_state`] said after the last
+    /// frame built with its view (backlog C138).
+    pub(crate) view_state: Option<u64>,
     /// The platform accessibility bridge.
     pub(crate) access: Option<access_bridge::Bridge>,
     /// Windows: the timer that keeps an animation running while the modal

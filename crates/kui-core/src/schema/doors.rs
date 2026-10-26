@@ -770,6 +770,18 @@ pub const DOORS: &[Door] = &[
         doc: "A driver adds a reason the core cannot see — a wake, a resize, a blink, a retry — to the next frame's (backlog F111).",
     },
     Door {
+        rust: "Core::reframe",
+        c: No(
+            "a C host builds its frames by hand, so whether the view it skips read nothing that moved is the host's to know; kui-native's drivers ask their `App::view_state` and every extension's `root_state`",
+        ),
+        odin: No(ODIN_IS_C),
+        node: No(
+            "a `KuiWindow` runs on kui-native's driver, which asks the app's `view_state`; the addon does not answer it with its retained tree's revision yet (backlog C140)",
+        ),
+        lua: No(GUEST),
+        doc: "Builds the frame about to begin from the last tree, its cycles and transitions sampled again, when only an animation of the core's own asks for it and nothing the last build read has moved (backlog C138).",
+    },
+    Door {
         rust: "Core::owed_by",
         c: No(
             "lists of named holders are strings the library would own across calls, an [out-array] struct and an ABI bump for a reading that is a debugging aid; a C host reads the kinds from `kui_owed`",

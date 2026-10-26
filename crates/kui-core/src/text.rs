@@ -1787,6 +1787,13 @@ impl TextSystem {
         self.evict_to_budget(fs);
     }
 
+    /// A frame built again from the last tree (backlog C138): the text
+    /// list stays, since the tree's text nodes index it, and only where
+    /// the runs are drawn starts over, as `begin_frame` starts it.
+    pub(crate) fn begin_reframe(&mut self) {
+        self.places.begin(true);
+    }
+
     /// Drops every shaped entry, to shape again on its next draw: the
     /// weights a family is asked at changed under them.
     pub(crate) fn forget_shaped(&mut self) {
