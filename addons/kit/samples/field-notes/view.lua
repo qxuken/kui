@@ -116,7 +116,7 @@ end
 
 local function checklist(m, n)
   local done = done_of(n)
-  -- One Tab stop: Up and Down walk the items, Space ticks, an × removes.
+  -- One Tab stop: Up and Down walk the items, Space ticks, an × or Delete removes.
   local items = {}
   for i, it in ipairs(n.items) do items[i] = { label = it.text, checked = it.done } end
   -- Folded as the model says, and the heading asks to change it: it was

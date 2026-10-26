@@ -625,9 +625,14 @@ local function ringed_mark(c: Ctx, mark: kui.Node, group: string, w: number, h: 
   return mark
 end
 
--- Which item of a checklist holds focus, for its Delete.
+-- Which item of a checklist holds focus (for its Delete) and whether it
+-- does now, the node key of each row focus has been on, and the row
+-- Delete last removed an item from.
 local record Ticks
   focus: integer
+  inside: boolean
+  keys: {integer:integer}
+  gone: integer
   -- The item whose × the pointer is on.
   over: integer
 end
@@ -636,15 +641,29 @@ end
 -- it and Tab enters and leaves it in one stop, entering on the item last
 -- focused. Each item is a list item that reads its tick (`checked`) and
 -- takes Space and a click as a tick; the box is drawn, not a control of
--- its own. With `removable`, an × the pointer presses on each item. No
--- key removes: an item that is a key sink loses the list's arrows, and a
--- list that is one becomes a Tab stop of its own.
+-- its own. With `removable`, an × the pointer presses on each item, and
+-- Delete or Backspace on the focused item removes it: the list hears the
+-- keys its items leave (`on_item_key`, C120) and stays one Tab stop, its
+-- arrows its own. Focus stays on the row, which then holds the next item
+-- (the last row's goes to the one before).
 function M.checklist(c: Ctx, p: P): kui.Node
   local items = (p.items or {}) as {P}
   local removable = p.removable == true
-  local st = ctx.state(c, function(): Ticks return {} end)
+  local st = ctx.state(c, function(): Ticks return { keys = {} } end)
+  local env = c.env
   local focus = st.focus
-  if focus and focus >= #items then focus = #items > 0 and #items - 1 or nil end
+  if focus and focus >= #items then
+    focus = #items > 0 and #items - 1 or nil
+    -- The focused last item went, and its row with it: focus was left on
+    -- a node no longer there, so the keyboard goes to the row before, by
+    -- the key it had when focus was on it (a row's key is its place).
+    local to = focus and st.keys[focus]
+    if to and env.focus ~= nil and env.focus == st.gone then env.set_focus(to) end
+    st.focus = focus
+  elseif focus and st.inside and env.focus ~= nil then
+    st.keys[focus] = env.focus
+  end
+  st.gone = nil
   local t: kui.Props = {
     key = "checklist",
     role = "list",
@@ -652,6 +671,7 @@ function M.checklist(c: Ctx, p: P): kui.Node
     width = "grow",
     gap = 0,
     active_index = focus or (#items > 0 and 0 or nil),
+    on_item_key = removable and act(c, "checklist.key") or nil,
   }
   for i, it in ipairs(items) do
     local on = it.checked == true
@@ -688,7 +708,7 @@ function M.checklist(c: Ctx, p: P): kui.Node
     if removable then
       -- No control of its own (a focusable inside the item would be out
       -- of the ring's reach): a press on the item while the pointer is on
-      -- the × removes rather than ticks.
+      -- the × removes rather than ticks. The keyboard's is Delete.
       r[#r + 1] = row {
         key = "rm", width = 20, height = 20, main_align = "center", cross_align = "center",
         radius = "$kitRadius", hover_bg = ref(c, "hover"), tooltip = "Remove",
@@ -997,11 +1017,22 @@ function M.event(m: P, kit: string): any
   elseif kit == "checklist.focus" then
     local st = ctx.peek(m.inst as integer) as Ticks
     local f = m.focus as P
-    if st and f and f.phase == "in" then st.focus = m.index as integer end
+    if st and f then
+      if f.phase == "in" then st.focus, st.inside = m.index as integer, true
+      elseif st.focus == m.index then st.inside = false end
+    end
   elseif kit == "checklist.toggle" then
     local st = ctx.peek(m.inst as integer) as Ticks
     if st and st.over == m.index then return emit("on_remove", { index = m.index }) end
     return emit("on_toggle", { index = m.index, checked = m.checked })
+  elseif kit == "checklist.key" then
+    -- A key the focused item left: Delete and Backspace remove it.
+    local k = m.itemkey as P
+    if k and (k.code == "delete" or k.code == "backspace") then
+      local st = ctx.peek(m.inst as integer) as Ticks
+      if st then st.gone = k.item as integer end
+      return emit("on_remove", { index = k.index })
+    end
   elseif kit == "checklist.over" then
     local st = ctx.peek(m.inst as integer) as Ticks
     local h = m.hover as P

@@ -307,7 +307,7 @@ Lua `kit.checklist(props)` · Node `<Checklist />`
 |---|---|---|---|
 | `items` | `items` | {[Check](#check)} | The items, in order: yours to keep. |
 | `label` | `label` | string? | What it lists, as it is read. |
-| `removable` | `removable` | boolean? | An × on each item, which the pointer presses to remove it. |
+| `removable` | `removable` | boolean? | An × on each item, which the pointer presses to remove it; Delete or Backspace removes the focused one. |
 
 | event | Node | carries | description |
 |---|---|---|---|

@@ -3294,6 +3294,62 @@ fn a_checklist_is_one_tab_stop_its_arrows_walk_and_space_ticks() {
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
+/// Delete and Backspace remove the focused item (the list hears the keys
+/// its items leave, C120); focus stays on the row, now the next item's,
+/// and the last row's goes back one. The list stays one Tab stop.
+#[test]
+fn a_checklist_removes_its_focused_item_with_delete_and_backspace() {
+    use kui_core::KeyCode;
+    let mut r = LuaRig::new(
+        r#"
+        items = { { label = "Milk" }, { label = "Eggs" }, { label = "Bread" }, { label = "Tea" } }
+        function on_event(ev)
+          if ev.kind == "rm" then table.remove(items, ev.remove.index + 1) end
+        end
+        function view(env)
+          return column { width = 300, pad = 20, gap = 8,
+            component("kit/button", { label = "Before" }),
+            component("kit/checklist", { items = items, label = "Groceries", removable = true, on_remove = { kind = "rm" } }),
+            component("kit/button", { label = "After" }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    let labels = |r: &mut LuaRig| -> String { r.app.load("local t = {} for i, it in ipairs(items) do t[i] = it.label end return table.concat(t, ' ')").eval().unwrap() };
+    let tab = |r: &mut LuaRig| {
+        let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(KeyCode::Tab, kui_core::KeyMods::NONE)));
+        r.route(e);
+        let e = kui_core::testing::tab(&mut r.core, false);
+        r.route(e);
+        r.frames(1);
+    };
+    let key = |r: &mut LuaRig, code: KeyCode| {
+        let e = r.core.press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
+        r.route(e);
+        r.frames(2);
+    };
+    tab(&mut r);
+    tab(&mut r);
+    key(&mut r, KeyCode::Down);
+    assert_eq!(focused(&mut r).as_deref(), Some("Eggs"));
+    key(&mut r, KeyCode::Delete);
+    assert_eq!(labels(&mut r), "Milk Bread Tea", "Delete removes the focused item");
+    assert_eq!(focused(&mut r).as_deref(), Some("Bread"), "focus stays on its row, now the next item");
+    key(&mut r, KeyCode::Backspace);
+    assert_eq!(labels(&mut r), "Milk Tea", "Backspace too");
+    assert_eq!(focused(&mut r).as_deref(), Some("Tea"));
+    key(&mut r, KeyCode::Delete);
+    r.frames(3);
+    assert_eq!(labels(&mut r), "Milk", "the last item");
+    assert_eq!(focused(&mut r).as_deref(), Some("Milk"), "focus goes back one from the last row");
+    key(&mut r, KeyCode::Down);
+    assert_eq!(labels(&mut r), "Milk", "the arrows are still the list's");
+    tab(&mut r);
+    assert_eq!(focused(&mut r).as_deref(), Some("After"), "still one Tab stop");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
 /// A line chart of ten rows (x 0..9, A = 10x, B = 100 - x), focusable.
 fn readout_rig() -> LuaRig {
     LuaRig::new(

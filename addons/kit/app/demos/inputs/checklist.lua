@@ -1,11 +1,11 @@
 -- A checklist: one Tab stop, Up and Down walk the items, Space or a click
--- ticks the one focused, and an × removes it.
+-- ticks the one focused, and an × or Delete removes it.
 
 local kit = require("kit.ui")
 
 local demo = {
   title = "Checklist",
-  note = "one Tab stop: the arrows walk, Space ticks, an × removes",
+  note = "one Tab stop: the arrows walk, Space ticks, an × or Delete removes",
   call = 'kit.checklist({ items = model.todo, removable = true,\n  on_toggle = { kind = "todo_tick" }, on_remove = { kind = "todo_remove" } })',
   state = { todo = {
     { label = "Write the release notes", checked = true },

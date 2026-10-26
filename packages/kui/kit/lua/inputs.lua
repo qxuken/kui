@@ -640,12 +640,31 @@ end
 
 
 
+
+
+
+
+
+
+
 function M.checklist(c, p)
    local items = (p.items or {})
    local removable = p.removable == true
-   local st = ctx.state(c, function() return {} end)
+   local st = ctx.state(c, function() return { keys = {} } end)
+   local env = c.env
    local focus = st.focus
-   if focus and focus >= #items then focus = #items > 0 and #items - 1 or nil end
+   if focus and focus >= #items then
+      focus = #items > 0 and #items - 1 or nil
+
+
+
+      local to = focus and st.keys[focus]
+      if to and env.focus ~= nil and env.focus == st.gone then env.set_focus(to) end
+      st.focus = focus
+   elseif focus and st.inside and env.focus ~= nil then
+      st.keys[focus] = env.focus
+   end
+   st.gone = nil
    local t = {
       key = "checklist",
       role = "list",
@@ -653,6 +672,7 @@ function M.checklist(c, p)
       width = "grow",
       gap = 0,
       active_index = focus or (#items > 0 and 0 or nil),
+      on_item_key = removable and act(c, "checklist.key") or nil,
    }
    for i, it in ipairs(items) do
       local on = it.checked == true
@@ -998,11 +1018,22 @@ function M.event(m, kit)
    elseif kit == "checklist.focus" then
       local st = ctx.peek(m.inst)
       local f = m.focus
-      if st and f and f.phase == "in" then st.focus = m.index end
+      if st and f then
+         if f.phase == "in" then st.focus, st.inside = m.index, true
+         elseif st.focus == m.index then st.inside = false end
+      end
    elseif kit == "checklist.toggle" then
       local st = ctx.peek(m.inst)
       if st and st.over == m.index then return emit("on_remove", { index = m.index }) end
       return emit("on_toggle", { index = m.index, checked = m.checked })
+   elseif kit == "checklist.key" then
+
+      local k = m.itemkey
+      if k and (k.code == "delete" or k.code == "backspace") then
+         local st = ctx.peek(m.inst)
+         if st then st.gone = k.item end
+         return emit("on_remove", { index = k.index })
+      end
    elseif kit == "checklist.over" then
       local st = ctx.peek(m.inst)
       local h = m.hover

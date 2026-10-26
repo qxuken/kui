@@ -1345,7 +1345,8 @@ Checklist :: struct {
 	items: []Check,
 	// What it lists, as it is read.
 	label: string,
-	// An × on each item, which the pointer presses to remove it.
+	// An × on each item, which the pointer presses to remove it; Delete or
+	// Backspace removes the focused one.
 	removable: Maybe(bool),
 	// The message `toggle` arrives as. An item was ticked or unticked.
 	on_toggle: any,

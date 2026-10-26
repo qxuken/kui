@@ -2921,7 +2921,8 @@ pub struct Checklist {
     pub items: Vec<Check>,
     /// What it lists, as it is read.
     pub label: Option<String>,
-    /// An × on each item, which the pointer presses to remove it.
+    /// An × on each item, which the pointer presses to remove it; Delete or
+    /// Backspace removes the focused one.
     pub removable: Option<bool>,
     /// The message `toggle` arrives as, with `toggle: ChecklistToggle` in it.
     /// An item was ticked or unticked.
@@ -2955,7 +2956,8 @@ impl Checklist {
         self
     }
 
-    /// An × on each item, which the pointer presses to remove it.
+    /// An × on each item, which the pointer presses to remove it; Delete or
+    /// Backspace removes the focused one.
     pub fn removable(mut self, v: bool) -> Self {
         self.removable = Some(v);
         self

@@ -566,7 +566,7 @@ export interface ChecklistProps {
   items: Check[];
   /** What it lists, as it is read. */
   label?: string;
-  /** An × on each item, which the pointer presses to remove it. */
+  /** An × on each item, which the pointer presses to remove it; Delete or Backspace removes the focused one. */
   removable?: boolean;
   /** The message toggle arrives as: yours, with `toggle: ChecklistToggle` in it. An item was ticked or unticked. */
   onToggle?: unknown;

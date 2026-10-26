@@ -1527,7 +1527,8 @@ typedef struct KitChecklist {
      */
     KuiStr label;
     /*
-     * An × on each item, which the pointer presses to remove it.
+     * An × on each item, which the pointer presses to remove it; Delete or
+     * Backspace removes the focused one.
      */
     bool removable;
     bool removable_set;

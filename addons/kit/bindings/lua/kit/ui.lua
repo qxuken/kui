@@ -317,7 +317,7 @@
 ---@class kit.ChecklistProps
 ---@field items kit.Check[] The items, in order: yours to keep.
 ---@field label? string What it lists, as it is read.
----@field removable? boolean An × on each item, which the pointer presses to remove it.
+---@field removable? boolean An × on each item, which the pointer presses to remove it; Delete or Backspace removes the focused one.
 ---@field on_toggle? any The message it arrives as: yours, with `toggle = {…}` in it (kit.ChecklistToggle). An item was ticked or unticked.
 ---@field on_remove? any The message it arrives as: yours, with `remove = {…}` in it (kit.ChecklistRemove). An item asked to go.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.

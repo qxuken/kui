@@ -278,7 +278,7 @@ return {
       props = {
         { "items", "{Check}", doc = "The items, in order: yours to keep." },
         { "label", "string?", doc = "What it lists, as it is read." },
-        { "removable", "boolean?", doc = "An × on each item, which the pointer presses to remove it." },
+        { "removable", "boolean?", doc = "An × on each item, which the pointer presses to remove it; Delete or Backspace removes the focused one." },
       },
       events = {
         { "toggle", doc = "An item was ticked or unticked.", fields = {
