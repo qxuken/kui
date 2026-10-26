@@ -18,7 +18,7 @@ local function when(at)
   local day = os.date("%Y-%m-%d", math.floor(at / 1000))
   if day == os.date("%Y-%m-%d", math.floor(now / 1000)) then return "today " .. os.date("%H:%M", math.floor(at / 1000)) end
   if day == os.date("%Y-%m-%d", math.floor((now - 86400000) / 1000)) then return "yesterday" end
-  return os.date("%b %d", math.floor(at / 1000)):gsub(" 0", " ")
+  return (tostring(os.date("%b %d", math.floor(at / 1000))):gsub(" 0", " "))
 end
 
 local function done_of(n)
@@ -29,7 +29,7 @@ end
 
 -- ---------- notebooks ----------
 
-local function nav_row(m, value, title, count, icon)
+local function nav_row(m, value, title, count)
   local here = m.notebook == value
   return row {
     key = "nav." .. value, role = "tab", label = title, selected = here,
@@ -174,7 +174,7 @@ end
 
 -- ---------- window ----------
 
-return function(m, env)
+return function(m)
   local doomed = m.confirm and find(m, m.confirm)
   local status
   if m.error then status = "not open"

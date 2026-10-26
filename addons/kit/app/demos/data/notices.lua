@@ -10,7 +10,7 @@ local demo = {
   call = 'kit.notice({ tone = "danger", title = "Could not save", message = "..." }, { kit.button(...) })',
 }
 
-function demo.view(m)
+function demo.view()
   return kit.notice({ message = "Saved drafts are kept for 30 days.", tone = "info" }),
     kit.notice({ tone = "warn", message = "The upstream answers slowly." }),
     kit.notice({ tone = "danger", title = "Could not save", message = "The disk is full." },

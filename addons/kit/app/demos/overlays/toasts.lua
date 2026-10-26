@@ -54,7 +54,7 @@ function demo.toaster(m)
   return kit.toaster({}, t)
 end
 
-function demo.view(m)
+function demo.view()
   return row { gap = 8, wrap_children = true, cross_gap = 8,
       kit.button({ label = "Info", on_press = { kind = "toast", message = "A new version is ready." } }),
       kit.button({ label = "Saved", on_press = { kind = "toast", message = "Saved to disk.", tone = "ok" } }),

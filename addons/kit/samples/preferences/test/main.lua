@@ -9,6 +9,7 @@ package.path = kui.dir .. "/../?.lua;" .. package.path
 local path = os.tmpname() .. "-tidewater.toml"
 kui.args = { "--config", path }
 require("main")
+---@type any
 model = init()
 local settings = require("settings")
 

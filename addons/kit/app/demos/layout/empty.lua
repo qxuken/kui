@@ -10,7 +10,7 @@ local demo = {
   call = 'kit.empty({ title = "No requests yet", detail = "...", { kit.button(...) } })',
 }
 
-function demo.view(m)
+function demo.view()
   return column { width = "grow", height = 200,
     kit.empty({ title = "No requests yet", detail = "Start the server, then send one." }, {
       kit.button({ label = "Start the server", variant = "primary", on_press = { kind = "press", what = "Start" } }) }) }

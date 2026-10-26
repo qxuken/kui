@@ -10,7 +10,7 @@ local demo = {
   call = 'kit.skeleton({ lines = 3 })\nkit.skeleton({ shape = "circle", width = 40 })\nkit.skeleton({ shape = "block", height = 96 })',
 }
 
-function demo.view(m)
+function demo.view()
   return row { width = "grow", gap = 12, cross_align = "center",
       kit.skeleton({ shape = "circle", width = 40, label = "Loading a picture" }),
       column { width = "grow", kit.skeleton({ lines = 2, label = "Loading a name" }) } },

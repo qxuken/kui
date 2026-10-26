@@ -7,6 +7,7 @@
 
 package.path = kui.dir .. "/../?.lua;" .. package.path
 require("main")
+---@type any
 model = init()
 local fleet = require("fleet")
 local view = require("view")

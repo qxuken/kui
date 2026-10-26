@@ -8,6 +8,7 @@
 package.path = kui.dir .. "/../?.lua;" .. package.path
 kui.args = { "--port", "0" }
 require("main")
+---@type any
 model = init()
 
 local failed = 0
@@ -44,7 +45,7 @@ kui.spawn(function()
   model.url = "{{base}}/api/products"
   check(full_url(model) == BASES["local"] .. "/api/products?q=olive%20oil", "ticked, named params only, encoded: " .. full_url(model))
   check(send(), "products answered")
-  local r = model.response
+  local r = model.response or {}
   check(r.status == 200 and r.json.count == 1 and r.json.data[1].sku == "PAN-0455", "the search found the olive oil")
   local names = {}
   for _, s in ipairs(r.spans) do names[#names + 1] = s.name end

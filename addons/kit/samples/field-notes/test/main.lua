@@ -9,6 +9,7 @@ package.path = kui.dir .. "/../?.lua;" .. package.path
 local path = os.tmpname() .. "-field-notes.db"
 kui.args = { "--db", path }
 require("main")
+---@type any
 model = init()
 local store = require("store")
 
@@ -64,7 +65,7 @@ kui.spawn(function()
   update({ kind = "title", change = { text = "Postmortem: INC-2291 inventory sync" } })
   update({ kind = "body", change = { text = note.body .. "\n\nAction: probe a different pod when half-open." } })
   check(saved(), "the edit was saved half a second later")
-  local disk = nil
+  local disk = { items = {} }
   for _, n in ipairs(store.all()) do if n.id == note.id then disk = n end end
   check(disk and disk.title == "Postmortem: INC-2291 inventory sync" and disk.body:find("different pod", 1, true), "the file has the new title and body")
   check(visible(model)[1] ~= note and visible(model)[3] == note, "pinned notes still lead; the edit is the newest of the rest")

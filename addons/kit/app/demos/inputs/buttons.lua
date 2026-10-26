@@ -9,7 +9,7 @@ local demo = {
   call = 'kit.button({ label = "Run", variant = "primary", icon = "play", on_press = { kind = "run" } })\nkit.icon_button({ icon = "refresh", label = "Reload", on_press = ... })',
 }
 
-function demo.view(m)
+function demo.view()
   return row { gap = 8, cross_align = "center", wrap_children = true, cross_gap = 8,
     kit.button({ label = "Run", variant = "primary", icon = "play", on_press = { kind = "press", what = "Run" } }),
     kit.button({ label = "Save", shortcut = "⌘S", on_press = { kind = "press", what = "Save" } }),

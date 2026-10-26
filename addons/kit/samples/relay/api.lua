@@ -190,7 +190,7 @@ function M.serve(port, on_hit)
           ["14:00–16:00"] = 27, ["16:00–18:00"] = 33, ["18:00–20:00"] = 21 } } })
   end)
 
-  route("POST", "/api/inventory/sync", function(req, arrived)
+  route("POST", "/api/inventory/sync", function(_, arrived)
     return answer(arrived, { { "auth", jitter(0.7) }, { "upstream", 900 } }, { status = 503, headers = { ["Retry-After"] = "30" },
       json = { error = "upstream_timeout", message = "The warehouse system (wms-eu-2) did not answer within 900 ms.", retry_after = 30 } })
   end)

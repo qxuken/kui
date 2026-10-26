@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.4",
+  "runtime.path": ["?.lua", "?/init.lua"],
+  "workspace.library": [
+    "../../../../packages/lua",
+    "../../../../crates/kui-cli/src/lua/runner_meta.lua",
+    "../../bindings/lua"
+  ],
+  "workspace.checkThirdParty": false,
+  "diagnostics.globals": ["view", "update", "init", "on_message", "on_exit", "on_event", "model"],
+  "diagnostics.disable": ["lowercase-global"]
+}

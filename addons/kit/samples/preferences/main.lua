@@ -120,6 +120,6 @@ function update(msg)
   end
 end
 
-function view(env)
-  return view_of(model, env)
+function view()
+  return view_of(model)
 end

@@ -12,7 +12,7 @@ local function note(s)
   return text(s, { size = 11, family = "$kitUi", color = "$kitMuted" })
 end
 
-function demo.view(m)
+function demo.view()
   return note("Above the rule: one group."), kit.divider({}), note("Below it: the next.")
 end
 

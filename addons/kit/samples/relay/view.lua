@@ -254,7 +254,7 @@ local function request_bar(m)
   }
 end
 
-return function(m, env)
+return function(m)
   local base = BASES[m.env]
   return column { window_title = "Relay — Larder API", width = "grow", height = "grow", bg = "$kitBg",
     kit.settings({ skin = m.skin }),

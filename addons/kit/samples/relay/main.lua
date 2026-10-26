@@ -56,7 +56,7 @@ function init()
     selected = nil,
     query = "",
     sending = false,
-    response = nil,
+    response = nil, ---@type table? the open request's answer
     error = nil,
     hits = 0,
     toast = nil,
@@ -284,6 +284,6 @@ function update(msg)
   end
 end
 
-function view(env)
-  return view_of(model, env)
+function view()
+  return view_of(model)
 end

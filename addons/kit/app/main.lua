@@ -85,7 +85,7 @@ end
 
 local function serve()
   local s = kui.http.serve({ port = 3050 })
-  s:get("/api/state", function(req)
+  s:get("/api/state", function()
     kui.dispatch({ kind = "hit" })
     return { skin = model.theme.skin, page = model.page, rows = model.rows and #model.rows or 0, t = model.t }
   end)

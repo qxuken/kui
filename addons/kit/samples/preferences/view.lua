@@ -354,7 +354,7 @@ local MENU = {
   } },
 }
 
-return function(m, env)
+return function(m)
   local errors, warnings = settings.check(m.draft)
   ERRORS = errors
   local changed_from_default = #settings.diff(settings.DEFAULTS, m.draft)

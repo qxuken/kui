@@ -100,7 +100,7 @@ end
 -- The keys whose values differ between two settings tables.
 function M.diff(a, b)
   local out = {}
-  for k, v in pairs(M.DEFAULTS) do
+  for k in pairs(M.DEFAULTS) do
     if a[k] ~= b[k] then out[#out + 1] = k end
   end
   table.sort(out)

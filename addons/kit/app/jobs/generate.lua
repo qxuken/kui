@@ -16,8 +16,9 @@ local function rand()
   return seed / 2147483648
 end
 
--- The rows as built, kept for the views the app asks for.
-local all = nil
+-- The rows as built, kept for the views the app asks for: a list a column.
+---@type table<string, any[]>
+local all = {}
 
 local NAMES = { "id", "method", "path", "status", "tone", "ms", "size" }
 
@@ -80,14 +81,14 @@ local function trace(frames)
   for f = 0, frames - 1 do
     local base = f * 1000 / 60
     local j = rand()
-    local view = { base + 0.2, 4 + 3 * j }
-    local layout = { view[1] + view[2] + 0.1, 1.5 + j }
+    local build = { base + 0.2, 4 + 3 * j }
+    local layout = { build[1] + build[2] + 0.1, 1.5 + j }
     local paint = { layout[1] + layout[2] + 0.1, 2.5 + 1.5 * j }
     span(base, 1000 / 60, 0, 0, "frame", f)
-    span(view[1], view[2], 1, 1, "view", f)
+    span(build[1], build[2], 1, 1, "view", f)
     span(layout[1], layout[2], 1, 2, "layout", f)
     span(paint[1], paint[2], 1, 3, "paint", f)
-    span(view[1] + 0.3, view[2] - 0.8, 2, 4, "walk", f)
+    span(build[1] + 0.3, build[2] - 0.8, 2, 4, "walk", f)
     span(layout[1] + 0.1, layout[2] * 0.6, 2, 5, "shape", f)
   end
   return channel { name = name, start = start, len = len, depth = depth, group = group, target = target }
@@ -98,7 +99,7 @@ function on_message(msg)
   if msg.kind == "rows" then
     local ch = rows(msg.n)
     kui.dispatch({ kind = "rows", rows = ch, ms = kui.now() - t0 })
-  elseif msg.kind == "view" and all then
+  elseif msg.kind == "view" and all.id then
     local ch = view(msg.query, msg.sort, msg.descending)
     kui.dispatch({ kind = "rows", rows = ch, ms = kui.now() - t0, filtered = true })
   elseif msg.kind == "trace" then

@@ -23,6 +23,7 @@ local SCHEMA = {
   "PRAGMA foreign_keys = ON",
 }
 
+---@type kui.Db opened by M.open
 local db = nil
 
 -- Opens the file (made with its folder when new), creating the tables;
