@@ -3756,6 +3756,29 @@ driving call, the events and messages it produced, the I/O it asked for,
 tree and snapshot diffs, and an optional perf recording. **Do.** After
 ADR 0072 is built.
 
+### `.` C130 — A `when` rule cannot recolour text
+
+**Found** in C129 (2026-10-26): a text node has no box a rule patches, so
+a hovered danger menu row's label is drawn twice and the hovered copy
+shown by the row's hover group. **Do.** Text colour a state rule may set
+on a text node (or text colour inherited from the box a rule recolours),
+then Kit's menu rows draw one label.
+
+### `.` C131 — `faint` and `muted` text fall below 4.5:1 on hover and press washes
+
+**Found** in C129: a plain menu row's shortcut in `faint` read 3.7:1 on
+the hover wash in Ledger dark, `muted` 4.36 in Phosphor dark with a red
+accent; Kit fixed the menu row, and other components that put faint text
+on hovered rows likely share it. **Do.** Kit's contrast test over every
+component's hovered and pressed rows, and the faint and muted roles moved
+until they read on the washes.
+
+### `.` C132 — A disabled row at a recovered or asked-for index lands nowhere
+
+**Found** in C125: in a windowed list, when the row focus recovers to (or
+`focus_item` names) is disabled, focus stays where it was. **Do.** Step
+to the nearest enabled row, as arrows do.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
