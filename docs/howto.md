@@ -241,6 +241,83 @@ prop at its default (a width fit, a clamp none) and warns
 moving part a px size of its own, beside an expression that does not
 move.
 
+### How do I lay a row out as a column when it is narrow?
+
+Give the row a `when` entry over its own width ([ADR
+0069](adr/0069-props-by-condition.md)):
+
+```tsx
+<box dir="row" width="grow" gap={16}
+     when={[{ width: { below: 600, band: 16 }, dir: 'column', gap: 8, hidden: ['hint'] }]}>
+  <box key="field" width="grow">…</box>
+  <text key="hint">Press Enter to save</text>
+</box>
+```
+
+```lua
+row { width = "grow", gap = 16,
+      when = { { width = { below = 600, band = 16 }, dir = "column", gap = 8, hidden = { "hint" } } },
+      … }
+```
+
+```rust
+NodeSpec::row().grow_width().gap(16.0).when(Cond::width_below(600.0).band(16.0), |p| {
+    p.dir(Dir::Column).gap(8.0).hide("hint")
+})
+```
+
+The core reads the row's width in layout, once it is final and before
+the children are laid across it, so the frame the window crosses 600 is
+already a column — the view is not run again, and nothing reads a size
+a frame late. The `band` holds the column until 616, so a width resting
+on the threshold does not flip every frame. An entry over the node's own
+size sets the layout of its children only (direction, gaps, padding,
+wrap, alignment, `minColumn`, and `hidden` naming keyed children to drop);
+it cannot set the row's own width, which would loop, and a row whose
+width comes from its content (`fit`) is refused that and grows instead
+(`query-on-fit`). `window: { width: { below: 600 } }` reads the window
+instead, and that entry may set anything. `onQuery` tells the view when
+what matched changed, for a model that keeps it.
+
+### How do I colour a control by its hover, press or the theme without running the view again?
+
+`when` entries on state and the environment: `{ hovered: true, bg:
+'$hover' }`, `{ pressed: true, shadowY: 0 }`, `{ focusVisible: true,
+borderW: 2, borderColor: '$focus' }`, `{ dark: true, … }`, `{
+reducedMotion: true, transition: 0 }`, `{ contrast: 'more', borderW: 2
+}`. The core resolves them as the node opens, as it always resolved
+`hoverBg` — which is an entry ahead of the list, so an explicit entry
+wins over it — and eases what they set under the node's `transition`. A
+pointer move repaints; it does not run the view, and a component whose
+looks depend on the pointer is replayed (ADR 0067) where reading
+`is_hovered` in its view refilled it on every move. Every entry that
+matches applies, in order, so `{ dark: true }` and `{ hovered: true }`
+compose without an entry for the pair.
+
+### How do I make a grid of cards with as many columns as fit?
+
+`minColumn={240}` on a row: it wraps into equal columns, as many as fit
+at 240 or more — `max(1, floor((w + gap) / (240 + gap)))` — every card as
+wide as a column, the last line's too, so a short last line does not
+stretch. CSS's `repeat(auto-fill, minmax(240px, 1fr))`. The lines are
+`crossGap` apart.
+
+### How do I build a chart only when there is room for it?
+
+The lazy form: `<Lazy needs={{ w: 320 }} render={() => <Chart/>}
+fallback={() => <text>…</text>}/>`, `{ needs = { w = 320 }, render =
+function() … end, fallback = … }` as a child table in Lua,
+`ui.lazy(Needs::w(320.0), |ui| …).fallback(|ui| …)` in Rust, `kui_lazy`
+in C. `render` runs when the parent offers that much — its content box
+less its other children and gaps — and the branch is laid out at exactly
+that size; `fallback` runs otherwise, and the branch not built has no
+nodes and no state. `query: { width: { below: 700 } }` picks by the
+parent's size, the window's or the environment's instead. The decision
+is taken from the last layout's room; when this frame's layout says
+otherwise the runner builds the frame once more before drawing it
+(`rerunOwed()` for a loop of your own), and on the first frame it lays
+out before it builds.
+
 ### Why do two `"50%"` columns with a gap fit their row?
 
 A percentage is cut from the parent's content box before the gap between

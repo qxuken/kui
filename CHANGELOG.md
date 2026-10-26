@@ -71,12 +71,23 @@ was the first bare bump to break an app in five releases).
   `env.add_extension` calls `kui_ffi::register_native_loader()` first
   (backlog C59, ADR 0059).
 - `EventKind` and `kui_core::Event` gained `Component`, a component's
-  event (ADR 0060), and `Range`, a node's rows in view (ADR 0065): an
-  exhaustive `match` on either adds two arms.
+  event (ADR 0060), `Range`, a node's rows in view (ADR 0065), and
+  `Query`, a node's matched `when` entries (ADR 0069): an exhaustive
+  `match` on either adds three arms.
 - C's ABI is 39: `KuiSpec` gained `on_range` (808 bytes on 64-bit, from
   800; ABI 38), the slot doors went (ABI 39, below), and `KuiSpec`
-  gained `focus_ring` (816 bytes; backlog C93). Recompile; zeroed, a node
-  reports no range and colours no ring.
+  gained `focus_ring` (816 bytes; backlog C93), then `min_column`,
+  `hidden`, `on_query` and `when` (840 bytes; ADR 0069). Recompile;
+  zeroed, a node reports no range, colours no ring and has no rules.
+- `NodeSpec` gained `hidden` and `rules` (ADR 0069), and is 264 bytes: a
+  struct literal names both or ends with `..Default::default()`.
+- `SystemEnv` gained `contrast` (`ContrastPref`, ADR 0069): a struct
+  literal names it, and the `system` event's payload carries it.
+- `schema::Kind`, `schema::Apply` and `schema::Parsed` gained `Rules`, a
+  `when` list: an exhaustive `match` adds an arm.
+- A frame whose layout overturned a lazy branch's decision is built
+  twice by kui-native's runners, `kui_run` and Node's `createApp` (ADR
+  0069): a view with side effects runs twice for that frame.
 - A Lua script's `env` is one table shared by every fill of the script,
   its facts written again as they change (backlog C65): a script that
   stored its own fields on `env` finds them there next fill, and one of
@@ -272,6 +283,58 @@ at a size no screen shows, a declaration file for Teal beside the one
 for lua-language-server, and a new runner beside the window's.
 
 ### Added
+
+- **Props by condition** (backlog C100, [ADR
+  0069](docs/adr/0069-props-by-condition.md)): a node's `when` list —
+  entries of the conditions they test and the props they set while they
+  hold — resolved by the core, so a view declares a responsive, themed,
+  interactive box once and is not run again for a resize, a theme switch
+  or a hover. The conditions: the node's own `width` / `height` (`{
+  below, above, band }`, lengths or `$length` tokens, the band holding a
+  range past its threshold so a size resting on it does not flicker), the
+  window's (`window: { width, height }`), `dark`, `light`,
+  `reducedMotion`, `contrast: "more"`, `platform`, `scale`, and the
+  node's state — `hovered`, `pressed`, `focused`, `focusVisible`,
+  `disabled`, `selected`. Every matching entry applies in order;
+  `hoverBg` / `pressedBg` / `focusBg` are entries ahead of the list.
+  Window, environment and state entries resolve as the node opens, and
+  what they set eases under its `transition` (jumping under reduced
+  motion); own-size entries resolve in layout, before the node's
+  children are laid across it, with one more pass on the frame a height
+  match moves — no frame is drawn with a stale match. An own-size entry
+  sets the layout of the node's children only (direction, gaps, padding,
+  wrap, alignment, `minColumn`, and `hidden` naming keyed children to
+  drop), and the node is a container in that axis: a `fit` there grows
+  instead, with `query-on-fit`. What an entry may not set is left out
+  with `rule-prop-refused`. JSX `when={[…]}`, Lua `when = { … }`, C
+  `KuiSpec.when` (a `KuiValue` list), Odin `Spec.when_`, Rust
+  `NodeSpec::when(Cond::width_below(700.0).band(16.0), |p| p.gap(8.0))`.
+  Also: `hidden` (a node out of the frame, its keys and state kept),
+  `minColumn` (a row wrapped into equal columns as many as fit — CSS's
+  `repeat(auto-fill, minmax(n, 1fr))`), `onQuery` (`query: { matched,
+  width, height }` when the own-size and window matches change), the
+  increased-contrast setting as `env.system.contrast` (read on macOS and
+  Windows; C `kui_env_set_contrast`), and the lazy form: a branch built
+  only when its parent offers the room it `needs` — laid out at exactly
+  that size — or while a `query` holds, with a `fallback` otherwise:
+  `ui.lazy(Needs::w(320.0), …).fallback(…)`, a child table `{ needs =,
+  render =, fallback = }` or `lazy { }` in Lua, `<Lazy>` in JSX,
+  `kui_lazy` in C, `kui.lazy` in Odin. A lazy decision is taken from the
+  last layout's room; when a frame's layout disagrees the runners build
+  the frame once more before drawing it (`Core::rerun_owed`,
+  `kui_rerun_owed`, `rerunOwed()`), a second disagreement waiting and
+  warning (`query-unsettled`); a branch inside a component instance is
+  replayed with it while its decision holds. The devtools' tree flags
+  `rules`, `lazy` and `hidden`, and the inspector lists each entry with
+  whether it matched. `frame_1k_rules` (a thousand nodes, three entries
+  each, through a resize and a hover) is a guarded bench row.
+
+  *What you can delete:* a view's `is_hovered` / `is_pressed` reads that
+  pick colours, a resize handler that stores the window's width to pick a
+  layout, a size read from last frame's `onLayout` to decide a row's
+  direction, a branch on `env.system` for dark or reduced motion that
+  only swapped props, and the grid arithmetic that computed a column
+  count.
 
 - **A channel reduces a range for a chart** (backlog C95):
   `Channel::reduce(col, from, to, buckets)` (and `reduce_into`, which

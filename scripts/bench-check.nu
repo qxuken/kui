@@ -103,6 +103,10 @@ const GUARDED_BY_BENCH = {
         # commit caused without touching the loop, while every row above
         # read flat.
         frame_1k_curves
+        # A thousand nodes with three `when` entries each, through a resize
+        # and a hover (ADR 0069, decision 20): what the rule step, the
+        # match cache and the second height pass cost when they work.
+        frame_1k_rules
     ]
 }
 

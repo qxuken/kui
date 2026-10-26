@@ -3639,16 +3639,7 @@ filed the same day for the round that builds them.
 
 - `.` **C98** — [An open menu ignores its items' accelerators](backlog/closed-2026-09.md#-c98--an-open-menu-ignores-its-items-accelerators--done-2026-10-26) — done (2026-10-26) — an open context menu or drawn-bar menu chooses the enabled row whose accelerator was pressed, and closes
 
-### `.` C100 — A view guesses its size, and re-runs for every hover
-
-**Found** in the user's demo notes (2026-10-26): a narrow window pushes
-Kit's controls out of their panels, and Kit's fixes guess at widths the
-core knows exactly during layout; Kit reads `is_hovered` / `is_pressed`
-for its colours, so every pointer move refills an instance replay could
-have kept. **Do.** [ADR 0069](adr/0069-props-by-condition.md): `when`
-rules over own size, window size, environment and state, a lazy branch
-by room or query, `min_column`, `onQuery`, the match cache; doors in
-every binding; Kit adopts it in the same round.
+- `.` **C100** — [A view guesses its size, and re-runs for every hover](backlog/closed-2026-09.md#-c100--a-view-guesses-its-size-and-re-runs-for-every-hover--done-2026-10-26) — done (2026-10-26) — ADR 0069 steps 1–5: `when` rules over own size, window, environment and state, `hidden`, `minColumn`, the lazy form with the runners' second build, `onQuery`, doors in every binding; Kit's adoption is its own pass
 
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 

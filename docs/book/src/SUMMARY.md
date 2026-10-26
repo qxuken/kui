@@ -11,6 +11,7 @@
 - [Keyboard and focus](keyboard.md)
 - [Floats and modals](floats.md)
 - [Motion](motion.md)
+- [Props by condition](conditions.md)
 - [Effects, the clock and the world](effects.md)
 - [Testing without a window](testing.md)
 - [Warnings and the devtools](devtools.md)

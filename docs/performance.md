@@ -64,6 +64,8 @@ under a lucky 16-unit build's: one unit inlines more.
 | `frame_10k_rects_with_gradient` | `frame_10k_rects` with every cell's solid a `gradient` instead, all the same: one strip in the atlas, ten thousand image quads — about 52 ns a node over a flat box, half of it the boxed group a `hoverBg` pays too (measured 2026-10-05 with the six rows below, in a run where `frame_10k_rects` read ~831 µs; ADR 0042) | ~1.29 ms |
 | `frame_1k_rects` | the plain 32×32 grid the two below are read against | ~78.3 µs |
 | `frame_1k_turned_rects` | that grid, every cell turned by its own small angle (ADR 0043): its own clip entry, composed and culled by its bounding box — about 56 ns a turned node | ~136 µs |
+| `frame_1k_rules` | that grid with three `when` entries on every cell — one over its own width, one on the palette, one on hover (ADR 0069) — through a resize that flips every width entry and a pointer crossing the cells: most of it is the builder reading three closures a cell (`Patch::capture`), about 150 ns an entry (measured 2026-10-26 with the row below, in a run where `frame_1k_rects` read ~98 µs) | ~670 µs |
+| `frame_1k_rules_prebuilt` | the same cells built once and cloned per frame, as a replayed instance's journal hands them back: the core's share — resolving the static entries as each opens, the width entry in layout, the match cache — about 45 ns an entry | ~230 µs |
 | `frame_1k_shared_gradient` | that grid, every cell the same gradient | ~131 µs |
 | `frame_1k_distinct_gradients` | that grid, a gradient of its own in every cell: a thousand strips, every one a hit | ~134 µs |
 | `raster_gradient_strip` | a gradient's raster, cold: the 258×3 strip a side takes, three stops | ~4.0 µs |

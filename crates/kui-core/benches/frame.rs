@@ -337,6 +337,94 @@ fn frame_1k_turned_rects(bencher: divan::Bencher) {
     bencher.bench_local(|| run(&mut core));
 }
 
+/// 32 × 32 cells under 32 rows, each cell with three `when` entries (ADR
+/// 0069): one over its own width (the cell grows, so it is a container
+/// there), one on the palette, one on hover. Its own builder, so the rows
+/// above keep the code they were measured with.
+fn ruled_grid(ui: &mut Ui<'_>) {
+    use kui_core::Cond;
+    ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(4.0));
+    for r in 0..32usize {
+        ui.with(NodeSpec::row().grow_width().gap(4.0), |ui| {
+            for c in 0..32usize {
+                let color = Color::rgb8(r as u8, c as u8, 128);
+                ui.leaf(
+                    NodeSpec::row()
+                        .grow_width()
+                        .height(14.0)
+                        .bg(color)
+                        .radius(2.0)
+                        .when(Cond::width_below(40.0).band(4.0), |p| p.pad(1.0))
+                        .when(Cond::Dark, |p| p.bg(Color::hex(0x202020ff)))
+                        .when(Cond::Hovered, |p| p.radius(4.0)),
+                );
+            }
+        });
+    }
+}
+
+/// [`frame_1k_rects`] with three rules on every cell (ADR 0069, decision
+/// 20), driven through a resize that crosses every cell's width threshold
+/// and back, and a pointer moving across the grid: what a rule costs a
+/// node — resolving its static entries as it opens, the width entry in
+/// layout, the match cache — in frames that move what they match on.
+#[divan::bench]
+fn frame_1k_rules(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let mut n = 0u32;
+    let mut run = |core: &mut Core| {
+        n = n.wrapping_add(1);
+        // Every eighth frame narrower, so the width entries flip both ways.
+        let w = if n % 8 < 4 { 1920.0 } else { 1000.0 };
+        let x = (n % 32) as f32 * 40.0 + 20.0;
+        core.handle_input(kui_core::InputEvent::CursorMoved(Vec2::new(x, 20.0)));
+        let mut ui = core.frame(Size::new(w, 1080.0), 2.0);
+        ruled_grid(&mut ui);
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.len()
+    };
+    run(&mut core);
+    bencher.bench_local(|| run(&mut core));
+}
+
+/// [`frame_1k_rules`] with each cell's spec built once and cloned per
+/// frame, as a replayed instance's journal hands it back: the core's
+/// share of the cost, without the builder reading three closures a cell.
+#[divan::bench]
+fn frame_1k_rules_prebuilt(bencher: divan::Bencher) {
+    use kui_core::Cond;
+    let cell = NodeSpec::row()
+        .grow_width()
+        .height(14.0)
+        .radius(2.0)
+        .when(Cond::width_below(40.0).band(4.0), |p| p.pad(1.0))
+        .when(Cond::Dark, |p| p.bg(Color::hex(0x202020ff)))
+        .when(Cond::Hovered, |p| p.radius(4.0));
+    let mut core = Core::new();
+    let mut n = 0u32;
+    let mut run = |core: &mut Core| {
+        n = n.wrapping_add(1);
+        let w = if n % 8 < 4 { 1920.0 } else { 1000.0 };
+        let x = (n % 32) as f32 * 40.0 + 20.0;
+        core.handle_input(kui_core::InputEvent::CursorMoved(Vec2::new(x, 20.0)));
+        let mut ui = core.frame(Size::new(w, 1080.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(4.0));
+        for r in 0..32usize {
+            ui.with(NodeSpec::row().grow_width().gap(4.0), |ui| {
+                for c in 0..32usize {
+                    ui.leaf(cell.clone().bg(Color::rgb8(r as u8, c as u8, 128)));
+                }
+            });
+        }
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.len()
+    };
+    run(&mut core);
+    bencher.bench_local(|| run(&mut core));
+}
+
 /// A gradient's raster, cold: the strip a side takes, three stops.
 #[divan::bench]
 fn raster_gradient_strip(bencher: divan::Bencher) {

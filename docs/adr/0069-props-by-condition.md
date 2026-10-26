@@ -5,7 +5,7 @@ date: 2026-10-26
 
 # Props by condition
 
-> **Accepted (2026-10-26); backlog C100.** Settled by a grilling round
+> **Accepted and built (2026-10-26); backlog C100.** Settled by a grilling round
 > with the user. A node carries rules — props that apply when conditions
 > hold — over its own size, the window's, the system's settings and its
 > own interaction state; the core resolves them, so a view declares a
@@ -190,6 +190,104 @@ date: 2026-10-26
     `is_hovered` / `is_pressed`, its narrow-row handling by own-size
     rules, the samples' responsive layouts by `when`, the gallery's card
     grid by `min_column`, its transitions off under `reduced_motion`.
+
+## What the building changed
+
+Steps 1–5 were built; step 6, Kit's adoption, is a pass of its own.
+
+- **Window, environment and state entries resolve as the node opens**
+  (`prepare_spec`, after the shorthands and before the easing), which is
+  where `hoverBg` always resolved, rather than at emit. Every frame's
+  build — a replayed instance's included — runs it, so a hover still
+  repaints without running a view; a state entry that sets a layout prop
+  is simply laid out with the frame. The shorthands were already applied
+  first, so "entries ahead of the list" needed no reordering.
+- **`dark` and `light` read the palette's appearance** (`Theme::
+  appearance`), not the OS's reading, so a theme an app pinned counts and
+  an unknown appearance reads as light — the palette kui draws with.
+- **`hidden` is two things.** A plain `hidden` prop (a flag, a schema row)
+  drops the node it is on: out of flow — no room, no gap — sized to
+  nothing, so it paints nothing and is hit nowhere, out of the access
+  tree and the Tab ring, its keys and retained state kept; any entry but
+  an own-size one may set it. Inside an own-size entry `hidden` is the
+  list of the keyed children the entry hides (`hidden = { "chooser" }`,
+  `p.hide("chooser")` in Rust): an entry cannot hide its own node, which
+  is what it reads, and a child cannot read its parent's size.
+- **A `fit` container is refused its `fit` by becoming `grow`**
+  (`Grow(1)`) in the axis it reads, with `query-on-fit`: the room a
+  parent offers a growing child is what "the size the parent offered"
+  is. The parent of a lazy branch is treated the same in the axes the
+  branch names.
+- **The height pass repeats whole.** When a height entry's match moves,
+  the five passes run once more from the clamps as declared (a `fit`
+  floor, a size expression); a match that moves again in that run waits
+  for the next frame.
+- **A lazy branch's room counts a growing sibling at its floor** and the
+  gaps as if the branch were in flow, so the room is the same whether the
+  branch was built, its fallback was, or neither: with a sibling's laid
+  width the decision fed back into itself and stuck either way. A branch
+  that built nothing — no fallback, or the first frame — is hidden, so it
+  takes no gap.
+- **The re-run on a crossing is the runner's.** `Core::rerun_owed`
+  (`kui_rerun_owed`, `rerunOwed()`) says a frame's layout overturned a
+  lazy decision; kui-native's window, its headless runners, `kui_run` and
+  Node's `createApp` build the frame once more before anything reads it.
+  A host's own loop asks; one that does not still gets the corrected
+  frame next, since the core owes one. A Node window, whose tree is set
+  between frames, rebuilds on the loop's next turn.
+- **Node decides by position.** A view is encoded before its frame is
+  lowered, so the encoder cannot ask the core; it builds each `<Lazy>`
+  from `lazyChoices()` — what the last layout decided for each branch the
+  last view held, in order (`Core::lazy_open_as`,
+  `hosted_lazy_choices`) — and a branch that moved is a crossing like any
+  other.
+- **A lazy branch is replayed with the instance it is in.** Its decision
+  is a read of the fill it is built in, so a kept instance replays the
+  branch while the decision holds and is filled again when it moves. A
+  branch in a host's own view has no instance to keep and is built when
+  chosen.
+- **`onQuery` arrives on first sight too**, as `onLayout` does, so a view
+  that keeps the fact has it from the first frame; `matched` lists every
+  matching entry, 0-based, though only own-size and window changes raise
+  it.
+- **What an entry may set is a box's props**: the layout fields, the
+  paint fields, `cursor`, `transition`, `slide`, `hidden`, `minColumn`.
+  A text's style props, handlers, access props, the interaction group
+  (`hoverBg`, `gradient`, …), floats, tables and anchors are refused by
+  name with `rule-prop-refused`. A list holds 64 entries, the match being
+  a 64-bit set.
+- **The match cache** keeps, per key, each window and own-size range's
+  last answer (what the band reads), the static matches and the matched
+  set (what `onQuery` and the devtools read). An entry's static
+  conditions are evaluated as the node opens — a few comparisons each,
+  cheaper than a fingerprint of the facts would be to check. A node's
+  `when` list sits behind an `Arc`, so the tree's copy of a spec and a
+  journal's share it.
+- **Under reduced motion a match change jumps** by zeroing the node's
+  transition for the frame the static match moved.
+- **`minColumn`'s lines are `crossGap` apart**, as a wrapping row's are.
+- **The Rust spelling**: the conditions are associated constants
+  (`Cond::Dark`, `Cond::Hovered`, `Cond::ReducedMotion`,
+  `Cond::MoreContrast`, …), `Cond::Hovered.is(false)` for a state
+  wanted off, `Cond::platforms(&[…])`; `NodeSpec::dir(Dir)` turns a row
+  into a column inside an entry; `NodeSpec::rules_spec()` reads the
+  group, since `NodeSpec::rules(Color)` was already a table's rules;
+  `Ui::lazy_with(LazySpec)` carries an `onQuery`. An entry's props are
+  read off what its builder does to two unlike specs (`Patch::capture`),
+  so a Lua table, a JSX object, C's `KuiValue` list and the closure all
+  land through the same builders.
+- **Teal types `when` as a list of tables**: one record cannot hold a
+  `width` that is a range and a `width` that is a sizing. The lazy form
+  has a `lazy { }` constructor typed by a `kui.Lazy` record; a bare child
+  table with a `render` works in plain Lua.
+- **C and Odin**: `KuiSpec` appends `min_column`, `hidden`, `on_query`
+  and `when` (a `KuiValue` list) inside the unreleased ABI 39; the
+  contrast setting is its own setter, `kui_env_set_contrast`, so
+  `kui_env_set_system` keeps its four arguments. Odin's field is `when_`,
+  `when` being Odin's. A `$token` threshold resolves in Lua's and JSX's
+  entries; C and Odin, and a `<Lazy>`'s `query`, take numbers.
+- **`NodeSpec` is 264 bytes**: the pointer decision 19 set, past the
+  256-byte bound the size test held, which moved with it.
 
 ## Considered options
 
