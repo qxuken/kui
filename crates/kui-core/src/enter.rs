@@ -48,6 +48,13 @@ pub struct Enter {
     /// Width, height, bg, radius, opacity, rotate and scale — the slots a
     /// keyframe stop names too.
     pub slots: Slots,
+    /// Read on an exit only: the departing node keeps its room in the
+    /// layout until its exit ends, and gives it up then, so what follows
+    /// it moves in after it has gone rather than while it goes — a
+    /// notification stack's leaving toast (backlog C110). Siblings with
+    /// `slide` glide into the room once it closes. An in-flow node's only:
+    /// a float takes no room to keep.
+    pub keep_room: bool,
 }
 
 slot_builders!(Enter);
@@ -65,6 +72,13 @@ impl Enter {
     pub fn offset(mut self, dx: f32, dy: f32) -> Self {
         self.dx = dx;
         self.dy = dy;
+        self
+    }
+
+    /// On an exit: keep the node's room until the exit ends (see the
+    /// `keep_room` field, backlog C110).
+    pub fn keep_room(mut self) -> Self {
+        self.keep_room = true;
         self
     }
 
@@ -109,6 +123,11 @@ pub fn parse_with(
         match k.as_str() {
             "dx" => e.dx = num("dx")?,
             "dy" => e.dy = num("dy")?,
+            "keepRoom" | "keep_room" => {
+                e.keep_room = v
+                    .as_bool()
+                    .ok_or_else(|| bad("keepRoom must be true or false"))?
+            }
             other => return Err(bad(&format!("unknown field {other:?}"))),
         }
     }
@@ -120,6 +139,18 @@ mod tests {
     use super::*;
     use crate::color::Color;
     use crate::spec::Sizing;
+
+    #[test]
+    fn an_exit_keeps_its_room_in_either_spelling() {
+        for k in ["keepRoom", "keep_room"] {
+            let e = parse(&Value::map([
+                ("opacity", Value::Int(0)),
+                (k, Value::Bool(true)),
+            ]));
+            assert!(e.is_ok_and(|e| e.keep_room), "{k}");
+        }
+        assert!(parse(&Value::map([("keepRoom", Value::Int(1))])).is_err());
+    }
 
     #[test]
     fn parses_prop_shaped_values() {

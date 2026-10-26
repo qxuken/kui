@@ -460,6 +460,9 @@ pub const KUI_ENTER_RADIUS: u32 = 1 << 4;
 pub const KUI_ENTER_OPACITY: u32 = 1 << 5;
 pub const KUI_ENTER_ROTATE: u32 = 1 << 6;
 pub const KUI_ENTER_SCALE: u32 = 1 << 7;
+/// On an exit only: the node keeps its room until its exit ends (backlog
+/// C110). A flag, with no field. ABI 39.
+pub const KUI_ENTER_KEEP_ROOM: u32 = 1 << 8;
 
 /// Where a node starts the first frame it is seen (`KuiSpec.enter`): the
 /// slots `set` names ease in from these values over `transition_ms`

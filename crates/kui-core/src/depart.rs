@@ -330,6 +330,12 @@ impl DepartStore {
         self.nodes
     }
 
+    /// Whether a ghost of `key` is playing — what a room kept for it
+    /// (backlog C110) lasts as long as.
+    pub(crate) fn holds(&self, key: Key) -> bool {
+        self.held.contains(&key)
+    }
+
     /// The keys of the departing roots — what a caller tests the live tree
     /// against to notice one coming back.
     pub fn keys(&self) -> impl Iterator<Item = Key> + '_ {

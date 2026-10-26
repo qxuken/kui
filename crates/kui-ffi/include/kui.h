@@ -886,6 +886,10 @@ enum {
     KUI_ENTER_OPACITY = 1u << 5,
     KUI_ENTER_ROTATE = 1u << 6, /* ABI 27 */
     KUI_ENTER_SCALE = 1u << 7,  /* ABI 27 */
+    /* On an exit only, a flag with no field: the node keeps its room in the
+     * layout until its exit ends, so what follows moves in after it has
+     * gone (backlog C110). ABI 39. */
+    KUI_ENTER_KEEP_ROOM = 1u << 8,
 };
 
 /* Where a node starts the first frame it is seen (KuiSpec.enter): the slots

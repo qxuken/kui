@@ -76,6 +76,7 @@ pub(crate) mod replay;
 pub(crate) use menu_api::MenuSurface;
 mod menubar_api;
 mod resources_api;
+mod rooms;
 mod scrolling;
 mod select_api;
 mod svg_node;
@@ -786,6 +787,9 @@ pub struct Core {
     /// down (backlog C108): that node and where the press landed, until the
     /// release, which a `menuItem` under it then clicks.
     press_opened: Option<(Key, Vec2)>,
+    /// The nodes whose exit keeps their room, and the rooms kept for the
+    /// departed ones while their ghosts play (backlog C110).
+    rooms: Vec<rooms::Room>,
     /// The data row (and, in a table, the column) focus last held in each
     /// windowed composite, by its key (ADR 0070): where Tab enters it
     /// again, unless it declares `active_index`. Pruned to the composites
@@ -1469,6 +1473,7 @@ impl Core {
             typeahead_answer: None,
             focus_group: None,
             press_opened: None,
+            rooms: Vec::new(),
             composite_rows: FxHashMap::default(),
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),
@@ -2343,6 +2348,7 @@ impl Core {
         self.sync_font_names();
         self.anim.begin_frame(self.frame_no);
         self.depart.begin_frame(self.frame_no);
+        self.rooms_begin_frame();
         // The two stores that keep state by key across a key's absence:
         // they stamp this frame onto what it declares, and cap what it
         // does not (backlog F26).

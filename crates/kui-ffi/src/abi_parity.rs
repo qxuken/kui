@@ -568,6 +568,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_KF_OFFSET,
             KUI_ENTER_ROTATE,
             KUI_ENTER_SCALE,
+            KUI_ENTER_KEEP_ROOM,
             KUI_PIVOT_X,
             KUI_PIVOT_Y,
             KUI_OP_LIFT,

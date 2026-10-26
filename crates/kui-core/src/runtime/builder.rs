@@ -769,6 +769,7 @@ impl Core {
             _ => None,
         };
         let parent = self.current();
+        self.rooms_before_push(parent, key);
         let idx = self.tree.push(parent, key, self.origin, spec, content);
         self.stack.push(idx);
         self.counters.push(0);
@@ -797,6 +798,7 @@ impl Core {
     #[inline]
     fn push_leaf(&mut self, key: Key, spec: NodeSpec, content: NodeContent) {
         let parent = self.current();
+        self.rooms_before_push(parent, key);
         let idx = self.tree.push(parent, key, self.origin, spec, content);
         // Read off the pushed spec rather than before the push, so nothing
         // is held across `Tree::push` on the path every leaf takes.
@@ -911,6 +913,8 @@ impl Core {
             }
         }
         if self.stack.len() > 1 {
+            // A room kept after the node's last child (backlog C110).
+            self.rooms_before_close(self.current());
             if self.keeping() {
                 self.keep_op(replay::Op::Close);
             }
@@ -1326,6 +1330,7 @@ impl Core {
                 .add(content, &style, &sess.resources, &mut sess.fonts)
         };
         let parent = self.current();
+        self.rooms_before_push(parent, key);
         self.tree.push(
             parent,
             key,
@@ -2223,6 +2228,7 @@ impl Core {
                 .add_rich(spans, &base, &sess.resources, &mut sess.fonts)
         };
         let parent = self.current();
+        self.rooms_before_push(parent, key);
         self.tree.push(
             parent,
             key,

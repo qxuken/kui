@@ -62,6 +62,9 @@ pub(crate) fn enter_of(e: &KuiEnter) -> Enter {
     if e.set & KUI_ENTER_SCALE != 0 {
         en = en.scale(e.scale);
     }
+    if e.set & KUI_ENTER_KEEP_ROOM != 0 {
+        en = en.keep_room();
+    }
     en
 }
 

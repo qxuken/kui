@@ -620,6 +620,9 @@ impl Core {
         self.emit_frame();
         self.span_end(span);
         self.building = false;
+        // This frame's departures are ghosts now: the rooms the next build
+        // keeps for them, and for whatever may depart next (backlog C110).
+        self.settle_rooms();
         self.replay_finish_frame();
         self.submenu_frame_end();
         // An exit named for a removal is for this frame's departures,

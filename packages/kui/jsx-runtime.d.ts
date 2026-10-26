@@ -208,6 +208,10 @@ export interface EnterProp {
   rotate?: number;
   /** A uniform scale about the node's pivot: `{ scale: 0.8 }` settles in. */
   scale?: number;
+  /** On an `exit` only: the node keeps its room until its exit ends, then
+   *  gives it up, so what follows moves in after it has gone (backlog
+   *  C110) — a toast leaving a stack. */
+  keepRoom?: boolean;
 }
 
 /** A gradient painted over a box's `bg`, under its border and children
