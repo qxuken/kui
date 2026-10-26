@@ -291,17 +291,33 @@ end
 
 
 
-local function area(plot, pts, h, bg, opacity)
+
+
+
+
+
+
+
+
+local function area(plot, pts, h, bg, opacity, ox)
    local n = #pts
+   local start = pts[1]
    local i = 1
    while i < n do
       local j = math.min(i + 5, n)
-      local poly = {}
-      for k = i, j do poly[k - i + 1] = pts[k] end
-      poly[#poly + 1] = { pts[j][1], h }
-      poly[#poly + 1] = { pts[i][1], h }
+      local stop = pts[j]
+      if j < n then
+         local x = math.floor(stop[1] + ox + 0.5) - ox
+         local prev = j - 1 == i and start or pts[j - 1]
+         if x > prev[1] and x < pts[j + 1][1] then stop = { x, stop[2] } end
+      end
+      local poly = { start }
+      for k = i + 1, j - 1 do poly[k - i + 1] = pts[k] end
+      poly[#poly + 1] = stop
+      poly[#poly + 1] = { stop[1], h }
+      poly[#poly + 1] = { start[1], h }
       plot[#plot + 1] = polygon({ points = poly, bg = bg, opacity = opacity })
-      i = j
+      start, i = stop, j
    end
 end
 
@@ -664,7 +680,7 @@ text(tick_label[i], { size = 10, family = "$kitData", color = faint, max_lines =
             elseif own then
                fill, opacity = color, skin.AREA_ALPHA
             end
-            area(plot, pts, h, fill, opacity)
+            area(plot, pts, h, fill, opacity, r and r.x or 0)
          end
          if #pts >= 2 then
             plot[#plot + 1] = line({ points = pts, width = 1.5, color = color })

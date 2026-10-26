@@ -284,23 +284,39 @@ end
 
 -- The area under a line through `pts` down to `h`, as polygons: a
 -- polygon takes eight points, so each is six of the line's over the
--- baseline, the next starting where it ended. A path through them all
--- was rasterized again on every tick of a live chart, whole: 3–4 ms a
--- frame for 300 points at scale 2, where polygons cost a quad each.
--- (C96 made a path's raster linear in its edges, and a single path was
--- tried again: an area as wide as the plot still rasterizes its whole
--- mask on every tick, 2-12 ms in the bench where polygons are quads.)
-local function area(plot: kui.Props, pts: {{number}}, h: number, bg: kui.Color, opacity: number)
+-- baseline, the next starting where it ended. A path through them all is
+-- rasterized again on every tick of a live chart, whole: with C96's
+-- linear raster still about 0.6 ms a frame more for 300 points and 7 ms
+-- for 100,000 rows (two points a pixel), where polygons cost a quad each.
+--
+-- Two polygons meeting along an edge each ramp it over a pixel, so a
+-- pixel on it was covered three quarters, not whole: a faint seam at
+-- every chunk's end, sliding as a live window moved. The point a chunk
+-- ends on is moved to the nearest whole pixel of the window, where the
+-- ramp gives each pixel to one side whole — under half a pixel, beneath
+-- the line's own width. `ox` is the plot's left edge in the window. (A
+-- whole logical pixel is a whole device one at scale 1 and 2; Lua is not
+-- told the scale, so at 1.5 the seams are fainter, not gone.) A point
+-- with a neighbour within half a pixel stays where it is.
+local function area(plot: kui.Props, pts: {{number}}, h: number, bg: kui.Color, opacity: number, ox: number)
   local n = #pts
+  local start = pts[1]
   local i = 1
   while i < n do
     local j = math.min(i + 5, n)
-    local poly: {{number}} = {}
-    for k = i, j do poly[k - i + 1] = pts[k] end
-    poly[#poly + 1] = { pts[j][1], h }
-    poly[#poly + 1] = { pts[i][1], h }
+    local stop = pts[j]
+    if j < n then
+      local x = math.floor(stop[1] + ox + 0.5) - ox
+      local prev = j - 1 == i and start or pts[j - 1]
+      if x > prev[1] and x < pts[j + 1][1] then stop = { x, stop[2] } end
+    end
+    local poly: {{number}} = { start }
+    for k = i + 1, j - 1 do poly[k - i + 1] = pts[k] end
+    poly[#poly + 1] = stop
+    poly[#poly + 1] = { stop[1], h }
+    poly[#poly + 1] = { start[1], h }
     plot[#plot + 1] = polygon { points = poly, bg = bg, opacity = opacity }
-    i = j
+    start, i = stop, j
   end
 end
 
@@ -663,7 +679,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       elseif own then
         fill, opacity = color, skin.AREA_ALPHA
       end
-      area(plot, pts, h, fill, opacity)
+      area(plot, pts, h, fill, opacity, r and r.x or 0)
     end
     if #pts >= 2 then
       plot[#plot + 1] = line { points = pts, width = 1.5, color = color }

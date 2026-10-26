@@ -1439,6 +1439,11 @@ fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
         (left - line.x).abs() <= 2.0 && (right - (line.x + line.w)).abs() <= 2.0,
         "the area spans the line: {left}..{right} vs {line:?}"
     );
+    // Two polygons each ramp the edge they share, so a pixel on it is
+    // covered three quarters and the fill shows a seam there: every chunk
+    // but the first starts on a whole pixel (its box is a pixel out).
+    let off: Vec<f32> = polys.iter().map(|p| p.rect.x + 1.0).filter(|x| *x > left + 1.5 && (x - x.round()).abs() > 1e-3).collect();
+    assert!(off.is_empty(), "chunks start between pixels: {off:?}");
 }
 
 #[test]
