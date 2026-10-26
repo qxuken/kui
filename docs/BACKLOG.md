@@ -3705,6 +3705,39 @@ with `--update`, a fixed environment with bundled fonts, `--filter`,
 `--watch`, `--reporter junit`; the samples and the task list moved onto
 it.
 
+### `.` C124 — An under-way progress track floods the Events tab with `layout`
+
+**Found** by the user in the Kit gallery with the devtools open
+(2026-10-26): the Events tab held tens of thousands of `layout ext2 track
+{kit: progress.layout…}` rows, one a frame, from Kit's `progress` (its
+under-way track declares `on_layout` to size its keyframe loop by the
+track's width, `addons/kit/src/data.tl`).
+
+**Ruled out (2026-10-26)** — the core does not fire `onLayout` on a frame
+that left the rect alone: `emit_layout_events` compares the rect with
+the last frame's for the key and fires only on a change or a first
+sight, and the frames an animation owes run layout like any other.
+Pinned by `a_still_track_is_silent_while_its_bar_and_its_sibling_animate`
+(`crates/kui-core/tests/layout_events.rs`: a clipped track, a keyframe
+loop sliding its bar, a sibling easing its width, 120 frames at scale 2,
+no event after the first). Not reproduced headlessly either: Kit's
+progress under way, alone and several to a page, with the devtools on and
+the events tab shown (docked right, bottom, in a window), at scale 1 and
+2, fires once in 30–60 frames (a probe on `LuaRig`); and the gallery
+itself under `kui run --devtools --headless` on every page, Live on and
+off, fires the tracks once each in 5 s, the one node that fires every
+frame being the live line chart's plot (`line_chart.layout`), whose x
+eases while its axis labels' width springs — a real move. So in the
+reported run the track's laid rect changed every frame, or the track was
+missing from the frame before (a key not seen the frame before fires
+again), in a way only a window shows.
+
+**Do.** Reproduce in the windowed gallery with a debug line in
+`emit_layout_events` (frame number, key, rect, the rect and frame it last
+had): a rect that moves names what moves it (a scroller's glide that
+never settles, a split, a sibling); a `prev` from two frames back names
+a frame that dropped the node. Fix that, in the core if it is the core's.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into

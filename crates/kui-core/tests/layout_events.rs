@@ -248,3 +248,56 @@ fn layout_of_reads_the_last_frames_rect_without_the_event() {
     ui.finish();
     assert_eq!(core.layout_of(key), None);
 }
+
+/// A still node's `on_layout` is silent on every frame that leaves its rect
+/// alone, however many of them an animation inside it or beside it asks
+/// for (backlog C124): Kit's under-way progress track, a keyframe loop
+/// sliding a bar across it under `clip`, a sibling easing its width, and
+/// the frames those owe one after another.
+#[test]
+fn a_still_track_is_silent_while_its_bar_and_its_sibling_animate() {
+    use kui_core::keyframes::Keyframe;
+    let build = |core: &mut Core, now: f64, wide: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(Size::new(400.0, 300.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill().pad(20.0));
+        ui.leaf_keyed(
+            "spinner",
+            NodeSpec::row()
+                .width(if wide { 200.0 } else { 40.0 })
+                .height(10.0)
+                .transition_with(Transition::ms(400.0).easing(Easing::Linear)),
+        );
+        ui.with_keyed(
+            "track",
+            NodeSpec::row()
+                .grow_width()
+                .height(4.0)
+                .clip()
+                .on_layout("track"),
+            |ui| {
+                ui.leaf(
+                    NodeSpec::row()
+                        .width(100.0)
+                        .grow_height()
+                        .transition_with(Transition::ms(1400.0).easing(Easing::Linear))
+                        .keyframes(vec![
+                            Keyframe::default().dx(-100.0),
+                            Keyframe::default().dx(360.0),
+                        ]),
+                );
+            },
+        );
+        ui.finish();
+    };
+    let mut core = Core::new();
+    build(&mut core, 0.0, false);
+    assert_eq!(rects(&core.take_pending_events()).len(), 1, "first sight");
+    let mut fired = 0;
+    for f in 1..=120 {
+        build(&mut core, f as f64 / 60.0, f > 30);
+        assert!(core.animating(), "the loop keeps frames coming");
+        fired += rects(&core.take_pending_events()).len();
+    }
+    assert_eq!(fired, 0, "the track never moved, so it never reported");
+}
