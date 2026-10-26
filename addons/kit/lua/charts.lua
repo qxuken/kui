@@ -52,16 +52,6 @@ local function col(ch, name)
    return c
 end
 
-
-local function lower(xs, t)
-   local lo, hi = 1, #xs + 1
-   while lo < hi do
-      local mid = (lo + hi) // 2
-      if xs[mid] < t then lo = mid + 1 else hi = mid end
-   end
-   return lo
-end
-
 local function nice(raw)
    if raw <= 0 then return 1 end
    local p = 10 ^ math.floor(math.log(raw, 10))
@@ -182,6 +172,9 @@ end
 
 
 
+
+
+
 local function area(plot, pts, h, bg, opacity)
    local n = #pts
    local i = 1
@@ -228,29 +221,110 @@ function M.sparkline(c, p)
    return column(box)
 end
 
+
+local function num(v)
+   if type(v) == "number" then return v end
+   return tonumber(v)
+end
+
+
+
+local function lower_row(ch, field, lo, hi, t)
+   while lo < hi do
+      local mid = (lo + hi) // 2
+      local x = num(ch:get(mid, field)) or 0
+      if x < t then lo = mid + 1 else hi = mid end
+   end
+   return lo
+end
+
+
+
+
+
+
+
+
+
+local function reduced_runs(ch, rx, field, from, to,
+   buckets, x0, x1, y0, y1,
+   w, h)
+   local runs = {}
+   if to <= from then return runs end
+   local ry = ch:reduce(field, from, to, buckets)
+   local sx = w / math.max(x1 - x0, 1e-12)
+   local sy = h / math.max(y1 - y0, 1e-12)
+   local base = h + y0 * sy
+   local run = {}
+   local n = 0
+
+
+   local xfs, xls, xfr, xlr = rx.first, rx.last, rx.first_row, rx.last_row
+   local yfr, ymnr, ymxr, ylr = ry.first_row, ry.min_row, ry.max_row, ry.last_row
+   local yf, ymn, ymx, yl = ry.first, ry.min, ry.max, ry.last
+   for i = 1, #yf do
+      local fr, lr = xfr[i], xlr[i]
+      local xa, xb = xfs[i], xls[i]
+      local k = lr > fr and (xb - xa) / (lr - fr) or 0
+
+
+      local r1, v1 = yfr[i], yf[i]
+      local r2, v2, r3, v3 = ymnr[i], ymn[i], ymxr[i], ymx[i]
+      if r3 < r2 then r2, v2, r3, v3 = r3, v3, r2, v2 end
+      local r4, v4 = ylr[i], yl[i]
+      for j = 1, 4 do
+         local row, v
+         if j == 1 then row, v = r1, v1
+         elseif j == 2 then row, v = r2, v2
+         elseif j == 3 then row, v = r3, v3
+         else row, v = r4, v4 end
+         local again = (j > 1 and row == r1) or (j > 2 and row == r2) or (j > 3 and row == r3)
+         if not again then
+            if v ~= v then
+
+               if n >= 2 then runs[#runs + 1] = run end
+               run, n = {}, 0
+            else
+               n = n + 1
+               run[n] = { (xa + (row - fr) * k - x0) * sx, base - v * sy }
+            end
+         end
+      end
+   end
+   if n >= 2 then runs[#runs + 1] = run end
+   return runs
+end
+
 function M.line_chart(c, p)
    local ch = p.data
    local env = c.env
    local h = (p.height or 160)
    local series = (p.series or {})
-   local xs = col(ch, p.x)
-   local n = #xs
+   local xf = p.x
+   local n = ch and #ch or 0
    local r = env.layout_of("plot")
    local w = r and r.w or 400
 
-   local from, to = 1, n
-   local x0, x1 = xs[1] or 0, xs[n] or 1
+
+   local from, to = 0, n
+   local x0 = n > 0 and (num(ch:get(0, xf)) or 0) or 0
+   local x1 = n > 0 and (num(ch:get(n - 1, xf)) or 1) or 1
    if p.window and n > 0 then
       x0 = x1 - (p.window)
-      from = lower(xs, x0)
+      from = lower_row(ch, xf, 0, n, x0)
    end
    if x1 <= x0 then x1 = x0 + 1 end
+
    local lo, hi = math.huge, -math.huge
    for _, s in ipairs(series) do
-      local a, b = range_of(col(ch, s.field), from, to)
-      if a < lo then lo = a end
-      if b > hi then hi = b end
+      if to > from then
+         local whole = ch:reduce(s.field, from, to, 1)
+         local a, b = whole.min[1], whole.max[1]
+         if a and a == a and a < lo then lo = a end
+         if b and b == b and b > hi then hi = b end
+      end
    end
+   if lo == hi then lo, hi = lo - 1, hi + 1 end
    if lo > hi then lo, hi = 0, 1 end
    if lo > 0 and lo < (hi - lo) then lo = 0 end
    local step = nice((hi - lo) / 4)
@@ -289,40 +363,44 @@ float = { anchor = "parent", clip = true, dx = left, dy = 0 },
 ctx.data(c, tick_label[i], { size = 10, color = ref(c, "faint"), max_lines = 1 }), })
    end
    local legend = { gap = 12, cross_align = "center" }
+
+   local buckets = math.max(1, math.floor(w / 2))
+   local rx = to > from and ch:reduce(xf, from, to, buckets) or nil
    for k, s in ipairs(series) do
-      local ys = col(ch, s.field)
       local color = (s.color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
-      local pts = points(xs, ys, from, to, x0, x1, lo, hi, w, h)
-      if k == 1 and p.area == true and #pts >= 2 then
+      local runs = rx and reduced_runs(ch, rx, s.field, from, to, buckets, x0, x1, lo, hi, w, h) or {}
+      for _, pts in ipairs(runs) do
+         if k == 1 and p.area == true and #pts >= 2 then
 
 
 
-         local fill = "$kitArea" .. ((k - 1) % 6 + 1)
-         local opacity = nil
-         local own = s.color
-         if math.type(own) == "integer" then
-            fill = skin.faded(own, skin.AREA_ALPHA)
-         elseif own then
-            fill, opacity = color, skin.AREA_ALPHA
+            local fill = "$kitArea" .. ((k - 1) % 6 + 1)
+            local opacity = nil
+            local own = s.color
+            if math.type(own) == "integer" then
+               fill = skin.faded(own, skin.AREA_ALPHA)
+            elseif own then
+               fill, opacity = color, skin.AREA_ALPHA
+            end
+            area(plot, pts, h, fill, opacity)
          end
-         area(plot, pts, h, fill, opacity)
-      end
-      if #pts >= 2 then
-         plot[#plot + 1] = line({ points = pts, width = 1.5, color = color })
+         if #pts >= 2 then
+            plot[#plot + 1] = line({ points = pts, width = 1.5, color = color })
+         end
       end
       legend[#legend + 1] = row({ gap = 4, cross_align = "center",
 column({ width = 10, height = 2, bg = color }),
 ctx.muted(c, (s.name or s.field)), })
    end
 
-   if p.on_hover and to >= from then
-      local bands = math.min(to - from + 1, 64)
+   if p.on_hover and to > from then
+      local bands = math.min(to - from, 64)
       local bw = w / bands
       local hover = { width = "grow", height = h, float = { anchor = "parent", clip = true } }
       for b = 0, bands - 1 do
-         local mid = from + math.floor((b + 0.5) / bands * (to - from + 1))
+         local mid = from + math.floor((b + 0.5) / bands * (to - from))
          hover[#hover + 1] = column({ key = "b" .. b, width = bw, height = h, hoverable = true,
-on_hover = act(c, "line_chart.hover", { row = mid - 1 }), })
+on_hover = act(c, "line_chart.hover", { row = mid }), })
       end
       plot[#plot + 1] = row(hover)
    end

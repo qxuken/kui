@@ -51,16 +51,6 @@ local function col(ch: kui.Channel, name: string): {number}
   return c
 end
 
--- The first 1-based index whose x is at least `t` (x sorted ascending).
-local function lower(xs: {number}, t: number): integer
-  local lo, hi = 1, #xs + 1
-  while lo < hi do
-    local mid = (lo + hi) // 2
-    if xs[mid] < t then lo = mid + 1 else hi = mid end
-  end
-  return lo
-end
-
 local function nice(raw: number): number
   if raw <= 0 then return 1 end
   local p = 10 ^ math.floor(math.log(raw, 10))
@@ -181,6 +171,9 @@ end
 -- baseline, the next starting where it ended. A path through them all
 -- was rasterized again on every tick of a live chart, whole: 3–4 ms a
 -- frame for 300 points at scale 2, where polygons cost a quad each.
+-- (C96 made a path's raster linear in its edges, and a single path was
+-- tried again: an area as wide as the plot still rasterizes its whole
+-- mask on every tick, 2-12 ms in the bench where polygons are quads.)
 local function area(plot: kui.Props, pts: {{number}}, h: number, bg: kui.Color, opacity: number)
   local n = #pts
   local i = 1
@@ -227,29 +220,110 @@ function M.sparkline(c: Ctx, p: P): kui.Node
   return column(box)
 end
 
+-- A number a channel cell holds, nil for none.
+local function num(v: any): number
+  if v is number then return v end
+  return tonumber(v)
+end
+
+-- The first row in [lo, hi) whose x is at least `t`, x sorted ascending,
+-- by `ch:get`: the x column never crosses into Lua whole.
+local function lower_row(ch: kui.Channel, field: string, lo: integer, hi: integer, t: number): integer
+  while lo < hi do
+    local mid = (lo + hi) // 2
+    local x = num(ch:get(mid, field)) or 0
+    if x < t then lo = mid + 1 else hi = mid end
+  end
+  return lo
+end
+
+-- Series `field` over rows [from, to) as lines in a w×h plot, from the
+-- channel's own reduction (C95): a bucket of rows per two px, and in each
+-- the first, the least and the greatest in row order, and the last — the
+-- line every row would draw. x for a row is placed along its bucket from
+-- the x reduction's first and last (the buckets are equal row counts, not
+-- equal x spans, so rows evenly spaced in x land where they would). A
+-- value that is not a number (NaN) breaks the line: the result is a list
+-- of runs, each two points or more.
+local function reduced_runs(ch: kui.Channel, rx: kui.ChannelReduction, field: string, from: integer, to: integer,
+                            buckets: integer, x0: number, x1: number, y0: number, y1: number,
+                            w: number, h: number): {{{number}}}
+  local runs: {{{number}}} = {}
+  if to <= from then return runs end
+  local ry = ch:reduce(field, from, to, buckets)
+  local sx = w / math.max(x1 - x0, 1e-12)
+  local sy = h / math.max(y1 - y0, 1e-12)
+  local base = h + y0 * sy
+  local run: {{number}} = {}
+  local n = 0
+  -- One loop, no closure, table or sort a bucket: it runs on every tick
+  -- of a live chart, a bucket per two px (or a row, for fewer rows).
+  local xfs, xls, xfr, xlr = rx.first, rx.last, rx.first_row, rx.last_row
+  local yfr, ymnr, ymxr, ylr = ry.first_row, ry.min_row, ry.max_row, ry.last_row
+  local yf, ymn, ymx, yl = ry.first, ry.min, ry.max, ry.last
+  for i = 1, #yf do
+    local fr, lr = xfr[i], xlr[i]
+    local xa, xb = xfs[i], xls[i]
+    local k = lr > fr and (xb - xa) / (lr - fr) or 0
+    -- first, then the least and the greatest in row order, then last;
+    -- a row met again (a bucket of one row) is not drawn twice.
+    local r1, v1 = yfr[i], yf[i]
+    local r2, v2, r3, v3 = ymnr[i], ymn[i], ymxr[i], ymx[i]
+    if r3 < r2 then r2, v2, r3, v3 = r3, v3, r2, v2 end
+    local r4, v4 = ylr[i], yl[i]
+    for j = 1, 4 do
+      local row, v: integer, number
+      if j == 1 then row, v = r1, v1
+      elseif j == 2 then row, v = r2, v2
+      elseif j == 3 then row, v = r3, v3
+      else row, v = r4, v4 end
+      local again = (j > 1 and row == r1) or (j > 2 and row == r2) or (j > 3 and row == r3)
+      if not again then
+        if v ~= v then
+          -- Not a number: the line breaks here.
+          if n >= 2 then runs[#runs + 1] = run end
+          run, n = {}, 0
+        else
+          n = n + 1
+          run[n] = { (xa + (row - fr) * k - x0) * sx, base - v * sy }
+        end
+      end
+    end
+  end
+  if n >= 2 then runs[#runs + 1] = run end
+  return runs
+end
+
 function M.line_chart(c: Ctx, p: P): kui.Node
   local ch = p.data as kui.Channel
   local env = c.env
   local h = (p.height or 160) as number
   local series = (p.series or {}) as {P}
-  local xs = col(ch, p.x as string)
-  local n = #xs
+  local xf = p.x as string
+  local n = ch and #ch or 0
   local r = env.layout_of("plot")
   local w = r and r.w or 400
-  -- The x window: everything, or the last `window` of it.
-  local from, to = 1, n
-  local x0, x1 = xs[1] or 0, xs[n] or 1
+  -- The x window: everything, or the last `window` of it, found by a
+  -- binary search over the channel (rows [from, to), 0-based).
+  local from, to = 0, n
+  local x0 = n > 0 and (num(ch:get(0, xf)) or 0) or 0
+  local x1 = n > 0 and (num(ch:get(n - 1, xf)) or 1) or 1
   if p.window and n > 0 then
     x0 = x1 - (p.window as number)
-    from = lower(xs, x0)
+    from = lower_row(ch, xf, 0, n, x0)
   end
   if x1 <= x0 then x1 = x0 + 1 end
+  -- The value range: one bucket over the window per series.
   local lo, hi = math.huge, -math.huge
   for _, s in ipairs(series) do
-    local a, b = range_of(col(ch, s.field as string), from, to)
-    if a < lo then lo = a end
-    if b > hi then hi = b end
+    if to > from then
+      local whole = ch:reduce(s.field as string, from, to, 1)
+      local a, b = whole.min[1], whole.max[1]
+      if a and a == a and a < lo then lo = a end
+      if b and b == b and b > hi then hi = b end
+    end
   end
+  if lo == hi then lo, hi = lo - 1, hi + 1 end
   if lo > hi then lo, hi = 0, 1 end
   if lo > 0 and lo < (hi - lo) then lo = 0 end
   local step = nice((hi - lo) / 4)
@@ -288,10 +362,13 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       ctx.data(c, tick_label[i], { size = 10, color = ref(c, "faint"), max_lines = 1 }) }
   end
   local legend: kui.Props = { gap = 12, cross_align = "center" }
+  -- A bucket per two px of plot; the x reduction shared by every series.
+  local buckets = math.max(1, math.floor(w / 2))
+  local rx = to > from and ch:reduce(xf, from, to, buckets) or nil
   for k, s in ipairs(series) do
-    local ys = col(ch, s.field as string)
     local color: kui.Color = (s.color as kui.Color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
-    local pts = points(xs, ys, from, to, x0, x1, lo, hi, w, h)
+    local runs = rx and reduced_runs(ch, rx, s.field as string, from, to, buckets, x0, x1, lo, hi, w, h) or {}
+    for _, pts in ipairs(runs) do
     if k == 1 and p.area == true and #pts >= 2 then
       -- The series' colour faded: a skin's own as its area token, a
       -- host's integer with the alpha folded in, anything else (a token
@@ -309,19 +386,20 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     if #pts >= 2 then
       plot[#plot + 1] = line { points = pts, width = 1.5, color = color }
     end
+    end
     legend[#legend + 1] = row { gap = 4, cross_align = "center",
       column { width = 10, height = 2, bg = color },
       ctx.muted(c, (s.name or s.field) as string) }
   end
   -- Hover bands: a few dozen across the plot, each naming its rows' middle.
-  if p.on_hover and to >= from then
-    local bands = math.min(to - from + 1, 64)
+  if p.on_hover and to > from then
+    local bands = math.min(to - from, 64)
     local bw = w / bands
     local hover: kui.Props = { width = "grow", height = h, float = { anchor = "parent", clip = true } }
     for b = 0, bands - 1 do
-      local mid = from + math.floor((b + 0.5) / bands * (to - from + 1))
+      local mid = from + math.floor((b + 0.5) / bands * (to - from))
       hover[#hover + 1] = column { key = "b" .. b, width = bw, height = h, hoverable = true,
-        on_hover = act(c, "line_chart.hover", { row = mid - 1 }) }
+        on_hover = act(c, "line_chart.hover", { row = mid }) }
     end
     plot[#plot + 1] = row(hover)
   end

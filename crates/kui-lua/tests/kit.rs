@@ -1403,8 +1403,9 @@ fn a_following_log_stays_at_its_end_the_frame_its_box_changes() {
 #[test]
 fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
     // The area was one path through every point, rasterized again on every
-    // tick: 3–4 ms a frame for 300 points. Polygons of eight points each
-    // cost a quad apiece, and together they cover the plot's width.
+    // tick. Polygons of eight points each cost a quad apiece, and together
+    // they cover the plot's width; a single path, linear since C96, still
+    // rasterizes the plot-wide mask each tick and benched slower.
     let (mut core, w) = lua_app(
         r#"
         local cols = { t = {}, a = {} }
@@ -1433,7 +1434,7 @@ fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
     let right = polys.iter().map(|p| p.rect.x + p.rect.w).fold(f32::MIN, f32::max);
     assert!(
         (left - line.x).abs() <= 2.0 && (right - (line.x + line.w)).abs() <= 2.0,
-        "the polygons span the line: {left}..{right} vs {line:?}"
+        "the area spans the line: {left}..{right} vs {line:?}"
     );
 }
 
@@ -2346,4 +2347,34 @@ fn under_reduced_motion_a_switch_knob_jumps() {
     let last = xs[xs.len() - 1];
     assert!(last > before + 10.0, "it went across: {xs:?}");
     assert!(xs.iter().all(|x| (*x - last).abs() < 0.5), "in one frame, no steps between: {xs:?}");
+}
+
+#[test]
+fn a_line_chart_breaks_its_line_at_a_gap_and_keeps_its_window() {
+    // The line comes from the channel's reduction (C95) now: a value that
+    // is no number breaks it, and the window's start is a binary search.
+    let (core, w) = lua_app(
+        r#"
+        local t, a = {}, {}
+        for i = 1, 200 do t[i] = i; a[i] = 50 + 30 * math.sin(i / 9) end
+        a[120] = 0 / 0
+        local ch = channel({ t = t, a = a })
+        function view(env)
+          return column { width = 600, height = "grow",
+            component("kit/line_chart", { data = ch, x = "t", window = 150, height = 160,
+              series = { { field = "a", name = "A" } } }) }
+        end
+        "#,
+        4,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+    let runs: Vec<kui_core::Rect> = core
+        .nodes()
+        .iter()
+        .filter(|n| n.kind == kui_core::NodeKind::Line && n.rect.w > 40.0 && n.rect.h > 20.0)
+        .map(|n| n.rect)
+        .collect();
+    assert_eq!(runs.len(), 2, "two runs either side of the gap: {runs:?}");
+    let (a, b) = (runs[0], runs[1]);
+    assert!(a.x + a.w <= b.x + 1.0 || b.x + b.w <= a.x + 1.0, "side by side, not overlapping: {runs:?}");
 }
