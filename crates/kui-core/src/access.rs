@@ -624,6 +624,23 @@ pub struct AccessNode {
     /// the count on the container and the ordinal on the item, unlike
     /// ARIA's `aria-setsize` on every item; this follows AccessKit.
     pub set_size: Option<usize>,
+    /// Where a node sits in a table (ADR 0070), zero-based, as AccessKit
+    /// counts: a cell's and a row's `row_index` (a windowed table's or
+    /// list's row its data `index`), a cell's `column_index` (its place in
+    /// its row — which is what links a cell to the `columnHeader` above
+    /// it, AccessKit carrying no relation for headers), and on the table
+    /// `row_count` (a windowed one's `rowCount`) and `column_count` (its
+    /// longest row). A `list` gets the rows half: its items' `row_index`,
+    /// its own `row_count`, so a windowed list reads "row 120 of 4,000"
+    /// with no `label`. Derived, never declared.
+    pub row_index: Option<usize>,
+    pub column_index: Option<usize>,
+    pub row_count: Option<usize>,
+    pub column_count: Option<usize>,
+    /// A table one of whose cells takes focus, and its rows and cells: a
+    /// composite, which a reader is told is a grid rather than a static
+    /// table (ADR 0070).
+    pub cells_focus: bool,
     /// `valueNow` / `valueMin` / `valueMax` for a slider. What the
     /// position *reads as* is `valueText`, which lands in `value` above
     /// because the platform has one string slot for both.
@@ -685,6 +702,11 @@ impl AccessNode {
             ("expanded", Value::opt_bool(self.expanded)),
             ("pos_in_set", Value::opt_usize(self.pos_in_set)),
             ("set_size", Value::opt_usize(self.set_size)),
+            ("row_index", Value::opt_usize(self.row_index)),
+            ("column_index", Value::opt_usize(self.column_index)),
+            ("row_count", Value::opt_usize(self.row_count)),
+            ("column_count", Value::opt_usize(self.column_count)),
+            ("cells_focus", Value::Bool(self.cells_focus)),
             (
                 "orientation",
                 Value::opt(self.orientation, |o| Value::str(o.name())),
@@ -1359,6 +1381,11 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             orientation: crate::composite::orientation(tree, i),
             pos_in_set: None,
             set_size: None,
+            row_index: None,
+            column_index: None,
+            row_count: None,
+            column_count: None,
+            cells_focus: false,
             number: None,
             min: None,
             max: None,
@@ -1496,6 +1523,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
         i += 1;
     }
     set_positions(tree, &mut out);
+    table_positions(tree, &mut out);
     out.hash = hash_of(&out);
     out
 }
@@ -1541,6 +1569,100 @@ fn set_positions(tree: &Tree, out: &mut AccessTree) {
                 n.pos_in_set = Some(pos);
             }
         }
+    }
+}
+
+/// Rows and columns (ADR 0070): every table's rows and cells placed by
+/// index, its counts on it, and a list's rows numbered — by their data
+/// `index` and `rowCount` where the composite is windowed, so a reader
+/// says "row 120 of 4,000" of a list that built forty rows. One walk per
+/// table or list, on the frame's access build, and nothing on a frame
+/// with neither.
+fn table_positions(tree: &Tree, out: &mut AccessTree) {
+    use crate::composite::{data_index, items, role, row_count, row_of};
+    let lists: Vec<(usize, Role)> = (0..tree.len())
+        .filter_map(|i| match role(tree, i)? {
+            r @ (Role::Table | Role::List) => Some((i, r)),
+            _ => None,
+        })
+        .collect();
+    if lists.is_empty() {
+        return;
+    }
+    let at: rustc_hash::FxHashMap<Key, usize> = out
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(n, node)| (node.key, n))
+        .collect();
+    let mut set = |i: usize, f: &mut dyn FnMut(&mut AccessNode)| {
+        if let Some(&n) = at.get(&tree.keys[i]) {
+            f(&mut out.nodes[n]);
+        }
+    };
+    let mut cells: Vec<usize> = Vec::new();
+    for (c, kind) in lists {
+        if kind == Role::List {
+            items(tree, c, Role::ListItem, &mut cells);
+            if cells.is_empty() {
+                continue;
+            }
+            let count = row_count(tree, cells[0], c).map_or(cells.len(), |n| n as usize);
+            let windowed = cells.iter().any(|&j| data_index(tree, j).is_some());
+            for (k, &j) in cells.iter().enumerate() {
+                let index = data_index(tree, j).map_or(k, |x| x as usize);
+                set(j, &mut |n| {
+                    n.row_index = Some(index);
+                    // A windowed list's "3 of 7" is the data's too.
+                    if windowed {
+                        n.pos_in_set = Some(index);
+                    }
+                });
+            }
+            set(c, &mut |n| {
+                n.row_count = Some(count);
+                if windowed {
+                    n.set_size = Some(count);
+                }
+            });
+            continue;
+        }
+        items(tree, c, Role::Cell, &mut cells);
+        let focus = cells.iter().any(|&j| focusable(tree, j));
+        let mut rows: Vec<(usize, Vec<usize>)> = Vec::new();
+        for &j in &cells {
+            let r = row_of(tree, c, j);
+            match rows.last_mut() {
+                Some((at, row)) if *at == r => row.push(j),
+                _ => rows.push((r, vec![j])),
+            }
+        }
+        let columns = rows.iter().map(|(_, r)| r.len()).max().unwrap_or(0);
+        let count = rows
+            .first()
+            .and_then(|&(r, _)| row_count(tree, r, c))
+            .map_or(rows.len(), |n| n as usize);
+        for (k, (r, row)) in rows.iter().enumerate() {
+            let index = data_index(tree, *r).map_or(k, |x| x as usize);
+            if *r != c {
+                set(*r, &mut |n| {
+                    n.row_index = Some(index);
+                    n.cells_focus = focus;
+                });
+            }
+            for (col, &j) in row.iter().enumerate() {
+                set(j, &mut |n| {
+                    n.row_index = Some(index);
+                    n.column_index = Some(col);
+                    n.cells_focus = focus;
+                });
+            }
+        }
+        set(c, &mut |n| {
+            n.row_count = Some(count);
+            n.column_count = Some(columns);
+            n.cells_focus = focus;
+        });
     }
 }
 
@@ -1948,6 +2070,10 @@ fn hash_of(tree: &AccessTree) -> u64 {
         mix(&[n.expanded.map_or(2, |c| c as u8)]);
         mix(&n.pos_in_set.unwrap_or(usize::MAX).to_le_bytes());
         mix(&n.set_size.unwrap_or(usize::MAX).to_le_bytes());
+        for v in [n.row_index, n.column_index, n.row_count, n.column_count] {
+            mix(&v.unwrap_or(usize::MAX).to_le_bytes());
+        }
+        mix(&[n.cells_focus as u8]);
         mix_f32(&mut mix, n.number);
         mix_f32(&mut mix, n.min);
         mix_f32(&mut mix, n.max);

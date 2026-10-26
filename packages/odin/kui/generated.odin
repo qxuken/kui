@@ -339,6 +339,11 @@ Access_Flag :: enum u32 {
 	Live_Polite = 18, // KUI_ACCESS_LIVE_POLITE
 	Live_Assertive = 19, // KUI_ACCESS_LIVE_ASSERTIVE
 	Mixed = 20, // KUI_ACCESS_MIXED
+	Has_Row_Index = 21, // KUI_ACCESS_HAS_ROW_INDEX
+	Has_Column_Index = 22, // KUI_ACCESS_HAS_COLUMN_INDEX
+	Has_Row_Count = 23, // KUI_ACCESS_HAS_ROW_COUNT
+	Has_Column_Count = 24, // KUI_ACCESS_HAS_COLUMN_COUNT
+	Cells_Focus = 25, // KUI_ACCESS_CELLS_FOCUS
 }
 Access_Flags :: bit_set[Access_Flag;u32]
 
@@ -2021,6 +2026,10 @@ Access_Node :: struct {
 	pos_in_set: u32,
 	set_size: u32,
 	orientation: Orientation,
+	row_index: u32,
+	column_index: u32,
+	row_count: u32,
+	column_count: u32,
 }
 
 access_node_to_c :: proc(v: Access_Node, scratch: ^Scratch) -> (out: c.AccessNode) {
@@ -2055,6 +2064,10 @@ access_node_to_c :: proc(v: Access_Node, scratch: ^Scratch) -> (out: c.AccessNod
 	out.pos_in_set = v.pos_in_set
 	out.set_size = v.set_size
 	out.orientation = u32(v.orientation)
+	out.row_index = v.row_index
+	out.column_index = v.column_index
+	out.row_count = v.row_count
+	out.column_count = v.column_count
 	_ = scratch
 	return
 }
@@ -2091,6 +2104,10 @@ access_node_from_c :: proc(v: c.AccessNode) -> (out: Access_Node) {
 	out.pos_in_set = v.pos_in_set
 	out.set_size = v.set_size
 	out.orientation = Orientation(v.orientation)
+	out.row_index = v.row_index
+	out.column_index = v.column_index
+	out.row_count = v.row_count
+	out.column_count = v.column_count
 	return
 }
 

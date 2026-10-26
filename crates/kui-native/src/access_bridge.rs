@@ -199,8 +199,8 @@ mod imp {
         }
     }
 
-    fn role_of(role: Role) -> AkRole {
-        match role {
+    fn role_of(n: &kui_core::AccessNode) -> AkRole {
+        match n.role {
             Role::None | Role::Line => AkRole::Unknown,
             Role::Button => AkRole::Button,
             Role::Checkbox => AkRole::CheckBox,
@@ -229,9 +229,12 @@ mod imp {
             Role::MultilineTextInput => AkRole::MultilineTextInput,
             Role::PasswordInput => AkRole::PasswordInput,
             Role::ScrollView => AkRole::ScrollView,
-            // A table of cells (ADR 0070).
+            // A table of cells (ADR 0070); one whose cells take focus is a
+            // reader's grid.
+            Role::Table if n.cells_focus => AkRole::Grid,
             Role::Table => AkRole::Table,
             Role::Row => AkRole::Row,
+            Role::Cell if n.cells_focus => AkRole::GridCell,
             Role::Cell => AkRole::Cell,
             Role::ColumnHeader => AkRole::ColumnHeader,
             Role::RowHeader => AkRole::RowHeader,
@@ -321,7 +324,7 @@ mod imp {
             let role = if n.live != Live::Off && n.role == Role::Group {
                 AkRole::Status
             } else {
-                role_of(n.role)
+                role_of(n)
             };
             let mut node = Node::new(role);
             if let Some(name) = &n.name {
@@ -414,6 +417,21 @@ mod imp {
             // zero-based ordinal on the item (see `AccessNode::set_size`).
             if let Some(p) = n.pos_in_set {
                 node.set_position_in_set(p);
+            }
+            // A table's rows and columns, and a list's rows (ADR 0070):
+            // what a reader announces moving through them, and how it
+            // finds a cell's column header (by its column index).
+            if let Some(v) = n.row_index {
+                node.set_row_index(v);
+            }
+            if let Some(v) = n.column_index {
+                node.set_column_index(v);
+            }
+            if let Some(v) = n.row_count {
+                node.set_row_count(v);
+            }
+            if let Some(v) = n.column_count {
+                node.set_column_count(v);
             }
             if let Some(sz) = n.set_size {
                 node.set_size_of_set(sz);

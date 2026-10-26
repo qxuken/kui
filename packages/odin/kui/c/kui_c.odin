@@ -354,6 +354,11 @@ ACCESS_HAS_SET_SIZE :: 131072
 ACCESS_LIVE_POLITE :: 262144
 ACCESS_LIVE_ASSERTIVE :: 524288
 ACCESS_MIXED :: 1048576
+ACCESS_HAS_ROW_INDEX :: 2097152
+ACCESS_HAS_COLUMN_INDEX :: 4194304
+ACCESS_HAS_ROW_COUNT :: 8388608
+ACCESS_HAS_COLUMN_COUNT :: 16777216
+ACCESS_CELLS_FOCUS :: 33554432
 
 CELL_BOLD :: 1
 CELL_ITALIC :: 2
@@ -760,6 +765,10 @@ AccessNode :: struct {
 	pos_in_set: u32,
 	set_size: u32,
 	orientation: u32,
+	row_index: u32,
+	column_index: u32,
+	row_count: u32,
+	column_count: u32,
 }
 
 AccessRun :: struct {

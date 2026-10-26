@@ -385,3 +385,105 @@ fn a_layout_table_implies_the_roles_and_its_focusable_cells_are_a_composite() {
         "the arrows walk it"
     );
 }
+
+/// Rows and columns reach a reader (ADR 0070): a cell's row and column, a
+/// row's index, the table's counts; a header row of `columnHeader`s is
+/// row 0 and the column index links a cell to its header; a table with no
+/// focusable cell is a static table, one with them a grid.
+#[test]
+fn a_table_reports_its_rows_columns_and_headers() {
+    let build = |core: &mut Core, focus: bool| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "t",
+            NodeSpec::column().role(Role::Table).label("people"),
+            |ui| {
+                ui.with_keyed("head", NodeSpec::row().role(Role::Row), |ui| {
+                    for c in 0..2 {
+                        ui.leaf_keyed(
+                            &format!("h{c}"),
+                            NodeSpec::row()
+                                .size(60.0, 20.0)
+                                .role(Role::ColumnHeader)
+                                .label(format!("H{c}")),
+                        );
+                    }
+                });
+                for r in 0..2 {
+                    ui.with_keyed(&format!("r{r}"), NodeSpec::row().role(Role::Row), |ui| {
+                        ui.leaf_keyed(
+                            "name",
+                            NodeSpec::row()
+                                .size(60.0, 20.0)
+                                .role(Role::RowHeader)
+                                .label("n"),
+                        );
+                        let mut cell = NodeSpec::row().size(60.0, 20.0).role(Role::Cell).label("v");
+                        if focus {
+                            cell = cell.focusable();
+                        }
+                        ui.leaf_keyed("v", cell);
+                    });
+                }
+            },
+        );
+        ui.finish();
+    };
+    let mut core = Core::new();
+    build(&mut core, false);
+    let t = Key::ROOT.str("t");
+    let tree = core.access_tree().clone();
+    let node = |k: Key| tree.nodes.iter().find(|n| n.key == k).cloned().unwrap();
+    let table = node(t);
+    assert_eq!((table.row_count, table.column_count), (Some(3), Some(2)));
+    assert!(!table.cells_focus, "no focusable cell: a static table");
+    let h1 = node(t.str("head").str("h1"));
+    assert_eq!(
+        (h1.role, h1.row_index, h1.column_index),
+        (Role::ColumnHeader, Some(0), Some(1))
+    );
+    let v = node(t.str("r1").str("v"));
+    assert_eq!(
+        (v.row_index, v.column_index),
+        (Some(2), Some(1)),
+        "under H1 by its column"
+    );
+    assert_eq!(node(t.str("r1")).row_index, Some(2));
+    assert_eq!(node(t.str("r1").str("name")).role, Role::RowHeader);
+    build(&mut core, true);
+    let tree = core.access_tree().clone();
+    assert!(
+        tree.nodes.iter().find(|n| n.key == t).unwrap().cells_focus,
+        "a grid now"
+    );
+    // Navigation treats a header as the cell it is: Up from the first
+    // body row's value lands on the column header above when it takes
+    // focus — here it does not, so Up stays.
+    core.set_focus(Some(t.str("r0").str("v")));
+    key(&mut core, EditKey::Down, Mods::NONE);
+    assert_eq!(core.focus(), Some(t.str("r1").str("v")));
+}
+
+/// A windowed list's rows are numbered by their data index and counted
+/// by its `rowCount`: "row 120 of 4,000" with no `label`.
+#[test]
+fn a_windowed_list_numbers_its_rows_by_the_data() {
+    let mut core = Core::new();
+    let list = Key::ROOT.str("list");
+    core.set_scroll(list, kui_core::Vec2::new(0.0, 120.0 * ROW_H));
+    virtual_frame(&mut core, false);
+    virtual_frame(&mut core, false);
+    let tree = core.access_tree().clone();
+    let row = tree
+        .nodes
+        .iter()
+        .find(|n| n.key == row_key(120))
+        .expect("row 120 built");
+    assert_eq!((row.row_index, row.pos_in_set), (Some(120), Some(120)));
+    let l = tree.nodes.iter().find(|n| n.key == list).unwrap();
+    assert_eq!(
+        (l.row_count, l.set_size),
+        (Some(N as usize), Some(N as usize))
+    );
+}

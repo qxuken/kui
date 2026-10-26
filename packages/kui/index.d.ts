@@ -947,6 +947,18 @@ export interface AccessNode {
    *  zero-based ordinal on each item, the count on the container. */
   posInSet: number | null;
   setSize: number | null;
+  /** Where the node sits in a table, zero-based (ADR 0070): a cell's and a
+   *  row's row (a windowed table's or list's row its data `index`), a
+   *  cell's column (which links it to the `columnHeader` above it), and on
+   *  the table its row count (a windowed one's `rowCount`) and its longest
+   *  row. A `list`'s items carry `rowIndex` and the list `rowCount`. */
+  rowIndex: number | null;
+  columnIndex: number | null;
+  rowCount: number | null;
+  columnCount: number | null;
+  /** A table one of whose cells takes focus, and its rows and cells: a
+   *  composite, which a reader is told is a grid. */
+  cellsFocus: boolean;
   /** How a composite container (`radioGroup`, `tabList`, `menu`, `list`)
    *  arranges its items, from its own `dir`. `null` for anything else. */
   orientation: 'horizontal' | 'vertical' | null;

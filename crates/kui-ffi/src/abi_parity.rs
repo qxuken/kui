@@ -604,6 +604,11 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_ACCESS_LIVE_POLITE,
             KUI_ACCESS_LIVE_ASSERTIVE,
             KUI_ACCESS_MIXED,
+            KUI_ACCESS_HAS_ROW_INDEX,
+            KUI_ACCESS_HAS_COLUMN_INDEX,
+            KUI_ACCESS_HAS_ROW_COUNT,
+            KUI_ACCESS_HAS_COLUMN_COUNT,
+            KUI_ACCESS_CELLS_FOCUS,
         ]
     );
 
@@ -910,6 +915,10 @@ fn asserts() -> (String, Vec<&'static str>) {
         pos_in_set: u32 => "uint32_t",
         set_size: u32 => "uint32_t",
         orientation: u32 => "uint32_t",
+        row_index: u32 => "uint32_t",
+        column_index: u32 => "uint32_t",
+        row_count: u32 => "uint32_t",
+        column_count: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessRun {

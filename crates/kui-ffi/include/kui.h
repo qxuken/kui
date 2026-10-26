@@ -1694,6 +1694,15 @@ enum {
     /* A checkbox that is neither on nor off (KuiSpec.mixed); beside
      * KUI_ACCESS_CHECKED_SET, and outranking KUI_ACCESS_CHECKED. */
     KUI_ACCESS_MIXED = 1u << 20,
+    /* A table's rows and columns, and a list's rows (ADR 0070): which of
+     * KuiAccessNode.row_index / column_index / row_count / column_count
+     * hold. CELLS_FOCUS is a table one of whose cells takes focus, and its
+     * rows and cells: a composite, which a reader is told is a grid. */
+    KUI_ACCESS_HAS_ROW_INDEX = 1u << 21,
+    KUI_ACCESS_HAS_COLUMN_INDEX = 1u << 22,
+    KUI_ACCESS_HAS_ROW_COUNT = 1u << 23,
+    KUI_ACCESS_HAS_COLUMN_COUNT = 1u << 24,
+    KUI_ACCESS_CELLS_FOCUS = 1u << 25,
 };
 
 /* [out[]] One queued announcement (kui_take_announcements): something to say
@@ -1746,6 +1755,17 @@ typedef struct KuiAccessNode {
     /* How a composite container arranges its items (KUI_ORIENTATION_*,
      * 0 = unset: this node is not one). Derived from its own dir. */
     uint32_t orientation;
+    /* Where the node sits in a table, zero-based (ADR 0070): a cell's and
+     * a row's row (a windowed table's or list's row its data index), a
+     * cell's column - which links it to the KUI_ROLE_COLUMN_HEADER above -
+     * and on the table its row count (a windowed one's rowCount) and its
+     * longest row. A list's items carry row_index and the list row_count.
+     * KUI_ACCESS_HAS_ROW_INDEX and its three neighbours say which hold.
+     * ABI 39, appended. */
+    uint32_t row_index;
+    uint32_t column_index;
+    uint32_t row_count;
+    uint32_t column_count;
 } KuiAccessNode;
 
 /* [out[]] One laid-out run of an editor's text (kui_access_runs): what a screen

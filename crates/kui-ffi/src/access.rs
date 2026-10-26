@@ -87,6 +87,19 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
             if n.modal {
                 flags |= KUI_ACCESS_MODAL;
             }
+            for (v, bit) in [
+                (n.row_index, KUI_ACCESS_HAS_ROW_INDEX),
+                (n.column_index, KUI_ACCESS_HAS_COLUMN_INDEX),
+                (n.row_count, KUI_ACCESS_HAS_ROW_COUNT),
+                (n.column_count, KUI_ACCESS_HAS_COLUMN_COUNT),
+            ] {
+                if v.is_some() {
+                    flags |= bit;
+                }
+            }
+            if n.cells_focus {
+                flags |= KUI_ACCESS_CELLS_FOCUS;
+            }
             match n.live {
                 kui_core::Live::Off => {}
                 kui_core::Live::Polite => flags |= KUI_ACCESS_LIVE_POLITE,
@@ -127,6 +140,10 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
                     pos_in_set: n.pos_in_set.unwrap_or(0) as u32,
                     set_size: n.set_size.unwrap_or(0) as u32,
                     orientation: orientation_code(n.orientation),
+                    row_index: n.row_index.unwrap_or(0) as u32,
+                    column_index: n.column_index.unwrap_or(0) as u32,
+                    row_count: n.row_count.unwrap_or(0) as u32,
+                    column_count: n.column_count.unwrap_or(0) as u32,
                 })
             };
         }

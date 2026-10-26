@@ -222,6 +222,9 @@
 ///   `kui_ext_contributions` export with its `KuiContribution` rows,
 ///   `kui_instance_slot`, and `from` appended to `KuiEvent` (80 bytes on
 ///   64-bit, from 64): the provider that raised a component event. And
+///   `row_index`, `column_index`, `row_count` and `column_count` appended
+///   to `KuiAccessNode` with their `KUI_ACCESS_HAS_*` bits and
+///   `KUI_ACCESS_CELLS_FOCUS` (ADR 0070); and
 ///   `focus_ring` appended to `KuiSpec` (816 bytes on 64-bit, from 808),
 ///   the core focus ring's colour (backlog C93), then `min_column`,
 ///   `hidden`, `on_query` and `when` (840 bytes; ADR 0069), with

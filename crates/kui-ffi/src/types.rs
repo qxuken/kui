@@ -1058,6 +1058,12 @@ pub struct KuiAccessNode {
     /// container). How the container arranges its items, from its own
     /// `dir`.
     pub orientation: u32,
+    /// A table's rows and columns, a list's rows (ADR 0070), zero-based;
+    /// `KUI_ACCESS_HAS_ROW_INDEX` and its neighbours say which hold.
+    pub row_index: u32,
+    pub column_index: u32,
+    pub row_count: u32,
+    pub column_count: u32,
 }
 
 pub const KUI_ACCESS_HAS_VALUE: u32 = 1 << 0;
@@ -1093,6 +1099,14 @@ pub const KUI_ACCESS_MIXED: u32 = 1 << 20;
 /// host allocates and appending to it would be an ABI break.
 pub const KUI_ACCESS_LIVE_POLITE: u32 = 1 << 18;
 pub const KUI_ACCESS_LIVE_ASSERTIVE: u32 = 1 << 19;
+/// Which of `row_index`, `column_index`, `row_count` and `column_count`
+/// hold (ADR 0070); `KUI_ACCESS_CELLS_FOCUS`, a table whose cells take
+/// focus and its rows and cells — a reader's grid.
+pub const KUI_ACCESS_HAS_ROW_INDEX: u32 = 1 << 21;
+pub const KUI_ACCESS_HAS_COLUMN_INDEX: u32 = 1 << 22;
+pub const KUI_ACCESS_HAS_ROW_COUNT: u32 = 1 << 23;
+pub const KUI_ACCESS_HAS_COLUMN_COUNT: u32 = 1 << 24;
+pub const KUI_ACCESS_CELLS_FOCUS: u32 = 1 << 25;
 
 /// KUI_ORIENTATION_* is the position in `Orientation::ALL` plus one
 /// (0 = unset: the node is not a composite container).
