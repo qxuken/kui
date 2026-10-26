@@ -248,10 +248,18 @@ local function lane_row(c: Ctx, lane: Lane, st: State, v0: number, v1: number, w
           focusable = picks or nil,
           on_click = picks and act(c, "waterfall.pick", { row = b.row }) or nil,
         }
-        if w >= 4 then bar.border = { w = 1, color = ref(c, sel and "ink" or "rule") } end
+        -- Each group's fill reads at 3:1 on the panel and its label on it
+        -- at 4.5:1 (`$kitGroupFg<n>`, skin.tl). The selected bar is the
+        -- selection's fill in a heavier edge in the text colour, so it stands out by its
+        -- outline as well as its colour while the rest stay as they are.
+        if sel then
+          bar.border = { w = 2, color = ref(c, "fg") }
+        elseif w >= 4 then
+          bar.border = { w = 1, color = ref(c, "panel") }
+        end
         if w >= 48 then
           bar[#bar + 1] = text(b.n, { size = 11, max_lines = 1, ellipsis = true, family = "$kitData",
-            color = ref(c, sel and "sel_fg" or "fg") })
+            color = sel and ref(c, "sel_fg") or ("$kitGroupFg" .. b.g) })
         end
         t[#t + 1] = row(bar)
       else
@@ -323,7 +331,9 @@ function M.waterfall(c: Ctx, p: P): kui.Node
       lanes[#lanes + 1] = column {
         key = "m" .. i,
         float = { anchor = "parent", clip = true, dx = x, dy = 0 },
-        width = 1, height = #st.index.lanes * (LANE_H + 2), bg = ref(c, "accent"),
+        -- The accent as text reads at 4.5:1 on the panel; the accent itself
+        -- may not reach the 3:1 a mark needs (Ledger's yellow on paper).
+        width = 1, height = #st.index.lanes * (LANE_H + 2), bg = ref(c, "accent_text"),
         tooltip = m.label,
       }
     end

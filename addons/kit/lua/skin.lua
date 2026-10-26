@@ -313,6 +313,24 @@ end
 
 
 
+local GROUP_TIERS = { light = { 0.25, 0.09, 0.04 }, dark = { 0.13, 0.32, 0.52 } }
+
+
+
+local function at_luminance(c, target)
+   local h, s = hsl(c)
+   s = math.max(s, 0.35)
+   local lo, hi = 0.0, 1.0
+   for _ = 1, 30 do
+      local mid = (lo + hi) / 2
+      if luminance(from_hsl(h, s, mid, 0xff)) < target then lo = mid else hi = mid end
+   end
+   return from_hsl(h, s, (lo + hi) / 2, c & 0xff)
+end
+
+
+
+
 local REHUE = {
    "bg", "side", "panel", "raised", "sunken", "rule", "ink", "fg", "muted", "faint",
    "sel", "sel_fg", "focus", "hover", "press",
@@ -447,6 +465,42 @@ function M.tokens(s)
 
             slot[half] = legible_on(slot[half], role == "focus" and grounds or washed, M.TEXT_CONTRAST)
          end
+      end
+   end
+
+
+
+
+
+
+   for _, half in ipairs({ "light", "dark" }) do
+      local function at(name) return colors[name][half] end
+      local grounds = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
+      local tiers = luminance(at("kitPanel")) > 0.18 and GROUP_TIERS.light or GROUP_TIERS.dark
+      local i = 1
+      while colors["kitGroup" .. i] do
+         local slot = colors["kitGroup" .. i]
+         local fill = legible_on(at_luminance(slot[half], tiers[(i - 1) % #tiers + 1]), grounds, M.GRAPHIC_CONTRAST)
+         local text = best_on(fill, { at("kitFg"), at("kitBg"), 0x000000ff, 0xffffffff })
+
+
+         local h, sat, l = hsl(fill)
+         local away = luminance(text) > luminance(fill) and -0.01 or 0.01
+         for _ = 1, 20 do
+            if contrast(text, fill) >= M.TEXT_CONTRAST then break end
+            local next = from_hsl(h, sat, math.max(0, math.min(1, l + away)), fill & 0xff)
+            local ok = true
+            for _, g in ipairs(grounds) do
+               if contrast(next, g) < M.GRAPHIC_CONTRAST then ok = false end
+            end
+            if not ok then break end
+            l, fill = l + away, next
+         end
+         slot[half] = fill
+         local fg = colors["kitGroupFg" .. i] or {}
+         colors["kitGroupFg" .. i] = fg
+         fg[half] = text
+         i = i + 1
       end
    end
 

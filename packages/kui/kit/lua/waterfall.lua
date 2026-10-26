@@ -249,10 +249,18 @@ local function lane_row(c, lane, st, v0, v1, width, selected, picks)
                focusable = picks or nil,
                on_click = picks and act(c, "waterfall.pick", { row = b.row }) or nil,
             }
-            if w >= 4 then bar.border = { w = 1, color = ref(c, sel and "ink" or "rule") } end
+
+
+
+
+            if sel then
+               bar.border = { w = 2, color = ref(c, "fg") }
+            elseif w >= 4 then
+               bar.border = { w = 1, color = ref(c, "panel") }
+            end
             if w >= 48 then
                bar[#bar + 1] = text(b.n, { size = 11, max_lines = 1, ellipsis = true, family = "$kitData",
-color = ref(c, sel and "sel_fg" or "fg"), })
+color = sel and ref(c, "sel_fg") or ("$kitGroupFg" .. b.g), })
             end
             t[#t + 1] = row(bar)
          else
@@ -324,7 +332,9 @@ ctx.data(c, fmt(tick, step), { size = 10.5, color = ref(c, "muted") }), })
          lanes[#lanes + 1] = column({
             key = "m" .. i,
             float = { anchor = "parent", clip = true, dx = x, dy = 0 },
-            width = 1, height = #st.index.lanes * (LANE_H + 2), bg = ref(c, "accent"),
+
+
+            width = 1, height = #st.index.lanes * (LANE_H + 2), bg = ref(c, "accent_text"),
             tooltip = m.label,
          })
       end

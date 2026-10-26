@@ -2974,7 +2974,7 @@ fn an_accent_derives_a_palette_whose_text_reads_everywhere() {
                 let names = [
                     "kitAccent", "kitOnAccent", "kitSel", "kitSelFg", "kitBg", "kitSide", "kitPanel", "kitSunken",
                     "kitRaised", "kitFg", "kitMuted", "kitFaint", "kitFocus", "kitOk", "kitWarn", "kitDanger",
-                    "kitAccentText", "kitChosen", "kitChosenFg", "kitGroup1", "kitSeries1",
+                    "kitAccentText", "kitChosen", "kitChosenFg", "kitGroup1", "kitGroupFg1", "kitSeries1",
                 ];
                 r.frame(|ui| {
                     let roles = Value::map([("accent", Value::Int(accent))]);
@@ -3000,7 +3000,7 @@ fn an_accent_derives_a_palette_whose_text_reads_everywhere() {
                         assert!(k >= 4.49, "{case}: {text} on {g} reads at {k:.2}");
                     }
                 }
-                let pairs = [("kitOnAccent", "kitAccent"), ("kitChosenFg", "kitChosen"), ("kitFg", "kitGroup1")];
+                let pairs = [("kitOnAccent", "kitAccent"), ("kitChosenFg", "kitChosen"), ("kitGroupFg1", "kitGroup1")];
                 for (text, fill) in pairs {
                     let k = contrast(at(text), at(fill));
                     assert!(k >= 4.49, "{case}: {text} on {fill} reads at {k:.2}");
@@ -4374,6 +4374,7 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
     }
     assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
 }
+
 /// A live line chart's readout box is opaque and over everything in the
 /// plot, in every skin and half: each sample's slide opens a float of its
 /// own, and floats stack in the order they opened, so the lines slid over
@@ -4455,4 +4456,122 @@ fn a_live_charts_readout_is_opaque_and_over_its_lines_in_every_skin() {
             assert!(r.core.take_warnings().is_empty());
         }
     }
+}
+
+/// Spans of six groups, one a group, side by side and wide enough to be
+/// labelled.
+fn six_spans() -> Channel {
+    let names = ["load", "parse", "style", "layout", "paint", "idle"];
+    Channel::table(vec![
+        ("name".into(), Column::strs(names)),
+        ("start".into(), Column::F64((0..6).map(|i| i as f64 * 100.0).collect())),
+        ("len".into(), Column::F64(vec![95.0; 6])),
+        ("depth".into(), Column::I64(vec![0; 6])),
+        ("group".into(), Column::I64((0..6).collect())),
+        ("target".into(), Column::strs(names)),
+    ])
+    .unwrap()
+}
+
+/// A waterfall's marks read in every skin, half and accent: each group's
+/// bar at 3:1 on the panel, neighbouring groups apart in lightness as well
+/// as hue, every label at 4.5:1 on its bar, the selected bar's edge at 3:1
+/// on the panel and its label at 4.5:1 on it, a time mark at 3:1. Dark
+/// navy and forest bars on near-black read at 1.3:1.
+#[test]
+fn a_waterfalls_marks_read_in_every_skin_half_and_accent() {
+    use kui_core::QuadKind;
+    let accents: [Option<i64>; 5] = [None, Some(0xffd400ff), Some(0x7fe9ffff), Some(0x1e2a5aff), Some(0xdc2626ff)];
+    let marks = Channel::table(vec![
+        ("at".into(), Column::F64(vec![250.0])),
+        ("label".into(), Column::strs(["paint"])),
+    ])
+    .unwrap();
+    let mut failures: Vec<String> = Vec::new();
+    for skin in [kit::Skin::Ledger, kit::Skin::Neutral, kit::Skin::Phosphor] {
+        for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
+            for accent in accents {
+                let case = format!("{skin:?} {appearance:?} {accent:x?}");
+                let mut r = rig();
+                let panel = std::cell::Cell::new(None);
+                let view = |r: &mut Rig| {
+                    r.frame(|ui| {
+                        let mut s = kit::Settings::new().skin(skin).appearance(appearance);
+                        if let Some(a) = accent {
+                            s = s.roles(Value::map([("accent", Value::Int(a))]));
+                        }
+                        s.place(ui);
+                        ui.with(NodeSpec::column().width(900.0), |ui| {
+                            kit::Waterfall::new(six_spans())
+                                .marks(marks.clone())
+                                .selected(4)
+                                .on_select(msg("span"))
+                                .place(ui);
+                        });
+                        panel.set(ui.token_color("kitPanel"));
+                    });
+                };
+                view(&mut r);
+                view(&mut r);
+                let panel = panel.get().unwrap();
+                let (dl, _) = r.core.output();
+                let quads = dl.quads.clone();
+                let mut fills = Vec::new();
+                for name in ["load", "parse", "style", "layout", "paint", "idle"] {
+                    let Some(node) = r.core.access_tree().nodes.iter().find(|n| n.name.as_deref() == Some(name)).cloned() else {
+                        failures.push(format!("{case}: no {name}"));
+                        continue;
+                    };
+                    let rect = node.rect;
+                    let Some(q) = quads.iter().rev().find(|q| {
+                        q.kind == QuadKind::Solid
+                            && q.color.a > 0.0
+                            && (q.rect.w - rect.w).abs() < 1.5
+                            && (q.rect.h - rect.h).abs() < 1.5
+                            && (q.rect.x - rect.x).abs() < 1.5
+                    }) else {
+                        failures.push(format!("{case}: no fill for {name}"));
+                        continue;
+                    };
+                    let selected = name == "paint";
+                    if selected {
+                        let k = contrast(q.border_color, panel);
+                        if k < 2.99 {
+                            failures.push(format!("{case}: the selected bar's edge on the panel at {k:.2}"));
+                        }
+                    } else {
+                        let k = contrast(q.color, panel);
+                        if k < 2.99 {
+                            failures.push(format!("{case}: {name}'s bar on the panel at {k:.2}"));
+                        }
+                        fills.push(q.color);
+                    }
+                    for (c, under) in glyphs_on(&mut r.core, rect, panel) {
+                        let k = contrast(c, under);
+                        if k < 4.49 {
+                            failures.push(format!("{case}: {name}'s label at {k:.2}"));
+                        }
+                    }
+                }
+                // Neighbouring groups differ in lightness, not hue alone.
+                for w in fills.windows(2) {
+                    let k = contrast(w[0], w[1]);
+                    if k < 1.4 {
+                        failures.push(format!("{case}: neighbouring groups at {k:.2} apart in lightness"));
+                    }
+                }
+                // The time mark: a one-px rule down the lanes.
+                let mark = quads.iter().find(|q| q.kind == QuadKind::Solid && (q.rect.w - 1.0).abs() < 0.1 && q.rect.h > 20.0);
+                match mark {
+                    Some(q) if contrast(q.color, panel) < 2.99 => {
+                        failures.push(format!("{case}: the time mark at {:.2}", contrast(q.color, panel)))
+                    }
+                    None => failures.push(format!("{case}: no time mark")),
+                    _ => {}
+                }
+                assert!(r.core.take_warnings().is_empty(), "{case}");
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
 }

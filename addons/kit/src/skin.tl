@@ -309,6 +309,24 @@ local function best_on(fill: integer, options: {integer}): integer
   return pick
 end
 
+-- The luminances a waterfall's groups take in turn, by the half's ground:
+-- on a light panel a fill dark text reads on, then two that white text
+-- does; on a dark one a fill light text reads on, then two dark text does.
+local GROUP_TIERS: {string:{number}} = { light = { 0.25, 0.09, 0.04 }, dark = { 0.13, 0.32, 0.52 } }
+
+-- `c` at the lightness that gives it luminance `target`, its hue kept and
+-- its saturation at least a third, so a pale tint becomes a colour.
+local function at_luminance(c: integer, target: number): integer
+  local h, s = hsl(c)
+  s = math.max(s, 0.35)
+  local lo, hi = 0.0, 1.0
+  for _ = 1, 30 do
+    local mid = (lo + hi) / 2
+    if luminance(from_hsl(h, s, mid, 0xff)) < target then lo = mid else hi = mid end
+  end
+  return from_hsl(h, s, (lo + hi) / 2, c & 0xff)
+end
+
 -- The roles a skin draws in or near its brand colour, which a brand's
 -- accent re-hues, and the surfaces it tints: Ledger's selection is its
 -- yellow; Phosphor's text, rules and ground are all its green.
@@ -446,6 +464,42 @@ function M.tokens(s: Settings): Decl
         -- The focus colour is a ring and a notice's text, on no row.
         slot[half] = legible_on(slot[half], role == "focus" and grounds or washed, M.TEXT_CONTRAST)
       end
+    end
+  end
+  -- A waterfall's group fills (a trace's phases): each at 3:1 on every
+  -- surface, so a bar reads as a mark and not as a shade of the ground,
+  -- and in lightness tiers taken in turn, so neighbouring phases differ in
+  -- lightness as well as hue. Each group's label colour is whichever of
+  -- the text and the ground's colours reads best on it, at 4.5:1. The
+  -- dark half's were navy and forest on near-black, at 1.3:1.
+  for _, half in ipairs({ "light", "dark" }) do
+    local function at(name: string): integer return colors[name][half] end
+    local grounds: {integer} = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
+    local tiers = luminance(at("kitPanel")) > 0.18 and GROUP_TIERS.light or GROUP_TIERS.dark
+    local i = 1
+    while colors["kitGroup" .. i] do
+      local slot = colors["kitGroup" .. i]
+      local fill = legible_on(at_luminance(slot[half], tiers[(i - 1) % #tiers + 1]), grounds, M.GRAPHIC_CONTRAST)
+      local text = best_on(fill, { at("kitFg"), at("kitBg"), 0x000000ff, 0xffffffff })
+      -- A surface that pushed the fill toward its label: moved back, in
+      -- lightness, while it still reads on every surface.
+      local h, sat, l = hsl(fill)
+      local away = luminance(text) > luminance(fill) and -0.01 or 0.01
+      for _ = 1, 20 do
+        if contrast(text, fill) >= M.TEXT_CONTRAST then break end
+        local next = from_hsl(h, sat, math.max(0, math.min(1, l + away)), fill & 0xff)
+        local ok = true
+        for _, g in ipairs(grounds) do
+          if contrast(next, g) < M.GRAPHIC_CONTRAST then ok = false end
+        end
+        if not ok then break end
+        l, fill = l + away, next
+      end
+      slot[half] = fill
+      local fg = colors["kitGroupFg" .. i] or {}
+      colors["kitGroupFg" .. i] = fg
+      fg[half] = text
+      i = i + 1
     end
   end
   -- The accent as text (an accent notice, its toast's mark): the accent

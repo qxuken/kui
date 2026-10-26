@@ -327,6 +327,14 @@ was the first bare bump to break an app in five releases).
   from its ground in both halves, and with an accent each moves as far as
   the accent's washes ask. A test or a picture that pinned a role's value
   reads the new one.
+- Kit's waterfall group colours (`$kitGroup1`…`$kitGroup6`) are
+  colours, not tints: each reads at 3:1 on every surface, in lightness
+  tiers taken in turn (on a light ground a mid tone, then two darker; on
+  a dark one a mid-dark tone, then two lighter), and its label is the new
+  `$kitGroupFg<n>`, where it was `fg`. The selected span keeps the
+  selection's fill with a 2 px edge in the text colour; a time mark is
+  drawn in `$kitAccentText`. An app that painted with a group token draws
+  the new colour, and text on it reads with `$kitGroupFg<n>`.
 - A Kit line chart with a `window` scrolls between samples: drawn one
   sample behind, its lines, areas and x ticks slide left over the time
   samples take to come, a keyframe cycle of the core's keyed by the
@@ -1601,6 +1609,13 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- **A Kit waterfall reads on a dark skin.** Its spans were navy and
+  forest blocks on near-black (1.3:1), the selected one a bright block
+  that drowned them. Every group's bar now reads at 3:1 on every surface
+  in every skin, half and accent, neighbouring phases apart in lightness
+  as well as hue, every label at 4.5:1 on its bar; the selected span's
+  edge reads at 3:1 and a time mark too. Kit's contrast test covers the
+  waterfall's marks.
 - **A Kit live line chart's readout is opaque again.** Each sample's
   slide opens a float of its own, and floats stack in the order they
   opened (ADR 0053), so the lines slid over a readout box opened before
