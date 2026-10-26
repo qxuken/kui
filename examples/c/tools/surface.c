@@ -1815,6 +1815,35 @@ static int surface(void) {
     kui_image_remove(ui, k.image);
     kui_ctx_free(ui);
 
+    /* A composite's items by index, and its focused last item going
+     * (backlog C125); the frame's display scale read back (backlog C127).
+     * On a context of its own: a list of rows opened by data index. */
+    {
+        KuiCtx *li = kui_ctx_new();
+        check(kui_scale(li) == 1.0f, "kui_scale: 1 before any frame");
+        uint64_t list = 0, keys[3] = {0};
+        /* Three rows, three rows with row 3 asked for, then two rows. */
+        for (int pass = 0; pass < 3; pass++) {
+            int rows = pass < 2 ? 3 : 2;
+            if (pass == 1) kui_focus_item(li, list, 2);
+            kui_frame_begin(li, 320, 240, 1.5f);
+            KuiSpec col = {.role = KUI_ROLE_LIST};
+            list = kui_open_keyed(li, KUI_STR("list"), &col, NULL);
+            for (int r = 0; r < rows; r++) {
+                KuiSpec row = {.role = KUI_ROLE_LIST_ITEM, .focusable = 1,
+                               .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20}};
+                keys[r] = kui_open_indexed(li, (uint64_t)r, &row, NULL);
+                kui_close(li);
+            }
+            kui_close(li);
+            kui_frame_finish(li);
+            if (pass == 0) check(kui_scale(li) == 1.5f, "kui_scale reads the frame's scale");
+            if (pass == 1) check(kui_focused(li) == keys[2], "kui_focus_item landed on row 3");
+        }
+        check(kui_focused(li) == keys[1], "row 3 going handed focus to row 2");
+        kui_ctx_free(li);
+    }
+
     /* A faded subtree as one picture (ADR 0056): on a context of its own,
      * a card at half opacity holding two boxes comes out between a begin
      * and an end marker, unfaded inside, the end carrying the fade. */

@@ -4409,6 +4409,25 @@ macro_rules! core_methods {
                 self.$redraw();
             }
 
+            /// Focuses item `index` of a list, table or other composite —
+            /// named by the label its `key` prop declares or the hex key an
+            /// event carried — when the next frame finishes (backlog C125):
+            /// the item opened with that data `index`, a row a windowed list
+            /// did not build being scrolled to and landed on the frame that
+            /// builds it (an index past `rowCount` is the last row), else,
+            /// where items carry no index, the item at that place. A focused
+            /// item that vanishes hands focus to the item now at its place on
+            /// its own; this names one.
+            #[napi]
+            pub fn focus_item(&mut self, key: String, index: f64) -> Result<()> {
+                let index = count(index, "focusItem: index")?;
+                let core = self.$core();
+                let key = resolve_key(core, &key)?;
+                core.focus_item(key, u64::from(index));
+                self.$redraw();
+                Ok(())
+            }
+
             /// The focus region in effect — the hex key of the `focusRegion`
             /// node whose ring Tab walks — or `null` for the main ring. What
             /// a chord that toggles between a dock and the app reads to know

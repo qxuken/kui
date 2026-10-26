@@ -371,6 +371,14 @@ pub const DOORS: &[Door] = &[
         doc: "Enters a `focusRegion`'s ring, or leaves it for the main one (ADR 0022).",
     },
     Door {
+        rust: "Ui::focus_item",
+        c: Is("kui_focus_item"),
+        odin: Is("focus_item"),
+        node: Is("focusItem"),
+        lua: Is("focus_item"),
+        doc: "Focuses item `index` of a list, table or other composite, named by its key (backlog C125): the item opened with that data `index` — a row a windowed composite did not build is scrolled to and landed on the frame that builds it, an index past `rowCount` being the last row — else, where items carry no index, the item at that place. Lands when the frame ends, so a view may name the composite it is declaring. A focused item that vanishes hands focus to the item now at its place on its own; this names one.",
+    },
+    Door {
         rust: "Ui::region",
         c: Is("kui_region"),
         odin: Is("region"),
@@ -1870,6 +1878,14 @@ pub const DOORS: &[Door] = &[
         node: Is("now"),
         lua: As("`env.now`, a reading"),
         doc: "The frame clock in seconds, the one the tweens read: what a view times its own deadlines by.",
+    },
+    Door {
+        rust: "Ui::scale",
+        c: Is("kui_scale"),
+        odin: Is("scale"),
+        node: As("`env().viewport.scale`, a reading"),
+        lua: As("`env.scale`, a reading"),
+        doc: "The display scale factor of the window being built, device pixels per logical px (backlog C127): what a view lands an edge on a whole physical pixel by, a whole logical px being one at integer scales only.",
     },
     Door {
         rust: "Core::env",

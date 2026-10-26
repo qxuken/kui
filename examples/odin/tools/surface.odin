@@ -1322,6 +1322,33 @@ surface :: proc() -> bool {
 		kui.free_ui(why)
 	}
 
+	// A composite's items by index, and its focused last item going (backlog
+	// C125); the frame's display scale read back (backlog C127). On a context
+	// of its own: a list of rows opened by data index.
+	{
+		li := kui.new_ui()
+		check(kui.scale(li) == 1, "scale: 1 before any frame")
+		list: u64
+		keys: [3]u64
+		// Three rows, three rows with row 3 asked for, then two rows.
+		for pass in 0 ..< 3 {
+			rows := pass < 2 ? 3 : 2
+			if pass == 1 do kui.focus_item(li, list, 2)
+			kui.frame_begin(li, 320, 240, 1.5)
+			list = kui.open(li, {key = "list", role = .List})
+			for r in 0 ..< rows {
+				keys[r] = kui.open(li, {index = u64(r), role = .List_Item, focusable = true, width = kui.px(100), height = kui.px(20)})
+				kui.close(li)
+			}
+			kui.close(li)
+			kui.frame_finish(li)
+			if pass == 0 do check(kui.scale(li) == 1.5, "scale reads the frame's scale")
+			if pass == 1 do check(kui.focused(li) == keys[2], "focus_item landed on row 3")
+		}
+		check(kui.focused(li) == keys[1], "row 3 going handed focus to row 2")
+		kui.free_ui(li)
+	}
+
 	// The recording (ADR 0058), on a context of its own: off, a span's id is 0;
 	// recording, what lands is kui-trace bytes. A standalone context has no
 	// waker, and the waker's procedures take none as nothing.

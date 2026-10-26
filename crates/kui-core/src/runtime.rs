@@ -785,6 +785,15 @@ pub struct Core {
     /// C104): the composite and the row, applied when the frame ends, as a
     /// reach is landed, against the tree that frame built.
     typeahead_answer: Option<(Key, u64)>,
+    /// Where the focused composite item sat, read off the frame it was
+    /// focused in (backlog C125): the composite, the item's place among
+    /// its items (a table's row's among its rows), its data index in a
+    /// windowed one, and its column. When the item vanishes, the frame
+    /// without it lands focus on the item now at that place.
+    focus_place: Option<composites::ItemPlace>,
+    /// A `focus_item` asked for since the last frame's end (backlog C125):
+    /// the composite and the item's index, landed when the frame ends.
+    pending_item_focus: Option<(Key, u64)>,
     /// The hover group of the focused node, read off the last frame's tree
     /// as a frame begins (backlog C106): what `group_focused` and
     /// `group_focus_visible` test a node's own group against.
@@ -1488,6 +1497,8 @@ impl Core {
             composite_reach: None,
             typeahead_asked: None,
             typeahead_answer: None,
+            focus_place: None,
+            pending_item_focus: None,
             focus_group: None,
             press_opened: None,
             rooms: Vec::new(),

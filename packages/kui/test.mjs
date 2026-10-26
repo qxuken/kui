@@ -1163,6 +1163,36 @@ test('a focusRegion is its own Tab ring, entered by name', () => {
   assert.deepEqual(ctx.warnings().map((w) => w.code), ['focus-region-without-node']);
 });
 
+// Backlog C125: `focusItem(key, index)` focuses a composite's item by its
+// data index, landing when the frame finishes; and a focused last item
+// that goes hands focus to the one before it, the app doing nothing.
+test('focusItem names a list row by index, and a removed row keeps focus in the list', () => {
+  const view = (n) =>
+    box({ pad: 4 }, [
+      box({ role: 'list', label: 'rows' }, Array.from({ length: n }, (_, i) =>
+        box({ index: i, role: 'listItem', focusable: true, width: 100, height: 20, label: `row ${i}` }, [])), 'list'),
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1.5, view(3));
+  assert.equal(ctx.env().viewport.scale, 1.5, 'the display scale, the fact Lua reads as env.scale (C127)');
+  ctx.focusItem('list', 2);
+  ctx.frame(320, 240, 1.5, view(3));
+  const third = ctx.focused();
+  assert.ok(third, 'landed on row 3');
+  assert.ok(!ctx.focusVisible(), 'programmatic focus keeps the last modality');
+  ctx.frame(320, 240, 1.5, view(2));
+  const afterRemoval = ctx.focused();
+  assert.ok(afterRemoval && afterRemoval !== third, 'row 3 went, and focus did not go with it');
+  ctx.focusItem('list', 0);
+  ctx.frame(320, 240, 1.5, view(2));
+  assert.notEqual(ctx.focused(), afterRemoval, 'row 1 is another row');
+  ctx.focusItem('list', 1);
+  ctx.frame(320, 240, 1.5, view(2));
+  assert.equal(ctx.focused(), afterRemoval, 'the removal had landed on row 2');
+  assert.throws(() => ctx.focusItem('nothing', 0), /no node is keyed/);
+  assert.throws(() => ctx.focusItem('list', -1), /focusItem: index/);
+});
+
 // Backlog F5: a node the app never interacted with is named by the label
 // its `key` declared. `focus`, `isFocused`, `reveal` and `access` take that
 // spelling beside the hex one, resolved through the last frame — the path

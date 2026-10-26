@@ -1012,6 +1012,17 @@ pub extern "C" fn kui_now(ptr: *mut KuiCtx) -> f64 {
     guard(0.0, || unsafe { ctx(ptr) }.map_or(0.0, |c| c.core().now()))
 }
 
+/// The display scale factor of the frame being built, or the last one:
+/// the scale `kui_frame_begin` was given (backlog C127). A plugin's view,
+/// drawn in a frame its host began, reads it here to land an edge on a
+/// whole physical pixel. 1 before any frame, and on a null context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_scale(ptr: *mut KuiCtx) -> f32 {
+    guard(1.0, || {
+        unsafe { ctx(ptr) }.map_or(1.0, |c| c.core().scale())
+    })
+}
+
 /// True when the last frame left a transition mid-flight: draw another
 /// frame without waiting for input.
 #[unsafe(no_mangle)]

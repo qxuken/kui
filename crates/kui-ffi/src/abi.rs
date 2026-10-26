@@ -234,7 +234,8 @@
 ///   (backlog C105) and `opens_on_press` (backlog C108), 872 bytes, then
 ///   `on_item_key` (880 bytes; backlog C120), with
 ///   `kui_tab_moves_focus` (backlog C99), `kui_is_group_hovered` and
-///   `kui_is_group_pressed` (backlog C92), new functions.
+///   `kui_is_group_pressed` (backlog C92), `kui_focus_item` (backlog
+///   C125) and `kui_scale` (backlog C127), new functions.
 pub const KUI_ABI_VERSION: u32 = 39;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

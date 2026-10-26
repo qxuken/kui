@@ -157,7 +157,8 @@
 //! Facts:
 //!
 //! - Timing and size: `refresh_hz`, `frame_budget_ms`, `viewport_w`,
-//!   `viewport_h`, `now` (the frame clock in seconds). A fact the host
+//!   `viewport_h`, `scale` (device pixels per logical px, backlog C127),
+//!   `now` (the frame clock in seconds). A fact the host
 //!   cannot tell is left out rather than nil.
 //! - Focus: `focused` (the window has the keyboard), `focus` (the focused
 //!   node's key, nil for none), `focus_visible`, `caret_visible`, `region`,
@@ -185,7 +186,8 @@
 //!   `caret_in_text(s, opts, max_w, byte)` (where a byte of it lands),
 //!   `extension_namespaces()`.
 //! - Focus: `set_focus(key)`, `blur()`, `focus_next()`, `focus_prev()`,
-//!   `focus_region(key)`, `announce(text, politeness)`.
+//!   `focus_region(key)`, `focus_item(key, index)` (an item of a composite
+//!   by its index, backlog C125), `announce(text, politeness)`.
 //! - Time: `request_frame_at(at)`, a frame at a time on the frame clock
 //!   (`env.now + 3` is a toast's expiry); `request_frame_for(why)`, a frame
 //!   after this one, named in the recording.
@@ -1215,7 +1217,8 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// (the `focus_region` node in effect, nil for the main ring), `theme`
 /// (the palette derived from `system`: one 0xRRGGBBAA number per role in
 /// `schema::THEME_ROLES`, plus `appearance` and `disabled_opacity`),
-/// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
+/// `viewport_w`/`viewport_h` (logical px), `scale` (device pixels per
+/// logical px), `window` chrome facts, the
 /// queries `edit_text(key)`, `is_focused(key)`, `is_hovered(key)`,
 /// `is_pressed(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
 /// `text_hit(key, x, y)` and `caret_rect(key, byte)` (each takes either
@@ -1227,7 +1230,8 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// label spelling reaches an editor this view is about to declare),
 /// `measure_text(s, opts, max_w)` (see `measure_from_lua`),
 /// `caret_in_text(s, opts, max_w, byte)` (see `caret_in_from_lua`), the
-/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`,
+/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)` /
+/// `focus_item(key, index)`,
 /// `request_frame_at(at)` (a frame at a time on the frame clock, `now`),
 /// `exit_with(key, exit)` (the exit a node leaves by this frame), the
 /// recording's `span(name, fn)` / `perf_count(name, n)` / `perf_gauge(name,
@@ -1688,6 +1692,20 @@ fn env_table(
                 v => Some(key_arg(&mut ui, v)?),
             };
             ui.focus_region(key);
+            Ok(())
+        })?,
+    )?;
+    // Focuses an item of a list, table or other composite by its index —
+    // `env.focus_item("checklist", 2)`, the composite's label or integer
+    // key and the item's data `index` (its place, where items carry none)
+    // — when this frame finishes (backlog C125). A row a windowed list did
+    // not build is scrolled to and landed on the frame that builds it.
+    t.set(
+        "focus_item",
+        lua.create_function(move |_, (key, index): (mlua::Value, u64)| {
+            let mut ui = ui.borrow_mut()?;
+            let key = key_arg(&mut ui, key)?;
+            ui.focus_item(key, index);
             Ok(())
         })?,
     )?;
@@ -8315,6 +8333,77 @@ mod tests {
             !over(&ext) && target(&ext).is_none(),
             "a drop ends the hover"
         );
+    }
+
+    /// `env.focus_item(key, index)` focuses a composite's item by its
+    /// index (backlog C125), and a focused last item that goes hands
+    /// focus to the one before it with no help from the script.
+    #[test]
+    fn env_focus_item_and_a_removed_items_focus() {
+        let mut ext = LuaExtension::from_source(
+            "items",
+            r#"
+                n, ask = 3, nil
+                function view(env)
+                  if ask then env.focus_item("list", ask) ask = nil end
+                  local rows = { key = "list", role = "list", label = "rows" }
+                  for i = 1, n do
+                    rows[#rows + 1] = row { index = i - 1, role = "listItem", focusable = true,
+                                            label = "row " .. i, width = 100, height = 20 }
+                  end
+                  return column { key = "root", column(rows) }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        ext.lua.globals().set("ask", 2).unwrap();
+        frame(&mut core, &mut ext);
+        let list = core.key_of("list").expect("the list");
+        assert_eq!(
+            core.focus(),
+            Some(list.index(2)),
+            "focus_item landed on row 3"
+        );
+        // The last row goes, with focus on it.
+        ext.lua.globals().set("n", 2).unwrap();
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), Some(list.index(1)), "on the row before");
+        ext.lua.globals().set("ask", 0).unwrap();
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), Some(list.index(0)));
+    }
+
+    /// `env.scale` is the display scale factor of the window being built
+    /// (backlog C127): what a script lands an edge on a whole physical
+    /// pixel with, which a whole logical px is at integer scales only.
+    #[test]
+    fn env_scale_is_the_frames_display_scale() {
+        let mut ext = LuaExtension::from_source(
+            "scale",
+            r#"
+                function view(env)
+                  seen = env.scale
+                  -- An edge at 10.4 logical px, on a whole physical pixel.
+                  edge = math.floor(10.4 * env.scale + 0.5) / env.scale
+                  return column {}
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        for (scale, edge) in [(1.0, 10.0), (1.5, 32.0 / 3.0), (2.0, 10.5)] {
+            let mut ui = core.frame(Size::new(800.0, 600.0), scale);
+            ui.set_origin(OriginId(1));
+            ext.view(&Instance::root(), &mut ui).unwrap();
+            ui.finish();
+            let seen: f64 = ext.lua.globals().get("seen").unwrap();
+            assert_eq!(seen, scale as f64);
+            let got: f64 = ext.lua.globals().get("edge").unwrap();
+            assert!((got - edge).abs() < 1e-9, "{scale}: {got} vs {edge}");
+            assert_eq!((got * scale as f64).fract(), 0.0, "a whole physical px");
+        }
     }
 
     /// The focus verbs: `env.set_focus(key)` moves focus now,

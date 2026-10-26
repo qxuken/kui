@@ -318,6 +318,7 @@ impl Core {
                 index: t,
                 column,
                 tries: 0,
+                since: 0,
             },
             toward,
         )
@@ -395,7 +396,10 @@ impl Core {
     fn reach_unbuilt(&mut self, from: usize, reach: Reach, toward: Rect) {
         self.focus_visible = true;
         self.scroll_rect_into_view(from, toward, false);
-        self.composite_reach = Some(reach);
+        self.composite_reach = Some(Reach {
+            since: self.frame_no,
+            ..reach
+        });
         self.owe_frame("composite_reach");
     }
 
@@ -412,6 +416,12 @@ impl Core {
         let Some(mut reach) = self.composite_reach.take() else {
             return;
         };
+        if reach.since >= self.frame_no {
+            // Begun at this frame's end, and scrolled already: the frame it
+            // owes lands it.
+            self.composite_reach = Some(reach);
+            return;
+        }
         let Some(container) = self.tree.index_of(reach.container) else {
             return;
         };
@@ -908,10 +918,243 @@ impl Core {
                     index,
                     column,
                     tries: 0,
+                    since: 0,
                 };
                 self.reach_unbuilt(from_unit, reach, toward);
             }
             None => {}
+        }
+    }
+
+    // -- Focus kept in a composite (backlog C125) ------------------------
+    // A checklist's Delete removes the focused row. The row is gone the
+    // next frame, and focus was left on a key no node has: the keyboard
+    // dropped out of the list, and an app could not name the row before
+    // it, items being keyed by index. So the core remembers where the
+    // focused item sat, and the frame that no longer has it lands focus
+    // on the item now at that place — else the one before it, as roving
+    // focus does in ARIA practice — and `focus_item` names an item by its
+    // index.
+
+    /// The units of the composite at `c` whose items are `items`: a
+    /// table's rows in order, a list's items themselves.
+    fn units_of(&self, c: usize, table: bool, items: &[usize]) -> Vec<usize> {
+        let mut units: Vec<usize> = Vec::new();
+        for &j in items {
+            let u = if table {
+                crate::composite::row_of(&self.tree, c, j)
+            } else {
+                j
+            };
+            if units.last() != Some(&u) {
+                units.push(u);
+            }
+        }
+        units
+    }
+
+    /// Where focus lands on unit `u` of a composite: a list's item when
+    /// it is live, a table's row's live cell nearest `column`.
+    fn landing_in(
+        &self,
+        c: usize,
+        table: bool,
+        items: &[usize],
+        u: usize,
+        column: usize,
+    ) -> Option<usize> {
+        if table {
+            let row: Vec<usize> = items
+                .iter()
+                .copied()
+                .filter(|&j| crate::composite::row_of(&self.tree, c, j) == u)
+                .collect();
+            self.cell_at_column(&row, column)
+        } else {
+            Some(u).filter(|&j| crate::access::focusable(&self.tree, j))
+        }
+    }
+
+    /// The composite at `c`'s role, whether it is a table, and its items,
+    /// when it is a composite at all.
+    fn composite_parts(&mut self, c: usize) -> Option<(bool, Vec<usize>)> {
+        let role = crate::composite::role(&self.tree, c)?;
+        let item = crate::composite::item_role(role)?;
+        let mut items = std::mem::take(&mut self.items_scratch);
+        crate::composite::items(&self.tree, c, item, &mut items);
+        let now = items.clone();
+        self.items_scratch = items;
+        Some((role == crate::access::Role::Table, now))
+    }
+
+    /// Reads where the focused item sits in its composite, for
+    /// [`Self::keep_focus_in_composite`] to land on if it vanishes: run
+    /// when focus moves between frames and at each frame's end, against
+    /// the tree the focus is on. Focus on a control inside an item (a
+    /// table cell's checkbox) is placed by that item. None when focus is
+    /// on no composite item, or on a node the tree does not have.
+    pub(crate) fn note_focus_place(&mut self) {
+        self.focus_place = None;
+        let (Some(focus), Some(f)) = (self.focus, self.focus_index()) else {
+            return;
+        };
+        let item_role = |n: usize| {
+            crate::composite::role(&self.tree, n).is_some_and(|r| {
+                crate::composite::PAIRS
+                    .iter()
+                    .any(|&(_, item)| crate::composite::is_item(r, item))
+            })
+        };
+        let mut scratch = std::mem::take(&mut self.items_scratch);
+        let mut n = f;
+        let found = loop {
+            if item_role(n)
+                && let Some(c) = crate::composite::owner(&self.tree, n, &mut scratch)
+            {
+                break Some((c, n));
+            }
+            n = match self.tree.parent[n] {
+                NIL => break None,
+                p => p as usize,
+            };
+        };
+        let place = found.and_then(|(c, item)| {
+            // `owner` left the composite's items in `scratch`.
+            let table = crate::composite::role(&self.tree, c) == Some(crate::access::Role::Table);
+            let units = self.units_of(c, table, &scratch);
+            let unit = self.composite_unit(c, item);
+            let place = units.iter().position(|&u| u == unit)?;
+            let index = crate::composite::row_count(&self.tree, unit, c)
+                .and_then(|_| crate::composite::data_index(&self.tree, unit));
+            Some(ItemPlace {
+                item: focus,
+                container: self.tree.keys[c],
+                place,
+                index,
+                column: if table { self.column_of(c, item) } else { 0 },
+            })
+        });
+        self.items_scratch = scratch;
+        self.focus_place = place;
+    }
+
+    /// At a frame's end: when the composite item focus was on is gone
+    /// from this frame and its composite is not, focus moves to the item
+    /// now at its place — by data index in a windowed composite, reaching
+    /// for the row when the frame did not build it — else the one before
+    /// it, else the first. A composite gone or empty leaves focus as it
+    /// was. The focus shows as it did: a removal is no new input.
+    pub(crate) fn keep_focus_in_composite(&mut self) {
+        let Some(place) = self.focus_place.take() else {
+            return;
+        };
+        if self.focus != Some(place.item) || self.focus_index().is_some() {
+            return;
+        }
+        let Some(c) = self.tree.index_of(place.container) else {
+            return;
+        };
+        let Some((table, items)) = self.composite_parts(c) else {
+            return;
+        };
+        let units = self.units_of(c, table, &items);
+        let Some(&first) = units.first() else {
+            return;
+        };
+        let visible = self.focus_visible;
+        if let Some(index) = place.index
+            && let Some(n) = crate::composite::row_count(&self.tree, first, c)
+        {
+            // A windowed composite keys its rows by data index, so a row
+            // removed before the end leaves its key to the row after it,
+            // and focus never left. A row still counted but not built is
+            // only scrolled out of the window: focus stays on it, as ADR
+            // 0070 has it, and pulling the scroller back would fight the
+            // wheel. What is left is a row past the new end: the last row,
+            // reached for when the frame did not build it.
+            let built = units
+                .iter()
+                .any(|&u| crate::composite::data_index(&self.tree, u) == Some(index));
+            if index < n && !built {
+                return;
+            }
+            self.reach_index(c, items[0], index, table.then_some(place.column));
+            if self.composite_reach.is_none() {
+                self.focus_visible = visible;
+            }
+            return;
+        }
+        let at = place.place.min(units.len() - 1);
+        let landing = (0..=at)
+            .rev()
+            .chain(at + 1..units.len())
+            .find_map(|k| self.landing_in(c, table, &items, units[k], place.column));
+        if let Some(j) = landing {
+            self.land_focus(j);
+            self.focus_visible = visible;
+        }
+    }
+
+    /// Asks for focus on item `index` of the composite `key`, landed when
+    /// the frame ends: the item whose data index is `index` — a row a
+    /// windowed composite did not build is reached for, scrolled to and
+    /// landed on the frame that builds it, an index past `rowCount` being
+    /// the last row — else, in a composite whose items carry no index, the
+    /// item at that place; a table's row lands on its first live cell.
+    /// Nothing happens for a key that names no composite, an index with
+    /// no live item, or a composite a modal shuts out. It is the app
+    /// saying where focus goes, as `set_focus` is: it stands against a
+    /// closing modal's restore, and the focus shows as the last input left
+    /// it (backlog C125).
+    pub fn focus_item(&mut self, key: Key, index: u64) {
+        self.pending_item_focus = Some((key, index));
+        self.owe_frame("focus_item");
+    }
+
+    /// Lands a `focus_item` asked for since the last frame's end, against
+    /// the tree this frame built.
+    pub(crate) fn resolve_item_focus(&mut self) {
+        let Some((key, index)) = self.pending_item_focus.take() else {
+            return;
+        };
+        let Some(c) = self.tree.index_of(key) else {
+            return;
+        };
+        if !self.interactive(c) {
+            return;
+        }
+        let Some((table, items)) = self.composite_parts(c) else {
+            return;
+        };
+        if !crate::composite::is_composite(&self.tree, c, &items) {
+            return;
+        }
+        let units = self.units_of(c, table, &items);
+        let Some(&first) = units.first() else {
+            return;
+        };
+        let visible = self.focus_visible;
+        let before = self.focus;
+        if crate::composite::row_count(&self.tree, first, c).is_some() {
+            self.reach_index(c, items[0], index, table.then_some(0));
+        } else {
+            let indexed = |u: usize| crate::composite::data_index(&self.tree, u);
+            let unit = match units.iter().copied().find(|&u| indexed(u) == Some(index)) {
+                Some(u) => Some(u),
+                None if units.iter().all(|&u| indexed(u).is_none()) => usize::try_from(index)
+                    .ok()
+                    .and_then(|k| units.get(k).copied()),
+                None => None,
+            };
+            if let Some(j) = unit.and_then(|u| self.landing_in(c, table, &items, u, 0)) {
+                self.land_focus(j);
+            }
+        }
+        if self.composite_reach.is_none() {
+            self.focus_visible = visible;
+        }
+        if self.focus != before || self.composite_reach.is_some() {
+            self.focus_asked = true;
         }
     }
 
@@ -1097,6 +1340,19 @@ impl Core {
     }
 }
 
+/// Where the focused composite item sat (backlog C125): the focused key,
+/// its composite, its unit's place among the composite's units (a table's
+/// rows, a list's items), the unit's data index when the composite is
+/// windowed, and the column in a table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ItemPlace {
+    pub item: Key,
+    pub container: Key,
+    pub place: usize,
+    pub index: Option<u64>,
+    pub column: usize,
+}
+
 /// Where a composite step goes: onto a built item, or reaching for a row
 /// a windowed list or table has not built, toward where it would be.
 enum Target {
@@ -1114,4 +1370,9 @@ pub(crate) struct Reach {
     pub index: u64,
     pub column: Option<usize>,
     pub tries: u8,
+    /// The frame number current when the reach began: a reach begun at a
+    /// frame's end (a `focus_item`, a removed item's focus, a type-ahead
+    /// answer) has scrolled already, and is landed by the frame it owes,
+    /// not reached for twice in the one it began in (backlog C125).
+    pub since: u64,
 }

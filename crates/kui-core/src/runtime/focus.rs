@@ -1010,9 +1010,17 @@ impl Core {
                 self.region = region;
             }
         }
+        let moved = self.focus != key;
         self.focus = key;
         self.edit.set_focus(edit_key);
         self.remember_composite_row();
+        // A move between frames is placed against the frame it moved in
+        // (backlog C125): Tab onto a row and Delete at once is the case a
+        // place read only at the frame's end would miss. A build's tree
+        // is half made, so a move during one is placed at its end.
+        if moved && !self.building {
+            self.note_focus_place();
+        }
     }
 
     /// Whether the window's "Tab moves focus" toggle is on (backlog C99):

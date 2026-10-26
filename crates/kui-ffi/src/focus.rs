@@ -207,6 +207,21 @@ pub extern "C" fn kui_focus_region(ptr: *mut KuiCtx, key: u64) {
     });
 }
 
+/// Focuses item `index` of the list, table or other composite `key` names,
+/// at the end of the frame being built (backlog C125): the item opened
+/// with that data index — a row a windowed composite did not build is
+/// scrolled to and landed on the frame that builds it, an index past its
+/// `row_count` being the last row — else, where items carry no index, the
+/// item at that place. Nothing for a key that names no composite.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_focus_item(ptr: *mut KuiCtx, key: u64, index: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().focus_item(Key(key), index);
+        }
+    });
+}
+
 /// The focus region in effect; 0 for the main ring.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_region(ptr: *mut KuiCtx) -> u64 {

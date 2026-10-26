@@ -3185,9 +3185,9 @@ pub const ENV_FIELDS: &[EnvField] = &[
         get: |f| Value::Float(f.scale as f64),
         from: "`Core::scale()`, the frame's",
         node: &["viewport.scale"],
-        lua: &[],
+        lua: &["scale"],
         c: "`kui_frame_begin(scale)`",
-        doc: "Device pixels per logical px. Lua has no reading: a script sees logical px only.",
+        doc: "Device pixels per logical px: the display scale factor of the window being built, 2 on a Retina display, 1.5 on a Windows display at 150%. A script still lays out in logical px; what it reads this for is landing an edge on a whole *physical* pixel (`math.floor(x * scale + 0.5) / scale`) — a seam between shapes drawn side by side vanishes only there, which a whole logical px is at integer scales alone (backlog C127). Lua's `env.scale`, Node's `env().viewport.scale`; a C or Odin host is the one that knows it and hands it to `kui_frame_begin`.",
     },
     EnvField {
         name: "focus",

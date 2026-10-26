@@ -2623,6 +2623,14 @@ now :: proc(ui: ^Ui) -> f64 {
 	return c.now(ui)
 }
 
+// The display scale factor of the window being built, device pixels per
+// logical px (backlog C127): what a view lands an edge on a whole physical
+// pixel by, a whole logical px being one at integer scales only.
+// Rust: Ui::scale.
+scale :: proc(ui: ^Ui) -> f32 {
+	return c.scale(ui)
+}
+
 // Asks for a frame at a time on the frame clock — a toast's expiry, a
 // sequence's beat — with nothing owed until then.
 // Rust: Ui::request_frame_at.
@@ -3030,6 +3038,16 @@ focus_region :: proc(ui: ^Ui, key: u64) {
 // Rust: Ui::region.
 region :: proc(ui: ^Ui) -> u64 {
 	return c.region(ui)
+}
+
+// Focuses item `index` of a list, table or other composite, named by its key
+// (backlog C125): the item opened with that data `index` — a row a windowed
+// composite did not build is scrolled to and landed on the frame that builds
+// it, an index past `rowCount` being the last row — else, where items carry
+// no index, the item at that place.
+// Rust: Ui::focus_item.
+focus_item :: proc(ui: ^Ui, key: u64, index: u64) {
+	c.focus_item(ui, key, index)
 }
 
 // Scrolls whatever encloses a node until it is in view.

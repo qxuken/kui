@@ -1241,6 +1241,7 @@ foreign lib {
 	token_family :: proc(ctx: ^Ctx, name: string, family: ^u32, font: ^u64) -> bool ---
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---
+	scale :: proc(ctx: ^Ctx) -> f32 ---
 	request_frame_at :: proc(ctx: ^Ctx, at: f64) ---
 	next_frame_at :: proc(ctx: ^Ctx) -> f64 ---
 	exit_with :: proc(ctx: ^Ctx, key: u64, exit: ^Enter) ---
@@ -1309,6 +1310,7 @@ foreign lib {
 	caret_stamp :: proc(ctx: ^Ctx) -> u64 ---
 	focus_region :: proc(ctx: ^Ctx, key: u64) ---
 	region :: proc(ctx: ^Ctx) -> u64 ---
+	focus_item :: proc(ctx: ^Ctx, key: u64, index: u64) ---
 	reveal :: proc(ctx: ^Ctx, key: u64) ---
 	set_scroll :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32) ---
 	shift_scroll :: proc(ctx: ^Ctx, key: u64, drawn: f32, target: f32) ---

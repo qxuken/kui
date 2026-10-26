@@ -757,6 +757,13 @@ impl Core {
         } else {
             None
         };
+        // Focus left on a composite item this frame no longer has moves to
+        // the item now at its place (backlog C125), and a `focus_item`
+        // asked for lands — both before the modal's bookkeeping, so a modal
+        // opening now displaces a live item, and an app's ask stands
+        // against a closing one's restore.
+        self.keep_focus_in_composite();
+        self.resolve_item_focus();
         self.resolve_modal_focus();
         // Then the regions: a `focus_region` asked for during the build,
         // the region following a focus the build declared, and a region
@@ -782,6 +789,8 @@ impl Core {
             let tree = &self.tree;
             self.composite_rows.retain(|k, _| tree.index_of(*k).is_some());
         }
+        // Where the focused item sits, for the frame that may remove it.
+        self.note_focus_place();
     }
 
     /// Numbers the text nodes of the selection's scope in tree order and

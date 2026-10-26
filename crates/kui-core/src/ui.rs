@@ -876,6 +876,15 @@ impl<'a> Ui<'a> {
         self.core.now()
     }
 
+    /// The display scale factor of the window being built — device pixels
+    /// per logical px, the scale the frame was begun with (backlog C127).
+    /// A view still lays out in logical px; it reads this to land an edge
+    /// on a whole physical pixel, where a seam between shapes drawn side by
+    /// side vanishes (a whole logical px is one at integer scales only).
+    pub fn scale(&self) -> f32 {
+        self.core.scale()
+    }
+
     /// The caret's blink phase — `true` draws it; see
     /// `Core::caret_visible`. A custom editor draws its caret node on the
     /// on phase and skips it on the off, keeping the `caret` row on its
@@ -1742,6 +1751,16 @@ impl<'a> Ui<'a> {
     #[track_caller]
     pub fn focus_region(&mut self, key: Option<Key>) {
         self.core.focus_region(key);
+    }
+
+    /// Focuses item `index` of the list, table or other composite `key`
+    /// names (backlog C125): the item whose data `index` that is —
+    /// reaching for a row a windowed composite did not build, as an arrow
+    /// does — else the item at that place, where items carry no index.
+    /// Deferred to `finish` like [`Ui::focus_region`], so a view may name
+    /// an item it is declaring now. See `Core::focus_item`.
+    pub fn focus_item(&mut self, key: Key, index: u64) {
+        self.core.focus_item(key, index);
     }
 
     /// The focus region in effect — the node whose ring Tab walks — or

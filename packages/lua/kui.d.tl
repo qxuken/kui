@@ -1513,6 +1513,8 @@ global type kui = record
     viewport_w: number
     -- Its logical height.
     viewport_h: number
+    -- Device pixels per logical px: the display scale factor of the window being built, 2 on a Retina display, 1.5 on a Windows display at 150%. A script still lays out in logical px; what it reads this for is landing an edge on a whole *physical* pixel (`math.floor(x * scale + 0.5) / scale`) — a seam between shapes drawn side by side vanishes only there, which a whole logical px is at integer scales alone (backlog C127). Lua's `env.scale`, Node's `env().viewport.scale`; a C or Odin host is the one that knows it and hands it to `kui_frame_begin`.
+    scale: number
     -- The focused *node*'s key, as events carry it (absent for none). A value the host wrote before the view ran, so it lags a same-frame verb by one frame; `env.is_focused(key)` is the live query. Node spells it as the call `focused()` on the context, and C as `kui_focused`, rather than a key on `env`.
     focus: integer
     -- Whether focus shows — the keyboard or assistive technology put it where it is, or acted on it there; a click alone does not. Node: `focusVisible()` on the context.
@@ -1551,6 +1553,8 @@ global type kui = record
     focus_prev: function()
     -- Enters a `focusRegion`'s ring, or leaves it for the main one (ADR 0022).
     focus_region: function(key: KeyRef)
+    -- Focuses item `index` of a list, table or other composite, named by its key (backlog C125): the item opened with that data `index` — a row a windowed composite did not build is scrolled to and landed on the frame that builds it, an index past `rowCount` being the last row — else, where items carry no index, the item at that place. Lands when the frame ends, so a view may name the composite it is declaring. A focused item that vanishes hands focus to the item now at its place on its own; this names one.
+    focus_item: function(key: KeyRef, index: integer)
     -- Whether a node has focus.
     is_focused: function(key: KeyRef): boolean
     -- The app's answer to a `typeahead` event (ADR 0070): the data index of the row its search names, which the core reaches for in the composite that asked — landing on it, or scrolling to it and landing the frame that builds it. False when that composite asked nothing, or focus has left it.

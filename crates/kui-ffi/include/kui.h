@@ -455,8 +455,9 @@ extern "C" {
  * (880 bytes; backlog C120);
  * kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92),
- * kui_set_rules_appearance (backlog C113) and kui_platform with its
- * KUI_PLATFORM_* codes (backlog C116) are new functions.
+ * kui_set_rules_appearance (backlog C113), kui_platform with its
+ * KUI_PLATFORM_* codes (backlog C116), kui_focus_item (backlog C125) and
+ * kui_scale (backlog C127) are new functions.
  */
 #define KUI_ABI_VERSION 39u
 uint32_t kui_abi_version(void);
@@ -3110,6 +3111,12 @@ void kui_set_time(KuiCtx *ctx, double now_secs);
  * F134): what a view reads a deadline off - a toast's expiry, a sequence's
  * beats - so that a test moving the clock moves them with the tweens. */
 double kui_now(KuiCtx *ctx);
+/* The display scale factor of the frame being built, or the last one: the
+ * scale kui_frame_begin was given (backlog C127). A plugin's view, drawn
+ * in a frame its host began, reads it here to land an edge on a whole
+ * physical pixel - floorf(x * s + 0.5f) / s - which a whole logical px is
+ * at integer scales only. 1 before any frame. */
+float kui_scale(KuiCtx *ctx);
 /* A frame at a time on that clock (backlog F135): kui_request_frame_at
  * asks for one - a toast's expiry, a sequence's next beat - and nothing is
  * owed until then, so kui_animating stays false; the earliest time asked
@@ -3637,6 +3644,17 @@ void kui_focus_region(KuiCtx *ctx, uint64_t key);
  * the main ring. What a chord that toggles between a dock and the app
  * reads to know which way it is going. */
 uint64_t kui_region(KuiCtx *ctx);
+/* Focuses item `index` of the list, table or other composite `key` names
+ * (backlog C125): the item opened with that data index (kui_open_indexed)
+ * - a row a windowed composite (kui_row_count) did not build is scrolled
+ * to and landed on the frame that builds it, an index past the count
+ * being the last row - else, where items carry no index, the item at that
+ * place; a table's row lands on its first live cell. Deferred to the end
+ * of the frame being built, like kui_focus_region. Nothing for a key that
+ * names no composite, or an index with no live item. A composite's
+ * focused item that vanishes hands focus to the item now at its place on
+ * its own; this is for naming one. */
+void kui_focus_item(KuiCtx *ctx, uint64_t key, uint64_t index);
 /* -- Scrolling ------------------------------------------------------------ */
 /* Scroll offsets are retained per node key and clamped by each layout to
  * that frame's overflow. The wheel, the scrollbars, Tab and the caret move
