@@ -448,7 +448,8 @@ extern "C" {
  * provider that raised a component event (80 bytes on 64-bit, from 64).
  * And KuiSpec appends focus_ring (816 bytes on 64-bit, from 808), the core
  * focus ring's colour (backlog C93), then min_column, hidden, on_query and
- * when (840 bytes; ADR 0069); kui_tab_moves_focus (backlog C99),
+ * when (840 bytes; ADR 0069), then on_typeahead (848 bytes; ADR 0070,
+ * which kui_answer_typeahead answers); kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92) are new
  * functions.
  */
@@ -1501,6 +1502,12 @@ typedef struct KuiSpec {
      * is not re-run for a resize, a theme switch or a hover. NULL for
      * none. ABI 39 (840 bytes on 64-bit). */
     const KuiValue *when;
+    /* The message a type-ahead search arrives as on a list or table
+     * composite when none of the rows the frame built matched it
+     * (onTypeahead, ADR 0070): typeahead: {text} in it. Answer with
+     * kui_answer_typeahead. A borrowed KuiValue*, cloned while the node
+     * opens; NULL for none. ABI 39, appended (848 bytes on 64-bit). */
+    const KuiValue *on_typeahead;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
@@ -4150,6 +4157,12 @@ uint32_t kui_request_copy(KuiCtx *ctx, KuiStr *out);
  * nothing asked - a late answer cannot overwrite what has been copied
  * since. */
 bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
+/* The answer to a typeahead event (ADR 0070): `index` is the data row the
+ * search names in the composite `key` that asked; the core goes there,
+ * scrolling to a row the frame did not build and landing on it the frame
+ * that builds it. False when that composite asked nothing, or focus has
+ * left it. */
+bool kui_answer_typeahead(KuiCtx *ctx, uint64_t key, uint64_t index);
 /* The clipboard for an app that owns its text: an on_key sink
  * hears the raw Ctrl-c / Ctrl-v and binds them here. kui_set_clipboard
  * queues a KUI_MENU_ACTION_SET_CLIPBOARD with `text` (and `html` as a

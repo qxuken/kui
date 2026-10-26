@@ -236,6 +236,16 @@ pub extern "C" fn kui_answer_selection_range(ptr: *mut KuiCtx, text: KuiStr) -> 
     })
 }
 
+/// Answers a `typeahead` event (ADR 0070) with the data index of the row
+/// the search names, in the composite `key` that asked. False when that
+/// composite asked nothing, or focus has left it.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_answer_typeahead(ptr: *mut KuiCtx, key: u64, index: u64) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().answer_typeahead(Key(key), index))
+    })
+}
+
 /// Puts `text` on the system clipboard, as a `KUI_MENU_ACTION_SET_CLIPBOARD`
 /// the host drains: the action a menu's Copy queues, callable from an
 /// `on_key` sink that hears the raw `Ctrl-c`. `html` is a second flavour

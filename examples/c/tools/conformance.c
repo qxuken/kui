@@ -2460,7 +2460,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
         .accent = 1,
         .cursor = KUI_CURSOR_POINTER,
         .selected = 1, .expanded = KUI_EXPANDED_EXPANDED,
-        .on_layout = layout, .on_force_click = force,
+        .on_layout = layout, .on_typeahead = layout, .on_force_click = force,
         .click_sound = f->sound, .hover_sound = f->sound,
         .animate = 1,
         .transition_ms = 100, .easing = KUI_EASE_IN_OUT, .bounce = 0.3f, .slide = 1,

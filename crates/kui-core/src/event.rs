@@ -203,6 +203,19 @@ fn read_query(p: &Value) -> Option<QueryChange> {
     })
 }
 
+/// A `typeahead`: the search a list or table composite's built rows did
+/// not answer (ADR 0070), for the app to answer with a row's index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Typeahead {
+    pub text: String,
+}
+
+fn read_typeahead(p: &Value) -> Option<Typeahead> {
+    Some(Typeahead {
+        text: p.get_str("text")?.to_string(),
+    })
+}
+
 fn read_range(p: &Value) -> Option<RowRange> {
     Some(RowRange {
         first: p.get("first")?.as_int()? as u64,
@@ -871,6 +884,7 @@ pub enum Event {
     Dismiss(Dismiss),
     Range(RowRange),
     Query(QueryChange),
+    Typeahead(Typeahead),
     /// A component instance's event (ADR 0060): the host's own message
     /// for the event prop is [`UiEvent::message`]'s to decode.
     Component,
@@ -967,6 +981,7 @@ impl UiEvent {
             EventKind::Component => Event::Component,
             EventKind::Range => Event::Range(read_range(p)?),
             EventKind::Query => Event::Query(read_query(p)?),
+            EventKind::Typeahead => Event::Typeahead(read_typeahead(p)?),
         })
     }
 }

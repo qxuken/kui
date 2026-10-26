@@ -771,6 +771,9 @@ pub struct Core {
     /// A composite step to a row a windowed list or table has not built
     /// (ADR 0070, backlog C89): landed by the frame that builds it.
     composite_reach: Option<composites::Reach>,
+    /// The composite a `typeahead` event asked (ADR 0070): what
+    /// `answer_typeahead` accepts an answer for, once.
+    typeahead_asked: Option<Key>,
     /// Reused by the composite walks (the ring, arrow motion), so a frame
     /// with composites in it pays one allocation rather than one each.
     items_scratch: Vec<usize>,
@@ -1445,6 +1448,7 @@ impl Core {
             tab_moves_focus: false,
             tab_armed: None,
             composite_reach: None,
+            typeahead_asked: None,
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),
             ghost_clip: Vec::new(),

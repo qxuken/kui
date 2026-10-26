@@ -403,6 +403,14 @@ pub const DOORS: &[Door] = &[
         doc: "Whether focus came from the keyboard and the ring should show.",
     },
     Door {
+        rust: "Core::answer_typeahead",
+        c: Is("kui_answer_typeahead"),
+        odin: Is("answer_typeahead"),
+        node: Is("answerTypeahead"),
+        lua: Is("answer_typeahead"),
+        doc: "The app's answer to a `typeahead` event (ADR 0070): the data index of the row its search names, which the core reaches for in the composite that asked — landing on it, or scrolling to it and landing the frame that builds it. False when that composite asked nothing, or focus has left it.",
+    },
+    Door {
         rust: "Ui::tab_moves_focus",
         c: Is("kui_tab_moves_focus"),
         odin: Is("tab_moves_focus"),

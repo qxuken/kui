@@ -365,6 +365,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onMenu" => s.on_menu = &layout_tag,
             "onSelectionRange" => s.on_selection_range = &layout_tag,
             "onRange" => s.on_range = &layout_tag,
+            "onTypeahead" => s.on_typeahead = &layout_tag,
             "onQuery" => s.on_query = &layout_tag,
             "minColumn" => s.min_column = F,
             "hidden" => s.hidden = 1,
@@ -573,6 +574,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_menu: &menu_tag,
         on_selection_range: &menu_tag,
         on_range: &menu_tag,
+        on_typeahead: &menu_tag,
         min_column: 0.0,
         hidden: 0,
         on_query: std::ptr::null(),
@@ -689,6 +691,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_menu("cm")
         .on_selection_range("cm")
         .on_range("cm")
+        .on_typeahead("cm")
         .reveal_on_hover()
         .floats_in_order()
         .modifier_keys()

@@ -882,6 +882,10 @@ Spec :: struct {
 	// in it, after the frame that first lays it out and whenever either changes;
 	// what a table pages an unbounded source by.
 	on_range: any,
+	// Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search
+	// its built rows did not answer arrives as this message with `typeahead:
+	// {text}` in it, the whole search so far.
+	on_typeahead: any,
 	// Message emitted when clicked (data, not a callback).
 	on_click: any,
 	// Drag handler: the drag arrives as this message with `drag: {phase, x, y,
@@ -1146,6 +1150,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.on_drop = borrow(scratch, s.on_drop)
 	out.on_layout = borrow(scratch, s.on_layout)
 	out.on_range = borrow(scratch, s.on_range)
+	out.on_typeahead = borrow(scratch, s.on_typeahead)
 	out.key_up = 1 if s.key_up else 0
 	out.modifier_keys = 1 if s.modifier_keys else 0
 	out.on_context_menu = borrow(scratch, s.on_context_menu)
@@ -3681,6 +3686,15 @@ request_copy :: proc(ui: ^Ui) -> (result: Copy_Answer, out: string) {
 // Rust: Ui::answer_selection_range.
 answer_selection_range :: proc(ui: ^Ui, text: string) -> bool {
 	return c.answer_selection_range(ui, text)
+}
+
+// The app's answer to a `typeahead` event (ADR 0070): the data index of the
+// row its search names, which the core reaches for in the composite that
+// asked — landing on it, or scrolling to it and landing the frame that
+// builds it.
+// Rust: Core::answer_typeahead.
+answer_typeahead :: proc(ui: ^Ui, key: u64, index: u64) -> bool {
+	return c.answer_typeahead(ui, key, index)
 }
 
 // A key sink's own Ctrl-C: posts a clipboard action for the host (backlog

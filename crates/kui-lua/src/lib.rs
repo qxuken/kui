@@ -1852,6 +1852,19 @@ fn env_table(
             })
         })?,
     )?;
+    // Answers a `typeahead` ask (ADR 0070) with the data index of the row
+    // the search names, in the composite that asked. False when it asked
+    // nothing, or focus has left it.
+    t.set(
+        "answer_typeahead",
+        lua.create_function(move |_, (key, index): (mlua::Value, u64)| {
+            let mut ui = ui.borrow_mut()?;
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(false);
+            };
+            Ok(ui.answer_typeahead(key, index))
+        })?,
+    )?;
     // Answers a `selectionrange` ask with the text for the range it named,
     // whole. False when nothing asked.
     t.set(

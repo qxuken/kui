@@ -1141,6 +1141,13 @@ pub enum Handler {
     /// matched entries, 0-based, and the node's size. State and
     /// environment changes have events of their own and do not raise it.
     Query,
+    /// On a `list` or `table` composite (ADR 0070): type-ahead that matched
+    /// no row the frame built, as this message with `typeahead: {text}` in
+    /// it — the whole search so far. A windowed list's rows past its
+    /// window have no names the core can see, so the app searches its
+    /// data and answers with the row's index (`Core::answer_typeahead`),
+    /// which the core reaches for as it reaches for a step.
+    Typeahead,
 }
 
 /// Event payloads a node declares. Boxed on `NodeSpec` because most
@@ -1359,6 +1366,12 @@ impl EventSpec {
     #[inline]
     pub fn on_query(&self) -> Option<&Value> {
         self.get(Handler::Query)
+    }
+
+    /// The message for [`Handler::Typeahead`], if declared.
+    #[inline]
+    pub fn on_typeahead(&self) -> Option<&Value> {
+        self.get(Handler::Typeahead)
     }
 
     /// The message for [`Handler::SelectionRange`], if declared.
@@ -2799,6 +2812,14 @@ impl NodeSpec {
     /// way in a narrow row. Meaningless on a spec outside an entry.
     pub fn hide(mut self, label: &str) -> Self {
         self.rules_mut().hide.push(label.to_string());
+        self
+    }
+
+    /// Asks the app for the row a type-ahead search names when no built
+    /// row matches (see [`Handler::Typeahead`]): `typeahead: {text}` in
+    /// `tag`.
+    pub fn on_typeahead(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().set(Handler::Typeahead, tag.into());
         self
     }
 

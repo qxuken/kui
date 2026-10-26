@@ -4868,6 +4868,20 @@ macro_rules! core_methods {
                 Ok(Json::Object(o))
             }
 
+            /// Answers a `typeahead` event (ADR 0070) with the data index of
+            /// the row the search names, in the composite `key` (either
+            /// spelling) that asked: the core goes there, scrolling to a
+            /// row the frame did not build. False when that composite asked
+            /// nothing, or focus has left it.
+            #[napi]
+            pub fn answer_typeahead(&mut self, key: String, index: f64) -> Result<bool> {
+                let index = count(index, "answerTypeahead: index")?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(false);
+                };
+                Ok(self.$core().answer_typeahead(key, index as u64))
+            }
+
             /// Answers a `selectionrange` ask with the text for the range
             /// it named, whole. False when nothing asked — a late answer
             /// cannot overwrite what has been copied since.

@@ -604,6 +604,16 @@ export interface WithRange {
 export interface WithQuery {
   query: QueryEvent;
 }
+/** A type-ahead search a `list` or `table` composite's built rows did not
+ *  answer (docs/adr/0070): the whole search so far, lower-cased. Answer
+ *  with `answerTypeahead(key, index)`. */
+export interface TypeaheadEvent {
+  text: string;
+}
+/** The `typeahead` field, on an `onTypeahead` message. */
+export interface WithTypeahead {
+  typeahead: TypeaheadEvent;
+}
 /** The `change` field of an editor's `onChange` message. */
 export interface WithEditChange {
   change: EditChangeEvent;
@@ -699,6 +709,8 @@ export type FilesMsg<T = {}> = T & WithFiles;
 export type LayoutMsg<T = {}> = T & WithLayout;
 /** The app's message `T` as an `onRange` node's rows in view arrive. */
 export type RangeMsg<T = {}> = T & WithRange;
+/** The app's message `T` as a composite's unanswered type-ahead arrives. */
+export type TypeaheadMsg<T = {}> = T & WithTypeahead;
 /** The app's message `T` as an `onQuery` node's matched entries arrive. */
 export type QueryMsg<T = {}> = T & WithQuery;
 /** The app's message `T` as an editor's `onChange` arrives. */
@@ -4354,6 +4366,14 @@ export declare class Ctx {
    */
   requestCopy(): { text: string | null, asked: boolean }
   /**
+   * Answers a `typeahead` event (ADR 0070) with the data index of
+   * the row the search names, in the composite `key` (either
+   * spelling) that asked: the core goes there, scrolling to a
+   * row the frame did not build. False when that composite asked
+   * nothing, or focus has left it.
+   */
+  answerTypeahead(key: string, index: number): boolean
+  /**
    * Answers a `selectionrange` ask with the text for the range
    * it named, whole. False when nothing asked — a late answer
    * cannot overwrite what has been copied since.
@@ -6018,6 +6038,14 @@ export declare class KuiWindow {
    * what reaches the clipboard.
    */
   requestCopy(): { text: string | null, asked: boolean }
+  /**
+   * Answers a `typeahead` event (ADR 0070) with the data index of
+   * the row the search names, in the composite `key` (either
+   * spelling) that asked: the core goes there, scrolling to a
+   * row the frame did not build. False when that composite asked
+   * nothing, or focus has left it.
+   */
+  answerTypeahead(key: string, index: number): boolean
   /**
    * Answers a `selectionrange` ask with the text for the range
    * it named, whole. False when nothing asked — a late answer

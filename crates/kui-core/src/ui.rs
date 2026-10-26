@@ -967,6 +967,12 @@ impl<'a> Ui<'a> {
         self.core.request_copy()
     }
 
+    /// Answers a `typeahead` ask with a row's data index; see
+    /// `Core::answer_typeahead`.
+    pub fn answer_typeahead(&mut self, key: Key, index: u64) -> bool {
+        self.core.answer_typeahead(key, index)
+    }
+
     /// Answers a `selectionrange` ask; see `Core::answer_selection_range`.
     pub fn answer_selection_range(&mut self, text: &str) -> bool {
         self.core.answer_selection_range(text)

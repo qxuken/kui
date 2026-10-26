@@ -111,6 +111,7 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("selection_text", "", "string"),
     ("request_copy", "", "string, boolean"),
     ("answer_selection_range", "text: string", "boolean"),
+    ("answer_typeahead", "key: KeyRef, index: integer", "boolean"),
     ("set_clipboard", "text: string, html?: string", ""),
     ("set_clipboard_secret", "text: string", ""),
     ("request_paste", "", ""),

@@ -227,7 +227,9 @@
 ///   `KUI_ACCESS_CELLS_FOCUS` (ADR 0070); and
 ///   `focus_ring` appended to `KuiSpec` (816 bytes on 64-bit, from 808),
 ///   the core focus ring's colour (backlog C93), then `min_column`,
-///   `hidden`, `on_query` and `when` (840 bytes; ADR 0069), with
+///   `hidden`, `on_query` and `when` (840 bytes; ADR 0069), then
+///   `on_typeahead` (848 bytes; ADR 0070, `kui_answer_typeahead`
+///   answering it), with
 ///   `kui_tab_moves_focus` (backlog C99), `kui_is_group_hovered` and
 ///   `kui_is_group_pressed` (backlog C92), new functions.
 pub const KUI_ABI_VERSION: u32 = 39;

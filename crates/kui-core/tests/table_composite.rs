@@ -168,7 +168,8 @@ fn virtual_frame(core: &mut Core, table: bool) {
             .size(200.0, VIEW_ROWS as f32 * ROW_H)
             .scroll_y()
             .role(role)
-            .label("rows"),
+            .label("rows")
+            .on_typeahead("ta"),
         |ui| {
             ui.row_count(N);
             if first > 0 {
@@ -486,4 +487,38 @@ fn a_windowed_list_numbers_its_rows_by_the_data() {
         (l.row_count, l.set_size),
         (Some(N as usize), Some(N as usize))
     );
+}
+
+/// Type-ahead in a windowed list (ADR 0070): the built rows are searched
+/// first; a search none of them answers is asked of the app as the list's
+/// `onTypeahead` message, and its answer — a row's data index — is
+/// reached for as a step is. An answer is taken once, and not after focus
+/// has left the list.
+#[test]
+fn an_unanswered_type_ahead_is_asked_and_the_answer_reached_for() {
+    let mut core = Core::new();
+    virtual_frame(&mut core, false);
+    core.set_focus(Some(row_key(0)));
+    virtual_frame(&mut core, false);
+    let list = Key::ROOT.str("list");
+    // "row 3" is built: found there, nothing asked.
+    let out = core.handle_input(InputEvent::Text("row 3".into()));
+    assert_eq!(core.focus(), Some(row_key(3)));
+    assert!(out.iter().all(|e| e.event.name() != "typeahead"), "{out:?}");
+    // Nothing built answers "z": the list is asked.
+    let out = core.handle_input(InputEvent::Text("z".into()));
+    let asked = out
+        .iter()
+        .find(|e| e.event.name() == "typeahead")
+        .expect("asked");
+    assert_eq!(asked.key, list);
+    assert_eq!(asked.data().and_then(|d| d.get_str("text")), Some("z"));
+    assert!(core.answer_typeahead(list, 500), "answered");
+    assert!(!core.answer_typeahead(list, 600), "once");
+    settle(&mut core, false);
+    assert_eq!(core.focus(), Some(row_key(500)), "reached for and landed");
+    // A stale answer: focus left the list before it came.
+    core.handle_input(InputEvent::Text("q".into()));
+    core.set_focus(Some(Key::ROOT.str("before")));
+    assert!(!core.answer_typeahead(list, 7));
 }

@@ -197,6 +197,7 @@ pub const P_WHEN: u32 = 145;
 pub const P_MIN_COLUMN: u32 = 146;
 pub const P_HIDDEN: u32 = 147;
 pub const P_ON_QUERY: u32 = 148;
+pub const P_ON_TYPEAHEAD: u32 = 149;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1075,6 +1076,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Range handler (ADR 0065): on a node whose children carry data indices — `index`, a virtual list's rows — the least and greatest index among its children inside its box arrive as this message with `range: {first, last}` in it, after the frame that first lays it out and whenever either changes; what a table pages an unbounded source by. Needs a stable key.",
     },
     PropDef {
+        name: "onTypeahead",
+        id: P_ON_TYPEAHEAD,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_typeahead(v)),
+        doc: "Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search its built rows did not answer arrives as this message with `typeahead: {text}` in it, the whole search so far. A windowed list's unbuilt rows have no names the core can see; the app searches its data and answers with `answerTypeahead(key, index)`, and the core reaches for that row as a step does.",
+    },
+    PropDef {
         name: "onClick",
         id: P_ON_CLICK,
         kind: Kind::Msg,
@@ -1880,6 +1888,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     (
         "onRange",
         "`on_range` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
+    (
+        "onTypeahead",
+        "`on_typeahead` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
     (
         "family",
@@ -2764,6 +2776,13 @@ pub const EVENTS: &[EventDef] = &[
         field: Some("query"),
         payload: "`query: { matched, width, height }` in the `onQuery` message",
         doc: "A node's matched `when` entries over its own size and the window's (ADR 0069): `matched` the 0-based indices into its `when` list of every entry that matches, `width` and `height` its size — after the frame that first lays it out and whenever that set moves; on a lazy branch's node, its decision (`matched` is `[0]` while `render` is built). State and environment changes have events of their own and do not raise it. Nothing needs it to lay out: the core applies the entries itself, so this is for a view that keeps the fact in its model.",
+    },
+    EventDef {
+        kind: "typeahead",
+        handler: "onTypeahead",
+        field: Some("typeahead"),
+        payload: "`typeahead: { text }` in the `onTypeahead` message",
+        doc: "Type-ahead in a `list` or `table` composite that matched none of the rows the frame built (ADR 0070): `text` is the whole search so far, lower-cased. Answer with `answerTypeahead(key, index)` — the core reaches for that row, scrolling to it if it is not built — or not at all.",
     },
 ];
 

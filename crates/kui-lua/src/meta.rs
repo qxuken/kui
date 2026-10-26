@@ -402,6 +402,12 @@ pub(crate) const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
         ],
     ),
     (
+        "kui.TypeaheadEvent",
+        "typeahead",
+        "kui.WithTypeahead",
+        &[("text", true, "string")],
+    ),
+    (
         "kui.FilesEvent",
         "files",
         "kui.WithFiles",

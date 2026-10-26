@@ -92,6 +92,7 @@ const WITH = {
   files: 'WithFiles',
   layout: 'WithLayout',
   range: 'WithRange',
+  typeahead: 'WithTypeahead',
   query: 'WithQuery',
   // On a box the row serves both roles it applies to; `<edit>` and
   // `<slider>` narrow it to their own (jsx-runtime.d.ts).

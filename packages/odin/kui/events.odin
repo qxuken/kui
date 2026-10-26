@@ -189,6 +189,13 @@ Query_Event :: struct {
 	width, height: f32,
 }
 
+// A type-ahead search a list or table composite's built rows did not
+// answer (docs/adr/0070): the whole search so far. Answer with
+// answer_typeahead.
+Typeahead_Event :: struct {
+	text: string,
+}
+
 Slider_Change_Event :: struct {
 	value: f64,
 	phase: string, // "move" | "end"
@@ -341,6 +348,10 @@ With_Range :: struct {
 
 With_Query :: struct {
 	query: Query_Event,
+}
+
+With_Typeahead :: struct {
+	typeahead: Typeahead_Event,
 }
 
 With_Slider_Change :: struct {

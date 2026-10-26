@@ -958,6 +958,10 @@ pub struct KuiSpec {
     /// maps, each the conditions it tests and the props it sets, read as
     /// every binding's plain-data form is; NULL for none. ABI 39.
     pub when: *const KuiValue,
+    /// The message a type-ahead search its built rows did not answer
+    /// arrives as on a list or table composite (`onTypeahead`, ADR 0070),
+    /// borrowed like `on_layout`; NULL for none. ABI 39.
+    pub on_typeahead: *const KuiValue,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

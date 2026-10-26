@@ -6017,6 +6017,7 @@ SCENE_TREES.sampler = (fx) =>
           onClick: { kind: 'card' },
           onHover: { kind: 'hov' },
           onLayout: { kind: 'lay' },
+          onTypeahead: { kind: 'ta' },
           onForceClick: { kind: 'force' },
           clickSound: fx().sound,
           hoverSound: fx().sound,

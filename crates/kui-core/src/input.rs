@@ -1534,6 +1534,9 @@ pub enum EventKind {
     /// A node's matched own-size and window entries changed, or a lazy
     /// branch's decision did (ADR 0069).
     Query,
+    /// A type-ahead search a composite's built rows did not answer, asked
+    /// of the app (ADR 0070).
+    Typeahead,
 }
 
 impl EventKind {
@@ -1572,6 +1575,7 @@ impl EventKind {
         EventKind::Component,
         EventKind::Range,
         EventKind::Query,
+        EventKind::Typeahead,
     ];
 
     /// The wire name: what `ev.event` reads in every binding, a root
@@ -1611,6 +1615,7 @@ impl EventKind {
             EventKind::Component => "component",
             EventKind::Range => "range",
             EventKind::Query => "query",
+            EventKind::Typeahead => "typeahead",
         }
     }
 

@@ -540,8 +540,151 @@ impl Core {
             // Not a composite item: the text is not ours, so Space still
             // presses. A search that matched nothing *is* ours — the
             // buffer holds it, and the next character extends it rather
-            // than starting over.
-            None => !self.type_ahead.is_empty(),
+            // than starting over — and a composite that asked is asked
+            // for the row its data names (ADR 0070).
+            None => {
+                if self.type_ahead.is_empty() {
+                    return false;
+                }
+                self.ask_typeahead(i, out);
+                true
+            }
+        }
+    }
+
+    /// A search the built rows did not answer, asked of the composite item
+    /// `i` belongs to when it declared `on_typeahead` (ADR 0070): the
+    /// buffer, whole, as `typeahead: {text}` in its message.
+    fn ask_typeahead(&mut self, i: usize, out: &mut Vec<UiEvent>) {
+        let mut items = std::mem::take(&mut self.items_scratch);
+        let container = crate::composite::owner(&self.tree, i, &mut items);
+        self.items_scratch = items;
+        let Some(c) = container else {
+            return;
+        };
+        let Some(tag) = self.tree.specs[c].events().on_typeahead() else {
+            return;
+        };
+        let data = Value::map([("text", Value::Str(self.type_ahead.clone()))]);
+        out.push(UiEvent::declared(
+            EventKind::Typeahead,
+            self.tree.origins[c],
+            self.tree.keys[c],
+            Some(tag),
+            data,
+        ));
+        self.typeahead_asked = Some(self.tree.keys[c]);
+    }
+
+    /// The app's answer to a `typeahead` event (ADR 0070): the data index
+    /// of the row its search named, in the composite `key` that asked. The
+    /// core goes there as a step does — onto the row when the frame built
+    /// it (in a table, the cell in the column focus is in), else scrolling
+    /// toward it and landing when the frame that builds it finishes. False
+    /// when `key` asked nothing (an answer is taken once), or focus has
+    /// left the composite since, which makes the answer stale.
+    pub fn answer_typeahead(&mut self, key: Key, index: u64) -> bool {
+        if self.typeahead_asked != Some(key) {
+            return false;
+        }
+        self.typeahead_asked = None;
+        let (Some(c), Some(f)) = (self.tree.index_of(key), self.focus_index()) else {
+            return false;
+        };
+        let mut items = std::mem::take(&mut self.items_scratch);
+        let owner = crate::composite::owner(&self.tree, f, &mut items);
+        self.items_scratch = items;
+        if owner != Some(c) {
+            return false;
+        }
+        let column = (crate::composite::role(&self.tree, c) == Some(crate::access::Role::Table))
+            .then(|| self.column_of(c, f));
+        self.reach_index(c, f, index, column);
+        true
+    }
+
+    /// The column of the cell at `cell` in the table at `table`: its place
+    /// among its row's cells.
+    pub(crate) fn column_of(&self, table: usize, cell: usize) -> usize {
+        let mut items = Vec::new();
+        crate::composite::items(&self.tree, table, crate::access::Role::Cell, &mut items);
+        let row = crate::composite::row_of(&self.tree, table, cell);
+        items
+            .iter()
+            .filter(|&&j| crate::composite::row_of(&self.tree, table, j) == row)
+            .position(|&j| j == cell)
+            .unwrap_or(0)
+    }
+
+    /// Goes to data row `index` of the composite at `container`, from its
+    /// built item `from`: onto the row when the frame has it (a table's
+    /// cell nearest `column`), else a reach for it, as a step to an
+    /// unbuilt row makes. An index past `rowCount` is the last row.
+    pub(crate) fn reach_index(
+        &mut self,
+        container: usize,
+        from: usize,
+        index: u64,
+        column: Option<usize>,
+    ) {
+        use crate::access::Role;
+        let Some(role) = crate::composite::role(&self.tree, container) else {
+            return;
+        };
+        let Some(item) = crate::composite::item_role(role) else {
+            return;
+        };
+        let index = match crate::composite::row_count(&self.tree, from, container) {
+            Some(n) => index.min(n.saturating_sub(1)),
+            None => index,
+        };
+        let mut items = std::mem::take(&mut self.items_scratch);
+        crate::composite::items(&self.tree, container, item, &mut items);
+        let table = role == Role::Table;
+        let unit_of = |j: usize| {
+            if table {
+                crate::composite::row_of(&self.tree, container, j)
+            } else {
+                j
+            }
+        };
+        let mut units: Vec<usize> = Vec::new();
+        for &j in &items {
+            let u = unit_of(j);
+            if units.last() != Some(&u) {
+                units.push(u);
+            }
+        }
+        let built = units
+            .iter()
+            .copied()
+            .find(|&u| crate::composite::data_index(&self.tree, u) == Some(index));
+        let landing = built.and_then(|u| {
+            if table {
+                let row: Vec<usize> = items.iter().copied().filter(|&j| unit_of(j) == u).collect();
+                self.cell_at_column(&row, column.unwrap_or(0))
+            } else {
+                Some(u).filter(|&j| crate::access::focusable(&self.tree, j))
+            }
+        });
+        let from_unit = unit_of(from);
+        self.items_scratch = items;
+        match landing {
+            Some(j) => {
+                self.focus_visible = true;
+                self.land_focus(j);
+            }
+            None if built.is_none() => {
+                let toward = self.estimate_row(from_unit, &units, index);
+                let reach = Reach {
+                    container: self.tree.keys[container],
+                    index,
+                    column,
+                    tries: 0,
+                };
+                self.reach_unbuilt(from_unit, reach, toward);
+            }
+            None => {}
         }
     }
 
