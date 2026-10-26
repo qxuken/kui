@@ -3983,6 +3983,12 @@ export declare class Ctx {
    */
   tabMovesFocus(): boolean
   /**
+   * Sets the appearance the host's `dark` / `light`
+   * conditions read in place of the palette's (backlog C113):
+   * `'light'`, `'dark'`, or null for the palette's again.
+   */
+  setRulesAppearance(appearance?: string | undefined | null): void
+  /**
    * The caret's blink phase — `true` draws it. A
    * custom editor reads it in `view` and skips its caret node
    * on the off phase, keeping the `caret` row on its `line`
@@ -5655,6 +5661,12 @@ export declare class KuiWindow {
    * editor (Ctrl+Shift+M on macOS); what a status label reads.
    */
   tabMovesFocus(): boolean
+  /**
+   * Sets the appearance the host's `dark` / `light`
+   * conditions read in place of the palette's (backlog C113):
+   * `'light'`, `'dark'`, or null for the palette's again.
+   */
+  setRulesAppearance(appearance?: string | undefined | null): void
   /**
    * The caret's blink phase — `true` draws it. A
    * custom editor reads it in `view` and skips its caret node

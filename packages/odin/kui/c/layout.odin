@@ -742,6 +742,7 @@ package kui_c
 #assert(ENTER_OPACITY == 32)
 #assert(ENTER_ROTATE == 64)
 #assert(ENTER_SCALE == 128)
+#assert(ENTER_KEEP_ROOM == 256)
 #assert(PIVOT_X == 1)
 #assert(PIVOT_Y == 2)
 #assert(SCROLLBAR_VISIBLE == 1)

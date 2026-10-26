@@ -92,6 +92,7 @@ Enter_Slot :: enum u32 {
 	Opacity = 5, // KUI_ENTER_OPACITY
 	Rotate = 6, // KUI_ENTER_ROTATE
 	Scale = 7, // KUI_ENTER_SCALE
+	Keep_Room = 8, // KUI_ENTER_KEEP_ROOM
 }
 Enter_Slots :: bit_set[Enter_Slot;u32]
 
@@ -798,6 +799,12 @@ Spec :: struct {
 	// Where down the box `rotate` and `scale` are about, as a fraction of its
 	// height: 0 the top, 0.5 (the default) the middle, 1 the bottom.
 	pivot_y: Maybe(f32),
+	// Moves this node and everything under it this many logical px across from
+	// where layout put it (backlog C105) — negative to the left.
+	dx: f32,
+	// Moves this node and everything under it this many logical px down from
+	// where layout put it (backlog C105) — negative up.
+	dy: f32,
 	// On a table (`dir="table"`, ADR 0033): grid lines of this colour between its
 	// columns and between its rows (backlog DX21) — down the middle of each gap
 	// between the columns of its widest row, from the first row's top to the last
@@ -862,6 +869,10 @@ Spec :: struct {
 	// begun inside it, or holds keyboard-visible focus inside it; and while focus
 	// of any kind is inside the node itself (ADR 0051).
 	reveal_on_hover: bool,
+	// The node's `onClick` arrives on the primary press rather than the release,
+	// and the press carries on into what that click opens (backlog C108) — a
+	// native pop-up button's press, drag and release.
+	opens_on_press: bool,
 	// Hover handler: the pointer entering or leaving arrives as this message with
 	// `hover: {phase: "enter" | "leave", by}` in it (ADR 0047).
 	on_hover: any,
@@ -997,6 +1008,10 @@ Spec :: struct {
 	// How many times the `keyframes` cycle runs (CSS `animation-iteration-count`,
 	// backlog F133); left out, for ever.
 	iterations: f32,
+	// The node's `keyframes` cycle is essential motion — a spinner or an
+	// under-way bar, whose movement says work is going on — and keeps running
+	// when the user asked for reduced motion (backlog C107).
+	essential_motion: bool,
 	// A registered sound (addSound) played when the node is clicked; implies
 	// hover tracking.
 	click_sound: Sound,
@@ -1137,6 +1152,8 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.scale = s.scale
 	if v, ok := s.pivot_x.?; ok do out.pivot_set, out.pivot_x = out.pivot_set | c.PIVOT_X, v
 	if v, ok := s.pivot_y.?; ok do out.pivot_set, out.pivot_y = out.pivot_set | c.PIVOT_Y, v
+	out.dx = s.dx
+	out.dy = s.dy
 	out.rules = s.rules
 	out.rule_w = s.rule_width
 	out.drop_bg = s.drop_bg
@@ -1151,6 +1168,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.initial_focus = 1 if s.initial_focus else 0
 	out.hover_group = s.hover_group
 	out.reveal_on_hover = 1 if s.reveal_on_hover else 0
+	out.opens_on_press = 1 if s.opens_on_press else 0
 	out.on_drop = borrow(scratch, s.on_drop)
 	out.on_layout = borrow(scratch, s.on_layout)
 	out.on_range = borrow(scratch, s.on_range)
@@ -1179,6 +1197,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.repeat = u32(s.repeat)
 	out.delay_ms = s.delay
 	out.iterations = s.iterations
+	out.essential_motion = 1 if s.essential_motion else 0
 	out.click_sound = u64(s.click_sound)
 	out.hover_sound = u64(s.hover_sound)
 	out.role = u32(s.role)
@@ -2944,6 +2963,15 @@ tab_moves_focus :: proc(ui: ^Ui) -> bool {
 	return c.tab_moves_focus(ui)
 }
 
+// Sets the appearance the caller's `dark` / `light` conditions read in place
+// of the palette's (backlog C113): an add-on holding its own look light or
+// dark — Kit's `settings.appearance` — has its `when` entries agree with
+// its colours.
+// Rust: Ui::set_rules_appearance.
+set_rules_appearance :: proc(ui: ^Ui, appearance: Appearance) {
+	c.set_rules_appearance(ui, u32(appearance))
+}
+
 // The blink phase a custom editor draws its caret on.
 // Rust: Ui::caret_visible.
 caret_visible :: proc(ui: ^Ui) -> bool {
@@ -3133,7 +3161,9 @@ image_update :: proc(ui: ^Ui, id: Image, w: u32, h: u32, rgba: []u8) {
 	c.image_update(ui, u64(id), w, h, raw_data(rgba))
 }
 
-// Registers a WGSL function and mints an id for `<fragment src>` (ADR 0015).
+// Registers a WGSL function and mints an id for `<fragment src>` (ADR 0015);
+// idempotent by source, so a Lua view or extension registers its own from
+// `env` every frame (backlog C111).
 // Rust: Core::add_fragment.
 fragment_add :: proc(ui: ^Ui, wgsl: string) -> Fragment {
 	return Fragment(c.fragment_add(ui, wgsl))

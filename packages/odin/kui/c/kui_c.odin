@@ -242,6 +242,7 @@ ENTER_RADIUS :: 16
 ENTER_OPACITY :: 32
 ENTER_ROTATE :: 64
 ENTER_SCALE :: 128
+ENTER_KEEP_ROOM :: 256
 
 PIVOT_X :: 1
 PIVOT_Y :: 2
@@ -1295,6 +1296,7 @@ foreign lib {
 	focused :: proc(ctx: ^Ctx) -> u64 ---
 	focus_visible :: proc(ctx: ^Ctx) -> bool ---
 	tab_moves_focus :: proc(ctx: ^Ctx) -> bool ---
+	set_rules_appearance :: proc(ctx: ^Ctx, appearance: u32) ---
 	caret_visible :: proc(ctx: ^Ctx) -> bool ---
 	set_caret_visible :: proc(ctx: ^Ctx, visible: bool) ---
 	has_caret :: proc(ctx: ^Ctx) -> bool ---
