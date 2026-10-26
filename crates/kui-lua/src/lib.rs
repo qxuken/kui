@@ -1865,6 +1865,25 @@ fn env_table(
             Ok(ui.answer_typeahead(key, index))
         })?,
     )?;
+    // Sets the appearance this script's `dark` / `light` conditions read
+    // in place of the palette's (backlog C113): "light", "dark", or nil
+    // for the palette's again. Kept until set again; a script holding its
+    // own look light or dark calls it as that setting changes.
+    t.set(
+        "set_rules_appearance",
+        lua.create_function(move |_, name: Option<String>| {
+            let appearance = match name.as_deref() {
+                None => kui_core::Appearance::Unknown,
+                Some(n) => kui_core::Appearance::parse(n).ok_or_else(|| {
+                    bad(format!(
+                        "set_rules_appearance: \"light\", \"dark\" or nil, not {n:?}"
+                    ))
+                })?,
+            };
+            ui.borrow_mut()?.set_rules_appearance(appearance);
+            Ok(())
+        })?,
+    )?;
     // Registers a WGSL fragment function and returns its id, for `fragment
     // { id = }` (ADR 0015, backlog C111): nil, with a
     // `fragment-rejected` warning naming the line, when it does not

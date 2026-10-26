@@ -3584,6 +3584,10 @@ bool kui_focus_visible(KuiCtx *ctx);
  * whose Tab would type walks the focus ring instead. Ctrl+M flips it in
  * such an editor (Ctrl+Shift+M on macOS); what a status label reads. */
 bool kui_tab_moves_focus(KuiCtx *ctx);
+/* Sets the appearance the caller's `dark` / `light` conditions read in
+ * place of the palette's (backlog C113): a KUI_APPEARANCE_*, UNKNOWN (0)
+ * giving the palette's back. Per origin, kept until set again. ABI 39. */
+void kui_set_rules_appearance(KuiCtx *ctx, uint32_t appearance);
 /* The caret's blink. kui_caret_visible is the phase - true
  * draws it - which a custom editor reads in its view to skip its caret
  * node on the off phase, keeping the `caret` row on its KUI_ROLE_LINE

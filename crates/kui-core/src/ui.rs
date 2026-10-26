@@ -1674,6 +1674,12 @@ impl<'a> Ui<'a> {
         self.core.tab_moves_focus()
     }
 
+    /// Sets the appearance this origin's `dark` / `light` conditions read;
+    /// see `Core::set_rules_appearance` (backlog C113).
+    pub fn set_rules_appearance(&mut self, appearance: crate::env::Appearance) {
+        self.core.set_rules_appearance(appearance)
+    }
+
     /// The key of the node opened under the key label `label` — in this
     /// frame so far, then in the last finished one. The key label is the
     /// name the view opened the node under (`with_keyed`, a `key` prop),

@@ -790,6 +790,11 @@ pub struct Core {
     /// The nodes whose exit keeps their room, and the rooms kept for the
     /// departed ones while their ghosts play (backlog C110).
     rooms: Vec<rooms::Room>,
+    /// The appearance each origin's `dark` / `light` conditions read in
+    /// place of the palette's (backlog C113): an add-on that holds its own
+    /// look light or dark — Kit's `settings.appearance` — says so, and its
+    /// rules agree with its colours. Origins not named read the palette.
+    rules_appearance: Vec<(OriginId, crate::env::Appearance)>,
     /// The data row (and, in a table, the column) focus last held in each
     /// windowed composite, by its key (ADR 0070): where Tab enters it
     /// again, unless it declares `active_index`. Pruned to the composites
@@ -1474,6 +1479,7 @@ impl Core {
             focus_group: None,
             press_opened: None,
             rooms: Vec::new(),
+            rules_appearance: Vec::new(),
             composite_rows: FxHashMap::default(),
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),

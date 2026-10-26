@@ -411,6 +411,14 @@ pub const DOORS: &[Door] = &[
         doc: "The app's answer to a `typeahead` event (ADR 0070): the data index of the row its search names, which the core reaches for in the composite that asked — landing on it, or scrolling to it and landing the frame that builds it. False when that composite asked nothing, or focus has left it.",
     },
     Door {
+        rust: "Ui::set_rules_appearance",
+        c: Is("kui_set_rules_appearance"),
+        odin: Is("set_rules_appearance"),
+        node: Is("setRulesAppearance"),
+        lua: Is("set_rules_appearance"),
+        doc: "Sets the appearance the caller's `dark` / `light` conditions read in place of the palette's (backlog C113): an add-on holding its own look light or dark — Kit's `settings.appearance` — has its `when` entries agree with its colours. Per origin, kept until set again; unknown (C 0, Lua and Node nil) gives the palette's back.",
+    },
+    Door {
         rust: "Ui::tab_moves_focus",
         c: Is("kui_tab_moves_focus"),
         odin: Is("tab_moves_focus"),

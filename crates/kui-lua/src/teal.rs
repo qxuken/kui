@@ -113,6 +113,7 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("answer_selection_range", "text: string", "boolean"),
     ("answer_typeahead", "key: KeyRef, index: integer", "boolean"),
     ("add_fragment", "wgsl: string", "integer"),
+    ("set_rules_appearance", "appearance?: string", ""),
     ("set_clipboard", "text: string, html?: string", ""),
     ("set_clipboard_secret", "text: string", ""),
     ("request_paste", "", ""),

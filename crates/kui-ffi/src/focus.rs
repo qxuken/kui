@@ -120,6 +120,23 @@ pub extern "C" fn kui_tab_moves_focus(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Sets the appearance the caller's `dark` / `light` conditions read in
+/// place of the palette's (backlog C113): a `KUI_APPEARANCE_*`, `UNKNOWN`
+/// (0) giving the palette's back. Per origin: between frames the host's,
+/// inside a C extension's fill that extension's. Kept until set again.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_rules_appearance(ptr: *mut KuiCtx, appearance: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let a = kui_core::Appearance::ALL
+                .get(appearance as usize)
+                .copied()
+                .unwrap_or_default();
+            c.core().set_rules_appearance(a);
+        }
+    })
+}
+
 /// The caret's blink phase: `true` draws it. A custom
 /// editor reads it in its view and skips its caret node on the off phase,
 /// keeping the `caret` row on its `KUI_ROLE_LINE` either way. Under

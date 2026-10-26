@@ -48,11 +48,41 @@ impl Core {
         Facts {
             viewport: Size::new(self.dt_area.w, self.dt_area.h),
             scale: self.scale,
-            dark: self.theme.appearance == crate::env::Appearance::Dark,
+            dark: self.rules_appearance() == crate::env::Appearance::Dark,
             reduced_motion: self.env.system.motion.is_reduced(),
             contrast: self.env.system.contrast,
             platform: Platform::current(),
             state,
+        }
+    }
+
+    /// The appearance the running origin's `dark` / `light` conditions
+    /// read (backlog C113): the one it set with
+    /// [`Self::set_rules_appearance`], else the palette's — which counts a
+    /// theme the app pinned, an unknown appearance reading as light.
+    pub fn rules_appearance(&self) -> crate::env::Appearance {
+        self.rules_appearance
+            .iter()
+            .find(|(o, _)| *o == self.origin)
+            .map_or(self.theme.appearance, |(_, a)| *a)
+    }
+
+    /// Sets the appearance the running origin's `dark` / `light`
+    /// conditions read, in place of the palette's (backlog C113): an
+    /// add-on that holds its own look light or dark says so, and a `when =
+    /// { dark = true }` entry on its nodes agrees with its colours.
+    /// `Unknown` gives the palette's back. Per origin — a script's call
+    /// from its view or a component's function is its own; a host's,
+    /// between frames, the host's — and kept until set again.
+    pub fn set_rules_appearance(&mut self, appearance: crate::env::Appearance) {
+        let origin = self.origin;
+        let was = self.rules_appearance();
+        self.rules_appearance.retain(|(o, _)| *o != origin);
+        if appearance != crate::env::Appearance::Unknown {
+            self.rules_appearance.push((origin, appearance));
+        }
+        if self.rules_appearance() != was {
+            self.owe_frame("set_rules_appearance");
         }
     }
 

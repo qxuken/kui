@@ -4208,6 +4208,23 @@ macro_rules! core_methods {
                 self.$core().tab_moves_focus()
             }
 
+            /// Sets the appearance the host's `dark` / `light`
+            /// conditions read in place of the palette's (backlog C113):
+            /// `'light'`, `'dark'`, or null for the palette's again.
+            #[napi]
+            pub fn set_rules_appearance(&mut self, appearance: Option<String>) -> Result<()> {
+                let a = match appearance.as_deref() {
+                    None => kui_core::Appearance::Unknown,
+                    Some(n) => kui_core::Appearance::parse(n).ok_or_else(|| {
+                        napi::Error::from_reason(format!(
+                            "setRulesAppearance: 'light', 'dark' or null, not {n:?}"
+                        ))
+                    })?,
+                };
+                self.$core().set_rules_appearance(a);
+                Ok(())
+            }
+
             /// The caret's blink phase — `true` draws it. A
             /// custom editor reads it in `view` and skips its caret node
             /// on the off phase, keeping the `caret` row on its `line`
