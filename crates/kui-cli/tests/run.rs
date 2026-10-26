@@ -932,3 +932,34 @@ fn pack_asks_for_an_id_and_run_warns_on_a_pin_it_does_not_cover() {
     let s = out(&o);
     assert!(s.contains("ran") && s.contains("pins kui 0.0.1"), "{s}");
 }
+
+/// `kui docs` (ADR 0071): the carried docs searched in the terminal, an
+/// ADR printed whole, and the book's address handed to the opener — here
+/// `echo`, so no browser opens.
+#[test]
+fn docs_searches_what_the_runner_carries_and_prints_an_adr() {
+    let dir = app("docs", &[]);
+    std::fs::create_dir_all(&dir).unwrap();
+    let o = kui(&dir, &["docs", "hover_bg"], 20);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(s.starts_with("hoverBg — props.md › Container props"), "the exact prop first:\n{s}");
+    let o = kui(&dir, &["docs", "how", "do", "I", "animate", "a", "removal"], 20);
+    let s = out(&o);
+    assert!(s.starts_with("How do I animate a removal? — howto.md"), "{s}");
+    let o = kui(&dir, &["docs", "kit.button"], 20);
+    assert!(out(&o).starts_with("kit.button — Kit's component reference"), "{}", out(&o));
+    assert!(out(&o).contains("`on_press`"), "its props and events: {}", out(&o));
+    let o = kui(&dir, &["docs", "--adr", "71"], 20);
+    let s = out(&o);
+    assert!(o.status.success() && s.contains("# Docs that travel with kui"), "{s}");
+    let o = kui(&dir, &["docs", "--adr", "9999"], 20);
+    assert!(!o.status.success() && out(&o).contains("no ADR 9999"), "{}", out(&o));
+    let o = kui(&dir, &["docs", "nothing-is-called-this"], 20);
+    assert_eq!(o.status.code(), Some(1), "{}", out(&o));
+    let o = Command::new(KUI).arg("docs").env("KUI_BROWSER", "echo").current_dir(&dir).output().unwrap();
+    let s = out(&o);
+    assert!(o.status.success() && s.matches("https://kui-book.qxuken.dev").count() == 2, "said and opened:\n{s}");
+    let help = out(&kui(&dir, &["help"], 20));
+    assert!(help.contains("kui docs [query]"), "{help}");
+}

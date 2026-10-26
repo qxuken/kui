@@ -3,7 +3,9 @@
 //!
 //!   kui run [path] [--headless] [--watch] [--size WxH] [--appearance light|dark] [-- app args]
 //!   kui check [path]
-//!   kui new <dir>
+//!   kui new <dir> [--docs] [--agents]
+//!   kui types [path] [--docs] [--agents]
+//!   kui docs [query] [--adr n]
 //!   kui pack [path] [--target t,...] [--format f,...]
 //!   kui upgrade [version]
 //!   kui runners fetch <version> --to <dir>
@@ -16,6 +18,7 @@ mod archive;
 mod host;
 mod icons;
 mod compat;
+mod docs;
 mod kit;
 mod modules;
 mod ops;
@@ -39,6 +42,7 @@ usage:
   kui check [path]           type-check the app's .tl files
   kui new <dir>              start an app in dir
   kui types [path]           write editor declarations (LuaLS, Teal) into path/.kui/types
+  kui docs [query]           search this kui's docs; alone, open the book (see kui docs --help)
   kui pack [path] [options]  build the app for any platform (see kui pack --help)
   kui upgrade [version]      replace this kui with the release's (default: the latest)
   kui runners fetch <version> --to <dir>
@@ -168,6 +172,7 @@ fn main() -> ExitCode {
         Some("pack") => return exit(pack_cmd(&argv[1..])),
         Some("upgrade") => return exit(upgrade(&argv[1..])),
         Some("runners") => return exit(runners(&argv[1..])),
+        Some("docs") => return exit(docs_cmd(&argv[1..])),
         _ => {}
     }
     let args = match parse(argv) {
@@ -454,6 +459,112 @@ fn types(dir: &std::path::Path) -> Result<(), String> {
     }
     println!("wrote {} (LuaLS and Teal declarations)", types.display());
     Ok(())
+}
+
+const DOCS_USAGE: &str = "\
+kui docs — the docs of this kui, carried with it (ADR 0071)
+
+usage:
+  kui docs                 open the book in the browser
+  kui docs <query>         search props.md, the howto and Kit's component reference
+                           (a prop in either spelling, a component, a question)
+  kui docs --all <query>   every match, not the best ten
+  kui docs --adr <n>       print ADR n; kui docs --adr alone lists them
+
+kui new and kui types take --docs to write all of them into .kui/docs.
+";
+
+/// `kui docs`: open the book, search the carried docs, or print an ADR.
+fn docs_cmd(argv: &[String]) -> Result<i32, String> {
+    let (mut all, mut adr, mut list) = (false, None, false);
+    let mut words = Vec::new();
+    let mut it = argv.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-h" | "--help" => {
+                print!("{DOCS_USAGE}");
+                return Ok(0);
+            }
+            "--all" => all = true,
+            "--adr" => match it.next() {
+                Some(n) => adr = Some(n.clone()),
+                None => list = true,
+            },
+            other if other.starts_with("--") => return Err(format!("unknown option {other}\n\n{DOCS_USAGE}")),
+            w => words.push(w.to_string()),
+        }
+    }
+    let adrs = docs::adrs();
+    if list {
+        let lines: Vec<String> = adrs.iter().map(|(n, title, _)| format!("{n:04}  {title}\n")).collect();
+        print_all(&lines.concat());
+        return Ok(0);
+    }
+    if let Some(n) = adr {
+        let want: u32 = n.trim().parse().map_err(|_| format!("--adr takes a number, as 68 or 0068, not {n}"))?;
+        let Some((_, _, text)) = adrs.iter().find(|(m, _, _)| *m == want) else {
+            return Err(format!("no ADR {want} in kui {}; kui docs --adr lists the {}", compat::VERSION, adrs.len()));
+        };
+        print_all(text);
+        return Ok(0);
+    }
+    if words.is_empty() {
+        return open_book(docs::BOOK);
+    }
+    let query = words.join(" ");
+    let width = std::env::var("COLUMNS").ok().and_then(|c| c.parse().ok()).unwrap_or(80usize).clamp(50, 120);
+    let hits = docs::search(&query);
+    let cap = if all { hits.len() } else { 10 };
+    let mut out = String::new();
+    for hit in hits.iter().take(cap) {
+        out.push_str(&docs::render(hit, width));
+        out.push('\n');
+    }
+    let more = hits.len().saturating_sub(cap);
+    if more > 0 {
+        out.push_str(&format!("{more} more; kui docs --all {query} prints every match\n"));
+    }
+    let records = docs::adrs_matching(&query);
+    if !records.is_empty() {
+        let named: Vec<String> = records.iter().take(5).map(|(n, t)| format!("{n:04} {t}")).collect();
+        out.push_str(&format!("ADRs: {} (kui docs --adr <n>)\n", named.join("; ")));
+    }
+    let found = !(hits.is_empty() && records.is_empty());
+    if !found {
+        out.push_str(&format!(
+            "nothing in props.md, the howto or Kit's reference matches {query:?}; kui docs --adr lists the ADRs\n"
+        ));
+    }
+    print_all(&out);
+    Ok(if found { 0 } else { 1 })
+}
+
+/// Prints `text`, quietly stopping when the reader has gone (`| head`).
+fn print_all(text: &str) {
+    use std::io::Write;
+    let _ = std::io::stdout().lock().write_all(text.as_bytes());
+}
+
+/// The book in the browser — `KUI_BROWSER`, when set, is the command that
+/// opens it — and where it is, printed. The book is published from each
+/// release to one address, so it says that it is the latest release's.
+fn open_book(url: &str) -> Result<i32, String> {
+    println!("the book: {url}");
+    println!(
+        "it is the latest release's: the book has no copy per version, and this is kui {} — \
+         `kui docs <query>` and `kui docs --adr <n>` read this version's own",
+        compat::VERSION
+    );
+    match std::env::var("KUI_BROWSER").ok().filter(|b| !b.is_empty()) {
+        Some(cmd) => {
+            let status = std::process::Command::new(&cmd).arg(url).status().map_err(|e| format!("KUI_BROWSER {cmd}: {e}"))?;
+            if !status.success() {
+                return Err(format!("KUI_BROWSER {cmd} {url}: {status}"));
+            }
+        }
+        None => kui_native::open_external(url)?,
+    }
+    Ok(0)
 }
 
 const PACK_USAGE: &str = "\

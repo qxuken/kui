@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "The kui runner: run a Lua or Teal app with Kit and a standard library (ADR 0064)"
 publish = false
 
@@ -25,6 +26,10 @@ ring = "0.17"
 flate2 = "1.1"
 crc32fast = "1.5"
 png = "0.18"
+
+[build-dependencies]
+# Gzips the docs the runner carries (build.rs, ADR 0071).
+flate2 = "1.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
