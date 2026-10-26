@@ -5,6 +5,7 @@
 
 local ctx = require("ctx")
 local icons = require("icons")
+local skin = require("skin")
 
 local type Ctx = ctx.Ctx
 local type P = {string:any}
@@ -84,25 +85,23 @@ end
 -- with the pointer: lifted a pixel toward the light under it, the shadow
 -- a pixel longer; pressed into the shadow's place, the shadow gone. The
 -- shadow's far edge never moves, so the face reads as sliding on it.
--- Done as a still box that takes the pointer (and keeps its place, so the
--- face moving out from under the pointer cannot flicker the hover) and a
--- face inside it drawn offset by a one-stop keyframe, its shadow shortened
--- by as much. Instant, not eased: an eased offset and an eased shadow
--- would part for the frames between and the edge would wobble.
+-- Done as a still box that takes the pointer and casts the shadow (so the
+-- face moving cannot flicker the hover, and the shadow cannot move), and a
+-- face over it moved by `dx` / `dy` from rules on the pair's hover group:
+-- lifted, it uncovers a pixel more of the shadow; pressed by the shadow's
+-- length, it covers all of it. A hover or a press repaints and runs no
+-- view (the face read `is_hovered` and `is_pressed`, and every hover
+-- re-ran the button). Instant, not eased, as a pressed key is.
 local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
   local sk = c.s.skin
   if variant ~= "primary" or t.disabled == true or not c.s.shadows or sk.shadow <= 0 or sk.shadow_blur > 0 then
     return row(t)
   end
-  local function state(f: function(kui.KeyRef): boolean): boolean
-    local ok, v = pcall(f, "hit")
-    return ok and v == true
-  end
-  local pressed = state(c.env.is_pressed)
-  local over = pressed or state(c.env.is_hovered)
-  local d = pressed and sk.shadow or (over and -1 or 0)
+  local group = "kit.face." .. tostring(c.inst)
+  local s = sk.shadow
   local face: kui.Props = {
     key = "face",
+    hover_group = group,
     -- Its content's width in a box that fits it; the box's where it has one.
     width = t.width and "grow" or nil,
     height = "grow",
@@ -111,21 +110,23 @@ local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
     main_align = t.main_align,
     cross_align = "center",
     radius = t.radius,
-    bg = pressed and t.pressed_bg or (over and t.hover_bg or t.bg),
+    bg = t.bg,
     border = t.border,
-    shadow_color = t.shadow_color,
-    shadow_x = sk.shadow - d,
-    shadow_y = sk.shadow - d,
-    keyframes = d ~= 0 and { { dx = d, dy = d }, { dx = d, dy = d } } or nil,
-    iterations = d ~= 0 and 1 or nil,
-    -- A keyframe cycle runs over `transition`; one stop, so any length holds it.
-    transition = d ~= 0 and 1 or nil,
+    when = {
+      { group_hovered = true, bg = t.hover_bg, dx = -1, dy = -1 },
+      { group_pressed = true, bg = t.pressed_bg, dx = s, dy = s },
+    },
   }
   for i = 1, #t do face[i] = t[i] end
   local hit: kui.Props = {
     key = "hit",
-    -- Hover-tracked, so `is_hovered` answers for it (a box with only a
-    -- click is not).
+    hover_group = group,
+    radius = t.radius,
+    shadow_color = t.shadow_color,
+    shadow_x = t.shadow_x,
+    shadow_y = t.shadow_y,
+    -- Hover-tracked, so its group reads hovered (a box with only a click
+    -- is not).
     hoverable = true,
     role = t.role,
     label = t.label,
@@ -473,18 +474,33 @@ end
 
 local record Open
   open: boolean
+  -- Opened by a press, and nothing picked since; the value shown.
+  fresh: boolean
+  value: any
 end
 
 function M.select(c: Ctx, p: P): kui.Node
   local options = (p.options or {}) as {P}
   local st = ctx.state(c, function(): Open return { open = false } end)
+  -- The current option opens over the field, so a quick click's release
+  -- lands on it, and the core clicks a menu item under an opening press's
+  -- release before it asks whether the pointer moved: Kit keeps the menu
+  -- open for that first pick of the value it already has, as a native
+  -- pop-up does. Opened from the keyboard (focus shown), it does not.
+  st.value = p.value
+  if st.fresh and c.env.focus_visible == true then st.fresh = false end
   local current = chosen(options, p.value)
   local field = pressable(c, "default", {
     label = (str(p.label) or "choice") .. ": " .. (current or "none"),
     expanded = st.open and "expanded" or "collapsed",
     pad = { x = 8 },
     gap = 6,
+    -- Opened on the press, as a native pop-up is, and the press carries
+    -- on into the menu: held, dragged onto an option and let go there, it
+    -- picks it; a quick click leaves the menu open. With the menu open a
+    -- press here is outside it and arrives as `select.dismiss`.
     on_click = act(c, "select.open"),
+    opens_on_press = true,
     ctx.text(c, current or str(p.placeholder) or "Choose…", {
       color = ref(c, current and "fg" or "faint"), max_lines = 1, ellipsis = true,
     }),
@@ -494,10 +510,26 @@ function M.select(c: Ctx, p: P): kui.Node
   -- Up to its width, less in a narrow row, its choice ellipsized.
   ctx.up_to(field, p.width, 80)
   if st.open then
+    -- The menu opens with the current option over the field, as a native
+    -- pop-up's does: lifted by the rows above it (each `$kitRow` and a
+    -- 1 px gap), its padding and its edge, and centred on the field's
+    -- height; `fit` keeps it in the window. With nothing chosen it hangs
+    -- under the field.
+    local float: {any:any} = MENU_FLOAT
+    local at = 0
+    for i, o in ipairs(options) do
+      if o.value == p.value then at = i end
+    end
+    if at > 0 then
+      local row_h, ctl_h = skin.row_h(c.s), skin.ctl_h(c.s)
+      local edge = c.s.hair or c.s.skin.hair
+      float = { anchor = "parent", at = { "start", "start" }, self = { "start", "start" }, fit = true,
+        dy = -(4 + edge + (at - 1) * (row_h + 1)) + (ctl_h - row_h) / 2 }
+    end
     local list: kui.Props = {
       key = "menu",
       role = "menu",
-      float = MENU_FLOAT,
+      float = float,
       modal = act(c, "select.dismiss"),
       min_width = 160,
       pad = 4,
@@ -554,24 +586,27 @@ local function tickbox(c: Ctx, on: boolean, mixed: boolean, round: boolean): kui
   return row(t)
 end
 
--- A mark (a box, a dot) with the skin's ring 2 px round it while the
--- keyboard holds the control keyed `key`.
-local function ringed_mark(c: Ctx, mark: kui.Node, key: string, radius: number): kui.Node
-  if ctx.focus_shows(c, key) then
-    local m = mark as kui.Props
-    m[#m + 1] = ctx.focus_ring(c, 14, 14, radius)
-  end
+-- A mark (a box, a dot, a track) `w`×`h` with the skin's ring 2 px round
+-- it while the keyboard holds its row: the ring is always there, shown by
+-- a rule on the hover group the row and it share, so focus moving
+-- repaints and runs no view (Kit read the focus in Lua).
+local function ringed_mark(c: Ctx, mark: kui.Node, group: string, w: number, h: number, radius: number): kui.Node
+  local m = mark as kui.Props
+  local ring = ctx.focus_ring(c, w, h, radius) as kui.Props
+  ring.hover_group = group
+  ring.opacity = 0
+  ring.when = { { group_focus_visible = true, opacity = 1 } }
+  m[#m + 1] = ring as kui.Node
   return mark
 end
 
 function M.checkbox(c: Ctx, p: P): kui.Node
   local on, mixed = p.checked == true, p.mixed == true
-  local mark = tickbox(c, on, mixed, false)
-  if ctx.focus_shows(c, "ctl") then
-    (mark as kui.Props)[#(mark as kui.Props) + 1] = ctx.focus_ring(c, 14, 14, c.s.skin.radius > 0 and 3 or 0)
-  end
+  local group = "kit.mark." .. tostring(c.inst)
+  local mark = ringed_mark(c, tickbox(c, on, mixed, false), group, 14, 14, c.s.skin.radius > 0 and 3 or 0)
   return row {
     key = "ctl",
+    hover_group = group,
     focus_ring = 0xffffff00,
     role = "checkbox",
     label = str(p.label),
@@ -635,9 +670,10 @@ function M.switch(c: Ctx, p: P): kui.Node
     when = { ctx.still() },
     knob,
   }
-  if ctx.focus_shows(c, "ctl") then track[#track + 1] = ctx.focus_ring(c, 32, 18, round and 9 or 0) end
+  local group = "kit.mark." .. tostring(c.inst)
   return row {
     key = "ctl",
+    hover_group = group,
     focus_ring = 0xffffff00,
     role = "switch",
     label = str(p.label),
@@ -649,7 +685,7 @@ function M.switch(c: Ctx, p: P): kui.Node
     cross_align = "center",
     cursor = "pointer",
     on_click = act(c, "switch.toggle", { on = not on }),
-    row(track),
+    ringed_mark(c, row(track), group, 32, 18, round and 9 or 0),
     ctx.text(c, str(p.label) or ""),
   }
 end
@@ -660,8 +696,10 @@ function M.radio_group(c: Ctx, p: P): kui.Node
   if str(p.label) and p.hide_label ~= true then t[#t + 1] = ctx.muted(c, ctx.label(c, p.label as string), { bold = true }) end
   for i, o in ipairs(options) do
     local here = o.value == p.value
+    local group = "kit.mark." .. tostring(c.inst) .. "." .. i
     t[#t + 1] = row {
       key = "r" .. i,
+      hover_group = group,
       role = "radio",
       label = o.label as string,
       checked = here,
@@ -673,7 +711,7 @@ function M.radio_group(c: Ctx, p: P): kui.Node
       cursor = "pointer",
       on_click = act(c, "radio_group.pick", { value = o.value }),
       focus_ring = 0xffffff00,
-      ringed_mark(c, tickbox(c, here, false, true), "r" .. i, 7),
+      ringed_mark(c, tickbox(c, here, false, true), group, 14, 14, 7),
       ctx.text(c, o.label as string),
     }
   end
@@ -815,13 +853,18 @@ function M.event(m: P, kit: string): any
     return emit("on_change", { text = "" })
   elseif kit == "select.open" then
     local st = ctx.peek(m.inst as integer) as Open
-    if st then st.open = not st.open end
+    if st then st.open = not st.open; st.fresh = st.open end
   elseif kit == "select.dismiss" then
     local st = ctx.peek(m.inst as integer) as Open
-    if st then st.open = false end
+    if st then st.open = false; st.fresh = false end
   elseif kit == "select.pick" then
     local st = ctx.peek(m.inst as integer) as Open
-    if st then st.open = false end
+    if st and st.fresh and m.value == st.value then
+      -- A quick click's release on the option over the field.
+      st.fresh = false
+      return nil
+    end
+    if st then st.open = false; st.fresh = false end
     return emit("on_change", { value = m.value })
   elseif kit == "checkbox.toggle" then
     return emit("on_toggle", { checked = m.checked })

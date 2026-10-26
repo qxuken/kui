@@ -81,18 +81,6 @@ end
 
 
 
-function M.focus_shows(c, key)
-
-
-
-   if c.env.focus_visible ~= true then return false end
-   local ok, here = pcall(c.env.is_focused, key)
-   return ok and here == true
-end
-
-
-
-
 
 
 
@@ -125,6 +113,7 @@ local STILL = { reduced_motion = true, transition = 0 }
 function M.still()
    return STILL
 end
+
 
 
 

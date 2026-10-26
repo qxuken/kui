@@ -19,6 +19,7 @@ return {
     { name = "Browse", doc = "What a field's Choose… button asks the system for: a folder, a file to open, or where to save one.", "folder", "open", "save" },
     { name = "XFormat", doc = "How a chart labels its x axis: the number (with `x_unit`), time counted back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the local time of day.", "number", "ago", "clock" },
     { name = "Appearance", doc = "Which half of the skin's colours: the OS's, or light or dark held.", "system", "light", "dark" },
+    { name = "ShaderPreset", doc = "One of Kit's shaders: a skeleton's shimmer, or gradient noise.", "shimmer", "noise" },
     { name = "SkeletonShape", doc = "What a skeleton stands in for: lines of text, a block (an image, a chart), or a circle (an avatar).", "text", "block", "circle" },
   },
 
@@ -84,7 +85,6 @@ return {
         { "rule", "number?", doc = "The region rule's width in px (a panel's frame, a control's border); the skin's when left out." },
         { "font_ui", "{string}?", doc = "The UI face, as a family list (`{ \"Inter\", \"sans\" }`); the skin's when left out." },
         { "font_data", "{string}?", doc = "The data face (ids, numbers, code), as a family list; the skin's when left out." },
-        { "shimmer", "integer?", doc = "A fragment the host registered from Kit's shimmer (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of a gradient band." },
       } },
 
     -- Layout ---------------------------------------------------------------
@@ -415,7 +415,7 @@ return {
         { "label", "string?", doc = "What is under way." },
       } },
     { "skeleton",
-      doc = "A placeholder for what is still loading: lines a text high, a block or a circle, in the skin's well colour and rounded as its controls are, with a shimmer crossing them in step — held still under reduced motion. The shimmer is a gradient band unless `settings.shimmer` names the host's fragment.",
+      doc = "A placeholder for what is still loading: lines a text high, a block or a circle, in the skin's well colour and rounded as its controls are, with a shimmer crossing them in step — Kit's shimmer fragment (`addons/kit/shaders/shimmer.wgsl`), which Kit registers itself — held still under reduced motion.",
       props = {
         { "shape", "SkeletonShape?", doc = "Lines of text (the default), a block or a circle." },
         { "lines", "integer?", doc = "Text: how many lines, the last of several shorter; 1 when left out." },
@@ -424,10 +424,12 @@ return {
         { "label", "string?", doc = "What is loading, as it is read; `Loading` when left out." },
       } },
     { "shader",
-      doc = "A box a fragment shader paints (a `fragment` node, ADR 0015): the host registers the WGSL and passes its handle, and Kit rounds the box by the skin's radius and keeps a shader that reads `time` still under reduced motion. With no handle it is the skin's well.",
+      doc = "A box a fragment shader paints (a `fragment` node, ADR 0015): one of Kit's presets, WGSL handed over as `source`, or a fragment the host registered (`id`) — Kit registers the first two itself. Kit rounds the box by the skin's radius and keeps a shader that reads `time` still under reduced motion. With no shader, or one that does not compile (`fragment-rejected`), it is the skin's well.",
       props = {
-        { "id", "integer?", doc = "The fragment's handle, from the host's `add_fragment` (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`)." },
-        { "params", "{number}?", doc = "Up to sixteen numbers the shader reads as four `vec4<f32>`." },
+        { "preset", "ShaderPreset?", doc = "One of Kit's shaders, its colours the skin's: `shimmer` (a skeleton's sweep) or `noise` (gradient noise drifting between the well and the accent). Animated unless `animate = false`." },
+        { "source", "string?", doc = "A WGSL `fragment` function (ADR 0015), which Kit registers: the same source, the same fragment." },
+        { "id", "integer?", doc = "A fragment the host registered (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`, `env.add_fragment`)." },
+        { "params", "{number}?", doc = "Up to sixteen numbers the shader reads as four `vec4<f32>`; a preset's come from the skin when left out." },
         { "image", "integer?", doc = "A registered image's handle, which the shader samples with `kui_sample`." },
         { "animate", "boolean?", doc = "A frame every frame, for a shader that reads `time`; off under reduced motion." },
         { "width", "number?", doc = "In px; it grows when left out." },

@@ -107,9 +107,6 @@ local Settings = {}
 
 
 
-
-
-
 local ROLES = {
    "bg", "side", "panel", "raised", "sunken", "hover", "press", "rule", "ink",
    "fg", "muted", "faint", "sel", "sel_fg", "accent", "on_accent", "focus",
@@ -351,7 +348,7 @@ end
 
 function M.key(s)
    local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius),
-tostring(s.appearance), tostring(s.hair), tostring(s.rule_w), tostring(s.shimmer),
+tostring(s.appearance), tostring(s.hair), tostring(s.rule_w),
 s.font_ui and table.concat(s.font_ui, ",") or "", s.font_data and table.concat(s.font_data, ",") or "", }
    if s.roles then
       local names = {}

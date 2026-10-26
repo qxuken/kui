@@ -25,7 +25,6 @@ function make(namespace) {
       if (props.rule !== undefined) wire.rule = props.rule;
       if (props.fontUi !== undefined) wire.font_ui = props.fontUi;
       if (props.fontData !== undefined) wire.font_data = props.fontData;
-      if (props.shimmer !== undefined) wire.shimmer = props.shimmer;
       const groups = undefined;
       return {
         type: 'component',
@@ -495,6 +494,8 @@ function make(namespace) {
     },
     Shader(props = {}, children) {
       const wire = {};
+      if (props.preset !== undefined) wire.preset = props.preset;
+      if (props.source !== undefined) wire.source = props.source;
       if (props.id !== undefined) wire.id = props.id;
       if (props.params !== undefined) wire.params = props.params;
       if (props.image !== undefined) wire.image = props.image;

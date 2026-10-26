@@ -805,34 +805,14 @@ function M.code(c: Ctx, p: P): kui.Node
   return column(frame)
 end
 
--- A box a fragment shader paints (ADR 0015). The host registers the WGSL
--- (a script owns no fragment handle) and passes the handle; Kit rounds
--- the box by the skin and holds a shader that reads `time` still under
--- reduced motion. With no handle it is the skin's well, so a host that
--- cannot register one still lays out.
-function M.shader(c: Ctx, p: P): kui.Node
-  local label = str(p.label)
-  local t: kui.fragment = {
-    key = "shader",
-    role = label and "image" or nil,
-    label = label,
-    height = p.grow == true and "grow" or (p.height or 80) as number,
-    radius = "$kitRadius",
-  }
-  local pw = p.width
-  t.width = pw is number and pw or "grow"
-  local id = p.id
-  if id is number then
-    t.id = math.tointeger(id)
-    t.params = p.params
-    local img = p.image
-    t.image = img is number and math.tointeger(img) or nil
-    t.animate = p.animate == true and not ctx.reduced(c) or nil
-    return fragment(t)
-  end
-  t.bg = ref(c, "sunken")
-  return column(t)
-end
+-- Kit's own shaders, as Kit registers them: `addons/kit/shaders/*.wgsl`,
+-- embedded so every host that loads Kit has them (Kit's tests check the
+-- copies match the files).
+local SHIMMER_WGSL = [[
+{{wgsl:shimmer}}]]
+
+local NOISE_WGSL = [[
+{{wgsl:noise}}]]
 
 -- A skeleton's sweep, in ms: one period for every bar, so the bars of a
 -- skeleton (and the skeletons placed together) shimmer in step.
@@ -846,31 +826,96 @@ local function rgba(out: {number}, color: integer)
   out[#out + 1] = (color & 255) / 255
 end
 
--- One bar of a skeleton, `travel` px wide as laid out: the well, and a
--- band of light crossing it — a gradient sliding by keyframes, or the
--- host's shimmer fragment where it registered one. Still, no band.
-local function bone(c: Ctx, key: string, w: kui.Sizing, h: number, radius: kui.Length, travel: number, still: boolean): kui.Node
+-- Which half of Kit's colours is on screen: the one held, or the palette's.
+local function half(c: Ctx): string
+  local held = c.s.appearance
+  if held then return held end
+  local th = c.env.theme as {string:any}
+  return th and th.appearance == "light" and "light" or "dark"
+end
 
-  local shimmer = c.s.shimmer
+-- A fragment's id for `wgsl`, registered in this session — idempotent by
+-- source, so asked for every fill — or nil where it does not compile.
+local function fragment_id(c: Ctx, wgsl: string): integer
+  local ok, id = pcall(c.env.add_fragment, wgsl)
+  return ok and id or nil
+end
+
+-- A preset's params from the skin: the shimmer's well and its light, its
+-- period and whether it moves; the noise's two colours, its drift and
+-- whether it moves, and its scale in px.
+local function preset_params(c: Ctx, preset: string, moving: boolean): {number}
+  local h = half(c)
+  local params: {number} = {}
+  if preset == "noise" then
+    rgba(params, skin.color(c.s, "kitSunken", h))
+    rgba(params, skin.color(c.s, "kitAccent", h))
+    params[9], params[10], params[11] = 0.12, moving and 1 or 0, 56
+  else
+    rgba(params, skin.color(c.s, "kitSunken", h))
+    rgba(params, skin.color(c.s, "kitShimmer", h))
+    params[9], params[10] = SWEEP_MS / 1000, moving and 1 or 0
+  end
+  return params
+end
+
+-- A box a fragment shader paints (ADR 0015): one of Kit's presets, WGSL
+-- the caller hands over (Kit registers both), or a fragment the host
+-- registered (`id`). Kit rounds the box by the skin and holds a shader
+-- that reads `time` still under reduced motion. With no shader, or one
+-- that does not compile, it is the skin's well and keeps its place.
+function M.shader(c: Ctx, p: P): kui.Node
+  local label = str(p.label)
+  local t: kui.fragment = {
+    key = "shader",
+    role = label and "image" or nil,
+    label = label,
+    height = p.grow == true and "grow" or (p.height or 80) as number,
+    radius = "$kitRadius",
+  }
+  local pw = p.width
+  t.width = pw is number and pw or "grow"
+  local moving = not ctx.reduced(c)
+  local preset = str(p.preset)
+  local id: integer = nil
+  local raw = p.id
+  if raw is number then
+    id = math.tointeger(raw)
+  elseif str(p.source) then
+    id = fragment_id(c, p.source as string)
+  elseif preset then
+    id = fragment_id(c, preset == "noise" and NOISE_WGSL or SHIMMER_WGSL)
+  end
+  if id then
+    t.id = id
+    -- A preset reads `time` whatever `animate` says; the caller's own
+    -- shader does when it says so.
+    t.params = p.params or (preset and not p.source and not raw and preset_params(c, preset, moving) or nil)
+    local img = p.image
+    t.image = img is number and math.tointeger(img) or nil
+    t.animate = (p.animate == true or (preset ~= nil and p.animate ~= false)) and moving or nil
+    return fragment(t)
+  end
+  t.bg = ref(c, "sunken")
+  return column(t)
+end
+
+-- One bar of a skeleton: Kit's shimmer fragment, the well with a band of
+-- light crossing it per pixel; or, where the shimmer cannot be registered,
+-- the well and a gradient band slid across it by keyframes, from just off
+-- its start (so under reduced motion, which holds a loop still, no band
+-- shows) to just off its end. `travel` is the bar's laid-out width.
+local function bone(c: Ctx, key: string, w: kui.Sizing, h: number, radius: kui.Length, travel: number, shimmer: integer, moving: boolean): kui.Node
   if shimmer then
-    local half = c.s.appearance
-    if not half then
-      local th = c.env.theme as {string:any}
-      half = th and th.appearance == "light" and "light" or "dark"
-    end
-    local params: {number} = {}
-    rgba(params, skin.color(c.s, "kitSunken", half))
-    rgba(params, skin.color(c.s, "kitShimmer", half))
-    params[9], params[10] = SWEEP_MS / 1000, still and 0 or 1
     return fragment { key = key, id = shimmer, width = w, height = h, radius = radius,
-      params = params, animate = not still or nil }
+      params = preset_params(c, "shimmer", moving), animate = moving or nil }
   end
   local t: kui.Props = { key = key, width = w, height = h, radius = radius, bg = ref(c, "sunken"), clip = true }
-  if not still and travel > 0 then
+  if travel > 0 then
     local band = math.max(40, math.min(200, travel * 0.4))
-    t[1] = column { width = band, height = h, float = { anchor = "parent" },
+    t[1] = column { width = band, height = h, float = { anchor = "parent", dx = -band },
       gradient = { to = "right", stops = { "$kitShimmerClear", "$kitShimmer", "$kitShimmerClear" } },
-      keyframes = { { dx = -band }, { dx = travel } }, transition = SWEEP_MS, easing = "linear" }
+      keyframes = { { dx = 0 }, { dx = travel + band } }, transition = SWEEP_MS, easing = "linear" }
   end
   return column(t)
 end
@@ -881,24 +926,28 @@ end
 -- under reduced motion. Read as one image named by `label`.
 function M.skeleton(c: Ctx, p: P): kui.Node
   local shape = str(p.shape) or "text"
-  local still = ctx.reduced(c)
+  local moving = not ctx.reduced(c)
+  local shimmer = fragment_id(c, SHIMMER_WGSL)
   local t: kui.Props = { key = "skeleton", role = "image", label = str(p.label) or "Loading" }
   if shape == "circle" then
     local d = (p.width or 32) as number
     t.width, t.height = d, d
-    t[1] = bone(c, "b1", d, d, d / 2, d, still)
+    t[1] = bone(c, "b1", d, d, d / 2, d, shimmer, moving)
     return column(t)
   end
-  -- The bars' laid-out width is the band's travel (kept for `layout_of`
-  -- by `on_layout`, and a new width redraws).
-  t.on_layout = not still and not c.s.shimmer and act(c, "skeleton.layout") or nil
+  -- Without the fragment, the bars' laid-out width is the band's travel
+  -- (kept for `layout_of` by `on_layout`, and a new width redraws).
+  t.on_layout = not shimmer and act(c, "skeleton.layout") or nil
   local pw = p.width
   t.width = pw is number and pw or "grow"
-  local r = c.env.layout_of("skeleton")
-  local w = r and r.w or 0
+  local w = 0.0
+  if not shimmer then
+    local r = c.env.layout_of("skeleton")
+    w = r and r.w or 0
+  end
   if shape == "block" then
     local h = (p.height or 80) as number
-    t[1] = bone(c, "b1", "grow", h, "$kitRadius", w, still)
+    t[1] = bone(c, "b1", "grow", h, "$kitRadius", w, shimmer, moving)
     return column(t)
   end
   local n = math.max(1, math.floor((p.lines or 1) as number))
@@ -906,7 +955,7 @@ function M.skeleton(c: Ctx, p: P): kui.Node
   for i = 1, n do
     local last = n > 1 and i == n
     local width: kui.Sizing = last and { pct = 60 } or "grow"
-    t[i] = bone(c, "b" .. i, width, 10, "$kitRadius", last and w * 0.6 or w, still)
+    t[i] = bone(c, "b" .. i, width, 10, "$kitRadius", last and w * 0.6 or w, shimmer, moving)
   end
   return column(t)
 end
@@ -985,9 +1034,10 @@ function M.progress(c: Ctx, p: P): kui.Node
     local w = r and r.w or 400
     bar = {
       width = { pct = 30 }, height = "grow", bg = ref(c, "accent"),
-      -- Under reduced motion it stands still, a third of the track lit.
-      keyframes = not ctx.reduced(c) and { { dx = -0.3 * w }, { dx = w } } or nil,
-      transition = not ctx.reduced(c) and math.max(1400, w * 2.5) or nil,
+      -- Under reduced motion the core holds the loop still: a third of
+      -- the track lit, at its start.
+      keyframes = { { dx = -0.3 * w }, { dx = w } },
+      transition = math.max(1400, w * 2.5),
     }
   end
   local track = row {

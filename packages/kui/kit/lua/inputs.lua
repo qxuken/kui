@@ -6,6 +6,7 @@
 
 local ctx = require("ctx")
 local icons = require("icons")
+local skin = require("skin")
 
 
 
@@ -90,20 +91,18 @@ end
 
 
 
+
+
 local function pressed_face(c, variant, t)
    local sk = c.s.skin
    if variant ~= "primary" or t.disabled == true or not c.s.shadows or sk.shadow <= 0 or sk.shadow_blur > 0 then
       return row(t)
    end
-   local function state(f)
-      local ok, v = pcall(f, "hit")
-      return ok and v == true
-   end
-   local pressed = state(c.env.is_pressed)
-   local over = pressed or state(c.env.is_hovered)
-   local d = pressed and sk.shadow or (over and -1 or 0)
+   local group = "kit.face." .. tostring(c.inst)
+   local s = sk.shadow
    local face = {
       key = "face",
+      hover_group = group,
 
       width = t.width and "grow" or nil,
       height = "grow",
@@ -112,19 +111,21 @@ local function pressed_face(c, variant, t)
       main_align = t.main_align,
       cross_align = "center",
       radius = t.radius,
-      bg = pressed and t.pressed_bg or (over and t.hover_bg or t.bg),
+      bg = t.bg,
       border = t.border,
-      shadow_color = t.shadow_color,
-      shadow_x = sk.shadow - d,
-      shadow_y = sk.shadow - d,
-      keyframes = d ~= 0 and { { dx = d, dy = d }, { dx = d, dy = d } } or nil,
-      iterations = d ~= 0 and 1 or nil,
-
-      transition = d ~= 0 and 1 or nil,
+      when = {
+         { group_hovered = true, bg = t.hover_bg, dx = -1, dy = -1 },
+         { group_pressed = true, bg = t.pressed_bg, dx = s, dy = s },
+      },
    }
    for i = 1, #t do face[i] = t[i] end
    local hit = {
       key = "hit",
+      hover_group = group,
+      radius = t.radius,
+      shadow_color = t.shadow_color,
+      shadow_x = t.shadow_x,
+      shadow_y = t.shadow_y,
 
 
       hoverable = true,
@@ -476,16 +477,31 @@ end
 
 
 
+
+
+
 function M.select(c, p)
    local options = (p.options or {})
    local st = ctx.state(c, function() return { open = false } end)
+
+
+
+
+
+   st.value = p.value
+   if st.fresh and c.env.focus_visible == true then st.fresh = false end
    local current = chosen(options, p.value)
    local field = pressable(c, "default", {
       label = (str(p.label) or "choice") .. ": " .. (current or "none"),
       expanded = st.open and "expanded" or "collapsed",
       pad = { x = 8 },
       gap = 6,
+
+
+
+
       on_click = act(c, "select.open"),
+      opens_on_press = true,
       ctx.text(c, current or str(p.placeholder) or "Choose…", {
          color = ref(c, current and "fg" or "faint"), max_lines = 1, ellipsis = true,
       }),
@@ -495,10 +511,26 @@ function M.select(c, p)
 
    ctx.up_to(field, p.width, 80)
    if st.open then
+
+
+
+
+
+      local float = MENU_FLOAT
+      local at = 0
+      for i, o in ipairs(options) do
+         if o.value == p.value then at = i end
+      end
+      if at > 0 then
+         local row_h, ctl_h = skin.row_h(c.s), skin.ctl_h(c.s)
+         local edge = c.s.hair or c.s.skin.hair
+         float = { anchor = "parent", at = { "start", "start" }, self = { "start", "start" }, fit = true,
+dy = -(4 + edge + (at - 1) * (row_h + 1)) + (ctl_h - row_h) / 2, }
+      end
       local list = {
          key = "menu",
          role = "menu",
-         float = MENU_FLOAT,
+         float = float,
          modal = act(c, "select.dismiss"),
          min_width = 160,
          pad = 4,
@@ -557,22 +589,25 @@ end
 
 
 
-local function ringed_mark(c, mark, key, radius)
-   if ctx.focus_shows(c, key) then
-      local m = mark
-      m[#m + 1] = ctx.focus_ring(c, 14, 14, radius)
-   end
+
+
+local function ringed_mark(c, mark, group, w, h, radius)
+   local m = mark
+   local ring = ctx.focus_ring(c, w, h, radius)
+   ring.hover_group = group
+   ring.opacity = 0
+   ring.when = { { group_focus_visible = true, opacity = 1 } }
+   m[#m + 1] = ring
    return mark
 end
 
 function M.checkbox(c, p)
    local on, mixed = p.checked == true, p.mixed == true
-   local mark = tickbox(c, on, mixed, false)
-   if ctx.focus_shows(c, "ctl") then
-      (mark)[#(mark) + 1] = ctx.focus_ring(c, 14, 14, c.s.skin.radius > 0 and 3 or 0)
-   end
+   local group = "kit.mark." .. tostring(c.inst)
+   local mark = ringed_mark(c, tickbox(c, on, mixed, false), group, 14, 14, c.s.skin.radius > 0 and 3 or 0)
    return row({
       key = "ctl",
+      hover_group = group,
       focus_ring = 0xffffff00,
       role = "checkbox",
       label = str(p.label),
@@ -636,9 +671,10 @@ function M.switch(c, p)
       when = { ctx.still() },
       knob,
    }
-   if ctx.focus_shows(c, "ctl") then track[#track + 1] = ctx.focus_ring(c, 32, 18, round and 9 or 0) end
+   local group = "kit.mark." .. tostring(c.inst)
    return row({
       key = "ctl",
+      hover_group = group,
       focus_ring = 0xffffff00,
       role = "switch",
       label = str(p.label),
@@ -650,7 +686,7 @@ function M.switch(c, p)
       cross_align = "center",
       cursor = "pointer",
       on_click = act(c, "switch.toggle", { on = not on }),
-      row(track),
+      ringed_mark(c, row(track), group, 32, 18, round and 9 or 0),
       ctx.text(c, str(p.label) or ""),
    })
 end
@@ -661,8 +697,10 @@ function M.radio_group(c, p)
    if str(p.label) and p.hide_label ~= true then t[#t + 1] = ctx.muted(c, ctx.label(c, p.label), { bold = true }) end
    for i, o in ipairs(options) do
       local here = o.value == p.value
+      local group = "kit.mark." .. tostring(c.inst) .. "." .. i
       t[#t + 1] = row({
          key = "r" .. i,
+         hover_group = group,
          role = "radio",
          label = o.label,
          checked = here,
@@ -674,7 +712,7 @@ function M.radio_group(c, p)
          cursor = "pointer",
          on_click = act(c, "radio_group.pick", { value = o.value }),
          focus_ring = 0xffffff00,
-         ringed_mark(c, tickbox(c, here, false, true), "r" .. i, 7),
+         ringed_mark(c, tickbox(c, here, false, true), group, 14, 14, 7),
          ctx.text(c, o.label),
       })
    end
@@ -816,13 +854,18 @@ function M.event(m, kit)
       return emit("on_change", { text = "" })
    elseif kit == "select.open" then
       local st = ctx.peek(m.inst)
-      if st then st.open = not st.open end
+      if st then st.open = not st.open; st.fresh = st.open end
    elseif kit == "select.dismiss" then
       local st = ctx.peek(m.inst)
-      if st then st.open = false end
+      if st then st.open = false; st.fresh = false end
    elseif kit == "select.pick" then
       local st = ctx.peek(m.inst)
-      if st then st.open = false end
+      if st and st.fresh and m.value == st.value then
+
+         st.fresh = false
+         return nil
+      end
+      if st then st.open = false; st.fresh = false end
       return emit("on_change", { value = m.value })
    elseif kit == "checkbox.toggle" then
       return emit("on_toggle", { checked = m.checked })

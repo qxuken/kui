@@ -1,8 +1,7 @@
-// Kit's skeleton shimmer: a soft band of light crossing a bar from left to
-// right, once a period, over the bar's own colour. A host registers this
-// file (Core::add_fragment, ctx.addFragment, kui_fragment_add) and hands
-// the handle to `kit.settings({ shimmer = handle })`; Kit's skeletons then
-// draw each bar as a `fragment` with these params:
+// Kit's skeleton shimmer, and `kit.shader({ preset = "shimmer" })`: a soft
+// band of light crossing a bar from left to right, once a period, over the
+// bar's own colour. Kit registers it itself (env.add_fragment; build.lua
+// embeds this file) and draws each skeleton bar as a `fragment` with:
 //
 //   params[0]    the bar's colour, straight RGBA 0 to 1 (the skin's well)
 //   params[1]    the band's colour at its middle

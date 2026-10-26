@@ -218,6 +218,23 @@ static inline KuiStr kit_appearance_name(KitAppearance v) {
 }
 
 /*
+ * One of Kit's shaders: a skeleton's shimmer, or gradient noise.
+ */
+typedef enum KitShaderPreset {
+    KIT_SHADER_PRESET_UNSET = 0,
+    KIT_SHADER_PRESET_SHIMMER,
+    KIT_SHADER_PRESET_NOISE,
+} KitShaderPreset;
+
+static inline KuiStr kit_shader_preset_name(KitShaderPreset v) {
+    switch (v) {
+    case KIT_SHADER_PRESET_SHIMMER: return KUI_STR("shimmer");
+    case KIT_SHADER_PRESET_NOISE: return KUI_STR("noise");
+    default: return KUI_STR("");
+    }
+}
+
+/*
  * What a skeleton stands in for: lines of text, a block (an image, a chart), or
  * a circle (an avatar).
  */
@@ -506,13 +523,6 @@ typedef struct KitSettings {
      */
     const KuiStr *font_data;
     size_t font_data_count;
-    /*
-     * A fragment the host registered from Kit's shimmer
-     * (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of a
-     * gradient band.
-     */
-    int64_t shimmer;
-    bool shimmer_set;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -539,7 +549,6 @@ static inline KuiValue *kit_settings_props(const KitSettings *p) {
         for (size_t i = 0; i < p->font_data_count; i++) kui_value_list_push(list, kui_value_str(p->font_data[i]));
         kui_value_map_set(m, KUI_STR("font_data"), list);
     }
-    if (p->shimmer_set) kui_value_map_set(m, KUI_STR("shimmer"), kui_value_int(p->shimmer));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -2257,9 +2266,9 @@ static inline int32_t kit_progress(KuiCtx *ctx, const KitProgress *p) {
 /*
  * A placeholder for what is still loading: lines a text high, a block or a
  * circle, in the skin's well colour and rounded as its controls are, with a
- * shimmer crossing them in step — held still under reduced motion. The
- * shimmer is a gradient band unless `settings.shimmer` names the host's
- * fragment.
+ * shimmer crossing them in step — Kit's shimmer fragment
+ * (`addons/kit/shaders/shimmer.wgsl`), which Kit registers itself — held
+ * still under reduced motion.
  */
 typedef struct KitSkeleton {
     /*
@@ -2313,20 +2322,34 @@ static inline int32_t kit_skeleton(KuiCtx *ctx, const KitSkeleton *p) {
 }
 
 /*
- * A box a fragment shader paints (a `fragment` node, ADR 0015): the host
- * registers the WGSL and passes its handle, and Kit rounds the box by the
+ * A box a fragment shader paints (a `fragment` node, ADR 0015): one of Kit's
+ * presets, WGSL handed over as `source`, or a fragment the host registered
+ * (`id`) — Kit registers the first two itself. Kit rounds the box by the
  * skin's radius and keeps a shader that reads `time` still under reduced
- * motion. With no handle it is the skin's well.
+ * motion. With no shader, or one that does not compile (`fragment-rejected`),
+ * it is the skin's well.
  */
 typedef struct KitShader {
     /*
-     * The fragment's handle, from the host's `add_fragment`
-     * (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`).
+     * One of Kit's shaders, its colours the skin's: `shimmer` (a skeleton's
+     * sweep) or `noise` (gradient noise drifting between the well and the
+     * accent). Animated unless `animate = false`.
+     */
+    KitShaderPreset preset;
+    /*
+     * A WGSL `fragment` function (ADR 0015), which Kit registers: the same
+     * source, the same fragment.
+     */
+    KuiStr source;
+    /*
+     * A fragment the host registered (`Core::add_fragment`, `ctx.addFragment`,
+     * `kui_fragment_add`, `env.add_fragment`).
      */
     int64_t id;
     bool id_set;
     /*
-     * Up to sixteen numbers the shader reads as four `vec4<f32>`.
+     * Up to sixteen numbers the shader reads as four `vec4<f32>`; a preset's
+     * come from the skin when left out.
      */
     const double *params;
     size_t params_count;
@@ -2368,6 +2391,8 @@ typedef struct KitShader {
 
 static inline KuiValue *kit_shader_props(const KitShader *p) {
     KuiValue *m = kui_value_map();
+    if (p->preset != 0) kui_value_map_set(m, KUI_STR("preset"), kui_value_str(kit_shader_preset_name(p->preset)));
+    if (p->source.len > 0) kui_value_map_set(m, KUI_STR("source"), kui_value_str(p->source));
     if (p->id_set) kui_value_map_set(m, KUI_STR("id"), kui_value_int(p->id));
     if (p->params != NULL) {
         KuiValue *list = kui_value_list();

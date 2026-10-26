@@ -335,6 +335,28 @@ impl Appearance {
     }
 }
 
+/// One of Kit's shaders: a skeleton's shimmer, or gradient noise.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ShaderPreset {
+    #[default]
+    Shimmer,
+    Noise,
+}
+
+impl ShaderPreset {
+    /// The value's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShaderPreset::Shimmer => "shimmer",
+            ShaderPreset::Noise => "noise",
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::str(self.as_str())
+    }
+}
+
 /// What a skeleton stands in for: lines of text, a block (an image, a chart),
 /// or a circle (an avatar).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -728,10 +750,6 @@ pub struct Settings {
     /// The data face (ids, numbers, code), as a family list; the skin's when
     /// left out.
     pub font_data: Option<Vec<String>>,
-    /// A fragment the host registered from Kit's shimmer
-    /// (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of
-    /// a gradient band.
-    pub shimmer: Option<i64>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -752,7 +770,6 @@ impl Settings {
             rule: None,
             font_ui: None,
             font_data: None,
-            shimmer: None,
             key: None,
             fresh: false,
         }
@@ -827,14 +844,6 @@ impl Settings {
         self
     }
 
-    /// A fragment the host registered from Kit's shimmer
-    /// (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of
-    /// a gradient band.
-    pub fn shimmer(mut self, v: i64) -> Self {
-        self.shimmer = Some(v);
-        self
-    }
-
     /// Keys the instance.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = Some(key.into());
@@ -879,9 +888,6 @@ impl Settings {
         }
         if let Some(v) = &self.font_data {
             m.push(("font_data".into(), Value::List(v.iter().map(|x| Value::str(x.as_str())).collect())));
-        }
-        if let Some(v) = &self.shimmer {
-            m.push(("shimmer".into(), Value::Int(*v)));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -4486,9 +4492,9 @@ impl Progress {
 
 /// A placeholder for what is still loading: lines a text high, a block or a
 /// circle, in the skin's well colour and rounded as its controls are, with a
-/// shimmer crossing them in step — held still under reduced motion. The
-/// shimmer is a gradient band unless `settings.shimmer` names the host's
-/// fragment.
+/// shimmer crossing them in step — Kit's shimmer fragment
+/// (`addons/kit/shaders/shimmer.wgsl`), which Kit registers itself — held
+/// still under reduced motion.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Skeleton {
     /// Lines of text (the default), a block or a circle.
@@ -4603,16 +4609,26 @@ impl Skeleton {
     }
 }
 
-/// A box a fragment shader paints (a `fragment` node, ADR 0015): the host
-/// registers the WGSL and passes its handle, and Kit rounds the box by the
+/// A box a fragment shader paints (a `fragment` node, ADR 0015): one of Kit's
+/// presets, WGSL handed over as `source`, or a fragment the host registered
+/// (`id`) — Kit registers the first two itself. Kit rounds the box by the
 /// skin's radius and keeps a shader that reads `time` still under reduced
-/// motion. With no handle it is the skin's well.
+/// motion. With no shader, or one that does not compile (`fragment-rejected`),
+/// it is the skin's well.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shader {
-    /// The fragment's handle, from the host's `add_fragment`
-    /// (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`).
+    /// One of Kit's shaders, its colours the skin's: `shimmer` (a skeleton's
+    /// sweep) or `noise` (gradient noise drifting between the well and the
+    /// accent). Animated unless `animate = false`.
+    pub preset: Option<ShaderPreset>,
+    /// A WGSL `fragment` function (ADR 0015), which Kit registers: the same
+    /// source, the same fragment.
+    pub source: Option<String>,
+    /// A fragment the host registered (`Core::add_fragment`, `ctx.addFragment`,
+    /// `kui_fragment_add`, `env.add_fragment`).
     pub id: Option<i64>,
-    /// Up to sixteen numbers the shader reads as four `vec4<f32>`.
+    /// Up to sixteen numbers the shader reads as four `vec4<f32>`; a preset's
+    /// come from the skin when left out.
     pub params: Option<Vec<f64>>,
     /// A registered image's handle, which the shader samples with `kui_sample`.
     pub image: Option<i64>,
@@ -4637,6 +4653,8 @@ impl Shader {
     /// What it needs; the rest by their setters.
     pub fn new() -> Self {
         Self {
+            preset: None,
+            source: None,
             id: None,
             params: None,
             image: None,
@@ -4650,14 +4668,30 @@ impl Shader {
         }
     }
 
-    /// The fragment's handle, from the host's `add_fragment`
-    /// (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`).
+    /// One of Kit's shaders, its colours the skin's: `shimmer` (a skeleton's
+    /// sweep) or `noise` (gradient noise drifting between the well and the
+    /// accent). Animated unless `animate = false`.
+    pub fn preset(mut self, v: ShaderPreset) -> Self {
+        self.preset = Some(v);
+        self
+    }
+
+    /// A WGSL `fragment` function (ADR 0015), which Kit registers: the same
+    /// source, the same fragment.
+    pub fn source(mut self, v: impl Into<String>) -> Self {
+        self.source = Some(v.into());
+        self
+    }
+
+    /// A fragment the host registered (`Core::add_fragment`, `ctx.addFragment`,
+    /// `kui_fragment_add`, `env.add_fragment`).
     pub fn id(mut self, v: i64) -> Self {
         self.id = Some(v);
         self
     }
 
-    /// Up to sixteen numbers the shader reads as four `vec4<f32>`.
+    /// Up to sixteen numbers the shader reads as four `vec4<f32>`; a preset's
+    /// come from the skin when left out.
     pub fn params(mut self, v: Vec<f64>) -> Self {
         self.params = Some(v);
         self
@@ -4715,6 +4749,12 @@ impl Shader {
 /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.preset {
+            m.push(("preset".into(), v.to_value()));
+        }
+        if let Some(v) = &self.source {
+            m.push(("source".into(), Value::str(v.as_str())));
+        }
         if let Some(v) = &self.id {
             m.push(("id".into(), Value::Int(*v)));
         }

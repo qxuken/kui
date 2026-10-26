@@ -36,6 +36,9 @@ export type XFormat = 'number' | 'ago' | 'clock';
 /** Which half of the skin's colours: the OS's, or light or dark held. */
 export type Appearance = 'system' | 'light' | 'dark';
 
+/** One of Kit's shaders: a skeleton's shimmer, or gradient noise. */
+export type ShaderPreset = 'shimmer' | 'noise';
+
 /** What a skeleton stands in for: lines of text, a block (an image, a chart), or a circle (an avatar). */
 export type SkeletonShape = 'text' | 'block' | 'circle';
 
@@ -137,8 +140,6 @@ export interface SettingsProps {
   fontUi?: string[];
   /** The data face (ids, numbers, code), as a family list; the skin's when left out. */
   fontData?: string[];
-  /** A fragment the host registered from Kit's shimmer (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of a gradient band. */
-  shimmer?: number;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -899,9 +900,13 @@ export interface SkeletonProps {
 
 /** The props of `kit/shader`. */
 export interface ShaderProps {
-  /** The fragment's handle, from the host's `add_fragment` (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`). */
+  /** One of Kit's shaders, its colours the skin's: `shimmer` (a skeleton's sweep) or `noise` (gradient noise drifting between the well and the accent). Animated unless `animate = false`. */
+  preset?: ShaderPreset;
+  /** A WGSL `fragment` function (ADR 0015), which Kit registers: the same source, the same fragment. */
+  source?: string;
+  /** A fragment the host registered (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`, `env.add_fragment`). */
   id?: number;
-  /** Up to sixteen numbers the shader reads as four `vec4<f32>`. */
+  /** Up to sixteen numbers the shader reads as four `vec4<f32>`; a preset's come from the skin when left out. */
   params?: number[];
   /** A registered image's handle, which the shader samples with `kui_sample`. */
   image?: number;
@@ -1274,10 +1279,10 @@ export declare function Empty(props: EmptyProps, children?: KuiNode): KuiNode;
 /** A bar that fills; with no value it moves to say work is going on. */
 export declare function Progress(props: ProgressProps, children?: KuiNode): KuiNode;
 
-/** A placeholder for what is still loading: lines a text high, a block or a circle, in the skin's well colour and rounded as its controls are, with a shimmer crossing them in step — held still under reduced motion. The shimmer is a gradient band unless `settings.shimmer` names the host's fragment. */
+/** A placeholder for what is still loading: lines a text high, a block or a circle, in the skin's well colour and rounded as its controls are, with a shimmer crossing them in step — Kit's shimmer fragment (`addons/kit/shaders/shimmer.wgsl`), which Kit registers itself — held still under reduced motion. */
 export declare function Skeleton(props: SkeletonProps, children?: KuiNode): KuiNode;
 
-/** A box a fragment shader paints (a `fragment` node, ADR 0015): the host registers the WGSL and passes its handle, and Kit rounds the box by the skin's radius and keeps a shader that reads `time` still under reduced motion. With no handle it is the skin's well. */
+/** A box a fragment shader paints (a `fragment` node, ADR 0015): one of Kit's presets, WGSL handed over as `source`, or a fragment the host registered (`id`) — Kit registers the first two itself. Kit rounds the box by the skin's radius and keeps a shader that reads `time` still under reduced motion. With no shader, or one that does not compile (`fragment-rejected`), it is the skin's well. */
 export declare function Shader(props: ShaderProps, children?: KuiNode): KuiNode;
 
 /** A modal dialog: a title, its body and its actions; Escape and a press outside ask it to close. */

@@ -3,6 +3,8 @@
 -- Uses the Teal compiler kui-lua already vendors for its own tests, so the
 -- only thing it needs is a Lua 5.4+ on PATH.
 --
+-- A `{{wgsl:name}}` in a module is replaced by shaders/name.wgsl's text.
+--
 -- Run from the repo root: lua addons/kit/build.lua
 -- `--check` type-checks and fails on a stale lua/ without writing it.
 
@@ -41,7 +43,12 @@ for _, m in ipairs(modules()) do
     predefined_modules = { "kui" },
   }))
   local src_path = here .. "src/" .. m .. ".tl"
-  local res = tl.check_string(read(src_path), env, src_path)
+  -- `{{wgsl:name}}` is shaders/name.wgsl's text, so Kit carries its own
+  -- shaders into every host that loads it and the .wgsl stays the source.
+  local text = read(src_path):gsub("{{wgsl:([%w_]+)}}", function(n)
+    return assert(read(here .. "shaders/" .. n .. ".wgsl"), "no shaders/" .. n .. ".wgsl")
+  end)
+  local res = tl.check_string(text, env, src_path)
   local errs = {}
   for _, list in ipairs({ res.syntax_errors or {}, res.type_errors or {} }) do
     for _, e in ipairs(list) do errs[#errs + 1] = e end

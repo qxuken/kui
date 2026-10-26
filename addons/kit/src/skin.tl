@@ -95,9 +95,6 @@ local record Settings
   -- The faces, as family lists; the skin's when nil.
   font_ui: {string}
   font_data: {string}
-  -- A fragment the host registered from Kit's shimmer (shaders/shimmer.wgsl):
-  -- skeletons sweep with it rather than with a gradient band.
-  shimmer: integer
 end
 
 local record Decl
@@ -350,7 +347,7 @@ end
 -- What the token table depends on: declared again only when it moves.
 function M.key(s: Settings): string
   local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius),
-    tostring(s.appearance), tostring(s.hair), tostring(s.rule_w), tostring(s.shimmer),
+    tostring(s.appearance), tostring(s.hair), tostring(s.rule_w),
     s.font_ui and table.concat(s.font_ui, ",") or "", s.font_data and table.concat(s.font_data, ",") or "" }
   if s.roles then
     local names: {string} = {}

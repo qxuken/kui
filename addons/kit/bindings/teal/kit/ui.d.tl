@@ -58,6 +58,11 @@ local record kit
     "system" "light" "dark"
   end
 
+  -- One of Kit's shaders: a skeleton's shimmer, or gradient noise.
+  enum ShaderPreset
+    "shimmer" "noise"
+  end
+
   -- What a skeleton stands in for: lines of text, a block (an image, a
   -- chart), or a circle (an avatar).
   enum SkeletonShape
@@ -174,10 +179,6 @@ local record kit
     -- The data face (ids, numbers, code), as a family list; the skin's when
     -- left out.
     font_data: {string}
-    -- A fragment the host registered from Kit's shimmer
-    -- (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of
-    -- a gradient band.
-    shimmer: integer
     key: string
     fresh: boolean
   end
@@ -824,10 +825,18 @@ local record kit
 
   -- The props of `kit/shader`.
   record ShaderProps
-    -- The fragment's handle, from the host's `add_fragment`
-    -- (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`).
+    -- One of Kit's shaders, its colours the skin's: `shimmer` (a skeleton's
+    -- sweep) or `noise` (gradient noise drifting between the well and the
+    -- accent). Animated unless `animate = false`.
+    preset: ShaderPreset
+    -- A WGSL `fragment` function (ADR 0015), which Kit registers: the same
+    -- source, the same fragment.
+    source: string
+    -- A fragment the host registered (`Core::add_fragment`,
+    -- `ctx.addFragment`, `kui_fragment_add`, `env.add_fragment`).
     id: integer
-    -- Up to sixteen numbers the shader reads as four `vec4<f32>`.
+    -- Up to sixteen numbers the shader reads as four `vec4<f32>`; a preset's
+    -- come from the skin when left out.
     params: {number}
     -- A registered image's handle, which the shader samples with
     -- `kui_sample`.
@@ -1167,15 +1176,17 @@ local record kit
 
   -- A placeholder for what is still loading: lines a text high, a block or a
   -- circle, in the skin's well colour and rounded as its controls are, with a
-  -- shimmer crossing them in step — held still under reduced motion. The
-  -- shimmer is a gradient band unless `settings.shimmer` names the host's
-  -- fragment.
+  -- shimmer crossing them in step — Kit's shimmer fragment
+  -- (`addons/kit/shaders/shimmer.wgsl`), which Kit registers itself — held
+  -- still under reduced motion.
   skeleton: function(props: SkeletonProps): kui.Node
 
-  -- A box a fragment shader paints (a `fragment` node, ADR 0015): the host
-  -- registers the WGSL and passes its handle, and Kit rounds the box by the
-  -- skin's radius and keeps a shader that reads `time` still under reduced
-  -- motion. With no handle it is the skin's well.
+  -- A box a fragment shader paints (a `fragment` node, ADR 0015): one of
+  -- Kit's presets, WGSL handed over as `source`, or a fragment the host
+  -- registered (`id`) — Kit registers the first two itself. Kit rounds the
+  -- box by the skin's radius and keeps a shader that reads `time` still under
+  -- reduced motion. With no shader, or one that does not compile
+  -- (`fragment-rejected`), it is the skin's well.
   shader: function(props: ShaderProps): kui.Node
 
   -- A modal dialog: a title, its body and its actions; Escape and a press

@@ -77,25 +77,13 @@ function M.rule(c: Ctx, role?: string, w?: kui.Length, vertical?: boolean): kui.
   return column(t)
 end
 
--- Whether the control keyed `key` here holds the keyboard and the
--- keyboard put it there: a click focuses without a ring, as a browser's
--- :focus-visible has it.
-function M.focus_shows(c: Ctx, key: string): boolean
-  -- The reading first: with no visible focus anywhere there is no ring,
-  -- and no focus read to re-ask the fill by (a key not yet declared reads
-  -- as another the frame after, and every control was asked twice).
-  if c.env.focus_visible ~= true then return false end
-  local ok, here = pcall(c.env.is_focused, key)
-  return ok and here == true
-end
-
 -- A focus ring hugging a mark `w`×`h` (a checkbox's square, a switch's
 -- track) 2 px out from its edge, for a control whose focusable node is
 -- larger than what it draws: the core's ring went round the whole row,
 -- its label and its height, far from the box. A float, so it takes no
 -- room and moves nothing; the control turns the core's ring off with a
--- `focus_ring` that has no alpha. (A state condition reads the node's own
--- state, and the mark is a child of the focused row: hence the read.)
+-- `focus_ring` that has no alpha, and shows this one by a rule on the
+-- hover group the row and the ring share (`group_focus_visible`).
 function M.focus_ring(c: Ctx, w: number, h: number, radius?: number): kui.Node
   return column {
     float = { anchor = "parent", dx = -4, dy = -4 },
@@ -125,8 +113,9 @@ function M.still(): {string:any}
   return STILL
 end
 
--- Whether the user asked for less motion: what a loop (the under-way
--- bar) reads, since an entry cannot stop a keyframe cycle.
+-- Whether the user asked for less motion: what a fragment that reads
+-- `time` (a shader, the skeleton's shimmer) and the line chart's glide
+-- read. A keyframe loop needs nothing: the core holds it still (C107).
 function M.reduced(c: Ctx): boolean
   local s = c.env.system as {string:any}
   return s ~= nil and s.motion == "reduced"

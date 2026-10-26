@@ -2527,8 +2527,9 @@ fn a_line_chart_glides_to_a_new_range_and_jumps_under_reduced_motion() {
     }
 }
 
-/// Kit's shimmer, as a host registers it for `settings.shimmer`.
+/// Kit's shaders, as Kit registers them itself (C111) and a host may too.
 const SHIMMER: &str = include_str!("../../../addons/kit/shaders/shimmer.wgsl");
+const NOISE: &str = include_str!("../../../addons/kit/shaders/noise.wgsl");
 
 fn reduce_motion(core: &mut Core) {
     let mut system = core.env.system;
@@ -2537,7 +2538,17 @@ fn reduce_motion(core: &mut Core) {
 }
 
 #[test]
-fn a_skeleton_sweeps_a_band_across_its_bars_and_holds_still_under_reduced_motion() {
+fn kit_carries_its_shaders_as_the_files_say() {
+    // build.lua embeds shaders/*.wgsl into the Lua every host loads.
+    let data = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../addons/kit/lua/data.lua")).unwrap();
+    for (name, src) in [("shimmer", SHIMMER), ("noise", NOISE)] {
+        assert!(data.contains(src), "lua/data.lua carries shaders/{name}.wgsl as it is");
+        assert!(Core::new().add_fragment(src).is_some(), "shaders/{name}.wgsl compiles");
+    }
+}
+
+#[test]
+fn a_skeleton_sweeps_kits_own_shimmer_and_holds_still_under_reduced_motion() {
     for reduced in [false, true] {
         let mut r = LuaRig::new(
             r#"
@@ -2556,80 +2567,121 @@ fn a_skeleton_sweeps_a_band_across_its_bars_and_holds_still_under_reduced_motion
         r.frames(3);
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
         r.named("Loading the list");
-        // Three text bars, the last 60% of the others; a band each while
-        // it sweeps (as tall as its bar), none while still.
-        let tens: Vec<kui_core::Rect> = r.core.nodes().into_iter().filter(|n| n.rect.h == 10.0).map(|n| n.rect).collect();
-        let bars: Vec<&kui_core::Rect> = tens.iter().filter(|b| b.w > 200.0).collect();
-        assert_eq!(bars.len(), 3, "{tens:?}");
-        assert!((bars[2].w - bars[0].w * 0.6).abs() < 1.0, "the last line is shorter: {bars:?}");
-        let circle = r.core.nodes().into_iter().find(|n| n.rect.w == 40.0 && n.rect.h == 40.0);
-        assert!(circle.is_some(), "a circle 40 across");
-        if reduced {
-            assert_eq!(tens.len(), 3, "no band under reduced motion: {tens:?}");
-            assert!(!r.core.animating(), "nothing moves");
-        } else {
-            assert_eq!(tens.len(), 6, "a band over each line: {tens:?}");
-            assert!(r.core.animating(), "the bands sweep");
-        }
-    }
-}
-
-#[test]
-fn a_skeleton_draws_with_the_hosts_shimmer_fragment() {
-    for reduced in [false, true] {
-        let mut r = rig();
-        let id = r.core.add_fragment(SHIMMER).expect("Kit's shimmer compiles");
-        if reduced {
-            reduce_motion(&mut r.core);
-        }
-        r.core.set_time(1.0);
-        for _ in 0..3 {
-            r.frame(|ui| {
-                kit::Settings::new().shimmer(id.to_ffi() as i64).place(ui);
-                kit::Skeleton::new().lines(2).place(ui);
-            });
-        }
-        let w = r.core.take_warnings();
-        assert!(w.is_empty(), "{w:#?}");
-        let frags: Vec<_> = r.core.nodes().into_iter().filter(|n| n.kind == kui_core::NodeKind::Fragment).collect();
-        assert_eq!(frags.len(), 2, "a fragment a line");
+        // Every bar a fragment of Kit's shimmer, registered by Kit: three
+        // text lines, the last 60% of the others, a circle and a block.
+        let frags: Vec<kui_core::Rect> = r
+            .core
+            .nodes()
+            .into_iter()
+            .filter(|n| n.kind == kui_core::NodeKind::Fragment)
+            .map(|n| n.rect)
+            .collect();
+        assert_eq!(frags.len(), 5, "{frags:?}");
+        let lines: Vec<&kui_core::Rect> = frags.iter().filter(|b| b.h == 10.0).collect();
+        assert_eq!(lines.len(), 3, "{frags:?}");
+        assert!((lines[2].w - lines[0].w * 0.6).abs() < 1.0, "the last line is shorter: {lines:?}");
+        assert!(frags.iter().any(|b| b.w == 40.0 && b.h == 40.0), "a circle 40 across");
         assert_eq!(r.core.animating(), !reduced, "it sweeps unless motion is reduced");
     }
 }
 
 #[test]
-fn a_shader_box_draws_the_hosts_fragment_and_is_a_well_without_one() {
+fn a_shader_box_draws_a_preset_a_source_or_the_hosts_fragment_and_is_a_well_without_one() {
     for reduced in [false, true] {
-        let mut r = rig();
-        let id = r.core.add_fragment(SHIMMER).unwrap();
-        if reduced {
-            reduce_motion(&mut r.core);
+        for preset in [kit::ShaderPreset::Shimmer, kit::ShaderPreset::Noise] {
+            let mut r = rig();
+            if reduced {
+                reduce_motion(&mut r.core);
+            }
+            for _ in 0..2 {
+                r.frame(|ui| {
+                    kit::Settings::new().skin(kit::Skin::Neutral).place(ui);
+                    kit::Shader::new().preset(preset).height(50.0).label("A preset").place(ui);
+                });
+            }
+            let w = r.core.take_warnings();
+            assert!(w.is_empty(), "{w:#?}");
+            let frag = r.core.nodes().into_iter().find(|n| n.kind == kui_core::NodeKind::Fragment).expect("the fragment");
+            assert_eq!(frag.rect.h, 50.0);
+            r.centre("A preset");
+            assert_eq!(r.core.animating(), !reduced, "a preset moves unless motion is reduced ({preset:?})");
         }
-        for _ in 0..2 {
-            r.frame(|ui| {
-                kit::Settings::new().skin(kit::Skin::Neutral).place(ui);
-                kit::Shader::new()
-                    .id(id.to_ffi() as i64)
-                    .params(vec![0.1, 0.1, 0.1, 1.0, 0.9, 0.9, 0.9, 1.0, 1.5, 1.0])
-                    .animate(true)
-                    .height(50.0)
-                    .label("A sweep")
-                    .place(ui);
-            });
-        }
-        assert!(r.core.take_warnings().is_empty());
-        let frag = r.core.nodes().into_iter().find(|n| n.kind == kui_core::NodeKind::Fragment).expect("the fragment");
-        assert_eq!(frag.rect.h, 50.0);
-        r.centre("A sweep");
-        assert_eq!(r.core.animating(), !reduced, "animate holds still under reduced motion");
     }
+    // WGSL handed over is registered by Kit; the host's own handle is drawn.
+    let mut r = rig();
+    let id = r.core.add_fragment(NOISE).unwrap();
+    r.frame(|ui| {
+        kit::Shader::new().source(SHIMMER).height(20.0).place(ui);
+        kit::Shader::new().id(id.to_ffi() as i64).params(vec![0.0; 12]).height(21.0).place(ui);
+    });
+    assert!(r.core.take_warnings().is_empty());
+    let frags = r.core.nodes().into_iter().filter(|n| n.kind == kui_core::NodeKind::Fragment).count();
+    assert_eq!(frags, 2);
+    assert!(!r.core.animating(), "a caller's shader moves only when it says animate");
+    // Source that does not compile is said, and the box is the well.
     let mut r = rig();
     r.frame(|ui| {
-        kit::Shader::new().height(30.0).place(ui);
+        kit::Shader::new().source("fn fragment(").height(30.0).place(ui);
+        kit::Shader::new().height(31.0).place(ui);
     });
-    assert!(r.core.nodes().iter().all(|n| n.kind != kui_core::NodeKind::Fragment), "no handle, no fragment");
-    assert!(r.core.nodes().iter().any(|n| n.rect.h == 30.0), "the well keeps its place");
+    let w = r.core.take_warnings();
+    assert!(w.iter().any(|w| w.code == "fragment-rejected"), "{w:#?}");
+    assert!(r.core.nodes().iter().all(|n| n.kind != kui_core::NodeKind::Fragment), "no shader, no fragment");
+    assert!(r.core.nodes().iter().any(|n| n.rect.h == 30.0) && r.core.nodes().iter().any(|n| n.rect.h == 31.0), "the wells keep their place");
 }
+
+#[test]
+fn a_select_opens_on_the_press_with_its_option_over_the_field_and_a_drag_picks() {
+    // C108: the press opens it, the chosen option lands over the field,
+    // and a release over another option picks it, as a native pop-up does.
+    let mut r = LuaRig::new(
+        r#"
+        mode = "two"
+        function on_event(ev) if ev.kind == "mode" then mode = ev.change.value end end
+        function view(env)
+          return column { width = "grow", height = "grow", pad = 200,
+            row { width = 200, component("kit/select", { label = "Mode", value = mode, on_change = { kind = "mode" },
+              options = { { value = "one", label = "One" }, { value = "two", label = "Two" }, { value = "three", label = "Three" } } }) } }
+        end
+        "#,
+    );
+    r.frames(2);
+    let field = r.named("Mode: Two");
+    use kui_core::{InputEvent, Vec2};
+    let (fx, fy) = (field.x + field.w / 2.0, field.y + field.h / 2.0);
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(fx, fy)));
+    r.route(e);
+    let e = r.core.handle_input(InputEvent::mouse_down(1));
+    r.route(e);
+    r.frames(2);
+    let two = r.named("Two");
+    let mid = two.y + two.h / 2.0;
+    assert!(mid > field.y && mid < field.y + field.h, "the current option sits over the field: {two:?} vs {field:?}");
+    let three = r.named("Three");
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(fx, three.y + three.h / 2.0)));
+    r.route(e);
+    r.frames(1);
+    let e = r.core.handle_input(InputEvent::mouse_up());
+    r.route(e);
+    r.frames(2);
+    let mode: String = r.app.globals().get("mode").unwrap();
+    assert_eq!(mode, "three", "released over Three, it picks Three");
+    assert!(r.text("One").is_none(), "and closes");
+    // A quick click opens it and leaves it open, its option over the field.
+    let field = r.named("Mode: Three");
+    r.slow_click(field.x + field.w / 2.0, field.y + field.h / 2.0);
+    r.frames(2);
+    assert!(r.text("One").is_some(), "open after a quick click");
+    let mode: String = r.app.globals().get("mode").unwrap();
+    assert_eq!(mode, "three", "and nothing picked");
+    // C109: an accelerator closes it and goes on to the window.
+    let e = kui_core::testing::key_down(&mut r.core, kui_core::KeyCode::Char('c'), kui_core::KeyMods::NONE.with_primary());
+    r.route(e);
+    r.frames(2);
+    assert!(r.text("One").is_none(), "⌘C closed the menu");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
 
 #[test]
 fn a_code_blocks_copy_puts_its_text_on_the_clipboard_and_says_so() {

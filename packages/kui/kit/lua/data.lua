@@ -809,31 +809,68 @@ end
 
 
 
+local SHIMMER_WGSL = [[
+// Kit's skeleton shimmer, and `kit.shader({ preset = "shimmer" })`: a soft
+// band of light crossing a bar from left to right, once a period, over the
+// bar's own colour. Kit registers it itself (env.add_fragment; build.lua
+// embeds this file) and draws each skeleton bar as a `fragment` with:
+//
+//   params[0]    the bar's colour, straight RGBA 0 to 1 (the skin's well)
+//   params[1]    the band's colour at its middle
+//   params[2].x  the period in seconds, the same for every bar, so bars of
+//                any width cross in step
+//   params[2].y  1 to sweep, 0 to hold still (reduced motion)
+//
+// The band is 40% of the bar's width, between 40 and 200 logical px. The
+// rounding is the node's: Kit gives the fragment the skin's radius.
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let w = in.size.x / in.scale;
+    let band = clamp(w * 0.4, 40.0, 200.0);
+    let period = max(params[2].x, 0.1);
+    let x = in.local.x / in.scale;
+    let at = -band * 0.5 + fract(in.time / period) * (w + band);
+    let k = (1.0 - smoothstep(0.0, band * 0.5, abs(x - at))) * params[2].y;
+    return mix(params[0], params[1], k);
+}
+]]
 
+local NOISE_WGSL = [[
+// Kit's noise preset (`kit.shader({ preset = "noise" })`): gradient noise in
+// three octaves drifting slowly, between two colours. Kit registers it
+// itself (env.add_fragment) and fills its params from the skin:
+//
+//   params[0]    the first colour, straight RGBA 0 to 1 (the skin's well)
+//   params[1]    the second (the skin's accent)
+//   params[2].x  the drift, in cells a second
+//   params[2].y  1 to drift, 0 to hold still (reduced motion)
+//   params[2].z  a cell's size in logical px
+fn kit_hash(p: vec2<f32>) -> vec2<f32> {
+    let q = vec2<f32>(dot(p, vec2<f32>(127.1, 311.7)), dot(p, vec2<f32>(269.5, 183.3)));
+    return fract(sin(q) * 43758.5453) * 2.0 - 1.0;
+}
 
-function M.shader(c, p)
-   local label = str(p.label)
-   local t = {
-      key = "shader",
-      role = label and "image" or nil,
-      label = label,
-      height = p.grow == true and "grow" or (p.height or 80),
-      radius = "$kitRadius",
-   }
-   local pw = p.width
-   t.width = type(pw) == "number" and pw or "grow"
-   local id = p.id
-   if type(id) == "number" then
-      t.id = math.tointeger(id)
-      t.params = p.params
-      local img = p.image
-      t.image = type(img) == "number" and math.tointeger(img) or nil
-      t.animate = p.animate == true and not ctx.reduced(c) or nil
-      return fragment(t)
-   end
-   t.bg = ref(c, "sunken")
-   return column(t)
-end
+fn kit_noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = dot(kit_hash(i), f);
+    let b = dot(kit_hash(i + vec2<f32>(1.0, 0.0)), f - vec2<f32>(1.0, 0.0));
+    let c = dot(kit_hash(i + vec2<f32>(0.0, 1.0)), f - vec2<f32>(0.0, 1.0));
+    let d = dot(kit_hash(i + vec2<f32>(1.0, 1.0)), f - vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let cell = max(params[2].z, 1.0);
+    let p = in.local / in.scale / cell;
+    let t = in.time * params[2].x * params[2].y;
+    let n = kit_noise(p + vec2<f32>(t, t * 0.6)) * 0.6
+        + kit_noise(p * 2.0 - vec2<f32>(t * 0.8, 0.0)) * 0.3
+        + kit_noise(p * 4.0 + vec2<f32>(0.0, t)) * 0.1;
+    let k = smoothstep(0.2, 0.8, clamp(n * 0.5 + 0.5, 0.0, 1.0));
+    return mix(params[0], params[1], k);
+}
+]]
 
 
 
@@ -848,30 +885,95 @@ local function rgba(out, color)
 end
 
 
+local function half(c)
+   local held = c.s.appearance
+   if held then return held end
+   local th = c.env.theme
+   return th and th.appearance == "light" and "light" or "dark"
+end
 
 
-local function bone(c, key, w, h, radius, travel, still)
 
-   local shimmer = c.s.shimmer
+local function fragment_id(c, wgsl)
+   local ok, id = pcall(c.env.add_fragment, wgsl)
+   return ok and id or nil
+end
+
+
+
+
+local function preset_params(c, preset, moving)
+   local h = half(c)
+   local params = {}
+   if preset == "noise" then
+      rgba(params, skin.color(c.s, "kitSunken", h))
+      rgba(params, skin.color(c.s, "kitAccent", h))
+      params[9], params[10], params[11] = 0.12, moving and 1 or 0, 56
+   else
+      rgba(params, skin.color(c.s, "kitSunken", h))
+      rgba(params, skin.color(c.s, "kitShimmer", h))
+      params[9], params[10] = SWEEP_MS / 1000, moving and 1 or 0
+   end
+   return params
+end
+
+
+
+
+
+
+function M.shader(c, p)
+   local label = str(p.label)
+   local t = {
+      key = "shader",
+      role = label and "image" or nil,
+      label = label,
+      height = p.grow == true and "grow" or (p.height or 80),
+      radius = "$kitRadius",
+   }
+   local pw = p.width
+   t.width = type(pw) == "number" and pw or "grow"
+   local moving = not ctx.reduced(c)
+   local preset = str(p.preset)
+   local id = nil
+   local raw = p.id
+   if type(raw) == "number" then
+      id = math.tointeger(raw)
+   elseif str(p.source) then
+      id = fragment_id(c, p.source)
+   elseif preset then
+      id = fragment_id(c, preset == "noise" and NOISE_WGSL or SHIMMER_WGSL)
+   end
+   if id then
+      t.id = id
+
+
+      t.params = p.params or (preset and not p.source and not raw and preset_params(c, preset, moving) or nil)
+      local img = p.image
+      t.image = type(img) == "number" and math.tointeger(img) or nil
+      t.animate = (p.animate == true or (preset ~= nil and p.animate ~= false)) and moving or nil
+      return fragment(t)
+   end
+   t.bg = ref(c, "sunken")
+   return column(t)
+end
+
+
+
+
+
+
+local function bone(c, key, w, h, radius, travel, shimmer, moving)
    if shimmer then
-      local half = c.s.appearance
-      if not half then
-         local th = c.env.theme
-         half = th and th.appearance == "light" and "light" or "dark"
-      end
-      local params = {}
-      rgba(params, skin.color(c.s, "kitSunken", half))
-      rgba(params, skin.color(c.s, "kitShimmer", half))
-      params[9], params[10] = SWEEP_MS / 1000, still and 0 or 1
       return fragment({ key = key, id = shimmer, width = w, height = h, radius = radius,
-params = params, animate = not still or nil, })
+params = preset_params(c, "shimmer", moving), animate = moving or nil, })
    end
    local t = { key = key, width = w, height = h, radius = radius, bg = ref(c, "sunken"), clip = true }
-   if not still and travel > 0 then
+   if travel > 0 then
       local band = math.max(40, math.min(200, travel * 0.4))
-      t[1] = column({ width = band, height = h, float = { anchor = "parent" },
+      t[1] = column({ width = band, height = h, float = { anchor = "parent", dx = -band },
 gradient = { to = "right", stops = { "$kitShimmerClear", "$kitShimmer", "$kitShimmerClear" } },
-keyframes = { { dx = -band }, { dx = travel } }, transition = SWEEP_MS, easing = "linear", })
+keyframes = { { dx = 0 }, { dx = travel + band } }, transition = SWEEP_MS, easing = "linear", })
    end
    return column(t)
 end
@@ -882,24 +984,28 @@ end
 
 function M.skeleton(c, p)
    local shape = str(p.shape) or "text"
-   local still = ctx.reduced(c)
+   local moving = not ctx.reduced(c)
+   local shimmer = fragment_id(c, SHIMMER_WGSL)
    local t = { key = "skeleton", role = "image", label = str(p.label) or "Loading" }
    if shape == "circle" then
       local d = (p.width or 32)
       t.width, t.height = d, d
-      t[1] = bone(c, "b1", d, d, d / 2, d, still)
+      t[1] = bone(c, "b1", d, d, d / 2, d, shimmer, moving)
       return column(t)
    end
 
 
-   t.on_layout = not still and not c.s.shimmer and act(c, "skeleton.layout") or nil
+   t.on_layout = not shimmer and act(c, "skeleton.layout") or nil
    local pw = p.width
    t.width = type(pw) == "number" and pw or "grow"
-   local r = c.env.layout_of("skeleton")
-   local w = r and r.w or 0
+   local w = 0.0
+   if not shimmer then
+      local r = c.env.layout_of("skeleton")
+      w = r and r.w or 0
+   end
    if shape == "block" then
       local h = (p.height or 80)
-      t[1] = bone(c, "b1", "grow", h, "$kitRadius", w, still)
+      t[1] = bone(c, "b1", "grow", h, "$kitRadius", w, shimmer, moving)
       return column(t)
    end
    local n = math.max(1, math.floor((p.lines or 1)))
@@ -907,7 +1013,7 @@ function M.skeleton(c, p)
    for i = 1, n do
       local last = n > 1 and i == n
       local width = last and { pct = 60 } or "grow"
-      t[i] = bone(c, "b" .. i, width, 10, "$kitRadius", last and w * 0.6 or w, still)
+      t[i] = bone(c, "b" .. i, width, 10, "$kitRadius", last and w * 0.6 or w, shimmer, moving)
    end
    return column(t)
 end
@@ -987,8 +1093,9 @@ transition = 320, easing = "snappy", when = { ctx.still() }, }
       bar = {
          width = { pct = 30 }, height = "grow", bg = ref(c, "accent"),
 
-         keyframes = not ctx.reduced(c) and { { dx = -0.3 * w }, { dx = w } } or nil,
-         transition = not ctx.reduced(c) and math.max(1400, w * 2.5) or nil,
+
+         keyframes = { { dx = -0.3 * w }, { dx = w } },
+         transition = math.max(1400, w * 2.5),
       }
    end
    local track = row({

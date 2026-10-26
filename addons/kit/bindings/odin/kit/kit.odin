@@ -181,6 +181,18 @@ APPEARANCE_NAMES := [Appearance]string {
 	.Dark = "dark",
 }
 
+// One of Kit's shaders: a skeleton's shimmer, or gradient noise.
+ShaderPreset :: enum {
+	Shimmer,
+	Noise,
+}
+
+@(private)
+SHADER_PRESET_NAMES := [ShaderPreset]string {
+	.Shimmer = "shimmer",
+	.Noise = "noise",
+}
+
 // What a skeleton stands in for: lines of text, a block (an image, a chart), or
 // a circle (an avatar).
 SkeletonShape :: enum {
@@ -367,10 +379,6 @@ Settings :: struct {
 	// The data face (ids, numbers, code), as a family list; the skin's when left
 	// out.
 	font_data: []string,
-	// A fragment the host registered from Kit's shimmer
-	// (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of a
-	// gradient band.
-	shimmer: Maybe(i64),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -389,7 +397,6 @@ settings_props :: proc(p: Settings) -> ^c.Value {
 	if x, ok := p.rule.?; ok do c.value_map_set(m, "rule", c.value_float(x))
 	if p.font_ui != nil do c.value_map_set(m, "font_ui", kit_list(p.font_ui, proc(x: string) -> ^c.Value { return c.value_str(x) }))
 	if p.font_data != nil do c.value_map_set(m, "font_data", kit_list(p.font_data, proc(x: string) -> ^c.Value { return c.value_str(x) }))
-	if x, ok := p.shimmer.?; ok do c.value_map_set(m, "shimmer", c.value_int(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -2036,9 +2043,9 @@ progress_in :: proc(ui: ^kui.Ui, namespace: string, p: Progress) -> i32 {
 
 // A placeholder for what is still loading: lines a text high, a block or a
 // circle, in the skin's well colour and rounded as its controls are, with a
-// shimmer crossing them in step — held still under reduced motion. The
-// shimmer is a gradient band unless `settings.shimmer` names the host's
-// fragment.
+// shimmer crossing them in step — Kit's shimmer fragment
+// (`addons/kit/shaders/shimmer.wgsl`), which Kit registers itself — held
+// still under reduced motion.
 Skeleton :: struct {
 	// Lines of text (the default), a block or a circle.
 	shape: Maybe(SkeletonShape),
@@ -2080,15 +2087,25 @@ skeleton_in :: proc(ui: ^kui.Ui, namespace: string, p: Skeleton) -> i32 {
 	return c.component(ui, name, props, nil, nil)
 }
 
-// A box a fragment shader paints (a `fragment` node, ADR 0015): the host
-// registers the WGSL and passes its handle, and Kit rounds the box by the
+// A box a fragment shader paints (a `fragment` node, ADR 0015): one of Kit's
+// presets, WGSL handed over as `source`, or a fragment the host registered
+// (`id`) — Kit registers the first two itself. Kit rounds the box by the
 // skin's radius and keeps a shader that reads `time` still under reduced
-// motion. With no handle it is the skin's well.
+// motion. With no shader, or one that does not compile (`fragment-rejected`),
+// it is the skin's well.
 Shader :: struct {
-	// The fragment's handle, from the host's `add_fragment` (`Core::add_fragment`,
-	// `ctx.addFragment`, `kui_fragment_add`).
+	// One of Kit's shaders, its colours the skin's: `shimmer` (a skeleton's sweep)
+	// or `noise` (gradient noise drifting between the well and the accent).
+	// Animated unless `animate = false`.
+	preset: Maybe(ShaderPreset),
+	// A WGSL `fragment` function (ADR 0015), which Kit registers: the same source,
+	// the same fragment.
+	source: string,
+	// A fragment the host registered (`Core::add_fragment`, `ctx.addFragment`,
+	// `kui_fragment_add`, `env.add_fragment`).
 	id: Maybe(i64),
-	// Up to sixteen numbers the shader reads as four `vec4<f32>`.
+	// Up to sixteen numbers the shader reads as four `vec4<f32>`; a preset's come
+	// from the skin when left out.
 	params: []f64,
 	// A registered image's handle, which the shader samples with `kui_sample`.
 	image: Maybe(i64),
@@ -2111,6 +2128,8 @@ Shader :: struct {
 @(private)
 shader_props :: proc(p: Shader) -> ^c.Value {
 	m := c.value_map()
+	if x, ok := p.preset.?; ok do c.value_map_set(m, "preset", c.value_str(SHADER_PRESET_NAMES[x]))
+	if p.source != "" do c.value_map_set(m, "source", c.value_str(p.source))
 	if x, ok := p.id.?; ok do c.value_map_set(m, "id", c.value_int(x))
 	if p.params != nil do c.value_map_set(m, "params", kit_list(p.params, proc(x: f64) -> ^c.Value { return c.value_float(x) }))
 	if x, ok := p.image.?; ok do c.value_map_set(m, "image", c.value_int(x))

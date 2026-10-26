@@ -33,10 +33,15 @@ local SKINS = { ledger = ledger, phosphor = phosphor, neutral = neutral }
 local settings = { skin = ledger, density = "comfortable", shadows = true }
 local declared = nil
 
+
+
+
+
 local function ensure_tokens(env)
    local k = skin.key(settings)
    if declared ~= k then
       env.set_tokens(skin.tokens(settings))
+      env.set_rules_appearance(settings.appearance)
       declared = k
    end
 end
@@ -53,7 +58,6 @@ end
 
 local function apply(p)
    local roles = p.roles
-   local shimmer = p.shimmer
    settings = {
       skin = SKINS[p.skin] or ledger,
       density = p.density == "compact" and "compact" or "comfortable",
@@ -65,7 +69,6 @@ local function apply(p)
       rule_w = num(p.rule),
       font_ui = faces(p.font_ui),
       font_data = faces(p.font_data),
-      shimmer = math.type(shimmer) == "integer" and shimmer or (type(shimmer) == "number" and math.tointeger(shimmer) or nil),
    }
 end
 

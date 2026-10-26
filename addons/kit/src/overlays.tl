@@ -193,9 +193,10 @@ function M.toast(c: Ctx, p: P): kui.Node
     gap = 10,
     cross_align = "center",
     -- In from below, out to the side, fading both ways; the others in a
-    -- toaster slide into the room it leaves.
+    -- toaster slide into the room it leaves once it has gone — the room is
+    -- kept while it leaves (they moved in under it as it went).
     enter = { opacity = 0, dy = 12 },
-    exit = { opacity = 0, dx = 32 },
+    exit = { opacity = 0, dx = 32, keep_room = true },
     slide = inline or nil,
     transition = 180,
     when = { ctx.still() },
@@ -237,6 +238,8 @@ function M.toaster(c: Ctx, _p: P): kui.Node
     -- own exit (DX19): the last toast vanished where the others slid
     -- out. The toaster leaves as a toast does, with whatever is in it.
     exit = { opacity = 0, dx = 32 },
+    -- Its own place glides as it grows and shrinks with its toasts.
+    slide = true,
     transition = 180,
     when = { ctx.still() },
     children(""),

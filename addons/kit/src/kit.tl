@@ -32,10 +32,15 @@ local SKINS: {string:skin.Skin} = { ledger = ledger, phosphor = phosphor, neutra
 local settings: skin.Settings = { skin = ledger, density = "comfortable", shadows = true }
 local declared: string = nil
 
+-- Kit's tokens, declared again when the settings move — and the
+-- appearance Kit's own `dark` / `light` rules read, which is the one its
+-- colours are held to (nil, the palette's, while they follow the OS), so
+-- a rule agrees with the colours it paints beside.
 local function ensure_tokens(env: kui.Env)
   local k = skin.key(settings)
   if declared ~= k then
     env.set_tokens(skin.tokens(settings))
+    env.set_rules_appearance(settings.appearance)
     declared = k
   end
 end
@@ -52,7 +57,6 @@ end
 
 local function apply(p: P)
   local roles = p.roles
-  local shimmer = p.shimmer
   settings = {
     skin = SKINS[p.skin as string] or ledger,
     density = p.density == "compact" and "compact" or "comfortable",
@@ -64,7 +68,6 @@ local function apply(p: P)
     rule_w = num(p.rule),
     font_ui = faces(p.font_ui),
     font_data = faces(p.font_data),
-    shimmer = shimmer is integer and shimmer or (shimmer is number and math.tointeger(shimmer) or nil),
   }
 end
 
