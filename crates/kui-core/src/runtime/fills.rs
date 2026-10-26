@@ -18,6 +18,9 @@ pub(crate) struct FillFrame {
     /// in: what the host's children are built under.
     placer_origin: OriginId,
     placer_ns: (usize, Key),
+    /// The label scope the placer's nodes were named in: the host's
+    /// children's.
+    placer_label: Key,
     /// The groups whose children were built, hashed: each once.
     built: Vec<u64>,
 }
@@ -38,6 +41,7 @@ pub(crate) struct ChildrenState {
     depth: usize,
     group_key: Key,
     hole: Key,
+    label_ns: Key,
 }
 
 impl Core {
@@ -61,7 +65,7 @@ impl Core {
             return None;
         }
         let key = self.parent_key().str(full);
-        self.key_labels.push(key, full, self.origin, self.ns_key);
+        self.key_labels.push(key, full, self.origin, self.label_ns);
         Some(key)
     }
 
@@ -123,15 +127,18 @@ impl Core {
         }
         let saved_origin = self.origin;
         let saved_ns = (self.ns_depth, self.ns_key);
+        let saved_label = self.label_ns;
         self.origin = origin;
         self.ns_depth = depth;
         self.ns_key = slot.key;
+        self.label_ns = slot.key;
         let first = self.tree.len() as u32;
         self.fill_frames.push(FillFrame {
             key: slot.key,
             instance: children.is_some(),
             placer_origin: saved_origin,
             placer_ns: saved_ns,
+            placer_label: saved_label,
             built: Vec::new(),
         });
         // The fill the host asked to keep begins here (ADR 0045).
@@ -166,6 +173,7 @@ impl Core {
         }
         self.origin = saved_origin;
         (self.ns_depth, self.ns_key) = saved_ns;
+        self.label_ns = saved_label;
     }
 
     /// The slot the nodes opened right now belong to: the fill being
@@ -209,7 +217,12 @@ impl Core {
             return None;
         }
         frame.built.push(h);
-        let (key, placer_origin, placer_ns) = (frame.key, frame.placer_origin, frame.placer_ns);
+        let (key, placer_origin, placer_ns, placer_label) = (
+            frame.key,
+            frame.placer_origin,
+            frame.placer_ns,
+            frame.placer_label,
+        );
         if self.keeping() {
             self.keep_op(replay::Op::Children(group.into()));
         }
@@ -227,6 +240,7 @@ impl Core {
             } else {
                 placer_ns.1
             },
+            label_ns: self.label_ns,
         };
         // Inside the children it is the placer's context again: a
         // `children()` there is the placer's own (its host's children,
@@ -239,6 +253,7 @@ impl Core {
                 instance: false,
                 placer_origin: OriginId::HOST,
                 placer_ns: (usize::MAX, Key::ROOT),
+                placer_label: Key::ROOT,
                 built: Vec::new(),
             },
         };
@@ -246,6 +261,7 @@ impl Core {
         self.origin = placer_origin;
         self.ns_depth = self.stack.len();
         self.ns_key = state.group_key;
+        self.label_ns = placer_label;
         if let Some(c) = self.counters.last_mut() {
             *c = 0;
         }
@@ -275,6 +291,7 @@ impl Core {
         }
         self.origin = state.origin;
         (self.ns_depth, self.ns_key) = state.ns;
+        self.label_ns = state.label_ns;
         self.resume_keeping();
     }
 }

@@ -940,6 +940,7 @@ impl Core {
                             Some((key, _, focusable, Some(scope), _)) => {
                                 let target = self.press_focus(key, focusable);
                                 self.move_focus(target);
+                                self.ring_from = (target != Some(key)).then_some(key);
                                 self.settle_region(landed.or(Some(key)));
                                 // The press arms the drag with what the
                                 // click count says it moves by: a second
@@ -964,6 +965,9 @@ impl Core {
                             Some((key, _, focusable, None, _)) => {
                                 let target = self.press_focus(key, focusable);
                                 self.move_focus(target);
+                                // A press a shell sink took the focus for:
+                                // Tab goes on from the node pressed.
+                                self.ring_from = (target != Some(key)).then_some(key);
                                 // Whatever the press did to focus, Tab
                                 // afterwards enters the ring under the
                                 // pointer (`docs/adr/0022`, decision 3).

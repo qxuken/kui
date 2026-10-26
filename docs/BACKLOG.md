@@ -3662,6 +3662,7 @@ filed the same day for the round that builds them.
 - `.` **C126** — [`transition = 0` with a spring easing draws the eased value at 0](backlog/closed-2026-09.md#-c126--transition--0-with-a-spring-easing-draws-the-eased-value-at-0--done-2026-10-26) — done (2026-10-26) — a zero-length transition jumps to its target whatever its easing
 - `.` **C127** — [Lua has no display scale in `env`](backlog/closed-2026-09.md#-c127--lua-has-no-display-scale-in-env--done-2026-10-26) — done (2026-10-26) — `env.scale` in Lua, `Ui::scale` / `kui_scale` / Odin `scale`; Kit's area cuts on whole device pixels
 - `.` **C129** — [A danger menu item's hover hides its label](backlog/closed-2026-09.md#-c129--a-danger-menu-items-hover-hides-its-label--done-2026-10-26) — done (2026-10-26) — Kit: the hovered or pressed danger row's label in `on_danger`; a loud fill's press no longer shades toward its label past 4.5:1
+- `.` **C134** — [An app cannot name its own nodes inside a component](backlog/closed-2026-09.md#-c134--an-app-cannot-name-its-own-nodes-inside-a-component--done-2026-10-26) — done (2026-10-26) — host children are labelled in the placer's scope: `layout_of`, `edit_text` and the rest find them
 
 ### `.` C101 — A table or list has no keyboard range selection
 

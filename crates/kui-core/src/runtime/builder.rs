@@ -633,7 +633,7 @@ impl Core {
         let guest = self.origin != crate::tree::OriginId::HOST;
         let ask = |labels: &crate::key::LabelIndex| {
             if guest {
-                labels.find_in_fill(label, self.origin, self.ns_key)
+                labels.find_in_fill(label, self.origin, self.label_ns)
             } else {
                 labels.find_for(label, self.origin)
             }
@@ -649,7 +649,7 @@ impl Core {
                 // kept with that answer must run again once the label
                 // answers, or it replays its first frame for good.
                 if fall_back {
-                    let (origin, ns) = (self.origin, self.ns_key);
+                    let (origin, ns) = (self.origin, self.label_ns);
                     self.note_read(|| replay::Read::LabelMissing {
                         label: label.into(),
                         origin,
@@ -702,7 +702,13 @@ impl Core {
     /// Whether `label` answers for a fill of `origin` under `ns` (or the
     /// host) in this frame's labels or the last's: what a
     /// [`replay::Read::LabelMissing`] asks again.
-    pub(crate) fn label_answers(&self, label: &str, origin: crate::tree::OriginId, ns: Key, guest: bool) -> bool {
+    pub(crate) fn label_answers(
+        &self,
+        label: &str,
+        origin: crate::tree::OriginId,
+        ns: Key,
+        guest: bool,
+    ) -> bool {
         let ask = |labels: &crate::key::LabelIndex| {
             if guest {
                 labels.find_in_fill(label, origin, ns).0.is_some()
@@ -939,7 +945,7 @@ impl Core {
             if self.hint_shows(key) {
                 // The core's own nodes, not the fill's (ADR 0045).
                 self.pause_keeping();
-                crate::widgets::hover_hint(&mut Ui::wrap(self), &hint);
+                crate::widgets::hover_hint_of(&mut Ui::wrap(self), key, &hint);
                 self.resume_keeping();
             }
         }
@@ -1184,7 +1190,7 @@ impl Core {
     /// Names the node under `key` `label` for `key_of`: what every keyed
     /// door does after its push, and what a kept fill journals.
     pub(crate) fn note_label(&mut self, key: Key, label: &str) {
-        self.key_labels.push(key, label, self.origin, self.ns_key);
+        self.key_labels.push(key, label, self.origin, self.label_ns);
         if self.keeping() {
             self.keep_op(replay::Op::Label {
                 key,
@@ -1498,7 +1504,7 @@ impl Core {
         // A leaf keyed by its label, like `open_keyed`: `key_of` must find
         // the editor an app wants to focus by name. Not journaled: the
         // `Edit` op names its label, and a replay comes back through here.
-        self.key_labels.push(key, label, self.origin, self.ns_key);
+        self.key_labels.push(key, label, self.origin, self.label_ns);
         key
     }
 

@@ -296,6 +296,22 @@ pub(crate) fn hover_hint(ui: &mut Ui<'_>, text: &str) {
     ui.text_in(spec, text, TextStyle::new(size));
 }
 
+/// [`hover_hint`] for the box `of` that declared its `tooltip`, keyed
+/// under that box (`of.str("tooltip")`) as a leaf's is: a kept fill's
+/// replay (ADR 0045) pushes the box's children under the keys it
+/// recorded and leaves the box's auto-key count at nought, so a hint
+/// auto-keyed after them took its first child's key — Kit's button, an
+/// icon first, focused by Tab drew two nodes under one key.
+pub(crate) fn hover_hint_of(ui: &mut Ui<'_>, of: crate::key::Key, text: &str) {
+    let size = ui.metrics().hint_text;
+    let mut spec = tooltip_spec(ui).role(crate::access::Role::None);
+    spec.access_mut().hint = true;
+    ui.core().note_floated_hint();
+    ui.core().open_key(of.str("tooltip"), spec);
+    ui.text(text, TextStyle::new(size));
+    ui.close();
+}
+
 /// [`hover_hint`] for a leaf — a `line`, a `polygon`, a `path`, a `cells`
 /// grid, an image, an editor — which holds no children for the hint to
 /// float as the last of (backlog RG113). The hint is opened beside the

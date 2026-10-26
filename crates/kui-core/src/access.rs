@@ -939,6 +939,21 @@ pub(crate) fn focusable(tree: &Tree, i: usize) -> bool {
     }
 }
 
+/// Whether node `i` is focusable for being a key sink and nothing else:
+/// no `focusable`, no editor, no control role, no `on_click`. Such a sink
+/// around other Tab stops is a shell, which the ring walks through
+/// rather than stopping on (ADR 0011, amended 2026-10-26).
+pub(crate) fn only_a_sink(tree: &Tree, i: usize) -> bool {
+    let spec = &tree.specs[i];
+    spec.events().on_key().is_some()
+        && !spec.focusable
+        && !matches!(tree.content[i], NodeContent::Edit(_))
+        && match spec.access().role {
+            Some(r) => !r.is_control(),
+            None => spec.events().on_click().is_none(),
+        }
+}
+
 /// The role, name and presentation of node `i`, or None when it is plain
 /// structure. Shared by the tree build and the diagnostics check so both
 /// agree on what "unnamed" means.

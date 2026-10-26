@@ -13,6 +13,7 @@ use crate::ops::Ops;
 pub mod formats;
 pub mod fs;
 pub mod http;
+pub mod input;
 pub mod log;
 pub mod process;
 pub mod sqlite;
@@ -364,6 +365,7 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     timer::install(lua, &kui)?;
     process::install(lua, &kui)?;
     http::install(lua, &kui)?;
+    input::install(lua, &kui)?;
     sqlite::install(lua, &kui)?;
     worker::install(lua, &kui)?;
     lua.globals().set("kui", kui.clone())?;

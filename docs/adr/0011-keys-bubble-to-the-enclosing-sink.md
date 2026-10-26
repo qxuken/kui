@@ -187,6 +187,41 @@ around its content, which is what both reports already wrote.
     its fields; the key itself still never bubbles, since the editor did
     claim it.
 
+11. **A shell is no Tab stop, and Tab it hands on goes on from the
+    press** (amended 2026-10-26: the Kit gallery's ⌥↑ / ⌥↓ shell made Tab
+    move nothing anywhere in the app). Two holes in decision 4's pattern.
+    The root is never a stop (`ring_walk`), but a shell is the root only
+    where the app owns the frame's root: under the runner, the devtools'
+    container or any host that configures the root itself, the app's
+    outermost node is the root's child, a sink and so a stop — the
+    *first* stop, ringed round the whole window, which kept every Tab
+    from then on. And a press anywhere inside a shell gives the shell the
+    keyboard (`press_focus`), so after any click the shell held focus and
+    a shell that handed Tab on with `focus_next` went to the top of the
+    ring, wherever the click was. Now:
+    - **A sink that is a stop only for being a sink — no `focusable`, no
+      editor, no control role, no `onClick` — with a stop inside it is
+      none itself** (`access::only_a_sink`, `ring_walk`): it is a keymap
+      over its stops, as the root is. One with nothing focusable inside
+      (a terminal, a canvas) is a stop as it was. Focus put on a shell —
+      `keyFocus`, a press, `set_focus` — stays there and the shell hears
+      every key, Tab included, as decision 4 says.
+    - **`focus_next` from a focus off the ring goes on from where it is**:
+      from the node a press landed on when the press gave the focus to a
+      shell around it (`ring_from`, kept until focus moves), else from the
+      focused node itself — the next stop after it in tree order, or the
+      last before it going back — as a browser's sequential navigation
+      starts from a click. A shell that hears Tab and calls `focus_next`
+      lands after the control the user clicked.
+
+    The app-shell pattern is unchanged in shape and one stop shorter: the
+    shell takes `keyFocus` while nothing has the keyboard, hears what the
+    controls leave, and hands Tab on. Tested in
+    `crates/kui-core/tests/key_bubbling.rs` (a shell is no stop, a sink
+    around nothing focusable is, Tab handed on goes on from the press)
+    and by the Kit gallery's walks with real keys
+    (`crates/kui-cli/tests/run.rs`).
+
 ## Considered options
 
 - **A `keys` allow-list on the sink** (`onKey={handler} keys={['space',

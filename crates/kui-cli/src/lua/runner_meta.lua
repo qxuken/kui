@@ -190,6 +190,28 @@ function kui.log.error(...) end
 ---@param on? boolean
 function kui.devtools(on) end
 
+---What a window gets from the OS, sent into a headless run (`kui run
+-----headless`): a test drives the app as a user does, through the core's
+---key routing, the Tab ring and hit testing. Each is handled before the
+---next frame, in the order sent. A windowed run raises an error.
+kui.input = {}
+---A key pressed and released, by the name `on_key` reports it under:
+---"tab", "down", "a", "f2".
+---@param name string
+---@param mods? { shift?: boolean, ctrl?: boolean, alt?: boolean, super?: boolean }
+function kui.input.key(name, mods) end
+---The pointer to a point of the window, nothing pressed.
+---@param x number
+---@param y number
+function kui.input.move(x, y) end
+---The pointer there, the primary button pressed and released.
+---@param x number
+---@param y number
+function kui.input.click(x, y) end
+---Typed text, as the OS delivers it to the focused editor.
+---@param s string
+function kui.input.text(s) end
+
 ---Digests as lowercase hex.
 kui.hash = {}
 ---@return string

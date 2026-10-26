@@ -360,7 +360,9 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     }
     modules::on_interrupt(shared.clone());
     if args.headless {
-        launcher.open_headless(runner, w as f32, h as f32, 1.0).run();
+        let headless = launcher.open_headless(runner, w as f32, h as f32, 1.0);
+        modules::input::set(headless.input());
+        headless.run();
     } else {
         launcher.size(w, h).run(runner).map_err(|e| e.to_string())?;
     }

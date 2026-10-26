@@ -495,3 +495,85 @@ fn bubbling_stops_at_the_modal_boundary() {
         "a shell outside the dialog is as inert as the app it wraps"
     );
 }
+
+/// A sink that is a stop only for being a sink, with stops inside it, is a
+/// keymap over them and no Tab stop of its own (ADR 0011, amended
+/// 2026-10-26): Tab from nothing lands on the shell's first control, and
+/// the ring is the controls alone — the inner sink, around a button, is
+/// one too. The Kit gallery's shell was the first stop, and once there it
+/// kept every Tab: Tab moved nothing anywhere in the app.
+#[test]
+fn a_shell_sink_around_tab_stops_is_no_stop_of_its_own() {
+    let mut core = Core::new();
+    let k = shell(&mut core, false);
+    let mut ring = Vec::new();
+    for _ in 0..4 {
+        core.focus_next(true);
+        ring.push(core.focus().unwrap());
+    }
+    assert_eq!(ring, vec![k.go, k.vol, k.deep, k.go], "the controls, round");
+    core.focus_next(false);
+    assert_eq!(core.focus(), Some(k.deep), "Shift-Tab round the other way");
+    assert!(!ring.contains(&k.shell) && !ring.contains(&k.inner));
+}
+
+/// A sink with no stop inside it — a terminal, a canvas — is a stop as it
+/// always was.
+#[test]
+fn a_sink_with_nothing_focusable_inside_is_a_stop() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let go = ui.leaf_keyed(
+        "go",
+        NodeSpec::row().size(100.0, H).on_click("go").label("Go"),
+    );
+    let term = ui.with_keyed(
+        "term",
+        NodeSpec::row().size(100.0, H).on_key("term"),
+        |ui| {
+            ui.text("$ ", kui_core::TextStyle::new(12.0));
+        },
+    );
+    ui.finish();
+    core.focus_next(true);
+    assert_eq!(core.focus(), Some(go));
+    core.focus_next(true);
+    assert_eq!(core.focus(), Some(term), "the sink is a stop");
+}
+
+/// A press on a control inside a shell gives the shell the keyboard
+/// (ADR 0002, decision 9), and Tab, which the shell hands on with
+/// `focus_next`, goes on from the node pressed — as a browser's Tab goes
+/// on from a click — not from the top. Focus moved anywhere else lets the
+/// press's place go.
+#[test]
+fn tab_handed_on_by_a_shell_a_press_focused_goes_on_from_the_press() {
+    let mut core = Core::new();
+    let k = shell(&mut core, false);
+    kui_core::testing::click_at(&mut core, 50.0, H * 1.5);
+    assert_eq!(
+        core.focus(),
+        Some(k.shell),
+        "the press on the slider gives the shell the keyboard"
+    );
+    core.focus_next(true);
+    assert_eq!(core.focus(), Some(k.deep), "on from the slider pressed");
+    kui_core::testing::click_at(&mut core, 50.0, H * 0.5);
+    assert_eq!(core.focus(), Some(k.shell));
+    core.focus_next(false);
+    assert_eq!(
+        core.focus(),
+        Some(k.deep),
+        "back from the button pressed, round the start"
+    );
+    // Focus put on the shell by the view starts from the shell itself.
+    core.set_focus(Some(k.go));
+    core.set_focus(Some(k.shell));
+    core.focus_next(true);
+    assert_eq!(
+        core.focus(),
+        Some(k.go),
+        "a shell focused by the view goes on to its first stop"
+    );
+}

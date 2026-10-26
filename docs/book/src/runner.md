@@ -166,6 +166,15 @@ cd tasks && kui run test --headless
 A task that throws ends a headless run with 1, so a broken test fails
 rather than waits.
 
+What `update` cannot show is what the keyboard and the pointer do on
+their way to it: which control Tab lands on, which key a focused control
+keeps, what is under a click. `kui.input` sends a headless run what a
+window gets from the OS — `kui.input.key("tab")`,
+`kui.input.key("down", { alt = true })`, `kui.input.move(x, y)`,
+`kui.input.click(x, y)`, `kui.input.text("hi")` — each handled before
+the next frame, so a timer step that presses Tab and a view that prints
+`env.focus` a step later read the frame after it.
+
 ## Shipping it
 
 Your users should not need `kui`. `kui pack` builds the app for them —

@@ -22,11 +22,28 @@ impl Core {
         let at = self
             .focus
             .and_then(|cur| ring.iter().position(|(_, k)| *k == cur));
-        let (i, _) = match at {
-            Some(p) if forward => ring[(p + 1) % ring.len()],
-            Some(p) => ring[(p + ring.len() - 1) % ring.len()],
-            None if forward => ring[0],
-            None => ring[ring.len() - 1],
+        // Focus held off the ring — by a shell sink a press inside it
+        // resolved to, or one a view focused — goes on from where it is:
+        // the node the press landed on, else the sink itself, the next
+        // stop after it in tree order (ADR 0011, amended 2026-10-26).
+        let from = match at {
+            None => self
+                .focus
+                .and_then(|f| self.ring_from.or(Some(f)))
+                .and_then(|k| self.tree.index_of(k)),
+            Some(_) => None,
+        };
+        let (i, _) = match (at, from) {
+            (Some(p), _) if forward => ring[(p + 1) % ring.len()],
+            (Some(p), _) => ring[(p + ring.len() - 1) % ring.len()],
+            (None, Some(j)) if forward => *ring.iter().find(|(i, _)| *i > j).unwrap_or(&ring[0]),
+            (None, Some(j)) => *ring
+                .iter()
+                .rev()
+                .find(|(i, _)| *i < j)
+                .unwrap_or(&ring[ring.len() - 1]),
+            (None, None) if forward => ring[0],
+            (None, None) => ring[ring.len() - 1],
         };
         // Into a windowed composite whose wanted row the frame did not
         // build: the entry landed on a built row, and the core reaches for
@@ -179,7 +196,27 @@ impl Core {
         // which role its items carry, and the one item that is its stop.
         let mut open: Vec<(usize, Role, Option<usize>)> = Vec::new();
         let mut items = Vec::new();
+        // The shell sinks walked into and not yet out of: where each
+        // ends, and how long the ring was where it would stand. A sink
+        // that is a stop only for being a sink, with stops inside it, is
+        // a keymap over them and not a thing the user acts on (ADR 0011,
+        // amended 2026-10-26): it hears what they leave, and Tab walks
+        // them. One with no stop inside is a stop, in its place.
+        let mut shells: Vec<(usize, usize, usize)> = Vec::new();
+        let close =
+            |shells: &mut Vec<(usize, usize, usize)>, out: &mut Vec<(usize, Key)>, i: usize| {
+                while let Some(&(e, at, s)) = shells.last() {
+                    if i < e {
+                        break;
+                    }
+                    shells.pop();
+                    if out.len() == at {
+                        out.push((s, self.tree.keys[s]));
+                    }
+                }
+            };
         while i < end {
+            close(&mut shells, out, i);
             while open.last().is_some_and(|(e, _, _)| i >= *e) {
                 open.pop();
             }
@@ -227,10 +264,15 @@ impl Core {
             // user acts on, and the whole window is not one. Without this
             // a root sink drew the ring around the window.
             if i != 0 && crate::access::focusable(&self.tree, i) {
-                out.push((i, self.tree.keys[i]));
+                if crate::access::only_a_sink(&self.tree, i) {
+                    shells.push((self.tree.subtree_end(i), out.len(), i));
+                } else {
+                    out.push((i, self.tree.keys[i]));
+                }
             }
             i += 1;
         }
+        close(&mut shells, out, usize::MAX);
     }
 
     /// The tree range the ring is made of: the modal's subtree when one is
@@ -992,6 +1034,7 @@ impl Core {
         // being left remembers what it held first, so entering it again
         // lands there.
         if key != self.focus {
+            self.ring_from = None;
             self.region_held = false;
             // An Escape armed the editor it was pressed in, and only that
             // one (backlog C99).

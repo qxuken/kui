@@ -67,6 +67,9 @@ end
 -- Whether a text editor had the keyboard at the last frame: it keeps
 -- ⌥↑ and ⌥↓ (they bubble from it, as every key it does not use does).
 local editing = false
+-- Whether ⌥↑ or ⌥↓ changed the page since the last frame: the control
+-- that had the keyboard went with the page, and the key sink takes it.
+local paged = false
 
 function update(msg)
   local m = model
@@ -81,6 +84,14 @@ function update(msg)
     if key and key.phase == "down" and key.alt and not (key.ctrl or key.super or key.shift) and not editing
       and (key.code == "up" or key.code == "down") then
       m.page = pages.step(m.page, key.code == "up" and -1 or 1)
+      paged = true
+    elseif key and key.phase == "down" and key.code == "tab" and not (key.ctrl or key.alt or key.super) then
+      -- The sink hears Tab only while it holds the focus itself — a press
+      -- on the page's background, or on a control inside it, gives it the
+      -- focus — and Tab is the ring's: handed on from where the press was
+      -- (ADR 0011, decision 4).
+      local back = key.shift
+      kui.next_frame(function(env) if back then env.focus_prev() else env.focus_next() end end)
     end
   elseif k == "side" then m.side = msg.resize.fraction
   elseif k == "live" then m.live = msg.toggle.on
@@ -113,10 +124,17 @@ function view(env)
   local held = m.theme.appearance
   env.set_rules_appearance(held ~= "system" and held or nil)
   editing = env.focus ~= nil and env.edit_text(env.focus) ~= nil
+  local refocus = paged
+  paged = false
   local page = column { key = "page." .. m.page, width = "grow", height = "grow", scroll_y = true, pad = 16, gap = 16,
     pages.page(m, m.page) }
-  -- The whole app inside one key sink: the page shortcut.
+  -- The whole app inside one key sink: the page shortcut. Its keys are
+  -- the ones nothing focused inside it uses, so it takes the keyboard
+  -- itself whenever nothing has it — at launch, and when the focused
+  -- control went with the page ⌥↓ left — and hands Tab on (`update`).
+  -- It is no Tab stop: a sink around stops is a keymap over them.
   return column { width = "grow", height = "grow", bg = "$kitBg", on_key = { kind = "keys" },
+    key_focus = (env.focus == nil or refocus) or nil,
     kit.settings(theme.settings(m.theme)),
     kit.toolbar({}, {
       row { gap = 8, cross_align = "center",

@@ -56,7 +56,7 @@ impl Core {
     #[track_caller]
     pub fn reveal_label(&mut self, label: &str) {
         self.pending_reveal_labels
-            .push((label.to_string(), self.origin, self.ns_key));
+            .push((label.to_string(), self.origin, self.label_ns));
         self.owe_frame("reveal_label");
     }
 
@@ -66,7 +66,7 @@ impl Core {
     #[track_caller]
     pub fn set_scroll_label(&mut self, label: &str, offset: Vec2) {
         self.pending_scroll_labels
-            .push((label.to_string(), self.origin, self.ns_key, offset));
+            .push((label.to_string(), self.origin, self.label_ns, offset));
         if !self.building {
             self.owe_frame("set_scroll_label");
         }
@@ -82,10 +82,10 @@ impl Core {
         fill: Key,
     ) -> Option<Key> {
         let at = std::mem::replace(&mut self.origin, origin);
-        let ns = std::mem::replace(&mut self.ns_key, fill);
+        let ns = std::mem::replace(&mut self.label_ns, fill);
         let key = self.find_label(label, false);
         self.origin = at;
-        self.ns_key = ns;
+        self.label_ns = ns;
         key
     }
 

@@ -79,6 +79,29 @@
   -- The devtools panel on, off, or (with nothing) toggled.
   devtools: function(on?: boolean)
 
+  -- What a window gets from the OS, sent into a headless run (`kui run
+  -- --headless`), for a test that drives the app as a user does: through
+  -- the core's key routing, the Tab ring and hit testing, rather than
+  -- dispatching the message a handler would post. Each is handled before
+  -- the next frame, in the order sent. A windowed run raises an error.
+  record InputMods
+    shift: boolean
+    ctrl: boolean
+    alt: boolean
+    super: boolean
+  end
+  record input
+    -- A key pressed and released, by the name `on_key` reports it
+    -- under: "tab", "down", "a", "f2".
+    key: function(name: string, mods?: InputMods)
+    -- The pointer to a point of the window, nothing pressed.
+    move: function(x: number, y: number)
+    -- The pointer there, the primary button pressed and released.
+    click: function(x: number, y: number)
+    -- Typed text, as the OS delivers it to the focused editor.
+    text: function(s: string)
+  end
+
   -- Digests as lowercase hex.
   record hash
     sha1: function(data: string): string

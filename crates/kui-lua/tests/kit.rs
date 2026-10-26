@@ -3739,3 +3739,78 @@ fn a_bar_and_a_sparkline_show_the_value_under_the_pointer() {
     assert!(r.text("8 ms").is_none(), "and nothing once the pointer leaves");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
+
+/// An app names its own nodes inside a Kit component (backlog C134): a box
+/// and an editor it declared as a panel's children answer `layout_of`,
+/// `edit_text` and `set_edit_text` by their labels, as the ones outside
+/// the panel always did — the children were filed under the panel's
+/// placement, which the app's view never asks in.
+#[test]
+fn an_app_finds_its_nodes_inside_a_kit_component_by_label() {
+    let mut r = LuaRig::new(
+        r#"
+        n = 0
+        seen = {}
+        function view(env)
+          n = n + 1
+          local inside, outside = env.layout_of("inside"), env.layout_of("outside")
+          seen.inside = inside and inside.w
+          seen.outside = outside and outside.w
+          seen.text = env.edit_text("note")
+          if n == 2 then env.set_edit_text("note", "set by label") end
+          return column { width = 600, height = "grow", pad = 20,
+            column { key = "outside", width = 100, height = 20, on_layout = { kind = "noop" } },
+            component("kit/panel", { title = "Panel" }, {
+              column { key = "inside", width = 120, height = 30, hoverable = true },
+              edit { key = "note", label = "Note", initial = "seeded" } }) }
+        end
+        "#,
+    );
+    r.frames(3);
+    let seen: mlua::Table = r.app.globals().get("seen").unwrap();
+    assert_eq!(seen.get::<Option<f64>>("outside").unwrap(), Some(100.0));
+    assert_eq!(
+        seen.get::<Option<f64>>("inside").unwrap(),
+        None,
+        "no on_layout, no layout_of"
+    );
+    assert_eq!(
+        seen.get::<Option<String>>("text").unwrap().as_deref(),
+        Some("set by label")
+    );
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+/// A Kit button with an icon and a tooltip, focused by Tab and drawn again
+/// from its kept fill, shows its hint under a key of its own: the hint was
+/// auto-keyed after the replayed children and took the icon's key, two
+/// nodes under one (`duplicate-key`).
+#[test]
+fn a_kit_buttons_hint_shown_by_tab_keeps_a_key_of_its_own() {
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = 600, height = "grow", pad = 20,
+            component("kit/panel", { title = "Live line" }, {
+              column { width = "grow", height = 40 },
+              actions = { component("kit/button", { label = "Source", icon = "code", variant = "ghost",
+                name = "Source of Live line", tooltip = "Show the file" }) } }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let e = kui_core::testing::tab(&mut r.core, false);
+    r.route(e);
+    r.frames(3);
+    assert!(
+        r.core.access_tree().nodes.iter().any(|n| n.focused),
+        "the button has the keyboard"
+    );
+    assert!(r.text("Show the file").is_some(), "its hint shows");
+    let mut keys: Vec<u64> = r.core.nodes().iter().map(|n| n.key.0).collect();
+    let all = keys.len();
+    keys.sort_unstable();
+    keys.dedup();
+    assert_eq!(keys.len(), all, "a key a node");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}

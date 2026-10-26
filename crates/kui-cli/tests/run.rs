@@ -459,53 +459,172 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     }
 }
 
-/// ⌥↓ and ⌥↑ go to the next and the previous page, round the ends, from
-/// the key sink around the app; a text editor with the keyboard keeps
-/// them, and another chord is not the shortcut.
+/// A walk of the Kit app driven by real input (`kui.input`): a view that
+/// prints where focus is when asked (`probe(name)`) — the focused node's
+/// label, or its key, and the page — and the live line chart wrapped in a
+/// box of the app's own (`probe.chart`) whose rect it prints when asked
+/// (`want_chart()`), so the walk can put the pointer on it.
+const KIT_WALK_HEAD: &str = r##"
+local kit = require("kit.ui")
+local line_chart = kit.line_chart
+kit.line_chart = function(p)
+  if not p.focusable then return line_chart(p) end
+  return column { key = "probe.chart", width = "grow", on_layout = { kind = "noop" }, line_chart(p) }
+end
+require("main")
+model = init()
+local inner, asked, chart_asked = view, nil, false
+chart = nil
+function probe(name) asked = name end
+function want_chart() chart_asked = true end
+function view(env)
+  local t = inner(env)
+  if chart_asked then
+    chart, chart_asked = env.layout_of("probe.chart"), false
+  end
+  if asked then
+    local f = env.focus
+    print("focus", asked, model.page, f and (env.label_of(f) or tostring(f)) or "none")
+    asked = nil
+  end
+  return t
+end
+local function run(steps)
+  local i = 0
+  kui.timer.every(120, function()
+    i = i + 1
+    if steps[i] then steps[i]() else kui.exit(0) end
+  end)
+end
+"##;
+
+/// What the walk printed: each `focus` line as (probe, page, focused).
+fn focus_lines(s: &str) -> Vec<(String, String, String)> {
+    s.lines()
+        .filter_map(|l| l.strip_prefix("focus\t"))
+        .map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            (f[0].to_string(), f[1].to_string(), f[2].to_string())
+        })
+        .collect()
+}
+
+/// Tab and Shift-Tab, pressed as keys, walk the Kit app's controls: the
+/// gallery's key sink (its page shortcut) is around them all, and it is no
+/// Tab stop and keeps no Tab (backlog: the regression where Tab moved
+/// nothing anywhere in the gallery). From launch, a page reached with ⌥↓,
+/// and a press on a control — which gives the sink the keyboard — Tab goes
+/// on from where the press was.
 #[test]
-fn the_kit_app_pages_with_alt_up_and_down_but_not_in_an_editor() {
+fn the_kit_app_tabs_through_the_inputs_page_with_real_keys() {
     let dir = kit_app(
-        "kit-app-keys",
-        r##"
-        require("main")
-        model = init()
-        local function key(code, mods)
-          local k = { phase = "down", code = code, alt = true }
-          for m, v in pairs(mods or {}) do k[m] = v end
-          return { kind = "keys", key = k }
-        end
-        -- The view, asked to move the keyboard on until a text editor has it.
-        local inner, hunting = view, false
-        function view(env)
-          local t = inner(env)
-          if hunting and not (env.focus and env.edit_text(env.focus)) then env.focus_next() end
-          return t
-        end
-        local steps = {
-          function() kui.dispatch(key("down")) end,
-          function() print("page", model.page) kui.dispatch(key("down")) end,
-          function() print("page", model.page) kui.dispatch(key("up")) kui.dispatch(key("up")) kui.dispatch(key("up")) end,
-          function() print("page", model.page) kui.dispatch(key("down", { shift = true })) end,
-          function() print("page", model.page) kui.dispatch(key("down")) end,
-          function() print("page", model.page) kui.dispatch({ kind = "page", change = { value = "inputs" } }) hunting = true end,
-          function() end, function() end, function() end, function() end, function() end, function() end,
-          function() hunting = false kui.dispatch(key("down")) end,
-          function() print("editing page", model.page) end,
-        }
-        local i = 0
-        kui.timer.every(80, function()
-          i = i + 1
-          if steps[i] then steps[i]() else kui.exit(0) end
-        end)
-        "##,
+        "kit-app-tab",
+        &format!(
+            "{KIT_WALK_HEAD}{}",
+            r##"
+        run({
+          function() kui.input.key("down", { alt = true }) end,
+          function() probe("paged") end,
+          function() kui.input.key("tab") end, function() probe("t1") end,
+          function() kui.input.key("tab") end, function() probe("t2") end,
+          function() kui.input.key("tab") end, function() probe("t3") end,
+          function() kui.input.key("tab") end, function() probe("t4") end,
+          function() kui.input.key("tab") end, function() probe("t5") end,
+          function() kui.input.key("tab", { shift = true }) end, function() probe("back") end,
+          function() kui.input.key("tab", { shift = true }) end, function() probe("back2") end,
+        })
+        "##
+        ),
     );
     let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
     let s = out(&o);
     assert!(o.status.success(), "{s}");
     assert!(!s.contains("warning"), "{s}");
-    let pages: Vec<&str> = s.lines().filter_map(|l| l.strip_prefix("page\t")).collect();
-    assert_eq!(pages, ["inputs", "data", "keyboard", "keyboard", "overview"], "⌥↓ on, ⌥↑ back round the first, ⇧⌥↓ nothing:\n{s}");
-    assert!(s.contains("editing page\tinputs"), "a text field keeps ⌥↓:\n{s}");
+    let lines = focus_lines(&s);
+    let at = |name: &str| {
+        lines
+            .iter()
+            .find(|l| l.0 == name)
+            .unwrap_or_else(|| panic!("no {name} in:\n{s}"))
+            .clone()
+    };
+    assert_eq!(
+        at("paged").1,
+        "inputs",
+        "⌥↓ from launch goes to the next page:\n{s}"
+    );
+    let tabs: Vec<String> = ["t1", "t2", "t3", "t4", "t5"]
+        .iter()
+        .map(|n| at(n).2)
+        .collect();
+    assert!(
+        tabs.iter().all(|f| f != "none"),
+        "each Tab lands somewhere: {tabs:?}"
+    );
+    let mut distinct = tabs.clone();
+    distinct.sort();
+    distinct.dedup();
+    assert_eq!(distinct.len(), tabs.len(), "each Tab moves on: {tabs:?}");
+    assert_eq!(at("back").2, tabs[3], "Shift-Tab goes back one:\n{s}");
+    assert_eq!(at("back2").2, tabs[2], "and another:\n{s}");
+    assert!(
+        lines.iter().all(|l| l.1 == "inputs"),
+        "Tab pages nothing:\n{s}"
+    );
+}
+
+/// ⌥↓ and ⌥↑, pressed as keys, go to the next and the previous page,
+/// round the ends, from the key sink around the app; a text editor with
+/// the keyboard keeps them, and another chord is not the shortcut.
+#[test]
+fn the_kit_app_pages_with_alt_up_and_down_but_not_in_an_editor() {
+    let dir = kit_app(
+        "kit-app-keys",
+        &format!(
+            "{KIT_WALK_HEAD}{}",
+            r##"
+        local function alt(code, shift) kui.input.key(code, { alt = true, shift = shift }) end
+        -- The view, asked to move the keyboard on until a text editor has it.
+        local walk, hunting = view, false
+        function view(env)
+          local t = walk(env)
+          if hunting and not (env.focus and env.edit_text(env.focus)) then env.focus_next() end
+          return t
+        end
+        run({
+          function() alt("down") end, function() probe("p1") end,
+          function() alt("down") end, function() probe("p2") end,
+          function() alt("up") alt("up") alt("up") end, function() probe("p3") end,
+          function() alt("down", true) end, function() probe("p4") end,
+          function() alt("down") end, function() probe("p5") end,
+          function() kui.dispatch({ kind = "page", change = { value = "inputs" } }) hunting = true end,
+          function() end, function() end, function() end, function() end, function() end, function() end,
+          function() hunting = false alt("down") end,
+          function() probe("editing") end,
+        })
+        "##
+        ),
+    );
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(!s.contains("warning"), "{s}");
+    let lines = focus_lines(&s);
+    let pages: Vec<&str> = lines
+        .iter()
+        .filter(|l| l.0.starts_with('p'))
+        .map(|l| l.1.as_str())
+        .collect();
+    assert_eq!(
+        pages,
+        ["inputs", "data", "keyboard", "keyboard", "overview"],
+        "⌥↓ on, ⌥↑ back round the first, ⇧⌥↓ nothing:\n{s}"
+    );
+    let editing = lines
+        .iter()
+        .find(|l| l.0 == "editing")
+        .expect("the editing probe");
+    assert_eq!(editing.1, "inputs", "a text field keeps ⌥↓:\n{s}");
 }
 
 /// The Kit app is Kit's gallery: every component its schema describes is

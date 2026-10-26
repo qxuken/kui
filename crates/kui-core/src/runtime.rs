@@ -340,6 +340,12 @@ pub struct Core {
     /// when no fill is in progress — one compare on the auto-key path.
     ns_depth: usize,
     ns_key: Key,
+    /// The fill whose labels the nodes opened right now are (backlog
+    /// C134): `ns_key` inside a fill's own nodes, and the placer's inside
+    /// the host's children a component places — an app names its node in
+    /// a Kit panel as it names any node of its view. `key_of` and every
+    /// label ask read labels in this scope.
+    label_ns: Key,
     /// Between `begin_frame` and `finish_frame`: `key_labels` is partial
     /// and `key_labels_last` is the last whole frame, and `key_of` reads
     /// both; outside a build `key_labels` is the whole last frame and is
@@ -778,6 +784,11 @@ pub struct Core {
     /// A composite step to a row a windowed list or table has not built
     /// (ADR 0070, backlog C89): landed by the frame that builds it.
     composite_reach: Option<composites::Reach>,
+    /// The node a press landed on when it put focus somewhere else — on
+    /// the shell sink around it, or nowhere (ADR 0011, amended
+    /// 2026-10-26): where Tab goes on from while focus is off the ring,
+    /// as a browser's sequential navigation starts from the click.
+    ring_from: Option<Key>,
     /// The composite a `typeahead` event asked (ADR 0070): what
     /// `answer_typeahead` accepts an answer for, once.
     typeahead_asked: Option<Key>,
@@ -1403,6 +1414,7 @@ impl Core {
             placing_slot: None,
             ns_depth: usize::MAX,
             ns_key: Key::ROOT,
+            label_ns: Key::ROOT,
             dt_app: None,
             dt_dock: None,
             dt_window: false,
@@ -1495,6 +1507,7 @@ impl Core {
             tab_moves_focus: false,
             tab_armed: None,
             composite_reach: None,
+            ring_from: None,
             typeahead_asked: None,
             typeahead_answer: None,
             focus_place: None,

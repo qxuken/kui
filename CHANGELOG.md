@@ -294,6 +294,17 @@ was the first bare bump to break an app in five releases).
 - A Kit line chart's hover bands are as wide as the rows they name, by
   the line's x scale, where each was 3 px naming the row at its share of
   the row count; a host's `on_hover` hears the row nearest the pointer.
+- A key sink that is a stop only for being a sink — no `focusable`, no
+  editor, no control role, no `onClick` — with a Tab stop inside it is no
+  Tab stop of its own: Tab walks the controls under it, where it landed
+  on the sink first (ADR 0011, decision 11). A sink with nothing
+  focusable inside — a terminal — is a stop as before. And `focus_next`
+  from a focus off the ring goes on from where it is (the node a press
+  landed on, when the press gave a shell around it the keyboard), where
+  it went to the first stop.
+- A tooltip's hint is keyed under the box that declared it
+  (`box.str("tooltip")`, as a leaf's already was), where it took the
+  box's next child key.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -1532,6 +1543,28 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- **Tab moves focus in the Kit gallery again.** The key sink the gallery
+  wrapped itself in for ⌥↑ / ⌥↓ was a Tab stop — the first — and a sink
+  holding focus keeps every key, Tab included, so the first Tab put
+  focus on the whole app and no Tab after it moved anything; a press
+  anywhere in the app gave the sink the keyboard too, so after hovering a
+  chart and clicking, Tab was dead as well. A sink around Tab stops is
+  no longer one (ADR 0011, decision 11), the gallery's hands Tab on when
+  it holds focus, from where the press was, and takes the keyboard
+  whenever nothing has it, so ⌥↑ / ⌥↓ work from launch. The runner
+  gains `kui.input` — a key, the pointer, a click, typed text sent into a
+  headless run — and the gallery's walks press real keys: through the
+  Inputs page, over the live chart, after a press on it, and ⌥↓ / ⌥↑.
+- An app names its own nodes inside a component (backlog C134): a node
+  the app's view declared as a Kit panel's children answered no label —
+  `layout_of`, `edit_text`, `set_edit_text`, `set_scroll`, `reveal` and
+  the rest by label found nothing — because host children were filed
+  under the component's placement, a scope the app's view never asks in.
+  They are the placer's now.
+- A box with a `tooltip` drawn from a kept fill (ADR 0045) and shown by
+  keyboard focus drew its hint under its first child's key — Kit's
+  button, its icon first, Tabbed to in the gallery: two nodes under one
+  key, `duplicate-key`. The hint has a key of its own.
 - A zero-length transition jumps to its target whatever its easing
   (backlog C126): with a spring (`snappy`, `spring`, `bouncy`, `smooth`,
   or a bounce on a timed curve) the integration at no response time blew
