@@ -92,7 +92,7 @@ function view(env)
       },
     }),
     kit.stat({ label = "Done", value = done .. " of " .. #model.tasks }),
-    column { key = "tasks", gap = 4, width = "grow", height = "grow", scroll = true, table.unpack(rows) },
+    column { key = "tasks", gap = 4, width = "grow", height = "grow", scroll = true, pad = 4, table.unpack(rows) },
   }
 end
 -- ANCHOR_END: view
