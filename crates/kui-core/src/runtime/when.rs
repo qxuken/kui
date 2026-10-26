@@ -94,14 +94,14 @@ impl Core {
     /// for a node that declares none.
     #[inline]
     pub(super) fn resolve_rules(&mut self, key: Key, spec: &mut NodeSpec) {
-        if spec.rules.is_some() {
+        if spec.rules_ref().is_some() {
             self.resolve_declared_rules(key, spec);
         }
     }
 
     #[inline(never)]
     fn resolve_declared_rules(&mut self, key: Key, spec: &mut NodeSpec) {
-        let Some(mut rules) = spec.rules.take() else {
+        let Some(mut rules) = spec.take_rules() else {
             return;
         };
         let memo = self
@@ -186,7 +186,7 @@ impl Core {
         live.hide = hide;
         live.height_moved = false;
         rules.live.matched = rules.matching();
-        spec.rules = Some(rules);
+        spec.put_rules(rules);
         if sized != 0 {
             RulesSpec::relay(spec);
         }
@@ -218,7 +218,7 @@ impl Core {
         for &i in &ruled {
             let i = i as usize;
             let key = self.tree.keys[i];
-            let Some(rules) = self.tree.specs[i].rules.as_deref() else {
+            let Some(rules) = self.tree.specs[i].rules_ref() else {
                 continue;
             };
             if rules.entries().is_empty() {
@@ -285,7 +285,7 @@ impl Core {
         let mut crossed = None;
         for k in 0..self.tree.ruled.len() {
             let i = self.tree.ruled[k] as usize;
-            let Some(lazy) = self.tree.specs[i].rules.as_deref().and_then(|r| r.lazy()) else {
+            let Some(lazy) = self.tree.specs[i].rules_ref().and_then(|r| r.lazy()) else {
                 continue;
             };
             let lazy = lazy.clone();

@@ -684,7 +684,7 @@ impl Core {
             if spec.transition.is_some() {
                 flags.push("transition");
             }
-            if let Some(r) = spec.rules.as_deref() {
+            if let Some(r) = spec.rules_ref() {
                 if !r.entries().is_empty() {
                     flags.push("rules");
                 }

@@ -153,7 +153,7 @@ impl Core {
             self.resolve_rules(Key::ROOT, &mut spec);
             self.ease_spec(Key::ROOT, &mut spec);
             self.tree.note(&spec, &NodeContent::Container);
-            if spec.rules.is_some() && self.tree.ruled.first() != Some(&0) {
+            if spec.rules_ref().is_some() && self.tree.ruled.first() != Some(&0) {
                 self.tree.ruled.insert(0, 0);
             }
             self.tree.specs[0] = spec;

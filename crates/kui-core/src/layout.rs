@@ -839,7 +839,7 @@ fn height_moved(tree: &mut Tree) -> bool {
     let mut moved = false;
     for k in 0..tree.ruled.len() {
         let i = tree.ruled[k] as usize;
-        if let Some(r) = tree.specs[i].rules.as_deref_mut() {
+        if let Some(r) = tree.specs[i].rules_ref_mut() {
             moved |= std::mem::take(&mut r.live.height_moved);
         }
     }
@@ -1360,7 +1360,7 @@ fn distribute_axis(
     axis: AxisSel,
     viewport: Size,
 ) {
-    if (tree.any_size_rule || tree.any_min_column) && tree.specs[i as usize].rules.is_some() {
+    if (tree.any_size_rule || tree.any_min_column) && tree.specs[i as usize].rules_ref().is_some() {
         rules_step(tree, i, axis);
     }
     let spec = tree.specs[i as usize].layout;

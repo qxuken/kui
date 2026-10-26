@@ -483,7 +483,7 @@ impl Tree {
         self.any_opacity |= spec.style.opacity < 1.0;
         self.any_animate |= spec.animate;
         self.any_hidden |= spec.hidden;
-        if let Some(r) = spec.rules.as_deref() {
+        if let Some(r) = spec.rules_ref() {
             self.any_size_rule |= r.sized() != 0;
             self.any_min_column |= r.min_column > 0.0;
             self.any_hidden |= r.entries().iter().any(|e| {
@@ -525,7 +525,7 @@ impl Tree {
         let idx = self.keys.len() as u32;
         // Read before the move, while the spec is in cache anyway.
         self.note(&spec, &content);
-        if spec.rules.is_some() {
+        if spec.rules_ref().is_some() {
             self.ruled.push(idx);
         }
         self.keys.push(key);

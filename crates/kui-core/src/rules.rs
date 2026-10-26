@@ -674,6 +674,21 @@ fn differ<T: PartialEq>(a: &T, b: &T) -> bool {
     a != b
 }
 
+/// Whether a builder moved the interaction group of `out` from `base`'s,
+/// its rules aside: `hide` and `min_column` write those, and they live in
+/// that box.
+fn interact_moved(out: &NodeSpec, base: &NodeSpec) -> bool {
+    let strip = |s: &NodeSpec| {
+        let mut i = s.interact().clone();
+        i.when = None;
+        i
+    };
+    match (&out.interact, &base.interact) {
+        (None, None) => false,
+        _ => strip(out) != strip(base),
+    }
+}
+
 impl Patch {
     /// The props `f` sets, read off what it does to two unlike specs; and
     /// the name of what it set that no entry may — a handler, an access
@@ -763,8 +778,7 @@ impl Patch {
                 "an access prop",
             ),
             (
-                differ(&out_a.interact, &base_a.interact)
-                    || differ(&out_b.interact, &base_b.interact),
+                interact_moved(&out_a, &base_a) || interact_moved(&out_b, &base_b),
                 "an interaction prop",
             ),
             (
@@ -887,7 +901,7 @@ impl Patch {
         put!(field::SLIDE, spec.slide, self.slide);
         put!(field::HIDDEN, spec.hidden, self.hidden);
         if s & field::MIN_COLUMN != 0
-            && let Some(r) = spec.rules.as_deref_mut()
+            && let Some(r) = spec.rules_ref_mut()
         {
             r.min_column = self.min_column;
         }
@@ -1152,7 +1166,7 @@ impl Base {
         l.cross_gap = self.cross_gap;
         l.main_align = self.main_align;
         l.cross_align = self.cross_align;
-        if let Some(r) = spec.rules.as_deref_mut() {
+        if let Some(r) = spec.rules_ref_mut() {
             r.min_column = self.min_column;
         }
     }
@@ -1181,8 +1195,8 @@ pub(crate) struct Live {
 }
 
 /// A node's rules: its `when` list, `min_column`, and — for a lazy
-/// branch's node — its ask. Boxed on `NodeSpec` and sparse, as
-/// [`crate::spec::EventSpec`] is: a node with none pays one pointer.
+/// branch's node — its ask. Boxed inside the interaction group
+/// (`InteractSpec::when`), so a node with none pays nothing.
 #[derive(Clone, Debug, Default)]
 pub struct RulesSpec {
     /// The `when` list, shared: the tree's copy of a spec and a journal's
@@ -1269,7 +1283,7 @@ impl RulesSpec {
     pub(crate) fn relay(spec: &mut NodeSpec) {
         // The rules held apart while their patches write the spec's
         // layout, and the `min_column` they set written to them after.
-        let Some(mut rules) = spec.rules.take() else {
+        let Some(mut rules) = spec.take_rules() else {
             return;
         };
         let matched = rules.live.matched;
@@ -1285,7 +1299,7 @@ impl RulesSpec {
             }
         }
         rules.min_column = min_column;
-        spec.rules = Some(rules);
+        spec.put_rules(rules);
     }
 
     /// Which entries match, from what is known of each: the static
@@ -1313,7 +1327,7 @@ pub(crate) fn settle_axis(tree: &mut Tree, i: usize, width: bool) -> bool {
     } else {
         tree.size[i].h
     };
-    let Some(rules) = tree.specs[i].rules.as_deref_mut() else {
+    let Some(rules) = tree.specs[i].rules_ref_mut() else {
         return false;
     };
     let mask = if width { rules.size_w } else { rules.size_h };
@@ -1367,7 +1381,7 @@ pub(crate) fn settle_axis(tree: &mut Tree, i: usize, width: bool) -> bool {
 /// Marks the children of `i` its matched entries hide, and unmarks the
 /// rest of those its entries name.
 pub(crate) fn mark_hidden(tree: &mut Tree, i: usize) {
-    let Some(rules) = tree.specs[i].rules.as_deref() else {
+    let Some(rules) = tree.specs[i].rules_ref() else {
         return;
     };
     if rules.live.hide.is_empty() {

@@ -79,8 +79,8 @@ was the first bare bump to break an app in five releases).
   gained `focus_ring` (816 bytes; backlog C93), then `min_column`,
   `hidden`, `on_query` and `when` (840 bytes; ADR 0069). Recompile;
   zeroed, a node reports no range, colours no ring and has no rules.
-- `NodeSpec` gained `hidden` and `rules` (ADR 0069), and is 264 bytes: a
-  struct literal names both or ends with `..Default::default()`.
+- `NodeSpec` gained `hidden`, and `InteractSpec` `when` (ADR 0069): a
+  struct literal names them or ends with `..Default::default()`.
 - `SystemEnv` gained `contrast` (`ContrastPref`, ADR 0069): a struct
   literal names it, and the `system` event's payload carries it.
 - `schema::Kind`, `schema::Apply` and `schema::Parsed` gained `Rules`, a

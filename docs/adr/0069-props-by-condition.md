@@ -286,8 +286,15 @@ Steps 1–5 were built; step 6, Kit's adoption, is a pass of its own.
   `kui_env_set_system` keeps its four arguments. Odin's field is `when_`,
   `when` being Odin's. A `$token` threshold resolves in Lua's and JSX's
   entries; C and Odin, and a `<Lazy>`'s `query`, take numbers.
-- **`NodeSpec` is 264 bytes**: the pointer decision 19 set, past the
-  256-byte bound the size test held, which moved with it.
+- **The pointer is inside the interaction box** (`InteractSpec::when`),
+  not beside it on `NodeSpec`. Beside it, as decision 19 has it, the
+  pointer took `NodeSpec` from 256 bytes to 264, and every frame of a
+  tree with no rules paid for the larger copy: the guard read
+  `frame_10k_rects` +13.9%, `frame_10k_segments` +11.8% and
+  `frame_1k_curves` +10.5% against the commit before, steady to 1%. In
+  the box `NodeSpec` stays 256 and a node with no rules pays nothing at
+  all (the same guard: +5.5%, +1.8%, +8.1%, every row inside the 10%
+  tolerance); a node with rules allocates the interaction group too.
 
 ## Considered options
 

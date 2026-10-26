@@ -340,7 +340,7 @@ fn a_fit_node_reading_its_own_width_is_refused_its_fit() {
 #[test]
 fn a_node_with_no_rules_carries_one_pointer() {
     let spec = NodeSpec::row();
-    assert!(spec.rules.is_none());
+    assert!(spec.rules_ref().is_none() && spec.interact.is_none());
     assert_eq!(spec.rules_spec().entries().len(), 0);
     let _ = Key::ROOT;
 }

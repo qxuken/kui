@@ -951,10 +951,6 @@ pub struct NodeSpec {
 
     /// See [`InteractSpec`]. `None` when the node declares none of it.
     pub interact: Option<Box<InteractSpec>>,
-
-    /// The node's `when` list, `min_column` and lazy ask (ADR 0069; see
-    /// [`crate::rules::RulesSpec`]). `None` when it declares none of it.
-    pub rules: Option<Box<crate::rules::RulesSpec>>,
 }
 
 /// A handler row a node can declare: which message an event of its kind
@@ -1665,6 +1661,12 @@ pub struct InteractSpec {
     /// that declares any interaction — a gradient, a hover — into a larger
     /// allocation class (`frame_10k_rects_with_gradient` +2%).
     pub transform: Option<Box<TransformSpec>>,
+    /// The node's `when` list, `min_column` and lazy ask (ADR 0069; see
+    /// [`crate::rules::RulesSpec`]): `None` when it declares none of it.
+    /// Boxed inside this box rather than beside it on `NodeSpec`, where
+    /// its pointer took the spec past 256 bytes and every frame of a tree
+    /// with no rules paid for the copy (`frame_10k_rects` +14%).
+    pub when: Option<Box<crate::rules::RulesSpec>>,
 }
 
 /// A node's `rotate`, `scale` and `pivot` (ADR 0043): paint-only, so the
@@ -1863,6 +1865,7 @@ impl InteractSpec {
         gradient: None,
         backdrop_blur: 0.0,
         transform: None,
+        when: None,
     };
 }
 
@@ -1919,13 +1922,40 @@ impl NodeSpec {
     pub fn rules_spec(&self) -> &crate::rules::RulesSpec {
         static EMPTY: std::sync::LazyLock<crate::rules::RulesSpec> =
             std::sync::LazyLock::new(crate::rules::RulesSpec::default);
-        self.rules.as_deref().unwrap_or(&EMPTY)
+        self.rules_ref().unwrap_or(&EMPTY)
     }
 
     /// Allocates the group on first write.
     #[inline]
     pub fn rules_mut(&mut self) -> &mut crate::rules::RulesSpec {
-        self.rules.get_or_insert_with(Box::default)
+        self.interact_mut().when.get_or_insert_with(Box::default)
+    }
+
+    /// The node's rules, if it declares any (ADR 0069).
+    #[inline]
+    pub fn rules_ref(&self) -> Option<&crate::rules::RulesSpec> {
+        self.interact.as_deref().and_then(|i| i.when.as_deref())
+    }
+
+    /// The same, to write.
+    #[inline]
+    pub(crate) fn rules_ref_mut(&mut self) -> Option<&mut crate::rules::RulesSpec> {
+        self.interact
+            .as_deref_mut()
+            .and_then(|i| i.when.as_deref_mut())
+    }
+
+    /// The rules taken out, for a caller that writes the rest of the spec
+    /// from them ([`Self::put_rules`] puts them back).
+    #[inline]
+    pub(crate) fn take_rules(&mut self) -> Option<Box<crate::rules::RulesSpec>> {
+        self.interact.as_deref_mut().and_then(|i| i.when.take())
+    }
+
+    /// Puts back what [`Self::take_rules`] took.
+    #[inline]
+    pub(crate) fn put_rules(&mut self, rules: Box<crate::rules::RulesSpec>) {
+        self.interact_mut().when = Some(rules);
     }
 
     /// Hover / pressed / focus styling, empty if this node declares none.
@@ -1980,9 +2010,10 @@ impl NodeSpec {
                     // So does a focus region: a press on its dead space
                     // settles the ring there.
                     || i.focus_region
+                    // An entry that reads the pointer has to be found
+                    // under it.
+                    || i.when.as_deref().is_some_and(|r| r.tracks_hover)
             })
-            // An entry that reads the pointer has to be found under it.
-            || self.rules.as_deref().is_some_and(|r| r.tracks_hover)
     }
 
     /// The group id `hover_group(name)` assigns — reproducible from any
@@ -3570,7 +3601,6 @@ impl PartialEq for NodeSpec {
             && self.access() == other.access()
             && self.interact() == other.interact()
             && self.hidden == other.hidden
-            && self.rules_spec() == other.rules_spec()
     }
 }
 
@@ -3591,9 +3621,7 @@ mod size_tests {
     /// on every node of every frame.
     #[test]
     fn node_spec_stays_small() {
-        // 256 until ADR 0069 added its one pointer, `rules`: the price the
-        // ADR set for a node with no rules (decision 19).
-        const BOUND: usize = 264;
+        const BOUND: usize = 256;
         let size = std::mem::size_of::<NodeSpec>();
         assert!(
             size <= BOUND,
