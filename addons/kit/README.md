@@ -20,6 +20,30 @@ data beside it (`select: { row }`). What the host does not keep — a select's
 open menu, a section's fold, a waterfall's own window — Kit keeps per
 instance.
 
+## Selecting rows
+
+A `list` or a `table` selects by `selection`: `single` (the default, the
+host's `selected` row), `multiple` (the host's `selected_ranges`, a list
+of `{ first, last }`) or `none`. Its events are three, each for one kind of
+interaction:
+
+- `on_cursor { row }`: the row the keyboard is on moved — an arrow, a
+  page, a type-ahead, a click. Cheap, and often.
+- `on_select { row }` in a single selection; `{ row, ranges, count, rows? }`
+  in a multiple one, `rows` only up to 1,000, so ⌘A on 100,000 rows is one
+  range.
+- `on_activate { row }`: Enter or a double click. Without a handler,
+  Enter selects, as it always did.
+
+`select_on_focus = false` keeps the arrows off the selection: they move
+the cursor, Space selects (toggles, in a multiple selection), Enter
+activates and a click selects — a detail panel that loads on `on_select`
+or `on_activate` is not loaded for every row the keyboard walks past. In
+a multiple selection ⌘-click (Ctrl-click off a Mac) toggles a row,
+Shift-click and Shift+arrows extend from the row last clicked or toggled,
+and ⌘A (Ctrl+A) selects every row. Escape leaves the selection as it is,
+as a Finder or Explorer list does.
+
 ## Placing Kit
 
 Load `addons/kit/lua/kit.lua` under the namespace `kit`, then:

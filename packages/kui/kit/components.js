@@ -360,6 +360,9 @@ function make(namespace) {
       if (props.columns !== undefined) wire.columns = props.columns?.map(wireColumn);
       if (props.rows !== undefined) wire.rows = props.rows;
       if (props.selected !== undefined) wire.selected = props.selected;
+      if (props.selection !== undefined) wire.selection = props.selection;
+      if (props.selectedRanges !== undefined) wire.selected_ranges = props.selectedRanges;
+      if (props.selectOnFocus !== undefined) wire.select_on_focus = props.selectOnFocus;
       if (props.sort !== undefined) wire.sort = props.sort;
       if (props.descending !== undefined) wire.descending = props.descending;
       if (props.striped !== undefined) wire.striped = props.striped;
@@ -367,6 +370,8 @@ function make(namespace) {
       if (props.cells !== undefined) wire.cells = props.cells;
       if (props.grow !== undefined) wire.grow = props.grow;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
+      if (props.onCursor !== undefined) wire.on_cursor = props.onCursor;
+      if (props.onActivate !== undefined) wire.on_activate = props.onActivate;
       if (props.onSort !== undefined) wire.on_sort = props.onSort;
       if (props.onRange !== undefined) wire.on_range = props.onRange;
       const groups = undefined;
@@ -387,8 +392,13 @@ function make(namespace) {
       if (props.badgeWidth !== undefined) wire.badge_width = props.badgeWidth;
       if (props.label !== undefined) wire.label = props.label;
       if (props.selected !== undefined) wire.selected = props.selected;
+      if (props.selection !== undefined) wire.selection = props.selection;
+      if (props.selectedRanges !== undefined) wire.selected_ranges = props.selectedRanges;
+      if (props.selectOnFocus !== undefined) wire.select_on_focus = props.selectOnFocus;
       if (props.grow !== undefined) wire.grow = props.grow;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
+      if (props.onCursor !== undefined) wire.on_cursor = props.onCursor;
+      if (props.onActivate !== undefined) wire.on_activate = props.onActivate;
       const groups = undefined;
       return {
         type: 'component',

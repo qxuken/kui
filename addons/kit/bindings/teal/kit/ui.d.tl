@@ -63,6 +63,14 @@ local record kit
     "shimmer" "noise"
   end
 
+  -- What a list or a table selects: one row, any rows (⌘- or Ctrl-click
+  -- toggles a row, Shift extends from the last row clicked, ⌘A or Ctrl+A
+  -- takes them all, Space toggles the row the keyboard is on), or none —
+  -- the rows still a keyboard's to walk and Enter's to activate.
+  enum Selection
+    "single" "multiple" "none"
+  end
+
   -- What a skeleton stands in for: lines of text, a block (an image, a
   -- chart), or a circle (an avatar).
   enum SkeletonShape
@@ -152,6 +160,15 @@ local record kit
     value: string
     -- The value in the data face.
     mono: boolean
+  end
+
+  -- Rows `first` to `last` of a list or a table, both in (0-based): a
+  -- multiple selection is a list of them, so ⌘A on 100,000 rows is one.
+  record RowRange
+    -- The first row in it.
+    first: integer
+    -- The last row in it.
+    last: integer
   end
 
   -- One line of a line chart.
@@ -658,6 +675,16 @@ local record kit
     rows: kui.Channel
     -- The selected row (0-based): yours to keep.
     selected: integer
+    -- What it selects: one row (the default), any rows, or none.
+    selection: Selection
+    -- With `selection = "multiple"`: the selected rows, as ranges — yours
+    -- to keep, from `on_select`.
+    selected_ranges: {RowRange}
+    -- Whether the keyboard's moves select (the default): with false the
+    -- arrows move the cursor only, Space selects (toggles, in a multiple
+    -- selection), Enter activates and a click selects — a detail that loads
+    -- on `select` or `activate` is not loaded for every row walked past.
+    select_on_focus: boolean
     -- The field it is sorted by, marked in its header; the sorting is yours.
     sort: string
     -- Sorted from the top down.
@@ -675,9 +702,17 @@ local record kit
     cells: boolean
     -- Takes the room its parent leaves.
     grow: boolean
-    -- The message `select` arrives as. A row was clicked, or the keyboard
-    -- landed on it (the arrows, Page keys, a type-ahead, Tab back in).
+    -- The message `select` arrives as. The selection changed: a click, Space,
+    -- the keyboard landing on a row when moves select, ⌘A, a Shift-range.
+    -- One row in a single selection; in a multiple one, the ranges, their
+    -- count, and the rows themselves when there are no more than 1,000.
     on_select: any
+    -- The message `cursor` arrives as. The row the keyboard is on moved —
+    -- an arrow, a page key, a type-ahead, a click: cheap, and often.
+    on_cursor: any
+    -- The message `activate` arrives as. Enter on a row, or a double click:
+    -- open it. Without a handler, Enter selects, as it did.
+    on_activate: any
     -- The message `sort` arrives as. A header was clicked.
     on_sort: any
     -- The message `range` arrives as. The rows in view changed: page your
@@ -689,6 +724,19 @@ local record kit
 
   -- What `on_select`'s message carries under `select`.
   record TableSelect
+    row: integer
+    ranges: any
+    count: integer
+    rows: any
+  end
+
+  -- What `on_cursor`'s message carries under `cursor`.
+  record TableCursor
+    row: integer
+  end
+
+  -- What `on_activate`'s message carries under `activate`.
+  record TableActivate
     row: integer
   end
 
@@ -723,17 +771,48 @@ local record kit
     label: string
     -- The selected row (0-based): yours to keep.
     selected: integer
+    -- What it selects: one row (the default), any rows, or none.
+    selection: Selection
+    -- With `selection = "multiple"`: the selected rows, as ranges — yours
+    -- to keep, from `on_select`.
+    selected_ranges: {RowRange}
+    -- Whether the keyboard's moves select (the default): with false the
+    -- arrows move the cursor only, Space selects (toggles, in a multiple
+    -- selection), Enter activates and a click selects — a detail that loads
+    -- on `select` or `activate` is not loaded for every row walked past.
+    select_on_focus: boolean
     -- Takes the room its parent leaves.
     grow: boolean
-    -- The message `select` arrives as. A row was clicked, or the keyboard
-    -- landed on it (the arrows, Page keys, a type-ahead, Tab back in).
+    -- The message `select` arrives as. The selection changed: a click, Space,
+    -- the keyboard landing on a row when moves select, ⌘A, a Shift-range.
+    -- One row in a single selection; in a multiple one, the ranges, their
+    -- count, and the rows themselves when there are no more than 1,000.
     on_select: any
+    -- The message `cursor` arrives as. The row the keyboard is on moved —
+    -- an arrow, a page key, a type-ahead, a click: cheap, and often.
+    on_cursor: any
+    -- The message `activate` arrives as. Enter on a row, or a double click:
+    -- open it. Without a handler, Enter selects, as it did.
+    on_activate: any
     key: string
     fresh: boolean
   end
 
   -- What `on_select`'s message carries under `select`.
   record ListSelect
+    row: integer
+    ranges: any
+    count: integer
+    rows: any
+  end
+
+  -- What `on_cursor`'s message carries under `cursor`.
+  record ListCursor
+    row: integer
+  end
+
+  -- What `on_activate`'s message carries under `activate`.
+  record ListActivate
     row: integer
   end
 

@@ -193,6 +193,23 @@ SHADER_PRESET_NAMES := [ShaderPreset]string {
 	.Noise = "noise",
 }
 
+// What a list or a table selects: one row, any rows (⌘- or Ctrl-click toggles
+// a row, Shift extends from the last row clicked, ⌘A or Ctrl+A takes them
+// all, Space toggles the row the keyboard is on), or none — the rows still a
+// keyboard's to walk and Enter's to activate.
+Selection :: enum {
+	Single,
+	Multiple,
+	None,
+}
+
+@(private)
+SELECTION_NAMES := [Selection]string {
+	.Single = "single",
+	.Multiple = "multiple",
+	.None = "none",
+}
+
 // What a skeleton stands in for: lines of text, a block (an image, a chart), or
 // a circle (an avatar).
 SkeletonShape :: enum {
@@ -353,6 +370,23 @@ entry_value :: proc(p: Entry) -> ^c.Value {
 	c.value_map_set(m, "key", c.value_str(p.key))
 	c.value_map_set(m, "value", c.value_str(p.value))
 	if x, ok := p.mono.?; ok do c.value_map_set(m, "mono", c.value_bool(x))
+	return m
+}
+
+// Rows `first` to `last` of a list or a table, both in (0-based): a multiple
+// selection is a list of them, so ⌘A on 100,000 rows is one.
+RowRange :: struct {
+	// The first row in it.
+	first: i64,
+	// The last row in it.
+	last: i64,
+}
+
+@(private)
+row_range_value :: proc(p: RowRange) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "first", c.value_int(p.first))
+	c.value_map_set(m, "last", c.value_int(p.last))
 	return m
 }
 
@@ -1623,6 +1657,16 @@ Table :: struct {
 	rows: ^c.Channel,
 	// The selected row (0-based): yours to keep.
 	selected: Maybe(i64),
+	// What it selects: one row (the default), any rows, or none.
+	selection: Maybe(Selection),
+	// With `selection = "multiple"`: the selected rows, as ranges — yours to
+	// keep, from `on_select`.
+	selected_ranges: []RowRange,
+	// Whether the keyboard's moves select (the default): with false the arrows
+	// move the cursor only, Space selects (toggles, in a multiple selection),
+	// Enter activates and a click selects — a detail that loads on `select` or
+	// `activate` is not loaded for every row walked past.
+	select_on_focus: Maybe(bool),
 	// The field it is sorted by, marked in its header; the sorting is yours.
 	sort: string,
 	// Sorted from the top down.
@@ -1638,9 +1682,17 @@ Table :: struct {
 	cells: Maybe(bool),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
-	// The message `select` arrives as. A row was clicked, or the keyboard landed
-	// on it (the arrows, Page keys, a type-ahead, Tab back in).
+	// The message `select` arrives as. The selection changed: a click, Space, the
+	// keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in
+	// a single selection; in a multiple one, the ranges, their count, and the rows
+	// themselves when there are no more than 1,000.
 	on_select: any,
+	// The message `cursor` arrives as. The row the keyboard is on moved — an
+	// arrow, a page key, a type-ahead, a click: cheap, and often.
+	on_cursor: any,
+	// The message `activate` arrives as. Enter on a row, or a double click: open
+	// it. Without a handler, Enter selects, as it did.
+	on_activate: any,
 	// The message `sort` arrives as. A header was clicked.
 	on_sort: any,
 	// The message `range` arrives as. The rows in view changed: page your source
@@ -1651,16 +1703,51 @@ Table :: struct {
 	fresh: bool,
 }
 
-// What `select` carries: A row was clicked, or the keyboard landed on it (the
-// arrows, Page keys, a type-ahead, Tab back in).
+// What `select` carries: The selection changed: a click, Space, the keyboard
+// landing on a row when moves select, ⌘A, a Shift-range. One row in a single
+// selection; in a multiple one, the ranges, their count, and the rows
+// themselves when there are no more than 1,000.
 Table_Select :: struct {
-	// Its index, 0-based.
+	// The row the change was about, 0-based: the one clicked, pressed or landed
+	// on.
 	row: i64,
+	// A multiple selection: every selected row, as a list of `RowRange` (`{ first,
+	// last }`); absent in a single one.
+	ranges: kui.Value,
+	// A multiple selection: how many rows it holds.
+	count: i64,
+	// A multiple selection of no more than 1,000 rows: each of them, a list of
+	// integers; absent past that, and in a single one.
+	rows: kui.Value,
 }
 
 // Embed with `using _:` in the message passed as `on_select`.
 With_Table_Select :: struct {
 	select: Table_Select,
+}
+
+// What `cursor` carries: The row the keyboard is on moved — an arrow, a page
+// key, a type-ahead, a click: cheap, and often.
+Table_Cursor :: struct {
+	// The row, 0-based.
+	row: i64,
+}
+
+// Embed with `using _:` in the message passed as `on_cursor`.
+With_Table_Cursor :: struct {
+	cursor: Table_Cursor,
+}
+
+// What `activate` carries: Enter on a row, or a double click: open it. Without
+// a handler, Enter selects, as it did.
+Table_Activate :: struct {
+	// The row, 0-based.
+	row: i64,
+}
+
+// Embed with `using _:` in the message passed as `on_activate`.
+With_Table_Activate :: struct {
+	activate: Table_Activate,
 }
 
 // What `sort` carries: A header was clicked.
@@ -1693,6 +1780,9 @@ table_props :: proc(p: Table) -> ^c.Value {
 	c.value_map_set(m, "columns", kit_list(p.columns, proc(x: Column) -> ^c.Value { return column_value(x) }))
 	if p.rows != nil do c.value_map_set(m, "rows", c.channel_handle(p.rows))
 	if x, ok := p.selected.?; ok do c.value_map_set(m, "selected", c.value_int(x))
+	if x, ok := p.selection.?; ok do c.value_map_set(m, "selection", c.value_str(SELECTION_NAMES[x]))
+	if p.selected_ranges != nil do c.value_map_set(m, "selected_ranges", kit_list(p.selected_ranges, proc(x: RowRange) -> ^c.Value { return row_range_value(x) }))
+	if x, ok := p.select_on_focus.?; ok do c.value_map_set(m, "select_on_focus", c.value_bool(x))
 	if p.sort != "" do c.value_map_set(m, "sort", c.value_str(p.sort))
 	if x, ok := p.descending.?; ok do c.value_map_set(m, "descending", c.value_bool(x))
 	if x, ok := p.striped.?; ok do c.value_map_set(m, "striped", c.value_bool(x))
@@ -1700,6 +1790,8 @@ table_props :: proc(p: Table) -> ^c.Value {
 	if x, ok := p.cells.?; ok do c.value_map_set(m, "cells", c.value_bool(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
+	if p.on_cursor != nil do c.value_map_set(m, "on_cursor", (^c.Value)(kui.encode(p.on_cursor)))
+	if p.on_activate != nil do c.value_map_set(m, "on_activate", (^c.Value)(kui.encode(p.on_activate)))
 	if p.on_sort != nil do c.value_map_set(m, "on_sort", (^c.Value)(kui.encode(p.on_sort)))
 	if p.on_range != nil do c.value_map_set(m, "on_range", (^c.Value)(kui.encode(p.on_range)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
@@ -1738,26 +1830,79 @@ List :: struct {
 	label: string,
 	// The selected row (0-based): yours to keep.
 	selected: Maybe(i64),
+	// What it selects: one row (the default), any rows, or none.
+	selection: Maybe(Selection),
+	// With `selection = "multiple"`: the selected rows, as ranges — yours to
+	// keep, from `on_select`.
+	selected_ranges: []RowRange,
+	// Whether the keyboard's moves select (the default): with false the arrows
+	// move the cursor only, Space selects (toggles, in a multiple selection),
+	// Enter activates and a click selects — a detail that loads on `select` or
+	// `activate` is not loaded for every row walked past.
+	select_on_focus: Maybe(bool),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
-	// The message `select` arrives as. A row was clicked, or the keyboard landed
-	// on it (the arrows, Page keys, a type-ahead, Tab back in).
+	// The message `select` arrives as. The selection changed: a click, Space, the
+	// keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in
+	// a single selection; in a multiple one, the ranges, their count, and the rows
+	// themselves when there are no more than 1,000.
 	on_select: any,
+	// The message `cursor` arrives as. The row the keyboard is on moved — an
+	// arrow, a page key, a type-ahead, a click: cheap, and often.
+	on_cursor: any,
+	// The message `activate` arrives as. Enter on a row, or a double click: open
+	// it. Without a handler, Enter selects, as it did.
+	on_activate: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
 }
 
-// What `select` carries: A row was clicked, or the keyboard landed on it (the
-// arrows, Page keys, a type-ahead, Tab back in).
+// What `select` carries: The selection changed: a click, Space, the keyboard
+// landing on a row when moves select, ⌘A, a Shift-range. One row in a single
+// selection; in a multiple one, the ranges, their count, and the rows
+// themselves when there are no more than 1,000.
 List_Select :: struct {
-	// Its index, 0-based.
+	// The row the change was about, 0-based: the one clicked, pressed or landed
+	// on.
 	row: i64,
+	// A multiple selection: every selected row, as a list of `RowRange` (`{ first,
+	// last }`); absent in a single one.
+	ranges: kui.Value,
+	// A multiple selection: how many rows it holds.
+	count: i64,
+	// A multiple selection of no more than 1,000 rows: each of them, a list of
+	// integers; absent past that, and in a single one.
+	rows: kui.Value,
 }
 
 // Embed with `using _:` in the message passed as `on_select`.
 With_List_Select :: struct {
 	select: List_Select,
+}
+
+// What `cursor` carries: The row the keyboard is on moved — an arrow, a page
+// key, a type-ahead, a click: cheap, and often.
+List_Cursor :: struct {
+	// The row, 0-based.
+	row: i64,
+}
+
+// Embed with `using _:` in the message passed as `on_cursor`.
+With_List_Cursor :: struct {
+	cursor: List_Cursor,
+}
+
+// What `activate` carries: Enter on a row, or a double click: open it. Without
+// a handler, Enter selects, as it did.
+List_Activate :: struct {
+	// The row, 0-based.
+	row: i64,
+}
+
+// Embed with `using _:` in the message passed as `on_activate`.
+With_List_Activate :: struct {
+	activate: List_Activate,
 }
 
 @(private)
@@ -1771,8 +1916,13 @@ list_props :: proc(p: List) -> ^c.Value {
 	if x, ok := p.badge_width.?; ok do c.value_map_set(m, "badge_width", c.value_float(x))
 	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.selected.?; ok do c.value_map_set(m, "selected", c.value_int(x))
+	if x, ok := p.selection.?; ok do c.value_map_set(m, "selection", c.value_str(SELECTION_NAMES[x]))
+	if p.selected_ranges != nil do c.value_map_set(m, "selected_ranges", kit_list(p.selected_ranges, proc(x: RowRange) -> ^c.Value { return row_range_value(x) }))
+	if x, ok := p.select_on_focus.?; ok do c.value_map_set(m, "select_on_focus", c.value_bool(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
+	if p.on_cursor != nil do c.value_map_set(m, "on_cursor", (^c.Value)(kui.encode(p.on_cursor)))
+	if p.on_activate != nil do c.value_map_set(m, "on_activate", (^c.Value)(kui.encode(p.on_activate)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m

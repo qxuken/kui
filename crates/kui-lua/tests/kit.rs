@@ -4575,3 +4575,219 @@ fn a_waterfalls_marks_read_in_every_skin_half_and_accent() {
     }
     assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
 }
+
+/// A Lua host keeping a Kit list's (or table's) selection as Kit proposes
+/// it, and logging each event it hears as a line: `sel <row> [<ranges>
+/// <count> <rows or ->]`, `cur <row>`, `act <row>`.
+fn selection_rig(component: &str, selection: &str, on_focus: bool, n: usize) -> LuaRig {
+    LuaRig::new(&format!(
+        r#"
+        local names = {{}}
+        for i = 1, {n} do names[i] = "row " .. (i - 1) end
+        local ch = channel({{ name = names }})
+        log, selected, ranges = {{}}, nil, {{}}
+        local function said(rs)
+          local t = {{}}
+          for _, r in ipairs(rs) do t[#t + 1] = r.first .. "-" .. r.last end
+          return table.concat(t, ",")
+        end
+        function on_event(ev)
+          if ev.kind == "sel" then
+            local s = ev.select
+            if s.ranges then
+              ranges = s.ranges
+              log[#log + 1] = "sel " .. s.row .. " " .. said(s.ranges) .. " " .. s.count .. " " .. (s.rows and #s.rows or "-")
+            else
+              selected = s.row
+              log[#log + 1] = "sel " .. s.row
+            end
+          elseif ev.kind == "cur" then log[#log + 1] = "cur " .. ev.cursor.row
+          elseif ev.kind == "act" then log[#log + 1] = "act " .. ev.activate.row end
+        end
+        function view(env)
+          return column {{ width = "grow", height = "grow",
+            component("kit/button", {{ label = "Before" }}),
+            column {{ width = 300, height = 200,
+              component("kit/{component}", {{ rows = ch, title = "name", columns = {{ {{ field = "name", title = "Name" }} }},
+                selection = "{selection}", select_on_focus = {on_focus}, selected = selected, selected_ranges = ranges,
+                grow = true, on_select = {{ kind = "sel" }}, on_cursor = {{ kind = "cur" }}, on_activate = {{ kind = "act" }} }}) }} }}
+        end
+        "#
+    ))
+}
+
+/// The log since the last call.
+fn heard(r: &mut LuaRig) -> Vec<String> {
+    let log: mlua::Table = r.app.globals().get("log").unwrap();
+    let out: Vec<String> = log.sequence_values::<String>().map(|v| v.unwrap()).collect();
+    r.app.globals().set("log", r.app.create_table().unwrap()).unwrap();
+    out
+}
+
+fn key_with(r: &mut LuaRig, code: kui_core::KeyCode, mods: kui_core::KeyMods, text: Option<&str>) {
+    let mut kp = kui_core::KeyPress::new(code, mods);
+    if let Some(t) = text {
+        kp = kp.with_text(t);
+    }
+    let edit = kp.edit_event();
+    let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kp.clone()));
+    r.route(e);
+    if let Some(ev) = edit {
+        let e = r.core.handle_input(ev);
+        r.route(e);
+    }
+    let e = r.core.handle_input(kui_core::InputEvent::KeyUp(kp.released()));
+    r.route(e);
+    r.frames(2);
+}
+
+/// The primary modifier: ⌘ on a Mac, Ctrl elsewhere.
+fn primary() -> kui_core::KeyMods {
+    let mut m = kui_core::KeyMods::default();
+    if cfg!(target_os = "macos") {
+        m.super_key = true;
+    } else {
+        m.ctrl = true;
+    }
+    m
+}
+
+/// A click on row `name` with `mods` held, `clicks` the press's count.
+fn click_row(r: &mut LuaRig, name: &str, mods: kui_core::KeyMods, clicks: u8) {
+    use kui_core::{InputEvent, Vec2};
+    let at = r.text(name).unwrap_or_else(|| panic!("no {name}"));
+    let p = Vec2::new(at.x + 2.0, at.y + at.h / 2.0);
+    for ev in [
+        InputEvent::Modifiers(mods),
+        InputEvent::CursorMoved(p),
+        InputEvent::mouse_down(clicks),
+        InputEvent::mouse_up(),
+        InputEvent::Modifiers(kui_core::KeyMods::default()),
+    ] {
+        let e = r.core.handle_input(ev);
+        r.route(e);
+    }
+    r.frames(2);
+}
+
+/// Tab onto the rows: the button before them, then the rows.
+fn tab_in(r: &mut LuaRig) {
+    r.core.set_focus(None);
+    r.frames(1);
+    for _ in 0..2 {
+        let e = kui_core::testing::tab(&mut r.core, false);
+        r.route(e);
+        r.frames(1);
+    }
+}
+
+/// `select_on_focus = false`: the arrows move the cursor and select
+/// nothing; Space selects, Enter activates, a click selects, a double
+/// click activates — in a list and a table alike.
+#[test]
+fn a_cursor_that_does_not_select_moves_alone_and_space_and_a_click_select() {
+    use kui_core::{KeyCode, KeyMods};
+    for component in ["list", "table"] {
+        let mut r = selection_rig(component, "single", false, 20);
+        r.frames(2);
+        tab_in(&mut r);
+        heard(&mut r);
+        key_with(&mut r, KeyCode::Down, KeyMods::default(), None);
+        key_with(&mut r, KeyCode::Down, KeyMods::default(), None);
+        assert_eq!(heard(&mut r), ["cur 1", "cur 2"], "{component}: the cursor moves, nothing is selected");
+        key_with(&mut r, KeyCode::Space, KeyMods::default(), Some(" "));
+        assert_eq!(heard(&mut r), ["sel 2"], "{component}: Space selects the cursor's row");
+        key_with(&mut r, KeyCode::Enter, KeyMods::default(), None);
+        assert_eq!(heard(&mut r), ["act 2"], "{component}: Enter activates it");
+        click_row(&mut r, "row 5", KeyMods::default(), 1);
+        assert_eq!(heard(&mut r), ["cur 5", "sel 5"], "{component}: a click moves the cursor and selects");
+        click_row(&mut r, "row 5", KeyMods::default(), 2);
+        assert_eq!(heard(&mut r), ["act 5"], "{component}: the second click of a double click activates");
+        let selected: i64 = r.app.globals().get("selected").unwrap();
+        assert_eq!(selected, 5);
+        let row = r.core.access_tree().nodes.iter().find(|n| n.name.as_deref() == Some("row 5")).cloned().unwrap();
+        assert!(row.selected == Some(true), "{component}: a screen reader hears the row selected");
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
+
+/// The default, `select_on_focus = true`: the arrows select as they move,
+/// as they always did, each move a cursor and a selection.
+#[test]
+fn a_cursor_that_selects_selects_as_it_moves() {
+    use kui_core::{KeyCode, KeyMods};
+    let mut r = selection_rig("list", "single", true, 20);
+    r.frames(2);
+    tab_in(&mut r);
+    heard(&mut r);
+    key_with(&mut r, KeyCode::Down, KeyMods::default(), None);
+    assert_eq!(heard(&mut r), ["cur 1", "sel 1"]);
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+/// A multiple selection: a click selects a row alone, ⌘-click (Ctrl-click
+/// off a Mac) toggles one, Shift-click extends from the row last clicked,
+/// Shift+Down extends from the anchor, Space toggles the cursor's row; each
+/// change proposes the ranges, their count and the rows.
+#[test]
+fn a_multiple_selection_toggles_extends_and_ranges() {
+    use kui_core::{KeyCode, KeyMods};
+    for component in ["list", "table"] {
+        let mut r = selection_rig(component, "multiple", false, 20);
+        r.frames(2);
+        click_row(&mut r, "row 1", KeyMods::default(), 1);
+        assert_eq!(heard(&mut r), ["cur 1", "sel 1 1-1 1 1"], "{component}: a click, the row alone");
+        click_row(&mut r, "row 3", primary(), 1);
+        assert_eq!(heard(&mut r), ["cur 3", "sel 3 1-1,3-3 2 2"], "{component}: ⌘-click adds a row");
+        click_row(&mut r, "row 6", KeyMods::default().with_shift(), 1);
+        assert_eq!(heard(&mut r), ["cur 6", "sel 6 3-6 4 4"], "{component}: Shift-click, the range from the anchor");
+        click_row(&mut r, "row 4", primary(), 1);
+        assert_eq!(heard(&mut r), ["cur 4", "sel 4 3-3,5-6 3 3"], "{component}: ⌘-click takes one out");
+        // The keyboard: Shift+Down extends from the anchor (row 4).
+        key_with(&mut r, KeyCode::Down, KeyMods::default().with_shift(), None);
+        assert_eq!(heard(&mut r), ["cur 5", "sel 5 4-5 2 2"], "{component}: Shift+Down extends");
+        key_with(&mut r, KeyCode::Down, KeyMods::default(), None);
+        assert_eq!(heard(&mut r), ["cur 6"], "{component}: a plain arrow moves the cursor only");
+        key_with(&mut r, KeyCode::Space, KeyMods::default(), Some(" "));
+        assert_eq!(heard(&mut r), ["sel 6 4-6 3 3"], "{component}: Space toggles the cursor's row in");
+        let ranges: mlua::Table = r.app.globals().get("ranges").unwrap();
+        assert_eq!(ranges.raw_len(), 1);
+        for (name, sel) in [("row 3", false), ("row 4", true), ("row 6", true), ("row 7", false)] {
+            let n = r.core.access_tree().nodes.iter().find(|n| n.name.as_deref() == Some(name)).cloned().unwrap();
+            assert_eq!(n.selected == Some(true), sel, "{component}: {name} selected: {sel}");
+        }
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
+
+/// ⌘A (Ctrl+A off a Mac) on a windowed list of 100,000 rows selects every
+/// row as one range: the count, and no list of 100,000 rows.
+#[test]
+fn select_all_on_a_windowed_list_is_one_range() {
+    use kui_core::KeyCode;
+    let mut r = selection_rig("list", "multiple", true, 100_000);
+    r.frames(2);
+    tab_in(&mut r);
+    heard(&mut r);
+    key_with(&mut r, KeyCode::Char('a'), primary(), None);
+    assert_eq!(heard(&mut r), ["sel 0 0-99999 100000 -"]);
+    let built = r.core.access_tree().nodes.iter().filter(|n| n.selected == Some(true)).count();
+    assert!(built > 0 && built < 100, "the rows in view draw selected: {built}");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+/// `selection = "none"`: the rows are still the keyboard's to walk and
+/// Enter's to activate, and nothing is ever selected.
+#[test]
+fn a_list_that_selects_nothing_still_walks_and_activates() {
+    use kui_core::{KeyCode, KeyMods};
+    let mut r = selection_rig("list", "none", true, 10);
+    r.frames(2);
+    tab_in(&mut r);
+    heard(&mut r);
+    key_with(&mut r, KeyCode::Down, KeyMods::default(), None);
+    key_with(&mut r, KeyCode::Enter, KeyMods::default(), None);
+    click_row(&mut r, "row 4", KeyMods::default(), 1);
+    assert_eq!(heard(&mut r), ["cur 1", "act 1", "cur 4"]);
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}

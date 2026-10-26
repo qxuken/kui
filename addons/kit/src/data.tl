@@ -123,13 +123,217 @@ local function pill(c: Ctx, label: string, tone: string, dot: boolean, sel: bool
   }
 end
 
+-- Selection in a list or a table: `selection` says which kind — `single`
+-- (one row, `selected`), `multiple` (any rows, `selected_ranges`) or
+-- `none` — and `select_on_focus` whether the keyboard's moves select (the
+-- default) or only move the cursor, Space then selecting and Enter
+-- activating. The selection is the host's: Kit proposes it, by
+-- `on_select`, and draws what the host says. The cursor — the row the
+-- keyboard is on — is the core's focus (ADR 0070), reported by
+-- `on_cursor`; Enter and a double click are `on_activate`. A range is
+-- Kit's: the anchor it extends from is kept here, the modifiers a click or
+-- a step was made under coming with its event (C101 would make ranges
+-- the core's).
+local record Range
+  first: integer
+  last: integer
+end
+
+local record Sel
+  -- `single`, `multiple` or `none`, and whether a move selects.
+  mode: string
+  on_focus: boolean
+  -- What the host holds: a row, or ranges, sorted and apart.
+  row: integer
+  ranges: {Range}
+  -- The rows, the anchor a range extends from, the cursor.
+  n: integer
+  anchor: integer
+  cursor: integer
+  -- Whether the host hears activations (else Enter selects, as it did).
+  activates: boolean
+  mac: boolean
+end
+
+-- `ranges` sorted, each inclusive, touching ones joined.
+local function merged(ranges: {Range}): {Range}
+  local rs: {Range} = {}
+  for _, r in ipairs(ranges) do
+    local a, b = math.min(r.first, r.last), math.max(r.first, r.last)
+    rs[#rs + 1] = { first = a, last = b }
+  end
+  table.sort(rs, function(x: Range, y: Range): boolean return x.first < y.first end)
+  local out: {Range} = {}
+  for _, r in ipairs(rs) do
+    local top = out[#out]
+    if top and r.first <= top.last + 1 then
+      if r.last > top.last then top.last = r.last end
+    else
+      out[#out + 1] = { first = r.first, last = r.last }
+    end
+  end
+  return out
+end
+
+local function holds(ranges: {Range}, i: integer): boolean
+  for _, r in ipairs(ranges) do
+    if i >= r.first and i <= r.last then return true end
+    if r.first > i then return false end
+  end
+  return false
+end
+
+-- `ranges` with row `i` in it if it was not, out of it if it was.
+local function toggled(ranges: {Range}, i: integer): {Range}
+  if not holds(ranges, i) then
+    local rs: {Range} = { { first = i, last = i } }
+    for _, r in ipairs(ranges) do rs[#rs + 1] = r end
+    return merged(rs)
+  end
+  local out: {Range} = {}
+  for _, r in ipairs(ranges) do
+    if i >= r.first and i <= r.last then
+      if r.first < i then out[#out + 1] = { first = r.first, last = i - 1 } end
+      if i < r.last then out[#out + 1] = { first = i + 1, last = r.last } end
+    else
+      out[#out + 1] = r
+    end
+  end
+  return out
+end
+
+-- The rows a selection event lists, up to this many; past it, the ranges
+-- alone, so ⌘A on 100,000 rows sends one range.
+local LISTED = 1000
+
+-- The `on_select` a multiple selection proposes: the row the change was
+-- about, the ranges, their count, and the rows when there are few.
+local function proposed(st: Sel, row: integer, ranges: {Range}): any
+  st.ranges = ranges
+  local count = 0
+  for _, r in ipairs(ranges) do count = count + r.last - r.first + 1 end
+  local rows: {integer} = nil
+  if count <= LISTED then
+    rows = {}
+    for _, r in ipairs(ranges) do
+      for i = r.first, r.last do rows[#rows + 1] = i end
+    end
+  end
+  local out: {Range} = {}
+  for _, r in ipairs(ranges) do out[#out + 1] = { first = r.first, last = r.last } end
+  return emit("on_select", { row = row, ranges = out, count = count, rows = rows })
+end
+
+-- What a list or a table holds of the host's selection this fill, kept for
+-- the events, and whether row `i` is selected.
+local function selection_of(c: Ctx, p: P, n: integer): Sel
+  local st = ctx.state(c, function(): Sel return {} end)
+  local mode = str(p.selection) or "single"
+  st.mode, st.n = mode, n
+  st.on_focus = p.select_on_focus ~= false
+  st.row = p.selected as integer
+  st.activates = p.on_activate ~= nil
+  st.mac = c.env.platform == "macos"
+  local given = (p.selected_ranges or {}) as {Range}
+  st.ranges = mode == "multiple" and merged(given) or {}
+  return st
+end
+
+local function selected_in(st: Sel, i: integer): boolean
+  if st.mode == "single" then return st.row == i end
+  if st.mode == "multiple" then return holds(st.ranges, i) end
+  return false
+end
+
+-- Where Tab enters the rows: the cursor, else the selection's first row.
+local function entry_of(st: Sel): integer
+  if st.cursor and st.cursor < st.n then return st.cursor end
+  if st.mode == "single" then return st.row end
+  if st.mode == "multiple" and st.ranges[1] then return st.ranges[1].first end
+  return nil
+end
+
+-- The keyboard landed on row `i` (an arrow, a page, a type-ahead, Tab
+-- back in): the cursor moves, and the selection with it when moves
+-- select; Shift held, a multiple selection extends from its anchor.
+local function on_cursor_moved(st: Sel, i: integer, mods: P): {any}
+  local out: {any} = {}
+  local moved = st.cursor ~= i
+  st.cursor = i
+  if moved then out[#out + 1] = emit("on_cursor", { row = i }) end
+  local shift = mods ~= nil and mods.shift == true
+  if st.mode == "single" and st.on_focus then
+    out[#out + 1] = emit("on_select", { row = i })
+  elseif st.mode == "multiple" then
+    if shift then
+      out[#out + 1] = proposed(st, i, { { first = math.min(st.anchor or i, i), last = math.max(st.anchor or i, i) } })
+    elseif st.on_focus then
+      st.anchor = i
+      out[#out + 1] = proposed(st, i, { { first = i, last = i } })
+    end
+  end
+  return out
+end
+
+-- Row `i` was clicked or pressed: by Enter (activate), by Space (select,
+-- or toggle in a multiple selection), or by the pointer — a double click
+-- activates, ⌘ (Ctrl off a Mac) toggles a row of a multiple selection,
+-- Shift extends it from the anchor, a plain click selects the row alone.
+local function on_row_pressed(st: Sel, i: integer, click: P): {any}
+  local out: {any} = {}
+  local key = click and click.key as string
+  local mods = click and click.mods as P
+  local clicks = click and (click.clicks as integer) or 1
+  if st.cursor ~= i then
+    st.cursor = i
+    out[#out + 1] = emit("on_cursor", { row = i })
+  end
+  if key == "enter" or clicks >= 2 then
+    if st.activates then
+      out[#out + 1] = emit("on_activate", { row = i })
+      return out
+    end
+    if clicks >= 2 then return out end
+  end
+  if st.mode == "single" then
+    out[#out + 1] = emit("on_select", { row = i })
+  elseif st.mode == "multiple" then
+    local primary = mods ~= nil and ((st.mac and mods.super == true) or (not st.mac and mods.ctrl == true))
+    local shift = mods ~= nil and mods.shift == true
+    if key == "space" or primary then
+      st.anchor = i
+      out[#out + 1] = proposed(st, i, toggled(st.ranges, i))
+    elseif shift then
+      out[#out + 1] = proposed(st, i, { { first = math.min(st.anchor or i, i), last = math.max(st.anchor or i, i) } })
+    else
+      st.anchor = i
+      out[#out + 1] = proposed(st, i, { { first = i, last = i } })
+    end
+  end
+  return out
+end
+
+-- A key the focused row left to its list (`on_item_key`, C120): ⌘A (Ctrl+A
+-- off a Mac) selects every row of a multiple selection — the whole count
+-- as one range, built rows or not.
+local function on_row_key(st: Sel, k: P): {any}
+  local out: {any} = {}
+  if st.mode ~= "multiple" or st.n == 0 then return out end
+  local code = k.code as string
+  local primary = (st.mac and k.super == true) or (not st.mac and k.ctrl == true)
+  if (code == "a" or code == "A") and primary then
+    out[#out + 1] = proposed(st, st.cursor or 0, { { first = 0, last = st.n - 1 } })
+  end
+  return out
+end
+
 function M.table(c: Ctx, p: P): kui.Node
   local ch = p.rows as kui.Channel
   local cols = (p.columns or {}) as {P}
   local n = count(ch)
   local row_h = c.s.density == "compact" and 20 or 22
-  local selected = p.selected as integer
   local seen = ctx.state(c, function(): Seen return {} end)
+  local st = selection_of(c, p, n)
   local cells = p.cells == true
   typeahead(c, seen, ch, cols[1] and cols[1].field as string or "")
 
@@ -179,7 +383,9 @@ function M.table(c: Ctx, p: P): kui.Node
   -- A table nobody sorts or selects in takes no keyboard: its headers are
   -- captions and its rows no stop. Both were stops that did nothing.
   local sorts = p.on_sort ~= nil
-  local selects = p.on_select ~= nil
+  local selects = p.on_select ~= nil or p.on_cursor ~= nil or p.on_activate ~= nil
+  local entry = selects and entry_of(st) or nil
+  local keys = (selects and st.mode == "multiple") and act(c, "table.key") or nil
   local head: kui.Props = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
     bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil,
     when = #head_rules > 0 and head_rules or nil }
@@ -213,11 +419,12 @@ function M.table(c: Ctx, p: P): kui.Node
     -- body of a table whose cells the arrows walk.
     role = not cells and "list" or nil,
     label = "rows",
-    active_index = selects and selected or nil,
+    active_index = not cells and entry or nil,
     on_typeahead = selects and act(c, "table.typeahead") or nil,
+    on_item_key = not cells and keys or nil,
   }
   local view = body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
-    local sel = selected == i
+    local sel = selected_in(st, i)
     local line: kui.Props = {
       index = i,
       role = cells and "row" or "listItem",
@@ -283,8 +490,9 @@ function M.table(c: Ctx, p: P): kui.Node
     bg = ref(c, "panel"),
     role = cells and "table" or nil,
     label = cells and "table" or nil,
-    active_index = (cells and selects) and selected or nil,
+    active_index = cells and entry or nil,
     on_typeahead = (cells and selects) and act(c, "table.typeahead") or nil,
+    on_item_key = cells and keys or nil,
     -- Framed: a hairline in the soft rule colour around the table, inside
     -- which the header sits (the border's width is padding, so the rule
     -- under the header stops at the frame and does not cross it).
@@ -303,20 +511,21 @@ function M.list(c: Ctx, p: P): kui.Node
   local n = count(ch)
   local two = str(p.detail) ~= nil
   local row_h = two and 40 or (c.s.density == "compact" and 22 or 26)
-  local selected = p.selected as integer
   local seen = ctx.state(c, function(): Seen return {} end)
+  local st = selection_of(c, p, n)
   typeahead(c, seen, ch, p.title as string)
   -- A list nobody selects in takes no keyboard: no stop that does nothing.
-  local selects = p.on_select ~= nil
+  local selects = p.on_select ~= nil or p.on_cursor ~= nil or p.on_activate ~= nil
   local rows_t: kui.Props = {
     height = p.grow == true and "grow" or nil,
     role = "list",
     label = str(p.label),
-    active_index = selects and selected or nil,
+    active_index = selects and entry_of(st) or nil,
     on_typeahead = selects and act(c, "list.typeahead") or nil,
+    on_item_key = (selects and st.mode == "multiple") and act(c, "list.key") or nil,
   }
   return body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
-    local sel = selected == i
+    local sel = selected_in(st, i)
     local title = cell_text(ch:get(i, p.title as string))
     local t: kui.Props = {
       width = "grow",
@@ -1111,15 +1320,28 @@ function M.progress(c: Ctx, p: P): kui.Node
 end
 
 function M.event(m: P, kit: string): any
-  if kit == "table.select" or kit == "list.select" or kit == "log.select" then
+  if kit == "log.select" then
     return emit("on_select", { row = m.row })
+  elseif kit == "table.select" or kit == "list.select" then
+    -- A row clicked, or pressed by Enter or Space (the click says which).
+    local st = ctx.peek(m.inst as integer) as Sel
+    if not st or not st.mode then return emit("on_select", { row = m.row }) end
+    return on_row_pressed(st, m.row as integer, m.click as P)
   elseif kit == "table.focus" or kit == "list.focus" then
-    -- Focus landed on a row: it is the selection. By the keyboard, by a
-    -- screen reader, or at a frame's end (`program`: a step to a row the
-    -- window had not built lands there); a click selects by its own
-    -- message.
+    -- Focus landed on a row: the cursor, and the selection with it when
+    -- moves select. By the keyboard, by a screen reader, or at a frame's
+    -- end (`program`: a step to a row the window had not built lands
+    -- there); a click moves both by its own message.
     local f = m.focus as P
-    if f and f.phase == "in" and f.by ~= "pointer" then return emit("on_select", { row = m.row }) end
+    if f and f.phase == "in" and f.by ~= "pointer" then
+      local st = ctx.peek(m.inst as integer) as Sel
+      if not st or not st.mode then return emit("on_select", { row = m.row }) end
+      return on_cursor_moved(st, m.row as integer, f.mods as P)
+    end
+  elseif kit == "table.key" or kit == "list.key" then
+    local st = ctx.peek(m.inst as integer) as Sel
+    local k = m.itemkey as P
+    if st and st.mode and k then return on_row_key(st, k) end
   elseif kit == "table.typeahead" or kit == "list.typeahead" then
     local seen = ctx.peek(m.inst as integer) as Seen
     local t = m.typeahead as P

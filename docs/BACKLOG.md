@@ -3678,6 +3678,27 @@ focus rows (and, in a table, columns) when Shift+arrow, Shift+Home /
 End or Shift+Page moves focus, for the app to select from; the core
 still writes no `selected`.
 
+**Partly met (2026-10-26)** by the facts Kit's row selection needed: a
+`focus` event the keyboard or the pointer made under a modifier carries
+`mods`, a click on a map message carries `mods`, `clicks` from a double
+click's second and `key` (`enter` / `space`), and `onItemKey` hears select
+all. Kit keeps the anchor and makes the ranges itself
+(`addons/kit/src/data.tl`). What is left for the core: the anchor and the
+range as the composite's, so every binding's lists extend alike — worth
+it once a second component library or a Rust app needs ranges; until
+then Kit's is the one.
+
+### `.` C139 — Assistive technology cannot tell a list allows several selected rows
+
+**Found** building Kit's multiple selection (2026-10-26): kui's access
+tree carries `selected` per row, which Kit sets on every selected row,
+but has no `multiselectable` (ARIA's `aria-multiselectable`, AccessKit's
+`set_multiselectable`) for the list or the table, so a screen reader
+announces a multiple selection's rows as selected without saying more
+than one may be. **Do.** A `multiselectable` access row on a `list`,
+`table`, `listbox` composite, mapped in the AccessKit bridge, and Kit
+setting it with `selection = "multiple"`.
+
 ### `.` C102 — Type-ahead cannot search a channel column by itself
 
 **Filed** by the ADR 0070 grilling round (2026-10-26): `onTypeahead`

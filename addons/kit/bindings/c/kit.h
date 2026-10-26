@@ -235,6 +235,28 @@ static inline KuiStr kit_shader_preset_name(KitShaderPreset v) {
 }
 
 /*
+ * What a list or a table selects: one row, any rows (⌘- or Ctrl-click toggles
+ * a row, Shift extends from the last row clicked, ⌘A or Ctrl+A takes them
+ * all, Space toggles the row the keyboard is on), or none — the rows still a
+ * keyboard's to walk and Enter's to activate.
+ */
+typedef enum KitSelection {
+    KIT_SELECTION_UNSET = 0,
+    KIT_SELECTION_SINGLE,
+    KIT_SELECTION_MULTIPLE,
+    KIT_SELECTION_NONE,
+} KitSelection;
+
+static inline KuiStr kit_selection_name(KitSelection v) {
+    switch (v) {
+    case KIT_SELECTION_SINGLE: return KUI_STR("single");
+    case KIT_SELECTION_MULTIPLE: return KUI_STR("multiple");
+    case KIT_SELECTION_NONE: return KUI_STR("none");
+    default: return KUI_STR("");
+    }
+}
+
+/*
  * What a skeleton stands in for: lines of text, a block (an image, a chart), or
  * a circle (an avatar).
  */
@@ -475,6 +497,28 @@ static inline KuiValue *kit_entry_value(const KitEntry *p) {
     kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
     if (p->mono_set) kui_value_map_set(m, KUI_STR("mono"), kui_value_bool(p->mono));
+    return m;
+}
+
+/*
+ * Rows `first` to `last` of a list or a table, both in (0-based): a multiple
+ * selection is a list of them, so ⌘A on 100,000 rows is one.
+ */
+typedef struct KitRowRange {
+    /*
+     * The first row in it.
+     */
+    int64_t first;
+    /*
+     * The last row in it.
+     */
+    int64_t last;
+} KitRowRange;
+
+static inline KuiValue *kit_row_range_value(const KitRowRange *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("first"), kui_value_int(p->first));
+    kui_value_map_set(m, KUI_STR("last"), kui_value_int(p->last));
     return m;
 }
 
@@ -1809,6 +1853,24 @@ typedef struct KitTable {
     int64_t selected;
     bool selected_set;
     /*
+     * What it selects: one row (the default), any rows, or none.
+     */
+    KitSelection selection;
+    /*
+     * With `selection = "multiple"`: the selected rows, as ranges — yours to
+     * keep, from `on_select`.
+     */
+    const KitRowRange *selected_ranges;
+    size_t selected_ranges_count;
+    /*
+     * Whether the keyboard's moves select (the default): with false the arrows
+     * move the cursor only, Space selects (toggles, in a multiple selection),
+     * Enter activates and a click selects — a detail that loads on `select`
+     * or `activate` is not loaded for every row walked past.
+     */
+    bool select_on_focus;
+    bool select_on_focus_set;
+    /*
      * The field it is sorted by, marked in its header; the sorting is yours.
      */
     KuiStr sort;
@@ -1843,11 +1905,25 @@ typedef struct KitTable {
     bool grow;
     bool grow_set;
     /*
-     * The message `select` arrives as, consumed; NULL for none. A row was
-     * clicked, or the keyboard landed on it (the arrows, Page keys, a
-     * type-ahead, Tab back in).
+     * The message `select` arrives as, consumed; NULL for none. The selection
+     * changed: a click, Space, the keyboard landing on a row when moves select,
+     * ⌘A, a Shift-range. One row in a single selection; in a multiple one,
+     * the ranges, their count, and the rows themselves when there are no more
+     * than 1,000.
      */
     KuiValue *on_select;
+    /*
+     * The message `cursor` arrives as, consumed; NULL for none. The row the
+     * keyboard is on moved — an arrow, a page key, a type-ahead, a click:
+     * cheap, and often.
+     */
+    KuiValue *on_cursor;
+    /*
+     * The message `activate` arrives as, consumed; NULL for none. Enter on a
+     * row, or a double click: open it. Without a handler, Enter selects, as it
+     * did.
+     */
+    KuiValue *on_activate;
     /*
      * The message `sort` arrives as, consumed; NULL for none. A header was
      * clicked.
@@ -1873,6 +1949,13 @@ static inline KuiValue *kit_table_props(const KitTable *p) {
     }
     if (p->rows != NULL) kui_value_map_set(m, KUI_STR("rows"), kui_channel_handle(p->rows));
     if (p->selected_set) kui_value_map_set(m, KUI_STR("selected"), kui_value_int(p->selected));
+    if (p->selection != 0) kui_value_map_set(m, KUI_STR("selection"), kui_value_str(kit_selection_name(p->selection)));
+    if (p->selected_ranges != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->selected_ranges_count; i++) kui_value_list_push(list, kit_row_range_value(&p->selected_ranges[i]));
+        kui_value_map_set(m, KUI_STR("selected_ranges"), list);
+    }
+    if (p->select_on_focus_set) kui_value_map_set(m, KUI_STR("select_on_focus"), kui_value_bool(p->select_on_focus));
     if (p->sort.len > 0) kui_value_map_set(m, KUI_STR("sort"), kui_value_str(p->sort));
     if (p->descending_set) kui_value_map_set(m, KUI_STR("descending"), kui_value_bool(p->descending));
     if (p->striped_set) kui_value_map_set(m, KUI_STR("striped"), kui_value_bool(p->striped));
@@ -1880,6 +1963,8 @@ static inline KuiValue *kit_table_props(const KitTable *p) {
     if (p->cells_set) kui_value_map_set(m, KUI_STR("cells"), kui_value_bool(p->cells));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
+    if (p->on_cursor != NULL) kui_value_map_set(m, KUI_STR("on_cursor"), p->on_cursor);
+    if (p->on_activate != NULL) kui_value_map_set(m, KUI_STR("on_activate"), p->on_activate);
     if (p->on_sort != NULL) kui_value_map_set(m, KUI_STR("on_sort"), p->on_sort);
     if (p->on_range != NULL) kui_value_map_set(m, KUI_STR("on_range"), p->on_range);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
@@ -1936,16 +2021,48 @@ typedef struct KitList {
     int64_t selected;
     bool selected_set;
     /*
+     * What it selects: one row (the default), any rows, or none.
+     */
+    KitSelection selection;
+    /*
+     * With `selection = "multiple"`: the selected rows, as ranges — yours to
+     * keep, from `on_select`.
+     */
+    const KitRowRange *selected_ranges;
+    size_t selected_ranges_count;
+    /*
+     * Whether the keyboard's moves select (the default): with false the arrows
+     * move the cursor only, Space selects (toggles, in a multiple selection),
+     * Enter activates and a click selects — a detail that loads on `select`
+     * or `activate` is not loaded for every row walked past.
+     */
+    bool select_on_focus;
+    bool select_on_focus_set;
+    /*
      * Takes the room its parent leaves.
      */
     bool grow;
     bool grow_set;
     /*
-     * The message `select` arrives as, consumed; NULL for none. A row was
-     * clicked, or the keyboard landed on it (the arrows, Page keys, a
-     * type-ahead, Tab back in).
+     * The message `select` arrives as, consumed; NULL for none. The selection
+     * changed: a click, Space, the keyboard landing on a row when moves select,
+     * ⌘A, a Shift-range. One row in a single selection; in a multiple one,
+     * the ranges, their count, and the rows themselves when there are no more
+     * than 1,000.
      */
     KuiValue *on_select;
+    /*
+     * The message `cursor` arrives as, consumed; NULL for none. The row the
+     * keyboard is on moved — an arrow, a page key, a type-ahead, a click:
+     * cheap, and often.
+     */
+    KuiValue *on_cursor;
+    /*
+     * The message `activate` arrives as, consumed; NULL for none. Enter on a
+     * row, or a double click: open it. Without a handler, Enter selects, as it
+     * did.
+     */
+    KuiValue *on_activate;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -1962,8 +2079,17 @@ static inline KuiValue *kit_list_props(const KitList *p) {
     if (p->badge_width_set) kui_value_map_set(m, KUI_STR("badge_width"), kui_value_float(p->badge_width));
     if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->selected_set) kui_value_map_set(m, KUI_STR("selected"), kui_value_int(p->selected));
+    if (p->selection != 0) kui_value_map_set(m, KUI_STR("selection"), kui_value_str(kit_selection_name(p->selection)));
+    if (p->selected_ranges != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->selected_ranges_count; i++) kui_value_list_push(list, kit_row_range_value(&p->selected_ranges[i]));
+        kui_value_map_set(m, KUI_STR("selected_ranges"), list);
+    }
+    if (p->select_on_focus_set) kui_value_map_set(m, KUI_STR("select_on_focus"), kui_value_bool(p->select_on_focus));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
+    if (p->on_cursor != NULL) kui_value_map_set(m, KUI_STR("on_cursor"), p->on_cursor);
+    if (p->on_activate != NULL) kui_value_map_set(m, KUI_STR("on_activate"), p->on_activate);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;

@@ -20,6 +20,7 @@ return {
     { name = "XFormat", doc = "How a chart labels its x axis: the number (with `x_unit`), time counted back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the local time of day.", "number", "ago", "clock" },
     { name = "Appearance", doc = "Which half of the skin's colours: the OS's, or light or dark held.", "system", "light", "dark" },
     { name = "ShaderPreset", doc = "One of Kit's shaders: a skeleton's shimmer, or gradient noise.", "shimmer", "noise" },
+    { name = "Selection", doc = "What a list or a table selects: one row, any rows (⌘- or Ctrl-click toggles a row, Shift extends from the last row clicked, ⌘A or Ctrl+A takes them all, Space toggles the row the keyboard is on), or none — the rows still a keyboard's to walk and Enter's to activate.", "single", "multiple", "none" },
     { name = "SkeletonShape", doc = "What a skeleton stands in for: lines of text, a block (an image, a chart), or a circle (an avatar).", "text", "block", "circle" },
   },
 
@@ -69,6 +70,11 @@ return {
         { "key", "string", doc = "The field's name." },
         { "value", "string", doc = "Its value, as text." },
         { "mono", "boolean?", doc = "The value in the data face." },
+      } },
+    { name = "RowRange", doc = "Rows `first` to `last` of a list or a table, both in (0-based): a multiple selection is a list of them, so ⌘A on 100,000 rows is one.",
+      fields = {
+        { "first", "integer", doc = "The first row in it." },
+        { "last", "integer", doc = "The last row in it." },
       } },
     { name = "Series", doc = "One line of a line chart.",
       fields = {
@@ -339,6 +345,9 @@ return {
         { "columns", "{Column}", doc = "The columns, in order." },
         { "rows", "channel", doc = "The rows: a channel whose columns the `field`s name." },
         { "selected", "integer?", doc = "The selected row (0-based): yours to keep." },
+        { "selection", "Selection?", doc = "What it selects: one row (the default), any rows, or none." },
+        { "selected_ranges", "{RowRange}?", doc = "With `selection = \"multiple\"`: the selected rows, as ranges — yours to keep, from `on_select`." },
+        { "select_on_focus", "boolean?", doc = "Whether the keyboard's moves select (the default): with false the arrows move the cursor only, Space selects (toggles, in a multiple selection), Enter activates and a click selects — a detail that loads on `select` or `activate` is not loaded for every row walked past." },
         { "sort", "string?", doc = "The field it is sorted by, marked in its header; the sorting is yours." },
         { "descending", "boolean?", doc = "Sorted from the top down." },
         { "striped", "boolean?", doc = "Every other row tinted." },
@@ -347,7 +356,14 @@ return {
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
       },
       events = {
-        { "select", doc = "A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in).", fields = { { "row", "integer", doc = "Its index, 0-based." } } },
+        { "select", doc = "The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000.", fields = {
+          { "row", "integer", doc = "The row the change was about, 0-based: the one clicked, pressed or landed on." },
+          { "ranges", "any", doc = "A multiple selection: every selected row, as a list of `RowRange` (`{ first, last }`); absent in a single one." },
+          { "count", "integer?", doc = "A multiple selection: how many rows it holds." },
+          { "rows", "any", doc = "A multiple selection of no more than 1,000 rows: each of them, a list of integers; absent past that, and in a single one." },
+        } },
+        { "cursor", doc = "The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often.", fields = { { "row", "integer", doc = "The row, 0-based." } } },
+        { "activate", doc = "Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did.", fields = { { "row", "integer", doc = "The row, 0-based." } } },
         { "sort", doc = "A header was clicked.", fields = { { "field", "string", doc = "The column's field." } } },
         { "range", doc = "The rows in view changed: page your source by it.", fields = {
           { "first", "integer", doc = "The first row in view." },
@@ -365,10 +381,20 @@ return {
         { "badge_width", "number?", doc = "The badge column's width in px, so the titles line up; each badge's own when left out." },
         { "label", "string?", doc = "Its name, read and not drawn: what the list holds (History)." },
         { "selected", "integer?", doc = "The selected row (0-based): yours to keep." },
+        { "selection", "Selection?", doc = "What it selects: one row (the default), any rows, or none." },
+        { "selected_ranges", "{RowRange}?", doc = "With `selection = \"multiple\"`: the selected rows, as ranges — yours to keep, from `on_select`." },
+        { "select_on_focus", "boolean?", doc = "Whether the keyboard's moves select (the default): with false the arrows move the cursor only, Space selects (toggles, in a multiple selection), Enter activates and a click selects — a detail that loads on `select` or `activate` is not loaded for every row walked past." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
       },
       events = {
-        { "select", doc = "A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in).", fields = { { "row", "integer", doc = "Its index, 0-based." } } },
+        { "select", doc = "The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000.", fields = {
+          { "row", "integer", doc = "The row the change was about, 0-based: the one clicked, pressed or landed on." },
+          { "ranges", "any", doc = "A multiple selection: every selected row, as a list of `RowRange` (`{ first, last }`); absent in a single one." },
+          { "count", "integer?", doc = "A multiple selection: how many rows it holds." },
+          { "rows", "any", doc = "A multiple selection of no more than 1,000 rows: each of them, a list of integers; absent past that, and in a single one." },
+        } },
+        { "cursor", doc = "The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often.", fields = { { "row", "integer", doc = "The row, 0-based." } } },
+        { "activate", doc = "Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did.", fields = { { "row", "integer", doc = "The row, 0-based." } } },
       } },
     { "inspector",
       doc = "Keys and their values, aligned: a request's headers, a record's fields.",

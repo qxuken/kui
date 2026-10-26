@@ -43,6 +43,12 @@
 ---One of Kit's shaders: a skeleton's shimmer, or gradient noise.
 ---@alias kit.ShaderPreset "shimmer"|"noise"
 
+---What a list or a table selects: one row, any rows (⌘- or Ctrl-click
+---toggles a row, Shift extends from the last row clicked, ⌘A or Ctrl+A
+---takes them all, Space toggles the row the keyboard is on), or none — the
+---rows still a keyboard's to walk and Enter's to activate.
+---@alias kit.Selection "single"|"multiple"|"none"
+
 ---What a skeleton stands in for: lines of text, a block (an image, a chart),
 ---or a circle (an avatar).
 ---@alias kit.SkeletonShape "text"|"block"|"circle"
@@ -92,6 +98,12 @@
 ---@field key string The field's name.
 ---@field value string Its value, as text.
 ---@field mono? boolean The value in the data face.
+
+---Rows `first` to `last` of a list or a table, both in (0-based): a multiple
+---selection is a list of them, so ⌘A on 100,000 rows is one.
+---@class kit.RowRange
+---@field first integer The first row in it.
+---@field last integer The last row in it.
 
 ---One line of a line chart.
 ---@class kit.Series
@@ -393,13 +405,18 @@
 ---@field columns kit.Column[] The columns, in order.
 ---@field rows kui.Channel The rows: a channel whose columns the `field`s name.
 ---@field selected? integer The selected row (0-based): yours to keep.
+---@field selection? kit.Selection What it selects: one row (the default), any rows, or none.
+---@field selected_ranges? kit.RowRange[] With `selection = "multiple"`: the selected rows, as ranges — yours to keep, from `on_select`.
+---@field select_on_focus? boolean Whether the keyboard's moves select (the default): with false the arrows move the cursor only, Space selects (toggles, in a multiple selection), Enter activates and a click selects — a detail that loads on `select` or `activate` is not loaded for every row walked past.
 ---@field sort? string The field it is sorted by, marked in its header; the sorting is yours.
 ---@field descending? boolean Sorted from the top down.
 ---@field striped? boolean Every other row tinted.
 ---@field border? boolean Framed in a hairline, the header ruled off inside it; left out, no frame and the header on a plane of its own (in a panel, which is framed already).
 ---@field cells? boolean A table of cells: the arrows walk cells (Left and Right along a row, Up and Down keeping the column), the header a row of column headers, landing on a row selecting it. Left out, a list of rows, the arrows moving whole rows.
 ---@field grow? boolean Takes the room its parent leaves.
----@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.TableSelect). A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in).
+---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.TableSelect). The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000.
+---@field on_cursor? any The message it arrives as: yours, with `cursor = {…}` in it (kit.TableCursor). The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often.
+---@field on_activate? any The message it arrives as: yours, with `activate = {…}` in it (kit.TableActivate). Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did.
 ---@field on_sort? any The message it arrives as: yours, with `sort = {…}` in it (kit.TableSort). A header was clicked.
 ---@field on_range? any The message it arrives as: yours, with `range = {…}` in it (kit.TableRange). The rows in view changed: page your source by it.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -407,7 +424,18 @@
 
 ---What `on_select`'s message carries under `select`.
 ---@class kit.TableSelect
----@field row integer Its index, 0-based.
+---@field row integer The row the change was about, 0-based: the one clicked, pressed or landed on.
+---@field ranges any A multiple selection: every selected row, as a list of `RowRange` (`{ first, last }`); absent in a single one.
+---@field count integer A multiple selection: how many rows it holds.
+---@field rows any A multiple selection of no more than 1,000 rows: each of them, a list of integers; absent past that, and in a single one.
+
+---What `on_cursor`'s message carries under `cursor`.
+---@class kit.TableCursor
+---@field row integer The row, 0-based.
+
+---What `on_activate`'s message carries under `activate`.
+---@class kit.TableActivate
+---@field row integer The row, 0-based.
 
 ---What `on_sort`'s message carries under `sort`.
 ---@class kit.TableSort
@@ -428,14 +456,30 @@
 ---@field badge_width? number The badge column's width in px, so the titles line up; each badge's own when left out.
 ---@field label? string Its name, read and not drawn: what the list holds (History).
 ---@field selected? integer The selected row (0-based): yours to keep.
+---@field selection? kit.Selection What it selects: one row (the default), any rows, or none.
+---@field selected_ranges? kit.RowRange[] With `selection = "multiple"`: the selected rows, as ranges — yours to keep, from `on_select`.
+---@field select_on_focus? boolean Whether the keyboard's moves select (the default): with false the arrows move the cursor only, Space selects (toggles, in a multiple selection), Enter activates and a click selects — a detail that loads on `select` or `activate` is not loaded for every row walked past.
 ---@field grow? boolean Takes the room its parent leaves.
----@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.ListSelect). A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in).
+---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.ListSelect). The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000.
+---@field on_cursor? any The message it arrives as: yours, with `cursor = {…}` in it (kit.ListCursor). The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often.
+---@field on_activate? any The message it arrives as: yours, with `activate = {…}` in it (kit.ListActivate). Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
 ---What `on_select`'s message carries under `select`.
 ---@class kit.ListSelect
----@field row integer Its index, 0-based.
+---@field row integer The row the change was about, 0-based: the one clicked, pressed or landed on.
+---@field ranges any A multiple selection: every selected row, as a list of `RowRange` (`{ first, last }`); absent in a single one.
+---@field count integer A multiple selection: how many rows it holds.
+---@field rows any A multiple selection of no more than 1,000 rows: each of them, a list of integers; absent past that, and in a single one.
+
+---What `on_cursor`'s message carries under `cursor`.
+---@class kit.ListCursor
+---@field row integer The row, 0-based.
+
+---What `on_activate`'s message carries under `activate`.
+---@class kit.ListActivate
+---@field row integer The row, 0-based.
 
 ---The props of `kit/inspector`.
 ---@class kit.InspectorProps

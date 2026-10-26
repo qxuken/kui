@@ -335,6 +335,20 @@ was the first bare bump to break an app in five releases).
   selection's fill with a 2 px edge in the text colour; a time mark is
   drawn in `$kitAccentText`. An app that painted with a group token draws
   the new colour, and text on it reads with `$kitGroupFg<n>`.
+- A click whose message is a map carries what it was made with in its
+  `click` data: `mods` while a modifier is held, `clicks` from a double
+  click's second click on, `key` (`enter` / `space`) when a key made it;
+  a `focus` event the keyboard or the pointer made under a modifier
+  carries `mods`. A handler that compared such a message whole reads the
+  new field; a plain click, and a bare message (`on_click("go")`), arrive
+  as before. `onItemKey` hears select all (⌘A, Ctrl+A off a Mac), which
+  bubbled to the key sink above.
+- A Kit `list` or `table` enters the rows by Tab on the row the keyboard
+  was last on, then the selection's, where it entered on the selection;
+  and with an `on_activate` handler Enter activates a row rather than
+  selecting it (without one it selects, as before). Its `select` event
+  in a multiple selection carries `ranges`, `count` and up to 1,000
+  `rows` beside `row`.
 - A Kit line chart with a `window` scrolls between samples: drawn one
   sample behind, its lines, areas and x ticks slide left over the time
   samples take to come, a keyframe cycle of the core's keyed by the
@@ -1492,6 +1506,25 @@ for lua-language-server, and a new runner beside the window's.
   true, textColor: '$onDanger' }]`. Every binding: the schema row, C's
   `KuiSpec.text_color`, Odin, Node. Kit's danger menu rows draw one label
   and one chord with it, where each was drawn twice.
+- **Selecting rows in a Kit list or table, by kind of interaction**
+  (from the user's notes). `selection = "single" | "multiple" | "none"`;
+  a multiple selection is the host's `selected_ranges` (`{ first, last }`
+  each), so ⌘A on a windowed list of 100,000 rows is one range;
+  `select_on_focus = false` keeps the arrows off the selection — they
+  move the cursor, Space selects, Enter activates, a click selects — so a
+  detail panel loads on `on_select` or `on_activate` and not for every
+  row walked past. Three events: `on_cursor { row }` (the keyboard's row
+  moved), `on_select` (`{ row }`, or `{ row, ranges, count, rows? }`),
+  `on_activate { row }` (Enter, a double click). In a multiple selection
+  ⌘-click (Ctrl-click) toggles, Shift-click and Shift+arrows extend from
+  the anchor Kit keeps, Space toggles and ⌘A selects all; Escape leaves
+  the selection, as Finder's and Explorer's lists do. The gallery's Data
+  table is multiple and moves no selection with the arrows, its detail
+  loading on a selection or an open, with a line saying the cursor, the
+  selection and what was opened. The core gives the facts it needed
+  (C101, in part): a click's `mods`, `clicks` and `key`, a focus move's
+  `mods`, select all to `onItemKey`. Filed: C139, a list's
+  `multiselectable` for assistive technology.
 - **Where the pointer is over a node** (backlog C119): `pointer_in(key)`
   — `{x, y, w, h}`, the pointer's place from the node's top-left
   (through any turn) and the node's size, as of the last frame — for a

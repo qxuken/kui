@@ -357,6 +357,33 @@ impl ShaderPreset {
     }
 }
 
+/// What a list or a table selects: one row, any rows (⌘- or Ctrl-click
+/// toggles a row, Shift extends from the last row clicked, ⌘A or Ctrl+A takes
+/// them all, Space toggles the row the keyboard is on), or none — the rows
+/// still a keyboard's to walk and Enter's to activate.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Selection {
+    #[default]
+    Single,
+    Multiple,
+    None,
+}
+
+impl Selection {
+    /// The value's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Selection::Single => "single",
+            Selection::Multiple => "multiple",
+            Selection::None => "none",
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::str(self.as_str())
+    }
+}
+
 /// What a skeleton stands in for: lines of text, a block (an image, a chart),
 /// or a circle (an avatar).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -742,6 +769,34 @@ impl Entry {
         if let Some(v) = &self.mono {
             m.push(("mono".into(), Value::Bool(*v)));
         }
+        Value::Map(m)
+    }
+}
+
+/// Rows `first` to `last` of a list or a table, both in (0-based): a multiple
+/// selection is a list of them, so ⌘A on 100,000 rows is one.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RowRange {
+    /// The first row in it.
+    pub first: i64,
+    /// The last row in it.
+    pub last: i64,
+}
+
+impl RowRange {
+    /// What it needs; the rest by their setters.
+    pub fn new(first: i64, last: i64) -> Self {
+        Self {
+            first: first,
+            last: last,
+        }
+    }
+
+    /// As the extension reads it.
+    pub fn to_value(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("first".into(), Value::Int(*(&self.first))));
+        m.push(("last".into(), Value::Int(*(&self.last))));
         Value::Map(m)
     }
 }
@@ -3532,6 +3587,16 @@ pub struct Table {
     pub rows: Channel,
     /// The selected row (0-based): yours to keep.
     pub selected: Option<i64>,
+    /// What it selects: one row (the default), any rows, or none.
+    pub selection: Option<Selection>,
+    /// With `selection = "multiple"`: the selected rows, as ranges — yours to
+    /// keep, from `on_select`.
+    pub selected_ranges: Option<Vec<RowRange>>,
+    /// Whether the keyboard's moves select (the default): with false the arrows
+    /// move the cursor only, Space selects (toggles, in a multiple selection),
+    /// Enter activates and a click selects — a detail that loads on `select`
+    /// or `activate` is not loaded for every row walked past.
+    pub select_on_focus: Option<bool>,
     /// The field it is sorted by, marked in its header; the sorting is yours.
     pub sort: Option<String>,
     /// Sorted from the top down.
@@ -3549,10 +3614,20 @@ pub struct Table {
     pub cells: Option<bool>,
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
-    /// The message `select` arrives as, with `select: TableSelect` in it. A row
-    /// was clicked, or the keyboard landed on it (the arrows, Page keys, a
-    /// type-ahead, Tab back in).
+    /// The message `select` arrives as, with `select: TableSelect` in it. The
+    /// selection changed: a click, Space, the keyboard landing on a row when
+    /// moves select, ⌘A, a Shift-range. One row in a single selection; in a
+    /// multiple one, the ranges, their count, and the rows themselves when
+    /// there are no more than 1,000.
     pub on_select: Option<Value>,
+    /// The message `cursor` arrives as, with `cursor: TableCursor` in it. The
+    /// row the keyboard is on moved — an arrow, a page key, a type-ahead, a
+    /// click: cheap, and often.
+    pub on_cursor: Option<Value>,
+    /// The message `activate` arrives as, with `activate: TableActivate` in it.
+    /// Enter on a row, or a double click: open it. Without a handler, Enter
+    /// selects, as it did.
+    pub on_activate: Option<Value>,
     /// The message `sort` arrives as, with `sort: TableSort` in it. A header
     /// was clicked.
     pub on_sort: Option<Value>,
@@ -3572,6 +3647,9 @@ impl Table {
             columns: columns,
             rows: rows,
             selected: None,
+            selection: None,
+            selected_ranges: None,
+            select_on_focus: None,
             sort: None,
             descending: None,
             striped: None,
@@ -3579,6 +3657,8 @@ impl Table {
             cells: None,
             grow: None,
             on_select: None,
+            on_cursor: None,
+            on_activate: None,
             on_sort: None,
             on_range: None,
             key: None,
@@ -3589,6 +3669,28 @@ impl Table {
     /// The selected row (0-based): yours to keep.
     pub fn selected(mut self, v: i64) -> Self {
         self.selected = Some(v);
+        self
+    }
+
+    /// What it selects: one row (the default), any rows, or none.
+    pub fn selection(mut self, v: Selection) -> Self {
+        self.selection = Some(v);
+        self
+    }
+
+    /// With `selection = "multiple"`: the selected rows, as ranges — yours to
+    /// keep, from `on_select`.
+    pub fn selected_ranges(mut self, v: Vec<RowRange>) -> Self {
+        self.selected_ranges = Some(v);
+        self
+    }
+
+    /// Whether the keyboard's moves select (the default): with false the arrows
+    /// move the cursor only, Space selects (toggles, in a multiple selection),
+    /// Enter activates and a click selects — a detail that loads on `select`
+    /// or `activate` is not loaded for every row walked past.
+    pub fn select_on_focus(mut self, v: bool) -> Self {
+        self.select_on_focus = Some(v);
         self
     }
 
@@ -3633,10 +3735,26 @@ impl Table {
         self
     }
 
-    /// The message `select` arrives as. A row was clicked, or the keyboard
-    /// landed on it (the arrows, Page keys, a type-ahead, Tab back in).
+    /// The message `select` arrives as. The selection changed: a click, Space,
+    /// the keyboard landing on a row when moves select, ⌘A, a Shift-range.
+    /// One row in a single selection; in a multiple one, the ranges, their
+    /// count, and the rows themselves when there are no more than 1,000.
     pub fn on_select(mut self, msg: impl Into<Value>) -> Self {
         self.on_select = Some(msg.into());
+        self
+    }
+
+    /// The message `cursor` arrives as. The row the keyboard is on moved — an
+    /// arrow, a page key, a type-ahead, a click: cheap, and often.
+    pub fn on_cursor(mut self, msg: impl Into<Value>) -> Self {
+        self.on_cursor = Some(msg.into());
+        self
+    }
+
+    /// The message `activate` arrives as. Enter on a row, or a double click:
+    /// open it. Without a handler, Enter selects, as it did.
+    pub fn on_activate(mut self, msg: impl Into<Value>) -> Self {
+        self.on_activate = Some(msg.into());
         self
     }
 
@@ -3673,6 +3791,15 @@ impl Table {
         if let Some(v) = &self.selected {
             m.push(("selected".into(), Value::Int(*v)));
         }
+        if let Some(v) = &self.selection {
+            m.push(("selection".into(), v.to_value()));
+        }
+        if let Some(v) = &self.selected_ranges {
+            m.push(("selected_ranges".into(), Value::List(v.iter().map(|x| x.to_value()).collect())));
+        }
+        if let Some(v) = &self.select_on_focus {
+            m.push(("select_on_focus".into(), Value::Bool(*v)));
+        }
         if let Some(v) = &self.sort {
             m.push(("sort".into(), Value::str(v.as_str())));
         }
@@ -3693,6 +3820,12 @@ impl Table {
         }
         if let Some(v) = &self.on_select {
             m.push(("on_select".into(), v.clone()));
+        }
+        if let Some(v) = &self.on_cursor {
+            m.push(("on_cursor".into(), v.clone()));
+        }
+        if let Some(v) = &self.on_activate {
+            m.push(("on_activate".into(), v.clone()));
         }
         if let Some(v) = &self.on_sort {
             m.push(("on_sort".into(), v.clone()));
@@ -3723,14 +3856,60 @@ impl Table {
 /// What `on_select`'s message carries under `select`.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TableSelect {
-    /// Its index, 0-based.
+    /// The row the change was about, 0-based: the one clicked, pressed or
+    /// landed on.
     pub row: i64,
+    /// A multiple selection: every selected row, as a list of `RowRange` (`{
+    /// first, last }`); absent in a single one.
+    pub ranges: Value,
+    /// A multiple selection: how many rows it holds.
+    pub count: Option<i64>,
+    /// A multiple selection of no more than 1,000 rows: each of them, a list of
+    /// integers; absent past that, and in a single one.
+    pub rows: Value,
 }
 
 impl TableSelect {
     /// Read off an event's payload: the fields under `select`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("select")?;
+        Some(Self {
+            row: _d.get("row").and_then(Value::as_int).unwrap_or_default(),
+            ranges: _d.get("ranges").cloned().unwrap_or_default(),
+            count: _d.get("count").and_then(Value::as_int),
+            rows: _d.get("rows").cloned().unwrap_or_default(),
+        })
+    }
+}
+
+/// What `on_cursor`'s message carries under `cursor`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TableCursor {
+    /// The row, 0-based.
+    pub row: i64,
+}
+
+impl TableCursor {
+    /// Read off an event's payload: the fields under `cursor`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("cursor")?;
+        Some(Self {
+            row: _d.get("row").and_then(Value::as_int).unwrap_or_default(),
+        })
+    }
+}
+
+/// What `on_activate`'s message carries under `activate`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TableActivate {
+    /// The row, 0-based.
+    pub row: i64,
+}
+
+impl TableActivate {
+    /// Read off an event's payload: the fields under `activate`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("activate")?;
         Some(Self {
             row: _d.get("row").and_then(Value::as_int).unwrap_or_default(),
         })
@@ -3795,12 +3974,32 @@ pub struct List {
     pub label: Option<String>,
     /// The selected row (0-based): yours to keep.
     pub selected: Option<i64>,
+    /// What it selects: one row (the default), any rows, or none.
+    pub selection: Option<Selection>,
+    /// With `selection = "multiple"`: the selected rows, as ranges — yours to
+    /// keep, from `on_select`.
+    pub selected_ranges: Option<Vec<RowRange>>,
+    /// Whether the keyboard's moves select (the default): with false the arrows
+    /// move the cursor only, Space selects (toggles, in a multiple selection),
+    /// Enter activates and a click selects — a detail that loads on `select`
+    /// or `activate` is not loaded for every row walked past.
+    pub select_on_focus: Option<bool>,
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
-    /// The message `select` arrives as, with `select: ListSelect` in it. A row
-    /// was clicked, or the keyboard landed on it (the arrows, Page keys, a
-    /// type-ahead, Tab back in).
+    /// The message `select` arrives as, with `select: ListSelect` in it. The
+    /// selection changed: a click, Space, the keyboard landing on a row when
+    /// moves select, ⌘A, a Shift-range. One row in a single selection; in a
+    /// multiple one, the ranges, their count, and the rows themselves when
+    /// there are no more than 1,000.
     pub on_select: Option<Value>,
+    /// The message `cursor` arrives as, with `cursor: ListCursor` in it. The
+    /// row the keyboard is on moved — an arrow, a page key, a type-ahead, a
+    /// click: cheap, and often.
+    pub on_cursor: Option<Value>,
+    /// The message `activate` arrives as, with `activate: ListActivate` in it.
+    /// Enter on a row, or a double click: open it. Without a handler, Enter
+    /// selects, as it did.
+    pub on_activate: Option<Value>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -3819,8 +4018,13 @@ impl List {
             badge_width: None,
             label: None,
             selected: None,
+            selection: None,
+            selected_ranges: None,
+            select_on_focus: None,
             grow: None,
             on_select: None,
+            on_cursor: None,
+            on_activate: None,
             key: None,
             fresh: false,
         }
@@ -3864,16 +4068,54 @@ impl List {
         self
     }
 
+    /// What it selects: one row (the default), any rows, or none.
+    pub fn selection(mut self, v: Selection) -> Self {
+        self.selection = Some(v);
+        self
+    }
+
+    /// With `selection = "multiple"`: the selected rows, as ranges — yours to
+    /// keep, from `on_select`.
+    pub fn selected_ranges(mut self, v: Vec<RowRange>) -> Self {
+        self.selected_ranges = Some(v);
+        self
+    }
+
+    /// Whether the keyboard's moves select (the default): with false the arrows
+    /// move the cursor only, Space selects (toggles, in a multiple selection),
+    /// Enter activates and a click selects — a detail that loads on `select`
+    /// or `activate` is not loaded for every row walked past.
+    pub fn select_on_focus(mut self, v: bool) -> Self {
+        self.select_on_focus = Some(v);
+        self
+    }
+
     /// Takes the room its parent leaves.
     pub fn grow(mut self, v: bool) -> Self {
         self.grow = Some(v);
         self
     }
 
-    /// The message `select` arrives as. A row was clicked, or the keyboard
-    /// landed on it (the arrows, Page keys, a type-ahead, Tab back in).
+    /// The message `select` arrives as. The selection changed: a click, Space,
+    /// the keyboard landing on a row when moves select, ⌘A, a Shift-range.
+    /// One row in a single selection; in a multiple one, the ranges, their
+    /// count, and the rows themselves when there are no more than 1,000.
     pub fn on_select(mut self, msg: impl Into<Value>) -> Self {
         self.on_select = Some(msg.into());
+        self
+    }
+
+    /// The message `cursor` arrives as. The row the keyboard is on moved — an
+    /// arrow, a page key, a type-ahead, a click: cheap, and often.
+    pub fn on_cursor(mut self, msg: impl Into<Value>) -> Self {
+        self.on_cursor = Some(msg.into());
+        self
+    }
+
+    /// The message `activate` arrives as. Enter on a row, or a double click:
+    /// open it. Without a handler, Enter selects, as it did.
+    pub fn on_activate(mut self, msg: impl Into<Value>) -> Self {
+        self.on_activate = Some(msg.into());
         self
     }
 
@@ -3912,11 +4154,26 @@ impl List {
         if let Some(v) = &self.selected {
             m.push(("selected".into(), Value::Int(*v)));
         }
+        if let Some(v) = &self.selection {
+            m.push(("selection".into(), v.to_value()));
+        }
+        if let Some(v) = &self.selected_ranges {
+            m.push(("selected_ranges".into(), Value::List(v.iter().map(|x| x.to_value()).collect())));
+        }
+        if let Some(v) = &self.select_on_focus {
+            m.push(("select_on_focus".into(), Value::Bool(*v)));
+        }
         if let Some(v) = &self.grow {
             m.push(("grow".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_select {
             m.push(("on_select".into(), v.clone()));
+        }
+        if let Some(v) = &self.on_cursor {
+            m.push(("on_cursor".into(), v.clone()));
+        }
+        if let Some(v) = &self.on_activate {
+            m.push(("on_activate".into(), v.clone()));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -3941,14 +4198,60 @@ impl List {
 /// What `on_select`'s message carries under `select`.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ListSelect {
-    /// Its index, 0-based.
+    /// The row the change was about, 0-based: the one clicked, pressed or
+    /// landed on.
     pub row: i64,
+    /// A multiple selection: every selected row, as a list of `RowRange` (`{
+    /// first, last }`); absent in a single one.
+    pub ranges: Value,
+    /// A multiple selection: how many rows it holds.
+    pub count: Option<i64>,
+    /// A multiple selection of no more than 1,000 rows: each of them, a list of
+    /// integers; absent past that, and in a single one.
+    pub rows: Value,
 }
 
 impl ListSelect {
     /// Read off an event's payload: the fields under `select`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("select")?;
+        Some(Self {
+            row: _d.get("row").and_then(Value::as_int).unwrap_or_default(),
+            ranges: _d.get("ranges").cloned().unwrap_or_default(),
+            count: _d.get("count").and_then(Value::as_int),
+            rows: _d.get("rows").cloned().unwrap_or_default(),
+        })
+    }
+}
+
+/// What `on_cursor`'s message carries under `cursor`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ListCursor {
+    /// The row, 0-based.
+    pub row: i64,
+}
+
+impl ListCursor {
+    /// Read off an event's payload: the fields under `cursor`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("cursor")?;
+        Some(Self {
+            row: _d.get("row").and_then(Value::as_int).unwrap_or_default(),
+        })
+    }
+}
+
+/// What `on_activate`'s message carries under `activate`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ListActivate {
+    /// The row, 0-based.
+    pub row: i64,
+}
+
+impl ListActivate {
+    /// Read off an event's payload: the fields under `activate`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("activate")?;
         Some(Self {
             row: _d.get("row").and_then(Value::as_int).unwrap_or_default(),
         })

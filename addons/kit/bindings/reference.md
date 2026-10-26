@@ -10,7 +10,7 @@ Lua places a component with `kit.<name>(props, children)` after `local kit = req
 
 Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.checklist`](#kitchecklist), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
 
-Types: [`Variant`](#variant), [`Tone`](#tone), [`Align`](#align), [`Axis`](#axis), [`Skin`](#skin), [`Density`](#density), [`Level`](#level), [`Browse`](#browse), [`XFormat`](#xformat), [`Appearance`](#appearance), [`ShaderPreset`](#shaderpreset), [`SkeletonShape`](#skeletonshape), [`Choice`](#choice), [`Column`](#column), [`Tab`](#tab), [`Item`](#item), [`Check`](#check), [`Entry`](#entry), [`Series`](#series).
+Types: [`Variant`](#variant), [`Tone`](#tone), [`Align`](#align), [`Axis`](#axis), [`Skin`](#skin), [`Density`](#density), [`Level`](#level), [`Browse`](#browse), [`XFormat`](#xformat), [`Appearance`](#appearance), [`ShaderPreset`](#shaderpreset), [`Selection`](#selection), [`SkeletonShape`](#skeletonshape), [`Choice`](#choice), [`Column`](#column), [`Tab`](#tab), [`Item`](#item), [`Check`](#check), [`Entry`](#entry), [`RowRange`](#rowrange), [`Series`](#series).
 
 ## kit.settings
 
@@ -393,6 +393,9 @@ Lua `kit.table(props)` · Node `<Table />`
 | `columns` | `columns` | {[Column](#column)} | The columns, in order. |
 | `rows` | `rows` | channel | The rows: a channel whose columns the `field`s name. |
 | `selected` | `selected` | integer? | The selected row (0-based): yours to keep. |
+| `selection` | `selection` | [Selection](#selection)? | What it selects: one row (the default), any rows, or none. |
+| `selected_ranges` | `selectedRanges` | {[RowRange](#rowrange)}? | With `selection = "multiple"`: the selected rows, as ranges — yours to keep, from `on_select`. |
+| `select_on_focus` | `selectOnFocus` | boolean? | Whether the keyboard's moves select (the default): with false the arrows move the cursor only, Space selects (toggles, in a multiple selection), Enter activates and a click selects — a detail that loads on `select` or `activate` is not loaded for every row walked past. |
 | `sort` | `sort` | string? | The field it is sorted by, marked in its header; the sorting is yours. |
 | `descending` | `descending` | boolean? | Sorted from the top down. |
 | `striped` | `striped` | boolean? | Every other row tinted. |
@@ -402,7 +405,9 @@ Lua `kit.table(props)` · Node `<Table />`
 
 | event | Node | carries | description |
 |---|---|---|---|
-| `on_select` | `onSelect` | `select` = { `row`: integer — Its index, 0-based. } | A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in). |
+| `on_select` | `onSelect` | `select` = { `row`: integer — The row the change was about, 0-based: the one clicked, pressed or landed on.; `ranges`: any — A multiple selection: every selected row, as a list of `RowRange` (`{ first, last }`); absent in a single one.; `count`: integer? — A multiple selection: how many rows it holds.; `rows`: any — A multiple selection of no more than 1,000 rows: each of them, a list of integers; absent past that, and in a single one. } | The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000. |
+| `on_cursor` | `onCursor` | `cursor` = { `row`: integer — The row, 0-based. } | The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often. |
+| `on_activate` | `onActivate` | `activate` = { `row`: integer — The row, 0-based. } | Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did. |
 | `on_sort` | `onSort` | `sort` = { `field`: string — The column's field. } | A header was clicked. |
 | `on_range` | `onRange` | `range` = { `first`: integer — The first row in view.; `last`: integer — The last row in view. } | The rows in view changed: page your source by it. |
 
@@ -422,11 +427,16 @@ Lua `kit.list(props)` · Node `<List />`
 | `badge_width` | `badgeWidth` | number? | The badge column's width in px, so the titles line up; each badge's own when left out. |
 | `label` | `label` | string? | Its name, read and not drawn: what the list holds (History). |
 | `selected` | `selected` | integer? | The selected row (0-based): yours to keep. |
+| `selection` | `selection` | [Selection](#selection)? | What it selects: one row (the default), any rows, or none. |
+| `selected_ranges` | `selectedRanges` | {[RowRange](#rowrange)}? | With `selection = "multiple"`: the selected rows, as ranges — yours to keep, from `on_select`. |
+| `select_on_focus` | `selectOnFocus` | boolean? | Whether the keyboard's moves select (the default): with false the arrows move the cursor only, Space selects (toggles, in a multiple selection), Enter activates and a click selects — a detail that loads on `select` or `activate` is not loaded for every row walked past. |
 | `grow` | `grow` | boolean? | Takes the room its parent leaves. |
 
 | event | Node | carries | description |
 |---|---|---|---|
-| `on_select` | `onSelect` | `select` = { `row`: integer — Its index, 0-based. } | A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in). |
+| `on_select` | `onSelect` | `select` = { `row`: integer — The row the change was about, 0-based: the one clicked, pressed or landed on.; `ranges`: any — A multiple selection: every selected row, as a list of `RowRange` (`{ first, last }`); absent in a single one.; `count`: integer? — A multiple selection: how many rows it holds.; `rows`: any — A multiple selection of no more than 1,000 rows: each of them, a list of integers; absent past that, and in a single one. } | The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000. |
+| `on_cursor` | `onCursor` | `cursor` = { `row`: integer — The row, 0-based. } | The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often. |
+| `on_activate` | `onActivate` | `activate` = { `row`: integer — The row, 0-based. } | Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did. |
 
 ## kit.inspector
 
@@ -822,6 +832,12 @@ One of Kit's shaders: a skeleton's shimmer, or gradient noise.
 
 One of `"shimmer"`, `"noise"`.
 
+### Selection
+
+What a list or a table selects: one row, any rows (⌘- or Ctrl-click toggles a row, Shift extends from the last row clicked, ⌘A or Ctrl+A takes them all, Space toggles the row the keyboard is on), or none — the rows still a keyboard's to walk and Enter's to activate.
+
+One of `"single"`, `"multiple"`, `"none"`.
+
 ### SkeletonShape
 
 What a skeleton stands in for: lines of text, a block (an image, a chart), or a circle (an avatar).
@@ -897,6 +913,15 @@ One row of an inspector: a key and its value.
 | `key` | `key` | string | The field's name. |
 | `value` | `value` | string | Its value, as text. |
 | `mono` | `mono` | boolean? | The value in the data face. |
+
+### RowRange
+
+Rows `first` to `last` of a list or a table, both in (0-based): a multiple selection is a list of them, so ⌘A on 100,000 rows is one.
+
+| field | Node | type | description |
+|---|---|---|---|
+| `first` | `first` | integer | The first row in it. |
+| `last` | `last` | integer | The last row in it. |
 
 ### Series
 

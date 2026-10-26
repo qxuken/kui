@@ -39,6 +39,9 @@ export type Appearance = 'system' | 'light' | 'dark';
 /** One of Kit's shaders: a skeleton's shimmer, or gradient noise. */
 export type ShaderPreset = 'shimmer' | 'noise';
 
+/** What a list or a table selects: one row, any rows (⌘- or Ctrl-click toggles a row, Shift extends from the last row clicked, ⌘A or Ctrl+A takes them all, Space toggles the row the keyboard is on), or none — the rows still a keyboard's to walk and Enter's to activate. */
+export type Selection = 'single' | 'multiple' | 'none';
+
 /** What a skeleton stands in for: lines of text, a block (an image, a chart), or a circle (an avatar). */
 export type SkeletonShape = 'text' | 'block' | 'circle';
 
@@ -120,6 +123,14 @@ export interface Entry {
   value: string;
   /** The value in the data face. */
   mono?: boolean;
+}
+
+/** Rows `first` to `last` of a list or a table, both in (0-based): a multiple selection is a list of them, so ⌘A on 100,000 rows is one. */
+export interface RowRange {
+  /** The first row in it. */
+  first: number;
+  /** The last row in it. */
+  last: number;
 }
 
 /** One line of a line chart. */
@@ -708,6 +719,12 @@ export interface TableProps {
   rows: Channel;
   /** The selected row (0-based): yours to keep. */
   selected?: number;
+  /** What it selects: one row (the default), any rows, or none. */
+  selection?: Selection;
+  /** With `selection = "multiple"`: the selected rows, as ranges — yours to keep, from `on_select`. */
+  selectedRanges?: RowRange[];
+  /** Whether the keyboard's moves select (the default): with false the arrows move the cursor only, Space selects (toggles, in a multiple selection), Enter activates and a click selects — a detail that loads on `select` or `activate` is not loaded for every row walked past. */
+  selectOnFocus?: boolean;
   /** The field it is sorted by, marked in its header; the sorting is yours. */
   sort?: string;
   /** Sorted from the top down. */
@@ -720,8 +737,12 @@ export interface TableProps {
   cells?: boolean;
   /** Takes the room its parent leaves. */
   grow?: boolean;
-  /** The message select arrives as: yours, with `select: TableSelect` in it. A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in). */
+  /** The message select arrives as: yours, with `select: TableSelect` in it. The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000. */
   onSelect?: unknown;
+  /** The message cursor arrives as: yours, with `cursor: TableCursor` in it. The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often. */
+  onCursor?: unknown;
+  /** The message activate arrives as: yours, with `activate: TableActivate` in it. Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did. */
+  onActivate?: unknown;
   /** The message sort arrives as: yours, with `sort: TableSort` in it. A header was clicked. */
   onSort?: unknown;
   /** The message range arrives as: yours, with `range: TableRange` in it. The rows in view changed: page your source by it. */
@@ -734,11 +755,33 @@ export interface TableProps {
 
 /** What `onSelect`'s message carries under `select`. */
 export interface TableSelect {
-  /** Its index, 0-based. */
+  /** The row the change was about, 0-based: the one clicked, pressed or landed on. */
   row: number;
+  /** A multiple selection: every selected row, as a list of `RowRange` (`{ first, last }`); absent in a single one. */
+  ranges: unknown;
+  /** A multiple selection: how many rows it holds. */
+  count: number;
+  /** A multiple selection of no more than 1,000 rows: each of them, a list of integers; absent past that, and in a single one. */
+  rows: unknown;
 }
 /** Your message `T` as `select` arrives. */
 export type TableSelectMsg<T = {}> = T & { select: TableSelect };
+
+/** What `onCursor`'s message carries under `cursor`. */
+export interface TableCursor {
+  /** The row, 0-based. */
+  row: number;
+}
+/** Your message `T` as `cursor` arrives. */
+export type TableCursorMsg<T = {}> = T & { cursor: TableCursor };
+
+/** What `onActivate`'s message carries under `activate`. */
+export interface TableActivate {
+  /** The row, 0-based. */
+  row: number;
+}
+/** Your message `T` as `activate` arrives. */
+export type TableActivateMsg<T = {}> = T & { activate: TableActivate };
 
 /** What `onSort`'s message carries under `sort`. */
 export interface TableSort {
@@ -776,10 +819,20 @@ export interface ListProps {
   label?: string;
   /** The selected row (0-based): yours to keep. */
   selected?: number;
+  /** What it selects: one row (the default), any rows, or none. */
+  selection?: Selection;
+  /** With `selection = "multiple"`: the selected rows, as ranges — yours to keep, from `on_select`. */
+  selectedRanges?: RowRange[];
+  /** Whether the keyboard's moves select (the default): with false the arrows move the cursor only, Space selects (toggles, in a multiple selection), Enter activates and a click selects — a detail that loads on `select` or `activate` is not loaded for every row walked past. */
+  selectOnFocus?: boolean;
   /** Takes the room its parent leaves. */
   grow?: boolean;
-  /** The message select arrives as: yours, with `select: ListSelect` in it. A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in). */
+  /** The message select arrives as: yours, with `select: ListSelect` in it. The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000. */
   onSelect?: unknown;
+  /** The message cursor arrives as: yours, with `cursor: ListCursor` in it. The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often. */
+  onCursor?: unknown;
+  /** The message activate arrives as: yours, with `activate: ListActivate` in it. Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did. */
+  onActivate?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -788,11 +841,33 @@ export interface ListProps {
 
 /** What `onSelect`'s message carries under `select`. */
 export interface ListSelect {
-  /** Its index, 0-based. */
+  /** The row the change was about, 0-based: the one clicked, pressed or landed on. */
   row: number;
+  /** A multiple selection: every selected row, as a list of `RowRange` (`{ first, last }`); absent in a single one. */
+  ranges: unknown;
+  /** A multiple selection: how many rows it holds. */
+  count: number;
+  /** A multiple selection of no more than 1,000 rows: each of them, a list of integers; absent past that, and in a single one. */
+  rows: unknown;
 }
 /** Your message `T` as `select` arrives. */
 export type ListSelectMsg<T = {}> = T & { select: ListSelect };
+
+/** What `onCursor`'s message carries under `cursor`. */
+export interface ListCursor {
+  /** The row, 0-based. */
+  row: number;
+}
+/** Your message `T` as `cursor` arrives. */
+export type ListCursorMsg<T = {}> = T & { cursor: ListCursor };
+
+/** What `onActivate`'s message carries under `activate`. */
+export interface ListActivate {
+  /** The row, 0-based. */
+  row: number;
+}
+/** Your message `T` as `activate` arrives. */
+export type ListActivateMsg<T = {}> = T & { activate: ListActivate };
 
 /** The props of `kit/inspector`. */
 export interface InspectorProps {

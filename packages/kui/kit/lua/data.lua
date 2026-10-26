@@ -124,13 +124,217 @@ local function pill(c, label, tone, dot, sel)
    })
 end
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local function merged(ranges)
+   local rs = {}
+   for _, r in ipairs(ranges) do
+      local a, b = math.min(r.first, r.last), math.max(r.first, r.last)
+      rs[#rs + 1] = { first = a, last = b }
+   end
+   table.sort(rs, function(x, y) return x.first < y.first end)
+   local out = {}
+   for _, r in ipairs(rs) do
+      local top = out[#out]
+      if top and r.first <= top.last + 1 then
+         if r.last > top.last then top.last = r.last end
+      else
+         out[#out + 1] = { first = r.first, last = r.last }
+      end
+   end
+   return out
+end
+
+local function holds(ranges, i)
+   for _, r in ipairs(ranges) do
+      if i >= r.first and i <= r.last then return true end
+      if r.first > i then return false end
+   end
+   return false
+end
+
+
+local function toggled(ranges, i)
+   if not holds(ranges, i) then
+      local rs = { { first = i, last = i } }
+      for _, r in ipairs(ranges) do rs[#rs + 1] = r end
+      return merged(rs)
+   end
+   local out = {}
+   for _, r in ipairs(ranges) do
+      if i >= r.first and i <= r.last then
+         if r.first < i then out[#out + 1] = { first = r.first, last = i - 1 } end
+         if i < r.last then out[#out + 1] = { first = i + 1, last = r.last } end
+      else
+         out[#out + 1] = r
+      end
+   end
+   return out
+end
+
+
+
+local LISTED = 1000
+
+
+
+local function proposed(st, row, ranges)
+   st.ranges = ranges
+   local count = 0
+   for _, r in ipairs(ranges) do count = count + r.last - r.first + 1 end
+   local rows = nil
+   if count <= LISTED then
+      rows = {}
+      for _, r in ipairs(ranges) do
+         for i = r.first, r.last do rows[#rows + 1] = i end
+      end
+   end
+   local out = {}
+   for _, r in ipairs(ranges) do out[#out + 1] = { first = r.first, last = r.last } end
+   return emit("on_select", { row = row, ranges = out, count = count, rows = rows })
+end
+
+
+
+local function selection_of(c, p, n)
+   local st = ctx.state(c, function() return {} end)
+   local mode = str(p.selection) or "single"
+   st.mode, st.n = mode, n
+   st.on_focus = p.select_on_focus ~= false
+   st.row = p.selected
+   st.activates = p.on_activate ~= nil
+   st.mac = c.env.platform == "macos"
+   local given = (p.selected_ranges or {})
+   st.ranges = mode == "multiple" and merged(given) or {}
+   return st
+end
+
+local function selected_in(st, i)
+   if st.mode == "single" then return st.row == i end
+   if st.mode == "multiple" then return holds(st.ranges, i) end
+   return false
+end
+
+
+local function entry_of(st)
+   if st.cursor and st.cursor < st.n then return st.cursor end
+   if st.mode == "single" then return st.row end
+   if st.mode == "multiple" and st.ranges[1] then return st.ranges[1].first end
+   return nil
+end
+
+
+
+
+local function on_cursor_moved(st, i, mods)
+   local out = {}
+   local moved = st.cursor ~= i
+   st.cursor = i
+   if moved then out[#out + 1] = emit("on_cursor", { row = i }) end
+   local shift = mods ~= nil and mods.shift == true
+   if st.mode == "single" and st.on_focus then
+      out[#out + 1] = emit("on_select", { row = i })
+   elseif st.mode == "multiple" then
+      if shift then
+         out[#out + 1] = proposed(st, i, { { first = math.min(st.anchor or i, i), last = math.max(st.anchor or i, i) } })
+      elseif st.on_focus then
+         st.anchor = i
+         out[#out + 1] = proposed(st, i, { { first = i, last = i } })
+      end
+   end
+   return out
+end
+
+
+
+
+
+local function on_row_pressed(st, i, click)
+   local out = {}
+   local key = click and click.key
+   local mods = click and click.mods
+   local clicks = click and (click.clicks) or 1
+   if st.cursor ~= i then
+      st.cursor = i
+      out[#out + 1] = emit("on_cursor", { row = i })
+   end
+   if key == "enter" or clicks >= 2 then
+      if st.activates then
+         out[#out + 1] = emit("on_activate", { row = i })
+         return out
+      end
+      if clicks >= 2 then return out end
+   end
+   if st.mode == "single" then
+      out[#out + 1] = emit("on_select", { row = i })
+   elseif st.mode == "multiple" then
+      local primary = mods ~= nil and ((st.mac and mods.super == true) or (not st.mac and mods.ctrl == true))
+      local shift = mods ~= nil and mods.shift == true
+      if key == "space" or primary then
+         st.anchor = i
+         out[#out + 1] = proposed(st, i, toggled(st.ranges, i))
+      elseif shift then
+         out[#out + 1] = proposed(st, i, { { first = math.min(st.anchor or i, i), last = math.max(st.anchor or i, i) } })
+      else
+         st.anchor = i
+         out[#out + 1] = proposed(st, i, { { first = i, last = i } })
+      end
+   end
+   return out
+end
+
+
+
+
+local function on_row_key(st, k)
+   local out = {}
+   if st.mode ~= "multiple" or st.n == 0 then return out end
+   local code = k.code
+   local primary = (st.mac and k.super == true) or (not st.mac and k.ctrl == true)
+   if (code == "a" or code == "A") and primary then
+      out[#out + 1] = proposed(st, st.cursor or 0, { { first = 0, last = st.n - 1 } })
+   end
+   return out
+end
+
 function M.table(c, p)
    local ch = p.rows
    local cols = (p.columns or {})
    local n = count(ch)
    local row_h = c.s.density == "compact" and 20 or 22
-   local selected = p.selected
    local seen = ctx.state(c, function() return {} end)
+   local st = selection_of(c, p, n)
    local cells = p.cells == true
    typeahead(c, seen, ch, cols[1] and cols[1].field or "")
 
@@ -180,7 +384,9 @@ function M.table(c, p)
 
 
    local sorts = p.on_sort ~= nil
-   local selects = p.on_select ~= nil
+   local selects = p.on_select ~= nil or p.on_cursor ~= nil or p.on_activate ~= nil
+   local entry = selects and entry_of(st) or nil
+   local keys = (selects and st.mode == "multiple") and act(c, "table.key") or nil
    local head = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
 bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil,
 when = #head_rules > 0 and head_rules or nil, }
@@ -214,11 +420,12 @@ when = #head_rules > 0 and head_rules or nil, }
 
       role = not cells and "list" or nil,
       label = "rows",
-      active_index = selects and selected or nil,
+      active_index = not cells and entry or nil,
       on_typeahead = selects and act(c, "table.typeahead") or nil,
+      on_item_key = not cells and keys or nil,
    }
    local view = body(c, "rows", n, row_h, rows_t, function(i)
-      local sel = selected == i
+      local sel = selected_in(st, i)
       local line = {
          index = i,
          role = cells and "row" or "listItem",
@@ -284,8 +491,9 @@ when = #head_rules > 0 and head_rules or nil, }
       bg = ref(c, "panel"),
       role = cells and "table" or nil,
       label = cells and "table" or nil,
-      active_index = (cells and selects) and selected or nil,
+      active_index = cells and entry or nil,
       on_typeahead = (cells and selects) and act(c, "table.typeahead") or nil,
+      on_item_key = cells and keys or nil,
 
 
 
@@ -304,20 +512,21 @@ function M.list(c, p)
    local n = count(ch)
    local two = str(p.detail) ~= nil
    local row_h = two and 40 or (c.s.density == "compact" and 22 or 26)
-   local selected = p.selected
    local seen = ctx.state(c, function() return {} end)
+   local st = selection_of(c, p, n)
    typeahead(c, seen, ch, p.title)
 
-   local selects = p.on_select ~= nil
+   local selects = p.on_select ~= nil or p.on_cursor ~= nil or p.on_activate ~= nil
    local rows_t = {
       height = p.grow == true and "grow" or nil,
       role = "list",
       label = str(p.label),
-      active_index = selects and selected or nil,
+      active_index = selects and entry_of(st) or nil,
       on_typeahead = selects and act(c, "list.typeahead") or nil,
+      on_item_key = (selects and st.mode == "multiple") and act(c, "list.key") or nil,
    }
    return body(c, "rows", n, row_h, rows_t, function(i)
-      local sel = selected == i
+      local sel = selected_in(st, i)
       local title = cell_text(ch:get(i, p.title))
       local t = {
          width = "grow",
@@ -1169,15 +1378,28 @@ transition = 320, easing = "snappy", when = { ctx.still() }, }
 end
 
 function M.event(m, kit)
-   if kit == "table.select" or kit == "list.select" or kit == "log.select" then
+   if kit == "log.select" then
       return emit("on_select", { row = m.row })
+   elseif kit == "table.select" or kit == "list.select" then
+
+      local st = ctx.peek(m.inst)
+      if not st or not st.mode then return emit("on_select", { row = m.row }) end
+      return on_row_pressed(st, m.row, m.click)
    elseif kit == "table.focus" or kit == "list.focus" then
 
 
 
 
       local f = m.focus
-      if f and f.phase == "in" and f.by ~= "pointer" then return emit("on_select", { row = m.row }) end
+      if f and f.phase == "in" and f.by ~= "pointer" then
+         local st = ctx.peek(m.inst)
+         if not st or not st.mode then return emit("on_select", { row = m.row }) end
+         return on_cursor_moved(st, m.row, f.mods)
+      end
+   elseif kit == "table.key" or kit == "list.key" then
+      local st = ctx.peek(m.inst)
+      local k = m.itemkey
+      if st and st.mode and k then return on_row_key(st, k) end
    elseif kit == "table.typeahead" or kit == "list.typeahead" then
       local seen = ctx.peek(m.inst)
       local t = m.typeahead
