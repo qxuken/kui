@@ -3189,6 +3189,58 @@ fn a_line_chart_reads_out_the_sample_under_the_pointer_and_hides_on_leave() {
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
+/// The readout lands on the sample nearest the pointer by the x scale the
+/// line is drawn with: in a window the data fills 40% of (x -13.5..9, rows
+/// at 0..9 — a live line's first seconds) as in a full one, near the left
+/// edge with the gutter at its width, and its box clear of the samples'
+/// heights, beside the crosshair.
+#[test]
+fn a_line_chart_reads_out_the_nearest_sample_in_a_partly_filled_window() {
+    for (window, cases) in [
+        // 40% filled: the empty span reads the first sample, then the data.
+        (Some(22.5), vec![(0.02, "0, A 0, B 100"), (0.6, "0, A 0, B 100"), (0.6 + 0.4 * 5.0 / 9.0, "5, A 50, B 95"), (0.995, "9, A 90, B 91")]),
+        // Full: the edges.
+        (None, vec![(0.01, "0, A 0, B 100"), (0.5 / 9.0 + 0.01, "1, A 10, B 99"), (7.0 / 9.0, "7, A 70, B 93"), (0.995, "9, A 90, B 91")]),
+    ] {
+        let mut r = LuaRig::new(&format!(
+            r#"
+            local t, a, b = {{}}, {{}}, {{}}
+            for i = 0, 9 do t[#t + 1] = i; a[#a + 1] = i * 10; b[#b + 1] = 100 - i end
+            local ch = channel({{ t = t, a = a, b = b }})
+            function view(env)
+              return column {{ width = 640, height = "grow", pad = 20,
+                component("kit/line_chart", {{ data = ch, x = "t", height = 160, window = {window}, focusable = true,
+                  series = {{ {{ field = "a", name = "A" }}, {{ field = "b", name = "B" }} }} }}) }}
+            end
+            "#,
+            window = window.map_or("nil".to_string(), |w: f64| w.to_string())
+        ));
+        r.frames(6);
+        use kui_core::{InputEvent, Vec2};
+        for (f, want) in cases {
+            let plot = r.node(|n| n.label.as_deref() == Some("plot")).expect("the plot").rect;
+            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(plot.x + plot.w * f, plot.y + plot.h / 2.0)));
+            r.route(e);
+            r.frames(3);
+            assert_eq!(readout(&mut r).as_deref(), Some(want), "window {window:?}, {:.0}% across", f * 100.0);
+            // The box keeps clear of both samples' heights, not only their dots.
+            let bx = r.node(|n| n.label.as_deref() == Some("readout")).map(|n| n.rect);
+            assert!(bx.is_some(), "the readout box");
+            let dots: Vec<_> = r.core.nodes().into_iter().filter(|n| n.rect.w == 7.0 && n.rect.h == 7.0).map(|n| n.rect).collect();
+            assert_eq!(dots.len(), 2, "a dot per series");
+            if let Some(bx) = bx {
+                for d in dots {
+                    let (cx, cy) = (d.x + 3.5, d.y + 3.5);
+                    assert!(!(cy >= bx.y && cy <= bx.y + bx.h), "the box {bx:?} is level with a sample at y {cy}");
+                    assert!(!(cx >= bx.x && cx <= bx.x + bx.w), "the box {bx:?} is over the crosshair at x {cx}");
+                    assert!(bx.x >= plot.x && bx.x + bx.w <= plot.x + plot.w, "the box {bx:?} flips to stay in the plot");
+                }
+            }
+        }
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
+
 #[test]
 fn a_focusable_line_chart_steps_its_readout_with_the_keyboard() {
     let mut r = readout_rig();
@@ -3249,6 +3301,11 @@ fn a_bar_and_a_sparkline_show_the_value_under_the_pointer() {
     move_to(&mut r, spark.x + spark.w - 2.0, spark.y + spark.h / 2.0);
     move_to(&mut r, spark.x + spark.w - 3.0, spark.y + spark.h / 2.0);
     assert!(r.text("8 ms").is_some(), "the sparkline says the sample under the pointer");
+    // Sample i is drawn at (i - 1) / 7 of the width: 77% across is nearest
+    // the sixth (71%), though it is in the seventh eighth of the samples.
+    move_to(&mut r, spark.x + spark.w * 0.77 + 1.0, spark.y + spark.h / 2.0);
+    move_to(&mut r, spark.x + spark.w * 0.77, spark.y + spark.h / 2.0);
+    assert!(r.text("6 ms").is_some(), "the sample nearest the pointer, where the line draws it");
     move_to(&mut r, 5.0, 5.0);
     assert!(r.text("8 ms").is_none(), "and nothing once the pointer leaves");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);

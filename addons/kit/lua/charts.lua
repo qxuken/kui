@@ -358,14 +358,27 @@ function M.sparkline(c, p)
          local layer = { key = "over", width = w, height = h, hoverable = true,
 float = { anchor = "parent", clip = true }, on_hover = act(c, "sparkline.over"), }
          if st.over then
-            local bands = math.min(n, math.max(1, math.floor(w / 2)))
+
+
+
+            local bands = math.max(1, math.floor(w / 2))
             local bw = w / bands
-            for b = 0, bands - 1 do
-               local i = 1 + math.floor((b + 0.5) / bands * n)
-               layer[#layer + 1] = column({ key = "b" .. b, width = bw, height = h, hoverable = true,
-tooltip = with_unit(string.format("%.4g", ys[i]), str(p.unit)),
-on_hover = act(c, "sparkline.hover", { row = i }), })
+            local run_i, run_from = 0, 0
+            local function flush(b)
+               if run_i > 0 then
+                  layer[#layer + 1] = column({ key = "b" .. run_from, width = (b - run_from) * bw, height = h, hoverable = true,
+tooltip = with_unit(string.format("%.4g", ys[run_i]), str(p.unit)),
+on_hover = act(c, "sparkline.hover", { row = run_i }), })
+               end
             end
+            for b = 0, bands - 1 do
+               local i = 1 + math.floor((b + 0.5) / bands * (n - 1) + 0.5)
+               if i ~= run_i then
+                  flush(b)
+                  run_i, run_from = i, b
+               end
+            end
+            flush(bands)
             local i = st.row
             if i and ys[i] then
                local px = (i - 1) / math.max(n - 1, 1) * w
@@ -677,13 +690,37 @@ ctx.muted(c, (s.name or s.field)), })
       local layer = { key = "over", width = "grow", height = h, hoverable = true,
 float = { anchor = "parent", clip = true }, on_hover = act(c, "line_chart.over"), }
       if st.over then
-         local bands = math.min(to - from, math.max(1, math.floor(w / 3)))
+
+
+
+
+
+
+         local tell = p.on_hover ~= nil
+         local bands = math.max(1, math.floor(w / 3))
          local bw = w / bands
-         for b = 0, bands - 1 do
-            local mid = from + math.floor((b + 0.5) / bands * (to - from))
-            layer[#layer + 1] = column({ key = "b" .. b, width = bw, height = h, hoverable = true,
-on_hover = act(c, "line_chart.hover", { row = mid, tell = p.on_hover ~= nil }), })
+         local lo_row, run_row, run_from = from, -1, 0
+         local function flush(b)
+            if run_row >= 0 then
+               layer[#layer + 1] = column({ key = "b" .. run_from, width = (b - run_from) * bw, height = h, hoverable = true,
+on_hover = act(c, "line_chart.hover", { row = run_row, tell = tell }), })
+            end
          end
+         for b = 0, bands - 1 do
+            local cx = x0 + (b + 0.5) * bw / w * (x1 - x0)
+            local r = lower_row(ch, xf, lo_row, to, cx)
+            if r >= to then
+               r = to - 1
+            elseif r > from and cx - (num(ch:get(r - 1, xf)) or cx) < (num(ch:get(r, xf)) or cx) - cx then
+               r = r - 1
+            end
+            lo_row = r
+            if r ~= run_row then
+               flush(b)
+               run_row, run_from = r, b
+            end
+         end
+         flush(bands)
       end
       plot[#plot + 1] = row(layer)
    end
@@ -709,20 +746,25 @@ on_hover = act(c, "line_chart.hover", { row = mid, tell = p.on_hover ~= nil }), 
       local box = { key = "readout", gap = 2, pad = { x = 8, y = 6 }, radius = "$kitRadius",
 bg = ref(c, "raised"), border = { w = "$kitHair", color = ref(c, "ink") },
 live = "polite", min_width = "fit",
-float = { anchor = "parent", at = { "start", "start" }, self = { px > w / 2 and "end" or "start", "start" },
-dx = px > w / 2 and px - 8 or px + 8, dy = 4, clip = true, },
 ctx.data(c, title, { size = "$kitSizeLabel", color = ref(c, "muted"), max_lines = 1 }), }
       local said = { title }
+
+
+
+      local box_w = label_w(c, title)
+      local pys = {}
       for k, s in ipairs(series) do
          local v = num(ch:get(at_row, s.field))
          local color = (s.color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
          if v and v == v then
             local py = h - (v - lo) / (hi - lo) * h
+            pys[#pys + 1] = py
             plot[#plot + 1] = column({ float = { anchor = "parent", dx = px - 3.5, dy = py - 3.5, clip = true },
 width = 7, height = 7, radius = 3.5, bg = color, border = { w = 1, color = ref(c, "panel") }, })
             local value = with_unit(string.format("%.4g", v), y_unit)
             local name = (s.name or s.field)
             said[#said + 1] = name .. " " .. value
+            box_w = math.max(box_w, label_w(c, name) + label_w(c, value) + 32)
             box[#box + 1] = row({ gap = 6, cross_align = "center",
 column({ width = 8, height = 3, bg = color }),
 ctx.text(c, name, { size = "$kitSizeLabel", max_lines = 1 }),
@@ -731,6 +773,23 @@ ctx.data(c, value, { size = "$kitSizeLabel", bold = true, max_lines = 1 }), })
          end
       end
       box.label = table.concat(said, ", ")
+
+
+
+
+      box_w = box_w * 1.25 + 16
+      local box_h = 12 + 17 * (1 + #pys)
+      local right = px + 8 + box_w <= w or px - 8 - box_w < 0
+      local dy, best = 4.0, -1.0
+      for _, top in ipairs({ 4.0, (h - box_h) / 2, h - 4 - box_h }) do
+         local clear = math.huge
+         for _, y in ipairs(pys) do
+            clear = math.min(clear, y < top and top - y or (y > top + box_h and y - top - box_h or 0.0))
+         end
+         if clear > best + 0.5 then dy, best = top, clear end
+      end
+      box.float = { anchor = "parent", at = { "start", "start" }, self = { right and "start" or "end", "start" },
+dx = right and px + 8 or px - 8, dy = math.max(4, dy), clip = true, }
       plot[#plot + 1] = column(box)
    end
    return column({
