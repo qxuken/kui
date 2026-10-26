@@ -192,6 +192,7 @@ package kui_c
 #assert(offset_of(Spec, opens_on_press) == 868)
 #assert(offset_of(Spec, on_item_key) == 872)
 #assert(offset_of(Spec, text_color) == 880)
+#assert(offset_of(Spec, float_escape) == 884)
 #assert(size_of(Announcement) == 24)
 #assert(align_of(Announcement) == 8)
 #assert(offset_of(Announcement, text) == 0)

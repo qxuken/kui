@@ -815,6 +815,34 @@ glides from where it was drawn into its place in the new one.
 [`slide` row](crate::docs::props#container-props) ·
 [alpha.68](https://github.com/qxuken/kui/blob/main/CHANGELOG.md)
 
+### How do I show a popover whole past the scroller it hangs from?
+
+Say it leaves. A float anchored to its parent (`parent`, `below`,
+`above`) is cut where a child of its parent would be: by the nearest box
+above it that clips or scrolls, and hit only there — so a chart's
+sliding layer stays in its plot and a ring round a checkbox stops at the
+scroller's edge without a word. A menu, a popover or a tooltip of your
+own hung off a control in a scroller must show past that edge, over the
+bar beside it:
+
+```jsx
+<box float={{ anchor: 'below', at: ['start', 'end'], self: ['start', 'start'], fit: true, escape: true }} modal={{ kind: 'close' }}>
+  …
+</box>
+```
+
+`escape = true` in Lua's float, `.escaping()` in Rust, `float_escape` in
+C, `Float.escape` in Odin. A `viewport` float is placed against the
+window and leaves every clip without it; the hint the core floats for a
+`tooltip` leaves on its own. Moving a node — `dx`/`dy`, keyframes, a
+turn, `overSiblings` — never takes it out of the box it is in, and a node
+playing its `exit` is cut where it was. `KUI_PAINT_AUDIT=1` checks a run
+for anything that drew outside (a `paint-escape` warning per node).
+
+[ADR 0074](https://github.com/qxuken/kui/blob/main/docs/adr/0074-paint-stays-in-the-box-it-is-in.md) ·
+[`float` row](crate::docs::props#container-props) ·
+[alpha.68](https://github.com/qxuken/kui/blob/main/CHANGELOG.md)
+
 ### How do I stack a canvas's items in the order my document lists them?
 
 Floats stack in the order they open: a key the stack has not seen goes on
@@ -826,7 +854,7 @@ the canvas:
 ```jsx
 <box width="grow" height="grow" clip floatsInOrder>
   {items.map((it) => (
-    <box key={it.id} float={{ anchor: 'parent', clip: true, dx: it.x - pan.x, dy: it.y - pan.y }}>
+    <box key={it.id} float={{ anchor: 'parent', dx: it.x - pan.x, dy: it.y - pan.y }}>
       …
     </box>
   ))}

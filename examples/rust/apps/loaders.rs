@@ -404,7 +404,7 @@ impl App for Loaders {
                                 ui.leaf_keyed(
                                     "spectrum",
                                     NodeSpec::row()
-                                        .float(FloatConfig::parent().offset(-x, 0.0).clipped())
+                                        .float(FloatConfig::parent().offset(-x, 0.0))
                                         .size(len * 2.0, 10.0)
                                         .gradient(rainbow()),
                                 );

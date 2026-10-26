@@ -296,7 +296,8 @@
 //! - `border = { w = 1, color = 0x... }`
 //! - `scroll`, `scroll_x`, `scroll_y`, `clip` as booleans
 //! - `float = "below" | "above"` or `float = { anchor =, at =, self =, dx =,
-//!   dy =, fit = }`
+//!   dy =, fit =, escape = }` (a float anchored to its parent is cut by
+//!   its parent's clip unless it says `escape`, ADR 0074)
 //! - sizing: `width = 300`, `"grow"`, `{ grow = 2 }`, `{ pct = 50 }`, or a
 //!   size expression string
 //! - `tooltip = "hint"` on a container (hover-gated)
@@ -5211,7 +5212,9 @@ fn parse_float(v: &mlua::Value) -> mlua::Result<FloatConfig> {
         f.get::<Option<f32>>("dx")?,
         f.get::<Option<f32>>("dy")?,
         f.get::<Option<bool>>("fit")?.unwrap_or(false),
-        f.get::<Option<bool>>("clip")?.unwrap_or(false),
+        // `clip`, which code written before ADR 0074 declares, is what a
+        // parent-anchored float does now: not read.
+        f.get::<Option<bool>>("escape")?.unwrap_or(false),
     ))
 }
 

@@ -5175,13 +5175,14 @@ const SCENE_TREES = {
         }),
       ]),
     ]),
-  // A float that takes its parent's clip (backlog F90): two nodes on a
-  // `clip` canvas panned half past its top, the first declaring `clip`.
+  // A float that takes its parent's clip (backlog F90, ADR 0074): two
+  // nodes on a `clip` canvas panned half past its top, the second
+  // declaring `escape`.
   'clip-float': () => {
-    const node = (key, dx, clip, bg, label) =>
+    const node = (key, dx, escape, bg, label) =>
       box(
         {
-          float: { anchor: 'parent', dx, dy: -20, clip },
+          float: { anchor: 'parent', dx, dy: -20, escape },
           width: 80, height: 40, bg, onClick: { kind: key }, label,
         },
         [],
@@ -5195,7 +5196,7 @@ const SCENE_TREES = {
       ),
       box(
         { width: 'grow', height: 'grow', clip: true, bg: '#101018' },
-        [node('node', 40, true, '#3b5bd4', 'Node'), node('free', 160, false, '#73d98c', 'Free')],
+        [node('node', 40, false, '#3b5bd4', 'Node'), node('free', 160, true, '#73d98c', 'Free')],
         'canvas',
       ),
     ])]);
@@ -5309,14 +5310,14 @@ const SCENE_TREES = {
   'clip-access': () => {
     const button = (key, label, width, height, bg, extra = {}) =>
       box({ width, height, bg, onClick: { kind: key }, label, ...extra }, [], key);
-    const node = (key, label, dx, dy, clip) =>
-      button(key, label, 60, 40, '#3b5bd4', { float: { anchor: 'parent', dx, dy, clip } });
+    const node = (key, label, dx, dy, escape) =>
+      button(key, label, 60, 40, '#3b5bd4', { float: { anchor: 'parent', dx, dy, escape } });
     return root({}, [box({ width: 'grow', height: 'grow' }, [
       button('toolbar', 'Toolbar', 'grow', 40, '#3a3f52'),
       box({ dir: 'row', width: 'grow', height: 'grow' }, [
         box(
           { width: 'grow', height: 'grow', clip: true, bg: '#101018' },
-          [node('cut', 'Cut', 20, -20, true), node('past', 'Past', 100, -60, true), node('free', 'Free', 140, -60, false)],
+          [node('cut', 'Cut', 20, -20, false), node('past', 'Past', 100, -60, false), node('free', 'Free', 140, -60, true)],
           'canvas',
         ),
         box(

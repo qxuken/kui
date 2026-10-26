@@ -37,6 +37,7 @@
 
 use crate::anim::Easing;
 use crate::color::Color;
+use crate::display::Clip;
 use crate::enter::Enter;
 use crate::geom::{Rect, Vec2};
 use crate::key::Key;
@@ -199,6 +200,13 @@ pub(crate) struct Ghost {
     pub ops: Vec<crate::path::PathOp>,
     /// Where it is painted, relative to the live frame.
     pub place: Place,
+    /// What the boxes above the root held it to on the frame it left,
+    /// logical px (ADR 0074): an exit plays inside the scroller it left
+    /// from, not over the bar beside it. [`Clip::NONE`] for a root that
+    /// left from a viewport float, an escaping one, or nothing that clips,
+    /// and under a turn (the picture is not drawn through its ancestors'
+    /// turns).
+    pub clip: Clip,
     /// Clock reading (driver seconds) of the frame that noticed it gone.
     left_at: f64,
     /// How long the exit runs, in seconds (the root's `transition`).
@@ -545,12 +553,14 @@ impl DepartStore {
             self.before_mask |= 1u64 << (before.0 & 63);
         }
         self.held.insert(key);
+        let clip = held_by(tree, root);
         self.ghosts.push(Ghost {
             key,
             nodes,
             points,
             ops,
             place,
+            clip,
             left_at: now,
             duration,
             easing: t.curve(),
@@ -1026,4 +1036,42 @@ mod tests {
             assert!(p.size.is_none(), "an exit that names no size resizes none");
         });
     }
+}
+
+/// The clip node `root` of `tree` was held by: every box above it that
+/// clips or scrolls, its corners rounded as the live walk rounds them, up
+/// to a float that leaves its parent's clip (ADR 0074). Walked once per
+/// departure, from the frame the node left — the live walk's per-node
+/// clips are that frame's too, but cleared before the departures are
+/// cut. [`Clip::NONE`] under a turn: a ghost is drawn in its own space.
+fn held_by(tree: &Tree, root: usize) -> Clip {
+    let mut boxes: Vec<usize> = Vec::new();
+    let mut x = root;
+    loop {
+        if tree.specs[x]
+            .layout
+            .float
+            .is_some_and(|f| !f.clipped_by_parent())
+        {
+            break;
+        }
+        let p = tree.parent[x];
+        if p == NIL {
+            break;
+        }
+        let p = p as usize;
+        if tree.specs[p].transform_spec().is_some_and(|t| t.active()) {
+            return Clip::NONE;
+        }
+        if tree.specs[p].layout.clips() {
+            boxes.push(p);
+        }
+        x = p;
+    }
+    boxes.iter().rev().fold(Clip::NONE, |clip, &p| {
+        clip.intersect(
+            Rect::from_pos_size(tree.pos[p], tree.size[p]),
+            tree.specs[p].style.radius,
+        )
+    })
 }

@@ -599,6 +599,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         focus_bg: 0x11_22_33_ff,
         focus_ring: 0x44_55_66_ff,
         text_color: 0x77_88_99_ff,
+        float_escape: 1,
         tooltip: KuiStr {
             ptr: "hint".as_ptr(),
             len: 4,
@@ -655,7 +656,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
                 .inside(Align::End, Align::End)
                 .offset(-8.0, -8.0)
                 .fit()
-                .clipped(),
+                .escaping(),
         )
         .hoverable()
         .animate()

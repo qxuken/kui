@@ -330,12 +330,17 @@ export interface FloatProp {
   dy?: number;
   /** Flip across the anchor / clamp to stay inside the viewport. */
   fit?: boolean;
-  /** Take the parent's clip instead of escaping it: a node on a `clip`
-   *  canvas panned past the canvas's edge is cut there and cannot be hit
-   *  past it. Read with the `parent` anchor (and `below` / `above`, which
-   *  anchor to the parent) only; still drawn as a layer over its in-flow
-   *  siblings. A `line`, `polygon` or `path` in its parent's box is always
-   *  clipped this way. */
+  /** Leave every ancestor's clip (ADR 0074): what a menu, a popover or
+   *  a tooltip hung off a control in a scroller says, so it shows whole
+   *  past the scroller's edge. Without it a float anchored to its parent
+   *  (`parent`, `below`, `above`) is cut where a child of its parent would
+   *  be, by the nearest box above it that clips or scrolls, and hit only
+   *  there; still drawn as a layer over its in-flow siblings. A viewport
+   *  float leaves either way. A `line`, `polygon` or `path` in its
+   *  parent's box never escapes. */
+  escape?: boolean;
+  /** @deprecated What a float anchored to its parent does now (ADR
+   *  0074): not read. A float that must leave says `escape`. */
   clip?: boolean;
 }
 

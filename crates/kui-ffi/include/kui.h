@@ -452,8 +452,10 @@ extern "C" {
  * bytes; ADR 0070, kui_answer_typeahead answering the first), then
  * essential_motion (864 bytes; backlog C107), then dx and dy (backlog
  * C105) and opens_on_press (backlog C108), 872 bytes, then on_item_key
- * (880 bytes; backlog C120), then text_color (888 bytes; backlog C130);
- * kui_tab_moves_focus (backlog C99),
+ * (880 bytes; backlog C120), then text_color (888 bytes; backlog C130),
+ * then float_escape into the tail padding (888 bytes still; ADR 0074,
+ * which stops reading float_clip: a parent-anchored float takes its
+ * parent's clip unless it escapes); kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92),
  * kui_set_rules_appearance (backlog C113), kui_platform with its
  * KUI_PLATFORM_* codes (backlog C116), kui_focus_item (backlog C125) and
@@ -1278,14 +1280,10 @@ typedef struct KuiSpec {
      * none): wins over pressed_bg, focus_bg and hover_bg, clears when they
      * leave, land or the drag is cancelled; eases with transition. ABI 18. */
     uint32_t drop_bg;
-    /* Non-zero: a KUI_FLOAT_PARENT float takes its parent's clip, as a
-     * child does, instead of escaping every ancestor's - a node on a
-     * KUI_CLIP canvas panned past the canvas's edge is cut there and not
-     * hit past it. Read with the parent anchor only (a
-     * preset hanging below or above the parent is one); it still paints
-     * as a layer over its in-flow siblings. A kui_line or kui_polygon in
-     * its parent's box is always clipped this way. kui_spec_float_preset
-     * clears it with the other float fields. ABI 19. */
+    /* Not read since ADR 0074: a KUI_FLOAT_PARENT float takes its parent's
+     * clip, as a child does, whatever this says - what non-zero asked for
+     * at ABI 19. A float that must leave every ancestor's clip sets
+     * float_escape (at the end). ABI 19. */
     uint32_t float_clip;
     /* Width over height (aspectRatio, CSS's aspect-ratio); 0 = none. It
      * sizes the axis left fit: a fit height is the final width over the
@@ -1558,6 +1556,17 @@ typedef struct KuiSpec {
      * entry may set it. 0 for none. ABI 39, appended (888 bytes on
      * 64-bit). */
     uint32_t text_color;
+    /* Non-zero: a KUI_FLOAT_PARENT float leaves every ancestor's clip - a
+     * menu, a popover or a tooltip hung off a control in a scroller shows
+     * whole past the scroller's edge (escape, ADR 0074). Zero, it is cut
+     * where a child of its parent would be: by the nearest box above it
+     * that clips or scrolls, and hit only there; it still paints as a
+     * layer over its in-flow siblings. A KUI_FLOAT_VIEWPORT float leaves
+     * either way; a kui_line, kui_polygon or kui_path in its parent's box
+     * never does. kui_spec_float_preset clears it with the other float
+     * fields. ABI 39, appended into the tail padding (888 bytes on
+     * 64-bit). */
+    uint32_t float_escape;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

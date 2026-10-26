@@ -424,6 +424,13 @@ one clipped and one not. A press over the toolbar where the clipped node's
 cut half would be reaches the toolbar, and the same press on the other
 node reaches that node.
 
+*Amended 2026-10-27 ([ADR 0074](0074-paint-stays-in-the-box-it-is-in.md)):*
+the bit turned over. Every float anchored to its parent takes its
+parent's clip now, and one that must leave says `escape`
+(`FloatConfig::escape`, `float_escape`); `clip` is read and dropped. A
+stroke in its parent's box never escapes. The `clip-float` scene's
+second node declares `escape`.
+
 ## Amendment: a dash is cut in the core
 
 *2026-10-05, backlog V2.* Decision 9 left dashes out, and the options

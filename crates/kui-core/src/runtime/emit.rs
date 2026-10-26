@@ -1242,16 +1242,16 @@ impl Core {
                 self.opacity[i] = o;
                 o
             };
-            // A parent-anchored float that declared `clip` belongs to the
-            // parent's content as a child does, so the parent's clip holds
-            // it: a node on a `clip` canvas panned past the canvas's edge
-            // is cut there (F90). Any other float (a tooltip, a menu, a
-            // stroke anchored to the viewport) escapes. Only the clip is
-            // the parent's: a declared float still paints in its own
-            // layer. A stroke or polygon in its parent's box, which the
-            // core gives the bit (F78, ADR 0010 decision 5), is not a
-            // layer root at all (above), so it takes the parent's clip
-            // here by the in-flow arm, as its graph's rows do.
+            // A parent-anchored float belongs to the parent's content as a
+            // child does, so the parent's clip holds it (ADR 0074): a node
+            // on a `clip` canvas panned past the canvas's edge is cut there
+            // (F90), a chart's sliding layer by its plot. One that declares
+            // `escape` (a tooltip, a menu) and any float anchored elsewhere
+            // (the viewport, a node) leaves. Only the clip is the parent's:
+            // a float still paints in its own layer. A stroke or polygon in
+            // its parent's box, which never escapes (F78, ADR 0010 decision
+            // 5), is not a layer root at all (above), so it takes the
+            // parent's clip here by the in-flow arm, as its graph's rows do.
             let drawn_in_parent = floats_here
                 && parent != NIL
                 && self.tree.specs[i]
@@ -1915,7 +1915,8 @@ impl Core {
     }
 
     /// One departing subtree's quads: frozen rects moved by however far
-    /// its `exit` has got, outside every clip (its ancestors may be gone).
+    /// its `exit` has got, cut by the clip its root was held by on the
+    /// frame it left (ADR 0074; its ancestors may be gone since).
     /// A smaller `emit_node`: the parts a picture has (shadow, background,
     /// border, its content) and none of the parts a node has — no hit
     /// region, no scroll region, no access row.
@@ -1976,18 +1977,27 @@ impl Core {
             self.ghost_opacity[i] = opacity;
             // The clip is the subtree's own: a scroll box or `clip` node
             // inside the picture still bounds what it held (the rows a
-            // virtual list built past its edge stay past it), while the
-            // ancestors outside the picture, which may be gone, clip
-            // nothing. Same rule as the live pass, from the root down —
-            // a parent-anchored float with `clip`, a stroke or polygon
-            // included, is held by the parent's clip as a child is (F78,
-            // F90; the ghost pass kept the old escape, RG26).
+            // virtual list built past its edge stay past it). The
+            // ancestors outside the picture, which may be gone, hold the
+            // root by the clip they held it by on the frame it left
+            // (`Ghost::clip`, ADR 0074): a row leaving a scroller slides
+            // out under the scroller's edge, not over the bar beside it.
+            // Same rule as the live pass, from the root down — a
+            // parent-anchored float, a stroke or polygon included, is held
+            // by the parent's clip as a child is unless it says `escape`
+            // (F78, F90, RG26).
             let escapes = node
                 .spec
                 .layout
                 .float
                 .is_some_and(|f| !f.clipped_by_parent());
-            let (mut clip, mut clip_id) = if node.parent == NIL || escapes {
+            let (mut clip, mut clip_id) = if node.parent == NIL {
+                if g.clip == Clip::NONE {
+                    (Clip::NONE, NO_CLIP_ID)
+                } else {
+                    (g.clip, self.display.intern_clip(g.clip.scaled(scale)))
+                }
+            } else if escapes {
                 (Clip::NONE, NO_CLIP_ID)
             } else {
                 let p = node.parent as usize;

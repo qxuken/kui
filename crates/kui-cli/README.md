@@ -66,6 +66,8 @@ end
 | `--shot out.png [--after ms]` | No window: writes a frame after `ms` (800) and ends. |
 | `--shot out.gif --record ms` | No window: records `ms` of frames from `--after` on into an animation (`.gif`, or `.png` for an animated PNG) and ends: a switch's slide, a toast's exit, to look at frame by frame. |
 | `--size WxH` | The window's size (1000×700, or the manifest's). |
+| `--scale S` | With `--headless` or `--shot`, the display's scale (1): `1.5` draws as a 150% display does, fractional pixels and all. A window takes its monitor's. |
+| `KUI_PAINT_AUDIT=1` | In the environment: every frame checks that nothing a node draws leaves the box that clips or scrolls it (ADR 0074), a `paint-escape` warning per node that does; a headless run prints the counts at its end. A test aid. |
 | `--appearance light\|dark` | Pins the appearance over the OS's, so a token with a light and a dark value takes that one; headless has no OS to ask, so a `--shot` in light needs it. |
 | `-- args…` | What follows is the app's own, in `kui.args`: `kui run . -- --port 3001`. |
 | `--devtools` | Opens with the devtools panel; its Log tab has what the app printed and logged. |

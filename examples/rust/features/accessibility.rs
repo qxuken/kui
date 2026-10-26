@@ -358,7 +358,10 @@ impl App for A11y {
                                     FloatConfig::below()
                                         .at(Align::Start, Align::End)
                                         .self_at(Align::Start, Align::Start)
-                                        .fit(),
+                                        .fit()
+                                        // A menu shows whole past the box
+                                        // its trigger is in (ADR 0074).
+                                        .escaping(),
                                 )
                                 .modal("menu")
                                 .role(Role::Menu)

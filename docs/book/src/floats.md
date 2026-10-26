@@ -59,6 +59,19 @@ Floats stack in the order they are declared. The dialog is declared
 last in `view`, so it is on top. Declare it first and the page would
 paint over it — and kui would warn, `modal-behind-content`.
 
+## Where a float is cut
+
+A float anchored to the window, like this dialog, is placed against the
+window and shows whatever box it was declared in. One anchored to its
+parent (`FloatConfig::parent()`, `below()`, `above()`) is part of what
+that parent holds: the nearest box above it that clips or scrolls cuts
+it, and it takes presses only where it shows. A menu hung off a button in
+a scroller says it leaves, `.escaping()`, so it opens whole over
+whatever is beside the scroller; the hint a `.tooltip` floats leaves on
+its own. Nothing else takes a node out of its box — not a move, a turn
+or an animation ([ADR
+0074](https://github.com/qxuken/kui/blob/main/docs/adr/0074-paint-stays-in-the-box-it-is-in.md)).
+
 ## Try this
 
 - Right-click anywhere and open a menu there. `.on_context_menu(msg)`

@@ -16,7 +16,8 @@ local M = {}
 -- Under what opened it, its left edge on the opener's: a menu reads down
 -- from where the eye already is (the `below` preset centres, as a tooltip
 -- does). `fit` flips and clamps it onto the screen.
-local MENU_FLOAT: {any:any} = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true }
+local MENU_FLOAT: {any:any} = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true,
+  escape = true }
 
 local function str(v: any): string
   return v is string and v or nil
@@ -549,7 +550,7 @@ function M.select(c: Ctx, p: P): kui.Node
       local row_h, ctl_h = skin.row_h(c.s), skin.ctl_h(c.s)
       local edge = c.s.hair or c.s.skin.hair
       float = { anchor = "parent", at = { "start", "start" }, self = { "start", "start" }, fit = true,
-        dy = -(4 + edge + (at - 1) * (row_h + 1)) + (ctl_h - row_h) / 2 }
+        escape = true, dy = -(4 + edge + (at - 1) * (row_h + 1)) + (ctl_h - row_h) / 2 }
     end
     local list: kui.Props = {
       key = "menu",
@@ -931,7 +932,7 @@ function M.slider(c: Ctx, p: P): kui.Node
       -- Centred on the fill's end: the value's place, over the rail.
       column {
         key = "handle",
-        float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" }, clip = true },
+        float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" } },
         hover_group = group,
         width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
         bg = ref(c, "panel"),

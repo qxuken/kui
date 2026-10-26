@@ -111,6 +111,8 @@ fn floats_paint_after_in_flow_siblings() {
     );
 }
 
+/// A float that says `escape` leaves its ancestors' clips (ADR 0074) and
+/// takes the press over the in-flow content declared after it.
 #[test]
 fn float_escapes_ancestor_clip_and_hits_topmost() {
     let mut core = Core::new();
@@ -126,7 +128,8 @@ fn float_escapes_ancestor_clip_and_hits_topmost() {
                     .float(
                         FloatConfig::parent()
                             .at(Align::Start, Align::End)
-                            .offset(0.0, 50.0),
+                            .offset(0.0, 50.0)
+                            .escaping(),
                     ),
             );
         });
@@ -354,14 +357,15 @@ fn node_quad(core: &mut Core) -> (kui_core::Rect, kui_core::Rect, usize) {
     (q.rect, dl.clips[q.clip as usize].rect, i)
 }
 
-/// A float that declares `clip` is cut by its parent's clip, as a child
-/// is, and its hit region with it: the half panned past the canvas's top
-/// edge neither draws over the toolbar nor takes the press there. The
-/// half inside is still a layer over the in-flow content it sits on.
+/// A float anchored to its parent is cut by its parent's clip, as a child
+/// is, and its hit region with it (F90, ADR 0074): the half panned past
+/// the canvas's top edge neither draws over the toolbar nor takes the
+/// press there. The half inside is still a layer over the in-flow content
+/// it sits on.
 #[test]
-fn a_clipped_float_is_cut_by_its_parent_and_not_hit_past_it() {
+fn a_parent_anchored_float_is_cut_by_its_parent_and_not_hit_past_it() {
     let mut core = Core::new();
-    canvas_with_a_node(&mut core, FloatConfig::parent().clipped());
+    canvas_with_a_node(&mut core, FloatConfig::parent());
     let (rect, clip, i) = node_quad(&mut core);
     assert_eq!((rect.y, rect.h), (20.0, 40.0), "placed half past the edge");
     assert_eq!(
@@ -388,27 +392,27 @@ fn a_clipped_float_is_cut_by_its_parent_and_not_hit_past_it() {
     assert_eq!(click_at(&mut core, 150.0, 50.0).as_deref(), Some("under"));
 }
 
-/// Without `clip` the same node escapes as every float did (F90's
-/// report): it draws over the toolbar and takes the press there.
+/// With `escape` the same node leaves the clip, as a menu hung off a
+/// control must (ADR 0074): it draws over the toolbar and takes the press
+/// there.
 #[test]
-fn an_unclipped_float_still_escapes_its_parents_clip() {
+fn a_float_that_says_escape_leaves_its_parents_clip() {
     let mut core = Core::new();
-    canvas_with_a_node(&mut core, FloatConfig::parent());
+    canvas_with_a_node(&mut core, FloatConfig::parent().escaping());
     let (_, clip, _) = node_quad(&mut core);
     assert!(clip.y <= 20.0, "escaped: {clip:?}");
     assert_eq!(click_at(&mut core, 60.0, 30.0).as_deref(), Some("node"));
 }
 
-/// `clip` is read with the parent anchor only: a viewport float is placed
-/// against the window, not the parent, and escapes with the bit set.
+/// The parent's clip is read with the parent anchor only: a viewport
+/// float is placed against the window, not the parent, and leaves its
+/// ancestors' clips without saying `escape`.
 #[test]
-fn clip_is_read_with_the_parent_anchor_only() {
+fn a_viewport_float_leaves_its_ancestors_clips() {
     let mut core = Core::new();
     canvas_with_a_node(
         &mut core,
-        FloatConfig::viewport()
-            .at(Align::Start, Align::Start)
-            .clipped(),
+        FloatConfig::viewport().at(Align::Start, Align::Start),
     );
     let (rect, clip, _) = node_quad(&mut core);
     // At (40, -20) in the window: half off its top, and not cut at 40.
@@ -417,11 +421,11 @@ fn clip_is_read_with_the_parent_anchor_only() {
     assert_eq!(click_at(&mut core, 60.0, 10.0).as_deref(), Some("node"));
 }
 
-/// The exit ghost reads the same bit (RG26's rule for strokes, now any
-/// clipped float's): a panel playing its exit keeps its node cut at the
-/// canvas's edge rather than drawing it over the toolbar.
+/// The exit ghost reads the same rule (RG26's for strokes, now every
+/// parent-anchored float's): a panel playing its exit keeps its node cut
+/// at the canvas's edge rather than drawing it over the toolbar.
 #[test]
-fn a_departing_clipped_float_is_cut_by_its_parent() {
+fn a_departing_parent_anchored_float_is_cut_by_its_parent() {
     let mut core = Core::new();
     let build = |core: &mut Core, now: f64, show: bool| {
         core.set_time(now);
@@ -439,7 +443,7 @@ fn a_departing_clipped_float_is_cut_by_its_parent() {
                         NodeSpec::column()
                             .size(80.0, 40.0)
                             .bg(RED)
-                            .float(FloatConfig::parent().clipped().offset(40.0, -20.0)),
+                            .float(FloatConfig::parent().offset(40.0, -20.0)),
                     );
                 });
             });
@@ -481,7 +485,7 @@ fn ringed_mark(core: &mut Core, pad: f32, scrolled: f32) -> kui_core::Key {
                         NodeSpec::column()
                             .size(22.0, 22.0)
                             .bg(RED)
-                            .float(FloatConfig::parent().offset(-4.0, -4.0).clipped()),
+                            .float(FloatConfig::parent().offset(-4.0, -4.0)),
                     );
                 });
                 ui.leaf(NodeSpec::column().size(10.0, 400.0));

@@ -135,6 +135,9 @@ use crate::{Result, err, value_of};
 /// `focusRing` is a new row (backlog C93), in the same unreleased version;
 /// and ADR 0069's: the `when`, `minColumn`, `hidden` and `onQuery` rows,
 /// and `lazy` a new op (30); and `textColor` a new row (backlog C130).
+/// And ADR 0074's: the float stanza's flags word carries 4 for `escape`,
+/// and its 2 (`clip`, v16) is no longer read — what a parent-anchored
+/// float does now.
 pub const VERSION: u32 = 27;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
@@ -826,11 +829,12 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                 // dx and dy carry their own flags: `{ anchor: "below", dx }`
                 // moves it sideways and leaves the preset's gap.
                 let (dx, dy) = (opt_f32(r)?, opt_f32(r)?);
-                // A flags word: 1 `fit`, 2 `clip` (v16; the slot was a
-                // bare `fit` 0/1 before, which bit 1 still reads as).
+                // A flags word: 1 `fit`, 4 `escape` (v27, ADR 0074). 2
+                // was `clip` (v16), what a parent-anchored float does
+                // now: an older encoder's bit, not read.
                 let flags = r.u()?;
-                let (fit, clip) = (flags & 1 != 0, flags & 2 != 0);
-                let cfg = FloatConfig::build(base, at, self_at, dx, dy, fit, clip);
+                let (fit, escape) = (flags & 1 != 0, flags & 4 != 0);
+                let cfg = FloatConfig::build(base, at, self_at, dx, dy, fit, escape);
                 out.spec = std::mem::take(&mut out.spec).float(cfg);
             }
             P_KEY_FOCUS => out.key_focus = true,
@@ -2204,11 +2208,12 @@ mod tests {
         assert_eq!(decode(&s, b""), expected);
     }
 
-    /// The float stanza's last slot is a flags word (v16): 1 `fit`, 2
-    /// `clip`, each read on its own, so `{ anchor: 'parent', clip: true }`
-    /// does not also flip to stay on screen.
+    /// The float stanza's last slot is a flags word: 1 `fit`, 4 `escape`
+    /// (v27, ADR 0074), each read on its own, so `{ anchor: 'parent',
+    /// escape: true }` does not also flip to stay on screen. 2, `clip`
+    /// before ADR 0074, is what a parent-anchored float does now: dropped.
     #[test]
-    fn the_float_flags_word_carries_fit_and_clip() {
+    fn the_float_flags_word_carries_fit_and_escape() {
         let float = |flags: f64| {
             let s = [
                 1.0,
@@ -2228,10 +2233,11 @@ mod tests {
             ];
             decode(&s, b"").spec.layout.float.unwrap()
         };
-        assert!(!float(0.0).fit && !float(0.0).clip);
-        assert!(float(1.0).fit && !float(1.0).clip);
-        assert!(!float(2.0).fit && float(2.0).clipped_by_parent());
-        assert!(float(3.0).fit && float(3.0).clip);
+        assert!(!float(0.0).fit && float(0.0).clipped_by_parent());
+        assert!(float(1.0).fit && !float(1.0).escape);
+        assert!(!float(2.0).fit && !float(2.0).escape, "the old clip bit");
+        assert!(!float(4.0).fit && float(4.0).escape && !float(4.0).clipped_by_parent());
+        assert!(float(5.0).fit && float(5.0).escape);
     }
 
     /// A string ref or a count no encoder wrote is a frame refused (backlog

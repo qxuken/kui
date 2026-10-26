@@ -14,8 +14,11 @@ local M = {}
 
 -- Under what opened it, its left edge on the opener's: a menu reads down
 -- from where the eye already is (the `below` preset centres, as a tooltip
--- does). `fit` flips and clamps it onto the screen.
-local MENU_FLOAT: {any:any} = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true }
+-- does). `fit` flips and clamps it onto the screen, and `escape` lets it
+-- leave the scroller its opener sits in (ADR 0074): a float anchored to
+-- its parent is cut by its parent's clip unless it says so.
+local MENU_FLOAT: {any:any} = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true,
+  escape = true }
 
 local function str(v: any): string
   return v is string and v or nil
@@ -62,7 +65,9 @@ function M.dialog(c: Ctx, p: P): kui.Node
   })
   return column {
     key = "scrim",
-    float = { anchor = "viewport", at = { "start", "start" } },
+    -- Over the window, whatever it was opened from (ADR 0074: a viewport
+    -- float leaves every clip; said here so it reads as meant).
+    float = { anchor = "viewport", at = { "start", "start" }, escape = true },
     width = env.viewport_w,
     height = env.viewport_h,
     bg = ref(c, "scrim"),
@@ -177,6 +182,7 @@ end
 -- How long a toast stays when the host says nothing, in ms.
 local TOAST_MS = 5000
 
+
 function M.toast(c: Ctx, p: P): kui.Node
   local tone = str(p.tone) or "info"
   local message = str(p.message) or ""
@@ -209,7 +215,8 @@ function M.toast(c: Ctx, p: P): kui.Node
     -- left at its start the toast hung off past the window's corner. In a
     -- `toaster` it is one of a column there, not a float of its own, so
     -- several stack instead of lying on top of one another.
-    float = not inline and { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 } or nil,
+    float = not inline and { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16,
+      escape = true } or nil,
     label = message,
     min_width = 320,
     max_width = 480,
@@ -254,7 +261,7 @@ end
 function M.toaster(c: Ctx, _p: P): kui.Node
   return column {
     key = "toaster",
-    float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
+    float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16, escape = true },
     gap = 8,
     cross_align = "end",
     -- A host that places the toaster only while it has toasts takes it

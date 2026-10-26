@@ -127,7 +127,7 @@ fn a_lone_floating_image_escapes_its_parent_clip() {
         id,
         NodeSpec::column()
             .size(10.0, 10.0)
-            .float(FloatConfig::parent().offset(100.0, 100.0)),
+            .float(FloatConfig::parent().offset(100.0, 100.0).escaping()),
     );
     ui.close();
     ui.finish();

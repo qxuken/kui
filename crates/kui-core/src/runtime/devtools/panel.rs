@@ -247,7 +247,8 @@ fn more_menu(ui: &mut Ui<'_>, st: &State, t: &Theme, overflows: bool) {
                     .at(Align::End, Align::End)
                     .self_at(Align::End, Align::Start)
                     .offset(0.0, 4.0)
-                    .fit(),
+                    .fit()
+                    .escaping(),
             )
             .modal(action("more-close"))
             .role(crate::access::Role::Menu)

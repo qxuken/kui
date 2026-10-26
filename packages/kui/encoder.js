@@ -530,15 +530,16 @@ export function createEncoder(P) {
             attach(null);
             offset(undefined);
             offset(undefined);
-            f[fi++] = 0; // fit, clip
+            f[fi++] = 0; // fit, escape
           } else {
             f[fi++] = v.anchor === undefined ? 0 : presetOf(v.anchor);
             attach(v.at);
             attach(v.self);
             offset(v.dx);
             offset(v.dy);
-            // Flags: 1 fit, 2 clip (the parent's clip holds it, F90).
-            f[fi++] = (v.fit ? 1 : 0) | (v.clip ? 2 : 0);
+            // Flags: 1 fit, 4 escape (leaves every ancestor's clip, ADR
+            // 0074). 2 was `clip` (F90), the default now: not sent.
+            f[fi++] = (v.fit ? 1 : 0) | (v.escape ? 4 : 0);
           }
           n++;
           break;

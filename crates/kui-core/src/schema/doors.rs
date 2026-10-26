@@ -1970,6 +1970,20 @@ pub const DOORS: &[Door] = &[
         doc: "A faded subtree drawn as one picture, faded once (ADR 0056): its quads between group markers, unfaded by it. The runner turns it on for its windows; a headless driver turns it on to capture what a window shows, and a host drawing the quads itself once it draws groups.",
     },
     Door {
+        rust: "Core::set_paint_audit",
+        c: No(
+            "a test aid with no door of its own: `KUI_PAINT_AUDIT=1` turns it on under kui-native's driver, and what it finds arrives as `paint-escape` warnings, which a C host already reads",
+        ),
+        odin: No(ODIN_IS_C),
+        node: As(
+            "`KUI_PAINT_AUDIT=1` in the environment: a window is kui-native's driver, and what the audit finds arrives as `paint-escape` warnings",
+        ),
+        lua: As(
+            "`KUI_PAINT_AUDIT=1` in the environment of `kui run` (any kui-native driver): `paint-escape` warnings, and a headless run prints the counts at its end",
+        ),
+        doc: "The paint audit (ADR 0074): every frame's quads, glyphs and masks checked against the clip of the nearest box above their node that clips or scrolls, by what the node declares; one drawn outside raises `paint-escape`. `Core::paint_audit` reads the counts. A test aid, off by default.",
+    },
+    Door {
         rust: "Core::take_audio_commands",
         c: Is("kui_take_audio_commands"),
         odin: Is("take_audio_commands"),

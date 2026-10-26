@@ -743,7 +743,7 @@ local function jump(c: Ctx): kui.Node
     key = "jump",
     role = "button",
     label = "Jump to the latest line",
-    float = { anchor = "parent", clip = true, at = { "end", "end" }, self = { "end", "end" }, dx = -12, dy = -8 },
+    float = { anchor = "parent", at = { "end", "end" }, self = { "end", "end" }, dx = -12, dy = -8 },
     height = 22,
     pad = { x = 8 },
     gap = 5,
@@ -1171,7 +1171,7 @@ local function bone(c: Ctx, key: string, w: kui.Sizing, h: number, radius: kui.L
   local t: kui.Props = { key = key, width = w, height = h, radius = radius, bg = ref(c, "sunken"), clip = true }
   if travel > 0 then
     local band = math.max(40, math.min(200, travel * 0.4))
-    t[1] = column { width = band, height = h, float = { anchor = "parent", dx = -band, clip = true },
+    t[1] = column { width = band, height = h, float = { anchor = "parent", dx = -band },
       gradient = { to = "right", stops = { "$kitShimmerClear", "$kitShimmer", "$kitShimmerClear" } },
       keyframes = { { dx = 0 }, { dx = travel + band } }, transition = SWEEP_MS, easing = "linear" }
   end

@@ -380,7 +380,7 @@ function M.sparkline(c, p)
       if p.readout ~= false then
          local st = ctx.state(c, function() return {} end)
          local layer = { key = "over", width = w, height = h, hoverable = true,
-float = { anchor = "parent", clip = true }, on_hover = act(c, "sparkline.over"), }
+float = { anchor = "parent" }, on_hover = act(c, "sparkline.over"), }
          if st.over then
 
 
@@ -407,7 +407,7 @@ on_hover = act(c, "sparkline.hover", { row = run_i }), })
             if i and ys[i] then
                local px = (i - 1) / math.max(n - 1, 1) * w
                local py = (h - 2) - (ys[i] - lo) / math.max(hi - lo, 1e-12) * (h - 2)
-               box[#box + 1] = column({ float = { anchor = "parent", dx = px - 3, dy = py - 3, clip = true },
+               box[#box + 1] = column({ float = { anchor = "parent", dx = px - 3, dy = py - 3 },
 width = 6, height = 6, radius = 3, bg = color, border = { w = 1, color = ref(c, "panel") }, })
             end
          end
@@ -674,8 +674,18 @@ function M.line_chart(c, p)
 
 
 
+
+
+
+
+
+
+
    local plot = { key = "plot", width = "grow", height = h, clip = true,
 on_layout = act(c, "line_chart.layout"), }
+
+
+
 
 
 
@@ -711,7 +721,7 @@ on_layout = act(c, "line_chart.layout"), }
       local y = h - (v - lo) / (hi - lo) * h
       plot[#plot + 1] = line({ from = { 0, y }, to = { w, y }, width = 1, color = rule })
       labels[#labels + 1] = row({
-         float = { anchor = "parent", clip = true, dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
+         float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
          width = "grow", main_align = "end",
          ctx.data(c, ylabels[i], { size = 10, color = ref(c, "faint") }),
       })
@@ -754,7 +764,7 @@ on_layout = act(c, "line_chart.layout"), }
    for i = 1, nt do
       if shown[i] then
          axis_moving[#axis_moving + 1] = row({ key = "x" .. i, width = tick_w[i],
-float = { anchor = "parent", clip = slide == 0, dx = placed[i], dy = 0 },
+float = { anchor = "parent", dx = placed[i], dy = 0 },
 text(tick_label[i], { size = 10, family = "$kitData", color = faint, max_lines = 1 }), })
       end
    end
@@ -802,7 +812,7 @@ ctx.muted(c, (s.name or s.field)), })
    local px_at = nil
    if (readout or p.on_hover) and to > from then
       local layer = { key = "over", width = "grow", height = h, hoverable = true,
-float = { anchor = "parent", clip = true }, on_hover = act(c, "line_chart.over"), }
+float = { anchor = "parent" }, on_hover = act(c, "line_chart.over"), }
       if st.over then
          local at = env.pointer_in("over")
          if at and at.x >= 0 and at.x < at.w and at.y >= 0 and at.y < at.h then
@@ -888,7 +898,7 @@ ctx.data(c, title, { size = "$kitSizeLabel", color = ref(c, "muted"), max_lines 
          if v and v == v then
             local py = h - (v - lo) / (hi - lo) * h
             pys[#pys + 1] = py
-            layer[#layer + 1] = column({ float = { anchor = "parent", dx = px - 3.5, dy = py - 3.5, clip = true },
+            layer[#layer + 1] = column({ float = { anchor = "parent", dx = px - 3.5, dy = py - 3.5 },
 width = 7, height = 7, radius = 3.5, bg = color, border = { w = 1, color = ref(c, "panel") }, })
             local value = with_unit(string.format("%.4g", v), y_unit)
             local name = (s.name or s.field)
@@ -908,6 +918,11 @@ ctx.data(c, value, { size = "$kitSizeLabel", bold = true, max_lines = 1 }), })
       box_w = box_w * 1.25 + 16
       local box_h = 12 + 17 * (1 + #pys)
       local right = px + 8 + box_w <= w or px - 8 - box_w < 0
+
+
+
+      local x = right and px + 8 or px - 8 - box_w
+      x = math.max(0, math.min(x, w - box_w))
       local dy, best = 4.0, -1.0
       for _, top in ipairs({ 4.0, (h - box_h) / 2, h - 4 - box_h }) do
          local clear = math.huge
@@ -916,8 +931,9 @@ ctx.data(c, value, { size = "$kitSizeLabel", bold = true, max_lines = 1 }), })
          end
          if clear > best + 0.5 then dy, best = top, clear end
       end
-      box.float = { anchor = "parent", at = { "start", "start" }, self = { right and "start" or "end", "start" },
-dx = right and px + 8 or px - 8, dy = math.max(4, dy), clip = true, }
+
+
+      box.float = { anchor = "parent", dx = x, dy = math.max(4, math.min(dy, h - 4 - box_h)) }
       said_box = column(box)
    end
 
@@ -1057,7 +1073,7 @@ lying(c, values, names, p.on_select ~= nil and "bar_chart.select" or nil, unit, 
       local y = h - v / top_tick * plot_h
       k = k + 1
       scale[#scale + 1] = row({
-         float = { anchor = "parent", clip = true, dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
+         float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
          width = scale_w, main_align = "end",
          ctx.data(c, labels[k], { size = 10, color = ref(c, "faint") }),
       })

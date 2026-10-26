@@ -1225,15 +1225,15 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "clip-float",
-        doc: "A float that takes its parent's clip (backlog F90): a \
-              toolbar over a `clip` canvas, and two nodes on the canvas \
-              anchored to it and panned half past its top edge — one \
-              declaring `clip`, one not. The clipped one is cut at the \
-              canvas's edge and a press over the toolbar where its cut \
-              half would be reaches the toolbar; the other escapes as \
-              every float did, drawn over the toolbar and taking the \
-              press there. A binding that drops the bit sends the first \
-              press to the node.",
+        doc: "A float anchored to its parent takes its parent's clip \
+              (backlog F90, ADR 0074): a toolbar over a `clip` canvas, and \
+              two nodes on the canvas anchored to it and panned half past \
+              its top edge — one plain, one declaring `escape`. The plain \
+              one is cut at the canvas's edge and a press over the toolbar \
+              where its cut half would be reaches the toolbar; the other \
+              leaves the clip, drawn over the toolbar and taking the press \
+              there. A binding that drops `escape` sends the third press \
+              to the toolbar.",
         custom: &["float", "key", "overflow"],
         elements: &["box"],
         build: build_clip_float,
@@ -1343,13 +1343,13 @@ pub const SCENES: &[Scene] = &[
     Scene {
         name: "clip-access",
         doc: "An access rect is what is drawn (backlog F93): a toolbar over \
-              a `clip` canvas beside a scroller. On the canvas, a `clip` \
-              float straddling its top edge, one wholly past it, and one \
-              that escapes; in the scroller, three rows, the second half \
-              out of its bottom and the third wholly out. The report's \
-              `node` lines carry each rect: cut at the edge, a zero-size \
-              point on it, the whole box. A binding that drops `clip` from \
-              a float leaves the first two whole.",
+              a `clip` canvas beside a scroller. On the canvas, a float \
+              straddling its top edge, one wholly past it, and one that \
+              declares `escape` (ADR 0074); in the scroller, three rows, \
+              the second half out of its bottom and the third wholly out. \
+              The report's `node` lines carry each rect: cut at the edge, \
+              a zero-size point on it, the whole box. A binding that drops \
+              `escape` from a float cuts the third to a point.",
         custom: &["float", "key", "overflow"],
         elements: &["box"],
         build: build_clip_access,
@@ -7971,13 +7971,13 @@ fn build_clip_access(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 |ui| {
                     // 20 px past the canvas's top, 60 px past it,
                     // and 60 px past it escaping.
-                    for (key, label, dx, dy, clip) in [
-                        ("cut", "Cut", 20.0, -20.0, true),
-                        ("past", "Past", 100.0, -60.0, true),
-                        ("free", "Free", 140.0, -60.0, false),
+                    for (key, label, dx, dy, escape) in [
+                        ("cut", "Cut", 20.0, -20.0, false),
+                        ("past", "Past", 100.0, -60.0, false),
+                        ("free", "Free", 140.0, -60.0, true),
                     ] {
                         let float = FloatConfig::parent().offset(dx, dy);
-                        let float = if clip { float.clipped() } else { float };
+                        let float = if escape { float.escaping() } else { float };
                         ui.leaf_keyed(key, button(60.0, 40.0, key, label, 0x3b5bd4ff).float(float));
                     }
                 },
@@ -8067,7 +8067,7 @@ fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 ui.leaf_keyed(
                     "node",
                     NodeSpec::column()
-                        .float(FloatConfig::parent().offset(40.0, -20.0).clipped())
+                        .float(FloatConfig::parent().offset(40.0, -20.0))
                         .size(80.0, 40.0)
                         .bg(Color::hex(0x3b5bd4ff))
                         .on_click(Value::map([("kind", Value::str("node"))]))
@@ -8076,7 +8076,7 @@ fn build_clip_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 ui.leaf_keyed(
                     "free",
                     NodeSpec::column()
-                        .float(FloatConfig::parent().offset(160.0, -20.0))
+                        .float(FloatConfig::parent().offset(160.0, -20.0).escaping())
                         .size(80.0, 40.0)
                         .bg(Color::hex(0x73d98cff))
                         .on_click(Value::map([("kind", Value::str("free"))]))

@@ -239,11 +239,11 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
-        // Backlog F90: two nodes on a `clip` canvas panned half past its
-        // top, the first declaring `clip`.
+        // Backlog F90, ADR 0074: two nodes on a `clip` canvas panned half
+        // past its top, the second declaring `escape`.
         "clip-float" => r#"
-            local function node(key, dx, clip, bg, label)
-              return column { key = key, float = { anchor = "parent", dx = dx, dy = -20, clip = clip },
+            local function node(key, dx, escape, bg, label)
+              return column { key = key, float = { anchor = "parent", dx = dx, dy = -20, escape = escape },
                               width = 80, height = 40, bg = bg, on_click = { kind = key }, label = label }
             end
             return column { width = { grow = 1 }, height = { grow = 1 },
@@ -251,8 +251,8 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                     on_click = { kind = "toolbar" }, label = "Toolbar" },
               column { key = "canvas", width = { grow = 1 }, height = { grow = 1 }, clip = true,
                        bg = 0x101018ff,
-                       node("node", 40, true, 0x3b5bd4ff, "Node"),
-                       node("free", 160, false, 0x73d98cff, "Free") },
+                       node("node", 40, false, 0x3b5bd4ff, "Node"),
+                       node("free", 160, true, 0x73d98cff, "Free") },
             }
         "#
         .to_string(),
@@ -291,9 +291,9 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               return { key = key, width = w, height = h, bg = bg,
                        on_click = { kind = key }, label = label }
             end
-            local function node(key, label, dx, dy, clip)
+            local function node(key, label, dx, dy, escape)
               local t = button(key, label, 60, 40, 0x3b5bd4ff)
-              t.float = { anchor = "parent", dx = dx, dy = dy, clip = clip }
+              t.float = { anchor = "parent", dx = dx, dy = dy, escape = escape }
               return column(t)
             end
             local function item(key, label)
@@ -305,9 +305,9 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               row { width = { grow = 1 }, height = { grow = 1 },
                 column { key = "canvas", width = { grow = 1 }, height = { grow = 1 }, clip = true,
                          bg = 0x101018ff,
-                         node("cut", "Cut", 20, -20, true),
-                         node("past", "Past", 100, -60, true),
-                         node("free", "Free", 140, -60, false) },
+                         node("cut", "Cut", 20, -20, false),
+                         node("past", "Past", 100, -60, false),
+                         node("free", "Free", 140, -60, true) },
                 column { key = "list", width = 100, height = 50, scroll_y = true, bg = 0x202030ff,
                          item("row0", "Row 0"), item("row1", "Row 1"), item("row2", "Row 2") },
               },

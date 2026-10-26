@@ -293,7 +293,7 @@ LOWERING :: [][2]string {
 // What a lowering helper (types.odin) writes, which a scan of the
 // lowering's text cannot see: the coverage check counts these.
 HELPER_WRITES :: [][2]string {
-	{"lower_float", "float_mode float_anchor_x float_anchor_y float_self_x float_self_y float_dx float_dy float_fit float_clip"},
+	{"lower_float", "float_mode float_anchor_x float_anchor_y float_self_x float_self_y float_dx float_dy float_fit float_clip float_escape"},
 }
 
 // Rows whose Odin type is a Maybe: their C side says "unset" with a bit or

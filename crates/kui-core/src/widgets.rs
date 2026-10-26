@@ -340,7 +340,7 @@ fn tooltip_spec(ui: &Ui<'_>) -> NodeSpec {
     let t = ui.theme();
     let m = ui.metrics();
     NodeSpec::column()
-        .float(crate::spec::FloatConfig::below().fit())
+        .float(crate::spec::FloatConfig::below().fit().escaping())
         .pad_xy(m.hint_pad_x, m.hint_pad_y)
         .bg(t.raised)
         .radius(m.radius)
@@ -1779,7 +1779,8 @@ fn menu_level(
                                             .at(Align::End, Align::Start)
                                             .self_at(Align::Start, Align::Start)
                                             .offset(MENU_PANEL_PAD, -MENU_PANEL_PAD)
-                                            .fit(),
+                                            .fit()
+                                            .escaping(),
                                     ),
                                 &item.submenu,
                                 &sub,
@@ -2011,7 +2012,8 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                                 .at(Align::Start, Align::End)
                                 .self_at(Align::Start, Align::Start)
                                 .offset(0.0, 2.0)
-                                .fit(),
+                                .fit()
+                                .escaping(),
                         ),
                         &menu.items,
                     );

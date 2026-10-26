@@ -602,7 +602,9 @@ impl Splitmux {
                             ui.leaf_keyed(
                                 "col",
                                 NodeSpec::column()
-                                    .float(FloatConfig::parent().at(Align::Start, Align::End))
+                                    // Over the panes below the strip, past
+                                    // the strip's own clip (ADR 0074).
+                                    .float(FloatConfig::parent().at(Align::Start, Align::End).escaping())
                                     .width(Sizing::Percent(1.0))
                                     .height(column_h)
                                     .hoverable());

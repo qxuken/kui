@@ -82,15 +82,17 @@ pad_xy :: proc "contextless" (x, y: f32) -> Pad {return {x, x, y, y}}
 
 // Out-of-flow placement: the node's (self_x, self_y) point is put on the
 // anchor's (anchor_x, anchor_y) point, then moved by (dx, dy). `fit` flips
-// or clamps it to stay on screen; `clip` keeps a Parent float inside its
-// parent's clip. `float_preset("below")` fills one from a name.
+// or clamps it to stay on screen. A Parent float is cut where a child of
+// its parent would be, by the nearest box above it that clips or scrolls;
+// `escape` lets it leave every ancestor's clip, as a menu or a tooltip
+// does (ADR 0074). `float_preset("below")` fills one from a name.
 Float :: struct {
 	mode:               Float_Mode,
 	anchor_x, anchor_y: Align,
 	self_x, self_y:     Align,
 	dx, dy:             f32,
 	fit:                bool,
-	clip:               bool,
+	escape:             bool,
 }
 
 // A preset placement by name, as kui_spec_float_preset knows them
@@ -107,7 +109,7 @@ float_preset :: proc(name: string) -> (f: Float, ok: bool) {
 			dx = s.float_dx,
 			dy = s.float_dy,
 			fit = s.float_fit != 0,
-			clip = s.float_clip != 0,
+			escape = s.float_escape != 0,
 		},
 		true
 }
@@ -309,7 +311,10 @@ lower_float :: proc(f: Float, out: ^c.Spec) {
 	out.float_self_x, out.float_self_y = u32(f.self_x), u32(f.self_y)
 	out.float_dx, out.float_dy = f.dx, f.dy
 	out.float_fit = 1 if f.fit else 0
-	out.float_clip = 1 if f.clip else 0
+	// float_clip is not read since ADR 0074: a Parent float takes its
+	// parent's clip unless it escapes.
+	out.float_clip = 0
+	out.float_escape = 1 if f.escape else 0
 }
 
 // The gradient a spec points at, alive until the temp allocator is freed.

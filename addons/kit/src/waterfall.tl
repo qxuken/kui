@@ -330,7 +330,7 @@ function M.waterfall(c: Ctx, p: P): kui.Node
       local x = (m.at - v0) * scale
       lanes[#lanes + 1] = column {
         key = "m" .. i,
-        float = { anchor = "parent", clip = true, dx = x, dy = 0 },
+        float = { anchor = "parent", dx = x, dy = 0 },
         -- The accent as text reads at 4.5:1 on the panel; the accent itself
         -- may not reach the 3:1 a mark needs (Ledger's yellow on paper).
         width = 1, height = #st.index.lanes * (LANE_H + 2), bg = ref(c, "accent_text"),

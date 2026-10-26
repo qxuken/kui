@@ -44,7 +44,7 @@ fn canvas_with_a_node(core: &mut Core, float: FloatConfig, dy: f32) -> Key {
 #[test]
 fn a_clipped_float_is_cut_at_its_parents_edge() {
     let mut core = Core::new();
-    let node = canvas_with_a_node(&mut core, FloatConfig::parent().clipped(), -20.0);
+    let node = canvas_with_a_node(&mut core, FloatConfig::parent(), -20.0);
     assert_eq!(rect_of(&mut core, node), Rect::new(40.0, 40.0, 80.0, 20.0));
 }
 
@@ -53,7 +53,7 @@ fn a_clipped_float_is_cut_at_its_parents_edge() {
 #[test]
 fn a_node_wholly_clipped_is_a_point_on_the_clips_edge() {
     let mut core = Core::new();
-    let node = canvas_with_a_node(&mut core, FloatConfig::parent().clipped(), -60.0);
+    let node = canvas_with_a_node(&mut core, FloatConfig::parent(), -60.0);
     let tree = core.access_tree();
     let n = tree.get(node).expect("still in the tree");
     assert_eq!(n.rect, Rect::new(40.0, 40.0, 0.0, 0.0));
@@ -71,7 +71,7 @@ fn a_node_wholly_clipped_is_a_point_on_the_clips_edge() {
 #[test]
 fn an_escaping_float_keeps_its_whole_box() {
     let mut core = Core::new();
-    let node = canvas_with_a_node(&mut core, FloatConfig::parent(), -20.0);
+    let node = canvas_with_a_node(&mut core, FloatConfig::parent().escaping(), -20.0);
     assert_eq!(rect_of(&mut core, node), Rect::new(40.0, 20.0, 80.0, 40.0));
 }
 

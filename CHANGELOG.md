@@ -25,6 +25,25 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.**
 
+- **A float anchored to its parent is cut by the box it is in** (backlog
+  C151, [ADR 0074](docs/adr/0074-paint-stays-in-the-box-it-is-in.md)): a
+  `parent`, `below` or `above` float that showed past a clipping or
+  scrolling ancestor — a menu, a popover or a tooltip of an app's own —
+  is cut at that ancestor's edge, and not hit past it, until it says
+  `escape` (Rust `FloatConfig::escaping()`, `escape` in JSX's and Lua's
+  float, C `float_escape`, Odin `Float.escape`). A `viewport` float is
+  unchanged. `clip` on a float is what it does now: JSX and Lua read the
+  key and drop it, C stops reading `float_clip`, Rust's
+  `FloatConfig::clipped()` is deprecated and does nothing, and Rust's
+  `FloatConfig { clip, .. }` and Odin's `Float{clip = ..}` no longer
+  compile — drop the field.
+- A node playing its `exit` is cut by the box it left, where it was drawn
+  outside every clip: a row sliding out of a scroller goes under the
+  scroller's edge (backlog C151, ADR 0074).
+- Kit's line chart's readout box is placed inside the plot's width and
+  height, where it could hang past the plot's right edge or foot
+  (backlog C153).
+
 - A key sink's press under a Mac's Option carries what the Option typed
   in `text` — ⌥- `–`, ⌥⇧- `—`, ⌥m `µ` — where it carried null; under an
   Option `optionAsAlt` names it is null as before (backlog F195).
@@ -78,8 +97,11 @@ was the first bare bump to break an app in five releases).
   800; ABI 38), the slot doors went (ABI 39, below), and `KuiSpec`
   gained `focus_ring` (816 bytes; backlog C93), then `min_column`,
   `hidden`, `on_query` and `when` (840 bytes; ADR 0069), and later in
-  the release `text_color` (888 bytes; backlog C130). Recompile;
-  zeroed, a node reports no range, colours no ring and has no rules.
+  the release `text_color` (888 bytes; backlog C130) and `float_escape`
+  (888 bytes still, into the tail padding; ADR 0074), with `float_clip`
+  no longer read. Recompile; zeroed, a node reports no range, colours no
+  ring, has no rules, and a parent-anchored float is cut by its parent's
+  clip.
 - `NodeSpec` gained `hidden`, and `InteractSpec` `when` (ADR 0069) and
   `text_color` (backlog C130): a struct literal names them or ends with
   `..Default::default()`. `rules::field`'s bits and `Patch::set` are
@@ -468,6 +490,34 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Added
 
+- **What a node paints stays in the box it is in** (backlog C151, [ADR
+  0074](docs/adr/0074-paint-stays-in-the-box-it-is-in.md)): whatever its
+  float, move, keyframes, turn or sibling order, a node and its subtree
+  are cut by the nearest box above it that clips or scrolls, unless it
+  declares it leaves — a viewport float, or `escape` on a float anchored
+  to its parent. Five reports were this one bug, each patched in its
+  component with `clip = true`: Kit's slider handle over the app's bar, a
+  checkbox's focus ring, the skeleton's shimmer band, and Kit's live line
+  chart drawing over the window's bar and into its y gutter. The core's
+  own floats that must leave say `escape`: the hint under a hovered
+  control, a submenu, the menu bar's panel, the devtools' "⋮" menu. A
+  node leaving with an `exit` keeps the clip it was held by. Node's float
+  stanza carries `escape` as bit 4 of its flags word (protocol 27).
+- **The paint audit** (backlog C152, ADR 0074): `Core::set_paint_audit`,
+  or `KUI_PAINT_AUDIT=1` under kui-native's drivers, checks every frame's
+  quads, glyphs and masks — each cut by the clip it names — against the
+  rect the boxes above its node leave it, by what the node declares, and
+  raises a `paint-escape` warning per node that drew outside;
+  `Core::paint_audit` reads the counts, and a headless run prints them at
+  its end. The Kit gallery's walk under it
+  (`nothing_the_kit_app_draws_leaves_the_box_it_is_in`, at scale 1 and
+  1.5) tours every page in every skin scrolled under the bar, the live
+  chart sliding, a slider springing, a checkbox's ring swept past the
+  edge, skeletons, toasts leaving, a menu, a popover and a dialog; on the
+  old rule it found about 2,400 nodes, the chart's sliding layer and
+  axis labels among them.
+- **`kui run --scale S`** draws a headless run or a `--shot` at a
+  display scale: `1.5` as a 150% display does.
 - **Props by condition** (backlog C100, [ADR
   0069](docs/adr/0069-props-by-condition.md)): a node's `when` list —
   entries of the conditions they test and the props they set while they
@@ -1694,6 +1744,18 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- **Kit's live line chart stays in its plot** (backlog C153). Its
+  sliding layer — the lines, their areas, the x ticks — was a float
+  anchored to the plot without `clip`, so it escaped every clip: the
+  line, its y range gliding 240 ms behind the data, drew above the plot
+  over the card's head and the window's bar, and the sample a slide
+  reaches back for drew left of the plot into the y gutter, the leftmost
+  bucket jumping there as the window slid; the x labels escaped while
+  sliding. Under ADR 0074 the plot's clip holds all of it, the hover
+  layer, the crosshair and its dots too, and the leftmost samples come in
+  from under the plot's left edge. The readout box, beside the plot in
+  the tree and so not cut by it, is placed inside the plot's width and
+  height.
 - **A Kit waterfall reads on a dark skin.** Its spans were navy and
   forest blocks on near-black (1.3:1), the selected one a bright block
   that drowned them. Every group's bar now reads at 3:1 on every surface

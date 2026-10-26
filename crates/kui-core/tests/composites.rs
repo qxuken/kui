@@ -65,8 +65,12 @@ fn declared_overrides_win_over_the_base() {
     assert_eq!(cfg.offset, Vec2Offset { x: -8.0, y: -8.0 });
     assert!(cfg.fit);
     // Declared, and read by no viewport float: the anchor decides.
-    assert!(cfg.clip);
+    assert!(cfg.escape);
     assert!(!cfg.clipped_by_parent());
+    // A parent float is held unless it says `escape` (ADR 0074).
+    assert!(FloatConfig::parent().clipped_by_parent());
+    assert!(FloatConfig::below().clipped_by_parent());
+    assert!(!FloatConfig::below().escaping().clipped_by_parent());
 }
 
 /// An edge falls back to its axis, an axis to the all-round `pad`, and the

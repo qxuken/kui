@@ -16,7 +16,10 @@ local M = {}
 
 
 
-local MENU_FLOAT = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true }
+
+
+local MENU_FLOAT = { anchor = "below", at = { "start", "end" }, self = { "start", "start" }, fit = true,
+escape = true, }
 
 local function str(v)
    return type(v) == "string" and v or nil
@@ -63,7 +66,9 @@ pad = { x = 16, y = 4 }, gap = 8, children(""), }),
    })
    return column({
       key = "scrim",
-      float = { anchor = "viewport", at = { "start", "start" } },
+
+
+      float = { anchor = "viewport", at = { "start", "start" }, escape = true },
       width = env.viewport_w,
       height = env.viewport_h,
       bg = ref(c, "scrim"),
@@ -178,6 +183,7 @@ local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent
 
 local TOAST_MS = 5000
 
+
 function M.toast(c, p)
    local tone = str(p.tone) or "info"
    local message = str(p.message) or ""
@@ -210,7 +216,8 @@ function M.toast(c, p)
 
 
 
-      float = not inline and { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 } or nil,
+      float = not inline and { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16,
+escape = true, } or nil,
       label = message,
       min_width = 320,
       max_width = 480,
@@ -255,7 +262,7 @@ end
 function M.toaster(c, _p)
    return column({
       key = "toaster",
-      float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
+      float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16, escape = true },
       gap = 8,
       cross_align = "end",
 

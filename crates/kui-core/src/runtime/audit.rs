@@ -187,12 +187,12 @@ impl Core {
         let mut nearest = NIL;
         let mut x = i;
         loop {
-            // What a node declares, not what the walk did with it: a
-            // float anchored to its parent is held, as a child is.
+            // What a node declares: a float anchored to its parent is
+            // held unless it says it leaves.
             if self.tree.specs[x]
                 .layout
                 .float
-                .is_some_and(|f| f.anchor != crate::spec::FloatAnchor::Parent)
+                .is_some_and(|f| !f.clipped_by_parent())
             {
                 break;
             }
@@ -246,4 +246,56 @@ impl Core {
 fn drawn_px(q: &Quad, display: &crate::display::DisplayList) -> Rect {
     let clip = display.clip_of(q);
     q.rect.intersect(&clip.rect)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::display::{NO_CLIP_ID, QuadKind};
+    use crate::{Color, Core, NodeSpec, Size};
+
+    /// What the audit is for, staged by hand: the right frame passes, and
+    /// the same node's quad moved over the bar with the clip that clips
+    /// nothing — what an escape looks like in the draw list — is one.
+    #[test]
+    fn a_quad_drawn_past_its_scroller_is_an_escape() {
+        let red = Color::hex(0xd9738cff);
+        let mut core = Core::new();
+        core.set_paint_audit(true);
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.leaf(
+            NodeSpec::row()
+                .grow_width()
+                .height(40.0)
+                .bg(Color::hex(0x3a3f52ff)),
+        );
+        ui.with(
+            NodeSpec::column().grow_width().height(200.0).scroll_y(),
+            |ui| {
+                ui.leaf(NodeSpec::column().size(50.0, 50.0).bg(red));
+            },
+        );
+        ui.finish();
+        let audit = core.paint_audit().unwrap();
+        assert_eq!((audit.frames, audit.escapes.len()), (1, 0), "{audit:?}");
+        assert!(audit.quads > 0);
+
+        let node = (0..core.tree.len())
+            .find(|&i| core.tree.specs[i].style.bg == red)
+            .unwrap();
+        let mut q = *core.display.quads.iter().find(|q| q.color == red).unwrap();
+        q.rect.y = 0.0;
+        q.clip = NO_CLIP_ID;
+        core.display.quads = vec![q];
+        core.audit_spans = Some(vec![(0, node as u32)]);
+        core.audit_frame();
+        let audit = core.paint_audit().unwrap();
+        assert_eq!(audit.escapes.len(), 1, "{audit:?}");
+        let e = &audit.escapes[0];
+        assert_eq!(
+            (e.kind, e.drawn.y, e.allowed.y),
+            (QuadKind::Solid, 0.0, 40.0)
+        );
+        assert_eq!(e.node, core.tree.keys[node]);
+    }
 }

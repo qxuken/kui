@@ -741,7 +741,7 @@ fn a_declared_float_with_clip_is_still_a_layer_of_its_own() {
             NodeSpec::column()
                 .size(80.0, 40.0)
                 .bg(RED)
-                .float(FloatConfig::parent().clipped().offset(10.0, 10.0)),
+                .float(FloatConfig::parent().offset(10.0, 10.0)),
         );
         ui.leaf_keyed("sheet", NodeSpec::column().size(200.0, 200.0).bg(BLUE));
     });

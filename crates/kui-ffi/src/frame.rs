@@ -35,7 +35,8 @@ pub extern "C" fn kui_spec_float_preset(spec: *mut KuiSpec, name: KuiStr) -> boo
         s.float_dx = cfg.offset.x;
         s.float_dy = cfg.offset.y;
         s.float_fit = cfg.fit as u32;
-        s.float_clip = cfg.clip as u32;
+        s.float_clip = 0;
+        s.float_escape = cfg.escape as u32;
         true
     })
 }

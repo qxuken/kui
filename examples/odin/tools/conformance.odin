@@ -502,12 +502,12 @@ scene_float :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 }
 
 // One of scene_clip_float's two nodes: a parent-anchored float at (dx, -20)
-// on the canvas that posts `key` when clicked, cut by the canvas's clip when
-// `clip` is set (float_clip, ABI 19).
-clip_float_node :: proc(ui: ^kui.Ui, key: string, dx: f32, clip: bool, bg: kui.Color, label: string) {
+// on the canvas that posts `key` when clicked, cut by the canvas's clip
+// unless `escape` is set (float_escape, ADR 0074).
+clip_float_node :: proc(ui: ^kui.Ui, key: string, dx: f32, escape: bool, bg: kui.Color, label: string) {
 	spec := kui.Spec {
 		key      = key,
-		float    = {mode = .Parent, dx = dx, dy = -20, clip = clip},
+		float    = {mode = .Parent, dx = dx, dy = -20, escape = escape},
 		width    = kui.px(80),
 		height   = kui.px(40),
 		bg       = bg,
@@ -539,8 +539,8 @@ scene_clip_float :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			bg       = 0x101018ff,
 		}
 		if kui.box(ui, canvas) {
-			clip_float_node(ui, "node", 40, true, 0x3b5bd4ff, "Node")
-			clip_float_node(ui, "free", 160, false, 0x73d98cff, "Free")
+			clip_float_node(ui, "node", 40, false, 0x3b5bd4ff, "Node")
+			clip_float_node(ui, "free", 160, true, 0x73d98cff, "Free")
 		}
 	}
 }
@@ -617,9 +617,9 @@ scene_clip_access :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 				Node :: struct {
 					key, label: string,
 					dx, dy:     f32,
-					clip:       bool,
+					escape:     bool,
 				}
-				nodes := [3]Node{{"cut", "Cut", 20, -20, true}, {"past", "Past", 100, -60, true}, {"free", "Free", 140, -60, false}}
+				nodes := [3]Node{{"cut", "Cut", 20, -20, false}, {"past", "Past", 100, -60, false}, {"free", "Free", 140, -60, true}}
 				for n in nodes {
 					node := kui.Spec {
 						key      = n.key,
@@ -627,7 +627,7 @@ scene_clip_access :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 						height   = kui.px(40),
 						bg       = 0x3b5bd4ff,
 						label    = n.label,
-						float    = {mode = .Parent, dx = n.dx, dy = n.dy, clip = n.clip},
+						float    = {mode = .Parent, dx = n.dx, dy = n.dy, escape = n.escape},
 						on_click = msg(n.key),
 					}
 					if kui.box(ui, node) {}

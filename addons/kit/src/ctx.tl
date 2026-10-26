@@ -86,7 +86,7 @@ end
 -- hover group the row and the ring share (`group_focus_visible`).
 function M.focus_ring(c: Ctx, w: number, h: number, radius?: number): kui.Node
   return column {
-    float = { anchor = "parent", dx = -4, dy = -4, clip = true },
+    float = { anchor = "parent", dx = -4, dy = -4 },
     width = w + 8, height = h + 8,
     radius = radius and radius > 0 and radius + 4 or 0,
     border = { w = 2, color = M.ref(c, "focus") },

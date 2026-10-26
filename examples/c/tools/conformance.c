@@ -705,14 +705,14 @@ static void conf_transform(KuiCtx *ui, const Fixtures *f, int phase) {
 
 /* One of conf_clip_float's two nodes: a parent-anchored float at (dx, -20)
  * on the canvas that posts `key` when clicked, cut by the canvas's clip
- * when `clip` is set (float_clip, ABI 19). */
-static void conf_clip_float_node(KuiCtx *ui, const char *key, float dx, uint32_t clip,
+ * unless `escape` is set (float_escape, ADR 0074). */
+static void conf_clip_float_node(KuiCtx *ui, const char *key, float dx, uint32_t escape,
                                  uint32_t bg, const char *label) {
     KuiValue *tag = kui_value_map();
     kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR(key)));
     KuiSpec spec = {
         .float_mode = KUI_FLOAT_PARENT,
-        .float_dx = dx, .float_dy = -20, .float_clip = clip,
+        .float_dx = dx, .float_dy = -20, .float_escape = escape,
         .width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 40}, .bg = bg,
         .label = KUI_STR(label),
     };
@@ -722,7 +722,7 @@ static void conf_clip_float_node(KuiCtx *ui, const char *key, float dx, uint32_t
 
 /* conformance::build_clip_float (backlog F90): a toolbar over a clip
  * canvas, and two nodes on the canvas panned half past its top edge -
- * the first cut there, the second escaping as every float did. */
+ * the first cut there, the second declaring float_escape. */
 static void conf_clip_float(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -737,8 +737,8 @@ static void conf_clip_float(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiSpec canvas = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
                       .overflow = KUI_CLIP, .bg = 0x101018ff};
     kui_open_keyed(ui, KUI_STR("canvas"), &canvas, NULL);
-    conf_clip_float_node(ui, "node", 40, 1, 0x3b5bd4ff, "Node");
-    conf_clip_float_node(ui, "free", 160, 0, 0x73d98cff, "Free");
+    conf_clip_float_node(ui, "node", 40, 0, 0x3b5bd4ff, "Node");
+    conf_clip_float_node(ui, "free", 160, 1, 0x73d98cff, "Free");
     kui_close(ui);
     kui_close(ui);
 }
@@ -776,8 +776,8 @@ static KuiSpec conf_clip_access_button(float w, float h, uint32_t bg, const char
 
 /* conformance::build_clip_access (backlog F93): access rects cut to the
  * clip. A toolbar over a clip canvas beside a short scroller; on the
- * canvas a float straddling its top, one wholly past it (both
- * float_clip) and one escaping, and in the scroller three rows, the
+ * canvas a float straddling its top, one wholly past it and one
+ * declaring float_escape, and in the scroller three rows, the
  * second half out and the third wholly out. */
 static void conf_clip_access(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
@@ -793,17 +793,17 @@ static void conf_clip_access(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiSpec canvas = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
                       .overflow = KUI_CLIP, .bg = 0x101018ff};
     kui_open_keyed(ui, KUI_STR("canvas"), &canvas, NULL);
-    const struct { const char *key, *label; float dx, dy; uint32_t clip; } nodes[] = {
-        {"cut", "Cut", 20, -20, 1},
-        {"past", "Past", 100, -60, 1},
-        {"free", "Free", 140, -60, 0},
+    const struct { const char *key, *label; float dx, dy; uint32_t escape; } nodes[] = {
+        {"cut", "Cut", 20, -20, 0},
+        {"past", "Past", 100, -60, 0},
+        {"free", "Free", 140, -60, 1},
     };
     for (size_t i = 0; i < sizeof nodes / sizeof nodes[0]; i++) {
         KuiSpec node = conf_clip_access_button(60, 40, 0x3b5bd4ff, nodes[i].label);
         node.float_mode = KUI_FLOAT_PARENT;
         node.float_dx = nodes[i].dx;
         node.float_dy = nodes[i].dy;
-        node.float_clip = nodes[i].clip;
+        node.float_escape = nodes[i].escape;
         kui_open_keyed(ui, KUI_STR(nodes[i].key), &node, conf_kind(nodes[i].key));
         kui_close(ui);
     }

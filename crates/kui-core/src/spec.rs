@@ -340,16 +340,22 @@ pub enum FloatAnchor {
 }
 
 /// Takes a node out of flex flow: it does not consume space in its parent,
-/// sizes Grow/Percent against its anchor, is positioned by attach points,
-/// and escapes ancestor clips unless [`FloatConfig::clip`] keeps it in its
-/// parent's. It paints as a layer of its own, above the in-flow tree and
+/// sizes Grow/Percent against its anchor, and is positioned by attach
+/// points. It paints as a layer of its own, above the in-flow tree and
 /// every float that opened before it and under every one that opened
 /// after, and takes input in the same order.
+///
+/// What it paints is cut where its parent's content is (ADR 0074): one
+/// anchored to its parent is held by the nearest box above it that clips
+/// or scrolls, as a child is, unless it declares
+/// [`FloatConfig::escape`] — a menu, a popover, a tooltip. One anchored
+/// to the viewport or to another node is placed against something other
+/// than its parent and leaves its ancestors' clips with it.
 ///
 /// ```rust
 /// use kui_core::{Align, FloatConfig, NodeSpec};
 ///
-/// let tooltip = NodeSpec::column().float(FloatConfig::below().fit());
+/// let tooltip = NodeSpec::column().float(FloatConfig::below().fit().escaping());
 /// let toast = NodeSpec::row().float(FloatConfig::viewport().inside(Align::End, Align::End).offset(-16.0, -16.0));
 /// assert!(tooltip.layout.float.unwrap().fit);
 /// assert_eq!(toast.layout.float.unwrap().offset.x, -16.0);
@@ -373,23 +379,24 @@ pub struct FloatConfig {
     /// the window, so a dropdown taller than the viewport, or a menu with
     /// nowhere in-window to go, is clamped rather than placed.
     pub fit: bool,
-    /// Take the clip a child of the parent takes, instead of escaping every
-    /// ancestor's: a node on a `clip` canvas panned past the canvas's edge
-    /// is cut there, and its hit region with it, rather than drawn over
-    /// and clicked through the toolbar beside it. That is the parent's own
-    /// rect only when the parent clips or scrolls; a parent that does
-    /// neither hands on the clip it was given, the nearest clipping or
-    /// scrolling ancestor's, so a focus ring a few px out from a mark is
-    /// cut by the scroller the mark sits in and never by the mark (backlog
-    /// C123, `tests/float.rs`). Only a
-    /// [`FloatAnchor::Parent`] float reads it; a viewport or node anchor is
-    /// placed against something other than the parent, and escapes with it
-    /// set or not. A declared float's paint order is unchanged: it is a
-    /// layer of its own still. A `line`, `polygon` or `path` anchored in
-    /// its parent's box has it set by the core, and with it paints in the
-    /// parent's layer at its place in the tree, as a child does — it opens
-    /// no layer (backlog F123; `Tree::opens_layer`).
-    pub clip: bool,
+    /// Leave every ancestor's clip (ADR 0074): what a menu, a popover or
+    /// a tooltip hung off a control in a scroller says, so it shows whole
+    /// past the scroller's edge and over the bar beside it. Without it a
+    /// float anchored to its parent takes the clip a child of the parent
+    /// takes: the parent's own rect when the parent clips or scrolls, else
+    /// the clip it was given, the nearest clipping or scrolling
+    /// ancestor's — so a focus ring a few px out from a mark is cut by the
+    /// scroller the mark sits in and never by the mark (backlog C123), a
+    /// node on a `clip` canvas panned past the canvas's edge is cut there
+    /// (F90), and a chart's sliding layer is cut by its plot. The hit
+    /// region is cut with the paint. Only a [`FloatAnchor::Parent`] float
+    /// reads it; a viewport or node anchor leaves its ancestors' clips
+    /// with it set or not. A float's paint order is unchanged either way:
+    /// it is a layer of its own. A `line`, `polygon` or `path` anchored in
+    /// its parent's box never escapes, and paints in the parent's layer at
+    /// its place in the tree, as a child does — it opens no layer (backlog
+    /// F123; `Tree::opens_layer`).
+    pub escape: bool,
 }
 
 /// Plain offset pair (kept separate from geometry to stay `Copy` + FFI-flat).
@@ -407,7 +414,7 @@ impl Default for FloatConfig {
             self_point: (Align::Start, Align::Start),
             offset: Vec2Offset::default(),
             fit: false,
-            clip: false,
+            escape: false,
         }
     }
 }
@@ -481,18 +488,28 @@ impl FloatConfig {
         self
     }
 
-    /// Cut by the parent's clip instead of escaping it; see
-    /// [`FloatConfig::clip`] for which anchors read it.
-    pub fn clipped(mut self) -> Self {
-        self.clip = true;
+    /// Leaves every ancestor's clip, as a menu or a tooltip does; see
+    /// [`FloatConfig::escape`] for which anchors read it.
+    pub fn escaping(mut self) -> Self {
+        self.escape = true;
         self
     }
 
-    /// Whether this float takes its parent's clip: [`FloatConfig::clip`]
-    /// declared on a parent-anchored float. The one reading both paint
-    /// passes and the hit regions share.
+    /// What `clipped()` asked for before ADR 0074 is what a float
+    /// anchored to its parent does now: nothing to ask.
+    #[deprecated(
+        note = "a float anchored to its parent is cut by its parent's clip already (ADR 0074); one that must leave it says `escaping()`"
+    )]
+    pub fn clipped(self) -> Self {
+        self
+    }
+
+    /// Whether this float takes its parent's clip: anchored to its parent
+    /// and not declaring [`FloatConfig::escape`] (ADR 0074). The one
+    /// reading both paint passes, the hit regions and the paint audit
+    /// share.
     pub fn clipped_by_parent(&self) -> bool {
-        self.clip && self.anchor == FloatAnchor::Parent
+        self.anchor == FloatAnchor::Parent && !self.escape
     }
 
     /// A preset by its wire index — its position in [`FLOAT_PRESETS`], which
@@ -521,7 +538,9 @@ impl FloatConfig {
     /// declared. `None` leaves the base's own value — that is what lets
     /// `float="below"` keep its 6px gap while `{ anchor: "below", dx: 2 }`
     /// moves it sideways without flattening the gap to zero. `fit` and
-    /// `clip` are ORed in: no preset sets either.
+    /// `escape` are ORed in: no preset sets either. (A binding still
+    /// reads the `clip` key code written before ADR 0074 declares, and
+    /// drops it: it is what a parent-anchored float does now.)
     pub fn build(
         base: FloatConfig,
         anchor_at: Option<(Align, Align)>,
@@ -529,7 +548,7 @@ impl FloatConfig {
         dx: Option<f32>,
         dy: Option<f32>,
         fit: bool,
-        clip: bool,
+        escape: bool,
     ) -> Self {
         let mut cfg = base;
         if let Some((x, y)) = anchor_at {
@@ -545,7 +564,7 @@ impl FloatConfig {
             cfg.offset.y = y;
         }
         cfg.fit |= fit;
-        cfg.clip |= clip;
+        cfg.escape |= escape;
         cfg
     }
 }

@@ -739,6 +739,7 @@ Spec :: struct {
 	opens_on_press: u32,
 	on_item_key: ^Value,
 	text_color: u32,
+	float_escape: u32,
 }
 
 Announcement :: struct {

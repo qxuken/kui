@@ -218,11 +218,70 @@ fn a_driver_without_a_clock_gets_the_disappearance_it_always_had() {
     assert!(!core.animating());
 }
 
-/// A departing subtree escapes the clip its ancestors imposed — they may
-/// not exist any more — while keeping its place after the clipper, which
-/// painted before it.
+/// A departing subtree keeps the clip its ancestors held it by on the
+/// frame it left (ADR 0074) — they may not exist any more, so it is the
+/// clip as it was — and its place after the clipper, which painted before
+/// it: a row sliding out of a scroller goes under the scroller's edge,
+/// not over the bar beside it.
 #[test]
-fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
+fn a_ghost_keeps_the_clip_it_left_from_and_its_place() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, show: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.with_keyed(
+            "clipper",
+            NodeSpec::column()
+                .size(50.0, 20.0)
+                .clip()
+                .bg(Color::rgb8(1, 2, 3)),
+            |ui| {
+                if show {
+                    ui.leaf_keyed(
+                        "inner",
+                        NodeSpec::column()
+                            .size(40.0, 10.0)
+                            .bg(Color::WHITE)
+                            .transition(100.0)
+                            .easing(Easing::Linear)
+                            .exit(Enter::from(60.0, 0.0)),
+                    );
+                }
+            },
+        );
+        ui.finish();
+    };
+    build(&mut core, 0.0, true);
+    // The frame it leaves freezes it where it was; the next one moves it.
+    build(&mut core, 0.0, false);
+    build(&mut core, 0.05, false);
+    let (dl, _) = core.output();
+    let quads: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid)
+        .collect();
+    assert_eq!(quads.len(), 2, "the clipper, and the ghost after it");
+    let ghost = quads[1];
+    let ghost_clip = dl.clip_of(ghost);
+    assert!(
+        (ghost.rect.x - 30.0).abs() < 1e-3,
+        "halfway to +60: {:?}",
+        ghost.rect
+    );
+    // 30..70 runs past the clipper's 0..50 box: cut at its edge, as a
+    // live child there would be.
+    assert_eq!(
+        ghost_clip.rect,
+        kui_core::Rect::new(0.0, 0.0, 50.0, 20.0),
+        "the clip its parent held it by"
+    );
+}
+
+/// Past the clipper's edge altogether, the ghost draws nothing there: it
+/// is not painted over what lies beside the box it left.
+#[test]
+fn a_ghost_past_the_box_it_left_draws_nothing() {
     let mut core = Core::new();
     let build = |core: &mut Core, now: f64, show: bool| {
         core.set_time(now);
@@ -250,29 +309,18 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
         ui.finish();
     };
     build(&mut core, 0.0, true);
-    // The frame it leaves freezes it where it was; the next one moves it.
     build(&mut core, 0.0, false);
     build(&mut core, 0.05, false);
+    assert!(core.animating(), "the exit is still playing");
     let (dl, _) = core.output();
-    let quads: Vec<_> = dl
+    let solids = dl
         .quads
         .iter()
         .filter(|q| q.kind == kui_core::QuadKind::Solid)
-        .collect();
-    assert_eq!(quads.len(), 2, "the clipper, and the ghost after it");
-    let ghost = quads[1];
-    let ghost_clip = dl.clip_of(ghost);
-    assert!(
-        (ghost.rect.x - 100.0).abs() < 1e-3,
-        "halfway to +200: {:?}",
-        ghost.rect
-    );
-    // 100..140 is entirely outside the clipper's 0..50 box: a live child
-    // there would have been clipped away to nothing.
-    assert!(
-        ghost_clip.rect.w > 1e8,
-        "unclipped, though its parent clips: {:?}",
-        ghost_clip.rect
+        .count();
+    assert_eq!(
+        solids, 1,
+        "the clipper alone: the ghost at 100..140 is cut away"
     );
 }
 

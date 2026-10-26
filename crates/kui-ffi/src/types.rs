@@ -799,10 +799,9 @@ pub struct KuiSpec {
     /// 0 for none. Wins over `pressed_bg`, `focus_bg` and `hover_bg`;
     /// eases with `transition`. ABI 18.
     pub drop_bg: u32,
-    /// Non-zero: a `KUI_FLOAT_PARENT` float takes its parent's clip, as a
-    /// child does, instead of escaping every ancestor's: cut at a `clip`
-    /// canvas's edge and not hit past it. Read with the parent anchor
-    /// only; still painted as a layer over its in-flow siblings. ABI 19.
+    /// Not read since ADR 0074: a `KUI_FLOAT_PARENT` float takes its
+    /// parent's clip whatever this says, which is what non-zero asked for
+    /// at ABI 19. One that must leave sets `float_escape`. ABI 19.
     pub float_clip: u32,
     /// Width over height (`aspectRatio`); 0 for none. It sizes the axis
     /// whose sizing is fit: a fit height from the final width, a fit width
@@ -986,6 +985,11 @@ pub struct KuiSpec {
     /// (`textColor`, backlog C130): the nearest declaration above a text
     /// wins, else the theme's foreground. 0 for none. ABI 39, appended.
     pub text_color: u32,
+    /// Non-zero: a `KUI_FLOAT_PARENT` float leaves every ancestor's clip
+    /// (`escape`, ADR 0074), as a menu or a tooltip does; zero, it is cut
+    /// where a child of its parent would be. ABI 39, appended into the
+    /// tail padding.
+    pub float_escape: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.
