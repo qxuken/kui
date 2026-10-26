@@ -20,6 +20,9 @@ struct App {
     open: bool,
     picked: Option<String>,
     opened: u32,
+    /// Where the menu sits: under the field, or over it with its first row
+    /// on the field, as a native pop-up opens with the current option there.
+    menu_y: f32,
 }
 
 impl App {
@@ -28,6 +31,7 @@ impl App {
             open: false,
             picked: None,
             opened: 0,
+            menu_y: 40.0,
         }
     }
 
@@ -45,7 +49,7 @@ impl App {
             ui.with_keyed(
                 "menu",
                 NodeSpec::column()
-                    .float(kui_core::FloatConfig::viewport().offset(0.0, 40.0))
+                    .float(kui_core::FloatConfig::viewport().offset(0.0, self.menu_y))
                     .modal(Value::str("dismiss"))
                     .role(Role::Menu),
                 |ui| {
@@ -121,6 +125,26 @@ fn a_quick_click_leaves_it_open_for_a_second_click() {
     assert!(app.open, "still open after the release");
     app.hear(click(&mut core, ONE));
     assert_eq!(app.picked.as_deref(), Some("One"));
+}
+
+#[test]
+fn a_quick_click_with_the_current_row_over_the_field_leaves_it_open() {
+    // C115: the menu opens with its first row under the pointer; the release
+    // that follows a press it never moved from is no pick.
+    let (mut core, mut app) = ready();
+    app.menu_y = 0.0;
+    app.hear(press(&mut core, FIELD));
+    assert!(app.open);
+    app.frame(&mut core);
+    app.frame(&mut core);
+    app.hear(release(&mut core));
+    assert_eq!(
+        app.picked, None,
+        "a release where the press was picks nothing"
+    );
+    assert!(app.open, "still open for a second click");
+    app.hear(click(&mut core, FIELD));
+    assert_eq!(app.picked.as_deref(), Some("One"), "the second click picks");
 }
 
 #[test]

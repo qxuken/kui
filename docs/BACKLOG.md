@@ -3651,6 +3651,8 @@ filed the same day for the round that builds them.
 - `.` **C111** — [Lua cannot register a fragment shader](backlog/closed-2026-09.md#-c111--lua-cannot-register-a-fragment-shader--done-2026-10-26) — done (2026-10-26) — `env.add_fragment(wgsl)` registers a script's own fragment, idempotent by source
 - `.` **C112** — [`env.tokens` leaves out other origins' exported tokens](backlog/closed-2026-09.md#-c112--envtokens-leaves-out-other-origins-exported-tokens--done-2026-10-26) — done (2026-10-26) — `env.tokens` lists other origins' exported tokens; colours are integers, as typed
 - `.` **C113** — [A script cannot set the appearance its conditions read](backlog/closed-2026-09.md#-c113--a-script-cannot-set-the-appearance-its-conditions-read--done-2026-10-26) — done (2026-10-26) — `set_rules_appearance`: an origin sets the appearance its `dark` / `light` conditions read
+- `.` **C114** — [A `when` entry that sets a shadow's offsets drops the shadow](backlog/closed-2026-09.md#-c114--a-when-entry-that-sets-a-shadows-offsets-drops-the-shadow--done-2026-10-26) — done (2026-10-26) — a shadow's lanes patched one by one; Ledger's face casts its own shadow again
+- `.` **C115** — [An opening press's release picks the item under it before asking whether the pointer moved](backlog/closed-2026-09.md#-c115--an-opening-presss-release-picks-the-item-under-it-before-asking-whether-the-pointer-moved--done-2026-10-26) — done (2026-10-26) — the slop check first; Kit's first-pick guard gone
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3670,32 +3672,6 @@ in a channel (ADR 0065) answers by searching that channel itself.
 **Do.** A `typeaheadColumn` prop naming a channel column the core
 searches (prefix, case-blind, from the row after focus), so a channel-
 backed list needs no handler.
-
-### `.` C114 — A `when` entry that sets a shadow's offsets drops the shadow
-
-**Found** in Kit's adoption of C105 (2026-10-26): an entry setting
-`shadow_x` / `shadow_y` draws no shadow at all, even with every shadow
-lane set; one setting only `shadow_color` draws it at offset 0. Rules
-seem to patch the shadow as one struct taken from the probe base. Kit
-puts the shadow on a still box instead. **Do.** Shadow lanes patched one
-by one, as C105's move lanes are.
-
-### `.` C115 — An opening press's release picks the item under it before asking whether the pointer moved
-
-**Found** the same way: in `release_opened` (`dispatch.rs`) the item
-check runs before the slop check, so with the current option over the
-field (as C108 prescribes) a quick click picks that option and closes
-the menu, where a native pop-up stays open. Kit ignores the first pick
-of the value it already has after a pointer open. **Do.** The `moved`
-check first; then drop Kit's workaround.
-
-### `.` C103 — A table cell cannot span columns
-
-**Filed** by the ADR 0070 grilling round (2026-10-26): columns are by
-index, so a header spanning two columns, or a merged cell, reports the
-wrong column for every cell after it and the arrows step through it as
-one. **Do.** A `colSpan` on a cell, counted by the column index, the
-column count, Left / Right and the layout table's column widths.
 
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 

@@ -1880,16 +1880,21 @@ impl Core {
 
     /// The release of a press that opened something on the way down
     /// (backlog C108), the press having landed on `trigger` at `at`:
-    /// over a `menuItem` the frames since have drawn — the row of the menu
-    /// the press put up — the item is clicked, as a native pop-up button's
-    /// press, drag and release picks an option. Over the trigger, or before
-    /// the pointer moved, nothing: a quick click leaves the menu open for a
-    /// second one. Anywhere else after moving, the modal the press opened
-    /// is dismissed, as a press outside it would be.
+    /// before the pointer moved, nothing — a quick click leaves the menu
+    /// open for a second one, even when the menu put its current row under
+    /// the pointer (C115). After moving, over a `menuItem` the frames since
+    /// have drawn — the row of the menu the press put up — the item is
+    /// clicked, as a native pop-up button's press, drag and release picks
+    /// an option; over the trigger, nothing; anywhere else, the modal the
+    /// press opened is dismissed, as a press outside it would be.
     fn release_opened(&mut self, trigger: Key, at: Vec2, out: &mut Vec<UiEvent>) {
         let Some(p) = self.interaction.cursor() else {
             return;
         };
+        let moved = (p.x - at.x).abs() + (p.y - at.y).abs() > crate::input::DRAG_SLOP;
+        if !moved {
+            return;
+        }
         let over = self.interaction.hit_at(p).map(|h| h.key);
         let item = over.filter(|&k| {
             k != trigger
@@ -1901,8 +1906,7 @@ impl Core {
             self.click_node(k, out);
             return;
         }
-        let moved = (p.x - at.x).abs() + (p.y - at.y).abs() > crate::input::DRAG_SLOP;
-        if !moved || over == Some(trigger) {
+        if over == Some(trigger) {
             return;
         }
         if let Some(modal) = self.modal()

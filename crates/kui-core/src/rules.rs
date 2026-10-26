@@ -649,8 +649,56 @@ pub struct Patch {
     min_column: f32,
     /// The move off the node's laid place (`dx`, `dy`; backlog C105).
     offset: crate::geom::Vec2,
+    /// Which of the shadow's lanes the entry sets, as `shadow_lane` bits
+    /// under `field::SHADOW` (backlog C114): an entry that sets `shadowY`
+    /// keeps the node's colour, blur and the rest.
+    shadow_lanes: u8,
     /// The key labels of the children an own-size entry hides.
     hide: Vec<String>,
+}
+
+/// The lanes of a shadow, as bits of [`Patch`]'s `shadow_lanes`.
+mod shadow_lane {
+    pub const COLOR: u8 = 1 << 0;
+    pub const DX: u8 = 1 << 1;
+    pub const DY: u8 = 1 << 2;
+    pub const BLUR: u8 = 1 << 3;
+    pub const SPREAD: u8 = 1 << 4;
+}
+
+/// The lanes of `a` that differ from `b`'s.
+fn shadow_lanes(a: &crate::spec::Shadow, b: &crate::spec::Shadow) -> u8 {
+    use shadow_lane::*;
+    [
+        (a.color != b.color, COLOR),
+        (a.dx != b.dx, DX),
+        (a.dy != b.dy, DY),
+        (a.blur != b.blur, BLUR),
+        (a.spread != b.spread, SPREAD),
+    ]
+    .iter()
+    .filter(|(moved, _)| *moved)
+    .fold(0, |m, (_, bit)| m | bit)
+}
+
+/// The lanes `lanes` names copied from `src` onto `dst`.
+fn put_shadow(dst: &mut crate::spec::Shadow, src: &crate::spec::Shadow, lanes: u8) {
+    use shadow_lane::*;
+    if lanes & COLOR != 0 {
+        dst.color = src.color;
+    }
+    if lanes & DX != 0 {
+        dst.dx = src.dx;
+    }
+    if lanes & DY != 0 {
+        dst.dy = src.dy;
+    }
+    if lanes & BLUR != 0 {
+        dst.blur = src.blur;
+    }
+    if lanes & SPREAD != 0 {
+        dst.spread = src.spread;
+    }
 }
 
 /// Two specs as unlike every default as a spec can be: a builder that
@@ -795,6 +843,10 @@ impl Patch {
         cmp!(field::RADIUS, style.radius);
         cmp!(field::OPACITY, style.opacity);
         cmp!(field::SHADOW, style.shadow);
+        // Lane by lane (backlog C114): a lane is set when either base saw
+        // it move, and only those lanes are written.
+        patch.shadow_lanes = shadow_lanes(&out_a.style.shadow, &base_a.style.shadow)
+            | shadow_lanes(&out_b.style.shadow, &base_b.style.shadow);
         cmp!(field::PIXEL_SNAP, style.pixel_snap);
         cmp!(field::CURSOR, cursor);
         cmp!(field::TRANSITION, transition);
@@ -910,7 +962,10 @@ impl Patch {
         take!(field::BORDER_W, st.border_w, os.border_w);
         take!(field::RADIUS, st.radius, os.radius);
         take!(field::OPACITY, st.opacity, os.opacity);
-        take!(field::SHADOW, st.shadow, os.shadow);
+        if s & field::SHADOW != 0 {
+            put_shadow(&mut st.shadow, &os.shadow, other.shadow_lanes);
+            self.shadow_lanes |= other.shadow_lanes;
+        }
         take!(field::PIXEL_SNAP, st.pixel_snap, os.pixel_snap);
         take!(field::CURSOR, self.cursor, other.cursor);
         take!(field::TRANSITION, self.transition, other.transition);
@@ -962,7 +1017,9 @@ impl Patch {
         put!(field::BORDER_W, st.border_w, os.border_w);
         put!(field::RADIUS, st.radius, os.radius);
         put!(field::OPACITY, st.opacity, os.opacity);
-        put!(field::SHADOW, st.shadow, os.shadow);
+        if s & field::SHADOW != 0 {
+            put_shadow(&mut st.shadow, &os.shadow, self.shadow_lanes);
+        }
         put!(field::PIXEL_SNAP, st.pixel_snap, os.pixel_snap);
         put!(field::CURSOR, spec.cursor, self.cursor);
         put!(field::TRANSITION, spec.transition, self.transition);
@@ -1967,6 +2024,41 @@ pub fn parse_with(v: &Value, mut refs: Refs<'_, '_>) -> Result<Vec<Rule>, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_entry_sets_a_shadows_lanes_one_by_one() {
+        // C114: an entry that moves the shadow keeps its colour and blur.
+        let base = || {
+            NodeSpec::row()
+                .shadow_color(Color::hex(0x00000080))
+                .shadow_blur(6.0)
+                .shadow_offset(2.0, 2.0)
+        };
+        let (lift, refused) = Patch::capture(&|s| s.shadow_offset(3.0, 4.0));
+        assert_eq!(refused, None);
+        let mut spec = base();
+        lift.apply(&mut spec, u32::MAX);
+        let sh = spec.style.shadow;
+        assert_eq!((sh.dx, sh.dy), (3.0, 4.0), "the lanes it sets");
+        assert_eq!(sh.color, Color::hex(0x00000080), "the colour kept");
+        assert_eq!(sh.blur, 6.0, "the blur kept");
+
+        // Merged after an entry setting the colour, both land.
+        let (tint, _) = Patch::capture(&|s| s.shadow_color(Color::hex(0xff000080)));
+        let mut both = tint.clone();
+        both.merge(&lift);
+        let mut spec = base();
+        both.apply(&mut spec, u32::MAX);
+        let sh = spec.style.shadow;
+        assert_eq!(sh.color, Color::hex(0xff000080));
+        assert_eq!((sh.dx, sh.dy, sh.blur), (3.0, 4.0, 6.0));
+
+        // A lane set to the default's value still counts as set.
+        let (flat, _) = Patch::capture(&|s| s.shadow_y(0.0));
+        let mut spec = base();
+        flat.apply(&mut spec, u32::MAX);
+        assert_eq!((spec.style.shadow.dx, spec.style.shadow.dy), (2.0, 0.0));
+    }
 
     #[test]
     fn a_band_holds_a_range_past_its_threshold_once_it_holds() {
