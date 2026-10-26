@@ -206,6 +206,17 @@ was the first bare bump to break an app in five releases).
   index as `pos_in_set` and the list its `rowCount` as `set_size`. And
   `KuiSpec` gained `on_typeahead` and `active_index` after ADR 0069's
   fields (856 bytes on 64-bit), so a C host recompiles.
+- Kit's `line_chart` draws its axes otherwise: x ticks as close as their
+  measured labels allow (never under 50 px apart) where a tick came every
+  90 px with an 80 px label, tick numbers with as many decimals as their
+  step, a y gutter as wide as its widest label where it was 44 px (56
+  with a unit) and its labels right-aligned, and a new value range glides
+  in over 240 ms where it jumped.
+- A Kit `settings` brand accent given as a colour takes along the roles
+  the skin paints in its accent — Ledger's selection, Neutral's and
+  Phosphor's focus ring, a first chart series — and works out what reads
+  on it, unless the brand names those roles too; an accent given as a
+  token name changes nothing else, as before.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -626,6 +637,32 @@ for lua-language-server, and a new runner beside the window's.
   bucket for its range, per two px the first, least, greatest and last —
   and a value that is no number breaks its line (`line_chart_100k` 5.0 →
   2.6 ms). The Kit app shows a Conditions demo and a table of cells.
+  An eighth: the line chart measures its axis labels
+  (`env.measure_text`, kept by text) — x ticks come as close as two
+  neighbours' half widths and 12 px allow, never under 50 px, an end
+  label giving way to its neighbour unless its tick is the plot's edge;
+  the y gutter hugs its widest label and eases when that changes; and a
+  new value range glides in over 240 ms, jumping under reduced motion
+  (`line_chart_live_300` 457 µs and `line_chart_100k` 2.5 ms, as
+  before). Two components: `skeleton`, placeholder lines, a block or a
+  circle in the skin's well, rounded by `$kitRadius`, a shimmer crossing
+  every bar in step and still under reduced motion — a gradient band, or
+  the host's fragment from `addons/kit/shaders/shimmer.wgsl` named by
+  `settings.shimmer`; and `shader`, a box a host's fragment paints
+  (`id`, `params`, `image`, `animate`). `code` takes `copy` (a Copy
+  button that says Copied), `line_numbers` and `label`. `settings` takes
+  `appearance` (`system`, `light`, `dark`: Kit's colours held to one
+  half), `hair`, `rule`, `font_ui`, `font_data` and `shimmer`, and an
+  accent given as a colour brings the skin's accent-painted roles along.
+  The Kit app is a card a file under `app/demos/`, each with a Source
+  button that shows its whole file read from the app's folder (and the
+  app's modules it requires) with line numbers and a Copy button; a Theme
+  panel sets every `settings` prop with every card following and prints
+  the `kit.settings` call; a Loading page shows skeletons, a card that
+  swaps them for its content, and a shader box; and nothing it says names
+  an ADR. *What you can delete:* a brand's `on_accent`, `sel` and `focus`
+  worked out by hand to go with its accent, and an app's own placeholder
+  bars for what is loading.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
