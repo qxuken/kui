@@ -3805,6 +3805,66 @@ answers the retained tree's revision (moved with every new tree, every
 event routed to JS); then a door for C (`kui_reframe`), if a C host
 wants it, with the DOORS row's `No` cells updated.
 
+### `.` C144 — Every windowed app peaks about 200 MB over its steady footprint at its first frame
+
+**Found** attributing the demos' memory (2026-10-26, read-only
+`footprint` of the user's running processes): each peaked 180–220 MB
+above where it settled — Kit 389 MB against 200–250, Watchtower 393
+against 175–193, Field Notes 288 against 89, Relay 305 against 101,
+Tidewater 268 against 67, Tasks 242 against 55 — whatever its size, so
+not its data. A headless run has no such peak (the Kit gallery touring
+every page: 46 → 73 MB, peak 73), and a `--shot` of a one-line app has
+it (234 MB peak, 50 MB resident). Probed in steps on the capture device
+(`/usr/bin/time -l` peak footprint, a throwaway example): opening the
+device 7 MB; creating the renderer and its pipelines 7.4 MB; the first
+queue submit, even an empty one, 85 MB; the first atlas upload +17 MB;
+the first draw of an empty frame 218 MB. Two seconds later the same
+process's footprint is 20 MB, with 148 MB of "Owned physical footprint
+(unmapped) (graphics)" marked reclaimable: the Metal driver's first
+command buffer and first pipeline use (the AGX compiler runs in-process),
+none of it kui's allocation, all of it given back. **Do.** Nothing
+needed for the steady state. If the peak matters (a memory-pressure
+warning, a sandbox's limit), measure a plain wgpu triangle the same way to
+confirm it is the platform's, then decide whether a pipeline warm-up or a
+Metal binary archive moves it.
+
+### `.` C145 — Font fallback parses about 830 faces in every app
+
+**Found** the same way, with `MallocStackLogging` on headless runs of the
+Kit gallery and Watchtower: cosmic-text's fallback had built `Font`s for
+832 faces of the 3,009 the database holds (`FontSystem::get_font`, 2.6
+MB) with their codepoint caches (`FontCachedCodepointSupportInfo`, 3.2
+MB) and harfrust's shaping data (2.1 MB) — about 8 MB a process, the
+same in both apps, and the work of parsing them at the first frame that
+met the character. Listing the 612 families (`env.system_font_families`)
+loads none; a character no font in the fallback list has walks them all.
+**Do.** Find which text does it (the macOS shortcut glyphs ⌥ ⇧ ⌘ and the
+arrows in Kit's labels are the suspects), and bound the walk: a script's
+families first, a cap, or a miss remembered for the codepoint.
+
+### `.` C146 — A window's heap is twice a headless run's, a third of it fragmentation
+
+**Found** the same way: the Kit gallery after an hour held 81 MB malloced
+in 344,645 blocks and 120 MB dirty in its default zone (33% fragmentation,
+40 MB), Watchtower 84 MB in 216,143 blocks; the same apps headless hold
+65 MB (Kit, after touring every page) and 42 MB (Watchtower). What the
+headless heap is, by allocation site (`malloc_history -allBySize`): Kit's
+Lua heaps about 32 MB, 21 MB of them the data worker's own copy of the
+100,000 rows it keeps to filter and sort, and 2.7 MB their path strings;
+the rows' channel 5.7 MB; the glyph atlas's pixels 4.2 MB; font fallback
+8 MB (C145); thread stacks for the timer, interrupt and worker threads
+2.15 MB each (address space more than pages). Beside the heap, every
+system face is mapped once (`share_faces`, 3,009 faces, 2.2 GB of
+address space, about 54 MB of clean resident pages, not footprint), and a
+window's three drawables are its IOSurfaces (51–54 MB for Kit and
+Watchtower; `DEFAULT_FRAME_LATENCY` 2, as decided). The windowed extra —
+about 25 MB for Kit, 42 for Watchtower — is not attributed: Metal,
+AppKit and the access tree are the candidates, and it needs a windowed
+run with `MallocStackLogging=1`, which this round could not start.
+**Do.** That run, by hand (`MallocStackLogging=1 kui run …`, then
+`malloc_history <pid> -allBySize`), and then a look at what churns the
+small blocks enough to leave a third of the zone empty.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
