@@ -116,6 +116,22 @@ function M.up_to(t: kui.Props, w: any, least?: number): kui.Props
   return t
 end
 
+-- Under reduced motion what Kit eases jumps (ADR 0069): an entry for the
+-- `when` of every node Kit animates. A match change already jumps there;
+-- this is for the easing of a node's own props (a switch's knob, a toast
+-- sliding in, a progress bar's spring).
+local STILL: {string:any} = { reduced_motion = true, transition = 0 }
+function M.still(): {string:any}
+  return STILL
+end
+
+-- Whether the user asked for less motion: what a loop (the under-way
+-- bar) reads, since an entry cannot stop a keyframe cycle.
+function M.reduced(c: Ctx): boolean
+  local s = c.env.system as {string:any}
+  return s ~= nil and s.motion == "reduced"
+end
+
 -- A spacer that takes the room its row leaves.
 function M.grow(): kui.Node
   return row { width = "grow" }

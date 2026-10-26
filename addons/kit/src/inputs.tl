@@ -351,7 +351,11 @@ function M.text_field(c: Ctx, p: P): kui.Node
   local field: kui.Node = column(ctx.up_to({ gap = 0, row(box), underline(c, focused, err ~= nil) },
     not chooser and p.width or nil, 80))
   if chooser then
-    field = row(ctx.up_to({ gap = 8, cross_align = "center", field, chooser }, p.width, 80))
+    -- Beside the field while the row is wide enough for both, under it
+    -- when it is not (ADR 0069, the row's own width): the field keeps a
+    -- width to type in and the button its whole label.
+    field = row(ctx.up_to({ gap = 8, cross_align = "center", field, chooser,
+      when = { { width = { below = 260, band = 16 }, dir = "column", cross_align = "start", gap = 6 } } }, p.width, 80))
   end
   if p.hide_label == true then return field end
   return labelled(c, str(p.label), field, p.width)
@@ -612,6 +616,7 @@ function M.switch(c: Ctx, p: P): kui.Node
   local knob_bg = round and "raised" or (ink_is_accent and (on and "bg" or "muted") or "ink")
   local knob = column {
     key = "knob", width = 14, height = 14, radius = round and 7 or 0, transition = SLIDE, slide = true,
+    when = { ctx.still() },
     bg = ref(c, knob_bg),
     border = (not round and ink_is_accent and on) and { w = "$kitHair", color = ref(c, "ink") } or nil,
   }
@@ -624,6 +629,7 @@ function M.switch(c: Ctx, p: P): kui.Node
     bg = ref(c, on and "accent" or "sunken"),
     border = { w = "$kitHair", color = ref(c, on and "accent" or off_edge) },
     transition = SLIDE,
+    when = { ctx.still() },
     knob,
   }
   if ctx.focus_shows(c, "ctl") then track[#track + 1] = ctx.focus_ring(c, 32, 18, round and 9 or 0) end

@@ -15,12 +15,15 @@ local function demo(title, note, code, ...)
   })
 end
 
+-- As many equal columns a line as fit at 320 px (ADR 0069 `min_column`).
 local function grid(...)
-  return row { width = "grow", gap = 16, wrap_children = true, cross_gap = 16, ... }
+  return row { width = "grow", gap = 16, cross_gap = 16, min_column = 320, ... }
 end
 
+-- A grid cell: as wide as a column, whatever `w` was (a width a cell once
+-- held, kept as a note of what the demo needs).
 local function cell(w, node)
-  return column { width = w, node }
+  return column { width = "grow", node }
 end
 
 local function note(s)

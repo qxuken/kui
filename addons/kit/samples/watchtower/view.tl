@@ -156,7 +156,9 @@ local function headline(m: Model): kui.Node
   local d1, t1 = delta(last(s.rps), ago(s.rps, 900), false)
   local d2, t2 = delta(last(s.p95), ago(s.p95, 900), true)
   local d3, t3 = delta(last(s.errors), ago(s.errors, 900), true)
-  return row { key = "headline", width = "grow", gap = 12, pad = { x = 12, y = 12 },
+  -- As many cards a line as fit at 290 px (ADR 0069 `min_column`): two
+  -- lines of two in a narrow window rather than four squeezed cards.
+  return row { key = "headline", width = "grow", gap = 12, cross_gap = 12, pad = { x = 12, y = 12 }, min_column = 290,
     card("rps", "Edge requests / s", thousands(last(s.rps)), d1, t1,
       kit.sparkline({ data = m.chart, field = "rps", width = 220, height = 22 })),
     card("p95", "Edge p95 latency", ms(last(s.p95)), d2, t2,
@@ -171,7 +173,10 @@ end
 
 local function charts(m: Model): kui.Node
   local window = RANGES[m.range]
+  -- One chart over the other when the pane is narrow, from the row's own
+  -- width (ADR 0069): the split's pane, not the window, is what narrows.
   return row { key = "charts", width = "grow", gap = 12,
+    when = { { width = { below = 620, band = 16 }, dir = "column" } },
     column { key = "lat", width = "grow",
       kit.panel({ key = "latency", title = "Edge latency", subtitle = "p50 · p95 · p99 in ms, by minutes ago" }, {
         kit.line_chart({ data = m.chart, x = "ago", window = window, height = 170, x_format = "ago", x_unit = "min", series = {

@@ -1,5 +1,6 @@
 [
   { name: "watchtower-overview", size: "1320x880", after: 1200, args: ["ledger", "overview"] }
+  { name: "watchtower-narrow", size: "900x880", after: 1200, args: ["ledger", "overview"] }
   { name: "watchtower-attention", size: "1320x880", after: 1200, args: ["neutral", "attention"] }
   { name: "watchtower-restart", size: "1320x880", after: 1200, args: ["phosphor", "restart"] }
   { name: "watchtower-scale", size: "1320x880", after: 1200, args: ["neutral", "scale"] }

@@ -44,6 +44,7 @@ function M.dialog(c: Ctx, p: P): kui.Node
     max_height = math.max(120, vh - 48),
     enter = { opacity = 0, dy = 8 },
     transition = 140,
+    when = { ctx.still() },
     row {
       width = "grow", height = 40, pad = { x = 16 }, cross_align = "center",
       text(title, { size = "$kitSizeTitle", bold = true, family = "$kitUi", color = ref(c, "fg") }),
@@ -69,6 +70,7 @@ function M.dialog(c: Ctx, p: P): kui.Node
     cross_align = "center",
     enter = { opacity = 0 },
     transition = 140,
+    when = { ctx.still() },
     column(box),
   }
 end
@@ -86,6 +88,7 @@ function M.popover(c: Ctx, p: P): kui.Node
     gap = 8,
     enter = { opacity = 0, dy = -4 },
     transition = 100,
+    when = { ctx.still() },
     children(""),
   }))
 end
@@ -102,6 +105,7 @@ function M.menu(c: Ctx, p: P): kui.Node
     gap = 1,
     enter = { opacity = 0, dy = -4 },
     transition = 100,
+    when = { ctx.still() },
   })
   local focused = false
   for i, it in ipairs(items) do
@@ -194,6 +198,7 @@ function M.toast(c: Ctx, p: P): kui.Node
     exit = { opacity = 0, dx = 32 },
     slide = inline or nil,
     transition = 180,
+    when = { ctx.still() },
     -- The tone, as a bar down its leading edge in the tone's colour, and
     -- the icon in it: an error reads as one before a word of it is read.
     column { key = "tone", width = 4, height = "grow", bg = ref(c, TONE_BAR[tone] or "rule") },
@@ -233,6 +238,7 @@ function M.toaster(c: Ctx, _p: P): kui.Node
     -- out. The toaster leaves as a toast does, with whatever is in it.
     exit = { opacity = 0, dx = 32 },
     transition = 180,
+    when = { ctx.still() },
     children(""),
   }
 end

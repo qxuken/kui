@@ -45,6 +45,7 @@ function M.dialog(c, p)
       max_height = math.max(120, vh - 48),
       enter = { opacity = 0, dy = 8 },
       transition = 140,
+      when = { ctx.still() },
       row({
          width = "grow", height = 40, pad = { x = 16 }, cross_align = "center",
          text(title, { size = "$kitSizeTitle", bold = true, family = "$kitUi", color = ref(c, "fg") }),
@@ -70,6 +71,7 @@ pad = { x = 16, y = 4 }, gap = 8, children(""), }),
       cross_align = "center",
       enter = { opacity = 0 },
       transition = 140,
+      when = { ctx.still() },
       column(box),
    })
 end
@@ -87,6 +89,7 @@ function M.popover(c, p)
       gap = 8,
       enter = { opacity = 0, dy = -4 },
       transition = 100,
+      when = { ctx.still() },
       children(""),
    }))
 end
@@ -103,6 +106,7 @@ function M.menu(c, p)
       gap = 1,
       enter = { opacity = 0, dy = -4 },
       transition = 100,
+      when = { ctx.still() },
    })
    local focused = false
    for i, it in ipairs(items) do
@@ -195,6 +199,7 @@ function M.toast(c, p)
       exit = { opacity = 0, dx = 32 },
       slide = inline or nil,
       transition = 180,
+      when = { ctx.still() },
 
 
       column({ key = "tone", width = 4, height = "grow", bg = ref(c, TONE_BAR[tone] or "rule") }),
@@ -234,6 +239,7 @@ function M.toaster(c, _p)
 
       exit = { opacity = 0, dx = 32 },
       transition = 180,
+      when = { ctx.still() },
       children(""),
    })
 end

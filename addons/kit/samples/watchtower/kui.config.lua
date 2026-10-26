@@ -4,6 +4,7 @@ return {
   version = "1.0.0",
   entry = "main.tl",
   size = { w = 1320, h = 880 },
-  -- below this the headline cards and the two charts stop fitting side by side
-  min_size = { w = 1040, h = 680 },
+  -- the headline cards wrap two a line and the charts stack as it narrows
+  -- (ADR 0069); below this the services table's columns crowd
+  min_size = { w = 880, h = 680 },
 }

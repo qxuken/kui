@@ -2312,3 +2312,38 @@ fn a_text_area_types_tab_unless_it_moves_focus() {
         }
     }
 }
+
+#[test]
+fn under_reduced_motion_a_switch_knob_jumps() {
+    // Kit's eased props jump when the user asked for less motion, by a
+    // `reduced_motion` rule on every node Kit animates (ADR 0069).
+    let mut r = LuaRig::new(
+        r#"
+        on = false
+        function on_event(ev) if ev.kind == "pin" then on = ev.toggle.on end end
+        function view(env)
+          return column { width = "grow", pad = 20,
+            component("kit/switch", { label = "Pinned", on = on, on_toggle = { kind = "pin" } }) }
+        end
+        "#,
+    );
+    let mut system = r.core.env.system;
+    system.motion = kui_core::MotionPref::Reduced;
+    r.core.set_system(system);
+    r.core.set_time(1.0);
+    r.frames(3);
+    let sw = r.named("Pinned");
+    let before = quads_sized(&mut r.core, 14.0, 14.0)[0].rect.x;
+    r.click(sw.x + 8.0, sw.y + sw.h / 2.0);
+    let mut xs = Vec::new();
+    let mut t = 1.0;
+    for _ in 0..6 {
+        t += 0.016;
+        r.core.set_time(t);
+        r.frames(1);
+        xs.push(quads_sized(&mut r.core, 14.0, 14.0)[0].rect.x);
+    }
+    let last = xs[xs.len() - 1];
+    assert!(last > before + 10.0, "it went across: {xs:?}");
+    assert!(xs.iter().all(|x| (*x - last).abs() < 0.5), "in one frame, no steps between: {xs:?}");
+}

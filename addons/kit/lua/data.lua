@@ -694,6 +694,7 @@ function M.badge(c, p)
       enter = fade and { opacity = 0 } or nil,
       exit = fade and { opacity = 0 } or nil,
       transition = fade and 140 or nil,
+      when = fade and { ctx.still() } or nil,
       pad = { x = 6 },
       gap = 5,
       cross_align = "center",
@@ -812,7 +813,7 @@ function M.progress(c, p)
 
 
       bar = { key = "bar", width = { pct = v * 100 }, height = "grow", bg = ref(c, "accent"),
-transition = 320, easing = "snappy", }
+transition = 320, easing = "snappy", when = { ctx.still() }, }
    else
 
 
@@ -823,7 +824,9 @@ transition = 320, easing = "snappy", }
       local w = r and r.w or 400
       bar = {
          width = { pct = 30 }, height = "grow", bg = ref(c, "accent"),
-         keyframes = { { dx = -0.3 * w }, { dx = w } }, transition = math.max(1400, w * 2.5),
+
+         keyframes = not ctx.reduced(c) and { { dx = -0.3 * w }, { dx = w } } or nil,
+         transition = not ctx.reduced(c) and math.max(1400, w * 2.5) or nil,
       }
    end
    local track = row({

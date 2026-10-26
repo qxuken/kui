@@ -165,10 +165,12 @@ local function setting(m, r, errors, warnings)
   end
   local err = #errs > 0 and table.concat(errs, " ") or nil
   local dirty = changed(m, r)
-  -- The control under the label when the two do not fit side by side (a
-  -- narrow window): a segmented control cannot give way below its labels,
-  -- and it crossed the panel's frame.
-  return row { key = "row." .. r[3], width = "grow", gap = 24, cross_gap = 8, wrap_children = true, pad = { y = 10 },
+  -- The control under the label when the row is narrow (ADR 0069): a
+  -- segmented control cannot give way below its labels, and it crossed
+  -- the panel's frame. Decided in layout from the row's own width, so a
+  -- resize lays it out the new way that frame, with no view run.
+  return row { key = "row." .. r[3], width = "grow", gap = 24, pad = { y = 10 },
+    when = { { width = { below = 640, band = 16 }, dir = "column", gap = 8 } },
     column { width = 250, gap = 3,
       -- As tall as the badge with or without it: a "changed" that appears
       -- does not push the help line and the rows under it down.
@@ -179,7 +181,7 @@ local function setting(m, r, errors, warnings)
       },
       words(r[5]),
     },
-    column { width = "grow", min_width = "fit", gap = 6,
+    column { width = "grow", gap = 6,
       r[7](m.draft),
       (err and not r.inline) and words(err, { color = "$kitDanger" }) or nil,
       (not err and warn) and words(warn, { color = "$kitWarn" }) or nil,

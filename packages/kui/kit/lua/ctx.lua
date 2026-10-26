@@ -118,6 +118,22 @@ function M.up_to(t, w, least)
 end
 
 
+
+
+
+local STILL = { reduced_motion = true, transition = 0 }
+function M.still()
+   return STILL
+end
+
+
+
+function M.reduced(c)
+   local s = c.env.system
+   return s ~= nil and s.motion == "reduced"
+end
+
+
 function M.grow()
    return row({ width = "grow" })
 end

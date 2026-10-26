@@ -693,6 +693,7 @@ function M.badge(c: Ctx, p: P): kui.Node
     enter = fade and { opacity = 0 } or nil,
     exit = fade and { opacity = 0 } or nil,
     transition = fade and 140 or nil,
+    when = fade and { ctx.still() } or nil,
     pad = { x = 6 },
     gap = 5,
     cross_align = "center",
@@ -811,7 +812,7 @@ function M.progress(c: Ctx, p: P): kui.Node
     -- Eased to each new value on a short spring: a checklist ticked off
     -- moves its bar, it does not jump.
     bar = { key = "bar", width = { pct = v * 100 }, height = "grow", bg = ref(c, "accent"),
-      transition = 320, easing = "snappy" }
+      transition = 320, easing = "snappy", when = { ctx.still() } }
   else
     -- Under way: a third of the track sliding across all of it, in from
     -- past its start and out past its end. It went from -80 px to 400 px
@@ -822,7 +823,9 @@ function M.progress(c: Ctx, p: P): kui.Node
     local w = r and r.w or 400
     bar = {
       width = { pct = 30 }, height = "grow", bg = ref(c, "accent"),
-      keyframes = { { dx = -0.3 * w }, { dx = w } }, transition = math.max(1400, w * 2.5),
+      -- Under reduced motion it stands still, a third of the track lit.
+      keyframes = not ctx.reduced(c) and { { dx = -0.3 * w }, { dx = w } } or nil,
+      transition = not ctx.reduced(c) and math.max(1400, w * 2.5) or nil,
     }
   end
   local track = row {
