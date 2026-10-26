@@ -419,7 +419,7 @@ return {
       props = {
         { "shape", "SkeletonShape?", doc = "Lines of text (the default), a block or a circle." },
         { "lines", "integer?", doc = "Text: how many lines, the last of several shorter; 1 when left out." },
-        { "width", "number?", doc = "In px: as wide as this at most (it grows when left out), or a circle's diameter (32 when left out)." },
+        { "width", "number?", doc = "In px, or a circle's diameter (32 when left out); a text or a block grows when left out." },
         { "height", "number?", doc = "A block's height in px; 80 when left out." },
         { "label", "string?", doc = "What is loading, as it is read; `Loading` when left out." },
       } },
@@ -430,7 +430,7 @@ return {
         { "params", "{number}?", doc = "Up to sixteen numbers the shader reads as four `vec4<f32>`." },
         { "image", "integer?", doc = "A registered image's handle, which the shader samples with `kui_sample`." },
         { "animate", "boolean?", doc = "A frame every frame, for a shader that reads `time`; off under reduced motion." },
-        { "width", "number?", doc = "As wide as this in px at most; it grows when left out." },
+        { "width", "number?", doc = "In px; it grows when left out." },
         { "height", "number?", doc = "In px; 80 when left out." },
         { "grow", "boolean?", doc = "Takes the height its parent leaves." },
         { "label", "string?", doc = "What it shows, as it is read; decoration when left out." },

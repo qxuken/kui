@@ -811,8 +811,8 @@ local record kit
     shape: SkeletonShape
     -- Text: how many lines, the last of several shorter; 1 when left out.
     lines: integer
-    -- In px: as wide as this at most (it grows when left out), or a circle's
-    -- diameter (32 when left out).
+    -- In px, or a circle's diameter (32 when left out); a text or a block
+    -- grows when left out.
     width: number
     -- A block's height in px; 80 when left out.
     height: number
@@ -835,7 +835,7 @@ local record kit
     -- A frame every frame, for a shader that reads `time`; off under reduced
     -- motion.
     animate: boolean
-    -- As wide as this in px at most; it grows when left out.
+    -- In px; it grows when left out.
     width: number
     -- In px; 80 when left out.
     height: number

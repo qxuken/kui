@@ -2272,8 +2272,8 @@ typedef struct KitSkeleton {
     int64_t lines;
     bool lines_set;
     /*
-     * In px: as wide as this at most (it grows when left out), or a circle's
-     * diameter (32 when left out).
+     * In px, or a circle's diameter (32 when left out); a text or a block grows
+     * when left out.
      */
     double width;
     bool width_set;
@@ -2342,7 +2342,7 @@ typedef struct KitShader {
     bool animate;
     bool animate_set;
     /*
-     * As wide as this in px at most; it grows when left out.
+     * In px; it grows when left out.
      */
     double width;
     bool width_set;

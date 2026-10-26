@@ -4495,8 +4495,8 @@ pub struct Skeleton {
     pub shape: Option<SkeletonShape>,
     /// Text: how many lines, the last of several shorter; 1 when left out.
     pub lines: Option<i64>,
-    /// In px: as wide as this at most (it grows when left out), or a circle's
-    /// diameter (32 when left out).
+    /// In px, or a circle's diameter (32 when left out); a text or a block
+    /// grows when left out.
     pub width: Option<f64>,
     /// A block's height in px; 80 when left out.
     pub height: Option<f64>,
@@ -4534,8 +4534,8 @@ impl Skeleton {
         self
     }
 
-    /// In px: as wide as this at most (it grows when left out), or a circle's
-    /// diameter (32 when left out).
+    /// In px, or a circle's diameter (32 when left out); a text or a block
+    /// grows when left out.
     pub fn width(mut self, v: f64) -> Self {
         self.width = Some(v);
         self
@@ -4619,7 +4619,7 @@ pub struct Shader {
     /// A frame every frame, for a shader that reads `time`; off under reduced
     /// motion.
     pub animate: Option<bool>,
-    /// As wide as this in px at most; it grows when left out.
+    /// In px; it grows when left out.
     pub width: Option<f64>,
     /// In px; 80 when left out.
     pub height: Option<f64>,
@@ -4676,7 +4676,7 @@ impl Shader {
         self
     }
 
-    /// As wide as this in px at most; it grows when left out.
+    /// In px; it grows when left out.
     pub fn width(mut self, v: f64) -> Self {
         self.width = Some(v);
         self

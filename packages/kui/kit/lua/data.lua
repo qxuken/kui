@@ -820,7 +820,8 @@ function M.shader(c, p)
       height = p.grow == true and "grow" or (p.height or 80),
       radius = "$kitRadius",
    }
-   ctx.up_to(t, p.width)
+   local pw = p.width
+   t.width = type(pw) == "number" and pw or "grow"
    local id = p.id
    if type(id) == "number" then
       t.id = math.tointeger(id)
@@ -892,7 +893,8 @@ function M.skeleton(c, p)
 
 
    t.on_layout = not still and not c.s.shimmer and act(c, "skeleton.layout") or nil
-   ctx.up_to(t, p.width)
+   local pw = p.width
+   t.width = type(pw) == "number" and pw or "grow"
    local r = c.env.layout_of("skeleton")
    local w = r and r.w or 0
    if shape == "block" then

@@ -819,7 +819,8 @@ function M.shader(c: Ctx, p: P): kui.Node
     height = p.grow == true and "grow" or (p.height or 80) as number,
     radius = "$kitRadius",
   }
-  ctx.up_to(t, p.width)
+  local pw = p.width
+  t.width = pw is number and pw or "grow"
   local id = p.id
   if id is number then
     t.id = math.tointeger(id)
@@ -891,7 +892,8 @@ function M.skeleton(c: Ctx, p: P): kui.Node
   -- The bars' laid-out width is the band's travel (kept for `layout_of`
   -- by `on_layout`, and a new width redraws).
   t.on_layout = not still and not c.s.shimmer and act(c, "skeleton.layout") or nil
-  ctx.up_to(t, p.width)
+  local pw = p.width
+  t.width = pw is number and pw or "grow"
   local r = c.env.layout_of("skeleton")
   local w = r and r.w or 0
   if shape == "block" then

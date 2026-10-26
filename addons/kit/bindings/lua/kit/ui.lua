@@ -486,7 +486,7 @@
 ---@class kit.SkeletonProps
 ---@field shape? kit.SkeletonShape Lines of text (the default), a block or a circle.
 ---@field lines? integer Text: how many lines, the last of several shorter; 1 when left out.
----@field width? number In px: as wide as this at most (it grows when left out), or a circle's diameter (32 when left out).
+---@field width? number In px, or a circle's diameter (32 when left out); a text or a block grows when left out.
 ---@field height? number A block's height in px; 80 when left out.
 ---@field label? string What is loading, as it is read; `Loading` when left out.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -498,7 +498,7 @@
 ---@field params? number[] Up to sixteen numbers the shader reads as four `vec4<f32>`.
 ---@field image? integer A registered image's handle, which the shader samples with `kui_sample`.
 ---@field animate? boolean A frame every frame, for a shader that reads `time`; off under reduced motion.
----@field width? number As wide as this in px at most; it grows when left out.
+---@field width? number In px; it grows when left out.
 ---@field height? number In px; 80 when left out.
 ---@field grow? boolean Takes the height its parent leaves.
 ---@field label? string What it shows, as it is read; decoration when left out.
