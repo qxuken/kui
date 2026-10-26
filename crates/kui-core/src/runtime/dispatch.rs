@@ -1712,7 +1712,7 @@ impl Core {
             KeyCode::Space => activates || item,
             KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => slider || item,
             KeyCode::Home | KeyCode::End => item || changes,
-            // A list and a grid page (ADR 0070).
+            // A list and a table page (ADR 0070).
             KeyCode::PageUp | KeyCode::PageDown => changes || item,
             // Type-ahead inside a composite; nothing anywhere else.
             KeyCode::Char(_) => item,

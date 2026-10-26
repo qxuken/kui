@@ -1431,10 +1431,7 @@ impl Diagnostics {
     fn check_composites(&mut self, tree: &Tree) {
         let mut items: Vec<usize> = Vec::new();
         for c in 0..tree.len() {
-            let Some(item) = tree.specs[c]
-                .access()
-                .role
-                .and_then(crate::composite::item_role)
+            let Some(item) = crate::composite::role(tree, c).and_then(crate::composite::item_role)
             else {
                 continue;
             };

@@ -1,7 +1,7 @@
-//! The grid composite and composites that reach past their window
-//! (`docs/adr/0070-a-grid-and-composites-past-the-window.md`, backlog C89
-//! and C90): a `grid`'s `cell`s in `row`s are one Tab stop, the arrows
-//! moving in two dimensions; and a `list` or `grid` whose rows carry their
+//! The table of cells and composites that reach past their window
+//! (`docs/adr/0070-a-table-of-cells-and-composites-past-the-window.md`, backlog C89
+//! and C90): a `table`'s `cell`s in `row`s are one Tab stop, the arrows
+//! moving in two dimensions; and a `list` or `table` whose rows carry their
 //! data `index` under a `rowCount` walks rows the frame has not built,
 //! scrolling toward them and landing when the next frame builds them.
 
@@ -21,9 +21,9 @@ fn cell_key(r: usize, c: usize) -> Key {
         .str(&format!("c{c}"))
 }
 
-/// A 3×3 grid of focusable cells, 60×20 each, after a button; the cell at
+/// A 3×3 table of focusable cells, 60×20 each, after a button; the cell at
 /// (1, 1) disabled when `hole`.
-fn grid_frame(core: &mut Core, hole: bool) -> Key {
+fn cells_frame(core: &mut Core, hole: bool) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let before = ui.leaf_keyed(
@@ -35,7 +35,7 @@ fn grid_frame(core: &mut Core, hole: bool) -> Key {
     );
     ui.with_keyed(
         "grid",
-        NodeSpec::column().role(Role::Grid).label("table"),
+        NodeSpec::column().role(Role::Table).label("table"),
         |ui| {
             for r in 0..3 {
                 ui.with_keyed(&format!("r{r}"), NodeSpec::row().role(Role::Row), |ui| {
@@ -59,9 +59,9 @@ fn grid_frame(core: &mut Core, hole: bool) -> Key {
 }
 
 #[test]
-fn a_grid_is_one_tab_stop_and_its_arrows_move_in_two_dimensions() {
+fn a_table_is_one_tab_stop_and_its_arrows_move_in_two_dimensions() {
     let mut core = Core::new();
-    let before = grid_frame(&mut core, false);
+    let before = cells_frame(&mut core, false);
     core.set_focus(Some(before));
     tab(&mut core, false);
     assert_eq!(
@@ -70,7 +70,7 @@ fn a_grid_is_one_tab_stop_and_its_arrows_move_in_two_dimensions() {
         "entered on its first cell"
     );
     tab(&mut core, false);
-    assert_eq!(core.focus(), Some(before), "one stop: Tab leaves the grid");
+    assert_eq!(core.focus(), Some(before), "one stop: Tab leaves the table");
     core.set_focus(Some(cell_key(0, 0)));
     key(&mut core, EditKey::Right, Mods::NONE);
     assert_eq!(core.focus(), Some(cell_key(0, 1)));
@@ -95,7 +95,7 @@ fn a_grid_is_one_tab_stop_and_its_arrows_move_in_two_dimensions() {
     assert_eq!(
         core.focus(),
         Some(cell_key(0, 0)),
-        "Ctrl+Home: the grid's first"
+        "Ctrl+Home: the table's first"
     );
     key(&mut core, EditKey::End, Mods::NONE.with_doc());
     assert_eq!(
@@ -109,7 +109,7 @@ fn a_grid_is_one_tab_stop_and_its_arrows_move_in_two_dimensions() {
 #[test]
 fn a_disabled_cell_is_stepped_past_and_keeps_its_column() {
     let mut core = Core::new();
-    grid_frame(&mut core, true);
+    cells_frame(&mut core, true);
     core.set_focus(Some(cell_key(1, 0)));
     key(&mut core, EditKey::Right, Mods::NONE);
     assert_eq!(core.focus(), Some(cell_key(1, 2)), "past the disabled cell");
@@ -123,12 +123,12 @@ fn a_disabled_cell_is_stepped_past_and_keeps_its_column() {
 }
 
 #[test]
-fn a_grid_and_its_rows_and_cells_reach_assistive_technology() {
+fn a_table_and_its_rows_and_cells_reach_assistive_technology() {
     let mut core = Core::new();
-    grid_frame(&mut core, false);
+    cells_frame(&mut core, false);
     let tree = core.access_tree().clone();
     let role = |k: Key| tree.nodes.iter().find(|n| n.key == k).map(|n| n.role);
-    assert_eq!(role(Key::ROOT.str("grid")), Some(Role::Grid));
+    assert_eq!(role(Key::ROOT.str("grid")), Some(Role::Table));
     assert_eq!(role(Key::ROOT.str("grid").str("r0")), Some(Role::Row));
     assert_eq!(role(cell_key(0, 0)), Some(Role::Cell));
     let cell = tree.nodes.iter().find(|n| n.key == cell_key(1, 2)).unwrap();
@@ -146,8 +146,8 @@ const VIEW_ROWS: u64 = 10;
 /// A virtual list of `N` rows, 20 px each, in a 200 px scroller: the rows
 /// the scroll offset shows are built, opened by their data index, and the
 /// spacers keep the height of the rest — the shape Kit's list has.
-/// `grid` makes it a grid of rows of three cells instead.
-fn virtual_frame(core: &mut Core, grid: bool) {
+/// `table` makes it a table of rows of three cells instead.
+fn virtual_frame(core: &mut Core, table: bool) {
     let list = Key::ROOT.str("list");
     let off = core.scroll_offset(list).y.max(0.0);
     let first = ((off / ROW_H).floor() as u64).min(N);
@@ -161,7 +161,7 @@ fn virtual_frame(core: &mut Core, grid: bool) {
             .on_click("b")
             .label("Before"),
     );
-    let role = if grid { Role::Grid } else { Role::List };
+    let role = if table { Role::Table } else { Role::List };
     ui.with_keyed(
         "list",
         NodeSpec::column()
@@ -178,7 +178,7 @@ fn virtual_frame(core: &mut Core, grid: bool) {
                 );
             }
             for i in first..last {
-                if grid {
+                if table {
                     ui.with_indexed(i, NodeSpec::row().height(ROW_H).role(Role::Row), |ui| {
                         for c in 0..3 {
                             ui.leaf_keyed(
@@ -219,14 +219,14 @@ fn row_key(i: u64) -> Key {
     Key::ROOT.str("list").index(i)
 }
 
-fn grid_cell(i: u64, c: usize) -> Key {
+fn table_cell(i: u64, c: usize) -> Key {
     row_key(i).str(&format!("c{c}"))
 }
 
 /// Draws frames until nothing is owed (a few at most).
-fn settle(core: &mut Core, grid: bool) {
+fn settle(core: &mut Core, table: bool) {
     for _ in 0..5 {
-        virtual_frame(core, grid);
+        virtual_frame(core, table);
         if !core.animating() {
             break;
         }
@@ -309,27 +309,27 @@ fn a_reach_is_let_go_when_focus_moves_another_way() {
 }
 
 #[test]
-fn a_windowed_grid_reaches_an_unbuilt_row_and_keeps_the_column() {
+fn a_windowed_table_reaches_an_unbuilt_row_and_keeps_the_column() {
     let mut core = Core::new();
     virtual_frame(&mut core, true);
     virtual_frame(&mut core, true);
-    core.set_focus(Some(grid_cell(0, 2)));
+    core.set_focus(Some(table_cell(0, 2)));
     key(&mut core, EditKey::End, Mods::NONE.with_ctrl());
     settle(&mut core, true);
     assert_eq!(
         core.focus(),
-        Some(grid_cell(N - 1, 2)),
-        "the grid's last cell"
+        Some(table_cell(N - 1, 2)),
+        "the table's last cell"
     );
     key(&mut core, EditKey::Left, Mods::NONE);
     key(&mut core, EditKey::PageUp, Mods::NONE);
     settle(&mut core, true);
     assert_eq!(
         core.focus(),
-        Some(grid_cell(N - 1 - VIEW_ROWS, 1)),
+        Some(table_cell(N - 1 - VIEW_ROWS, 1)),
         "a page up, same column"
     );
     key(&mut core, EditKey::Home, Mods::NONE.with_ctrl());
     settle(&mut core, true);
-    assert_eq!(core.focus(), Some(grid_cell(0, 0)));
+    assert_eq!(core.focus(), Some(table_cell(0, 0)));
 }

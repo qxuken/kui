@@ -8047,7 +8047,7 @@ mod tests {
         assert!(!pressed(&ext), "released");
     }
 
-    /// A script declares the grid composite by its roles (ADR 0070): the
+    /// A script declares a table of cells by its roles (ADR 0070): the
     /// cells are one Tab stop the arrows walk in two dimensions.
     #[test]
     fn a_scripts_grid_is_walked_by_rows_and_cells() {
@@ -8064,7 +8064,7 @@ mod tests {
                     end
                     rows[#rows + 1] = row(cells)
                   end
-                  rows.key, rows.role, rows.label = "grid", "grid", "table"
+                  rows.key, rows.role, rows.label = "grid", "table", "table"
                   return column { key = "root", column(rows) }
                 end
             "#,

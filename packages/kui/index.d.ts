@@ -895,7 +895,8 @@ export type AccessRole =
   | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog'
   | 'group' | 'window' | 'titleBar' | 'staticText' | 'textInput'
   | 'multilineTextInput' | 'scrollView' | 'line' | 'radioGroup' | 'menu'
-  | 'menuItem' | 'terminal' | 'passwordInput' | 'grid' | 'row' | 'cell';
+  | 'menuItem' | 'terminal' | 'passwordInput' | 'table' | 'row' | 'cell'
+  | 'columnHeader' | 'rowHeader';
 
 /** What assistive technology can ask of a node (`access(key, action)`). */
 export type AccessAction =

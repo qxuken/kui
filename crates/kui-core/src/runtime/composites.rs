@@ -20,7 +20,7 @@ impl Core {
     /// One arrow, Home, End, Page Up or Page Down step inside the composite
     /// holding node `i`. Nothing happens when `i` is not a composite item,
     /// or when the step runs off the end of one that clamps. A step to a
-    /// row a windowed list or grid has not built reaches for it instead
+    /// row a windowed list or table has not built reaches for it instead
     /// (ADR 0070): the scroller moves toward it, and the frame that builds
     /// it lands the focus there.
     pub(crate) fn composite_step(
@@ -79,7 +79,7 @@ impl Core {
     ) -> Option<Target> {
         use crate::access::Role;
         let container = crate::composite::owner(&self.tree, i, items)?;
-        let role = self.tree.specs[container].access().role?;
+        let role = crate::composite::role(&self.tree, container)?;
         let item = crate::composite::item_role(role)?;
         // A disabled item is not an item here, as it is not in the ring —
         // it keeps its ordinal in "3 of 7" and the arrows step over it.
@@ -88,8 +88,8 @@ impl Core {
             .copied()
             .filter(|&j| crate::access::focusable(&self.tree, j))
             .collect();
-        if role == Role::Grid {
-            return self.grid_target(container, i, ek, mods, items);
+        if role == Role::Table {
+            return self.table_target(container, i, ek, mods, items);
         }
         let at = live.iter().position(|&j| j == i)?;
         // A list whose rows carry their data index under a `rowCount` is
@@ -145,13 +145,14 @@ impl Core {
         Some(Target::Land(j, item))
     }
 
-    /// A step inside a grid (ADR 0070, backlog C90): Left / Right along the
-    /// row, Up / Down to the row before or after keeping the column, Home /
-    /// End to the row's ends — the grid's first and last cell with Ctrl (or
-    /// the primary) held — and Page Up / Page Down by the rows its scroller
-    /// shows. It clamps at every edge, a grid being a list of rows. Rows a
-    /// windowed grid has not built are reached for by their data index.
-    fn grid_target(
+    /// A step inside a table (ADR 0070, backlog C90): Left / Right along
+    /// the row, Up / Down to the row before or after keeping the column,
+    /// Home / End to the row's ends — the table's first and last cell with
+    /// Ctrl (or the primary) held — and Page Up / Page Down by the rows its
+    /// scroller shows. It clamps at every edge, a table being a list of
+    /// rows. Rows a windowed table has not built are reached for by their
+    /// data index.
+    fn table_target(
         &self,
         container: usize,
         i: usize,
@@ -180,15 +181,15 @@ impl Core {
                 row[from + 1..].iter().copied().find(|&c| live(c))
             }
         };
-        let to_grid_end = mods.ctrl || mods.doc;
+        let to_table_end = mods.ctrl || mods.doc;
         let land = |j: usize| Some(Target::Land(j, Role::Cell));
         match ek {
             EditKey::Left => return land(along(&rows[ri].1, ci, true)?),
             EditKey::Right => return land(along(&rows[ri].1, ci, false)?),
-            EditKey::Home if !to_grid_end => {
+            EditKey::Home if !to_table_end => {
                 return land(rows[ri].1.iter().copied().find(|&c| live(c))?);
             }
-            EditKey::End if !to_grid_end => {
+            EditKey::End if !to_table_end => {
                 return land(rows[ri].1.iter().rev().copied().find(|&c| live(c))?);
             }
             EditKey::Up | EditKey::Down | EditKey::PageUp | EditKey::PageDown => {}
@@ -196,7 +197,7 @@ impl Core {
             _ => return None,
         }
         // The column a row motion keeps: this one, or the first / last for
-        // the grid's own ends.
+        // the table's own ends.
         let column = match ek {
             EditKey::Home => 0,
             EditKey::End => usize::MAX,
@@ -217,7 +218,7 @@ impl Core {
                 .iter()
                 .find(|(r, _)| crate::composite::data_index(&self.tree, *r) == Some(t))
             {
-                return land(self.grid_cell_at(row, column)?);
+                return land(self.cell_at_column(row, column)?);
             }
             return Some(self.reach(container, rows[ri].0, &units, t, Some(column)));
         }
@@ -241,13 +242,13 @@ impl Core {
                 (r < last).then_some(r + 1)?
             };
         }
-        land(self.grid_cell_at(&rows[r].1, column)?)
+        land(self.cell_at_column(&rows[r].1, column)?)
     }
 
     /// The live cell of `row` nearest column `column` (`usize::MAX` for the
     /// row's last): that column itself when it is live, else the nearest
     /// on either side, the earlier on a tie.
-    fn grid_cell_at(&self, row: &[usize], column: usize) -> Option<usize> {
+    fn cell_at_column(&self, row: &[usize], column: usize) -> Option<usize> {
         let live = |j: usize| crate::access::focusable(&self.tree, j);
         let c = column.min(row.len().checked_sub(1)?);
         (0..row.len()).find_map(|d| {
@@ -260,7 +261,7 @@ impl Core {
     }
 
     /// The data index of the composite unit at `unit` — a list's item, a
-    /// grid's row — and the count of rows the composite at `container` has,
+    /// table's row — and the count of rows the composite at `container` has,
     /// built or not, when it is windowed: the unit carries an `index` and a
     /// `rowCount` is declared between them (ADR 0070). An index a step is
     /// already reaching for in the same composite stands in for the unit's,
@@ -400,7 +401,7 @@ impl Core {
 
     /// At a frame's end: lands a reach on the row it was for, now that the
     /// view had the chance to build it — a list's item with that index, a
-    /// grid's cell in that row nearest the column kept. A row still not
+    /// table's cell in that row nearest the column kept. A row still not
     /// built (rows that are not uniform, so the estimate missed) is
     /// reached for again from the rows this frame did build, a few times,
     /// and then let go; so is one whose composite is gone. Focus moving
@@ -414,7 +415,7 @@ impl Core {
         let Some(container) = self.tree.index_of(reach.container) else {
             return;
         };
-        let Some(role) = self.tree.specs[container].access().role else {
+        let Some(role) = crate::composite::role(&self.tree, container) else {
             return;
         };
         let Some(item) = crate::composite::item_role(role) else {
@@ -422,7 +423,7 @@ impl Core {
         };
         let mut items = std::mem::take(&mut self.items_scratch);
         crate::composite::items(&self.tree, container, item, &mut items);
-        let units: Vec<usize> = if role == Role::Grid {
+        let units: Vec<usize> = if role == Role::Table {
             let mut rows: Vec<usize> = Vec::new();
             for &c in &items {
                 let r = crate::composite::row_of(&self.tree, container, c);
@@ -439,13 +440,13 @@ impl Core {
             .copied()
             .find(|&u| crate::composite::data_index(&self.tree, u) == Some(reach.index));
         let landing = hit.and_then(|u| {
-            if role == Role::Grid {
+            if role == Role::Table {
                 let row: Vec<usize> = items
                     .iter()
                     .copied()
                     .filter(|&c| crate::composite::row_of(&self.tree, container, c) == u)
                     .collect();
-                self.grid_cell_at(&row, reach.column.unwrap_or(0))
+                self.cell_at_column(&row, reach.column.unwrap_or(0))
             } else {
                 Some(u).filter(|&j| crate::access::focusable(&self.tree, j))
             }
@@ -552,7 +553,7 @@ impl Core {
         items: &mut Vec<usize>,
     ) -> Option<(usize, crate::access::Role)> {
         let container = crate::composite::owner(&self.tree, i, items)?;
-        let item = crate::composite::item_role(self.tree.specs[container].access().role?)?;
+        let item = crate::composite::item_role(crate::composite::role(&self.tree, container)?)?;
         // With no clock every keystroke starts a fresh search: the buffer
         // has no way to age, and a stale one would be worse than none.
         let now = self.anim.time();
@@ -727,14 +728,14 @@ impl Core {
 }
 
 /// Where a composite step goes: onto a built item, or reaching for a row
-/// a windowed list or grid has not built, toward where it would be.
+/// a windowed list or table has not built, toward where it would be.
 enum Target {
     Land(usize, crate::access::Role),
     Reach(Reach, Rect),
 }
 
 /// A composite step to a row the frame did not build (ADR 0070, backlog
-/// C89): the composite, the row's data index, and for a grid the column
+/// C89): the composite, the row's data index, and for a table the column
 /// to land in (`usize::MAX` for the row's last). Held from the key to the
 /// frame that builds the row; focus moving any other way lets it go.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

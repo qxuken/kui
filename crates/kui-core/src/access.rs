@@ -119,17 +119,27 @@ pub enum Role {
     /// that masks its own text can declare it in Rust, as
     /// [`Role::TextInput`].
     PasswordInput,
-    /// A two-dimensional composite (ADR 0070, backlog C90): its `cell`s,
-    /// in `row`s, are one Tab stop, Left / Right moving along a row and Up
-    /// / Down between rows, Home / End to a row's ends (with Ctrl, the
-    /// grid's), Page Up / Page Down by what its scroller shows.
-    Grid,
-    /// One row of a `grid`: what Up and Down move between, and what a
-    /// windowed grid numbers with `index`. Not focusable of itself.
+    /// A table of cells (ADR 0070, backlog C90): `cell`s in `row`s, its
+    /// rows and columns reported to assistive technology. One whose cells
+    /// take focus is a composite — one Tab stop, Left / Right moving along
+    /// a row and Up / Down between rows, Home / End to a row's ends (with
+    /// Ctrl, the table's), Page Up / Page Down by what its scroller shows
+    /// — and a reader's grid; one with none is a static table. Implied by
+    /// a layout table (`NodeSpec::table`) that declares no role.
+    Table,
+    /// One row of a `table`: what Up and Down move between, and what a
+    /// windowed table numbers with `index`. Not focusable of itself.
     Row,
-    /// One cell of a `grid`'s row: the grid's item, focusable where it
+    /// One cell of a `table`'s row: the table's item, focusable where it
     /// says `focusable`, as a `listItem` is.
     Cell,
+    /// A cell that heads its column: a cell to navigation, and the header
+    /// a reader announces moving across columns (by its column index,
+    /// AccessKit having no relation for it).
+    ColumnHeader,
+    /// A cell that heads its row: a cell to navigation, a row header to a
+    /// reader.
+    RowHeader,
 }
 
 impl Role {
@@ -156,9 +166,11 @@ impl Role {
             Role::MenuItem => "menuItem",
             Role::Terminal => "terminal",
             Role::PasswordInput => "passwordInput",
-            Role::Grid => "grid",
+            Role::Table => "table",
             Role::Row => "row",
             Role::Cell => "cell",
+            Role::ColumnHeader => "columnHeader",
+            Role::RowHeader => "rowHeader",
             Role::Window => "window",
             Role::TitleBar => "titleBar",
             Role::StaticText => "staticText",
@@ -173,7 +185,7 @@ impl Role {
         Role::ALL.iter().copied().find(|r| r.name() == name)
     }
 
-    pub const ALL: [Role; 30] = [
+    pub const ALL: [Role; 32] = [
         Role::None,
         Role::Button,
         Role::Checkbox,
@@ -201,9 +213,11 @@ impl Role {
         Role::MenuItem,
         Role::Terminal,
         Role::PasswordInput,
-        Role::Grid,
+        Role::Table,
         Role::Row,
         Role::Cell,
+        Role::ColumnHeader,
+        Role::RowHeader,
     ];
 
     /// A control needs a name; one without is reported as a warning.
@@ -1483,15 +1497,15 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
 fn set_positions(tree: &Tree, out: &mut AccessTree) {
     let containers: Vec<(usize, Role)> = (0..tree.len())
         .filter_map(|i| {
-            let item = crate::composite::item_role(tree.specs[i].access().role?)?;
+            let item = crate::composite::item_role(crate::composite::role(tree, i)?)?;
             Some((i, item))
         })
         .collect();
     let mut items: Vec<usize> = Vec::new();
     for (container, item) in containers {
-        // A grid's cells are not one set: a reader places a cell by its
-        // row and column, which the access node does not carry yet (ADR
-        // 0070, open question), and "7 of 12" across rows would be wrong.
+        // A table's cells are not one set: a reader places a cell by its
+        // row and column (`table_positions`), and "7 of 12" across rows
+        // would be wrong.
         if item == Role::Cell {
             continue;
         }

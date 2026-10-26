@@ -138,7 +138,8 @@ impl Core {
                 continue;
             }
             if let Some(&(_, item, chosen)) = open.last()
-                && role == Some(item)
+                && crate::composite::role(&self.tree, i)
+                    .is_some_and(|r| crate::composite::is_item(r, item))
             {
                 if chosen == Some(i) {
                     out.push((i, self.tree.keys[i]));
@@ -146,7 +147,9 @@ impl Core {
                 i = self.tree.subtree_end(i);
                 continue;
             }
-            if let Some(item) = role.and_then(crate::composite::item_role) {
+            if let Some(item) =
+                crate::composite::role(&self.tree, i).and_then(crate::composite::item_role)
+            {
                 crate::composite::items(&self.tree, i, item, &mut items);
                 if crate::composite::is_composite(&self.tree, i, &items) {
                     let chosen = self.composite_entry(&items);

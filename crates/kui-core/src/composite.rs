@@ -21,14 +21,15 @@ use crate::tree::Tree;
 
 /// The container / item pairs, and nothing else. `group`, a row of links
 /// and a bar of icon buttons stay ordinary Tab rings. The fifth is the
-/// grid's (ADR 0070, backlog C90): its items are its cells, whichever
-/// `row` holds them, and its arrows move in two dimensions.
+/// table's (ADR 0070, backlog C90): its items are its cells — a header
+/// cell among them ([`is_item`]) — whichever `row` holds them, and its
+/// arrows move in two dimensions.
 pub(crate) const PAIRS: [(Role, Role); 5] = [
     (Role::RadioGroup, Role::Radio),
     (Role::TabList, Role::Tab),
     (Role::Menu, Role::MenuItem),
     (Role::List, Role::ListItem),
-    (Role::Grid, Role::Cell),
+    (Role::Table, Role::Cell),
 ];
 
 /// The item role a container role holds, or None for a role that is not a
@@ -48,8 +49,8 @@ pub(crate) fn item_role(container: Role) -> Option<Role> {
 /// and 40 in the tree, the last item is not the last row, so wrapping from
 /// the first to "the last" would land on row 40 and claim it was row 4,000.
 pub(crate) fn wraps(container: Role) -> bool {
-    // A grid is a list of rows, and windowed the same way.
-    !matches!(container, Role::List | Role::Grid)
+    // A table is a list of rows, and windowed the same way.
+    !matches!(container, Role::List | Role::Table)
 }
 
 /// Whether moving focus onto an item also emits its activation payload
@@ -74,12 +75,12 @@ pub(crate) fn activates_on_motion(item: Role) -> bool {
 /// one allocation per frame instead of one per composite.
 pub(crate) fn items(tree: &Tree, container: usize, item: Role, out: &mut Vec<usize>) {
     out.clear();
-    let kind = tree.specs[container].access().role;
+    let kind = role(tree, container);
     let end = tree.subtree_end(container);
     let mut i = container + 1;
     while i < end {
-        let role = tree.specs[i].access().role;
-        if role == Some(item) {
+        let role = role(tree, i);
+        if role.is_some_and(|r| is_item(r, item)) {
             out.push(i);
             i = tree.subtree_end(i);
             continue;
@@ -109,14 +110,14 @@ pub(crate) fn is_composite(tree: &Tree, i: usize, items: &[usize]) -> bool {
 /// nearest ancestor whose role pairs with `i`'s own. None when `i` is not
 /// an item, or its container holds no focusable item.
 pub(crate) fn owner(tree: &Tree, i: usize, scratch: &mut Vec<usize>) -> Option<usize> {
-    let item = tree.specs[i].access().role?;
+    let item = item_of(role(tree, i)?);
     let mut j = i;
     loop {
         j = match tree.parent[j] {
             crate::tree::NIL => return None,
             p => p as usize,
         };
-        if tree.specs[j].access().role.and_then(item_role) == Some(item) {
+        if role(tree, j).and_then(item_role) == Some(item) {
             items(tree, j, item, scratch);
             return (scratch.contains(&i) && is_composite(tree, j, scratch)).then_some(j);
         }
@@ -124,11 +125,11 @@ pub(crate) fn owner(tree: &Tree, i: usize, scratch: &mut Vec<usize>) -> Option<u
 }
 
 /// A composite container's orientation, from its own `dir` (decision 7).
-/// A grid has none: it is arranged both ways.
+/// A table has none: it is arranged both ways.
 pub(crate) fn orientation(tree: &Tree, i: usize) -> Option<Orientation> {
-    let role = tree.specs[i].access().role?;
+    let role = role(tree, i)?;
     item_role(role)?;
-    if role == Role::Grid {
+    if role == Role::Table {
         return None;
     }
     Some(match tree.specs[i].layout.dir {
@@ -151,9 +152,9 @@ pub(crate) fn line_of(tree: &Tree, container: usize, mut i: usize) -> u32 {
     }
 }
 
-/// The row a grid's cell at `i` sits in: the nearest `row` between it and
-/// the grid at `container`, or the grid itself for a cell outside every row
-/// (a one-row grid needs no `row`). ADR 0070.
+/// The row a table's cell at `i` sits in: the nearest `row` between it and
+/// the table at `container`, or the table itself for a cell outside every
+/// row (a one-row table needs no `row`). ADR 0070.
 pub(crate) fn row_of(tree: &Tree, container: usize, i: usize) -> usize {
     let mut j = i;
     loop {
@@ -161,9 +162,33 @@ pub(crate) fn row_of(tree: &Tree, container: usize, i: usize) -> usize {
             crate::tree::NIL => return container,
             p => p as usize,
         };
-        if j == container || tree.specs[j].access().role == Some(Role::Row) {
+        if j == container || role(tree, j) == Some(Role::Row) {
             return j;
         }
+    }
+}
+
+/// The role a composite reads for node `i`: the one it declares. Every
+/// composite walk asks here rather than reading the spec, so the roles a
+/// layout table implies (ADR 0070) reach navigation as they reach a
+/// reader.
+pub(crate) fn role(tree: &Tree, i: usize) -> Option<Role> {
+    tree.specs[i].access().role
+}
+
+/// Whether a node of role `role` is an item of a composite whose items are
+/// `item`: that role, or — in a table — a header cell, which navigation
+/// treats as the cell it is.
+pub(crate) fn is_item(role: Role, item: Role) -> bool {
+    role == item || (item == Role::Cell && matches!(role, Role::ColumnHeader | Role::RowHeader))
+}
+
+/// The item role a node of role `role` is an item as: a header cell is a
+/// cell.
+pub(crate) fn item_of(role: Role) -> Role {
+    match role {
+        Role::ColumnHeader | Role::RowHeader => Role::Cell,
+        r => r,
     }
 }
 

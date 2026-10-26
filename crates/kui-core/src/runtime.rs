@@ -768,7 +768,7 @@ pub struct Core {
     /// ring rather than typing, CodeMirror's escape hatch. Any other key,
     /// and focus moving, disarms it.
     tab_armed: Option<Key>,
-    /// A composite step to a row a windowed list or grid has not built
+    /// A composite step to a row a windowed list or table has not built
     /// (ADR 0070, backlog C89): landed by the frame that builds it.
     composite_reach: Option<composites::Reach>,
     /// Reused by the composite walks (the ring, arrow motion), so a frame
