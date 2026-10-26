@@ -3656,13 +3656,14 @@ filed the same day for the round that builds them.
 - `.` **C116** — [A script cannot tell which platform it is on](backlog/closed-2026-09.md#-c116--a-script-cannot-tell-which-platform-it-is-on--done-2026-10-26) — done (2026-10-26) — `env.platform` in Lua and Node, `kui_platform` in C and Odin, the fact `when`'s `platform` reads
 - `.` **C117** — [A script can neither list the system's fonts nor load one](backlog/closed-2026-09.md#-c117--a-script-can-neither-list-the-systems-fonts-nor-load-one--done-2026-10-26) — done (2026-10-26) — `env.system_font_families()` and `env.load_font_file(path)`, the path under the runner's folder rules
 - `.` **C118** — [The docs do not travel with kui](backlog/closed-2026-09.md#-c118--the-docs-do-not-travel-with-kui--done-2026-10-26) — done (2026-10-26) — ADR 0071 built: `kui docs` over the docs the runner carries, opt-in `--docs` / `--agents` remembered as `tooling`, `.kui/` kept at the runner's version, `kui_native::docs`, the book's text and Kit's reference on npm
+- `.` **C119** — [A script cannot read the pointer's position](backlog/closed-2026-09.md#-c119--a-script-cannot-read-the-pointers-position--done-2026-10-26) — done (2026-10-26) — `pointer_in(key)` in every binding; Kit's line chart reads out the sample under the pointer with it, its bands gone
 - `.` **C120** — [A composite cannot hear a key its items do not claim](backlog/closed-2026-09.md#-c120--a-composite-cannot-hear-a-key-its-items-do-not-claim--done-2026-10-26) — done (2026-10-26) — `onItemKey` on the composite: the keys its focused item leaves, as `itemkey: {the press, item, index, column?}`; no Tab stop, the arrows kept, every binding
 - `.` **C123** — [A clipped float seems cut by its parent](backlog/closed-2026-09.md#-c123--a-clipped-float-seems-cut-by-its-parent--done-2026-10-26) — done (2026-10-26) — it is cut where a child of its parent is; Kit's ring was cut by the Tasks tutorial's unpadded scroller; docs say so, tests pin both cuts
 - `.` **C125** — [Removing a composite's focused last item drops focus](backlog/closed-2026-09.md#-c125--removing-a-composites-focused-last-item-drops-focus--done-2026-10-26) — done (2026-10-26) — the frame without the item lands focus on the item now at its place, else the one before; `focus_item(key, index)` in every binding
 - `.` **C126** — [`transition = 0` with a spring easing draws the eased value at 0](backlog/closed-2026-09.md#-c126--transition--0-with-a-spring-easing-draws-the-eased-value-at-0--done-2026-10-26) — done (2026-10-26) — a zero-length transition jumps to its target whatever its easing
 - `.` **C127** — [Lua has no display scale in `env`](backlog/closed-2026-09.md#-c127--lua-has-no-display-scale-in-env--done-2026-10-26) — done (2026-10-26) — `env.scale` in Lua, `Ui::scale` / `kui_scale` / Odin `scale`; Kit's area cuts on whole device pixels
-- `.` **C119** — [A script cannot read the pointer's position](backlog/closed-2026-09.md#-c119--a-script-cannot-read-the-pointers-position--done-2026-10-26) — done (2026-10-26) — `pointer_in(key)` in every binding; Kit's line chart reads out the sample under the pointer with it, its bands gone
 - `.` **C129** — [A danger menu item's hover hides its label](backlog/closed-2026-09.md#-c129--a-danger-menu-items-hover-hides-its-label--done-2026-10-26) — done (2026-10-26) — Kit: the hovered or pressed danger row's label in `on_danger`; a loud fill's press no longer shades toward its label past 4.5:1
+- `.` **C132** — [A disabled row at a recovered or asked-for index lands nowhere](backlog/closed-2026-09.md#-c132--a-disabled-row-at-a-recovered-or-asked-for-index-lands-nowhere--done-2026-10-26) — done (2026-10-26) — a disabled row asked for or recovered to steps to the nearest live one, as an arrow steps past it
 - `.` **C134** — [An app cannot name its own nodes inside a component](backlog/closed-2026-09.md#-c134--an-app-cannot-name-its-own-nodes-inside-a-component--done-2026-10-26) — done (2026-10-26) — host children are labelled in the placer's scope: `layout_of`, `edit_text` and the rest find them
 
 ### `.` C101 — A table or list has no keyboard range selection
@@ -3766,12 +3767,6 @@ accent; Kit fixed the menu row, and other components that put faint text
 on hovered rows likely share it. **Do.** Kit's contrast test over every
 component's hovered and pressed rows, and the faint and muted roles moved
 until they read on the washes.
-
-### `.` C132 — A disabled row at a recovered or asked-for index lands nowhere
-
-**Found** in C125: in a windowed list, when the row focus recovers to (or
-`focus_item` names) is disabled, focus stays where it was. **Do.** Step
-to the nearest enabled row, as arrows do.
 
 ### `~` C133 — The runner carries no playground
 

@@ -461,6 +461,19 @@ impl Core {
                 Some(u).filter(|&j| crate::access::focusable(&self.tree, j))
             }
         });
+        // Reached, and the row takes no focus: the nearest that does
+        // (backlog C132).
+        let landing = match (landing, hit) {
+            (None, Some(_)) => self.nearest_live(
+                container,
+                role == Role::Table,
+                &items,
+                &units,
+                reach.index,
+                reach.column.unwrap_or(0),
+            ),
+            (l, _) => l,
+        };
         self.items_scratch = items;
         if let Some(j) = landing {
             self.land_focus(j);
@@ -905,6 +918,15 @@ impl Core {
             }
         });
         let from_unit = unit_of(from);
+        // The row is built but takes no focus — disabled, or a table row
+        // with no live cell: the nearest built row that does, as an arrow
+        // steps past it (backlog C132).
+        let landing = match (landing, built) {
+            (None, Some(_)) => {
+                self.nearest_live(container, table, &items, &units, index, column.unwrap_or(0))
+            }
+            (l, _) => l,
+        };
         self.items_scratch = items;
         match landing {
             Some(j) => {
@@ -973,6 +995,33 @@ impl Core {
         } else {
             Some(u).filter(|&j| crate::access::focusable(&self.tree, j))
         }
+    }
+
+    /// Where focus lands on the built unit nearest data row `index` that
+    /// takes it — a list's live item, a table's row with a live cell — the
+    /// row after first on a tie, as roving focus moves on past a removed
+    /// one (backlog C132): a row asked for or recovered to that is disabled
+    /// is stepped past, as an arrow steps past it.
+    fn nearest_live(
+        &self,
+        c: usize,
+        table: bool,
+        items: &[usize],
+        units: &[usize],
+        index: u64,
+        column: usize,
+    ) -> Option<usize> {
+        let mut order: Vec<(u64, bool, usize)> = units
+            .iter()
+            .filter_map(|&u| {
+                let d = crate::composite::data_index(&self.tree, u)?;
+                Some((d.abs_diff(index), d < index, u))
+            })
+            .collect();
+        order.sort_unstable();
+        order
+            .into_iter()
+            .find_map(|(_, _, u)| self.landing_in(c, table, items, u, column))
     }
 
     /// The composite at `c`'s role, whether it is a table, and its items,
@@ -1146,7 +1195,23 @@ impl Core {
                     .and_then(|k| units.get(k).copied()),
                 None => None,
             };
-            if let Some(j) = unit.and_then(|u| self.landing_in(c, table, &items, u, 0)) {
+            let landing = unit.and_then(|u| {
+                self.landing_in(c, table, &items, u, 0).or_else(|| {
+                    // A dead item at that place: the nearest live one
+                    // (backlog C132).
+                    let at = units.iter().position(|&x| x == u)?;
+                    let mut order: Vec<(usize, bool, usize)> = units
+                        .iter()
+                        .enumerate()
+                        .map(|(k, &x)| (k.abs_diff(at), k < at, x))
+                        .collect();
+                    order.sort_unstable();
+                    order
+                        .into_iter()
+                        .find_map(|(_, _, x)| self.landing_in(c, table, &items, x, 0))
+                })
+            });
+            if let Some(j) = landing {
                 self.land_focus(j);
             }
         }

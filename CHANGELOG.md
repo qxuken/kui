@@ -1594,6 +1594,11 @@ for lua-language-server, and a new runner beside the window's.
   the rest by label found nothing — because host children were filed
   under the component's placement, a scope the app's view never asks in.
   They are the placer's now.
+- A composite row `focus_item` names, or focus recovers to when its row
+  goes (C125), that is disabled — or a table row with no live cell —
+  hands focus to the nearest built row that takes it, the row after on a
+  tie, as an arrow steps past it, where focus stayed where it was
+  (backlog C132).
 - A box with a `tooltip` drawn from a kept fill (ADR 0045) and shown by
   keyboard focus drew its hint under its first child's key — Kit's
   button, its icon first, Tabbed to in the gallery: two nodes under one

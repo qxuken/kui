@@ -216,6 +216,11 @@ const VIEW_ROWS: u64 = 10;
 /// A virtual list of `n` rows in a 200 px scroller, the rows the scroll
 /// offset shows built by their data index, spacers keeping the rest.
 fn virtual_frame(core: &mut Core, n: u64) {
+    virtual_frame_off(core, n, &[]);
+}
+
+/// [`virtual_frame`] with the rows `dead` disabled.
+fn virtual_frame_off(core: &mut Core, n: u64, dead: &[u64]) {
     let off = core.scroll_offset(list()).y.max(0.0);
     let first = ((off / ROW_H).floor() as u64).min(n);
     let last = (first + VIEW_ROWS + 1).min(n);
@@ -250,6 +255,7 @@ fn virtual_frame(core: &mut Core, n: u64) {
                         .size(200.0, ROW_H)
                         .role(Role::ListItem)
                         .focusable()
+                        .disabled(dead.contains(&i))
                         .label(format!("row {i}")),
                 );
             }
@@ -418,4 +424,81 @@ fn focus_item_stands_against_a_closing_modals_restore() {
     core.focus_item(list(), 1);
     frame(&mut core, &names, false, None);
     assert_eq!(core.focus(), Some(rows[1]), "not back on Before");
+}
+
+/// A row `focus_item` names, or the one focus recovers to, that is
+/// disabled is stepped past to the nearest live row — the one after on a
+/// tie — as an arrow steps past it, where focus stayed where it was
+/// (backlog C132).
+#[test]
+fn a_disabled_row_asked_for_or_recovered_to_steps_to_the_nearest_live_one() {
+    let mut core = Core::new();
+    let n = 1000;
+    let settle_off = |core: &mut Core, n: u64, dead: &[u64]| {
+        for _ in 0..5 {
+            virtual_frame_off(core, n, dead);
+            if !core.animating() {
+                break;
+            }
+        }
+    };
+    settle_off(&mut core, n, &[3, 4]);
+    core.focus_item(list(), 3);
+    settle_off(&mut core, n, &[3, 4]);
+    assert_eq!(core.focus(), Some(list().index(2)), "row 2 is nearer than 5");
+    core.focus_item(list(), 4);
+    settle_off(&mut core, n, &[3, 4]);
+    assert_eq!(core.focus(), Some(list().index(5)), "row 5 is nearer than 2");
+    // An unbuilt disabled row: reached for, then stepped past.
+    core.focus_item(list(), 500);
+    settle_off(&mut core, n, &[500, 501]);
+    assert_eq!(core.focus(), Some(list().index(499)), "reached, then the nearest live");
+    // The last row goes and the new last is disabled: the live one
+    // before it.
+    core.focus_item(list(), n - 1);
+    settle_off(&mut core, n, &[n - 2]);
+    assert_eq!(core.focus(), Some(list().index(n - 1)));
+    settle_off(&mut core, n - 1, &[n - 2]);
+    assert_eq!(core.focus(), Some(list().index(n - 3)), "past the disabled new last");
+}
+
+/// A list whose items carry no index: `focus_item` names a place, and a
+/// disabled item there hands it to the nearest live one.
+#[test]
+fn focus_item_on_a_disabled_place_lands_on_the_nearest_live_item() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(300.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("list", NodeSpec::column().role(Role::List).label("rows"), |ui| {
+        for (i, dead) in [false, true, true, false].into_iter().enumerate() {
+            ui.leaf_keyed(
+                &format!("i{i}"),
+                NodeSpec::row()
+                    .size(100.0, ROW_H)
+                    .role(Role::ListItem)
+                    .focusable()
+                    .disabled(dead)
+                    .label(format!("item {i}")),
+            );
+        }
+    });
+    ui.finish();
+    core.focus_item(list(), 2);
+    let mut ui = core.frame(Size::new(300.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("list", NodeSpec::column().role(Role::List).label("rows"), |ui| {
+        for (i, dead) in [false, true, true, false].into_iter().enumerate() {
+            ui.leaf_keyed(
+                &format!("i{i}"),
+                NodeSpec::row()
+                    .size(100.0, ROW_H)
+                    .role(Role::ListItem)
+                    .focusable()
+                    .disabled(dead)
+                    .label(format!("item {i}")),
+            );
+        }
+    });
+    ui.finish();
+    assert_eq!(core.focus(), Some(list().str("i3")), "place 2 is dead; 3 is one away, 0 two");
 }
