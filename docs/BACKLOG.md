@@ -3673,6 +3673,26 @@ in a channel (ADR 0065) answers by searching that channel itself.
 searches (prefix, case-blind, from the row after focus), so a channel-
 backed list needs no handler.
 
+### `.` C116 — A script cannot tell which platform it is on
+
+**Found** in Kit's review round (2026-10-26): Kit's event handler has no
+`env.platform`, so a select opens on a bare arrow everywhere, where
+Windows and Linux step the value and open on Alt+Down or F4; `when`
+rules have a `platform` condition, but nothing a script reads. **Do.**
+`env.platform` (`"macos"` / `"windows"` / `"linux"`) in Lua, with the
+same fact in every binding that lacks it.
+
+### `.` C117 — A script can neither list the system's fonts nor load one
+
+**Found** the same way: the gallery's Theme panel offered Inter, IBM Plex
+and Space Grotesk, which are not installed, so all three fell back to
+the system sans. Lua has no door to `Core::system_font_families` (C,
+Odin and Node have one) or to `Core::load_font_file`, so Kit probes
+candidate families by declaring tokens and cannot ship its skins' faces.
+**Do.** Both doors in Lua, the font file read through the runner's
+folder rules; then the gallery lists every installed family and Kit may
+load its skins' faces.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
