@@ -172,10 +172,11 @@ function update(msg)
     if n then n.pinned = msg.toggle.on; touch(n) end
   elseif k == "item" then
     local n = find(m, m.selected)
-    if n and n.items[msg.i] then n.items[msg.i].done = msg.toggle.checked; touch(n) end
+    local i = msg.toggle.index + 1
+    if n and n.items[i] then n.items[i].done = msg.toggle.checked; touch(n) end
   elseif k == "item_remove" then
     local n = find(m, m.selected)
-    if n then table.remove(n.items, msg.i); touch(n) end
+    if n and n.items[msg.remove.index + 1] then table.remove(n.items, msg.remove.index + 1); touch(n) end
   elseif k == "new_item" then m.new_item = msg.change.text
   elseif k == "add_item" then
     local n = find(m, m.selected)

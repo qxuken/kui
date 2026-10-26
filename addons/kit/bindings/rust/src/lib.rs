@@ -638,6 +638,45 @@ impl Item {
     }
 }
 
+/// One item of a checklist.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Check {
+    /// What it says; its name.
+    pub label: String,
+    /// Ticked.
+    pub checked: bool,
+    /// Shown, not tickable.
+    pub disabled: Option<bool>,
+}
+
+impl Check {
+    /// What it needs; the rest by their setters.
+    pub fn new(label: impl Into<String>, checked: bool) -> Self {
+        Self {
+            label: label.into(),
+            checked: checked,
+            disabled: None,
+        }
+    }
+
+    /// Shown, not tickable.
+    pub fn disabled(mut self, v: bool) -> Self {
+        self.disabled = Some(v);
+        self
+    }
+
+    /// As the extension reads it.
+    pub fn to_value(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("label".into(), Value::str((&self.label).as_str())));
+        m.push(("checked".into(), Value::Bool(*(&self.checked))));
+        if let Some(v) = &self.disabled {
+            m.push(("disabled".into(), Value::Bool(*v)));
+        }
+        Value::Map(m)
+    }
+}
+
 /// One row of an inspector: a key and its value.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entry {
@@ -2840,6 +2879,151 @@ impl CheckboxToggle {
         let _d = payload.get("toggle")?;
         Some(Self {
             checked: _d.get("checked").and_then(Value::as_bool).unwrap_or_default(),
+        })
+    }
+}
+
+/// A list of things to tick, one Tab stop: Up and Down walk the items, Home and
+/// End the ends, Space or a click ticks the one focused.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Checklist {
+    /// The items, in order: yours to keep.
+    pub items: Vec<Check>,
+    /// What it lists, as it is read.
+    pub label: Option<String>,
+    /// An × on each item, which the pointer presses to remove it.
+    pub removable: Option<bool>,
+    /// The message `toggle` arrives as, with `toggle: ChecklistToggle` in it.
+    /// An item was ticked or unticked.
+    pub on_toggle: Option<Value>,
+    /// The message `remove` arrives as, with `remove: ChecklistRemove` in it.
+    /// An item asked to go.
+    pub on_remove: Option<Value>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Checklist {
+    /// What it needs; the rest by their setters.
+    pub fn new(items: Vec<Check>) -> Self {
+        Self {
+            items: items,
+            label: None,
+            removable: None,
+            on_toggle: None,
+            on_remove: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// What it lists, as it is read.
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
+        self
+    }
+
+    /// An × on each item, which the pointer presses to remove it.
+    pub fn removable(mut self, v: bool) -> Self {
+        self.removable = Some(v);
+        self
+    }
+
+    /// The message `toggle` arrives as. An item was ticked or unticked.
+    pub fn on_toggle(mut self, msg: impl Into<Value>) -> Self {
+        self.on_toggle = Some(msg.into());
+        self
+    }
+
+    /// The message `remove` arrives as. An item asked to go.
+    pub fn on_remove(mut self, msg: impl Into<Value>) -> Self {
+        self.on_remove = Some(msg.into());
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+/// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+/// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("items".into(), Value::List((&self.items).iter().map(|x| x.to_value()).collect())));
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.removable {
+            m.push(("removable".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.on_toggle {
+            m.push(("on_toggle".into(), v.clone()));
+        }
+        if let Some(v) = &self.on_remove {
+            m.push(("on_remove".into(), v.clone()));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/checklist`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/checklist", &self.props())
+    }
+
+    /// Places it under `<namespace>/checklist`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/checklist"), &self.props())
+    }
+}
+
+/// What `on_toggle`'s message carries under `toggle`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChecklistToggle {
+    /// Its place, 0-based.
+    pub index: i64,
+    /// What it asks to be.
+    pub checked: bool,
+}
+
+impl ChecklistToggle {
+    /// Read off an event's payload: the fields under `toggle`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("toggle")?;
+        Some(Self {
+            index: _d.get("index").and_then(Value::as_int).unwrap_or_default(),
+            checked: _d.get("checked").and_then(Value::as_bool).unwrap_or_default(),
+        })
+    }
+}
+
+/// What `on_remove`'s message carries under `remove`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChecklistRemove {
+    /// Its place, 0-based.
+    pub index: i64,
+}
+
+impl ChecklistRemove {
+    /// Read off an event's payload: the fields under `remove`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("remove")?;
+        Some(Self {
+            index: _d.get("index").and_then(Value::as_int).unwrap_or_default(),
         })
     }
 }

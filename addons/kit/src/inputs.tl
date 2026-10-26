@@ -625,6 +625,82 @@ local function ringed_mark(c: Ctx, mark: kui.Node, group: string, w: number, h: 
   return mark
 end
 
+-- Which item of a checklist holds focus, for its Delete.
+local record Ticks
+  focus: integer
+  -- The item whose × the pointer is on.
+  over: integer
+end
+
+-- A checklist: a `list` composite (ADR 0007) of items, so the arrows walk
+-- it and Tab enters and leaves it in one stop, entering on the item last
+-- focused. Each item is a list item that reads its tick (`checked`) and
+-- takes Space and a click as a tick; the box is drawn, not a control of
+-- its own. With `removable`, an × the pointer presses on each item. No
+-- key removes: an item that is a key sink loses the list's arrows, and a
+-- list that is one becomes a Tab stop of its own.
+function M.checklist(c: Ctx, p: P): kui.Node
+  local items = (p.items or {}) as {P}
+  local removable = p.removable == true
+  local st = ctx.state(c, function(): Ticks return {} end)
+  local focus = st.focus
+  if focus and focus >= #items then focus = #items > 0 and #items - 1 or nil end
+  local t: kui.Props = {
+    key = "checklist",
+    role = "list",
+    label = str(p.label) or "checklist",
+    width = "grow",
+    gap = 0,
+    active_index = focus or (#items > 0 and 0 or nil),
+  }
+  for i, it in ipairs(items) do
+    local on = it.checked == true
+    local off = it.disabled == true
+    local group = "kit.check." .. tostring(c.inst) .. "." .. i
+    local mark = tickbox(c, on, false, false)
+    local r: kui.Props = {
+      index = i - 1,
+      role = "listItem",
+      label = it.label as string,
+      -- A list item's tick is not read as `checked` (that is a checkbox's,
+      -- a radio's and a switch's): said as its description instead.
+      checked = on,
+      description = on and "done" or "not done",
+      disabled = off or nil,
+      focusable = not off or nil,
+      hover_group = group,
+      focus_ring = 0xffffff00,
+      on_focus = act(c, "checklist.focus", { index = i - 1 }),
+      on_click = not off and act(c, "checklist.toggle", { index = i - 1, checked = not on }) or nil,
+      width = "grow",
+      height = "$kitCtl",
+      pad = { x = 2 },
+      gap = 8,
+      cross_align = "center",
+      radius = "$kitRadius",
+      hover_bg = ref(c, "hover"),
+      cursor = not off and "pointer" or nil,
+      opacity = off and "$disabledOpacity" or nil,
+      ringed_mark(c, mark, group, 14, 14, c.s.skin.radius > 0 and 3 or 0),
+      ctx.text(c, it.label as string, { max_lines = 1, ellipsis = true, color = ref(c, on and "muted" or "fg") }),
+      ctx.grow(),
+    }
+    if removable then
+      -- No control of its own (a focusable inside the item would be out
+      -- of the ring's reach): a press on the item while the pointer is on
+      -- the × removes rather than ticks.
+      r[#r + 1] = row {
+        key = "rm", width = 20, height = 20, main_align = "center", cross_align = "center",
+        radius = "$kitRadius", hover_bg = ref(c, "hover"), tooltip = "Remove",
+        on_hover = act(c, "checklist.over", { index = i - 1 }),
+        icons.node(c, "x", 12, "muted"),
+      }
+    end
+    t[#t + 1] = row(r)
+  end
+  return column(t)
+end
+
 function M.checkbox(c: Ctx, p: P): kui.Node
   local on, mixed = p.checked == true, p.mixed == true
   local group = "kit.mark." .. tostring(c.inst)
@@ -904,6 +980,21 @@ function M.event(m: P, kit: string): any
     local st = ctx.peek(m.inst as integer) as Open
     if st then st.open = false end
     return emit("on_change", { value = m.value })
+  elseif kit == "checklist.focus" then
+    local st = ctx.peek(m.inst as integer) as Ticks
+    local f = m.focus as P
+    if st and f and f.phase == "in" then st.focus = m.index as integer end
+  elseif kit == "checklist.toggle" then
+    local st = ctx.peek(m.inst as integer) as Ticks
+    if st and st.over == m.index then return emit("on_remove", { index = m.index }) end
+    return emit("on_toggle", { index = m.index, checked = m.checked })
+  elseif kit == "checklist.over" then
+    local st = ctx.peek(m.inst as integer) as Ticks
+    local h = m.hover as P
+    if st and h then
+      if h.phase == "enter" then st.over = m.index as integer
+      elseif st.over == m.index then st.over = nil end
+    end
   elseif kit == "checkbox.toggle" then
     return emit("on_toggle", { checked = m.checked })
   elseif kit == "switch.toggle" then

@@ -71,13 +71,13 @@ kui.spawn(function()
   check(visible(model)[1] ~= note and visible(model)[3] == note, "pinned notes still lead; the edit is the newest of the rest")
 
   -- the checklist
-  update({ kind = "item", i = 2, toggle = { checked = true } })
+  update({ kind = "item", toggle = { index = 1, checked = true } })
   update({ kind = "new_item", change = { text = "  Write the timeline up  " } })
   update({ kind = "add_item" })
   check(#note.items == 3 and note.items[3].text == "Write the timeline up" and model.new_item == "", "an item added, trimmed, the field cleared")
   update({ kind = "add_item", submit = { text = "   " } })
   check(#note.items == 3, "a blank item is not added")
-  update({ kind = "item_remove", i = 1 })
+  update({ kind = "item_remove", remove = { index = 0 } })
   check(#note.items == 2 and note.items[1].done, "an item removed")
   check(saved(), "the checklist saved")
   for _, n in ipairs(store.all()) do if n.id == note.id then disk = n end end

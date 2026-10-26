@@ -85,7 +85,7 @@ end
 
 provide(layout as {string:any}, { "panel", "toolbar", "statusbar", "split", "tabs", "section", "divider" })
 provide(inputs as {string:any}, {
-  "button", "icon_button", "text_field", "search", "select", "checkbox", "switch",
+  "button", "icon_button", "text_field", "search", "select", "checkbox", "checklist", "switch",
   "radio_group", "segmented", "slider", "text_area",
 })
 provide(data as {string:any}, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice", "skeleton", "shader" })

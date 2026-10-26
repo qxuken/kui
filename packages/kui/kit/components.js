@@ -265,6 +265,21 @@ function make(namespace) {
         children: flat(children ?? props.children),
       };
     },
+    Checklist(props = {}, children) {
+      const wire = {};
+      if (props.items !== undefined) wire.items = props.items;
+      if (props.label !== undefined) wire.label = props.label;
+      if (props.removable !== undefined) wire.removable = props.removable;
+      if (props.onToggle !== undefined) wire.on_toggle = props.onToggle;
+      if (props.onRemove !== undefined) wire.on_remove = props.onRemove;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/checklist`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
     Switch(props = {}, children) {
       const wire = {};
       if (props.label !== undefined) wire.label = props.label;
@@ -672,6 +687,6 @@ function make(namespace) {
 }
 
 const kit = make('kit');
-export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
+export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Checklist, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
 export const at = make;
 export default kit;

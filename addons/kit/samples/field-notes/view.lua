@@ -116,20 +116,17 @@ end
 
 local function checklist(m, n)
   local done = done_of(n)
-  local rows = {}
-  for i, it in ipairs(n.items) do
-    rows[#rows + 1] = row { key = "item" .. i, width = "grow", gap = 6, cross_align = "center",
-      kit.checkbox({ key = "box", label = it.text, checked = it.done, grow = true, on_toggle = { kind = "item", i = i } }),
-      kit.icon_button({ key = "rm", icon = "x", label = "Remove “" .. it.text .. "”", on_press = { kind = "item_remove", i = i } }),
-    }
-  end
+  -- One Tab stop: Up and Down walk the items, Space ticks, an × removes.
+  local items = {}
+  for i, it in ipairs(n.items) do items[i] = { label = it.text, checked = it.done } end
   -- Folded as the model says, and the heading asks to change it: it was
   -- handed `collapsed = false` and no toggle, so pressing it did nothing.
   return kit.section({ key = "checklist", title = "Checklist", count = #n.items, collapsed = m.checklist_folded,
     on_toggle = { kind = "fold_checklist" } }, {
     column { width = "grow", gap = 6, pad = { t = 4 },
       #n.items > 0 and kit.progress({ key = "done", value = done / #n.items, label = string.format("%d of %d done", done, #n.items) }) or nil,
-      column { key = "items", width = "grow", gap = 0, table.unpack(rows) },
+      #items > 0 and kit.checklist({ key = "items", label = "Checklist", items = items, removable = true,
+        on_toggle = { kind = "item" }, on_remove = { kind = "item_remove" } }) or nil,
       row { key = "add", width = "grow", gap = 8, cross_align = "end",
         kit.text_field({ key = "new-item", label = "Add an item", hide_label = true, placeholder = "Add an item, then Enter",
           value = m.new_item, on_change = { kind = "new_item" }, on_submit = { kind = "add_item" } }),

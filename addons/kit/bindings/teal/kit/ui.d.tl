@@ -127,6 +127,16 @@ local record kit
     danger: boolean
   end
 
+  -- One item of a checklist.
+  record Check
+    -- What it says; its name.
+    label: string
+    -- Ticked.
+    checked: boolean
+    -- Shown, not tickable.
+    disabled: boolean
+  end
+
   -- One row of an inspector: a key and its value.
   record Entry
     -- The field's name.
@@ -518,6 +528,33 @@ local record kit
   -- What `on_toggle`'s message carries under `toggle`.
   record CheckboxToggle
     checked: boolean
+  end
+
+  -- The props of `kit/checklist`.
+  record ChecklistProps
+    -- The items, in order: yours to keep.
+    items: {Check}
+    -- What it lists, as it is read.
+    label: string
+    -- An × on each item, which the pointer presses to remove it.
+    removable: boolean
+    -- The message `toggle` arrives as. An item was ticked or unticked.
+    on_toggle: any
+    -- The message `remove` arrives as. An item asked to go.
+    on_remove: any
+    key: string
+    fresh: boolean
+  end
+
+  -- What `on_toggle`'s message carries under `toggle`.
+  record ChecklistToggle
+    index: integer
+    checked: boolean
+  end
+
+  -- What `on_remove`'s message carries under `remove`.
+  record ChecklistRemove
+    index: integer
   end
 
   -- The props of `kit/switch`.
@@ -1131,6 +1168,10 @@ local record kit
 
   -- A box and its label.
   checkbox: function(props: CheckboxProps, children?: {any:any}): kui.Node
+
+  -- A list of things to tick, one Tab stop: Up and Down walk the items, Home
+  -- and End the ends, Space or a click ticks the one focused.
+  checklist: function(props: ChecklistProps): kui.Node
 
   -- An on/off switch and its label.
   switch: function(props: SwitchProps): kui.Node

@@ -56,6 +56,12 @@ return {
         { "disabled", "boolean?", doc = "Shown, not choosable." },
         { "danger", "boolean?", doc = "A destructive action, drawn as one." },
       } },
+    { name = "Check", doc = "One item of a checklist.",
+      fields = {
+        { "label", "string", doc = "What it says; its name." },
+        { "checked", "boolean", doc = "Ticked." },
+        { "disabled", "boolean?", doc = "Shown, not tickable." },
+      } },
     { name = "Entry", doc = "One row of an inspector: a key and its value.",
       fields = {
         { "key", "string", doc = "The field's name." },
@@ -264,6 +270,20 @@ return {
       children = { { "", doc = "draws after the box, the label's place: read as part of it, so nothing in it is a control." } },
       events = {
         { "toggle", doc = "Pressed.", fields = { { "checked", "boolean", doc = "What it asks to be." } } },
+      } },
+    { "checklist",
+      doc = "A list of things to tick, one Tab stop: Up and Down walk the items, Home and End the ends, Space or a click ticks the one focused.",
+      props = {
+        { "items", "{Check}", doc = "The items, in order: yours to keep." },
+        { "label", "string?", doc = "What it lists, as it is read." },
+        { "removable", "boolean?", doc = "An × on each item, which the pointer presses to remove it." },
+      },
+      events = {
+        { "toggle", doc = "An item was ticked or unticked.", fields = {
+          { "index", "integer", doc = "Its place, 0-based." },
+          { "checked", "boolean", doc = "What it asks to be." },
+        } },
+        { "remove", doc = "An item asked to go.", fields = { { "index", "integer", doc = "Its place, 0-based." } } },
       } },
     { "switch",
       doc = "An on/off switch and its label.",

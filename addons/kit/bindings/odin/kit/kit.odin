@@ -309,6 +309,25 @@ item_value :: proc(p: Item) -> ^c.Value {
 	return m
 }
 
+// One item of a checklist.
+Check :: struct {
+	// What it says; its name.
+	label: string,
+	// Ticked.
+	checked: bool,
+	// Shown, not tickable.
+	disabled: Maybe(bool),
+}
+
+@(private)
+check_value :: proc(p: Check) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "label", c.value_str(p.label))
+	c.value_map_set(m, "checked", c.value_bool(p.checked))
+	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
+	return m
+}
+
 // One row of an inspector: a key and its value.
 Entry :: struct {
 	// The field's name.
@@ -1308,6 +1327,72 @@ checkbox_with :: proc(ui: ^kui.Ui, p: Checkbox, data: ^$T, children: proc(data: 
 	props := checkbox_props(p)
 	defer c.value_free(props)
 	return c.component(ui, concat(NAMESPACE, "/checkbox"), props, call, &b)
+}
+
+// A list of things to tick, one Tab stop: Up and Down walk the items, Home and
+// End the ends, Space or a click ticks the one focused.
+Checklist :: struct {
+	// The items, in order: yours to keep.
+	items: []Check,
+	// What it lists, as it is read.
+	label: string,
+	// An × on each item, which the pointer presses to remove it.
+	removable: Maybe(bool),
+	// The message `toggle` arrives as. An item was ticked or unticked.
+	on_toggle: any,
+	// The message `remove` arrives as. An item asked to go.
+	on_remove: any,
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+// What `toggle` carries: An item was ticked or unticked.
+Checklist_Toggle :: struct {
+	// Its place, 0-based.
+	index: i64,
+	// What it asks to be.
+	checked: bool,
+}
+
+// Embed with `using _:` in the message passed as `on_toggle`.
+With_Checklist_Toggle :: struct {
+	toggle: Checklist_Toggle,
+}
+
+// What `remove` carries: An item asked to go.
+Checklist_Remove :: struct {
+	// Its place, 0-based.
+	index: i64,
+}
+
+// Embed with `using _:` in the message passed as `on_remove`.
+With_Checklist_Remove :: struct {
+	remove: Checklist_Remove,
+}
+
+@(private)
+checklist_props :: proc(p: Checklist) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "items", kit_list(p.items, proc(x: Check) -> ^c.Value { return check_value(x) }))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
+	if x, ok := p.removable.?; ok do c.value_map_set(m, "removable", c.value_bool(x))
+	if p.on_toggle != nil do c.value_map_set(m, "on_toggle", (^c.Value)(kui.encode(p.on_toggle)))
+	if p.on_remove != nil do c.value_map_set(m, "on_remove", (^c.Value)(kui.encode(p.on_remove)))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+checklist :: proc(ui: ^kui.Ui, p: Checklist) -> i32 {
+	return checklist_in(ui, NAMESPACE, p)
+}
+
+checklist_in :: proc(ui: ^kui.Ui, namespace: string, p: Checklist) -> i32 {
+	props := checklist_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/checklist")
+	return c.component(ui, name, props, nil, nil)
 }
 
 // An on/off switch and its label.

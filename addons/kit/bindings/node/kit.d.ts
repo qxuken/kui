@@ -98,6 +98,16 @@ export interface Item {
   danger?: boolean;
 }
 
+/** One item of a checklist. */
+export interface Check {
+  /** What it says; its name. */
+  label: string;
+  /** Ticked. */
+  checked: boolean;
+  /** Shown, not tickable. */
+  disabled?: boolean;
+}
+
 /** One row of an inspector: a key and its value. */
 export interface Entry {
   /** The field's name. */
@@ -545,6 +555,42 @@ export interface CheckboxToggle {
 }
 /** Your message `T` as `toggle` arrives. */
 export type CheckboxToggleMsg<T = {}> = T & { toggle: CheckboxToggle };
+
+/** The props of `kit/checklist`. */
+export interface ChecklistProps {
+  /** The items, in order: yours to keep. */
+  items: Check[];
+  /** What it lists, as it is read. */
+  label?: string;
+  /** An × on each item, which the pointer presses to remove it. */
+  removable?: boolean;
+  /** The message toggle arrives as: yours, with `toggle: ChecklistToggle` in it. An item was ticked or unticked. */
+  onToggle?: unknown;
+  /** The message remove arrives as: yours, with `remove: ChecklistRemove` in it. An item asked to go. */
+  onRemove?: unknown;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** What `onToggle`'s message carries under `toggle`. */
+export interface ChecklistToggle {
+  /** Its place, 0-based. */
+  index: number;
+  /** What it asks to be. */
+  checked: boolean;
+}
+/** Your message `T` as `toggle` arrives. */
+export type ChecklistToggleMsg<T = {}> = T & { toggle: ChecklistToggle };
+
+/** What `onRemove`'s message carries under `remove`. */
+export interface ChecklistRemove {
+  /** Its place, 0-based. */
+  index: number;
+}
+/** Your message `T` as `remove` arrives. */
+export type ChecklistRemoveMsg<T = {}> = T & { remove: ChecklistRemove };
 
 /** The props of `kit/switch`. */
 export interface SwitchProps {
@@ -1237,6 +1283,9 @@ export declare function Select(props: SelectProps, children?: KuiNode): KuiNode;
 /** A box and its label. */
 export declare function Checkbox(props: CheckboxProps, children?: KuiNode): KuiNode;
 
+/** A list of things to tick, one Tab stop: Up and Down walk the items, Home and End the ends, Space or a click ticks the one focused. */
+export declare function Checklist(props: ChecklistProps, children?: KuiNode): KuiNode;
+
 /** An on/off switch and its label. */
 export declare function Switch(props: SwitchProps, children?: KuiNode): KuiNode;
 
@@ -1331,6 +1380,7 @@ export interface Kit {
   Search: typeof Search;
   Select: typeof Select;
   Checkbox: typeof Checkbox;
+  Checklist: typeof Checklist;
   Switch: typeof Switch;
   RadioGroup: typeof RadioGroup;
   Segmented: typeof Segmented;

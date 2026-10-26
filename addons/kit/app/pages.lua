@@ -14,7 +14,7 @@ local M = {}
 -- allows.
 M.PAGES = {
   { value = "overview", label = "Overview", cards = { "overview/start" } },
-  { value = "inputs", label = "Inputs", cards = { "inputs/buttons", "inputs/fields", "inputs/text_areas", "inputs/choices" } },
+  { value = "inputs", label = "Inputs", cards = { "inputs/buttons", "inputs/fields", "inputs/text_areas", "inputs/choices", "inputs/checklist" } },
   { value = "data", label = "Data", cards = { "data/table", { "data/list", "data/notices" }, "data/log", "data/badges" } },
   { value = "charts", label = "Charts", cards = { "charts/live_line", { "charts/sparkline", "charts/histogram" }, "charts/bars", "charts/bars_lying" } },
   { value = "trace", label = "Trace", cards = { "trace/waterfall" } },
@@ -125,7 +125,7 @@ local function overview(m)
     text("This app is Lua on the kui runner. A worker built the 100,000 rows on the Data page and handed them over as a channel; timers feed the live chart and log; the switch in the status bar serves this app's state over HTTP. The Theme button tweaks Kit's look for every page, and each card's Source button shows the file it is.",
       { size = "$kitSize", family = "$kitUi", color = "$kitMuted", wrap = "word" }),
     row { width = "grow", gap = 16, cross_gap = 16, min_column = 200,
-      kit.stat({ label = "Components", value = "41" }),
+      kit.stat({ label = "Components", value = "42" }),
       kit.stat({ label = "Rows in the table", value = tostring(rows),
         delta = m.rows_ms and string.format("built in %.0f ms off the UI thread", m.rows_ms), tone = "ok" }),
       kit.stat({ label = "Skins", value = "3", delta = "Ledger · Phosphor · Neutral" }),

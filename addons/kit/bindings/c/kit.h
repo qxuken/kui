@@ -410,6 +410,33 @@ static inline KuiValue *kit_item_value(const KitItem *p) {
 }
 
 /*
+ * One item of a checklist.
+ */
+typedef struct KitCheck {
+    /*
+     * What it says; its name.
+     */
+    KuiStr label;
+    /*
+     * Ticked.
+     */
+    bool checked;
+    /*
+     * Shown, not tickable.
+     */
+    bool disabled;
+    bool disabled_set;
+} KitCheck;
+
+static inline KuiValue *kit_check_value(const KitCheck *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    kui_value_map_set(m, KUI_STR("checked"), kui_value_bool(p->checked));
+    if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
+    return m;
+}
+
+/*
  * One row of an inspector: a key and its value.
  */
 typedef struct KitEntry {
@@ -1466,6 +1493,65 @@ static inline int32_t kit_checkbox_with(KuiCtx *ctx, const KitCheckbox *p, KuiCh
     void *user) {
     KuiValue *props = kit_checkbox_props(p);
     int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/checkbox"), props, children, user);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * A list of things to tick, one Tab stop: Up and Down walk the items, Home and
+ * End the ends, Space or a click ticks the one focused.
+ */
+typedef struct KitChecklist {
+    /*
+     * The items, in order: yours to keep.
+     */
+    const KitCheck *items;
+    size_t items_count;
+    /*
+     * What it lists, as it is read.
+     */
+    KuiStr label;
+    /*
+     * An × on each item, which the pointer presses to remove it.
+     */
+    bool removable;
+    bool removable_set;
+    /*
+     * The message `toggle` arrives as, consumed; NULL for none. An item was
+     * ticked or unticked.
+     */
+    KuiValue *on_toggle;
+    /*
+     * The message `remove` arrives as, consumed; NULL for none. An item asked
+     * to go.
+     */
+    KuiValue *on_remove;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitChecklist;
+
+static inline KuiValue *kit_checklist_props(const KitChecklist *p) {
+    KuiValue *m = kui_value_map();
+    if (p->items != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->items_count; i++) kui_value_list_push(list, kit_check_value(&p->items[i]));
+        kui_value_map_set(m, KUI_STR("items"), list);
+    }
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->removable_set) kui_value_map_set(m, KUI_STR("removable"), kui_value_bool(p->removable));
+    if (p->on_toggle != NULL) kui_value_map_set(m, KUI_STR("on_toggle"), p->on_toggle);
+    if (p->on_remove != NULL) kui_value_map_set(m, KUI_STR("on_remove"), p->on_remove);
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/checklist: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_checklist(KuiCtx *ctx, const KitChecklist *p) {
+    KuiValue *props = kit_checklist_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/checklist"), props, NULL, NULL);
     kui_value_free(props);
     return fill;
 }

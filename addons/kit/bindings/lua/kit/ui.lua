@@ -79,6 +79,12 @@
 ---@field disabled? boolean Shown, not choosable.
 ---@field danger? boolean A destructive action, drawn as one.
 
+---One item of a checklist.
+---@class kit.Check
+---@field label string What it says; its name.
+---@field checked boolean Ticked.
+---@field disabled? boolean Shown, not tickable.
+
 ---One row of an inspector: a key and its value.
 ---@class kit.Entry
 ---@field key string The field's name.
@@ -304,6 +310,25 @@
 ---What `on_toggle`'s message carries under `toggle`.
 ---@class kit.CheckboxToggle
 ---@field checked boolean What it asks to be.
+
+---The props of `kit/checklist`.
+---@class kit.ChecklistProps
+---@field items kit.Check[] The items, in order: yours to keep.
+---@field label? string What it lists, as it is read.
+---@field removable? boolean An × on each item, which the pointer presses to remove it.
+---@field on_toggle? any The message it arrives as: yours, with `toggle = {…}` in it (kit.ChecklistToggle). An item was ticked or unticked.
+---@field on_remove? any The message it arrives as: yours, with `remove = {…}` in it (kit.ChecklistRemove). An item asked to go.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---What `on_toggle`'s message carries under `toggle`.
+---@class kit.ChecklistToggle
+---@field index integer Its place, 0-based.
+---@field checked boolean What it asks to be.
+
+---What `on_remove`'s message carries under `remove`.
+---@class kit.ChecklistRemove
+---@field index integer Its place, 0-based.
 
 ---The props of `kit/switch`.
 ---@class kit.SwitchProps
@@ -789,6 +814,14 @@ local function make(namespace)
   ---@return kui.Node
   function M.checkbox(props, children)
     return component(namespace .. "/checkbox", props, children)
+  end
+
+  ---A list of things to tick, one Tab stop: Up and Down walk the items, Home
+  ---and End the ends, Space or a click ticks the one focused.
+  ---@param props kit.ChecklistProps
+  ---@return kui.Node
+  function M.checklist(props)
+    return component(namespace .. "/checklist", props)
   end
 
   ---An on/off switch and its label.

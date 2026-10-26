@@ -319,6 +319,7 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)
         kit::Progress::new().value(0.4).label("Loading").place(ui),
     );
     put("skeleton", kit::Skeleton::new().lines(3).place(ui));
+    put("checklist", kit::Checklist::new(vec![kit::Check::new("Milk", true), kit::Check::new("Eggs", false)]).removable(true).place(ui));
     put("shader", kit::Shader::new().height(40.0).label("Noise").place(ui));
     put(
         "notice",
@@ -3075,4 +3076,70 @@ fn every_notice_and_toast_reads_on_its_own_ground() {
             }
         }
     }
+}
+
+#[test]
+fn a_checklist_is_one_tab_stop_its_arrows_walk_and_space_ticks() {
+    let mut r = LuaRig::new(
+        r#"
+        items = { { label = "Milk", checked = false }, { label = "Eggs", checked = false }, { label = "Bread", checked = true } }
+        removed = nil
+        function on_event(ev)
+          if ev.kind == "tick" then items[ev.toggle.index + 1].checked = ev.toggle.checked end
+          if ev.kind == "rm" then removed = ev.remove.index; table.remove(items, ev.remove.index + 1) end
+        end
+        function view(env)
+          return column { width = 300, pad = 20, gap = 8,
+            component("kit/button", { label = "Before" }),
+            component("kit/checklist", { items = items, label = "Groceries", removable = true,
+              on_toggle = { kind = "tick" }, on_remove = { kind = "rm" } }),
+            component("kit/button", { label = "After" }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    let tab = |r: &mut LuaRig, back: bool| {
+        let mods = if back { kui_core::KeyMods::NONE.with_shift() } else { kui_core::KeyMods::NONE };
+        let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(kui_core::KeyCode::Tab, mods)));
+        r.route(e);
+        let e = kui_core::testing::tab(&mut r.core, back);
+        r.route(e);
+        r.frames(1);
+    };
+    let key = |r: &mut LuaRig, code: kui_core::KeyCode| {
+        let e = r.core.press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
+        r.route(e);
+        if code == kui_core::KeyCode::Space {
+            let e = r.core.handle_input(kui_core::InputEvent::Text(" ".into()));
+            r.route(e);
+        }
+        r.frames(2);
+    };
+    tab(&mut r, false);
+    tab(&mut r, false);
+    assert_eq!(focused(&mut r).as_deref(), Some("Milk"), "Tab enters on the first item");
+    key(&mut r, kui_core::KeyCode::Down);
+    assert_eq!(focused(&mut r).as_deref(), Some("Eggs"), "Down walks");
+    key(&mut r, kui_core::KeyCode::Space);
+    let eggs: bool = r.app.load("return items[2].checked").eval().unwrap();
+    assert!(eggs, "Space ticks the focused item");
+    let node = r.core.access_tree().nodes.iter().find(|n| n.name.as_deref() == Some("Eggs")).cloned().unwrap();
+    assert_eq!(node.description.as_deref(), Some("done"), "and it reads ticked");
+    tab(&mut r, false);
+    assert_eq!(focused(&mut r).as_deref(), Some("After"), "one stop: Tab leaves");
+    tab(&mut r, true);
+    assert_eq!(focused(&mut r).as_deref(), Some("Eggs"), "Shift-Tab comes back to the item it left");
+    // The pointer on Eggs' ×: a press there removes it.
+    let eggs = r.named("Eggs");
+    r.slow_click(eggs.x + eggs.w - 12.0, eggs.y + eggs.h / 2.0);
+    r.frames(1);
+    let removed: Option<i64> = r.app.globals().get("removed").unwrap();
+    assert_eq!(removed, Some(1), "the × removes its item");
+    let bread = r.text("Bread").unwrap();
+    r.click(bread.x + 2.0, bread.y + bread.h / 2.0);
+    r.frames(2);
+    let bread_on: bool = r.app.load("return items[2].checked").eval().unwrap();
+    assert!(!bread_on, "a click unticks");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
