@@ -85,6 +85,18 @@ date: 2026-10-26
   builds with; the book's testing chapter is rewritten around
   `kui test`.
 
+## Follow-up, later
+
+**A test UI**, Playwright's trace viewer in kui's own terms: an
+extension (a devtools tab, or `kui test --ui`) that lists the tests,
+runs one, and steps through it — each driving call a step, with the
+frame drawn before and after it, the events and messages it produced,
+the I/O it asked for (files, HTTP, workers), the tree and snapshot
+diffs, and, optionally, a perf recording of the steps (ADR 0058). It
+rests on what this ADR builds — the per-file runner, the driving API,
+the text snapshots — and on the devtools' existing Events, Tree and
+Perf tabs. Not in v1.
+
 ## Building order
 
 1. `kui test` discovery, the fresh headless runner per file, the report
