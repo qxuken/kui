@@ -26,24 +26,62 @@ local ACCENTS = {
   { label = "Teal", color = 0x0d9488ff },
 }
 
--- The faces, each a family list; "skin" is the skin's own.
+-- The faces worth offering, each a family list: the skins' own and the
+-- common ones of each platform. Only those installed on this machine are
+-- offered (see `installed`): a family that is not falls back to the
+-- system's sans, so Inter, IBM Plex and Space Grotesk all drew the same
+-- where none of them is installed. Kit ships no font files, and a script
+-- can neither load one nor list the system's families, so the panel asks
+-- the font database family by family.
+local function face(name, generic)
+  return { value = name, label = name, list = { name, generic } }
+end
+
 local UI_FACES = {
   { value = "skin", label = "The skin's" },
-  { value = "Inter", label = "Inter", list = { "Inter", "sans" } },
-  { value = "IBM Plex Sans", label = "IBM Plex Sans", list = { "IBM Plex Sans", "sans" } },
-  { value = "Space Grotesk", label = "Space Grotesk", list = { "Space Grotesk", "sans" } },
-  { value = "Helvetica Neue", label = "Helvetica Neue", list = { "Helvetica Neue", "Helvetica", "sans" } },
   { value = "sans", label = "System sans", list = { "sans" } },
-  { value = "serif", label = "Serif", list = { "serif" } },
+  { value = "serif", label = "System serif", list = { "serif" } },
+  face("Inter", "sans"), face("IBM Plex Sans", "sans"), face("Space Grotesk", "sans"),
+  face("Helvetica Neue", "sans"), face("Avenir Next", "sans"), face("SF Pro Text", "sans"),
+  face("Segoe UI", "sans"), face("Roboto", "sans"), face("Noto Sans", "sans"), face("DejaVu Sans", "sans"),
+  face("Ubuntu", "sans"), face("Georgia", "serif"), face("Times New Roman", "serif"),
 }
 
 local DATA_FACES = {
   { value = "skin", label = "The skin's" },
-  { value = "IBM Plex Mono", label = "IBM Plex Mono", list = { "IBM Plex Mono", "mono" } },
-  { value = "JetBrains Mono", label = "JetBrains Mono", list = { "JetBrains Mono", "mono" } },
-  { value = "Menlo", label = "Menlo", list = { "Menlo", "mono" } },
   { value = "mono", label = "System mono", list = { "mono" } },
+  face("IBM Plex Mono", "mono"), face("JetBrains Mono", "mono"), face("SF Mono", "mono"),
+  face("Menlo", "mono"), face("Monaco", "mono"), face("Consolas", "mono"), face("Cascadia Code", "mono"),
+  face("Fira Code", "mono"), face("DejaVu Sans Mono", "mono"), face("Ubuntu Mono", "mono"),
 }
+
+-- Whether each named family is on this machine: the app declares a family
+-- token per candidate, that family then its generic, once — a token picks the
+-- first of its list the font database has, so one that picked the generic is
+-- not installed — and reads which picked. Asked once a run (a reload asks
+-- again); declaring tokens re-asks everything that paints with them.
+local probed = false
+local function installed(env)
+  if not probed then
+    local families = {}
+    for _, list in ipairs({ UI_FACES, DATA_FACES }) do
+      for i, f in ipairs(list) do
+        if f.list and #f.list == 2 then families["face" .. tostring(list == UI_FACES and "U" or "D") .. i] = { f.value, f.list[2] } end
+      end
+    end
+    env.set_tokens({ families = families })
+    probed = true
+  end
+  local picked = env.tokens and env.tokens.families or {}
+  local have = {}
+  for _, list in ipairs({ UI_FACES, DATA_FACES }) do
+    for i, f in ipairs(list) do
+      local p = picked["face" .. tostring(list == UI_FACES and "U" or "D") .. i]
+      if p == f.value then have[f.value] = true end
+    end
+  end
+  return have
+end
 
 -- The colour roles worth setting by hand, and what each paints.
 local COLORS = {
@@ -69,10 +107,18 @@ local function list_of(faces, value)
   return nil
 end
 
--- The faces as a select's options.
-local function choices(faces)
+-- The faces as a select's options: the skin's (named by the family it
+-- resolved to), the system's generic ones, and the families installed
+-- here; the one chosen stays listed even if it is not.
+local function choices(faces, have, skin_picked, chosen)
   local out = {}
-  for i, f in ipairs(faces) do out[i] = { value = f.value, label = f.label } end
+  for _, f in ipairs(faces) do
+    if f.value == "skin" then
+      out[#out + 1] = { value = f.value, label = skin_picked and ("The skin's (" .. skin_picked .. ")") or f.label }
+    elseif #f.list == 1 or have[f.value] or f.value == chosen then
+      out[#out + 1] = { value = f.value, label = f.label }
+    end
+  end
   return out
 end
 
@@ -266,7 +312,8 @@ function M.view(m, env)
     or (env.theme and env.theme.appearance == "light" and "light" or "dark")
   -- Kit's tokens as they resolve now: its colours (0xRRGGBBAA) and lengths.
   local tokens = env.tokens or {}
-  local now, lengths = tokens.colors or {}, tokens.lengths or {}
+  local now, lengths, fams = tokens.colors or {}, tokens.lengths or {}, tokens.families or {}
+  local have = installed(env)
   local swatches = { swatch(nil, "The skin's accent", t.accent == nil, { kind = "theme_accent" }) }
   for _, a in ipairs(ACCENTS) do
     swatches[#swatches + 1] = swatch(a.color, "Accent: " .. a.label, t.accent == a.color,
@@ -299,10 +346,12 @@ function M.view(m, env)
     length(t, "radius", "Radius", 0, 12, 1, lengths.kitRadius or 0),
     length(t, "hair", "Hairline", 0.5, 3, 0.5, lengths.kitHair or 1),
     length(t, "rule", "Region rule", 0, 4, 0.5, lengths.kitRuleW or 1),
-    kit.select({ label = "UI face", value = t.font_ui, options = choices(UI_FACES),
-      on_change = { kind = "theme", field = "font_ui" } }),
-    kit.select({ label = "Data face", value = t.font_data, options = choices(DATA_FACES),
-      on_change = { kind = "theme", field = "font_data" } }),
+    kit.select({ label = "UI face", value = t.font_ui, on_change = { kind = "theme", field = "font_ui" },
+      options = choices(UI_FACES, have, t.font_ui == "skin" and fams.kitUi or nil, t.font_ui) }),
+    kit.select({ label = "Data face", value = t.font_data, on_change = { kind = "theme", field = "font_data" },
+      options = choices(DATA_FACES, have, t.font_data == "skin" and fams.kitData or nil, t.font_data) }),
+    text("Only the families installed here are listed; Kit ships no font files.",
+      { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" }),
     kit.section({ title = "Colours, " .. half, collapsed = not m.theme_colors, on_toggle = { kind = "theme_colors" } },
       { column { width = "grow", gap = 6, table.unpack(colors) } }),
     kit.code({ label = "Your theme", text = M.lua(t), copy = true }),
