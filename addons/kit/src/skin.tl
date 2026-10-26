@@ -362,11 +362,6 @@ local function derive(s: Settings, colors: {string:{string:integer}}, half: stri
   else
     set("sel_fg", legible(get("sel_fg"), sel_ground, M.TEXT_CONTRAST))
   end
-  -- Text, and the tones and the focus colour where they are text (a
-  -- notice on the well, a badge's label), on every surface.
-  for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
-    set(role, legible_on(get(role), grounds, M.TEXT_CONTRAST))
-  end
   -- The first chart series and the first waterfall group in the accent:
   -- the line at 3:1 on the panel, the group a pale fill the text reads on.
   local series = colors.kitSeries1
@@ -416,12 +411,27 @@ function M.tokens(s: Settings): Decl
   colors.kitChosenFg = { light = colors[outlined and "kitBg" or "kitFg"].light, dark = colors[outlined and "kitBg" or "kitFg"].dark }
   derive(s, colors, "light", l)
   derive(s, colors, "dark", d)
+  -- Text, and the tones and the focus colour where they are text — a
+  -- notice on the well, a badge's label, a toast's mark — read at 4.5:1
+  -- on every surface, accent or none: moved in lightness alone, so a tone
+  -- stays itself. Ledger's blue info text sat at 4:1 on its well. Roles
+  -- the brand names are kept as named.
+  for _, half in ipairs({ "light", "dark" }) do
+    local function at(name: string): integer return colors[name][half] end
+    local grounds: {integer} = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
+    for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
+      if not (s.roles and s.roles[role]) then
+        local slot = colors["kit" .. camel(role)]
+        slot[half] = legible_on(slot[half], grounds, M.TEXT_CONTRAST)
+      end
+    end
+  end
   -- The accent as text (an accent notice, its toast's mark): the accent
   -- moved in lightness until it reads on the panel and the well. Ledger's
   -- yellow was its own notice's text on paper.
   local function accent_text(half: string): integer
     local function at(name: string): integer return colors[name][half] end
-    return legible_on(rgb(at("kitAccent")) | 0xff, { at("kitPanel"), at("kitSunken"), at("kitRaised") }, M.TEXT_CONTRAST)
+    return legible_on(rgb(at("kitAccent")) | 0xff, { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }, M.TEXT_CONTRAST)
   end
   colors.kitAccentText = { light = accent_text("light"), dark = accent_text("dark") }
   local text_role = s.roles and s.roles.accent_text

@@ -992,7 +992,7 @@ function M.notice(c: Ctx, p: P): kui.Node
     cross_align = "center",
     radius = "$kitRadius",
     bg = ref(c, "sunken"),
-    border = { w = "$kitHair", color = ref(c, role == "muted" and "rule" or role) },
+    border = { w = "$kitHair", color = ref(c, role == "muted" and "faint" or role) },
     icons.node(c, tone == "ok" and "check" or (tone == "neutral" or tone == "accent" or tone == "info") and "info" or "alert", 14, role),
     row { key = "wrap", width = "grow", min_width = 0, gap = 10, cross_align = "center", wrap_children = true,
       column(body),

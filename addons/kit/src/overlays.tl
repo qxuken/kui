@@ -143,7 +143,7 @@ local TONE_ICON: {string:string} = { ok = "check", warn = "alert", danger = "ale
 -- The bar down a toast's edge, by tone: info (the default) in the skin's
 -- focus blue, neutral the soft rule. A toast with no tone was grey, its
 -- bar the rule colour, and read as something gone wrong with the toast.
-local TONE_BAR: {string:string} = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", info = "focus", neutral = "rule" }
+local TONE_BAR: {string:string} = { ok = "ok", warn = "warn", danger = "danger", accent = "accent_text", info = "focus", neutral = "faint" }
 
 local record Shown
   message: string

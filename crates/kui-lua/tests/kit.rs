@@ -3002,3 +3002,77 @@ fn a_sliders_handle_is_cut_at_the_scroller_it_sits_in() {
         assert!(clip.y >= pane.y - 0.5, "the handle is cut at the pane's top: clip {clip:?}, pane {pane:?}");
     }
 }
+
+#[test]
+fn every_notice_and_toast_reads_on_its_own_ground() {
+    // Neutral with a yellow accent drew its info notice yellow on the grey
+    // well. Drawn, not looked up: each notice's text at 4.5:1 on its well
+    // and its frame at 3:1; each toast's text on its surface at 4.5:1 and
+    // its tone's bar at 3:1 — every tone, skin and half, accent or none.
+    let tones = [kit::Tone::Info, kit::Tone::Neutral, kit::Tone::Accent, kit::Tone::Ok, kit::Tone::Warn, kit::Tone::Danger];
+    let accents: [Option<i64>; 5] = [None, Some(0xffd400ff), Some(0x7fe9ffff), Some(0x1e2a5aff), Some(0xdc2626ff)];
+    for skin in [kit::Skin::Ledger, kit::Skin::Neutral, kit::Skin::Phosphor] {
+        for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
+            for accent in accents {
+                let mut r = rig();
+                let (mut sunken, mut raised) = (None, None);
+                for _ in 0..2 {
+                    r.frame(|ui| {
+                        let mut s = kit::Settings::new().skin(skin).appearance(appearance);
+                        if let Some(a) = accent {
+                            s = s.roles(Value::map([("accent", Value::Int(a))]));
+                        }
+                        s.place(ui);
+                        for t in tones {
+                            kit::Notice::new("Saved drafts are kept for 30 days.").tone(t).place(ui);
+                        }
+                        for t in tones {
+                            kit::Toast::new("The upstream is slow.").tone(t).inline(true).duration(0.0).place(ui);
+                        }
+                        sunken = ui.token_color("kitSunken");
+                        raised = ui.token_color("kitRaised");
+                    });
+                }
+                let (sunken, raised) = (sunken.unwrap(), raised.unwrap());
+                let case = format!("{skin:?} {appearance:?} {accent:x?}");
+                let (dl, _) = r.core.output();
+                let glyphs: Vec<&kui_core::Quad> = dl
+                    .quads
+                    .iter()
+                    .filter(|q| matches!(q.kind, kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel))
+                    .collect();
+                let inside = |q: &kui_core::Quad, f: kui_core::Rect| {
+                    let (x, y) = (q.rect.x + q.rect.w / 2.0, q.rect.y + q.rect.h / 2.0);
+                    x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.h
+                };
+                let frames: Vec<&kui_core::Quad> =
+                    dl.quads.iter().filter(|q| q.kind == kui_core::QuadKind::Solid && q.border_w > 0.0).collect();
+                let notices: Vec<&&kui_core::Quad> = frames.iter().filter(|q| q.color == sunken).collect();
+                let toasts: Vec<&&kui_core::Quad> = frames.iter().filter(|q| q.color == raised && q.rect.w >= 300.0).collect();
+                assert!(notices.len() >= tones.len(), "{case}: every notice drawn ({})", notices.len());
+                assert!(toasts.len() >= tones.len(), "{case}: every toast drawn ({})", toasts.len());
+                for n in &notices {
+                    let k = contrast(n.border_color, sunken);
+                    assert!(k >= 2.99, "{case}: a notice's frame reads at {k:.2}");
+                    for g in glyphs.iter().filter(|g| inside(g, n.rect)) {
+                        let k = contrast(g.color, sunken);
+                        assert!(k >= 4.49, "{case}: a notice's text reads at {k:.2}");
+                    }
+                }
+                for t in &toasts {
+                    for g in glyphs.iter().filter(|g| inside(g, t.rect)) {
+                        let k = contrast(g.color, raised);
+                        assert!(k >= 4.49, "{case}: a toast's text reads at {k:.2}");
+                    }
+                    let bars = dl.quads.iter().filter(|q| {
+                        q.kind == kui_core::QuadKind::Solid && (q.rect.w - 4.0).abs() < 0.6 && inside(q, t.rect)
+                    });
+                    for b in bars {
+                        let k = contrast(b.color, raised);
+                        assert!(k >= 2.99, "{case}: a toast's tone bar reads at {k:.2}");
+                    }
+                }
+            }
+        }
+    }
+}

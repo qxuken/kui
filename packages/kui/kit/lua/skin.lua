@@ -365,11 +365,6 @@ local function derive(s, colors, half, h)
    end
 
 
-   for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
-      set(role, legible_on(get(role), grounds, M.TEXT_CONTRAST))
-   end
-
-
    local series = colors.kitSeries1
    if series and not named.series1 then
       series[half] = legible_on(A, { panel, bg }, M.GRAPHIC_CONTRAST)
@@ -420,9 +415,24 @@ function M.tokens(s)
 
 
 
+
+
+   for _, half in ipairs({ "light", "dark" }) do
+      local function at(name) return colors[name][half] end
+      local grounds = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
+      for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
+         if not (s.roles and s.roles[role]) then
+            local slot = colors["kit" .. camel(role)]
+            slot[half] = legible_on(slot[half], grounds, M.TEXT_CONTRAST)
+         end
+      end
+   end
+
+
+
    local function accent_text(half)
       local function at(name) return colors[name][half] end
-      return legible_on(rgb(at("kitAccent")) | 0xff, { at("kitPanel"), at("kitSunken"), at("kitRaised") }, M.TEXT_CONTRAST)
+      return legible_on(rgb(at("kitAccent")) | 0xff, { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }, M.TEXT_CONTRAST)
    end
    colors.kitAccentText = { light = accent_text("light"), dark = accent_text("dark") }
    local text_role = s.roles and s.roles.accent_text

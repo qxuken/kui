@@ -144,7 +144,7 @@ local TONE_ICON = { ok = "check", warn = "alert", danger = "alert", accent = "in
 
 
 
-local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", info = "focus", neutral = "rule" }
+local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent_text", info = "focus", neutral = "faint" }
 
 
 
