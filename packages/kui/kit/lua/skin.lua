@@ -124,7 +124,10 @@ local SHADED = { "accent", "danger", "panel", "sunken", "raised" }
 
 local TOWARD = { accent = "on_accent", danger = "on_danger" }
 
-local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES, AREA_ALPHA = 0.14 }
+
+
+local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES, AREA_ALPHA = 0.14,
+TEXT_CONTRAST = 4.5, GRAPHIC_CONTRAST = 3.0, }
 
 
 local function camel(role)
@@ -195,13 +198,13 @@ local function over(fill, wash)
 end
 
 
-local function shades(h, fill, value)
+local function shades(colors, half, fill, value)
    local toward = TOWARD[fill]
    if toward then
-      local t = h[toward]
+      local t = colors["kit" .. (toward == "on_accent" and "OnAccent" or "OnDanger")][half]
       return mix(value, t, 0.16), mix(value, t, 0.30)
    end
-   return over(value, h.hover), over(value, h.press)
+   return over(value, colors.kitHover[half]), over(value, colors.kitPress[half])
 end
 
 
@@ -230,41 +233,162 @@ local function contrast(a, b)
 end
 
 
-local function readable(fill, a, b)
-   return contrast(fill, a) >= contrast(fill, b) and a or b
+local function hsl(c)
+   local r, g, b = channels(c)
+   local R, G, B = r / 255, g / 255, b / 255
+   local hi, lo = math.max(R, G, B), math.min(R, G, B)
+   local l = (hi + lo) / 2
+   if hi == lo then return 0, 0, l end
+   local d = hi - lo
+   local s = l > 0.5 and d / (2 - hi - lo) or d / (hi + lo)
+   local h
+   if hi == R then h = (G - B) / d + (G < B and 6 or 0)
+   elseif hi == G then h = (B - R) / d + 2
+   else h = (R - G) / d + 4 end
+   return h * 60, s, l
+end
+
+local function from_hsl(h, s, l, alpha)
+   local function f(n)
+      local k = (n + h / 30) % 12
+      local x = l - s * math.min(l, 1 - l) * math.max(-1, math.min(k - 3, 9 - k, 1))
+      return math.floor(math.max(0, math.min(1, x)) * 255 + 0.5)
+   end
+   return (f(0) << 24) | (f(8) << 16) | (f(4) << 8) | alpha
+end
+
+
+local function chroma(c)
+   local r, g, b = channels(c)
+   return (math.max(r, g, b) - math.min(r, g, b)) / 255
+end
+
+local function hue_gap(a, b)
+   local d = math.abs(a - b) % 360
+   return d > 180 and 360 - d or d
+end
+
+local function rgb(c) return c & ~0xff end
+
+
+
+local function legible(c, ground, target)
+   if contrast(c, ground) >= target then return c end
+   local h, s, l = hsl(c)
+   local darker = luminance(ground) > 0.18
+   local out = c
+   for _ = 1, 60 do
+      l = darker and math.max(0, l - 0.02) or math.min(1, l + 0.02)
+      out = from_hsl(h, s, l, c & 0xff)
+      if contrast(out, ground) >= target or l <= 0 or l >= 1 then break end
+   end
+   return out
+end
+
+
+local function legible_on(c, grounds, target)
+   for _ = 1, 3 do
+      for _, g in ipairs(grounds) do c = legible(c, g, target) end
+   end
+   return c
+end
+
+
+local function best_on(fill, options)
+   local pick, most = options[1], -1.0
+   for _, o in ipairs(options) do
+      local k = contrast(fill, o)
+      if k > most then pick, most = o, k end
+   end
+   return pick
 end
 
 
 
 
+local REHUE = {
+   "bg", "side", "panel", "raised", "sunken", "rule", "ink", "fg", "muted", "faint",
+   "sel", "sel_fg", "focus", "hover", "press",
+}
+
+local TINT = { bg = 0.05, side = 0.06, panel = 0.03, raised = 0.03, sunken = 0.07, rule = 0.12 }
 
 
-local FOLLOW = { "sel", "focus" }
 
-local function follow(s, colors, half, h)
+
+
+
+
+
+
+local function derive(s, colors, half, h)
    local o = s.roles and s.roles.accent
    if o == nil or type(o) == "string" then return end
-   local was = h.accent
-   local now = colors.kitAccent[half]
-   if now == was then return end
-   local function same(c) return (c & ~0xff) == (was & ~0xff) end
-   if not s.roles.on_accent then
-      colors.kitOnAccent[half] = readable(now, h.fg, h.bg)
+   local named = s.roles
+   local function set(role, v)
+      if not named[role] then colors["kit" .. camel(role)][half] = v end
    end
-   for _, role in ipairs(FOLLOW) do
-      local own = h[role]
-      if not s.roles[role] and same(own) then
-         colors["kit" .. camel(role)][half] = (now & ~0xff) | (own & 0xff)
-         if role == "sel" and not s.roles.sel_fg and (h.sel_fg) == (h.on_accent) then
-            colors.kitSelFg[half] = colors.kitOnAccent[half]
+   local A = rgb(colors.kitAccent[half]) | 0xff
+   local A0 = h.accent
+   local ah, as = hsl(A)
+   local h0, s0 = hsl(A0)
+   if rgb(A) ~= rgb(A0) then
+      for _, role in ipairs(REHUE) do
+         local c = h[role]
+         local alpha = c & 0xff
+         local v = nil
+         if rgb(c) == rgb(A0) then
+            v = rgb(A) | alpha
+         elseif chroma(c) >= 0.08 and hue_gap((hsl(c)), h0) <= 50 then
+            local _, cs, cl = hsl(c)
+            v = from_hsl(ah, math.min(1, cs * as / math.max(s0, 0.05)), cl, alpha)
+         elseif TINT[role] then
+            v = rgb(mix(c, A, TINT[role])) | alpha
+         elseif role == "hover" or role == "press" then
+            v = rgb(mix(c | 0xff, A, 0.5)) | alpha
          end
+         if v then set(role, v) end
       end
    end
-   local series = colors.kitSeries1
-   if series and same(series[half]) then
-      series[half] = now
-      colors.kitArea1[half] = M.faded(now, AREA_ALPHA)
+   local function get(role) return colors["kit" .. camel(role)][half] end
+   local panel, bg, side, sunken, raised = get("panel"), get("bg"), get("side"), get("sunken"), get("raised")
+   local grounds = { panel, bg, side, sunken, raised }
+   local black, white = 0x111111ff, 0xffffffff
+
+   set("on_accent", best_on(A, { h.fg, h.bg, black, white }))
+   local sel = get("sel")
+   local sel_ground = (sel & 0xff) == 0xff and sel or over(panel, sel)
+   if (h.sel_fg) == (h.on_accent) and (sel & 0xff) == 0xff then
+      set("sel_fg", best_on(sel_ground, { get("on_accent"), h.fg, h.bg, black, white }))
+   else
+      set("sel_fg", legible(get("sel_fg"), sel_ground, M.TEXT_CONTRAST))
    end
+
+
+   for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
+      set(role, legible_on(get(role), grounds, M.TEXT_CONTRAST))
+   end
+
+
+   local series = colors.kitSeries1
+   if series and not named.series1 then
+      series[half] = legible_on(A, { panel, bg }, M.GRAPHIC_CONTRAST)
+      colors.kitArea1[half] = M.faded(series[half], AREA_ALPHA)
+   end
+   local group = colors.kitGroup1
+   if group then
+      local fg = get("fg")
+      local t = luminance(panel) > 0.18 and 0.28 or 0.4
+      local g = mix(panel, A, t)
+      while contrast(fg, g) < M.TEXT_CONTRAST and t > 0.02 do
+         t = t - 0.02
+         g = mix(panel, A, t)
+      end
+      group[half] = g
+   end
+
+   colors.kitChosen[half] = A
+   colors.kitChosenFg[half] = get("on_accent")
 end
 
 function M.tokens(s)
@@ -276,14 +400,6 @@ function M.tokens(s)
       local lv, dv = half_of(s.roles and s.roles[role], l[role], d[role])
       colors["kit" .. camel(role)] = { light = lv, dark = dv }
    end
-   for _, fill in ipairs(SHADED) do
-
-      local base = colors["kit" .. camel(fill)]
-      local lh, lp = shades(l, fill, base.light)
-      local dh, dp = shades(d, fill, base.dark)
-      colors["kit" .. camel(fill) .. "Hover"] = { light = lh, dark = dh }
-      colors["kit" .. camel(fill) .. "Press"] = { light = lp, dark = dp }
-   end
    for i = 1, #skin.light.groups do
       colors["kitGroup" .. i] = { light = skin.light.groups[i], dark = skin.dark.groups[i] }
    end
@@ -294,8 +410,35 @@ function M.tokens(s)
 
       colors["kitArea" .. i] = { light = M.faded(ls, AREA_ALPHA), dark = M.faded(ds, AREA_ALPHA) }
    end
-   follow(s, colors, "light", l)
-   follow(s, colors, "dark", d)
+
+
+   local outlined = skin.ctl_border
+   colors.kitChosen = { light = colors[outlined and "kitInk" or "kitPanel"].light, dark = colors[outlined and "kitInk" or "kitPanel"].dark }
+   colors.kitChosenFg = { light = colors[outlined and "kitBg" or "kitFg"].light, dark = colors[outlined and "kitBg" or "kitFg"].dark }
+   derive(s, colors, "light", l)
+   derive(s, colors, "dark", d)
+
+
+
+   local function accent_text(half)
+      local function at(name) return colors[name][half] end
+      return legible_on(rgb(at("kitAccent")) | 0xff, { at("kitPanel"), at("kitSunken"), at("kitRaised") }, M.TEXT_CONTRAST)
+   end
+   colors.kitAccentText = { light = accent_text("light"), dark = accent_text("dark") }
+   local text_role = s.roles and s.roles.accent_text
+   if math.type(text_role) == "integer" or type(text_role) == "table" then
+      local lv, dv = half_of(text_role, colors.kitAccentText.light, colors.kitAccentText.dark)
+      colors.kitAccentText = { light = lv, dark = dv }
+   end
+   for _, fill in ipairs(SHADED) do
+
+
+      local base = colors["kit" .. camel(fill)]
+      local lh, lp = shades(colors, "light", fill, base.light)
+      local dh, dp = shades(colors, "dark", fill, base.dark)
+      colors["kit" .. camel(fill) .. "Hover"] = { light = lh, dark = dh }
+      colors["kit" .. camel(fill) .. "Press"] = { light = lp, dark = dp }
+   end
 
 
 

@@ -730,10 +730,14 @@ pub struct Settings {
     /// Corner radius in px, for a brand with its own; the skin's when left out.
     pub radius: Option<f64>,
     /// Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
-    /// "$brandSurface" }` — a colour, `{ light, dark }` or a token each. What
-    /// the skin paints in its accent (Ledger's selection, Neutral's focus ring,
-    /// a first chart series) follows an accent given as a colour, and what
-    /// reads on it is worked out, unless those roles are named too.
+    /// "$brandSurface" }` — a colour, `{ light, dark }` or a token each. An
+    /// accent given as a colour derives the palette around it: what the skin
+    /// drew in its accent takes it (the selection, a view switch's chosen
+    /// segment, the first chart series and waterfall group), what it drew in
+    /// the accent's hue takes the new hue, the ground and surfaces lean a few
+    /// percent toward it, and every text role is moved in lightness until it
+    /// reads at 4.5:1 on what it sits on (WCAG AA), what reads on the accent
+    /// worked out. Roles the brand names are kept as named.
     pub roles: Option<Value>,
     /// Kit's colours held light or dark whatever the OS says; the OS's when
     /// left out (`system`).
@@ -800,10 +804,14 @@ impl Settings {
     }
 
     /// Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
-    /// "$brandSurface" }` — a colour, `{ light, dark }` or a token each. What
-    /// the skin paints in its accent (Ledger's selection, Neutral's focus ring,
-    /// a first chart series) follows an accent given as a colour, and what
-    /// reads on it is worked out, unless those roles are named too.
+    /// "$brandSurface" }` — a colour, `{ light, dark }` or a token each. An
+    /// accent given as a colour derives the palette around it: what the skin
+    /// drew in its accent takes it (the selection, a view switch's chosen
+    /// segment, the first chart series and waterfall group), what it drew in
+    /// the accent's hue takes the new hue, the ground and surfaces lean a few
+    /// percent toward it, and every text role is moved in lightness until it
+    /// reads at 4.5:1 on what it sits on (WCAG AA), what reads on the accent
+    /// worked out. Roles the brand names are kept as named.
     pub fn roles(mut self, v: impl Into<Value>) -> Self {
         self.roles = Some(v.into());
         self

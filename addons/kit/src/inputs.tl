@@ -720,13 +720,12 @@ function M.segmented(c: Ctx, p: P): kui.Node
   local options = (p.options or {}) as {P}
   -- A track with the chosen segment filled, in every skin: an outline and
   -- a rule between each segment drew a cage of edges around three words.
-  -- Where controls are outlined (Ledger, Phosphor) the chosen one is
-  -- printed in the ink, the page's colour on it: the accent stays the one
-  -- action's, and a view switch is not one. The track is the pressed wash,
-  -- so it reads on any surface (Ledger's sunken was its toolbar's colour).
-  local bordered = c.s.skin.ctl_border
-  local on_bg = bordered and "ink" or "panel"
-  local on_fg = bordered and "bg" or "fg"
+  -- The chosen one is the `chosen` role: where controls are outlined
+  -- (Ledger, Phosphor) printed in the ink with the page's colour on it,
+  -- in Neutral a raised chip — and a brand's accent, with what reads on
+  -- it, once settings give one. The track is the pressed wash, so it
+  -- reads on any surface (Ledger's sunken was its toolbar's colour).
+  local on_bg, on_fg = "chosen", "chosen_fg"
   local t: kui.Props = {
     role = "radioGroup",
     label = str(p.label),

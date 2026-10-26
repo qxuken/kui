@@ -158,7 +158,7 @@ function M.toast(c, p)
    local tone = str(p.tone) or "info"
    local message = str(p.message) or ""
    local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or
-   (tone == "accent" and "accent" or (tone == "info" and "focus" or "muted"))
+   (tone == "accent" and "accent_text" or (tone == "info" and "focus" or "muted"))
 
 
 

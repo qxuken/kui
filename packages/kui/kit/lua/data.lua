@@ -1020,7 +1020,7 @@ function M.skeleton(c, p)
    return column(t)
 end
 
-local NOTICE_ROLE = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", info = "focus", neutral = "muted" }
+local NOTICE_ROLE = { danger = "danger", warn = "warn", ok = "ok", accent = "accent_text", info = "focus", neutral = "muted" }
 
 function M.notice(c, p)
    local tone = str(p.tone) or "neutral"

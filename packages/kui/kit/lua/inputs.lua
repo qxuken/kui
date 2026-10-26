@@ -725,9 +725,8 @@ function M.segmented(c, p)
 
 
 
-   local bordered = c.s.skin.ctl_border
-   local on_bg = bordered and "ink" or "panel"
-   local on_fg = bordered and "bg" or "fg"
+
+   local on_bg, on_fg = "chosen", "chosen_fg"
    local t = {
       role = "radioGroup",
       label = str(p.label),

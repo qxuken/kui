@@ -157,7 +157,7 @@ function M.toast(c: Ctx, p: P): kui.Node
   local tone = str(p.tone) or "info"
   local message = str(p.message) or ""
   local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone
-    or (tone == "accent" and "accent" or (tone == "info" and "focus" or "muted"))
+    or (tone == "accent" and "accent_text" or (tone == "info" and "focus" or "muted"))
   -- It goes by itself after `duration` ms (0 keeps it), counted from when
   -- its message first showed and again from when the pointer leaves it:
   -- a frame asked for at the deadline, and in that frame a node whose

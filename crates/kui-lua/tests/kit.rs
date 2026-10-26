@@ -2734,11 +2734,99 @@ fn an_accent_brings_what_the_skin_paints_in_its_accent_and_an_appearance_holds()
     }
     let (accent, sel, on, sel_fg, bg, _) = seen[0];
     assert_eq!(sel, accent, "the selection follows the accent");
-    assert_eq!(on, bg, "light on the dark blue: the page's colour, not the ink");
+    assert!(on.r > 0.9 && on.g > 0.9, "light on the dark blue, not the ink: {on:?}");
     assert_eq!(sel_fg, on, "and on the selection");
     let (_, _, _, _, dark_bg, dark_fg) = seen[1];
     assert_ne!(dark_bg, bg, "dark held: the dark half's page");
     assert_ne!(dark_fg, seen[0].5, "and its text");
+}
+
+/// WCAG's contrast between two opaque colours.
+fn contrast(a: kui_core::Color, b: kui_core::Color) -> f32 {
+    let lum = |c: kui_core::Color| {
+        let lin = |v: f32| if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
+        0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    };
+    let (x, y) = (lum(a), lum(b));
+    let (hi, lo) = if x > y { (x, y) } else { (y, x) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// `top`, with its alpha, laid over the opaque `under`.
+fn over(under: kui_core::Color, top: kui_core::Color) -> kui_core::Color {
+    let m = |u: f32, t: f32| u + (t - u) * top.a;
+    kui_core::Color { r: m(under.r, top.r), g: m(under.g, top.g), b: m(under.b, top.b), a: 1.0 }
+}
+
+#[test]
+fn an_accent_derives_a_palette_whose_text_reads_everywhere() {
+    // A yellow accent left Ledger's info notice yellow on paper and
+    // Phosphor's text and knobs green. Every skin, both halves, four
+    // accents: each derived text on what it sits on reads at 4.5:1, a chart
+    // line at 3:1, and the palette leans toward the accent.
+    let accents = [0xffd400ffi64, 0x7fe9ffff, 0x1e2a5aff, 0xdc2626ff];
+    for skin in [kit::Skin::Ledger, kit::Skin::Neutral, kit::Skin::Phosphor] {
+        for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
+            let mut plain = std::collections::HashMap::new();
+            let mut r = rig();
+            r.frame(|ui| {
+                kit::Settings::new().skin(skin).appearance(appearance).place(ui);
+            });
+            r.frame(|ui| {
+                for n in ["kitBg", "kitPanel", "kitFg", "kitChosen", "kitAccent"] {
+                    plain.insert(n, ui.token_color(n).unwrap());
+                }
+            });
+            for accent in accents {
+                let mut got = std::collections::HashMap::new();
+                let names = [
+                    "kitAccent", "kitOnAccent", "kitSel", "kitSelFg", "kitBg", "kitSide", "kitPanel", "kitSunken",
+                    "kitRaised", "kitFg", "kitMuted", "kitFaint", "kitFocus", "kitOk", "kitWarn", "kitDanger",
+                    "kitAccentText", "kitChosen", "kitChosenFg", "kitGroup1", "kitSeries1",
+                ];
+                r.frame(|ui| {
+                    let roles = Value::map([("accent", Value::Int(accent))]);
+                    kit::Settings::new().skin(skin).appearance(appearance).roles(roles).place(ui);
+                });
+                r.frame(|ui| {
+                    for n in names {
+                        got.insert(n, ui.token_color(n).unwrap_or_else(|| panic!("{n}")));
+                    }
+                });
+                let at = |n: &str| got[n];
+                let case = format!("{skin:?} {appearance:?} {accent:08x}");
+                let grounds = ["kitBg", "kitSide", "kitPanel", "kitSunken", "kitRaised"];
+                for text in ["kitFg", "kitMuted", "kitFaint"] {
+                    for g in grounds {
+                        let k = contrast(at(text), at(g));
+                        assert!(k >= 4.49, "{case}: {text} on {g} reads at {k:.2}");
+                    }
+                }
+                for text in ["kitFocus", "kitOk", "kitWarn", "kitDanger", "kitAccentText"] {
+                    for g in ["kitPanel", "kitSunken", "kitBg"] {
+                        let k = contrast(at(text), at(g));
+                        assert!(k >= 4.49, "{case}: {text} on {g} reads at {k:.2}");
+                    }
+                }
+                let pairs = [("kitOnAccent", "kitAccent"), ("kitChosenFg", "kitChosen"), ("kitFg", "kitGroup1")];
+                for (text, fill) in pairs {
+                    let k = contrast(at(text), at(fill));
+                    assert!(k >= 4.49, "{case}: {text} on {fill} reads at {k:.2}");
+                }
+                let sel = over(at("kitPanel"), at("kitSel"));
+                let k = contrast(at("kitSelFg"), sel);
+                assert!(k >= 4.49, "{case}: the selection's text reads at {k:.2}");
+                let k = contrast(at("kitSeries1"), at("kitPanel"));
+                assert!(k >= 2.99, "{case}: the first series reads at {k:.2}");
+                // Derived, not left as it was: the ground leans toward the
+                // accent and the chosen segment is the accent.
+                if at("kitAccent") != plain["kitAccent"] {
+                    assert_ne!(at("kitBg"), plain["kitBg"], "{case}: the ground is tinted");
+                }
+                assert_eq!(at("kitChosen"), at("kitAccent"), "{case}: a view switch's chosen segment");
+            }
+        }
+    }
 }
 
 #[test]

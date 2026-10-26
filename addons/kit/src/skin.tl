@@ -123,7 +123,10 @@ local SHADED: {string} = { "accent", "danger", "panel", "sunken", "raised" }
 -- for the loud fills; the washes, laid over it, for the quiet ones.
 local TOWARD: {string:string} = { accent = "on_accent", danger = "on_danger" }
 
-local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES, AREA_ALPHA = 0.14 }
+-- TEXT_CONTRAST: what body text and a tone's text read at on what they
+-- sit on (WCAG AA); GRAPHIC_CONTRAST: a chart's line, which is no text.
+local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES, AREA_ALPHA = 0.14,
+  TEXT_CONTRAST = 4.5, GRAPHIC_CONTRAST = 3.0 }
 
 -- `sel_fg` → `SelFg`, the tail of a `kit…` token name.
 local function camel(role: string): string
@@ -193,14 +196,14 @@ local function over(fill: integer, wash: integer): integer
   return mix(fill, wash | 0xff, a / 255)
 end
 
--- A fill's hover and press shades in one half of a skin.
-local function shades(h: {string:any}, fill: string, value: integer): integer, integer
+-- A fill's hover and press shades in one half, from the colours in force.
+local function shades(colors: {string:{string:integer}}, half: string, fill: string, value: integer): integer, integer
   local toward = TOWARD[fill]
   if toward then
-    local t = h[toward] as integer
+    local t = colors["kit" .. (toward == "on_accent" and "OnAccent" or "OnDanger")][half]
     return mix(value, t, 0.16), mix(value, t, 0.30)
   end
-  return over(value, h.hover as integer), over(value, h.press as integer)
+  return over(value, colors.kitHover[half]), over(value, colors.kitPress[half])
 end
 
 -- How opaque the area under a chart's line is.
@@ -228,42 +231,163 @@ local function contrast(a: integer, b: integer): number
   return (x + 0.05) / (y + 0.05)
 end
 
--- Of `a` and `b`, the one that reads better on `fill`.
-local function readable(fill: integer, a: integer, b: integer): integer
-  return contrast(fill, a) >= contrast(fill, b) and a or b
+-- 0xRRGGBBAA as hue (degrees), saturation and lightness (0 to 1), and back.
+local function hsl(c: integer): number, number, number
+  local r, g, b = channels(c)
+  local R, G, B = r / 255, g / 255, b / 255
+  local hi, lo = math.max(R, G, B), math.min(R, G, B)
+  local l = (hi + lo) / 2
+  if hi == lo then return 0, 0, l end
+  local d = hi - lo
+  local s = l > 0.5 and d / (2 - hi - lo) or d / (hi + lo)
+  local h: number
+  if hi == R then h = (G - B) / d + (G < B and 6 or 0)
+  elseif hi == G then h = (B - R) / d + 2
+  else h = (R - G) / d + 4 end
+  return h * 60, s, l
 end
 
--- The roles a skin paints in its accent — Ledger's selection is its
--- yellow, Neutral's focus ring its blue, Phosphor's first series its
--- green — follow a brand's accent there, as do what reads on it, unless
--- the brand names them too. A blue accent left Ledger's selection yellow
--- and its primary label black on blue.
-local FOLLOW: {string} = { "sel", "focus" }
+local function from_hsl(h: number, s: number, l: number, alpha: integer): integer
+  local function f(n: number): integer
+    local k = (n + h / 30) % 12
+    local x = l - s * math.min(l, 1 - l) * math.max(-1, math.min(k - 3, 9 - k, 1))
+    return math.floor(math.max(0, math.min(1, x)) * 255 + 0.5)
+  end
+  return (f(0) << 24) | (f(8) << 16) | (f(4) << 8) | alpha
+end
 
-local function follow(s: Settings, colors: {string:{string:integer}}, half: string, h: {string:any})
+-- How colourful: the spread of the channels, 0 to 1.
+local function chroma(c: integer): number
+  local r, g, b = channels(c)
+  return (math.max(r, g, b) - math.min(r, g, b)) / 255
+end
+
+local function hue_gap(a: number, b: number): number
+  local d = math.abs(a - b) % 360
+  return d > 180 and 360 - d or d
+end
+
+local function rgb(c: integer): integer return c & ~0xff end
+
+-- `c` moved in lightness away from `ground` until it reads at `target`
+-- on it, its hue and saturation kept, so a tone stays recognisable.
+local function legible(c: integer, ground: integer, target: number): integer
+  if contrast(c, ground) >= target then return c end
+  local h, s, l = hsl(c)
+  local darker = luminance(ground) > 0.18
+  local out = c
+  for _ = 1, 60 do
+    l = darker and math.max(0, l - 0.02) or math.min(1, l + 0.02)
+    out = from_hsl(h, s, l, c & 0xff)
+    if contrast(out, ground) >= target or l <= 0 or l >= 1 then break end
+  end
+  return out
+end
+
+-- `c` legible on every one of `grounds`.
+local function legible_on(c: integer, grounds: {integer}, target: number): integer
+  for _ = 1, 3 do
+    for _, g in ipairs(grounds) do c = legible(c, g, target) end
+  end
+  return c
+end
+
+-- Of `options`, the one that reads best on `fill`.
+local function best_on(fill: integer, options: {integer}): integer
+  local pick, most = options[1], -1.0
+  for _, o in ipairs(options) do
+    local k = contrast(fill, o)
+    if k > most then pick, most = o, k end
+  end
+  return pick
+end
+
+-- The roles a skin draws in or near its brand colour, which a brand's
+-- accent re-hues, and the surfaces it tints: Ledger's selection is its
+-- yellow; Phosphor's text, rules and ground are all its green.
+local REHUE: {string} = {
+  "bg", "side", "panel", "raised", "sunken", "rule", "ink", "fg", "muted", "faint",
+  "sel", "sel_fg", "focus", "hover", "press",
+}
+-- How far each surface leans toward the accent: a tint, not a wash.
+local TINT: {string:number} = { bg = 0.05, side = 0.06, panel = 0.03, raised = 0.03, sunken = 0.07, rule = 0.12 }
+
+-- An accent given as a colour derives the palette around it in one half:
+-- what the skin drew in its own accent takes the new one, what it drew in
+-- the accent's hue takes the new hue at its own lightness, the surfaces
+-- lean a few percent toward it, the washes take its hue; what reads on it
+-- is worked out, and every text role is moved, in lightness alone, until
+-- it reads at 4.5:1 on the surfaces it is drawn on. Roles the brand names
+-- are left as named. A yellow accent left Ledger's info notice yellow on
+-- paper, and Phosphor's text, knobs and rules green.
+local function derive(s: Settings, colors: {string:{string:integer}}, half: string, h: {string:any})
   local o = s.roles and s.roles.accent
   if o == nil or o is string then return end
-  local was = h.accent as integer
-  local now = colors.kitAccent[half]
-  if now == was then return end
-  local function same(c: integer): boolean return (c & ~0xff) == (was & ~0xff) end
-  if not s.roles.on_accent then
-    colors.kitOnAccent[half] = readable(now, h.fg as integer, h.bg as integer)
+  local named = s.roles
+  local function set(role: string, v: integer)
+    if not named[role] then colors["kit" .. camel(role)][half] = v end
   end
-  for _, role in ipairs(FOLLOW) do
-    local own = h[role] as integer
-    if not s.roles[role] and same(own) then
-      colors["kit" .. camel(role)][half] = (now & ~0xff) | (own & 0xff)
-      if role == "sel" and not s.roles.sel_fg and (h.sel_fg as integer) == (h.on_accent as integer) then
-        colors.kitSelFg[half] = colors.kitOnAccent[half]
+  local A = rgb(colors.kitAccent[half]) | 0xff
+  local A0 = h.accent as integer
+  local ah, as = hsl(A)
+  local h0, s0 = hsl(A0)
+  if rgb(A) ~= rgb(A0) then
+    for _, role in ipairs(REHUE) do
+      local c = h[role] as integer
+      local alpha = c & 0xff
+      local v: integer = nil
+      if rgb(c) == rgb(A0) then
+        v = rgb(A) | alpha
+      elseif chroma(c) >= 0.08 and hue_gap((hsl(c)), h0) <= 50 then
+        local _, cs, cl = hsl(c)
+        v = from_hsl(ah, math.min(1, cs * as / math.max(s0, 0.05)), cl, alpha)
+      elseif TINT[role] then
+        v = rgb(mix(c, A, TINT[role])) | alpha
+      elseif role == "hover" or role == "press" then
+        v = rgb(mix(c | 0xff, A, 0.5)) | alpha
       end
+      if v then set(role, v) end
     end
   end
-  local series = colors.kitSeries1
-  if series and same(series[half]) then
-    series[half] = now
-    colors.kitArea1[half] = M.faded(now, AREA_ALPHA)
+  local function get(role: string): integer return colors["kit" .. camel(role)][half] end
+  local panel, bg, side, sunken, raised = get("panel"), get("bg"), get("side"), get("sunken"), get("raised")
+  local grounds: {integer} = { panel, bg, side, sunken, raised }
+  local black, white = 0x111111ff, 0xffffffff
+  -- What reads on the accent, and on a selection that is the accent.
+  set("on_accent", best_on(A, { h.fg as integer, h.bg as integer, black, white }))
+  local sel = get("sel")
+  local sel_ground = (sel & 0xff) == 0xff and sel or over(panel, sel)
+  if (h.sel_fg as integer) == (h.on_accent as integer) and (sel & 0xff) == 0xff then
+    set("sel_fg", best_on(sel_ground, { get("on_accent"), h.fg as integer, h.bg as integer, black, white }))
+  else
+    set("sel_fg", legible(get("sel_fg"), sel_ground, M.TEXT_CONTRAST))
   end
+  -- Text, and the tones and the focus colour where they are text (a
+  -- notice on the well, a badge's label), on every surface.
+  for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
+    set(role, legible_on(get(role), grounds, M.TEXT_CONTRAST))
+  end
+  -- The first chart series and the first waterfall group in the accent:
+  -- the line at 3:1 on the panel, the group a pale fill the text reads on.
+  local series = colors.kitSeries1
+  if series and not named.series1 then
+    series[half] = legible_on(A, { panel, bg }, M.GRAPHIC_CONTRAST)
+    colors.kitArea1[half] = M.faded(series[half], AREA_ALPHA)
+  end
+  local group = colors.kitGroup1
+  if group then
+    local fg = get("fg")
+    local t = luminance(panel) > 0.18 and 0.28 or 0.4
+    local g = mix(panel, A, t)
+    while contrast(fg, g) < M.TEXT_CONTRAST and t > 0.02 do
+      t = t - 0.02
+      g = mix(panel, A, t)
+    end
+    group[half] = g
+  end
+  -- The chosen segment of a view switch: the accent, and what reads on it.
+  colors.kitChosen[half] = A
+  colors.kitChosenFg[half] = get("on_accent")
 end
 
 function M.tokens(s: Settings): Decl
@@ -275,14 +399,6 @@ function M.tokens(s: Settings): Decl
     local lv, dv = half_of(s.roles and s.roles[role], l[role] as integer, d[role] as integer)
     colors["kit" .. camel(role)] = { light = lv, dark = dv }
   end
-  for _, fill in ipairs(SHADED) do
-    -- From the colours in force, the brand's integers included.
-    local base = colors["kit" .. camel(fill)]
-    local lh, lp = shades(l, fill, base.light)
-    local dh, dp = shades(d, fill, base.dark)
-    colors["kit" .. camel(fill) .. "Hover"] = { light = lh, dark = dh }
-    colors["kit" .. camel(fill) .. "Press"] = { light = lp, dark = dp }
-  end
   for i = 1, #skin.light.groups do
     colors["kitGroup" .. i] = { light = skin.light.groups[i], dark = skin.dark.groups[i] }
   end
@@ -293,8 +409,35 @@ function M.tokens(s: Settings): Decl
     -- fills it with plain polygons and no opacity of their own.
     colors["kitArea" .. i] = { light = M.faded(ls, AREA_ALPHA), dark = M.faded(ds, AREA_ALPHA) }
   end
-  follow(s, colors, "light", l)
-  follow(s, colors, "dark", d)
+  -- A view switch's chosen segment: printed in the ink where controls are
+  -- outlined, a raised chip in Neutral — until an accent is given.
+  local outlined = skin.ctl_border
+  colors.kitChosen = { light = colors[outlined and "kitInk" or "kitPanel"].light, dark = colors[outlined and "kitInk" or "kitPanel"].dark }
+  colors.kitChosenFg = { light = colors[outlined and "kitBg" or "kitFg"].light, dark = colors[outlined and "kitBg" or "kitFg"].dark }
+  derive(s, colors, "light", l)
+  derive(s, colors, "dark", d)
+  -- The accent as text (an accent notice, its toast's mark): the accent
+  -- moved in lightness until it reads on the panel and the well. Ledger's
+  -- yellow was its own notice's text on paper.
+  local function accent_text(half: string): integer
+    local function at(name: string): integer return colors[name][half] end
+    return legible_on(rgb(at("kitAccent")) | 0xff, { at("kitPanel"), at("kitSunken"), at("kitRaised") }, M.TEXT_CONTRAST)
+  end
+  colors.kitAccentText = { light = accent_text("light"), dark = accent_text("dark") }
+  local text_role = s.roles and s.roles.accent_text
+  if text_role is integer or text_role is {string:integer} then
+    local lv, dv = half_of(text_role, colors.kitAccentText.light, colors.kitAccentText.dark)
+    colors.kitAccentText = { light = lv, dark = dv }
+  end
+  for _, fill in ipairs(SHADED) do
+    -- From the colours in force, the brand's integers and what an accent
+    -- derived included.
+    local base = colors["kit" .. camel(fill)]
+    local lh, lp = shades(colors, "light", fill, base.light)
+    local dh, dp = shades(colors, "dark", fill, base.dark)
+    colors["kit" .. camel(fill) .. "Hover"] = { light = lh, dark = dh }
+    colors["kit" .. camel(fill) .. "Press"] = { light = lp, dark = dp }
+  end
   -- The shimmer a skeleton sweeps with: the well lit toward white in the
   -- light half and toward the text in the dark one, and the same with no
   -- alpha, for the band's soft edges.

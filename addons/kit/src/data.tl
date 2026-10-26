@@ -962,7 +962,7 @@ function M.skeleton(c: Ctx, p: P): kui.Node
   return column(t)
 end
 
-local NOTICE_ROLE: {string:string} = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", info = "focus", neutral = "muted" }
+local NOTICE_ROLE: {string:string} = { danger = "danger", warn = "warn", ok = "ok", accent = "accent_text", info = "focus", neutral = "muted" }
 
 function M.notice(c: Ctx, p: P): kui.Node
   local tone = str(p.tone) or "neutral"
