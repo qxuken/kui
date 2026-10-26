@@ -493,6 +493,13 @@ function M.select(c, p)
 
       on_click = act(c, "select.open"),
       opens_on_press = true,
+
+
+
+
+
+
+      on_key = act(c, "select.key"),
       ctx.text(c, current or str(p.placeholder) or "Choose…", {
          color = ref(c, current and "fg" or "faint"), max_lines = 1, ellipsis = true,
       }),
@@ -846,6 +853,13 @@ function M.event(m, kit)
    elseif kit == "select.open" then
       local st = ctx.peek(m.inst)
       if st then st.open = not st.open end
+   elseif kit == "select.key" then
+      local k = m.key
+      local code = k and k.code
+      local st = ctx.peek(m.inst)
+      if st and not st.open and k.phase == "down" and (code == "up" or code == "down" or code == "f4" or code == "space" or code == "enter") then
+         st.open = true
+      end
    elseif kit == "select.dismiss" then
       local st = ctx.peek(m.inst)
       if st then st.open = false end

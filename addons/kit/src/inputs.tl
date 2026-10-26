@@ -492,6 +492,13 @@ function M.select(c: Ctx, p: P): kui.Node
     -- press here is outside it and arrives as `select.dismiss`.
     on_click = act(c, "select.open"),
     opens_on_press = true,
+    -- From the keyboard: Up, Down (Alt or not), F4, Space and Enter open
+    -- it, focus on the current option — a macOS pop-up's and a browser's
+    -- select on a Mac. (A key sink, the field hears Space and Enter as
+    -- keys rather than as presses.) Windows and Linux step the value with
+    -- a bare arrow; a script cannot tell which platform it is on, so the
+    -- arrows open everywhere.
+    on_key = act(c, "select.key"),
     ctx.text(c, current or str(p.placeholder) or "Choose…", {
       color = ref(c, current and "fg" or "faint"), max_lines = 1, ellipsis = true,
     }),
@@ -845,6 +852,13 @@ function M.event(m: P, kit: string): any
   elseif kit == "select.open" then
     local st = ctx.peek(m.inst as integer) as Open
     if st then st.open = not st.open end
+  elseif kit == "select.key" then
+    local k = m.key as P
+    local code = k and k.code as string
+    local st = ctx.peek(m.inst as integer) as Open
+    if st and not st.open and k.phase == "down" and (code == "up" or code == "down" or code == "f4" or code == "space" or code == "enter") then
+      st.open = true
+    end
   elseif kit == "select.dismiss" then
     local st = ctx.peek(m.inst as integer) as Open
     if st then st.open = false end

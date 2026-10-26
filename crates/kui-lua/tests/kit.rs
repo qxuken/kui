@@ -2740,3 +2740,52 @@ fn an_accent_brings_what_the_skin_paints_in_its_accent_and_an_appearance_holds()
     assert_ne!(dark_bg, bg, "dark held: the dark half's page");
     assert_ne!(dark_fg, seen[0].5, "and its text");
 }
+
+#[test]
+fn the_keyboard_opens_a_select_on_its_current_option() {
+    // Up, Down, Alt+Down, F4, Space and Enter on a closed, focused select
+    // open its menu with focus on the option it shows; Escape closes it
+    // and gives focus back.
+    use kui_core::{KeyCode, KeyMods};
+    let opening: &[(KeyCode, KeyMods)] = &[
+        (KeyCode::Down, KeyMods::NONE),
+        (KeyCode::Up, KeyMods::NONE),
+        (KeyCode::Down, KeyMods::NONE.with_alt()),
+        (KeyCode::F(4), KeyMods::NONE),
+        (KeyCode::Space, KeyMods::NONE),
+        (KeyCode::Enter, KeyMods::NONE),
+    ];
+    for &(code, mods) in opening {
+        let mut r = LuaRig::new(
+            r#"
+            function view(env)
+              return column { width = "grow", height = "grow", pad = 100,
+                row { width = 200, component("kit/select", { label = "Mode", value = "two", on_change = { kind = "mode" },
+                  options = { { value = "one", label = "One" }, { value = "two", label = "Two" }, { value = "three", label = "Three" } } }) } }
+            end
+            "#,
+        );
+        r.frames(2);
+        let e = r.core.handle_input(kui_core::testing::key_press(KeyCode::Tab));
+        r.route(e);
+        let e = kui_core::testing::tab(&mut r.core, false);
+        r.route(e);
+        r.frames(1);
+        let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+        assert_eq!(focused(&mut r).as_deref(), Some("Mode: Two"), "Tab reached the field");
+        // As a window delivers it: the press, and the space's text.
+        let e = r.core.press(kui_core::KeyPress::new(code, mods));
+        r.route(e);
+        if code == KeyCode::Space {
+            let e = r.core.handle_input(kui_core::InputEvent::Text(" ".into()));
+            r.route(e);
+        }
+        r.frames(3);
+        assert!(r.text("Three").is_some(), "{code:?} {mods:?} opened the menu");
+        assert_eq!(focused(&mut r).as_deref(), Some("Two"), "{code:?}: focus on the current option");
+        press_key(&mut r, KeyCode::Escape);
+        r.frames(2);
+        assert!(r.text("Three").is_none(), "Escape closed it");
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}

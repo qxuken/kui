@@ -108,15 +108,17 @@ end
 
 
 
+
+
 local function pill(c, label, tone, dot, sel)
    local role = tone_of(tone)
-   local accent = role == "accent" and not sel
-   local ink = ref(c, sel and "sel_fg" or (accent and "on_accent" or (role or "muted")))
-   local spot = sel and "sel_fg" or (accent and "on_accent" or (role == "muted" and "faint" or (role or "faint")))
+   local accent = role == "accent"
+   local ink = ref(c, accent and "on_accent" or (role or "muted"))
+   local spot = accent and "on_accent" or (role == "muted" and "faint" or (role or "faint"))
    return row({
       height = 18, min_width = "fit", pad = { x = 6 }, gap = 5, cross_align = "center",
       radius = c.s.skin.radius > 0 and 9 or 0,
-      bg = accent and ref(c, "accent") or (not sel and ref(c, "press") or nil),
+      bg = accent and ref(c, "accent") or ref(c, sel and "panel" or "press"),
       dot and column({ width = 6, height = 6, radius = 3, bg = ref(c, spot) }) or nil,
       ctx.data(c, label, { size = "$kitSizeLabel", bold = c.s.skin.label_bold, color = ink, max_lines = 1 }),
    })
