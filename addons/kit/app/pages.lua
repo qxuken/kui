@@ -148,6 +148,8 @@ local HEADS = {
     return text("Each of these is one Tab stop. The arrows move inside it; Enter or Space picks; Tab moves on.",
         { size = 15, bold = true, family = "$kitUi", color = "$kitFg", wrap = "word" }),
       text("Tab lands on the chosen item, not the first. A click focuses without the ring; the keyboard shows it. Components nobody picks in (no on_select) take no keyboard at all.",
+        { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" }),
+      text("⌥↑ and ⌥↓ (Alt+Up and Alt+Down off a Mac) go to the previous and the next page, round from the last to the first, wherever the keyboard is but in a text field, which keeps them. The app hears them on a key sink around everything: the keys a focused control does not use bubble to it.",
         { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" })
   end,
   loading = function()
@@ -194,6 +196,21 @@ function M.nav(m)
     }
   end
   return column { role = "tabList", width = "grow", gap = 2, table.unpack(t) }
+end
+
+-- The page `by` away from `value` in the sidebar's order, round from the
+-- last to the first and back: what ⌥↓ and ⌥↑ go to.
+function M.step(value, by)
+  local n = #M.PAGES
+  for i, p in ipairs(M.PAGES) do
+    if p.value == value then return M.PAGES[(i - 1 + by) % n + 1].value end
+  end
+  return M.PAGES[1].value
+end
+
+-- The page shortcut, as the platform spells it.
+function M.shortcut(platform)
+  return platform == "macos" and "⌥↑ ⌥↓ change page" or "Alt+↑ Alt+↓ change page"
 end
 
 return M

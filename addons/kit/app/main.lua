@@ -64,12 +64,24 @@ local function serve()
   return s.port
 end
 
+-- Whether a text editor had the keyboard at the last frame: it keeps
+-- ⌥↑ and ⌥↓ (they bubble from it, as every key it does not use does).
+local editing = false
+
 function update(msg)
   local m = model
   local k = msg.kind
   if k == "tick" then live.tick(m)
   elseif k == "log" then live.log_line(m)
   elseif k == "page" then m.page = msg.change.value
+  elseif k == "keys" then
+    -- ⌥↑ the previous page, ⌥↓ the next: the key sink around the app hears
+    -- what a focused control leaves.
+    local key = msg.key
+    if key and key.phase == "down" and key.alt and not (key.ctrl or key.super or key.shift) and not editing
+      and (key.code == "up" or key.code == "down") then
+      m.page = pages.step(m.page, key.code == "up" and -1 or 1)
+    end
   elseif k == "side" then m.side = msg.resize.fraction
   elseif k == "live" then m.live = msg.toggle.on
   elseif k == "source" then m.source[msg.name] = not m.source[msg.name] or nil
@@ -100,9 +112,11 @@ function view(env)
   -- says its own.
   local held = m.theme.appearance
   env.set_rules_appearance(held ~= "system" and held or nil)
+  editing = env.focus ~= nil and env.edit_text(env.focus) ~= nil
   local page = column { key = "page." .. m.page, width = "grow", height = "grow", scroll_y = true, pad = 16, gap = 16,
     pages.page(m, m.page) }
-  return column { width = "grow", height = "grow", bg = "$kitBg",
+  -- The whole app inside one key sink: the page shortcut.
+  return column { width = "grow", height = "grow", bg = "$kitBg", on_key = { kind = "keys" },
     kit.settings(theme.settings(m.theme)),
     kit.toolbar({}, {
       row { gap = 8, cross_align = "center",
@@ -119,6 +133,8 @@ function view(env)
       first = {
         column { width = "grow", height = "grow", bg = "$kitSide", pad = 8, gap = 2,
           pages.nav(m),
+          column { height = "grow" },
+          text(pages.shortcut(env.platform), { size = 11, family = "$kitUi", color = "$kitMuted", max_lines = 1, ellipsis = true }),
         },
       },
       second = {

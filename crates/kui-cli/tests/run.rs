@@ -459,6 +459,55 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     }
 }
 
+/// ⌥↓ and ⌥↑ go to the next and the previous page, round the ends, from
+/// the key sink around the app; a text editor with the keyboard keeps
+/// them, and another chord is not the shortcut.
+#[test]
+fn the_kit_app_pages_with_alt_up_and_down_but_not_in_an_editor() {
+    let dir = kit_app(
+        "kit-app-keys",
+        r##"
+        require("main")
+        model = init()
+        local function key(code, mods)
+          local k = { phase = "down", code = code, alt = true }
+          for m, v in pairs(mods or {}) do k[m] = v end
+          return { kind = "keys", key = k }
+        end
+        -- The view, asked to move the keyboard on until a text editor has it.
+        local inner, hunting = view, false
+        function view(env)
+          local t = inner(env)
+          if hunting and not (env.focus and env.edit_text(env.focus)) then env.focus_next() end
+          return t
+        end
+        local steps = {
+          function() kui.dispatch(key("down")) end,
+          function() print("page", model.page) kui.dispatch(key("down")) end,
+          function() print("page", model.page) kui.dispatch(key("up")) kui.dispatch(key("up")) kui.dispatch(key("up")) end,
+          function() print("page", model.page) kui.dispatch(key("down", { shift = true })) end,
+          function() print("page", model.page) kui.dispatch(key("down")) end,
+          function() print("page", model.page) kui.dispatch({ kind = "page", change = { value = "inputs" } }) hunting = true end,
+          function() end, function() end, function() end, function() end, function() end, function() end,
+          function() hunting = false kui.dispatch(key("down")) end,
+          function() print("editing page", model.page) end,
+        }
+        local i = 0
+        kui.timer.every(80, function()
+          i = i + 1
+          if steps[i] then steps[i]() else kui.exit(0) end
+        end)
+        "##,
+    );
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(!s.contains("warning"), "{s}");
+    let pages: Vec<&str> = s.lines().filter_map(|l| l.strip_prefix("page\t")).collect();
+    assert_eq!(pages, ["inputs", "data", "keyboard", "keyboard", "overview"], "⌥↓ on, ⌥↑ back round the first, ⇧⌥↓ nothing:\n{s}");
+    assert!(s.contains("editing page\tinputs"), "a text field keeps ⌥↓:\n{s}");
+}
+
 /// The Kit app is Kit's gallery: every component its schema describes is
 /// placed on one of its pages (by its wrapper, `kit.<name>(`), so a new
 /// component cannot ship without a live demo.
