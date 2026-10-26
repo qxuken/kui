@@ -45,16 +45,6 @@ local DATA_FACES = {
   { value = "mono", label = "System mono", list = { "mono" } },
 }
 
--- Each skin's own lengths (src/ledger.tl, phosphor.tl, neutral.tl), for a
--- slider to start from. A script reads Kit's values in no other way:
--- `env.tokens` lists its own origin's tokens and the host's, not another
--- origin's exported ones, though `$kitRadius` resolves in any prop.
-local SKIN_LENGTHS = {
-  ledger = { radius = 0, hair = 1, rule = 2 },
-  phosphor = { radius = 0, hair = 1, rule = 1 },
-  neutral = { radius = 6, hair = 1, rule = 1 },
-}
-
 -- The colour roles worth setting by hand, and what each paints.
 local COLORS = {
   { role = "bg", label = "Window" },
@@ -251,16 +241,17 @@ end
 -- One colour role: its swatch (the colour in force, by its token), its
 -- name, the colour set for the half on screen as a field to type into,
 -- and a button that gives back the skin's.
-local function color_row(t, c, half)
+local function color_row(t, c, half, colors)
   local key = c.role .. "/" .. half
   local own = t.colors[c.role] and t.colors[c.role][half]
   local typed = t.typed[key]
+  local now = colors[token(c.role)]
   return row { width = "grow", gap = 8, cross_align = "center",
     column { width = 18, height = 18, radius = "$kitRadius", border = { w = 1, color = "$kitRule" }, bg = "$" .. token(c.role) },
     column { width = 84, text(c.label, { size = "$kitSizeLabel", family = "$kitUi", color = "$kitFg", max_lines = 1 }) },
     column { width = "grow", min_width = 0,
       kit.text_field({ label = c.label .. " (" .. half .. ")", hide_label = true, mono = true,
-        value = typed or (own and hex(own)) or "", placeholder = "the skin's",
+        value = typed or (now and hex(now)) or "",
         error = typed and not parse(typed) and "#rrggbb" or nil,
         on_change = { kind = "theme_color", role = c.role, half = half } }) },
     kit.icon_button({ icon = "reset", label = "The skin's " .. c.label:lower(), disabled = own == nil,
@@ -273,14 +264,16 @@ function M.view(m, env)
   local t = m.theme
   local half = t.appearance ~= "system" and t.appearance
     or (env.theme and env.theme.appearance == "light" and "light" or "dark")
-  local lengths = SKIN_LENGTHS[t.skin] or SKIN_LENGTHS.ledger
+  -- Kit's tokens as they resolve now: its colours (0xRRGGBBAA) and lengths.
+  local tokens = env.tokens or {}
+  local now, lengths = tokens.colors or {}, tokens.lengths or {}
   local swatches = { swatch(nil, "The skin's accent", t.accent == nil, { kind = "theme_accent" }) }
   for _, a in ipairs(ACCENTS) do
     swatches[#swatches + 1] = swatch(a.color, "Accent: " .. a.label, t.accent == a.color,
       { kind = "theme_accent", color = a.color })
   end
   local colors = {}
-  for _, c in ipairs(COLORS) do colors[#colors + 1] = color_row(t, c, half) end
+  for _, c in ipairs(COLORS) do colors[#colors + 1] = color_row(t, c, half, now) end
   return column { width = "grow", gap = 14,
     row { width = "grow", cross_align = "center", gap = 8,
       text("Theme", { size = "$kitSizeTitle", bold = true, family = "$kitUi", color = "$kitFg" }),
@@ -300,12 +293,12 @@ function M.view(m, env)
     setting("Accent", column { width = "grow", gap = 8,
       row { role = "radioGroup", label = "Accent", gap = 6, cross_gap = 6, wrap_children = true, table.unpack(swatches) },
       kit.text_field({ label = "Accent colour", hide_label = true, mono = true,
-        value = t.typed.accent or (t.accent and hex(t.accent)) or "", placeholder = "the skin's, or #rrggbb",
+        value = t.typed.accent or (now.kitAccent and hex(now.kitAccent)) or "",
         error = t.typed.accent and not parse(t.typed.accent) and "#rrggbb" or nil,
         on_change = { kind = "theme_accent_text" } }) }),
-    length(t, "radius", "Radius", 0, 12, 1, lengths.radius),
-    length(t, "hair", "Hairline", 0.5, 3, 0.5, lengths.hair),
-    length(t, "rule", "Region rule", 0, 4, 0.5, lengths.rule),
+    length(t, "radius", "Radius", 0, 12, 1, lengths.kitRadius or 0),
+    length(t, "hair", "Hairline", 0.5, 3, 0.5, lengths.kitHair or 1),
+    length(t, "rule", "Region rule", 0, 4, 0.5, lengths.kitRuleW or 1),
     kit.select({ label = "UI face", value = t.font_ui, options = choices(UI_FACES),
       on_change = { kind = "theme", field = "font_ui" } }),
     kit.select({ label = "Data face", value = t.font_data, options = choices(DATA_FACES),

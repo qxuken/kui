@@ -1,21 +1,46 @@
 -- A shader box: a fragment shader (WGSL) painting a box, rounded by the
--- skin. The host registers the shader and passes its handle — a Rust, C,
--- Odin or Node host can; a Lua app on the runner has no door to register
--- one yet, so here the box is the skin's well, as it is for any host that
--- passes no handle. Kit's skeletons sweep with addons/kit/shaders/shimmer.wgsl
--- the same way, once a host hands it to `kit.settings({ shimmer = handle })`.
+-- skin. Kit's presets take the skin's colours; your own WGSL goes in as
+-- `source`, and Kit registers either (env.add_fragment), so the same
+-- source is the same fragment every frame. Under reduced motion it holds
+-- still.
 
 local kit = require("kit.ui")
 
 local demo = {
   title = "Shader box",
-  note = "a fragment shader in a box, rounded by the skin; the host registers it",
-  call = '-- Rust: let id = core.add_fragment(include_str!("noise.wgsl")).unwrap();\n-- Node: const id = ctx.addFragment(wgsl);\nkit.shader({ id = handle, params = { 0.2, 0.4, 0.9, 1 }, animate = true, height = 120 })',
+  note = "a fragment shader in a box, rounded by the skin: Kit's presets, or your own WGSL",
+  call = 'kit.shader({ preset = "noise", height = 120 })\nkit.shader({ source = RINGS, params = { 0.18, 0.43, 0.93, 1 }, animate = true, height = 120 })',
+  state = { shader = "noise" },
 }
 
+-- Your own: rings spreading from the middle in a colour you pass, its
+-- alpha falling off toward the edge. `in.time` moves it; the four params
+-- are the colour.
+local RINGS = [[
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let p = (in.local - in.size * 0.5) / in.scale;
+    let d = length(p);
+    let wave = 0.5 + 0.5 * sin(d * 0.15 - in.time * 2.0);
+    let fade = clamp(1.0 - d / (0.5 * length(in.size / in.scale)), 0.0, 1.0);
+    return vec4<f32>(params[0].rgb, params[0].a * wave * fade);
+}
+]]
+
+function demo.update(m, msg)
+  if msg.kind == "shader" then m.shader = msg.change.value end
+end
+
 function demo.view(m)
-  return kit.shader({ height = 96, label = "A shader's box" }),
-    text("With no handle the box is the skin's well and keeps its place. Given one, `animate` asks for a frame every frame for a shader that reads `time`, and holds still under reduced motion.",
+  local box
+  if m.shader == "rings" then
+    box = kit.shader({ source = RINGS, params = { 0.18, 0.43, 0.93, 1 }, animate = true, height = 120, label = "Rings" })
+  else
+    box = kit.shader({ preset = m.shader, height = 120, label = m.shader == "noise" and "Noise" or "Shimmer" })
+  end
+  return kit.segmented({ label = "Shader", value = m.shader, on_change = { kind = "shader" },
+      options = { { value = "noise", label = "Noise" }, { value = "shimmer", label = "Shimmer" }, { value = "rings", label = "Your own" } } }),
+    box,
+    text("Noise drifts between the skin's well and its accent; Shimmer is a skeleton's sweep; Your own is the WGSL in this card's source.",
       { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" })
 end
 

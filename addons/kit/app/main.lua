@@ -127,6 +127,11 @@ end
 
 function view(env)
   local m = model
+  -- The app's own `dark` / `light` rules (the Conditions card) read the
+  -- appearance the Theme panel holds Kit to, as Kit's do: each origin
+  -- says its own.
+  local held = m.theme.appearance
+  env.set_rules_appearance(held ~= "system" and held or nil)
   local page = column { key = "page." .. m.page, width = "grow", height = "grow", scroll_y = true, pad = 16, gap = 16,
     pages.page(m, m.page) }
   return column { width = "grow", height = "grow", bg = "$kitBg",

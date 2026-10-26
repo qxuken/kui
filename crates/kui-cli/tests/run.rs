@@ -350,6 +350,9 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
         local steps = { { kind = "theme_open" }, { kind = "theme_colors", toggle = { collapsed = false } } }
         for name in pairs(pages.DEMOS) do steps[#steps + 1] = { kind = "source", name = name } end
         for _, p in ipairs(PAGES) do steps[#steps + 1] = { kind = "page", change = { value = p.value } } end
+        -- Back to the Loading page: every shader the shader box shows.
+        steps[#steps + 1] = { kind = "page", change = { value = "loading" } }
+        for _, s in ipairs({ "shimmer", "rings", "noise" }) do steps[#steps + 1] = { kind = "shader", change = { value = s } } end
         for _, s in ipairs({ "phosphor", "neutral", "ledger" }) do
           steps[#steps + 1] = { kind = "theme", field = "skin", change = { value = s } }
         end
