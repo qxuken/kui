@@ -35,6 +35,33 @@ mod tooling;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+// The runner's allocator, the Lua heaps' too: mlua's `lua_Alloc` calls
+// `std::alloc`. In the binary only, never a library crate (backlog C150).
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+/// mimalloc gives freed pages back to the OS at once rather than 10 ms
+/// later (100 ms for its arena). A delayed purge runs only from a later
+/// call into the allocator, so a thread gone quiet kept its pages: the Kit
+/// gallery sat 17–20 MB higher at rest, Watchtower 8 (backlog C150).
+/// `MIMALLOC_PURGE_DELAY` in the environment still wins. Called first in
+/// `main`, before any thread starts (`mi_option_set` is not thread-safe).
+#[cfg(feature = "mimalloc")]
+fn tune_allocator() {
+    // mimalloc.h's `mi_option_purge_delay` in the 2.2.4 that libmimalloc-sys
+    // =0.1.44 builds (Cargo.toml pins both); the crate names no constant.
+    const MI_OPTION_PURGE_DELAY: std::ffi::c_int = 15;
+    unsafe extern "C" {
+        fn mi_option_set(option: std::ffi::c_int, value: std::ffi::c_long);
+    }
+    if std::env::var_os("MIMALLOC_PURGE_DELAY").is_none() {
+        // SAFETY: a plain store into mimalloc's option table, made before
+        // any other thread exists.
+        unsafe { mi_option_set(MI_OPTION_PURGE_DELAY, 0) };
+    }
+}
+
 const USAGE: &str = "\
 kui — run a Lua or Teal app with Kit and a standard library
 
@@ -178,6 +205,8 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
 }
 
 fn main() -> ExitCode {
+    #[cfg(feature = "mimalloc")]
+    tune_allocator();
     // A runner with an app packed into it runs that app.
     if let Some(packed) = packed::detect() {
         return exit(packed.and_then(run_packed));

@@ -26,6 +26,17 @@ ring = "0.17"
 flate2 = "1.1"
 crc32fast = "1.5"
 png = "0.18"
+mimalloc = { version = "=0.1.48", optional = true }
+# The C mimalloc (2.2.4) the crate above builds, pinned too: main.rs sets an
+# option by its number in this version's mimalloc.h.
+libmimalloc-sys = { version = "=0.1.44", optional = true, default-features = false }
+
+[features]
+default = ["mimalloc"]
+# mimalloc as the runner's global allocator, the Lua heaps' too: mlua
+# allocates through Rust's. Purging at once, it holds the Kit gallery's
+# footprint 17–36% under the system allocator's (backlog C150).
+mimalloc = ["dep:mimalloc", "dep:libmimalloc-sys"]
 
 [build-dependencies]
 # Gzips the docs the runner carries (build.rs, ADR 0071).

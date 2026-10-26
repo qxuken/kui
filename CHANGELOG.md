@@ -1577,6 +1577,22 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Changed
 
+- **The `kui` runner allocates with mimalloc** (backlog C150), the Lua
+  heaps too — mlua allocates through Rust's allocator — and gives freed
+  pages back to the OS at once (mimalloc's `purge_delay` 0;
+  `MIMALLOC_PURGE_DELAY` in the environment still wins). Headless, against
+  the system allocator: the Kit gallery after touring every page rests at
+  69 MB on Overview, not 84, and at 66 MB on Charts with Live on, not 103
+  (the system zone there was 27% empty); Watchtower 44 MB, not 51; five
+  minutes of touring the pages round and round 73 MB, not 92. A small app
+  pays mimalloc's per-thread pages: the tutorial's Tasks 16 MB, not 13.
+  Frame times in the runner are unchanged within the runs' spread; Kit's
+  bench runs 12% faster built with it. `vmmap` and `footprint` list
+  mimalloc's heap as "IOAccelerator" (the VM tag it uses on macOS), not as
+  malloc zones. Only the runner binary has it: the library crates, the Node
+  addon and kui-ffi keep the platform's allocator, and
+  `--no-default-features` builds the runner without it.
+
 - **A debug build is about a quarter the size on disk** (backlog C72):
   the workspace's dev profile keeps file and line (`debug =
   "line-tables-only"`) and dependencies none. One worktree's `target/`
