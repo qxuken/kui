@@ -1042,7 +1042,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_MODAL,
         kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.modal(v)),
-        doc: "Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside arrives on it as this message with `dismiss: {reason: \"escape\" | \"outside\"}` in it (ADR 0047) — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on.",
+        doc: "Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside arrives on it as this message with `dismiss: {reason: \"escape\" | \"outside\"}` in it (ADR 0047) — the app stops declaring the node. A modal whose role is `menu` (a dropdown, a popover of rows) is dismissed with `reason: \"accelerator\"` too, when a key under the primary modifier (⌘C and the like) or a row of the platform's menu bar is chosen while it is open, and the press goes to the window, focus back where the menu took it from (backlog C109). The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on.",
     },
     PropDef {
         name: "initialFocus",
@@ -2792,7 +2792,7 @@ pub const EVENTS: &[EventDef] = &[
         kind: "dismiss",
         handler: "modal; a popup's `windows` entry `onDismiss`",
         field: Some("dismiss"),
-        payload: "`dismiss: { reason: \"escape\" | \"outside\" }` in the `modal` message on a node; `dismiss: { reason, id }` in a popup's `onDismiss` message",
+        payload: "`dismiss: { reason: \"escape\" | \"outside\" | \"accelerator\" }` in the `modal` message on a node; `dismiss: { reason, id }` in a popup's `onDismiss` message",
         doc: "The user asked for a surface to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the surface (or asks first). A `modal` node gets one on the node, as its `modal` message, and only the modal in effect does; a `kind: \"popup\"` window gets one as its `windows` entry's `onDismiss` message (ADR 0048), carrying the window's `id`, reported by the driver because a press outside a window and a key sent to a non-activating one are both facts only the OS has. The two are the same event, so a dropdown that graduates from a modal float to a popup window changes its declaration and not its handler.",
     },
     EventDef {

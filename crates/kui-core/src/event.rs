@@ -589,6 +589,7 @@ fn read_dismiss(p: &Value) -> Option<Dismiss> {
         reason: match p.get_str("reason")? {
             "escape" => crate::window::DismissReason::Escape,
             "outside" => crate::window::DismissReason::Outside,
+            "accelerator" => crate::window::DismissReason::Accelerator,
             _ => return None,
         },
         window: p

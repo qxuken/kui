@@ -1039,10 +1039,11 @@ typedef struct KuiSpec {
      * outside it is inert to the pointer, the wheel and assistive
      * technology (window chrome stays live), and Escape or a press
      * outside emits this message with dismiss:{reason:"escape"|"outside"}
-     * in it on the node — the core closes nothing, the app stops opening
-     * the node. The last one declared in tree order is the one in effect
-     * (a confirm inside a dialog); a modal that must cover the app is a
-     * float. Borrowed: cloned while the node opens, so you keep ownership;
+     * in it on the node ("accelerator" for a role menu float an
+     * accelerator closed, backlog C109) — the core closes nothing, the app
+     * stops opening the node. The last one declared in tree order is the
+     * one in effect (a confirm inside a dialog); a modal that must cover
+     * the app is a float. Borrowed: cloned while the node opens, so you keep ownership;
      * kui_value_null() asks for the behaviour with no message of yours. */
     const KuiValue *modal;
     /* Context menu, NULL = none: a secondary-button press over this node

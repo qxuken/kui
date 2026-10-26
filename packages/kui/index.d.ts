@@ -472,7 +472,7 @@ export interface CaptureEvent {
  *  a window and a key sent to a non-activating one are facts only the OS
  *  has. */
 export interface DismissEvent {
-  reason: 'escape' | 'outside';
+  reason: 'escape' | 'outside' | 'accelerator';
   /** A popup window's: the id its own events carry in `window`. */
   id?: number;
 }

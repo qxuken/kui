@@ -610,6 +610,11 @@ pub enum DismissReason {
     Outside,
     /// Escape, wherever the OS delivered it.
     Escape,
+    /// An accelerator — a key under ⌘ on a Mac, Ctrl elsewhere — pressed
+    /// while an app's menu float was open, which the window then performs,
+    /// or a row of the platform's menu bar chosen then (backlog C109). A
+    /// modal's reason only: a driver never reports it.
+    Accelerator,
 }
 
 impl DismissReason {
@@ -619,6 +624,7 @@ impl DismissReason {
         match self {
             DismissReason::Outside => "outside",
             DismissReason::Escape => "escape",
+            DismissReason::Accelerator => "accelerator",
         }
     }
 }

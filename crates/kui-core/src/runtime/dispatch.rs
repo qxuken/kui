@@ -7,6 +7,7 @@
 
 use super::*;
 use crate::input::Target;
+use crate::window::DismissReason;
 
 impl Core {
     /// Feeds one input event; returns any UI events it resolved to,
@@ -717,6 +718,14 @@ impl Core {
                 // as a native menu's key equivalent does (backlog C98).
                 if self.menu_accel(&kp, &mut out) {
                     return out;
+                }
+                // An accelerator while the app's own menu float is open
+                // closes it and is then the window's, as a native menu
+                // lets a key equivalent that is not its own through
+                // (backlog C109): the press goes on below, routed as the
+                // frame without the float will see it.
+                if Self::is_accelerator(&kp) {
+                    self.leave_menu_float(DismissReason::Accelerator, &mut out);
                 }
                 // F2 enters a focused table cell's controls (ADR 0070),
                 // as a spreadsheet's edit key does, whatever they are.
@@ -1832,6 +1841,58 @@ impl Core {
         if takes_focus {
             self.move_focus(Some(key));
         }
+    }
+
+    /// Whether a key press is an accelerator (backlog C109): a key under
+    /// the platform's primary modifier — ⌘ on a Mac, Ctrl elsewhere — and
+    /// not the modifier on its own.
+    pub(crate) fn is_accelerator(kp: &crate::input::KeyPress) -> bool {
+        kp.mods.primary() && !kp.code.is_modifier()
+    }
+
+    /// Closes the app's own menu float, if one is the modal scope (backlog
+    /// C109): a modal node whose role is `menu`, drawn by the view rather
+    /// than one of the core's surfaces — Kit's select, a popover of rows.
+    /// The float is asked to go (`dismiss: {reason}`), and until the frame
+    /// that drops it the window is what that frame will see: the scope is
+    /// the app's modal under it, if any, and focus is back where the float
+    /// took it from, so a press routed next — ⌘C to the editor under a
+    /// dropdown, a menu bar's Copy — lands there. Nothing happens while an
+    /// editor inside the float has the keyboard: a filter field takes its
+    /// own chords. True when a float was closed.
+    pub(crate) fn leave_menu_float(
+        &mut self,
+        reason: DismissReason,
+        out: &mut Vec<UiEvent>,
+    ) -> bool {
+        let Some((i, _, key)) = self.modal else {
+            return false;
+        };
+        if self.tree.origins[i].is_core_surface()
+            || crate::composite::role(&self.tree, i) != Some(crate::access::Role::Menu)
+        {
+            return false;
+        }
+        if self.edit.focused().is_some_and(|e| self.within_modal(e)) {
+            return false;
+        }
+        self.dismiss(key, reason.as_str(), out);
+        self.modal = (0..i)
+            .rev()
+            .find(|&j| {
+                self.tree.specs[j].events().modal().is_some()
+                    && !self.tree.origins[j].is_core_surface()
+                    && self.tree.subtree_end(j) > i
+            })
+            .map(|j| (j, self.tree.subtree_end(j), self.tree.keys[j]));
+        let back = self
+            .modal_focus
+            .iter()
+            .find(|(k, _)| *k == key)
+            .and_then(|(_, f)| *f)
+            .filter(|k| self.tree.index_of(*k).is_some());
+        self.move_focus(back);
+        true
     }
 
     /// The modal `key` was asked to go away — Escape, or a press outside

@@ -235,7 +235,7 @@ Capture_Event :: struct {
 }
 
 Dismiss_Event :: struct {
-	reason: string, // "escape" | "outside"
+	reason: string, // "escape" | "outside" | "accelerator"
 	id:     u32, // a popup window's, in its on_dismiss; 0 on a modal node
 }
 

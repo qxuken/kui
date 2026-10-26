@@ -501,7 +501,7 @@ pub(crate) const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
         "dismiss",
         "kui.WithDismiss",
         &[
-            ("reason", true, "\"escape\"|\"outside\""),
+            ("reason", true, "\"escape\"|\"outside\"|\"accelerator\""),
             ("id", false, "integer"),
         ],
     ),

@@ -170,6 +170,11 @@ impl Core {
         else {
             return out;
         };
+        // The app's own menu float closes first, as for an accelerator
+        // pressed here (backlog C109): the platform's bar took ⌘C as its
+        // Copy's key equivalent before the window saw the key, and focus
+        // goes back to the field the float took it from.
+        self.leave_menu_float(crate::window::DismissReason::Accelerator, &mut out);
         // Nothing displaced focus — the platform's menu bar is not in this
         // window and takes none — so the editor is simply whichever one has
         // it now.
