@@ -86,6 +86,18 @@ local record Settings
   radius: number
   -- Roles the brand overrides: a colour, `{ light, dark }`, or a token name.
   roles: {string:any}
+  -- "light" or "dark" holds Kit's colours to that half whatever the OS
+  -- says; nil follows it (the core resolves each token's halves).
+  appearance: string
+  -- The hairline and region rule widths in px; the skin's when nil.
+  hair: number
+  rule_w: number
+  -- The faces, as family lists; the skin's when nil.
+  font_ui: {string}
+  font_data: {string}
+  -- A fragment the host registered from Kit's shimmer (shaders/shimmer.wgsl):
+  -- skeletons sweep with it rather than with a gradient band.
+  shimmer: integer
 end
 
 local record Decl
@@ -203,6 +215,60 @@ function M.faded(color: integer, a: number): integer
   return (color & ~0xff) | math.floor(alpha * a + 0.5)
 end
 
+-- A channel's share of the light, 0 to 1 (WCAG's relative luminance).
+local function luminance(c: integer): number
+  local r, g, b = channels(c)
+  local function lin(x: integer): number
+    local v = x / 255
+    return v <= 0.04045 and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4
+  end
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+end
+
+local function contrast(a: integer, b: integer): number
+  local x, y = luminance(a), luminance(b)
+  if x < y then x, y = y, x end
+  return (x + 0.05) / (y + 0.05)
+end
+
+-- Of `a` and `b`, the one that reads better on `fill`.
+local function readable(fill: integer, a: integer, b: integer): integer
+  return contrast(fill, a) >= contrast(fill, b) and a or b
+end
+
+-- The roles a skin paints in its accent — Ledger's selection is its
+-- yellow, Neutral's focus ring its blue, Phosphor's first series its
+-- green — follow a brand's accent there, as do what reads on it, unless
+-- the brand names them too. A blue accent left Ledger's selection yellow
+-- and its primary label black on blue.
+local FOLLOW: {string} = { "sel", "focus" }
+
+local function follow(s: Settings, colors: {string:{string:integer}}, half: string, h: {string:any})
+  local o = s.roles and s.roles.accent
+  if o == nil or o is string then return end
+  local was = h.accent as integer
+  local now = colors.kitAccent[half]
+  if now == was then return end
+  local function same(c: integer): boolean return (c & ~0xff) == (was & ~0xff) end
+  if not s.roles.on_accent then
+    colors.kitOnAccent[half] = readable(now, h.fg as integer, h.bg as integer)
+  end
+  for _, role in ipairs(FOLLOW) do
+    local own = h[role] as integer
+    if not s.roles[role] and same(own) then
+      colors["kit" .. camel(role)][half] = (now & ~0xff) | (own & 0xff)
+      if role == "sel" and not s.roles.sel_fg and (h.sel_fg as integer) == (h.on_accent as integer) then
+        colors.kitSelFg[half] = colors.kitOnAccent[half]
+      end
+    end
+  end
+  local series = colors.kitSeries1
+  if series and same(series[half]) then
+    series[half] = now
+    colors.kitArea1[half] = M.faded(now, AREA_ALPHA)
+  end
+end
+
 function M.tokens(s: Settings): Decl
   local skin = s.skin
   local colors: {string:{string:integer}} = {}
@@ -230,6 +296,23 @@ function M.tokens(s: Settings): Decl
     -- fills it with plain polygons and no opacity of their own.
     colors["kitArea" .. i] = { light = M.faded(ls, AREA_ALPHA), dark = M.faded(ds, AREA_ALPHA) }
   end
+  follow(s, colors, "light", l)
+  follow(s, colors, "dark", d)
+  -- The shimmer a skeleton sweeps with: the well lit toward white in the
+  -- light half and toward the text in the dark one, and the same with no
+  -- alpha, for the band's soft edges.
+  local sunken = colors.kitSunken
+  local lit = { light = mix(sunken.light, 0xffffffff, 0.7), dark = mix(sunken.dark, colors.kitFg.dark, 0.12) }
+  colors.kitShimmer = lit
+  colors.kitShimmerClear = { light = lit.light & ~0xff, dark = lit.dark & ~0xff }
+  -- An appearance held: both halves of every colour are the one asked for.
+  if s.appearance == "light" or s.appearance == "dark" then
+    local half = s.appearance
+    for _, c in pairs(colors) do
+      local v = c[half]
+      c.light, c.dark = v, v
+    end
+  end
   local shadow = s.shadows and skin.shadow or 0
   return {
     colors = colors,
@@ -237,22 +320,38 @@ function M.tokens(s: Settings): Decl
       kitRow = M.row_h(s),
       kitCtl = M.ctl_h(s),
       kitRadius = s.radius or skin.radius,
-      kitRuleW = skin.rule_w,
-      kitHair = skin.hair,
+      kitRuleW = s.rule_w or skin.rule_w,
+      kitHair = s.hair or skin.hair,
       kitShadow = shadow,
       kitShadowBlur = s.shadows and skin.shadow_blur or 0,
       kitSize = skin.size,
       kitSizeLabel = skin.size_label,
       kitSizeTitle = skin.size_title,
     },
-    families = { kitUi = skin.font_ui, kitData = skin.font_data },
+    families = { kitUi = s.font_ui or skin.font_ui, kitData = s.font_data or skin.font_data },
     export = true,
   }
 end
 
+-- The colour `role` resolves to under these settings in `half` ("light"
+-- or "dark"), from the token table they lower to: what a fragment's
+-- params carry, since a shader reads numbers, not tokens.
+local resolved: {Settings:Decl} = setmetatable({}, { __mode = "k" })
+function M.color(s: Settings, name: string, half: string): integer
+  local decl = resolved[s]
+  if not decl then
+    decl = M.tokens(s)
+    resolved[s] = decl
+  end
+  local c = decl.colors[name]
+  return c and c[half] or 0
+end
+
 -- What the token table depends on: declared again only when it moves.
 function M.key(s: Settings): string
-  local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius) }
+  local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius),
+    tostring(s.appearance), tostring(s.hair), tostring(s.rule_w), tostring(s.shimmer),
+    s.font_ui and table.concat(s.font_ui, ",") or "", s.font_data and table.concat(s.font_data, ",") or "" }
   if s.roles then
     local names: {string} = {}
     for k in pairs(s.roles) do names[#names + 1] = k end

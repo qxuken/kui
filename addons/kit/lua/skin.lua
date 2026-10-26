@@ -98,6 +98,18 @@ local Settings = {}
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 local ROLES = {
    "bg", "side", "panel", "raised", "sunken", "hover", "press", "rule", "ink",
    "fg", "muted", "faint", "sel", "sel_fg", "accent", "on_accent", "focus",
@@ -204,6 +216,60 @@ function M.faded(color, a)
    return (color & ~0xff) | math.floor(alpha * a + 0.5)
 end
 
+
+local function luminance(c)
+   local r, g, b = channels(c)
+   local function lin(x)
+      local v = x / 255
+      return v <= 0.04045 and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4
+   end
+   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+end
+
+local function contrast(a, b)
+   local x, y = luminance(a), luminance(b)
+   if x < y then x, y = y, x end
+   return (x + 0.05) / (y + 0.05)
+end
+
+
+local function readable(fill, a, b)
+   return contrast(fill, a) >= contrast(fill, b) and a or b
+end
+
+
+
+
+
+
+local FOLLOW = { "sel", "focus" }
+
+local function follow(s, colors, half, h)
+   local o = s.roles and s.roles.accent
+   if o == nil or type(o) == "string" then return end
+   local was = h.accent
+   local now = colors.kitAccent[half]
+   if now == was then return end
+   local function same(c) return (c & ~0xff) == (was & ~0xff) end
+   if not s.roles.on_accent then
+      colors.kitOnAccent[half] = readable(now, h.fg, h.bg)
+   end
+   for _, role in ipairs(FOLLOW) do
+      local own = h[role]
+      if not s.roles[role] and same(own) then
+         colors["kit" .. camel(role)][half] = (now & ~0xff) | (own & 0xff)
+         if role == "sel" and not s.roles.sel_fg and (h.sel_fg) == (h.on_accent) then
+            colors.kitSelFg[half] = colors.kitOnAccent[half]
+         end
+      end
+   end
+   local series = colors.kitSeries1
+   if series and same(series[half]) then
+      series[half] = now
+      colors.kitArea1[half] = M.faded(now, AREA_ALPHA)
+   end
+end
+
 function M.tokens(s)
    local skin = s.skin
    local colors = {}
@@ -231,6 +297,23 @@ function M.tokens(s)
 
       colors["kitArea" .. i] = { light = M.faded(ls, AREA_ALPHA), dark = M.faded(ds, AREA_ALPHA) }
    end
+   follow(s, colors, "light", l)
+   follow(s, colors, "dark", d)
+
+
+
+   local sunken = colors.kitSunken
+   local lit = { light = mix(sunken.light, 0xffffffff, 0.7), dark = mix(sunken.dark, colors.kitFg.dark, 0.12) }
+   colors.kitShimmer = lit
+   colors.kitShimmerClear = { light = lit.light & ~0xff, dark = lit.dark & ~0xff }
+
+   if s.appearance == "light" or s.appearance == "dark" then
+      local half = s.appearance
+      for _, c in pairs(colors) do
+         local v = c[half]
+         c.light, c.dark = v, v
+      end
+   end
    local shadow = s.shadows and skin.shadow or 0
    return {
       colors = colors,
@@ -238,22 +321,38 @@ function M.tokens(s)
          kitRow = M.row_h(s),
          kitCtl = M.ctl_h(s),
          kitRadius = s.radius or skin.radius,
-         kitRuleW = skin.rule_w,
-         kitHair = skin.hair,
+         kitRuleW = s.rule_w or skin.rule_w,
+         kitHair = s.hair or skin.hair,
          kitShadow = shadow,
          kitShadowBlur = s.shadows and skin.shadow_blur or 0,
          kitSize = skin.size,
          kitSizeLabel = skin.size_label,
          kitSizeTitle = skin.size_title,
       },
-      families = { kitUi = skin.font_ui, kitData = skin.font_data },
+      families = { kitUi = s.font_ui or skin.font_ui, kitData = s.font_data or skin.font_data },
       export = true,
    }
 end
 
 
+
+
+local resolved = setmetatable({}, { __mode = "k" })
+function M.color(s, name, half)
+   local decl = resolved[s]
+   if not decl then
+      decl = M.tokens(s)
+      resolved[s] = decl
+   end
+   local c = decl.colors[name]
+   return c and c[half] or 0
+end
+
+
 function M.key(s)
-   local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius) }
+   local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius),
+tostring(s.appearance), tostring(s.hair), tostring(s.rule_w), tostring(s.shimmer),
+s.font_ui and table.concat(s.font_ui, ",") or "", s.font_data and table.concat(s.font_data, ",") or "", }
    if s.roles then
       local names = {}
       for k in pairs(s.roles) do names[#names + 1] = k end

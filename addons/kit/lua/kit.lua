@@ -41,15 +41,31 @@ local function ensure_tokens(env)
    end
 end
 
+local function num(v)
+   return type(v) == "number" and v or nil
+end
+
+local function faces(v)
+   if type(v) == "string" then return { v } end
+   if type(v) == "table" and #v > 0 then return v end
+   return nil
+end
+
 local function apply(p)
    local roles = p.roles
-   local radius = p.radius
+   local shimmer = p.shimmer
    settings = {
       skin = SKINS[p.skin] or ledger,
       density = p.density == "compact" and "compact" or "comfortable",
       shadows = p.shadows ~= false,
-      radius = type(radius) == "number" and radius or nil,
+      radius = num(p.radius),
       roles = type(roles) == "table" and roles or nil,
+      appearance = (p.appearance == "light" or p.appearance == "dark") and p.appearance or nil,
+      hair = num(p.hair),
+      rule_w = num(p.rule),
+      font_ui = faces(p.font_ui),
+      font_data = faces(p.font_data),
+      shimmer = math.type(shimmer) == "integer" and shimmer or (type(shimmer) == "number" and math.tointeger(shimmer) or nil),
    }
 end
 
@@ -70,7 +86,7 @@ provide(inputs, {
    "button", "icon_button", "text_field", "search", "select", "checkbox", "switch",
    "radio_group", "segmented", "slider", "text_area",
 })
-provide(data, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice" })
+provide(data, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice", "skeleton", "shader" })
 provide(overlays, { "dialog", "popover", "menu", "toast", "toaster" })
 provide(charts, { "sparkline", "line_chart", "bar_chart", "histogram" })
 provide(waterfall, { "waterfall" })

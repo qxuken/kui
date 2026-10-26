@@ -18,6 +18,8 @@ return {
     { name = "Level", doc = "A log line's level.", "debug", "info", "warn", "error" },
     { name = "Browse", doc = "What a field's Choose… button asks the system for: a folder, a file to open, or where to save one.", "folder", "open", "save" },
     { name = "XFormat", doc = "How a chart labels its x axis: the number (with `x_unit`), time counted back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the local time of day.", "number", "ago", "clock" },
+    { name = "Appearance", doc = "Which half of the skin's colours: the OS's, or light or dark held.", "system", "light", "dark" },
+    { name = "SkeletonShape", doc = "What a skeleton stands in for: lines of text, a block (an image, a chart), or a circle (an avatar).", "text", "block", "circle" },
   },
 
   records = {
@@ -76,7 +78,13 @@ return {
         { "density", "Density?", doc = "Comfortable when left out." },
         { "shadows", "boolean?", doc = "The skin's hard shadows; on when left out." },
         { "radius", "number?", doc = "Corner radius in px, for a brand with its own; the skin's when left out." },
-        { "roles", "any?", doc = "Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel = \"$brandSurface\" }` — a colour or a token each." },
+        { "roles", "any?", doc = "Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel = \"$brandSurface\" }` — a colour, `{ light, dark }` or a token each. What the skin paints in its accent (Ledger's selection, Neutral's focus ring, a first chart series) follows an accent given as a colour, and what reads on it is worked out, unless those roles are named too." },
+        { "appearance", "Appearance?", doc = "Kit's colours held light or dark whatever the OS says; the OS's when left out (`system`)." },
+        { "hair", "number?", doc = "The hairline's width in px (rows, a field's edge); the skin's when left out." },
+        { "rule", "number?", doc = "The region rule's width in px (a panel's frame, a control's border); the skin's when left out." },
+        { "font_ui", "{string}?", doc = "The UI face, as a family list (`{ \"Inter\", \"sans\" }`); the skin's when left out." },
+        { "font_data", "{string}?", doc = "The data face (ids, numbers, code), as a family list; the skin's when left out." },
+        { "shimmer", "integer?", doc = "A fragment the host registered from Kit's shimmer (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of a gradient band." },
       } },
 
     -- Layout ---------------------------------------------------------------
@@ -381,6 +389,9 @@ return {
         { "text", "string", doc = "The text." },
         { "wrap", "boolean?", doc = "Wraps rather than scrolls sideways." },
         { "max_lines", "integer?", doc = "At most this many lines high, the rest scrolled to." },
+        { "line_numbers", "boolean?", doc = "Each line's number in a gutter beside it, outside the selection (not with `wrap`)." },
+        { "copy", "boolean?", doc = "A Copy button over the text that puts it on the clipboard and says Copied for a moment." },
+        { "label", "string?", doc = "A caption over the text (a file's name), and the block's accessible name." },
       } },
     { "notice",
       doc = "A message in the flow of the page: an error to act on, a warning, a note; its actions after it.",
@@ -402,6 +413,27 @@ return {
       props = {
         { "value", "number?", doc = "0 to 1; indeterminate when left out." },
         { "label", "string?", doc = "What is under way." },
+      } },
+    { "skeleton",
+      doc = "A placeholder for what is still loading: lines a text high, a block or a circle, in the skin's well colour and rounded as its controls are, with a shimmer crossing them in step — held still under reduced motion. The shimmer is a gradient band unless `settings.shimmer` names the host's fragment.",
+      props = {
+        { "shape", "SkeletonShape?", doc = "Lines of text (the default), a block or a circle." },
+        { "lines", "integer?", doc = "Text: how many lines, the last of several shorter; 1 when left out." },
+        { "width", "number?", doc = "In px: as wide as this at most (it grows when left out), or a circle's diameter (32 when left out)." },
+        { "height", "number?", doc = "A block's height in px; 80 when left out." },
+        { "label", "string?", doc = "What is loading, as it is read; `Loading` when left out." },
+      } },
+    { "shader",
+      doc = "A box a fragment shader paints (a `fragment` node, ADR 0015): the host registers the WGSL and passes its handle, and Kit rounds the box by the skin's radius and keeps a shader that reads `time` still under reduced motion. With no handle it is the skin's well.",
+      props = {
+        { "id", "integer?", doc = "The fragment's handle, from the host's `add_fragment` (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`)." },
+        { "params", "{number}?", doc = "Up to sixteen numbers the shader reads as four `vec4<f32>`." },
+        { "image", "integer?", doc = "A registered image's handle, which the shader samples with `kui_sample`." },
+        { "animate", "boolean?", doc = "A frame every frame, for a shader that reads `time`; off under reduced motion." },
+        { "width", "number?", doc = "As wide as this in px at most; it grows when left out." },
+        { "height", "number?", doc = "In px; 80 when left out." },
+        { "grow", "boolean?", doc = "Takes the height its parent leaves." },
+        { "label", "string?", doc = "What it shows, as it is read; decoration when left out." },
       } },
 
     -- Overlays -------------------------------------------------------------

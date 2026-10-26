@@ -6,6 +6,8 @@
 
 local ctx = require("ctx")
 local icons = require("icons")
+local inputs = require("inputs")
+local skin = require("skin")
 
 
 
@@ -729,25 +731,183 @@ end
 
 local LINE = 16
 
+
+
+
+
+
+
+
+
+local COPIED_S = 1.5
+
 function M.code(c, p)
+   local text = str(p.text) or ""
    local wrap = p.wrap == true
    local lines = p.max_lines
-   local body = ctx.data(c, str(p.text) or "", { wrap = wrap and "glyph" or "none", line_height = LINE })
+   local body = ctx.data(c, text, { wrap = wrap and "glyph" or "none", line_height = LINE })
 
 
-   local inner = { key = "lines", width = "grow", selectable = true, body }
+   local inner = { key = "lines", width = "grow", selectable = true }
+   if p.line_numbers == true and not wrap then
+
+
+      local n = 1
+      for _ in text:gmatch("\n") do n = n + 1 end
+      local nums = {}
+      for i = 1, n do nums[i] = tostring(i) end
+      inner.selectable = nil
+      inner[1] = row({ width = "grow", gap = 12,
+column({ cross_align = "end",
+ctx.data(c, table.concat(nums, "\n"), { line_height = LINE, color = ref(c, "faint") }), }),
+column({ key = "text", width = "grow", min_width = 0, selectable = true, scroll_x = true, body }), })
+   else
+      inner[1] = body
+      inner.scroll_x = not wrap
+   end
    if lines then
       inner.max_height = lines * LINE
       inner.scroll_y = true
    end
-   inner.scroll_x = not wrap
-   return column({
+   local frame = {
       width = "grow",
+      role = str(p.label) and "group" or nil,
+      label = str(p.label),
       bg = ref(c, "sunken"),
       radius = "$kitRadius",
       pad = 8,
-      column(inner),
-   })
+      gap = 6,
+   }
+   if p.copy == true or str(p.label) then
+      local head = { width = "grow", cross_align = "center", gap = 8 }
+      if str(p.label) then head[#head + 1] = ctx.muted(c, p.label, { max_lines = 1, ellipsis = true }) end
+      head[#head + 1] = ctx.grow()
+      if p.copy == true then
+         local env = c.env
+         local st = ctx.state(c, function() return {} end)
+         if st.ask then
+            st.ask = false
+            env.set_clipboard(text)
+            st.at = env.now or 0
+         end
+         local said = st.at ~= nil and (env.now or 0) < st.at + COPIED_S
+         if said then env.request_frame_at(st.at + COPIED_S) end
+         head[#head + 1] = inputs.button(c, {
+            key = "copy",
+            label = said and "Copied" or "Copy",
+            name = said and "Copied" or "Copy the code",
+            icon = said and "check" or "copy",
+            variant = said and "success" or "ghost",
+         }, act(c, "code.copy"))
+      end
+      frame[#frame + 1] = row(head)
+   end
+   frame[#frame + 1] = column(inner)
+   return column(frame)
+end
+
+
+
+
+
+
+function M.shader(c, p)
+   local label = str(p.label)
+   local t = {
+      key = "shader",
+      role = label and "image" or nil,
+      label = label,
+      height = p.grow == true and "grow" or (p.height or 80),
+      radius = "$kitRadius",
+   }
+   ctx.up_to(t, p.width)
+   local id = p.id
+   if type(id) == "number" then
+      t.id = math.tointeger(id)
+      t.params = p.params
+      local img = p.image
+      t.image = type(img) == "number" and math.tointeger(img) or nil
+      t.animate = p.animate == true and not ctx.reduced(c) or nil
+      return fragment(t)
+   end
+   t.bg = ref(c, "sunken")
+   return column(t)
+end
+
+
+
+local SWEEP_MS = 1500
+
+
+local function rgba(out, color)
+   out[#out + 1] = ((color >> 24) & 255) / 255
+   out[#out + 1] = ((color >> 16) & 255) / 255
+   out[#out + 1] = ((color >> 8) & 255) / 255
+   out[#out + 1] = (color & 255) / 255
+end
+
+
+
+
+local function bone(c, key, w, h, radius, travel, still)
+
+   local shimmer = c.s.shimmer
+   if shimmer then
+      local half = c.s.appearance
+      if not half then
+         local th = c.env.theme
+         half = th and th.appearance == "light" and "light" or "dark"
+      end
+      local params = {}
+      rgba(params, skin.color(c.s, "kitSunken", half))
+      rgba(params, skin.color(c.s, "kitShimmer", half))
+      params[9], params[10] = SWEEP_MS / 1000, still and 0 or 1
+      return fragment({ key = key, id = shimmer, width = w, height = h, radius = radius,
+params = params, animate = not still or nil, })
+   end
+   local t = { key = key, width = w, height = h, radius = radius, bg = ref(c, "sunken"), clip = true }
+   if not still and travel > 0 then
+      local band = math.max(40, math.min(200, travel * 0.4))
+      t[1] = column({ width = band, height = h, float = { anchor = "parent" },
+gradient = { to = "right", stops = { "$kitShimmerClear", "$kitShimmer", "$kitShimmerClear" } },
+keyframes = { { dx = -band }, { dx = travel } }, transition = SWEEP_MS, easing = "linear", })
+   end
+   return column(t)
+end
+
+
+
+
+
+function M.skeleton(c, p)
+   local shape = str(p.shape) or "text"
+   local still = ctx.reduced(c)
+   local t = { key = "skeleton", role = "image", label = str(p.label) or "Loading" }
+   if shape == "circle" then
+      local d = (p.width or 32)
+      t.width, t.height = d, d
+      t[1] = bone(c, "b1", d, d, d / 2, d, still)
+      return column(t)
+   end
+
+
+   t.on_layout = not still and not c.s.shimmer and act(c, "skeleton.layout") or nil
+   ctx.up_to(t, p.width)
+   local r = c.env.layout_of("skeleton")
+   local w = r and r.w or 0
+   if shape == "block" then
+      local h = (p.height or 80)
+      t[1] = bone(c, "b1", "grow", h, "$kitRadius", w, still)
+      return column(t)
+   end
+   local n = math.max(1, math.floor((p.lines or 1)))
+   t.gap = 6
+   for i = 1, n do
+      local last = n > 1 and i == n
+      local width = last and { pct = 60 } or "grow"
+      t[i] = bone(c, "b" .. i, width, 10, "$kitRadius", last and w * 0.6 or w, still)
+   end
+   return column(t)
 end
 
 local NOTICE_ROLE = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", info = "focus", neutral = "muted" }
@@ -867,6 +1027,9 @@ function M.event(m, kit)
    elseif kit == "log.end" then
       local st = ctx.peek(m.inst)
       if st then st.follow, st.last_y = true, nil end
+   elseif kit == "code.copy" then
+      local st = ctx.peek(m.inst)
+      if st then st.ask = true end
    elseif kit == "table.sort" then
       return emit("on_sort", { field = m.field })
    elseif kit == "table.range" then

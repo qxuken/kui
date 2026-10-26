@@ -20,6 +20,12 @@ function make(namespace) {
       if (props.shadows !== undefined) wire.shadows = props.shadows;
       if (props.radius !== undefined) wire.radius = props.radius;
       if (props.roles !== undefined) wire.roles = props.roles;
+      if (props.appearance !== undefined) wire.appearance = props.appearance;
+      if (props.hair !== undefined) wire.hair = props.hair;
+      if (props.rule !== undefined) wire.rule = props.rule;
+      if (props.fontUi !== undefined) wire.font_ui = props.fontUi;
+      if (props.fontData !== undefined) wire.font_data = props.fontData;
+      if (props.shimmer !== undefined) wire.shimmer = props.shimmer;
       const groups = undefined;
       return {
         type: 'component',
@@ -424,6 +430,9 @@ function make(namespace) {
       if (props.text !== undefined) wire.text = props.text;
       if (props.wrap !== undefined) wire.wrap = props.wrap;
       if (props.maxLines !== undefined) wire.max_lines = props.maxLines;
+      if (props.lineNumbers !== undefined) wire.line_numbers = props.lineNumbers;
+      if (props.copy !== undefined) wire.copy = props.copy;
+      if (props.label !== undefined) wire.label = props.label;
       const groups = undefined;
       return {
         type: 'component',
@@ -466,6 +475,39 @@ function make(namespace) {
         type: 'component',
         key: props.key != null ? String(props.key) : undefined,
         props: { name: `${namespace}/progress`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Skeleton(props = {}, children) {
+      const wire = {};
+      if (props.shape !== undefined) wire.shape = props.shape;
+      if (props.lines !== undefined) wire.lines = props.lines;
+      if (props.width !== undefined) wire.width = props.width;
+      if (props.height !== undefined) wire.height = props.height;
+      if (props.label !== undefined) wire.label = props.label;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/skeleton`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Shader(props = {}, children) {
+      const wire = {};
+      if (props.id !== undefined) wire.id = props.id;
+      if (props.params !== undefined) wire.params = props.params;
+      if (props.image !== undefined) wire.image = props.image;
+      if (props.animate !== undefined) wire.animate = props.animate;
+      if (props.width !== undefined) wire.width = props.width;
+      if (props.height !== undefined) wire.height = props.height;
+      if (props.grow !== undefined) wire.grow = props.grow;
+      if (props.label !== undefined) wire.label = props.label;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/shader`, props: wire, groups, fresh: props.fresh },
         children: flat(children ?? props.children),
       };
     },
@@ -629,6 +671,6 @@ function make(namespace) {
 }
 
 const kit = make('kit');
-export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
+export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
 export const at = make;
 export default kit;

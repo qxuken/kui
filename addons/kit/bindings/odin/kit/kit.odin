@@ -167,6 +167,35 @@ X_FORMAT_NAMES := [XFormat]string {
 	.Clock = "clock",
 }
 
+// Which half of the skin's colours: the OS's, or light or dark held.
+Appearance :: enum {
+	System,
+	Light,
+	Dark,
+}
+
+@(private)
+APPEARANCE_NAMES := [Appearance]string {
+	.System = "system",
+	.Light = "light",
+	.Dark = "dark",
+}
+
+// What a skeleton stands in for: lines of text, a block (an image, a chart), or
+// a circle (an avatar).
+SkeletonShape :: enum {
+	Text,
+	Block,
+	Circle,
+}
+
+@(private)
+SKELETON_SHAPE_NAMES := [SkeletonShape]string {
+	.Text = "text",
+	.Block = "block",
+	.Circle = "circle",
+}
+
 // A choice: what it is, and what it reads as.
 Choice :: struct {
 	// What the choice is; what the event carries.
@@ -319,8 +348,29 @@ Settings :: struct {
 	// Corner radius in px, for a brand with its own; the skin's when left out.
 	radius: Maybe(f64),
 	// Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
-	// "$brandSurface" }` — a colour or a token each.
+	// "$brandSurface" }` — a colour, `{ light, dark }` or a token each. What the
+	// skin paints in its accent (Ledger's selection, Neutral's focus ring, a first
+	// chart series) follows an accent given as a colour, and what reads on it is
+	// worked out, unless those roles are named too.
 	roles: any,
+	// Kit's colours held light or dark whatever the OS says; the OS's when left
+	// out (`system`).
+	appearance: Maybe(Appearance),
+	// The hairline's width in px (rows, a field's edge); the skin's when left out.
+	hair: Maybe(f64),
+	// The region rule's width in px (a panel's frame, a control's border); the
+	// skin's when left out.
+	rule: Maybe(f64),
+	// The UI face, as a family list (`{ "Inter", "sans" }`); the skin's when left
+	// out.
+	font_ui: []string,
+	// The data face (ids, numbers, code), as a family list; the skin's when left
+	// out.
+	font_data: []string,
+	// A fragment the host registered from Kit's shimmer
+	// (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of a
+	// gradient band.
+	shimmer: Maybe(i64),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -334,6 +384,12 @@ settings_props :: proc(p: Settings) -> ^c.Value {
 	if x, ok := p.shadows.?; ok do c.value_map_set(m, "shadows", c.value_bool(x))
 	if x, ok := p.radius.?; ok do c.value_map_set(m, "radius", c.value_float(x))
 	if p.roles != nil do c.value_map_set(m, "roles", (^c.Value)(kui.encode(p.roles)))
+	if x, ok := p.appearance.?; ok do c.value_map_set(m, "appearance", c.value_str(APPEARANCE_NAMES[x]))
+	if x, ok := p.hair.?; ok do c.value_map_set(m, "hair", c.value_float(x))
+	if x, ok := p.rule.?; ok do c.value_map_set(m, "rule", c.value_float(x))
+	if p.font_ui != nil do c.value_map_set(m, "font_ui", kit_list(p.font_ui, proc(x: string) -> ^c.Value { return c.value_str(x) }))
+	if p.font_data != nil do c.value_map_set(m, "font_data", kit_list(p.font_data, proc(x: string) -> ^c.Value { return c.value_str(x) }))
+	if x, ok := p.shimmer.?; ok do c.value_map_set(m, "shimmer", c.value_int(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -1804,6 +1860,14 @@ Code :: struct {
 	wrap: Maybe(bool),
 	// At most this many lines high, the rest scrolled to.
 	max_lines: Maybe(i64),
+	// Each line's number in a gutter beside it, outside the selection (not with
+	// `wrap`).
+	line_numbers: Maybe(bool),
+	// A Copy button over the text that puts it on the clipboard and says Copied
+	// for a moment.
+	copy: Maybe(bool),
+	// A caption over the text (a file's name), and the block's accessible name.
+	label: string,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -1815,6 +1879,9 @@ code_props :: proc(p: Code) -> ^c.Value {
 	c.value_map_set(m, "text", c.value_str(p.text))
 	if x, ok := p.wrap.?; ok do c.value_map_set(m, "wrap", c.value_bool(x))
 	if x, ok := p.max_lines.?; ok do c.value_map_set(m, "max_lines", c.value_int(x))
+	if x, ok := p.line_numbers.?; ok do c.value_map_set(m, "line_numbers", c.value_bool(x))
+	if x, ok := p.copy.?; ok do c.value_map_set(m, "copy", c.value_bool(x))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -1964,6 +2031,107 @@ progress_in :: proc(ui: ^kui.Ui, namespace: string, p: Progress) -> i32 {
 	props := progress_props(p)
 	defer c.value_free(props)
 	name := concat(namespace, "/progress")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// A placeholder for what is still loading: lines a text high, a block or a
+// circle, in the skin's well colour and rounded as its controls are, with a
+// shimmer crossing them in step — held still under reduced motion. The
+// shimmer is a gradient band unless `settings.shimmer` names the host's
+// fragment.
+Skeleton :: struct {
+	// Lines of text (the default), a block or a circle.
+	shape: Maybe(SkeletonShape),
+	// Text: how many lines, the last of several shorter; 1 when left out.
+	lines: Maybe(i64),
+	// In px: as wide as this at most (it grows when left out), or a circle's
+	// diameter (32 when left out).
+	width: Maybe(f64),
+	// A block's height in px; 80 when left out.
+	height: Maybe(f64),
+	// What is loading, as it is read; `Loading` when left out.
+	label: string,
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+skeleton_props :: proc(p: Skeleton) -> ^c.Value {
+	m := c.value_map()
+	if x, ok := p.shape.?; ok do c.value_map_set(m, "shape", c.value_str(SKELETON_SHAPE_NAMES[x]))
+	if x, ok := p.lines.?; ok do c.value_map_set(m, "lines", c.value_int(x))
+	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
+	if x, ok := p.height.?; ok do c.value_map_set(m, "height", c.value_float(x))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+skeleton :: proc(ui: ^kui.Ui, p: Skeleton) -> i32 {
+	return skeleton_in(ui, NAMESPACE, p)
+}
+
+skeleton_in :: proc(ui: ^kui.Ui, namespace: string, p: Skeleton) -> i32 {
+	props := skeleton_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/skeleton")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// A box a fragment shader paints (a `fragment` node, ADR 0015): the host
+// registers the WGSL and passes its handle, and Kit rounds the box by the
+// skin's radius and keeps a shader that reads `time` still under reduced
+// motion. With no handle it is the skin's well.
+Shader :: struct {
+	// The fragment's handle, from the host's `add_fragment` (`Core::add_fragment`,
+	// `ctx.addFragment`, `kui_fragment_add`).
+	id: Maybe(i64),
+	// Up to sixteen numbers the shader reads as four `vec4<f32>`.
+	params: []f64,
+	// A registered image's handle, which the shader samples with `kui_sample`.
+	image: Maybe(i64),
+	// A frame every frame, for a shader that reads `time`; off under reduced
+	// motion.
+	animate: Maybe(bool),
+	// As wide as this in px at most; it grows when left out.
+	width: Maybe(f64),
+	// In px; 80 when left out.
+	height: Maybe(f64),
+	// Takes the height its parent leaves.
+	grow: Maybe(bool),
+	// What it shows, as it is read; decoration when left out.
+	label: string,
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+shader_props :: proc(p: Shader) -> ^c.Value {
+	m := c.value_map()
+	if x, ok := p.id.?; ok do c.value_map_set(m, "id", c.value_int(x))
+	if p.params != nil do c.value_map_set(m, "params", kit_list(p.params, proc(x: f64) -> ^c.Value { return c.value_float(x) }))
+	if x, ok := p.image.?; ok do c.value_map_set(m, "image", c.value_int(x))
+	if x, ok := p.animate.?; ok do c.value_map_set(m, "animate", c.value_bool(x))
+	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
+	if x, ok := p.height.?; ok do c.value_map_set(m, "height", c.value_float(x))
+	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+shader :: proc(ui: ^kui.Ui, p: Shader) -> i32 {
+	return shader_in(ui, NAMESPACE, p)
+}
+
+shader_in :: proc(ui: ^kui.Ui, namespace: string, p: Shader) -> i32 {
+	props := shader_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/shader")
 	return c.component(ui, name, props, nil, nil)
 }
 

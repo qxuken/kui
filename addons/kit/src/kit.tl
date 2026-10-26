@@ -40,15 +40,31 @@ local function ensure_tokens(env: kui.Env)
   end
 end
 
+local function num(v: any): number
+  return v is number and v or nil
+end
+
+local function faces(v: any): {string}
+  if v is string then return { v } end
+  if v is {string} and #v > 0 then return v end
+  return nil
+end
+
 local function apply(p: P)
   local roles = p.roles
-  local radius = p.radius
+  local shimmer = p.shimmer
   settings = {
     skin = SKINS[p.skin as string] or ledger,
     density = p.density == "compact" and "compact" or "comfortable",
     shadows = p.shadows ~= false,
-    radius = radius is number and radius or nil,
+    radius = num(p.radius),
     roles = roles is {string:any} and roles or nil,
+    appearance = (p.appearance == "light" or p.appearance == "dark") and p.appearance as string or nil,
+    hair = num(p.hair),
+    rule_w = num(p.rule),
+    font_ui = faces(p.font_ui),
+    font_data = faces(p.font_data),
+    shimmer = shimmer is integer and shimmer or (shimmer is number and math.tointeger(shimmer) or nil),
   }
 end
 
@@ -69,7 +85,7 @@ provide(inputs as {string:any}, {
   "button", "icon_button", "text_field", "search", "select", "checkbox", "switch",
   "radio_group", "segmented", "slider", "text_area",
 })
-provide(data as {string:any}, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice" })
+provide(data as {string:any}, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice", "skeleton", "shader" })
 provide(overlays as {string:any}, { "dialog", "popover", "menu", "toast", "toaster" })
 provide(charts as {string:any}, { "sparkline", "line_chart", "bar_chart", "histogram" })
 provide(waterfall as {string:any}, { "waterfall" })

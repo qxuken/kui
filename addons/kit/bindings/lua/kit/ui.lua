@@ -37,6 +37,13 @@
 ---as the local time of day.
 ---@alias kit.XFormat "number"|"ago"|"clock"
 
+---Which half of the skin's colours: the OS's, or light or dark held.
+---@alias kit.Appearance "system"|"light"|"dark"
+
+---What a skeleton stands in for: lines of text, a block (an image, a chart),
+---or a circle (an avatar).
+---@alias kit.SkeletonShape "text"|"block"|"circle"
+
 ---A choice: what it is, and what it reads as.
 ---@class kit.Choice
 ---@field value string What the choice is; what the event carries.
@@ -87,7 +94,13 @@
 ---@field density? kit.Density Comfortable when left out.
 ---@field shadows? boolean The skin's hard shadows; on when left out.
 ---@field radius? number Corner radius in px, for a brand with its own; the skin's when left out.
----@field roles? any Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel = "$brandSurface" }` — a colour or a token each.
+---@field roles? any Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel = "$brandSurface" }` — a colour, `{ light, dark }` or a token each. What the skin paints in its accent (Ledger's selection, Neutral's focus ring, a first chart series) follows an accent given as a colour, and what reads on it is worked out, unless those roles are named too.
+---@field appearance? kit.Appearance Kit's colours held light or dark whatever the OS says; the OS's when left out (`system`).
+---@field hair? number The hairline's width in px (rows, a field's edge); the skin's when left out.
+---@field rule? number The region rule's width in px (a panel's frame, a control's border); the skin's when left out.
+---@field font_ui? string[] The UI face, as a family list (`{ "Inter", "sans" }`); the skin's when left out.
+---@field font_data? string[] The data face (ids, numbers, code), as a family list; the skin's when left out.
+---@field shimmer? integer A fragment the host registered from Kit's shimmer (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of a gradient band.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -441,6 +454,9 @@
 ---@field text string The text.
 ---@field wrap? boolean Wraps rather than scrolls sideways.
 ---@field max_lines? integer At most this many lines high, the rest scrolled to.
+---@field line_numbers? boolean Each line's number in a gutter beside it, outside the selection (not with `wrap`).
+---@field copy? boolean A Copy button over the text that puts it on the clipboard and says Copied for a moment.
+---@field label? string A caption over the text (a file's name), and the block's accessible name.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -463,6 +479,29 @@
 ---@class kit.ProgressProps
 ---@field value? number 0 to 1; indeterminate when left out.
 ---@field label? string What is under way.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/skeleton`.
+---@class kit.SkeletonProps
+---@field shape? kit.SkeletonShape Lines of text (the default), a block or a circle.
+---@field lines? integer Text: how many lines, the last of several shorter; 1 when left out.
+---@field width? number In px: as wide as this at most (it grows when left out), or a circle's diameter (32 when left out).
+---@field height? number A block's height in px; 80 when left out.
+---@field label? string What is loading, as it is read; `Loading` when left out.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/shader`.
+---@class kit.ShaderProps
+---@field id? integer The fragment's handle, from the host's `add_fragment` (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`).
+---@field params? number[] Up to sixteen numbers the shader reads as four `vec4<f32>`.
+---@field image? integer A registered image's handle, which the shader samples with `kui_sample`.
+---@field animate? boolean A frame every frame, for a shader that reads `time`; off under reduced motion.
+---@field width? number As wide as this in px at most; it grows when left out.
+---@field height? number In px; 80 when left out.
+---@field grow? boolean Takes the height its parent leaves.
+---@field label? string What it shows, as it is read; decoration when left out.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -854,6 +893,27 @@ local function make(namespace)
   ---@return kui.Node
   function M.progress(props)
     return component(namespace .. "/progress", props)
+  end
+
+  ---A placeholder for what is still loading: lines a text high, a block or a
+  ---circle, in the skin's well colour and rounded as its controls are, with a
+  ---shimmer crossing them in step — held still under reduced motion. The
+  ---shimmer is a gradient band unless `settings.shimmer` names the host's
+  ---fragment.
+  ---@param props kit.SkeletonProps
+  ---@return kui.Node
+  function M.skeleton(props)
+    return component(namespace .. "/skeleton", props)
+  end
+
+  ---A box a fragment shader paints (a `fragment` node, ADR 0015): the host
+  ---registers the WGSL and passes its handle, and Kit rounds the box by the
+  ---skin's radius and keeps a shader that reads `time` still under reduced
+  ---motion. With no handle it is the skin's well.
+  ---@param props kit.ShaderProps
+  ---@return kui.Node
+  function M.shader(props)
+    return component(namespace .. "/shader", props)
   end
 
   ---A modal dialog: a title, its body and its actions; Escape and a press

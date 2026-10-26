@@ -82,40 +82,156 @@ end
 local CLOCK_STEPS = { 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400 }
 
 
-
-
-
-
-
-local function x_ticks(x0, x1, w, fmt, unit)
-   local want = math.max(2, math.floor(w / 90))
-   local raw = (x1 - x0) / want
-   local step
-   if fmt == "clock" then
-      step = CLOCK_STEPS[#CLOCK_STEPS]
-      for _, st in ipairs(CLOCK_STEPS) do
-         if st >= raw then step = st; break end
+local NICE = { 1, 2, 2.5, 5, 10 }
+local function nicer(step, down)
+   local p = 10 ^ math.floor(math.log(step, 10) + 1e-9)
+   local m = step / p
+   if down then
+      for i = #NICE, 1, -1 do
+         if NICE[i] < m - 1e-6 then return NICE[i] * p end
       end
-   else
-      step = nice(raw)
+      return p / 2
    end
+   for _, u in ipairs(NICE) do
+      if u > m + 1e-6 then return u * p end
+   end
+   return 20 * p
+end
+
+
+local function clock_step(step, down)
+   if down then
+      for i = #CLOCK_STEPS, 1, -1 do
+         if CLOCK_STEPS[i] < step then return CLOCK_STEPS[i] end
+      end
+      return CLOCK_STEPS[1]
+   end
+   for _, st in ipairs(CLOCK_STEPS) do
+      if st > step then return st end
+   end
+   return step * 2
+end
+
+
+
+
+local function tick_number(v, step, top)
+   if math.abs(v) < step * 1e-6 then v = 0 end
+   local scale, suffix = 1.0, ""
+   local a = math.abs(top)
+   if a >= 1e9 then scale, suffix = 1e9, "G"
+   elseif a >= 1e6 then scale, suffix = 1e6, "M"
+   elseif a >= 1e4 then scale, suffix = 1e3, "k" end
+   local s = step / scale
+   local d = 0
+   while d < 6 do
+      local x = s * 10 ^ d
+      if math.abs(x - math.floor(x + 0.5)) < 1e-6 * math.max(1, x) then break end
+      d = d + 1
+   end
+   return string.format("%." .. d .. "f", v / scale) .. suffix
+end
+
+
+
+
+local LABEL = { size = 10, family = "$kitData" }
+local widths = setmetatable({}, { __mode = "k" })
+local widths_n = setmetatable({}, { __mode = "k" })
+
+local function label_w(c, s)
+   local memo = widths[c.s]
+   if not memo or widths_n[c.s] > 512 then
+      memo = {}
+      widths[c.s], widths_n[c.s] = memo, 0
+   end
+   local w = memo[s]
+   if not w then
+      local m = c.env.measure_text(s, LABEL, nil)
+      w = m and math.ceil(m.width) or #s * 6
+      memo[s] = w
+      widths_n[c.s] = widths_n[c.s] + 1
+   end
+   return w
+end
+
+
+
+
+
+
+
+local function tick_labels(x0, x1, step, fmt, unit)
    local at = {}
    local labels = {}
+   local top = math.max(math.abs(x0), math.abs(x1))
    local v = math.ceil(x0 / step - 1e-9) * step
    while v <= x1 + step * 1e-6 do
       local s
       if fmt == "clock" then
-         s = os.date(step < 60 and "%H:%M:%S" or "%H:%M", math.floor(v))
+         s = os.date(step < 60 and "%H:%M:%S" or "%H:%M", math.floor(v + 0.5))
       elseif fmt == "ago" then
          local back = math.abs(v)
-         s = back < step * 1e-6 and "now" or (with_unit(short(back), unit) .. " ago")
+         s = back < step * 1e-6 and "now" or (with_unit(tick_number(back, step, top), unit) .. " ago")
       else
-         s = with_unit(short(v), unit)
+         s = with_unit(tick_number(v, step, top), unit)
       end
       at[#at + 1], labels[#labels + 1] = v, s
       v = v + step
    end
    return at, labels
+end
+
+
+
+
+local X_GAP = 12
+local X_TICK = 50
+
+
+
+
+
+
+local function x_ticks(c, x0, x1, w, fmt, unit)
+   local span = x1 - x0
+   local clock = fmt == "clock"
+
+
+   local loose = span / math.max(2, math.floor(w / 90))
+   local guess_step = clock and clock_step(loose, true) or nice(loose)
+   local _, guess = tick_labels(x1 - guess_step, x1, guess_step, fmt, unit)
+   local est = guess[#guess] and label_w(c, guess[#guess]) or 40
+   local raw = span * math.max(est + X_GAP, X_TICK) / math.max(w, 1)
+   local step
+   if clock then
+      step = CLOCK_STEPS[#CLOCK_STEPS]
+      for _, st in ipairs(CLOCK_STEPS) do
+         if st >= raw then step = st; break end
+      end
+      step = clock_step(step, true)
+   else
+      step = nicer(nice(raw), true)
+   end
+   local at, labels = {}, {}
+   local lw = {}
+   for _ = 1, 24 do
+      local px = step / span * w
+      local fits = px >= X_TICK
+      if fits then
+         at, labels = tick_labels(x0, x1, step, fmt, unit)
+         lw = {}
+         for i, s in ipairs(labels) do
+            lw[i] = label_w(c, s)
+            if i > 1 and px < (lw[i - 1] + lw[i]) / 2 + X_GAP then fits = false; break end
+         end
+         if fits then break end
+      end
+      step = clock and clock_step(step, false) or nicer(step, false)
+   end
+   if #labels == 0 then at, labels = tick_labels(x0, x1, step, fmt, unit) end
+   for i = #lw + 1, #labels do lw[i] = label_w(c, labels[i]) end
+   return at, labels, lw
 end
 
 
@@ -295,6 +411,46 @@ local function reduced_runs(ch, rx, field, from, to,
    return runs
 end
 
+
+
+
+
+
+
+
+
+
+
+
+local GLIDE_S = 0.24
+
+
+
+
+
+
+
+local function glide(c, lo, hi)
+   local st = ctx.state(c, function() return {} end)
+   local now = c.env.now or 0
+   if not st.lo or now <= 0 or ctx.reduced(c) then
+      st.lo, st.hi, st.from_lo, st.from_hi, st.t0 = lo, hi, lo, hi, -math.huge
+      return lo, hi
+   end
+   local function at(k)
+      if k >= 1 then return st.lo, st.hi end
+      local e = 1 - (1 - k) ^ 3
+      return st.from_lo + (st.lo - st.from_lo) * e, st.from_hi + (st.hi - st.from_hi) * e
+   end
+   if lo ~= st.lo or hi ~= st.hi then
+      st.from_lo, st.from_hi = at((now - st.t0) / GLIDE_S)
+      st.lo, st.hi, st.t0 = lo, hi, now
+   end
+   local k = (now - st.t0) / GLIDE_S
+   if k < 1 then c.env.request_frame_at(now) end
+   return at(k)
+end
+
 function M.line_chart(c, p)
    local ch = p.data
    local env = c.env
@@ -330,37 +486,84 @@ function M.line_chart(c, p)
    local step = nice((hi - lo) / 4)
    lo = math.floor(lo / step) * step
    hi = math.ceil(hi / step) * step
+   local y_unit = str(p.y_unit)
+   local faint, rule = ref(c, "faint"), ref(c, "rule")
+
+
+   local gutter = 0.0
+   do
+      local v = lo
+      while v <= hi + step / 2 do
+         gutter = math.max(gutter, label_w(c, with_unit(tick_number(v, step, math.max(math.abs(lo), math.abs(hi))), y_unit)))
+         v = v + step
+      end
+   end
+
+   lo, hi = glide(c, lo, hi)
+   step = nice((hi - lo) / 4)
 
 
 
    local plot = { key = "plot", width = "grow", height = h, clip = true,
 on_layout = act(c, "line_chart.layout"), }
 
-   local labels = { width = str(p.y_unit) and 56 or 44, height = h }
-   local v = lo
-   while v <= hi + step / 2 do
+
+   local ys = {}
+   local ylabels = {}
+   do
+      local top = math.max(math.abs(lo), math.abs(hi))
+      local v = math.ceil(lo / step - 1e-9) * step
+      while v <= hi + step * 1e-6 do
+         local s = with_unit(tick_number(v, step, top), y_unit)
+         ys[#ys + 1], ylabels[#ylabels + 1] = v, s
+         gutter = math.max(gutter, label_w(c, s))
+         v = v + step
+      end
+   end
+   gutter = math.ceil(gutter) + 2
+   local labels = { key = "gutter", width = gutter, height = h, transition = 160, when = { ctx.still() } }
+   for i, v in ipairs(ys) do
       local y = h - (v - lo) / (hi - lo) * h
-      plot[#plot + 1] = line({ from = { 0, y }, to = { w, y }, width = 1, color = ref(c, "rule") })
-      labels[#labels + 1] = column({
+      plot[#plot + 1] = line({ from = { 0, y }, to = { w, y }, width = 1, color = rule })
+      labels[#labels + 1] = row({
          float = { anchor = "parent", clip = true, dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
-         ctx.data(c, with_unit(short(v), str(p.y_unit)), { size = 10, color = ref(c, "faint") }),
+         width = "grow", main_align = "end",
+         ctx.data(c, ylabels[i], { size = 10, color = ref(c, "faint") }),
       })
-      v = v + step
    end
 
 
+
+
    local fmt = str(p.x_format) or "number"
-   local tick_at, tick_label = x_ticks(x0, x1, w, fmt, str(p.x_unit))
+   local tick_at, tick_label, tick_w = x_ticks(c, x0, x1, w, fmt, str(p.x_unit))
    local axis = { width = "grow", height = 14 }
+   local placed = {}
+   local shown = {}
    for i, tx in ipairs(tick_at) do
       local px = (tx - x0) / (x1 - x0) * w
-      plot[#plot + 1] = line({ from = { px, h - 4 }, to = { px, h }, width = 1, color = ref(c, "faint") })
-      local lw = 80
-      local left = math.max(0, math.min(w - lw, px - lw / 2))
-      local align = px - lw / 2 < 0 and "start" or (px + lw / 2 > w and "end" or "center")
-      axis[#axis + 1] = row({ key = "x" .. i, width = lw, main_align = align,
-float = { anchor = "parent", clip = true, dx = left, dy = 0 },
-ctx.data(c, tick_label[i], { size = 10, color = ref(c, "faint"), max_lines = 1 }), })
+      plot[#plot + 1] = line({ from = { px, h - 4 }, to = { px, h }, width = 1, color = faint })
+      placed[i] = math.max(0, math.min(w - tick_w[i], px - tick_w[i] / 2))
+      shown[i] = true
+   end
+   local nt = #tick_at
+   local function touch(a, b)
+      return placed[a] + tick_w[a] + 4 > placed[b]
+   end
+   if nt >= 2 and touch(1, 2) then
+      local edge = (tick_at[1] - x0) / (x1 - x0) * w < 1
+      if edge and nt > 2 then shown[2] = false else shown[1] = false end
+   end
+   if nt >= 3 and shown[nt - 1] and touch(nt - 1, nt) then
+      local edge = (x1 - tick_at[nt]) / (x1 - x0) * w < 1
+      if edge then shown[nt - 1] = false else shown[nt] = false end
+   end
+   for i = 1, nt do
+      if shown[i] then
+         axis[#axis + 1] = row({ key = "x" .. i, width = tick_w[i],
+float = { anchor = "parent", clip = true, dx = placed[i], dy = 0 },
+text(tick_label[i], { size = 10, family = "$kitData", color = faint, max_lines = 1 }), })
+      end
    end
    local legend = { gap = 12, cross_align = "center" }
 
@@ -411,7 +614,10 @@ on_hover = act(c, "line_chart.hover", { row = mid }), })
       label = "line chart",
       row(legend),
       row({ width = "grow", gap = 6, column(labels), column(plot) }),
-      row({ width = "grow", pad = { l = (str(p.y_unit) and 56 or 44) + 6 }, row(axis) }),
+
+
+      row({ width = "grow", gap = 6,
+column({ key = "under", width = gutter, transition = 160, when = { ctx.still() } }), row(axis), }),
    })
 end
 

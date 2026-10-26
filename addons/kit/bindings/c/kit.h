@@ -199,6 +199,45 @@ static inline KuiStr kit_x_format_name(KitXFormat v) {
 }
 
 /*
+ * Which half of the skin's colours: the OS's, or light or dark held.
+ */
+typedef enum KitAppearance {
+    KIT_APPEARANCE_UNSET = 0,
+    KIT_APPEARANCE_SYSTEM,
+    KIT_APPEARANCE_LIGHT,
+    KIT_APPEARANCE_DARK,
+} KitAppearance;
+
+static inline KuiStr kit_appearance_name(KitAppearance v) {
+    switch (v) {
+    case KIT_APPEARANCE_SYSTEM: return KUI_STR("system");
+    case KIT_APPEARANCE_LIGHT: return KUI_STR("light");
+    case KIT_APPEARANCE_DARK: return KUI_STR("dark");
+    default: return KUI_STR("");
+    }
+}
+
+/*
+ * What a skeleton stands in for: lines of text, a block (an image, a chart), or
+ * a circle (an avatar).
+ */
+typedef enum KitSkeletonShape {
+    KIT_SKELETON_SHAPE_UNSET = 0,
+    KIT_SKELETON_SHAPE_TEXT,
+    KIT_SKELETON_SHAPE_BLOCK,
+    KIT_SKELETON_SHAPE_CIRCLE,
+} KitSkeletonShape;
+
+static inline KuiStr kit_skeleton_shape_name(KitSkeletonShape v) {
+    switch (v) {
+    case KIT_SKELETON_SHAPE_TEXT: return KUI_STR("text");
+    case KIT_SKELETON_SHAPE_BLOCK: return KUI_STR("block");
+    case KIT_SKELETON_SHAPE_CIRCLE: return KUI_STR("circle");
+    default: return KUI_STR("");
+    }
+}
+
+/*
  * A choice: what it is, and what it reads as.
  */
 typedef struct KitChoice {
@@ -432,9 +471,48 @@ typedef struct KitSettings {
     bool radius_set;
     /*
      * Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
-     * "$brandSurface" }` — a colour or a token each.
+     * "$brandSurface" }` — a colour, `{ light, dark }` or a token each. What
+     * the skin paints in its accent (Ledger's selection, Neutral's focus ring,
+     * a first chart series) follows an accent given as a colour, and what reads
+     * on it is worked out, unless those roles are named too.
      */
     KuiValue *roles; /* consumed */
+    /*
+     * Kit's colours held light or dark whatever the OS says; the OS's when left
+     * out (`system`).
+     */
+    KitAppearance appearance;
+    /*
+     * The hairline's width in px (rows, a field's edge); the skin's when left
+     * out.
+     */
+    double hair;
+    bool hair_set;
+    /*
+     * The region rule's width in px (a panel's frame, a control's border); the
+     * skin's when left out.
+     */
+    double rule;
+    bool rule_set;
+    /*
+     * The UI face, as a family list (`{ "Inter", "sans" }`); the skin's when
+     * left out.
+     */
+    const KuiStr *font_ui;
+    size_t font_ui_count;
+    /*
+     * The data face (ids, numbers, code), as a family list; the skin's when
+     * left out.
+     */
+    const KuiStr *font_data;
+    size_t font_data_count;
+    /*
+     * A fragment the host registered from Kit's shimmer
+     * (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of a
+     * gradient band.
+     */
+    int64_t shimmer;
+    bool shimmer_set;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -448,6 +526,20 @@ static inline KuiValue *kit_settings_props(const KitSettings *p) {
     if (p->shadows_set) kui_value_map_set(m, KUI_STR("shadows"), kui_value_bool(p->shadows));
     if (p->radius_set) kui_value_map_set(m, KUI_STR("radius"), kui_value_float(p->radius));
     if (p->roles != NULL) kui_value_map_set(m, KUI_STR("roles"), p->roles);
+    if (p->appearance != 0) kui_value_map_set(m, KUI_STR("appearance"), kui_value_str(kit_appearance_name(p->appearance)));
+    if (p->hair_set) kui_value_map_set(m, KUI_STR("hair"), kui_value_float(p->hair));
+    if (p->rule_set) kui_value_map_set(m, KUI_STR("rule"), kui_value_float(p->rule));
+    if (p->font_ui != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->font_ui_count; i++) kui_value_list_push(list, kui_value_str(p->font_ui[i]));
+        kui_value_map_set(m, KUI_STR("font_ui"), list);
+    }
+    if (p->font_data != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->font_data_count; i++) kui_value_list_push(list, kui_value_str(p->font_data[i]));
+        kui_value_map_set(m, KUI_STR("font_data"), list);
+    }
+    if (p->shimmer_set) kui_value_map_set(m, KUI_STR("shimmer"), kui_value_int(p->shimmer));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -1989,6 +2081,22 @@ typedef struct KitCode {
      */
     int64_t max_lines;
     bool max_lines_set;
+    /*
+     * Each line's number in a gutter beside it, outside the selection (not with
+     * `wrap`).
+     */
+    bool line_numbers;
+    bool line_numbers_set;
+    /*
+     * A Copy button over the text that puts it on the clipboard and says Copied
+     * for a moment.
+     */
+    bool copy;
+    bool copy_set;
+    /*
+     * A caption over the text (a file's name), and the block's accessible name.
+     */
+    KuiStr label;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -2000,6 +2108,9 @@ static inline KuiValue *kit_code_props(const KitCode *p) {
     kui_value_map_set(m, KUI_STR("text"), kui_value_str(p->text));
     if (p->wrap_set) kui_value_map_set(m, KUI_STR("wrap"), kui_value_bool(p->wrap));
     if (p->max_lines_set) kui_value_map_set(m, KUI_STR("max_lines"), kui_value_int(p->max_lines));
+    if (p->line_numbers_set) kui_value_map_set(m, KUI_STR("line_numbers"), kui_value_bool(p->line_numbers));
+    if (p->copy_set) kui_value_map_set(m, KUI_STR("copy"), kui_value_bool(p->copy));
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -2139,6 +2250,145 @@ static inline KuiValue *kit_progress_props(const KitProgress *p) {
 static inline int32_t kit_progress(KuiCtx *ctx, const KitProgress *p) {
     KuiValue *props = kit_progress_props(p);
     int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/progress"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * A placeholder for what is still loading: lines a text high, a block or a
+ * circle, in the skin's well colour and rounded as its controls are, with a
+ * shimmer crossing them in step — held still under reduced motion. The
+ * shimmer is a gradient band unless `settings.shimmer` names the host's
+ * fragment.
+ */
+typedef struct KitSkeleton {
+    /*
+     * Lines of text (the default), a block or a circle.
+     */
+    KitSkeletonShape shape;
+    /*
+     * Text: how many lines, the last of several shorter; 1 when left out.
+     */
+    int64_t lines;
+    bool lines_set;
+    /*
+     * In px: as wide as this at most (it grows when left out), or a circle's
+     * diameter (32 when left out).
+     */
+    double width;
+    bool width_set;
+    /*
+     * A block's height in px; 80 when left out.
+     */
+    double height;
+    bool height_set;
+    /*
+     * What is loading, as it is read; `Loading` when left out.
+     */
+    KuiStr label;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitSkeleton;
+
+static inline KuiValue *kit_skeleton_props(const KitSkeleton *p) {
+    KuiValue *m = kui_value_map();
+    if (p->shape != 0) kui_value_map_set(m, KUI_STR("shape"), kui_value_str(kit_skeleton_shape_name(p->shape)));
+    if (p->lines_set) kui_value_map_set(m, KUI_STR("lines"), kui_value_int(p->lines));
+    if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
+    if (p->height_set) kui_value_map_set(m, KUI_STR("height"), kui_value_float(p->height));
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/skeleton: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_skeleton(KuiCtx *ctx, const KitSkeleton *p) {
+    KuiValue *props = kit_skeleton_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/skeleton"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * A box a fragment shader paints (a `fragment` node, ADR 0015): the host
+ * registers the WGSL and passes its handle, and Kit rounds the box by the
+ * skin's radius and keeps a shader that reads `time` still under reduced
+ * motion. With no handle it is the skin's well.
+ */
+typedef struct KitShader {
+    /*
+     * The fragment's handle, from the host's `add_fragment`
+     * (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`).
+     */
+    int64_t id;
+    bool id_set;
+    /*
+     * Up to sixteen numbers the shader reads as four `vec4<f32>`.
+     */
+    const double *params;
+    size_t params_count;
+    /*
+     * A registered image's handle, which the shader samples with `kui_sample`.
+     */
+    int64_t image;
+    bool image_set;
+    /*
+     * A frame every frame, for a shader that reads `time`; off under reduced
+     * motion.
+     */
+    bool animate;
+    bool animate_set;
+    /*
+     * As wide as this in px at most; it grows when left out.
+     */
+    double width;
+    bool width_set;
+    /*
+     * In px; 80 when left out.
+     */
+    double height;
+    bool height_set;
+    /*
+     * Takes the height its parent leaves.
+     */
+    bool grow;
+    bool grow_set;
+    /*
+     * What it shows, as it is read; decoration when left out.
+     */
+    KuiStr label;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitShader;
+
+static inline KuiValue *kit_shader_props(const KitShader *p) {
+    KuiValue *m = kui_value_map();
+    if (p->id_set) kui_value_map_set(m, KUI_STR("id"), kui_value_int(p->id));
+    if (p->params != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->params_count; i++) kui_value_list_push(list, kui_value_float(p->params[i]));
+        kui_value_map_set(m, KUI_STR("params"), list);
+    }
+    if (p->image_set) kui_value_map_set(m, KUI_STR("image"), kui_value_int(p->image));
+    if (p->animate_set) kui_value_map_set(m, KUI_STR("animate"), kui_value_bool(p->animate));
+    if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
+    if (p->height_set) kui_value_map_set(m, KUI_STR("height"), kui_value_float(p->height));
+    if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/shader: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_shader(KuiCtx *ctx, const KitShader *p) {
+    KuiValue *props = kit_shader_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/shader"), props, NULL, NULL);
     kui_value_free(props);
     return fill;
 }

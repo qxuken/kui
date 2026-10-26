@@ -311,6 +311,55 @@ impl XFormat {
     }
 }
 
+/// Which half of the skin's colours: the OS's, or light or dark held.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    /// The value's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Appearance::System => "system",
+            Appearance::Light => "light",
+            Appearance::Dark => "dark",
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::str(self.as_str())
+    }
+}
+
+/// What a skeleton stands in for: lines of text, a block (an image, a chart),
+/// or a circle (an avatar).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum SkeletonShape {
+    #[default]
+    Text,
+    Block,
+    Circle,
+}
+
+impl SkeletonShape {
+    /// The value's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SkeletonShape::Text => "text",
+            SkeletonShape::Block => "block",
+            SkeletonShape::Circle => "circle",
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::str(self.as_str())
+    }
+}
+
 /// A choice: what it is, and what it reads as.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Choice {
@@ -659,8 +708,30 @@ pub struct Settings {
     /// Corner radius in px, for a brand with its own; the skin's when left out.
     pub radius: Option<f64>,
     /// Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
-    /// "$brandSurface" }` — a colour or a token each.
+    /// "$brandSurface" }` — a colour, `{ light, dark }` or a token each. What
+    /// the skin paints in its accent (Ledger's selection, Neutral's focus ring,
+    /// a first chart series) follows an accent given as a colour, and what
+    /// reads on it is worked out, unless those roles are named too.
     pub roles: Option<Value>,
+    /// Kit's colours held light or dark whatever the OS says; the OS's when
+    /// left out (`system`).
+    pub appearance: Option<Appearance>,
+    /// The hairline's width in px (rows, a field's edge); the skin's when left
+    /// out.
+    pub hair: Option<f64>,
+    /// The region rule's width in px (a panel's frame, a control's border); the
+    /// skin's when left out.
+    pub rule: Option<f64>,
+    /// The UI face, as a family list (`{ "Inter", "sans" }`); the skin's when
+    /// left out.
+    pub font_ui: Option<Vec<String>>,
+    /// The data face (ids, numbers, code), as a family list; the skin's when
+    /// left out.
+    pub font_data: Option<Vec<String>>,
+    /// A fragment the host registered from Kit's shimmer
+    /// (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of
+    /// a gradient band.
+    pub shimmer: Option<i64>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -676,6 +747,12 @@ impl Settings {
             shadows: None,
             radius: None,
             roles: None,
+            appearance: None,
+            hair: None,
+            rule: None,
+            font_ui: None,
+            font_data: None,
+            shimmer: None,
             key: None,
             fresh: false,
         }
@@ -706,9 +783,55 @@ impl Settings {
     }
 
     /// Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
-    /// "$brandSurface" }` — a colour or a token each.
+    /// "$brandSurface" }` — a colour, `{ light, dark }` or a token each. What
+    /// the skin paints in its accent (Ledger's selection, Neutral's focus ring,
+    /// a first chart series) follows an accent given as a colour, and what
+    /// reads on it is worked out, unless those roles are named too.
     pub fn roles(mut self, v: impl Into<Value>) -> Self {
         self.roles = Some(v.into());
+        self
+    }
+
+    /// Kit's colours held light or dark whatever the OS says; the OS's when
+    /// left out (`system`).
+    pub fn appearance(mut self, v: Appearance) -> Self {
+        self.appearance = Some(v);
+        self
+    }
+
+    /// The hairline's width in px (rows, a field's edge); the skin's when left
+    /// out.
+    pub fn hair(mut self, v: f64) -> Self {
+        self.hair = Some(v);
+        self
+    }
+
+    /// The region rule's width in px (a panel's frame, a control's border); the
+    /// skin's when left out.
+    pub fn rule(mut self, v: f64) -> Self {
+        self.rule = Some(v);
+        self
+    }
+
+    /// The UI face, as a family list (`{ "Inter", "sans" }`); the skin's when
+    /// left out.
+    pub fn font_ui(mut self, v: Vec<String>) -> Self {
+        self.font_ui = Some(v);
+        self
+    }
+
+    /// The data face (ids, numbers, code), as a family list; the skin's when
+    /// left out.
+    pub fn font_data(mut self, v: Vec<String>) -> Self {
+        self.font_data = Some(v);
+        self
+    }
+
+    /// A fragment the host registered from Kit's shimmer
+    /// (`addons/kit/shaders/shimmer.wgsl`): skeletons sweep with it instead of
+    /// a gradient band.
+    pub fn shimmer(mut self, v: i64) -> Self {
+        self.shimmer = Some(v);
         self
     }
 
@@ -741,6 +864,24 @@ impl Settings {
         }
         if let Some(v) = &self.roles {
             m.push(("roles".into(), v.clone()));
+        }
+        if let Some(v) = &self.appearance {
+            m.push(("appearance".into(), v.to_value()));
+        }
+        if let Some(v) = &self.hair {
+            m.push(("hair".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.rule {
+            m.push(("rule".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.font_ui {
+            m.push(("font_ui".into(), Value::List(v.iter().map(|x| Value::str(x.as_str())).collect())));
+        }
+        if let Some(v) = &self.font_data {
+            m.push(("font_data".into(), Value::List(v.iter().map(|x| Value::str(x.as_str())).collect())));
+        }
+        if let Some(v) = &self.shimmer {
+            m.push(("shimmer".into(), Value::Int(*v)));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -3991,6 +4132,15 @@ pub struct Code {
     pub wrap: Option<bool>,
     /// At most this many lines high, the rest scrolled to.
     pub max_lines: Option<i64>,
+    /// Each line's number in a gutter beside it, outside the selection (not
+    /// with `wrap`).
+    pub line_numbers: Option<bool>,
+    /// A Copy button over the text that puts it on the clipboard and says
+    /// Copied for a moment.
+    pub copy: Option<bool>,
+    /// A caption over the text (a file's name), and the block's accessible
+    /// name.
+    pub label: Option<String>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -4004,6 +4154,9 @@ impl Code {
             text: text.into(),
             wrap: None,
             max_lines: None,
+            line_numbers: None,
+            copy: None,
+            label: None,
             key: None,
             fresh: false,
         }
@@ -4018,6 +4171,27 @@ impl Code {
     /// At most this many lines high, the rest scrolled to.
     pub fn max_lines(mut self, v: i64) -> Self {
         self.max_lines = Some(v);
+        self
+    }
+
+    /// Each line's number in a gutter beside it, outside the selection (not
+    /// with `wrap`).
+    pub fn line_numbers(mut self, v: bool) -> Self {
+        self.line_numbers = Some(v);
+        self
+    }
+
+    /// A Copy button over the text that puts it on the clipboard and says
+    /// Copied for a moment.
+    pub fn copy(mut self, v: bool) -> Self {
+        self.copy = Some(v);
+        self
+    }
+
+    /// A caption over the text (a file's name), and the block's accessible
+    /// name.
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
         self
     }
 
@@ -4042,6 +4216,15 @@ impl Code {
         }
         if let Some(v) = &self.max_lines {
             m.push(("max_lines".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.line_numbers {
+            m.push(("line_numbers".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.copy {
+            m.push(("copy".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -4298,6 +4481,281 @@ impl Progress {
     /// Places it under `<namespace>/progress`.
     pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
         ui.component(&format!("{namespace}/progress"), &self.props())
+    }
+}
+
+/// A placeholder for what is still loading: lines a text high, a block or a
+/// circle, in the skin's well colour and rounded as its controls are, with a
+/// shimmer crossing them in step — held still under reduced motion. The
+/// shimmer is a gradient band unless `settings.shimmer` names the host's
+/// fragment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Skeleton {
+    /// Lines of text (the default), a block or a circle.
+    pub shape: Option<SkeletonShape>,
+    /// Text: how many lines, the last of several shorter; 1 when left out.
+    pub lines: Option<i64>,
+    /// In px: as wide as this at most (it grows when left out), or a circle's
+    /// diameter (32 when left out).
+    pub width: Option<f64>,
+    /// A block's height in px; 80 when left out.
+    pub height: Option<f64>,
+    /// What is loading, as it is read; `Loading` when left out.
+    pub label: Option<String>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Skeleton {
+    /// What it needs; the rest by their setters.
+    pub fn new() -> Self {
+        Self {
+            shape: None,
+            lines: None,
+            width: None,
+            height: None,
+            label: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Lines of text (the default), a block or a circle.
+    pub fn shape(mut self, v: SkeletonShape) -> Self {
+        self.shape = Some(v);
+        self
+    }
+
+    /// Text: how many lines, the last of several shorter; 1 when left out.
+    pub fn lines(mut self, v: i64) -> Self {
+        self.lines = Some(v);
+        self
+    }
+
+    /// In px: as wide as this at most (it grows when left out), or a circle's
+    /// diameter (32 when left out).
+    pub fn width(mut self, v: f64) -> Self {
+        self.width = Some(v);
+        self
+    }
+
+    /// A block's height in px; 80 when left out.
+    pub fn height(mut self, v: f64) -> Self {
+        self.height = Some(v);
+        self
+    }
+
+    /// What is loading, as it is read; `Loading` when left out.
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+/// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+/// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.shape {
+            m.push(("shape".into(), v.to_value()));
+        }
+        if let Some(v) = &self.lines {
+            m.push(("lines".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.width {
+            m.push(("width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.height {
+            m.push(("height".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/skeleton`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/skeleton", &self.props())
+    }
+
+    /// Places it under `<namespace>/skeleton`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/skeleton"), &self.props())
+    }
+}
+
+/// A box a fragment shader paints (a `fragment` node, ADR 0015): the host
+/// registers the WGSL and passes its handle, and Kit rounds the box by the
+/// skin's radius and keeps a shader that reads `time` still under reduced
+/// motion. With no handle it is the skin's well.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shader {
+    /// The fragment's handle, from the host's `add_fragment`
+    /// (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`).
+    pub id: Option<i64>,
+    /// Up to sixteen numbers the shader reads as four `vec4<f32>`.
+    pub params: Option<Vec<f64>>,
+    /// A registered image's handle, which the shader samples with `kui_sample`.
+    pub image: Option<i64>,
+    /// A frame every frame, for a shader that reads `time`; off under reduced
+    /// motion.
+    pub animate: Option<bool>,
+    /// As wide as this in px at most; it grows when left out.
+    pub width: Option<f64>,
+    /// In px; 80 when left out.
+    pub height: Option<f64>,
+    /// Takes the height its parent leaves.
+    pub grow: Option<bool>,
+    /// What it shows, as it is read; decoration when left out.
+    pub label: Option<String>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Shader {
+    /// What it needs; the rest by their setters.
+    pub fn new() -> Self {
+        Self {
+            id: None,
+            params: None,
+            image: None,
+            animate: None,
+            width: None,
+            height: None,
+            grow: None,
+            label: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// The fragment's handle, from the host's `add_fragment`
+    /// (`Core::add_fragment`, `ctx.addFragment`, `kui_fragment_add`).
+    pub fn id(mut self, v: i64) -> Self {
+        self.id = Some(v);
+        self
+    }
+
+    /// Up to sixteen numbers the shader reads as four `vec4<f32>`.
+    pub fn params(mut self, v: Vec<f64>) -> Self {
+        self.params = Some(v);
+        self
+    }
+
+    /// A registered image's handle, which the shader samples with `kui_sample`.
+    pub fn image(mut self, v: i64) -> Self {
+        self.image = Some(v);
+        self
+    }
+
+    /// A frame every frame, for a shader that reads `time`; off under reduced
+    /// motion.
+    pub fn animate(mut self, v: bool) -> Self {
+        self.animate = Some(v);
+        self
+    }
+
+    /// As wide as this in px at most; it grows when left out.
+    pub fn width(mut self, v: f64) -> Self {
+        self.width = Some(v);
+        self
+    }
+
+    /// In px; 80 when left out.
+    pub fn height(mut self, v: f64) -> Self {
+        self.height = Some(v);
+        self
+    }
+
+    /// Takes the height its parent leaves.
+    pub fn grow(mut self, v: bool) -> Self {
+        self.grow = Some(v);
+        self
+    }
+
+    /// What it shows, as it is read; decoration when left out.
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+/// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+/// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.id {
+            m.push(("id".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.params {
+            m.push(("params".into(), Value::List(v.iter().map(|x| Value::Float(*x)).collect())));
+        }
+        if let Some(v) = &self.image {
+            m.push(("image".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.animate {
+            m.push(("animate".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.width {
+            m.push(("width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.height {
+            m.push(("height".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.grow {
+            m.push(("grow".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/shader`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/shader", &self.props())
+    }
+
+    /// Places it under `<namespace>/shader`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/shader"), &self.props())
     }
 }
 

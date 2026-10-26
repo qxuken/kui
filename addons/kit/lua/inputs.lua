@@ -150,18 +150,21 @@ local function pressed_look(c, t)
    return ref(c, "sel_fg")
 end
 
-function M.button(c, p)
+
+
+function M.button(c, p, on)
    local variant = str(p.variant) or "default"
    if p.disabled == true and variant ~= "ghost" then variant = "default" end
    local ink_role = look(c, variant).ink
    local label = str(p.label) or ""
    local t = pressable(c, variant, {
+      key = on and str(p.key) or nil,
       label = str(p.name) or label,
       tooltip = str(p.tooltip),
       disabled = p.disabled == true,
       pad = { x = 10 },
       gap = 6,
-      on_click = act(c, "button.press"),
+      on_click = on or act(c, "button.press"),
    })
    if p.pressed == true then
       pressed_look(c, t)

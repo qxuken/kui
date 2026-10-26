@@ -318,6 +318,8 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)
         "progress",
         kit::Progress::new().value(0.4).label("Loading").place(ui),
     );
+    put("skeleton", kit::Skeleton::new().lines(3).place(ui));
+    put("shader", kit::Shader::new().height(40.0).label("Noise").place(ui));
     put(
         "notice",
         kit::Notice::new("The port is busy.")
@@ -2520,4 +2522,166 @@ fn a_line_chart_glides_to_a_new_range_and_jumps_under_reduced_motion() {
         assert_eq!(top(&mut r), 100.0, "there in the end (reduced {reduced})");
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }
+}
+
+/// Kit's shimmer, as a host registers it for `settings.shimmer`.
+const SHIMMER: &str = include_str!("../../../addons/kit/shaders/shimmer.wgsl");
+
+fn reduce_motion(core: &mut Core) {
+    let mut system = core.env.system;
+    system.motion = kui_core::MotionPref::Reduced;
+    core.set_system(system);
+}
+
+#[test]
+fn a_skeleton_sweeps_a_band_across_its_bars_and_holds_still_under_reduced_motion() {
+    for reduced in [false, true] {
+        let mut r = LuaRig::new(
+            r#"
+            function view(env)
+              return column { width = 400, pad = 10, gap = 10,
+                component("kit/skeleton", { lines = 3, label = "Loading the list" }),
+                component("kit/skeleton", { shape = "circle", width = 40 }),
+                component("kit/skeleton", { shape = "block", height = 60 }) }
+            end
+            "#,
+        );
+        if reduced {
+            reduce_motion(&mut r.core);
+        }
+        r.core.set_time(1.0);
+        r.frames(3);
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+        r.named("Loading the list");
+        // Three text bars, the last 60% of the others; a band each while
+        // it sweeps (as tall as its bar), none while still.
+        let tens: Vec<kui_core::Rect> = r.core.nodes().into_iter().filter(|n| n.rect.h == 10.0).map(|n| n.rect).collect();
+        let bars: Vec<&kui_core::Rect> = tens.iter().filter(|b| b.w > 200.0).collect();
+        assert_eq!(bars.len(), 3, "{tens:?}");
+        assert!((bars[2].w - bars[0].w * 0.6).abs() < 1.0, "the last line is shorter: {bars:?}");
+        let circle = r.core.nodes().into_iter().find(|n| n.rect.w == 40.0 && n.rect.h == 40.0);
+        assert!(circle.is_some(), "a circle 40 across");
+        if reduced {
+            assert_eq!(tens.len(), 3, "no band under reduced motion: {tens:?}");
+            assert!(!r.core.animating(), "nothing moves");
+        } else {
+            assert_eq!(tens.len(), 6, "a band over each line: {tens:?}");
+            assert!(r.core.animating(), "the bands sweep");
+        }
+    }
+}
+
+#[test]
+fn a_skeleton_draws_with_the_hosts_shimmer_fragment() {
+    for reduced in [false, true] {
+        let mut r = rig();
+        let id = r.core.add_fragment(SHIMMER).expect("Kit's shimmer compiles");
+        if reduced {
+            reduce_motion(&mut r.core);
+        }
+        r.core.set_time(1.0);
+        for _ in 0..3 {
+            r.frame(|ui| {
+                kit::Settings::new().shimmer(id.to_ffi() as i64).place(ui);
+                kit::Skeleton::new().lines(2).place(ui);
+            });
+        }
+        let w = r.core.take_warnings();
+        assert!(w.is_empty(), "{w:#?}");
+        let frags: Vec<_> = r.core.nodes().into_iter().filter(|n| n.kind == kui_core::NodeKind::Fragment).collect();
+        assert_eq!(frags.len(), 2, "a fragment a line");
+        assert_eq!(r.core.animating(), !reduced, "it sweeps unless motion is reduced");
+    }
+}
+
+#[test]
+fn a_shader_box_draws_the_hosts_fragment_and_is_a_well_without_one() {
+    for reduced in [false, true] {
+        let mut r = rig();
+        let id = r.core.add_fragment(SHIMMER).unwrap();
+        if reduced {
+            reduce_motion(&mut r.core);
+        }
+        for _ in 0..2 {
+            r.frame(|ui| {
+                kit::Settings::new().skin(kit::Skin::Neutral).place(ui);
+                kit::Shader::new()
+                    .id(id.to_ffi() as i64)
+                    .params(vec![0.1, 0.1, 0.1, 1.0, 0.9, 0.9, 0.9, 1.0, 1.5, 1.0])
+                    .animate(true)
+                    .height(50.0)
+                    .label("A sweep")
+                    .place(ui);
+            });
+        }
+        assert!(r.core.take_warnings().is_empty());
+        let frag = r.core.nodes().into_iter().find(|n| n.kind == kui_core::NodeKind::Fragment).expect("the fragment");
+        assert_eq!(frag.rect.h, 50.0);
+        r.centre("A sweep");
+        assert_eq!(r.core.animating(), !reduced, "animate holds still under reduced motion");
+    }
+    let mut r = rig();
+    r.frame(|ui| {
+        kit::Shader::new().height(30.0).place(ui);
+    });
+    assert!(r.core.nodes().iter().all(|n| n.kind != kui_core::NodeKind::Fragment), "no handle, no fragment");
+    assert!(r.core.nodes().iter().any(|n| n.rect.h == 30.0), "the well keeps its place");
+}
+
+#[test]
+fn a_code_blocks_copy_puts_its_text_on_the_clipboard_and_says_so() {
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = 500, pad = 10,
+            component("kit/code", { text = "local a = 1\nlocal b = 2\nreturn a + b", copy = true,
+              line_numbers = true, label = "sum.lua", max_lines = 10 }) }
+        end
+        "#,
+    );
+    r.core.set_time(1.0);
+    r.frames(2);
+    assert!(r.text("1\n2\n3").is_some(), "the lines' numbers in their gutter");
+    r.named("sum.lua");
+    let b = r.named("Copy the code");
+    r.click(b.x + b.w / 2.0, b.y + b.h / 2.0);
+    r.frames(2);
+    let copied: Vec<_> = r
+        .core
+        .take_menu_actions()
+        .into_iter()
+        .filter_map(|a| match a {
+            kui_core::MenuAction::SetClipboard { text, .. } => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(copied, vec!["local a = 1\nlocal b = 2\nreturn a + b".to_string()]);
+    r.named("Copied");
+    r.core.set_time(3.0);
+    r.frames(2);
+    r.named("Copy the code");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn an_accent_brings_what_the_skin_paints_in_its_accent_and_an_appearance_holds() {
+    // Ledger paints its selection in its accent: a brand's blue accent left
+    // it yellow, with black on the blue primary.
+    let mut r = rig();
+    let mut seen = Vec::new();
+    for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
+        r.frame(|ui| {
+            let roles = Value::map([("accent", Value::Int(0x1d4ed8ff))]);
+            kit::Settings::new().appearance(appearance).roles(roles).place(ui);
+            let t = |ui: &mut Ui<'_>, n: &str| ui.token_color(n).expect(n);
+            seen.push((t(ui, "kitAccent"), t(ui, "kitSel"), t(ui, "kitOnAccent"), t(ui, "kitSelFg"), t(ui, "kitBg"), t(ui, "kitFg")));
+        });
+    }
+    let (accent, sel, on, sel_fg, bg, _) = seen[0];
+    assert_eq!(sel, accent, "the selection follows the accent");
+    assert_eq!(on, bg, "light on the dark blue: the page's colour, not the ink");
+    assert_eq!(sel_fg, on, "and on the selection");
+    let (_, _, _, _, dark_bg, dark_fg) = seen[1];
+    assert_ne!(dark_bg, bg, "dark held: the dark half's page");
+    assert_ne!(dark_fg, seen[0].5, "and its text");
 }

@@ -5,6 +5,8 @@
 
 local ctx = require("ctx")
 local icons = require("icons")
+local inputs = require("inputs")
+local skin = require("skin")
 
 local type Ctx = ctx.Ctx
 local type P = {string:any}
@@ -728,25 +730,183 @@ end
 
 local LINE = 16
 
+-- A code block's Copy: asked by a press, done in the next view (the
+-- clipboard is the env's), and said for a moment after.
+local record Copied
+  ask: boolean
+  at: number
+end
+
+-- How long a code block's button says Copied, in s.
+local COPIED_S = 1.5
+
 function M.code(c: Ctx, p: P): kui.Node
+  local text = str(p.text) or ""
   local wrap = p.wrap == true
   local lines = p.max_lines as integer
-  local body = ctx.data(c, str(p.text) or "", { wrap = wrap and "glyph" or "none", line_height = LINE })
+  local body = ctx.data(c, text, { wrap = wrap and "glyph" or "none", line_height = LINE })
   -- The padding on an outer frame and the scroll on an inner box of whole
   -- lines, so a scrolled code block shows no half line at either end.
-  local inner: kui.Props = { key = "lines", width = "grow", selectable = true, body }
+  local inner: kui.Props = { key = "lines", width = "grow", selectable = true }
+  if p.line_numbers == true and not wrap then
+    -- The numbers in a gutter of their own, outside the selection and the
+    -- sideways scroll, in one text so they keep the code's line height.
+    local n = 1
+    for _ in text:gmatch("\n") do n = n + 1 end
+    local nums: {string} = {}
+    for i = 1, n do nums[i] = tostring(i) end
+    inner.selectable = nil
+    inner[1] = row { width = "grow", gap = 12,
+      column { cross_align = "end",
+        ctx.data(c, table.concat(nums, "\n"), { line_height = LINE, color = ref(c, "faint") }) },
+      column { key = "text", width = "grow", min_width = 0, selectable = true, scroll_x = true, body } }
+  else
+    inner[1] = body
+    inner.scroll_x = not wrap
+  end
   if lines then
     inner.max_height = lines * LINE
     inner.scroll_y = true
   end
-  inner.scroll_x = not wrap
-  return column {
+  local frame: kui.Props = {
     width = "grow",
+    role = str(p.label) and "group" or nil,
+    label = str(p.label),
     bg = ref(c, "sunken"),
     radius = "$kitRadius",
     pad = 8,
-    column(inner),
+    gap = 6,
   }
+  if p.copy == true or str(p.label) then
+    local head: kui.Props = { width = "grow", cross_align = "center", gap = 8 }
+    if str(p.label) then head[#head + 1] = ctx.muted(c, p.label as string, { max_lines = 1, ellipsis = true }) end
+    head[#head + 1] = ctx.grow()
+    if p.copy == true then
+      local env = c.env
+      local st = ctx.state(c, function(): Copied return {} end)
+      if st.ask then
+        st.ask = false
+        env.set_clipboard(text)
+        st.at = env.now or 0
+      end
+      local said = st.at ~= nil and (env.now or 0) < st.at + COPIED_S
+      if said then env.request_frame_at(st.at + COPIED_S) end
+      head[#head + 1] = inputs.button(c, {
+        key = "copy",
+        label = said and "Copied" or "Copy",
+        name = said and "Copied" or "Copy the code",
+        icon = said and "check" or "copy",
+        variant = said and "success" or "ghost",
+      }, act(c, "code.copy"))
+    end
+    frame[#frame + 1] = row(head)
+  end
+  frame[#frame + 1] = column(inner)
+  return column(frame)
+end
+
+-- A box a fragment shader paints (ADR 0015). The host registers the WGSL
+-- (a script owns no fragment handle) and passes the handle; Kit rounds
+-- the box by the skin and holds a shader that reads `time` still under
+-- reduced motion. With no handle it is the skin's well, so a host that
+-- cannot register one still lays out.
+function M.shader(c: Ctx, p: P): kui.Node
+  local label = str(p.label)
+  local t: kui.fragment = {
+    key = "shader",
+    role = label and "image" or nil,
+    label = label,
+    height = p.grow == true and "grow" or (p.height or 80) as number,
+    radius = "$kitRadius",
+  }
+  ctx.up_to(t, p.width)
+  local id = p.id
+  if id is number then
+    t.id = math.tointeger(id)
+    t.params = p.params
+    local img = p.image
+    t.image = img is number and math.tointeger(img) or nil
+    t.animate = p.animate == true and not ctx.reduced(c) or nil
+    return fragment(t)
+  end
+  t.bg = ref(c, "sunken")
+  return column(t)
+end
+
+-- A skeleton's sweep, in ms: one period for every bar, so the bars of a
+-- skeleton (and the skeletons placed together) shimmer in step.
+local SWEEP_MS = 1500
+
+-- 0xRRGGBBAA as four numbers 0 to 1, onto `out`.
+local function rgba(out: {number}, color: integer)
+  out[#out + 1] = ((color >> 24) & 255) / 255
+  out[#out + 1] = ((color >> 16) & 255) / 255
+  out[#out + 1] = ((color >> 8) & 255) / 255
+  out[#out + 1] = (color & 255) / 255
+end
+
+-- One bar of a skeleton, `travel` px wide as laid out: the well, and a
+-- band of light crossing it — a gradient sliding by keyframes, or the
+-- host's shimmer fragment where it registered one. Still, no band.
+local function bone(c: Ctx, key: string, w: kui.Sizing, h: number, radius: kui.Length, travel: number, still: boolean): kui.Node
+
+  local shimmer = c.s.shimmer
+  if shimmer then
+    local half = c.s.appearance
+    if not half then
+      local th = c.env.theme as {string:any}
+      half = th and th.appearance == "light" and "light" or "dark"
+    end
+    local params: {number} = {}
+    rgba(params, skin.color(c.s, "kitSunken", half))
+    rgba(params, skin.color(c.s, "kitShimmer", half))
+    params[9], params[10] = SWEEP_MS / 1000, still and 0 or 1
+    return fragment { key = key, id = shimmer, width = w, height = h, radius = radius,
+      params = params, animate = not still or nil }
+  end
+  local t: kui.Props = { key = key, width = w, height = h, radius = radius, bg = ref(c, "sunken"), clip = true }
+  if not still and travel > 0 then
+    local band = math.max(40, math.min(200, travel * 0.4))
+    t[1] = column { width = band, height = h, float = { anchor = "parent" },
+      gradient = { to = "right", stops = { "$kitShimmerClear", "$kitShimmer", "$kitShimmerClear" } },
+      keyframes = { { dx = -band }, { dx = travel } }, transition = SWEEP_MS, easing = "linear" }
+  end
+  return column(t)
+end
+
+-- A placeholder for what is still loading: lines a text high (the last of
+-- several shorter), a block, or a circle, in the skin's well and rounded
+-- as its controls are, with a shimmer crossing them that holds still
+-- under reduced motion. Read as one image named by `label`.
+function M.skeleton(c: Ctx, p: P): kui.Node
+  local shape = str(p.shape) or "text"
+  local still = ctx.reduced(c)
+  local t: kui.Props = { key = "skeleton", role = "image", label = str(p.label) or "Loading" }
+  if shape == "circle" then
+    local d = (p.width or 32) as number
+    t.width, t.height = d, d
+    t[1] = bone(c, "b1", d, d, d / 2, d, still)
+    return column(t)
+  end
+  -- The bars' laid-out width is the band's travel (kept for `layout_of`
+  -- by `on_layout`, and a new width redraws).
+  t.on_layout = not still and not c.s.shimmer and act(c, "skeleton.layout") or nil
+  ctx.up_to(t, p.width)
+  local r = c.env.layout_of("skeleton")
+  local w = r and r.w or 0
+  if shape == "block" then
+    local h = (p.height or 80) as number
+    t[1] = bone(c, "b1", "grow", h, "$kitRadius", w, still)
+    return column(t)
+  end
+  local n = math.max(1, math.floor((p.lines or 1) as number))
+  t.gap = 6
+  for i = 1, n do
+    local last = n > 1 and i == n
+    local width: kui.Sizing = last and { pct = 60 } or "grow"
+    t[i] = bone(c, "b" .. i, width, 10, "$kitRadius", last and w * 0.6 or w, still)
+  end
+  return column(t)
 end
 
 local NOTICE_ROLE: {string:string} = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", info = "focus", neutral = "muted" }
@@ -866,6 +1026,9 @@ function M.event(m: P, kit: string): any
   elseif kit == "log.end" then
     local st = ctx.peek(m.inst as integer) as Follow
     if st then st.follow, st.last_y = true, nil end
+  elseif kit == "code.copy" then
+    local st = ctx.peek(m.inst as integer) as Copied
+    if st then st.ask = true end
   elseif kit == "table.sort" then
     return emit("on_sort", { field = m.field })
   elseif kit == "table.range" then
