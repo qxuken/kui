@@ -306,12 +306,30 @@ fn new_starts_an_app_that_runs() {
     assert!(!s.contains("warning"), "{s}");
 }
 
-/// The Kit app (addons/kit/app), copied with an entry that walks it.
+/// The Lua files under `dir`, as paths relative to it.
+fn lua_files(dir: &Path, rel: &Path, out: &mut Vec<PathBuf>) {
+    for e in std::fs::read_dir(dir.join(rel)).unwrap() {
+        let e = e.unwrap();
+        let r = rel.join(e.file_name());
+        if e.file_type().unwrap().is_dir() {
+            lua_files(dir, &r, out);
+        } else if r.extension().is_some_and(|x| x == "lua") {
+            out.push(r);
+        }
+    }
+}
+
+/// The Kit app (addons/kit/app), every Lua file of it copied but its
+/// manifest (whose entry would win over the walker), with an entry that
+/// walks it.
 fn kit_app(name: &str, entry: &str) -> PathBuf {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit/app");
+    let mut rels = Vec::new();
+    lua_files(&src, Path::new(""), &mut rels);
+    rels.retain(|r| r != Path::new("kui.config.lua"));
     let mut files: Vec<(String, String)> = Vec::new();
-    for rel in ["main.lua", "pages.lua", "jobs/generate.lua"] {
-        files.push((rel.to_string(), std::fs::read_to_string(src.join(rel)).unwrap()));
+    for rel in rels {
+        files.push((rel.to_string_lossy().replace('\\', "/"), std::fs::read_to_string(src.join(&rel)).unwrap()));
     }
     files.push(("walk.lua".into(), entry.into()));
     let refs: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
@@ -320,16 +338,30 @@ fn kit_app(name: &str, entry: &str) -> PathBuf {
 
 #[test]
 fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
+    // Every card's Source open (each reads its file from the app's folder)
+    // and the Theme panel open, every page, then every skin, both held
+    // appearances, compact, no shadows, an accent, a radius and a colour.
     let dir = kit_app(
         "kit-app",
-        r#"
+        r##"
         require("main")
         model = init()
-        local steps = {}
+        local pages = require("pages")
+        local steps = { { kind = "theme_open" }, { kind = "theme_colors", toggle = { collapsed = false } } }
+        for name in pairs(pages.DEMOS) do steps[#steps + 1] = { kind = "source", name = name } end
         for _, p in ipairs(PAGES) do steps[#steps + 1] = { kind = "page", change = { value = p.value } } end
-        for _, s in ipairs({ "phosphor", "neutral", "ledger" }) do steps[#steps + 1] = { kind = "skin", change = { value = s } } end
-        steps[#steps + 1] = { kind = "density", toggle = { on = true } }
-        steps[#steps + 1] = { kind = "shadows", toggle = { on = false } }
+        for _, s in ipairs({ "phosphor", "neutral", "ledger" }) do
+          steps[#steps + 1] = { kind = "theme", field = "skin", change = { value = s } }
+        end
+        for _, a in ipairs({ "light", "dark" }) do
+          steps[#steps + 1] = { kind = "theme", field = "appearance", change = { value = a } }
+        end
+        steps[#steps + 1] = { kind = "theme", field = "density", change = { value = "compact" } }
+        steps[#steps + 1] = { kind = "theme", field = "shadows", toggle = { on = false } }
+        steps[#steps + 1] = { kind = "theme_accent", color = 0x16a34aff }
+        steps[#steps + 1] = { kind = "theme_number", field = "radius", change = { value = 6 } }
+        steps[#steps + 1] = { kind = "theme_color", role = "panel", half = "dark", change = { text = "#202830" } }
+        steps[#steps + 1] = { kind = "theme", field = "font_ui", change = { value = "serif" } }
         steps[#steps + 1] = { kind = "toast_all" }
         steps[#steps + 1] = { kind = "menu", open = true }
         steps[#steps + 1] = { kind = "dialog", open = true }
@@ -338,16 +370,23 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
           i = i + 1
           if steps[i] then kui.dispatch(steps[i]) else
             print("rows", model.rows and #model.rows or 0, "spans", model.spans and #model.spans or 0)
+            print("profile", model.profile)
+            print(require("theme").lua(model.theme))
             kui.exit(0)
           end
         end)
-        "#,
+        "##,
     );
-    let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 90);
     let s = out(&o);
     assert!(o.status.success(), "{s}");
     assert!(!s.contains("warning"), "{s}");
+    assert!(!s.contains("could not be read"), "every card's source was read:\n{s}");
     assert!(s.contains("rows\t100000\tspans\t18000"), "the worker's channels arrived:\n{s}");
+    assert!(s.contains("profile\tloaded"), "the loading card loaded:\n{s}");
+    for line in ["appearance = \"dark\"", "radius = 6,", "accent = 0x16a34aff,", "panel = { dark = 0x202830ff },", "font_ui = { \"serif\" },"] {
+        assert!(s.contains(line), "the theme as Lua has {line}:\n{s}");
+    }
 }
 
 /// The Kit app is Kit's gallery: every component its schema describes is
@@ -357,7 +396,9 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
 fn the_kit_app_places_every_component() {
     let kit = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit");
     let schema = std::fs::read_to_string(kit.join("schema.lua")).unwrap();
-    let app = ["main.lua", "pages.lua"]
+    let mut rels = Vec::new();
+    lua_files(&kit.join("app"), Path::new(""), &mut rels);
+    let app = rels
         .iter()
         .map(|f| std::fs::read_to_string(kit.join("app").join(f)).unwrap())
         .collect::<String>();
