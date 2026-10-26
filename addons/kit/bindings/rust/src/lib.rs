@@ -6118,7 +6118,8 @@ pub struct LineChart {
     /// readout a sample, Page Up and Down ten, Home and End to the ends, and a
     /// screen reader hears the readout as its value and as a live region. No
     /// key sink: every other key, Tab and the app's chords, goes on as from any
-    /// control.
+    /// control. Left out, the chart is no Tab stop; the pointer's readout works
+    /// either way.
     pub focusable: Option<bool>,
     /// The message `hover` arrives as, with `hover: LineChartHover` in it. The
     /// pointer moved over a row.
@@ -6204,7 +6205,8 @@ impl LineChart {
     /// readout a sample, Page Up and Down ten, Home and End to the ends, and a
     /// screen reader hears the readout as its value and as a live region. No
     /// key sink: every other key, Tab and the app's chords, goes on as from any
-    /// control.
+    /// control. Left out, the chart is no Tab stop; the pointer's readout works
+    /// either way.
     pub fn focusable(mut self, v: bool) -> Self {
         self.focusable = Some(v);
         self

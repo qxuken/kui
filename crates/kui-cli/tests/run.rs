@@ -858,6 +858,59 @@ fn the_kit_app_pages_with_alt_up_and_down_but_not_in_an_editor() {
     assert_eq!(editing.1, "inputs", "a text field keeps ⌥↓:\n{s}");
 }
 
+/// Tab, pressed as a key, walks the Charts page's whole ring twice: as it
+/// is, and with every chart drawn as an empty box. The stops the charts
+/// add are the live line chart, which says `focusable = true` (its card
+/// shows the arrows stepping the readout), and the bar chart whose bars
+/// the app picks from (`on_select`): the sparkline, the histogram, the
+/// lying bars — every chart that did not ask — are passed over.
+#[test]
+fn the_kit_app_tabs_past_every_chart_that_did_not_ask_to_be_a_stop() {
+    let dir = kit_app(
+        "kit-app-charts-tab",
+        &format!(
+            "{KIT_WALK_HEAD}{}",
+            r##"
+        no_charts = false
+        for _, name in ipairs({ "line_chart", "sparkline", "histogram", "bar_chart" }) do
+          local chart = kit[name]
+          kit[name] = function(p) if no_charts then return row { width = 10, height = 10 } end return chart(p) end
+        end
+        local steps = { function() kui.dispatch({ kind = "page", change = { value = "charts" } }) end, function() end }
+        for pass = 1, 2 do
+          for i = 1, 40 do
+            steps[#steps + 1] = function() kui.input.key("tab") end
+            steps[#steps + 1] = function() probe("p" .. pass) end
+          end
+          steps[#steps + 1] = function() no_charts = true; kui.dispatch({ kind = "audit_scroll" }) end
+          steps[#steps + 1] = function() end
+        end
+        run(steps)
+        "##
+        ),
+    );
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 120);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(!s.contains("warning"), "{s}");
+    let lines = focus_lines(&s);
+    let stops = |pass: &str| {
+        let mut v: Vec<String> = lines.iter().filter(|l| l.0 == pass).map(|l| l.2.clone()).collect();
+        assert!(v.len() == 40 && lines.iter().filter(|l| l.0 == pass).all(|l| l.1 == "charts"), "{pass}:\n{s}");
+        v.sort();
+        v.dedup();
+        v
+    };
+    let (with, without) = (stops("p1"), stops("p2"));
+    let charts: Vec<&String> = with.iter().filter(|k| !without.contains(k)).collect();
+    assert_eq!(
+        charts,
+        ["b1", "plot"],
+        "the charts' stops: the bars to pick and the live line chart that asked, no other:\n{s}"
+    );
+    assert!(without.iter().all(|k| with.contains(k)), "the rest of the ring is the same:\n{s}");
+}
+
 
 /// The Kit app describes its own design system (addons/kit/app/design):
 /// the Foundations page draws the brand book, the Colours page every colour

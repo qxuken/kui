@@ -5152,3 +5152,74 @@ fn a_live_line_charts_area_covers_what_its_line_covers_at_both_edges() {
         assert!(r.core.take_warnings().is_empty());
     }
 }
+
+#[test]
+fn a_chart_is_a_tab_stop_only_when_the_app_asks() {
+    // A line chart is a Tab stop, a slider over its samples, only with
+    // `focusable = true`; a bar chart's bars only with `on_select`, bars to
+    // pick. Every chart as Watchtower and the gallery place them — a live
+    // line with its area and a window, a sparkline, a histogram, bars
+    // standing and lying — is passed over, and the pointer's readout still
+    // works on a line chart that is no stop.
+    let mut r = LuaRig::new(
+        r#"
+        local t, a, n, names = {}, {}, {}, {}
+        for i = 0, 29 do t[#t + 1] = i; a[#a + 1] = (i * 7) % 31; n[#n + 1] = i % 5 + 1; names[#names + 1] = "s" .. i end
+        local ch = channel({ t = t, a = a, n = n, name = names })
+        function view(env)
+          return column { width = 900, height = "grow", pad = 20, gap = 8, scroll_y = true,
+            component("kit/button", { label = "Before" }),
+            row { key = "quiet", label = "quiet", width = "grow",
+              component("kit/line_chart", { data = ch, x = "t", window = 20, area = true, height = 120,
+                series = { { field = "a", name = "A" } } }) },
+            component("kit/sparkline", { data = ch, field = "a", width = 160, height = 24 }),
+            component("kit/histogram", { data = ch, field = "a", bins = 10, height = 80 }),
+            component("kit/bar_chart", { data = ch, label = "name", value = "n", height = 80 }),
+            component("kit/bar_chart", { data = ch, label = "name", value = "n", horizontal = true, label_width = 40 }),
+            component("kit/line_chart", { data = ch, x = "t", height = 120, focusable = true,
+              series = { { field = "a", name = "Z" } } }),
+            component("kit/bar_chart", { data = ch, label = "name", value = "n", height = 80, on_select = { kind = "pick" } }),
+            component("kit/button", { label = "After" }) }
+        end
+        "#,
+    );
+    r.frames(3);
+    // The readout under the pointer, on the line chart that is no stop.
+    let quiet = r.node(|n| n.label.as_deref() == Some("quiet")).unwrap().rect;
+    use kui_core::{InputEvent, Vec2};
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(quiet.x + quiet.w / 2.0, quiet.y + 50.0)));
+    r.route(e);
+    r.frames(3);
+    // (An image to a screen reader, its readout box is drawn, not read.)
+    let said = r.node(|n| n.label.as_deref() == Some("readout")).map(|n| n.rect);
+    assert!(
+        said.is_some_and(|b| b.y >= quiet.y && b.y + b.h <= quiet.y + quiet.h),
+        "the pointer's readout, on the chart that is no stop: {said:?} in {quiet:?}"
+    );
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(5.0, 5.0)));
+    r.route(e);
+    r.frames(2);
+    let focused = |r: &mut LuaRig| {
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .map(|n| (n.name.clone().unwrap_or_default(), n.role))
+    };
+    let mut seen = Vec::new();
+    for _ in 0..6 {
+        let e = kui_core::testing::tab(&mut r.core, false);
+        r.route(e);
+        r.frames(1);
+        seen.push(focused(&mut r).expect("a stop"));
+    }
+    let names: Vec<&str> = seen.iter().map(|s| s.0.as_str()).collect();
+    assert_eq!(names[0], "Before", "{seen:?}");
+    assert_eq!(names[1], "line chart", "the line chart that asked: {seen:?}");
+    assert_eq!(seen[1].1, kui_core::Role::Slider, "{seen:?}");
+    assert!(names[2].starts_with("s0"), "the bars to pick, on their first: {seen:?}");
+    assert_eq!(names[3], "After", "every other chart passed over: {seen:?}");
+    assert_eq!(&names[4..], &names[..2], "and round again: {seen:?}");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}

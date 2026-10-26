@@ -1143,7 +1143,8 @@ local record kit
     -- readout a sample, Page Up and Down ten, Home and End to the ends, and a
     -- screen reader hears the readout as its value and as a live region. No
     -- key sink: every other key, Tab and the app's chords, goes on as from
-    -- any control.
+    -- any control. Left out, the chart is no Tab stop; the pointer's readout
+    -- works either way.
     focusable: boolean
     -- The message `hover` arrives as. The pointer moved over a row.
     on_hover: any

@@ -21,7 +21,7 @@ Use a line chart for one or more measures over time or an index: CPU and memory 
 | `x_unit` | `xUnit` | string? | After each x tick's number: `min`, `s`. |
 | `y_unit` | `yUnit` | string? | After each y tick's number: `ms`, `%`. |
 | `readout` | `readout` | boolean? | Under the pointer, a crosshair on the nearest sample, a dot on each series there and a readout of the x and every series' value in its colour, following the pointer and gone when it leaves; on when left out. An idle chart pays one hover layer for it. |
-| `focusable` | `focusable` | boolean? | A Tab stop: Left and Right move the readout a sample, Home and End to the ends, and the readout is a live region a screen reader announces. |
+| `focusable` | `focusable` | boolean? | A Tab stop: Left and Right move the readout a sample, Home and End to the ends, and the readout is a live region a screen reader announces. Left out, the chart is no Tab stop; the pointer's readout works either way. |
 
 | event | Node | carries | when |
 |---|---|---|---|
@@ -34,7 +34,7 @@ Every component also takes `key` and `fresh`.
 - Pass `window` for a live chart: only the last `window` of x shows, and the range glides rather than jumps.
 - Give `x_unit` and `y_unit` (s, %, ms); use `x_format = "ago"` for time counted back to now (15 min ago … now) or `"clock"` for Unix seconds.
 - Name each series for the legend and the readout.
-- Set `focusable` so the readout can be walked with Left and Right and is announced.
+- Set `focusable` where the samples are worth walking from the keyboard — the one chart a page is about — so the readout can be walked with Left and Right and is announced. Left out, the chart is no Tab stop, and a page of charts does not put one in every Tab.
 
 ## Don't
 

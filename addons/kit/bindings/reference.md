@@ -712,7 +712,7 @@ Lua `kit.line_chart(props)` · Node `<LineChart />`
 | `x_unit` | `xUnit` | string? | After each x tick's number: `min`, `s`. |
 | `y_unit` | `yUnit` | string? | After each y tick's number: `ms`, `%`. |
 | `readout` | `readout` | boolean? | Under the pointer, a crosshair at the pointer's x, a dot on each series there and a readout of the x and every series' value in its colour for the sample under it — a still pointer keeps its crosshair still while a live window slides samples under it — gone when the pointer leaves; on when left out. An idle chart pays one hover layer for it. |
-| `focusable` | `focusable` | boolean? | A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control. |
+| `focusable` | `focusable` | boolean? | A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control. Left out, the chart is no Tab stop; the pointer's readout works either way. |
 
 | event | Node | carries | description |
 |---|---|---|---|

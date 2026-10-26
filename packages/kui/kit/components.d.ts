@@ -1225,7 +1225,7 @@ export interface LineChartProps {
   yUnit?: string;
   /** Under the pointer, a crosshair at the pointer's x, a dot on each series there and a readout of the x and every series' value in its colour for the sample under it — a still pointer keeps its crosshair still while a live window slides samples under it — gone when the pointer leaves; on when left out. An idle chart pays one hover layer for it. */
   readout?: boolean;
-  /** A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control. */
+  /** A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control. Left out, the chart is no Tab stop; the pointer's readout works either way. */
   focusable?: boolean;
   /** The message hover arrives as: yours, with `hover: LineChartHover` in it. The pointer moved over a row. */
   onHover?: unknown;

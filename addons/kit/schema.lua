@@ -564,7 +564,7 @@ return {
         { "x_unit", "string?", doc = "After each x tick's number: `min`, `s`." },
         { "y_unit", "string?", doc = "After each y tick's number: `ms`, `%`." },
         { "readout", "boolean?", doc = "Under the pointer, a crosshair at the pointer's x, a dot on each series there and a readout of the x and every series' value in its colour for the sample under it — a still pointer keeps its crosshair still while a live window slides samples under it — gone when the pointer leaves; on when left out. An idle chart pays one hover layer for it." },
-        { "focusable", "boolean?", doc = "A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control." },
+        { "focusable", "boolean?", doc = "A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control. Left out, the chart is no Tab stop; the pointer's readout works either way." },
       },
       events = {
         { "hover", doc = "The pointer moved over a row.", fields = { { "row", "integer", doc = "The row under it." } } },

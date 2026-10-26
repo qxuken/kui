@@ -3682,6 +3682,7 @@ filed the same day for the round that builds them.
 - `.` **C155** — [A Kit toast's close button jumps left as it starts to leave](backlog/closed-2026-09.md#-c155--a-kit-toasts-close-button-jumps-left-as-it-starts-to-leave--done-2026-10-27) — done (2026-10-27) — the node raising a timed-out toast's dismiss took a gap in its row on the frame the exit holds; a float now
 - `.` **C156** — [A Kit field's error is cut off](backlog/closed-2026-09.md#-c156--a-kit-fields-error-is-cut-off--done-2026-10-27) — done (2026-10-27) — whole beside the text with room, under the field and wrapping without, by the field's own-size rule
 - `.` **C157** — [A Kit live line chart's area leaves the plot before its line](backlog/closed-2026-09.md#-c157--a-kit-live-line-charts-area-leaves-the-plot-before-its-line--done-2026-10-27) — done (2026-10-27) — the rows drawn started a row late on float x; they start a row left of the plot, its clip cutting line and area together
+- `.` **C158** — [A Kit chart is a Tab stop the app did not ask for](backlog/closed-2026-09.md#-c158--a-kit-chart-is-a-tab-stop-the-app-did-not-ask-for--done-2026-10-27) — done (2026-10-27) — a line chart is one only with `focusable = true` (bars with `on_select`); the gallery's live line card says so, tests pin the ring
 
 ### `.` C101 — A table or list has no keyboard range selection
 

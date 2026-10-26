@@ -3074,6 +3074,8 @@ typedef struct KitLineChart {
      * a sample, Page Up and Down ten, Home and End to the ends, and a screen
      * reader hears the readout as its value and as a live region. No key sink:
      * every other key, Tab and the app's chords, goes on as from any control.
+     * Left out, the chart is no Tab stop; the pointer's readout works either
+     * way.
      */
     bool focusable;
     bool focusable_set;

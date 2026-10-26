@@ -353,7 +353,11 @@ was the first bare bump to break an app in five releases).
   showed the newest), Page Up and Down move ten, a press on the plot puts
   the keyboard's readout under the pointer, and every other key — Tab,
   the app's chords — goes on as from any control. Its readout box is
-  beside the plot, no longer inside it.
+  beside the plot, no longer inside it. Only a chart that says
+  `focusable = true` is a Tab stop (a bar chart's bars, with `on_select`):
+  left out, Tab passes it by and the pointer's readout works the same;
+  the gallery's live line card says it, the rest of its charts do not
+  (backlog C158).
 - Kit's text roles — `fg`, `muted`, `faint` and the tones — read at
   4.5:1 on the hover and press washes too, so they move in lightness
   where they did not (backlog C131): Ledger light's `muted` and `faint`
