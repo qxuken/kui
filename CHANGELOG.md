@@ -1770,6 +1770,14 @@ for lua-language-server, and a new runner beside the window's.
   the kept tree (`tests/toast_exit.rs`); the toast now slides out past
   the window's edge opaque, covering its old place until it has gone
   past it. Ledger's hard shadow and Phosphor's glow go with it.
+- **A Kit toast that goes by itself keeps its close button in place**
+  (backlog C155). On the frame its time ran out the toast gained the node
+  whose first layout raises its dismiss, in its row's flow, where it took
+  a 10 px gap: the × moved left on the frame the exit holds, then slid
+  with the toast. The node is a float now and takes no room. Kit's test
+  and `tests/toast_exit.rs` check the × against the toast's face on every
+  frame from rest through the exit, gone by its duration and dismissed by
+  a click on it.
 - **A Kit waterfall reads on a dark skin.** Its spans were navy and
   forest blocks on near-black (1.3:1), the selected one a bright block
   that drowned them. Every group's bar now reads at 3:1 on every surface

@@ -215,7 +215,11 @@ function M.toast(c: Ctx, p: P): kui.Node
   if ms > 0 then
     local due = st.since + ms / 1000
     if now >= due then
-      expire = column { key = "expire", width = 0, height = 0, on_layout = act(c, "toast.expire") }
+      -- A float, out of the row's flow: in it the node took a gap of the
+      -- row's, and on the frame it came (the toast's last, held as it
+      -- leaves) the close button moved 10 px left, then slid.
+      expire = column { key = "expire", float = { anchor = "parent" }, width = 0, height = 0,
+        on_layout = act(c, "toast.expire") }
     else
       env.request_frame_at(due)
     end

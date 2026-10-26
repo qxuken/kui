@@ -13,8 +13,17 @@
 //! a card's border lying exactly under its right edge showed through and
 //! read as that edge left behind. Opaque and sliding out, the toast keeps
 //! covering its old place until it has gone past it.
+//!
+//! A toast that goes by itself gains, on its last frame, the node whose
+//! first layout raises its dismiss (Kit's `expire`). In the row's flow it
+//! took a gap, and the close button moved 10 px left on the frame the exit
+//! holds, then slid: a float, it takes no room, and the × keeps its place
+//! on the face from rest through the exit.
 
 use kui_core::{Align, Color, Core, Enter, FloatConfig, NodeSpec, QuadKind, Size, TextStyle};
+
+/// The dismiss button's look, to find it among the quads.
+const CLOSE: u32 = 0xf1eee612;
 
 const VIEW: Size = Size {
     w: 1000.0,
@@ -25,7 +34,9 @@ const FACE: u32 = 0x22221fff;
 /// Kit's `TOAST_OUT`.
 const OUT: f32 = 520.0;
 
-fn toaster(core: &mut Core, now: f64, toasts: &[u32]) {
+/// The toasts in `toasts`; `due` is the one whose time ran out this frame,
+/// carrying the node that raises its dismiss.
+fn toaster(core: &mut Core, now: f64, toasts: &[u32], due: Option<u32>) {
     core.set_time(now);
     let mut ui = core.frame(VIEW, 1.0);
     ui.configure_root(NodeSpec::column().fill());
@@ -56,7 +67,7 @@ fn toaster(core: &mut Core, now: f64, toasts: &[u32]) {
                 .transition(180.0),
             |ui| {
                 for &id in toasts {
-                    toast(ui, id);
+                    toast(ui, id, due == Some(id));
                 }
             },
         );
@@ -64,7 +75,7 @@ fn toaster(core: &mut Core, now: f64, toasts: &[u32]) {
     ui.finish();
 }
 
-fn toast(ui: &mut kui_core::Ui<'_>, id: u32) {
+fn toast(ui: &mut kui_core::Ui<'_>, id: u32, due: bool) {
     ui.with_keyed(
         &format!("toast{id}"),
         NodeSpec::row()
@@ -112,9 +123,19 @@ fn toast(ui: &mut kui_core::Ui<'_>, id: u32) {
                 NodeSpec::row()
                     .size(20.0, 20.0)
                     .radius(2.0)
-                    .bg(Color::hex(0xf1eee612))
+                    .bg(Color::hex(CLOSE))
                     .on_click("dismiss"),
             );
+            // Kit's `expire`: out of the row's flow, so it takes no gap.
+            if due {
+                ui.leaf_keyed(
+                    "expire",
+                    NodeSpec::column()
+                        .float(FloatConfig::parent())
+                        .size(0.0, 0.0)
+                        .on_layout("expire"),
+                );
+            }
         },
     );
 }
@@ -142,7 +163,7 @@ fn every_quad_of_a_leaving_toast_moves_together() {
         core.set_opacity_groups(groups);
         // In, and settled.
         for t in [0.0, 0.3, 0.6] {
-            toaster(&mut core, t, &[1, 2, 3]);
+            toaster(&mut core, t, &[1, 2, 3], None);
         }
         // The middle toast's face, and the band it and its shadow fill.
         let (dl, _) = core.output();
@@ -162,10 +183,43 @@ fn every_quad_of_a_leaving_toast_moves_together() {
                 && before.iter().any(|q| q.0 == QuadKind::GlyphMask),
             "its shadow and its text: {before:?}"
         );
+        // The close button against the face, at rest.
+        let close_on_face = |seen: &[Seen]| {
+            let face_x = seen
+                .iter()
+                .find(|q| q.0 == QuadKind::Solid && (q.3 - face.w).abs() < 0.01)?
+                .1;
+            let close_x = seen
+                .iter()
+                .find(|q| {
+                    q.0 == QuadKind::Solid && (q.3 - 20.0).abs() < 0.01 && (q.4 - 20.0).abs() < 0.01
+                })?
+                .1;
+            Some(close_x - face_x)
+        };
+        let rest = close_on_face(&before).expect("its close button");
+        let mut closes = vec![rest];
+
+        // Its time runs out: the frame that raises its dismiss is the last
+        // one it is placed in, and the one its exit holds.
+        toaster(&mut core, 0.9, &[1, 2, 3], Some(2));
+        let (dl, _) = core.output();
+        assert!(
+            dl.quads
+                .iter()
+                .any(|q| q.rect == face && q.color == Color::hex(FACE)),
+            "the face keeps its place on its last frame"
+        );
+        assert!(
+            dl.quads.iter().any(|q| q.color == Color::hex(CLOSE)),
+            "the close button is drawn"
+        );
+        let last = band(&mut core, y0, y1);
+        closes.push(close_on_face(&last).expect("its close button"));
 
         // It leaves; frames built by the view and, where the core can,
         // built again from the kept tree.
-        toaster(&mut core, 1.0, &[1, 3]);
+        toaster(&mut core, 1.0, &[1, 3], None);
         let mut t = 1.0;
         let mut moved = Vec::new();
         // The exit runs 180 ms; then the room goes and the others move in.
@@ -173,12 +227,13 @@ fn every_quad_of_a_leaving_toast_moves_together() {
             t += 0.012;
             core.set_time(t);
             if step % 2 == 0 || !core.reframe(VIEW, 1.0) {
-                toaster(&mut core, t, &[1, 3]);
+                toaster(&mut core, t, &[1, 3], None);
             }
             let now = band(&mut core, y0, y1);
             if now.is_empty() {
                 continue;
             }
+            closes.push(close_on_face(&now).expect("its close button"));
             // Each is one the toast drew before it left, moved right by
             // the exit and by nothing else, as opaque as it was.
             let mut dxs = Vec::new();
@@ -217,6 +272,12 @@ fn every_quad_of_a_leaving_toast_moves_together() {
         assert!(
             moved.windows(2).all(|w| w[1] >= w[0] - 0.01) && moved[moved.len() - 1] > 100.0,
             "it slides out to the right: {moved:?}"
+        );
+        // The × on the face, from rest through its last frame and every
+        // frame of the exit, the first included.
+        assert!(
+            closes.iter().all(|dx| (dx - rest).abs() < 0.01),
+            "groups {groups}: the close button against the face: {closes:?}"
         );
     }
 }

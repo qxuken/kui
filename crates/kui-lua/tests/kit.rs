@@ -4842,3 +4842,96 @@ fn markdown_draws_a_document_in_the_skin() {
     let w = r.core.take_warnings();
     assert!(w.is_empty(), "{w:#?}");
 }
+
+/// Where the leaving toast's close button is drawn against its face: the
+/// × glyph's x less the face's, and the face's x, while the face is in
+/// the band `y0..y1`.
+fn close_against_face(core: &mut Core, y0: f32, y1: f32) -> Option<(f32, f32)> {
+    let (dl, _) = core.output();
+    let band: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.rect.w < 900.0 && q.rect.y >= y0 && q.rect.y + q.rect.h <= y1)
+        .collect();
+    let face = band
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid && q.rect.h > 30.0)
+        .max_by(|a, b| a.rect.w.total_cmp(&b.rect.w))?;
+    let close = band
+        .iter()
+        .filter(|q| {
+            q.kind == kui_core::QuadKind::GlyphMask
+                && (q.rect.w - 12.0).abs() < 0.5
+                && (q.rect.h - 12.0).abs() < 0.5
+        })
+        .max_by(|a, b| a.rect.x.total_cmp(&b.rect.x))?;
+    Some((close.rect.x - face.rect.x, face.rect.x))
+}
+
+#[test]
+fn a_leaving_toasts_close_button_keeps_its_place_on_its_face() {
+    // When a toast went by itself, the node that raises its dismiss came
+    // into its row on its last frame and took a gap there: the close
+    // button moved 10 px left on the toast's first exit frame, then slid
+    // (seen only in a recording). Gone by its duration, and dismissed by a
+    // click on its × (the pointer still over it, hovered and pressed), the
+    // × stays where it was on the face from rest to the end of the exit.
+    for by_click in [false, true] {
+        let mut r = LuaRig::new(
+            r#"
+            shown = { 1, 2, 3 }
+            function on_event(ev) if ev.kind == "off" then shown = { 1, 3 } end end
+            function view(env)
+              local t = {}
+              for _, id in ipairs(shown) do
+                t[#t + 1] = component("kit/toast", { key = "t" .. id, message = "Saved " .. id .. ".", tone = "ok",
+                  inline = true, duration = id == 2 and 1500 or 0, on_dismiss = { kind = "off" } })
+              end
+              return column { width = "grow", height = "grow",
+                component("kit/settings", { skin = "ledger" }),
+                #t > 0 and component("kit/toaster", {}, t) or nil }
+            end
+            "#,
+        );
+        let mut t = 1.0;
+        r.core.set_time(t);
+        r.frames(3);
+        t = 2.0;
+        r.core.set_time(t);
+        r.frames(2);
+        let mid = r
+            .core
+            .access_tree()
+            .nodes
+            .iter()
+            .filter(|n| n.name.as_deref() == Some("Dismiss"))
+            .nth(1)
+            .expect("the middle toast's close button")
+            .rect;
+        let (y0, y1) = (mid.y - 20.0, mid.y + mid.h + 20.0);
+        let (rest, at) = close_against_face(&mut r.core, y0, y1).expect("the toast at rest");
+        let mut seen = vec![rest];
+        if by_click {
+            r.slow_click(mid.x + mid.w / 2.0, mid.y + mid.h / 2.0);
+        } else {
+            t = 2.6;
+            r.core.set_time(t);
+        }
+        let mut last = at;
+        for _ in 0..16 {
+            r.frames(1);
+            if let Some((dx, x)) = close_against_face(&mut r.core, y0, y1) {
+                seen.push(dx);
+                last = x;
+            }
+            t += 0.016;
+            r.core.set_time(t);
+        }
+        assert!(last > at + 100.0, "it slid out (by click {by_click}): {at} -> {last}");
+        assert!(
+            seen.iter().all(|dx| (dx - rest).abs() < 0.01),
+            "the × against the face, from rest through the exit (by click {by_click}): {seen:?}"
+        );
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}

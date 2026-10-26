@@ -216,7 +216,11 @@ function M.toast(c, p)
    if ms > 0 then
       local due = st.since + ms / 1000
       if now >= due then
-         expire = column({ key = "expire", width = 0, height = 0, on_layout = act(c, "toast.expire") })
+
+
+
+         expire = column({ key = "expire", float = { anchor = "parent" }, width = 0, height = 0,
+on_layout = act(c, "toast.expire"), })
       else
          env.request_frame_at(due)
       end

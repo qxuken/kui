@@ -3679,6 +3679,7 @@ filed the same day for the round that builds them.
 - `.` **C152** — [Nothing checks that a node's paint stays in its box](backlog/closed-2026-09.md#-c152--nothing-checks-that-a-nodes-paint-stays-in-its-box--done-2026-10-27) — done (2026-10-27) — the paint audit (`Core::set_paint_audit`, `KUI_PAINT_AUDIT=1`, `paint-escape`); the Kit gallery walked under it at scale 1 and 1.5, failing on the old rule; `kui run --scale`
 - `.` **C153** — [Kit's live line chart draws over the bar and into its gutter](backlog/closed-2026-09.md#-c153--kits-live-line-chart-draws-over-the-bar-and-into-its-gutter--done-2026-10-27) — done (2026-10-27) — its sliding layer was an unclipped float; the plot's clip holds the lines, areas, ticks, hover layer and crosshair; the readout placed inside the plot
 - `.` **C154** — [A Kit toast seems to leave its edge behind as it goes](backlog/closed-2026-09.md#-c154--a-kit-toast-seems-to-leave-its-edge-behind-as-it-goes--done-2026-10-27) — done (2026-10-27) — every quad moved together; a card's border under its right edge showed through the fade; it slides out past the window's edge opaque
+- `.` **C155** — [A Kit toast's close button jumps left as it starts to leave](backlog/closed-2026-09.md#-c155--a-kit-toasts-close-button-jumps-left-as-it-starts-to-leave--done-2026-10-27) — done (2026-10-27) — the node raising a timed-out toast's dismiss took a gap in its row on the frame the exit holds; a float now
 
 ### `.` C101 — A table or list has no keyboard range selection
 
