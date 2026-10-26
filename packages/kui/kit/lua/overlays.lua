@@ -184,6 +184,18 @@ local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent
 local TOAST_MS = 5000
 
 
+
+
+
+
+
+
+
+
+
+
+local TOAST_OUT = 520
+
 function M.toast(c, p)
    local tone = str(p.tone) or "info"
    local message = str(p.message) or ""
@@ -227,8 +239,9 @@ escape = true, } or nil,
 
 
 
+
       enter = { opacity = 0, dy = 12 },
-      exit = { opacity = 0, dx = 32, keep_room = true },
+      exit = { dx = TOAST_OUT, keep_room = true },
       slide = inline or nil,
       transition = 180,
       when = { ctx.still() },
@@ -269,7 +282,7 @@ function M.toaster(c, _p)
 
 
 
-      exit = { opacity = 0, dx = 32 },
+      exit = { dx = TOAST_OUT },
 
       slide = true,
       transition = 180,

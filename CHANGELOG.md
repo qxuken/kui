@@ -40,6 +40,9 @@ was the first bare bump to break an app in five releases).
 - A node playing its `exit` is cut by the box it left, where it was drawn
   outside every clip: a row sliding out of a scroller goes under the
   scroller's edge (backlog C151, ADR 0074).
+- Kit's toast leaves by sliding out past the window's right edge, whole
+  and opaque, where it slid 32 px and faded (backlog C154); its toaster
+  leaves the same way.
 - Kit's line chart's readout box is placed inside the plot's width and
   height, where it could hang past the plot's right edge or foot
   (backlog C153).
@@ -1756,6 +1759,17 @@ for lua-language-server, and a new runner beside the window's.
   from under the plot's left edge. The readout box, beside the plot in
   the tree and so not cut by it, is placed inside the plot's width and
   height.
+- **A Kit toast leaves in one piece** (backlog C154). It slid 32 px and
+  faded, and what lay under it showed through at its edges as it went: in
+  the gallery a card's 2 px border lies exactly under a toast's right
+  edge (the page pads its cards 16 px in, the toaster sits 16 px in), and
+  read as the toast's own edge left behind until the toast below slid up
+  over it. The core moved every quad of it together all along — its
+  hard shadow, face, tone bar, text and the dismiss button under the
+  pointer, on the frames the view builds and on those built again from
+  the kept tree (`tests/toast_exit.rs`); the toast now slides out past
+  the window's edge opaque, covering its old place until it has gone
+  past it. Ledger's hard shadow and Phosphor's glow go with it.
 - **A Kit waterfall reads on a dark skin.** Its spans were navy and
   forest blocks on near-black (1.3:1), the selected one a bright block
   that drowned them. Every group's bar now reads at 3:1 on every surface

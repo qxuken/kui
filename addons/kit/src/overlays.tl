@@ -182,6 +182,18 @@ end
 -- How long a toast stays when the host says nothing, in ms.
 local TOAST_MS = 5000
 
+-- How far a toast slides as it leaves: past the window's right edge from
+-- the corner it sits in, whatever its width (`max_width` 480 and the
+-- toaster's 16 px inset), so it goes out of the window whole.
+--
+-- It slid 32 px and faded out, and a toast fading in place showed what
+-- lay under it, at its own edges: in the gallery a card's 2 px border is
+-- exactly under a toast's right edge (the page pads its cards 16 px in,
+-- the toaster sits 16 px in), so the border showed through as the toast
+-- went and read as the toast's own edge left behind, until the toast
+-- below slid up over it. Opaque and sliding out, it covers what is under
+-- it until it has gone past it, and leaves as one piece.
+local TOAST_OUT = 520
 
 function M.toast(c: Ctx, p: P): kui.Node
   local tone = str(p.tone) or "info"
@@ -223,11 +235,12 @@ function M.toast(c: Ctx, p: P): kui.Node
     pad = { r = 12 },
     gap = 10,
     cross_align = "center",
-    -- In from below, out to the side, fading both ways; the others in a
-    -- toaster slide into the room it leaves once it has gone — the room is
-    -- kept while it leaves (they moved in under it as it went).
+    -- In from below, fading in; out past the window's right edge, whole
+    -- (`TOAST_OUT`). The others in a toaster slide into the room it
+    -- leaves once it has gone — the room is kept while it leaves (they
+    -- moved in under it as it went).
     enter = { opacity = 0, dy = 12 },
-    exit = { opacity = 0, dx = 32, keep_room = true },
+    exit = { dx = TOAST_OUT, keep_room = true },
     slide = inline or nil,
     transition = 180,
     when = { ctx.still() },
@@ -268,7 +281,7 @@ function M.toaster(c: Ctx, _p: P): kui.Node
     -- away with the last one, and a node going with its parent skips its
     -- own exit (DX19): the last toast vanished where the others slid
     -- out. The toaster leaves as a toast does, with whatever is in it.
-    exit = { opacity = 0, dx = 32 },
+    exit = { dx = TOAST_OUT },
     -- Its own place glides as it grows and shrinks with its toasts.
     slide = true,
     transition = 180,
