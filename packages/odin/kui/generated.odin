@@ -908,6 +908,12 @@ Spec :: struct {
 	// its built rows did not answer arrives as this message with `typeahead:
 	// {text}` in it, the whole search so far.
 	on_typeahead: any,
+	// Item-key handler, on a composite container — a `list`, a `table`, a
+	// `menu`, a `radioGroup` or a `tabList` (backlog C120): a key its focused
+	// item does not claim arrives as this message with `itemkey: {code, …,
+	// item, index, column?}` in it — Delete or Backspace on a checklist's row,
+	// Enter on an item with nothing to press, a function key.
+	on_item_key: any,
 	// Message emitted when clicked (data, not a callback).
 	on_click: any,
 	// Drag handler: the drag arrives as this message with `drag: {phase, x, y,
@@ -1181,6 +1187,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.on_range = borrow(scratch, s.on_range)
 	out.active_index = borrow(scratch, s.active_index)
 	out.on_typeahead = borrow(scratch, s.on_typeahead)
+	out.on_item_key = borrow(scratch, s.on_item_key)
 	out.key_up = 1 if s.key_up else 0
 	out.modifier_keys = 1 if s.modifier_keys else 0
 	out.on_context_menu = borrow(scratch, s.on_context_menu)

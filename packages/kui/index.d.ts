@@ -614,6 +614,21 @@ export interface TypeaheadEvent {
 export interface WithTypeahead {
   typeahead: TypeaheadEvent;
 }
+/** A key a composite's focused item did not claim (backlog C120), on the
+ *  composite's `onItemKey`: Delete on a checklist's row. The press is a
+ *  `key` event's (always `down`); `item` is the focused item's key,
+ *  `index` its data `index` (else its place among the items), `column` a
+ *  table cell's column. */
+export interface ItemKeyEvent extends KeyEvent {
+  phase: 'down';
+  item: number;
+  index: number;
+  column?: number;
+}
+/** The `itemkey` field, on an `onItemKey` message. */
+export interface WithItemKey {
+  itemkey: ItemKeyEvent;
+}
 /** The `change` field of an editor's `onChange` message. */
 export interface WithEditChange {
   change: EditChangeEvent;
@@ -711,6 +726,8 @@ export type LayoutMsg<T = {}> = T & WithLayout;
 export type RangeMsg<T = {}> = T & WithRange;
 /** The app's message `T` as a composite's unanswered type-ahead arrives. */
 export type TypeaheadMsg<T = {}> = T & WithTypeahead;
+/** The app's message `T` as a key a composite's item left arrives. */
+export type ItemKeyMsg<T = {}> = T & WithItemKey;
 /** The app's message `T` as an `onQuery` node's matched entries arrive. */
 export type QueryMsg<T = {}> = T & WithQuery;
 /** The app's message `T` as an editor's `onChange` arrives. */
@@ -858,7 +875,7 @@ export type EventName =
   | 'scroll' | 'focus' | 'hover' | 'drop' | 'files' | 'open' | 'layout'
   | 'resize' | 'window' | 'system' | 'fonts' | 'modifiers' | 'change'
   | 'submit' | 'cancel' | 'boundary' | 'sound' | 'capture' | 'dismiss'
-  | 'component' | 'range' | 'query' | 'typeahead';
+  | 'component' | 'range' | 'query' | 'typeahead' | 'itemkey';
 // -- end generated --
 
 /** A position in an editor's text: one of its `runs` and a character

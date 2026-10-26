@@ -114,7 +114,7 @@ global type kui = record
   end
 
   enum EventKind
-    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "component" "range" "query" "typeahead"
+    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "component" "range" "query" "typeahead" "itemkey"
   end
 
   enum DragEventPhase
@@ -162,6 +162,10 @@ global type kui = record
 
   enum DropEventPhase
     "enter" "move" "leave" "drop"
+  end
+
+  enum ItemKeyEventPhase
+    "down"
   end
 
   enum SliderChangeEventPhase
@@ -378,6 +382,8 @@ global type kui = record
     active_index: any
     -- Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search its built rows did not answer arrives as this message with `typeahead: {text}` in it, the whole search so far. A windowed list's unbuilt rows have no names the core can see; the app searches its data and answers with `answerTypeahead(key, index)`, and the core reaches for that row as a step does.
     on_typeahead: any
+    -- Item-key handler, on a composite container — a `list`, a `table`, a `menu`, a `radioGroup` or a `tabList` (backlog C120): a key its focused item does not claim arrives as this message with `itemkey: {code, …, item, index, column?}` in it — Delete or Backspace on a checklist's row, Enter on an item with nothing to press, a function key. Not the arrows, Home / End, the pages, Space or the type-ahead letters the composite moves with, not Tab or Escape, and not a chord with Ctrl, Alt or ⌘, which still bubbles to the key sink above. `item` is the focused item's key, `index` its data `index` (else its place among the items, from 0), `column` a table cell's column; the press's fields are a `key` event's. The container stays one Tab stop and its items keep their arrows, where an `onKey` on either would take them; a control focused inside an item reports the item.
+    on_item_key: any
     -- Message emitted when clicked (data, not a callback).
     on_click: any
     -- Drag handler: the drag arrives as this message with `drag: {phase, x, y, dx, dy, parent}` in it (ADR 0047), `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role="line"` rows they carry `line`, `byte` and `clicks` — see the events table. A press on a child that does nothing with a press itself drags the nearest enclosing `onDrag` node, stopping at a clickable, a key sink, window chrome, a slider, the modal boundary and the selection scope the press is in (backlog F176).
@@ -524,7 +530,7 @@ global type kui = record
     scroll_x: boolean
     -- Clip children; scroll (implies clip) with retained offsets and live scrollbars. A `radius` on the same node rounds the clip, so a rounded card does not show square corners poking out of it; nesting two rounded clippers keeps only the corners neither of them moved, and hit-testing stays rectangular. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`. The wheel goes to the scroller under the pointer on the axes it scrolls, and the rest of the notch to the one around it: a `scrollY` list inside a `scrollX` strip moves the strip on a sideways swipe (backlog DX13). A scroll gesture — a swipe and its glide, a wheel spun without a pause — picks that scroller when it starts, skipping one already at its limit that way for the one around it (unless it says `overscroll: contain`), and keeps it until it ends, so content moving under a still pointer does not hand the rest of a swipe to what came under it (backlog F107). An offset is kept while the key is declared; an undeclared one is kept until the budget needs the room (1024 undeclared entries, longest-undeclared evicted first).
     scroll_y: boolean
-    -- Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen. A float escapes every ancestor's clip — a tooltip is not cut by the scroller it hangs from — unless it declares `clip` and is anchored to its parent (`parent`, `below`, `above`): then the parent's clip holds it as it holds a child, so a node on a `clip` canvas panned past the canvas's edge is cut there and cannot be hit past it; it still paints as a layer over its in-flow siblings. A `line`, `polygon` or `path` in its parent's box is always clipped this way. The four preset names resolve in `FloatConfig::preset`, and `anchor` takes any of them — an override left out keeps the preset's own value, so `{ anchor: "below", dx: 4 }` still hangs below with its 6px gap. A float is a layer of its own: above the in-flow tree and every float that opened before it, under every float that opened after, and hit-tested in the same order — so a tooltip that appears over an open menu is over it, and a popover over a scroller's bar takes the press there. A scroller's bars and the focus ring belong to the layer that owns them. There is no z-index; a float declared under a fresh key reopens on top (`docs/adr/0023-layers-stack-in-the-order-they-open.md`).
+    -- Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen. A float escapes every ancestor's clip — a tooltip is not cut by the scroller it hangs from — unless it declares `clip` and is anchored to its parent (`parent`, `below`, `above`): then it is cut where a child of its parent would be — by the parent's own rect only when the parent clips or scrolls, else by the nearest ancestor that does (a ring 4 px round a mark that clips nothing is whole inside a padded scroller, and cut at the scroller's edge as any child is; backlog C123) — so a node on a `clip` canvas panned past the canvas's edge is cut there and cannot be hit past it; it still paints as a layer over its in-flow siblings. A `line`, `polygon` or `path` in its parent's box is always clipped this way. The four preset names resolve in `FloatConfig::preset`, and `anchor` takes any of them — an override left out keeps the preset's own value, so `{ anchor: "below", dx: 4 }` still hangs below with its 6px gap. A float is a layer of its own: above the in-flow tree and every float that opened before it, under every float that opened after, and hit-tested in the same order — so a tooltip that appears over an open menu is over it, and a popover over a scroller's bar takes the press there. A scroller's bars and the focus ring belong to the layer that owns them. There is no z-index; a float declared under a fresh key reopens on top (`docs/adr/0023-layers-stack-in-the-order-they-open.md`).
     float: FloatWord | {any:any}
     -- Focuses this node (an `onKey` sink, an editor, any focusable node) when it starts being declared: declared every frame it takes focus once, so a later Tab press is not clobbered. Declaring it on the frame a `modal` stops being declared is how a view says where focus lands on the way out — the edge stands, and the focus the modal displaced is not handed back over it (`docs/adr/0003-modal-surfaces.md`, decision 4). To move focus at any time call the binding's focus verb (`ctx.focus`, `kui_focus`, `env.set_focus`).
     key_focus: boolean
@@ -1071,6 +1077,30 @@ global type kui = record
   -- A message that carries a `typeahead` event: its `typeahead` field alone.
   interface WithTypeahead
     typeahead: TypeaheadEvent
+  end
+
+  -- A `itemkey` event's data.
+  record ItemKeyEvent
+    phase: ItemKeyEventPhase
+    code: string
+    physical: string
+    shift: boolean
+    ctrl: boolean
+    alt: boolean
+    super: boolean
+    text: string
+    ["repeat"]: boolean
+    location: KeyEventLocation
+    caps_lock: boolean
+    num_lock: boolean
+    item: integer
+    index: integer
+    column: integer
+  end
+
+  -- A message that carries a `itemkey` event: its `itemkey` field alone.
+  interface WithItemKey
+    itemkey: ItemKeyEvent
   end
 
   -- A `files` event's data.

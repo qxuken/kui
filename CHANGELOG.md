@@ -207,10 +207,17 @@ was the first bare bump to break an app in five releases).
   `KuiSpec` gained `on_typeahead` and `active_index` after ADR 0069's
   fields (856 bytes on 64-bit), so a C host recompiles.
 - `KuiSpec` gained `essential_motion` (backlog C107), `dx` and `dy`
-  (C105) and `opens_on_press` (C108), 872 bytes on 64-bit, inside ABI 39:
-  a C host recompiles; zeroed, nothing changes. `KUI_ENTER_KEEP_ROOM`
+  (C105), `opens_on_press` (C108) and `on_item_key` (C120), 880 bytes on
+  64-bit, inside ABI 39: a C host recompiles; zeroed, nothing changes. `KUI_ENTER_KEEP_ROOM`
   (C110), `kui_set_rules_appearance` (C113) and `kui_platform` with its
   `KUI_PLATFORM_*` codes (C116) are new.
+- `EventKind` and `kui_core::Event` gained `ItemKey`, a key a composite's
+  item left (backlog C120): an exhaustive `match` adds an arm.
+- A Delete, Backspace, unclaimed Enter or function key pressed on a
+  composite's item goes to the composite's `onItemKey` where it declares
+  one, ahead of an `onKey` sink above it, which heard it before (backlog
+  C120). A sink nearer than the composite still hears it, and chords
+  still go to the sink.
 - `schema::EnvFacts` gained `platform` (backlog C116): a struct literal
   names it. In a `kui run` app and in Kit, `env.load_tokens` reads a
   relative path against the app's folder (a packed app's extracted one),
@@ -1340,6 +1347,19 @@ for lua-language-server, and a new runner beside the window's.
   `kui_native::docs::props` and `::howto`, with an index of the ADRs
   (`::adr`); and `@qxuken/kui` adds the book's text (`docs/book/`) and
   Kit's reference (`kit/reference.md`).
+- **A composite hears the keys its items leave** (backlog C120):
+  `onItemKey` on a `list`, a `table`, a `menu`, a `radioGroup` or a
+  `tabList` (Rust `NodeSpec::on_item_key`, Lua `on_item_key`, Node
+  `onItemKey`, C `KuiSpec.on_item_key`, Odin `on_item_key`) hears the
+  keys its focused item does not claim — Delete and Backspace on a
+  checklist's row, Enter on an item with nothing to press, a function
+  key — as an `itemkey` event: the press as a sink hears it, with `item`
+  the focused item's key, `index` its data `index` (else its place among
+  the items) and, in a table, `column`. The arrows, Home / End, the
+  pages, Space and type-ahead stay the composite's, Tab and Escape the
+  ring's, and a chord still goes to the sink above. The container stays
+  one Tab stop and its items keep their arrows, where an `onKey` on
+  either took them; a control inside an item reports the item.
 
 ### Changed
 

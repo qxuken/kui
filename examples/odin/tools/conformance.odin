@@ -2046,6 +2046,7 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			expanded       = .Expanded,
 			on_layout      = msg("lay"),
 			on_typeahead   = msg("ta"),
+			on_item_key    = msg("ik"),
 			active_index   = 2,
 			on_force_click = msg("force"),
 			click_sound    = f.sound,

@@ -888,6 +888,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         dx: f32 => "float",
         dy: f32 => "float",
         opens_on_press: u32 => "uint32_t",
+        on_item_key: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1640,8 +1641,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // pointers; then `on_typeahead` and `active_index` (ADR 0070), two
         // more; then `essential_motion` (backlog C107), past the end, so
         // 856 + 4 rounds up to 864; then `dx` into that padding and `dy`
-        // (backlog C105), and `opens_on_press` (backlog C108) to 872.
-        ("KuiSpec", 872, 39),
+        // (backlog C105), and `opens_on_press` (backlog C108) to 872; then
+        // `on_item_key` (backlog C120), one more pointer.
+        ("KuiSpec", 880, 39),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),

@@ -366,6 +366,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onSelectionRange" => s.on_selection_range = &layout_tag,
             "onRange" => s.on_range = &layout_tag,
             "onTypeahead" => s.on_typeahead = &layout_tag,
+            "onItemKey" => s.on_item_key = &layout_tag,
             "activeIndex" => s.active_index = &layout_tag,
             "essentialMotion" => s.essential_motion = 1,
             "dx" => s.dx = F,
@@ -581,6 +582,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_selection_range: &menu_tag,
         on_range: &menu_tag,
         on_typeahead: &menu_tag,
+        on_item_key: &menu_tag,
         active_index: &row_index,
         essential_motion: 1,
         dx: 2.0,
@@ -703,6 +705,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_selection_range("cm")
         .on_range("cm")
         .on_typeahead("cm")
+        .on_item_key("cm")
         .active_index(3)
         .essential_motion()
         .dx(2.0)

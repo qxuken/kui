@@ -1537,6 +1537,9 @@ pub enum EventKind {
     /// A type-ahead search a composite's built rows did not answer, asked
     /// of the app (ADR 0070).
     Typeahead,
+    /// A key a composite's focused item did not claim, heard by the
+    /// composite with the item named (backlog C120).
+    ItemKey,
 }
 
 impl EventKind {
@@ -1576,6 +1579,7 @@ impl EventKind {
         EventKind::Range,
         EventKind::Query,
         EventKind::Typeahead,
+        EventKind::ItemKey,
     ];
 
     /// The wire name: what `ev.event` reads in every binding, a root
@@ -1616,6 +1620,7 @@ impl EventKind {
             EventKind::Range => "range",
             EventKind::Query => "query",
             EventKind::Typeahead => "typeahead",
+            EventKind::ItemKey => "itemkey",
         }
     }
 

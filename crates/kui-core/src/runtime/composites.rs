@@ -627,6 +627,84 @@ impl Core {
     }
 
     // -- Actionable mode (ADR 0070) ------------------------------------
+    // -- Item keys (backlog C120) ---------------------------------------
+    // A composite hears the keys its focused item leaves: Delete on a
+    // checklist's row. A sink cannot do it — one on the container makes
+    // the container a Tab stop of its own, and one on an item takes the
+    // composite's arrows — so the handler is the container's, and the
+    // walk that finds it is the walk `enclosing_sink` makes, stopping at
+    // a sink that is nearer.
+
+    /// The composite whose `on_item_key` hears a key the focused node `i`
+    /// does not claim, with the item it reports: `i` itself when it is an
+    /// item, else the nearest item above it (a control inside a row). An
+    /// item whose composite declares no handler passes the walk on to the
+    /// composite around that one. None with a key sink nearer than the
+    /// composite — that sink hears the key, as it always did — or with
+    /// nothing that declared one; and a disabled or modal-shut composite
+    /// hears nothing.
+    pub(crate) fn item_key_owner(&self, i: usize) -> Option<(usize, usize)> {
+        let mut scratch = Vec::new();
+        let sink = |j: usize| self.tree.specs[j].events().on_key().is_some();
+        let mut n = i;
+        loop {
+            if n != i && (sink(n) || !self.interactive(n)) {
+                return None;
+            }
+            if let Some(c) = crate::composite::owner(&self.tree, n, &mut scratch)
+                && self.tree.specs[c].events().on_item_key().is_some()
+            {
+                // A sink between the item and its container is nearer.
+                let mut m = self.tree.parent[n];
+                while m != crate::tree::NIL && m as usize != c {
+                    if sink(m as usize) {
+                        return None;
+                    }
+                    m = self.tree.parent[m as usize];
+                }
+                let spec = &self.tree.specs[c];
+                return (!spec.disabled && self.interactive(c)).then_some((c, n));
+            }
+            n = match self.tree.parent[n] {
+                crate::tree::NIL => return None,
+                p => p as usize,
+            };
+        }
+    }
+
+    /// Where item `item` sits in the composite at `c`, for an `itemkey`:
+    /// its data index (a table's row's) when one was declared, else its
+    /// place among the composite's items — a table's among its rows — and,
+    /// in a table, its column.
+    pub(crate) fn item_place(&self, c: usize, item: usize) -> (u64, Option<u64>) {
+        use crate::access::Role;
+        let role = crate::composite::role(&self.tree, c);
+        let table = role == Some(Role::Table);
+        let unit = self.composite_unit(c, item);
+        let column = table.then(|| self.column_of(c, item) as u64);
+        if let Some(index) = crate::composite::data_index(&self.tree, unit) {
+            return (index, column);
+        }
+        let Some(item_role) = role.and_then(crate::composite::item_role) else {
+            return (0, column);
+        };
+        let mut items = Vec::new();
+        crate::composite::items(&self.tree, c, item_role, &mut items);
+        let place = if table {
+            let mut rows: Vec<usize> = Vec::new();
+            for &j in &items {
+                let r = crate::composite::row_of(&self.tree, c, j);
+                if !rows.contains(&r) {
+                    rows.push(r);
+                }
+            }
+            rows.iter().position(|&r| r == unit)
+        } else {
+            items.iter().position(|&j| j == item)
+        };
+        (place.unwrap_or(0) as u64, column)
+    }
+
     // A table's cell can hold controls — a checkbox, a button, a field.
     // The cell is the composite's roving stop; its controls are out of the
     // ring (`focusable-inside-item` does not fire for them). Enter or F2

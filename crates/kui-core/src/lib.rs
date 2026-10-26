@@ -194,9 +194,9 @@ pub use env::{
 pub use event::{
     Boundary, ButtonEvent, ButtonPhase, CapturePhase, Captured, ChangePhase, Click, ContextMenu,
     Dismiss, Drag, DragPhase, DropPhase, EditChange, Event, FileDrop, Files, Focus, FocusBy,
-    FocusPhase, ForceClick, Hover, HoverBy, HoverPhase, KeyEvent, Layout, LinePos, MenuChoice,
-    Preedit, Resize, Scroll, Select, SelectionRange, SliderChange, Sound, SoundPhase, Text,
-    TextEdge, TextInput, WindowEvent, WindowPhase,
+    FocusPhase, ForceClick, Hover, HoverBy, HoverPhase, ItemKey, KeyEvent, Layout, LinePos,
+    MenuChoice, Preedit, Resize, Scroll, Select, SelectionRange, SliderChange, Sound, SoundPhase,
+    Text, TextEdge, TextInput, WindowEvent, WindowPhase,
 };
 pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
 pub use geom::{Edges, Rect, Size, Transform, Vec2};
@@ -226,12 +226,12 @@ pub use resources::{
     FontId, FragmentId, ImageBacking, ImageFit, ImageId, ImageOpts, Resources, Sampling, SessionId,
     SoundId, SystemFont,
 };
+pub use rules::{Cond, LazySpec, Needs, Platform, Range, Rule, RulesSpec};
 pub use runtime::cause::{FrameCause, FrameHolder, FrameRequest, OwedBy};
 pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
 pub use runtime::perf::{LoopNote, SpanId};
-pub use rules::{Cond, LazySpec, Needs, Platform, Range, Rule, RulesSpec};
 pub use runtime::{Content, Core, Extension, FillAnswer, Owed, SvgOpts, SvgSource};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry, WheelFeel};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};

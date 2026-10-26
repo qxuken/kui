@@ -24,6 +24,7 @@ import type {
   WithLayout,
   WithRange,
   WithTypeahead,
+  WithItemKey,
   WithQuery,
   WithEditChange,
   WithSliderChange,
@@ -544,6 +545,8 @@ export interface GeneratedSpecProps {
   onForceClick?: HandlerMsg<WithForceClick> | null;
   /** Hover handler: the pointer entering or leaving arrives as this message with `hover: {phase: "enter" | "leave", by}` in it (ADR 0047). */
   onHover?: HandlerMsg<WithHover> | null;
+  /** Item-key handler, on a composite container — a `list`, a `table`, a `menu`, a `radioGroup` or a `tabList` (backlog C120): a key its focused item does not claim arrives as this message with `itemkey: {code, …, item, index, column?}` in it — Delete or Backspace on a checklist's row, Enter on an item with nothing to press, a function key. Not the arrows, Home / End, the pages, Space or the type-ahead letters the composite moves with, not Tab or Escape, and not a chord with Ctrl, Alt or ⌘, which still bubbles to the key sink above. `item` is the focused item's key, `index` its data `index` (else its place among the items, from 0), `column` a table cell's column; the press's fields are a `key` event's. The container stays one Tab stop and its items keep their arrows, where an `onKey` on either would take them; a control focused inside an item reports the item. */
+  onItemKey?: HandlerMsg<WithItemKey> | null;
   /** Key sink: with key focus held, presses arrive as this message with `key: {phase: "down", code, …}` in it, and a composition, a commit and a reader's selection as `preedit`, `text` and `select` the same way (ADR 0047). Releases only with `keyUp` beside it. */
   onKey?: HandlerMsg<WithKeySink> | null;
   /** Layout handler: the node's laid-out rect arrives as this message with `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on its first frame and whenever it changes (needs a stable key). */

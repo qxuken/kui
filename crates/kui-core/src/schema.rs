@@ -203,6 +203,7 @@ pub const P_ESSENTIAL_MOTION: u32 = 151;
 pub const P_DX: u32 = 152;
 pub const P_DY: u32 = 153;
 pub const P_OPENS_ON_PRESS: u32 = 154;
+pub const P_ON_ITEM_KEY: u32 = 155;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1119,6 +1120,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search its built rows did not answer arrives as this message with `typeahead: {text}` in it, the whole search so far. A windowed list's unbuilt rows have no names the core can see; the app searches its data and answers with `answerTypeahead(key, index)`, and the core reaches for that row as a step does.",
     },
     PropDef {
+        name: "onItemKey",
+        id: P_ON_ITEM_KEY,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_item_key(v)),
+        doc: "Item-key handler, on a composite container — a `list`, a `table`, a `menu`, a `radioGroup` or a `tabList` (backlog C120): a key its focused item does not claim arrives as this message with `itemkey: {code, …, item, index, column?}` in it — Delete or Backspace on a checklist's row, Enter on an item with nothing to press, a function key. Not the arrows, Home / End, the pages, Space or the type-ahead letters the composite moves with, not Tab or Escape, and not a chord with Ctrl, Alt or ⌘, which still bubbles to the key sink above. `item` is the focused item's key, `index` its data `index` (else its place among the items, from 0), `column` a table cell's column; the press's fields are a `key` event's. The container stays one Tab stop and its items keep their arrows, where an `onKey` on either would take them; a control focused inside an item reports the item.",
+    },
+    PropDef {
         name: "onClick",
         id: P_ON_CLICK,
         kind: Kind::Msg,
@@ -1939,6 +1947,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     (
         "onTypeahead",
         "`on_typeahead` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
+    (
+        "onItemKey",
+        "`on_item_key` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
     (
         "family",
@@ -2830,6 +2842,13 @@ pub const EVENTS: &[EventDef] = &[
         field: Some("typeahead"),
         payload: "`typeahead: { text }` in the `onTypeahead` message",
         doc: "Type-ahead in a `list` or `table` composite that matched none of the rows the frame built (ADR 0070): `text` is the whole search so far, lower-cased. Answer with `answerTypeahead(key, index)` — the core reaches for that row, scrolling to it if it is not built — or not at all.",
+    },
+    EventDef {
+        kind: "itemkey",
+        handler: "onItemKey",
+        field: Some("itemkey"),
+        payload: "`itemkey: { phase, code, physical, shift, ctrl, alt, super, text, repeat, location, caps_lock, num_lock, item, index, column? }` in the `onItemKey` message",
+        doc: "A key a composite's focused item did not claim (backlog C120), on the composite: a `key` event's press (`phase` is always `\"down\"`) with `item` the focused item's key, `index` its data `index` or else its place among the items, and `column` a table cell's column. Presses only, no releases, and never a modifier alone.",
     },
 ];
 

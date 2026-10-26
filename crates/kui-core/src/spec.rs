@@ -1148,6 +1148,17 @@ pub enum Handler {
     /// data and answers with the row's index (`Core::answer_typeahead`),
     /// which the core reaches for as it reaches for a step.
     Typeahead,
+    /// On a composite container (backlog C120): a key its focused item
+    /// does not claim — Delete, Backspace, Enter on an item with nothing to
+    /// press, a function key; not the arrows, Home / End, the pages, Space
+    /// or the type-ahead letters the composite moves with, not Tab or
+    /// Escape, and not a chord, which bubbles to the sink above as before —
+    /// as this message with `itemkey: {code, …, item, index, column?}` in
+    /// it: the press as a sink hears it, the focused item's key, its data
+    /// `index` (else its place among the items) and, in a table, its
+    /// column. The container stays no Tab stop and the items keep their
+    /// arrows, which a sink on either would take.
+    ItemKey,
 }
 
 /// Event payloads a node declares. Boxed on `NodeSpec` because most
@@ -1366,6 +1377,12 @@ impl EventSpec {
     #[inline]
     pub fn on_query(&self) -> Option<&Value> {
         self.get(Handler::Query)
+    }
+
+    /// The message for [`Handler::ItemKey`], if declared.
+    #[inline]
+    pub fn on_item_key(&self) -> Option<&Value> {
+        self.get(Handler::ItemKey)
     }
 
     /// The message for [`Handler::Typeahead`], if declared.
@@ -2913,6 +2930,13 @@ impl NodeSpec {
     /// `tag`.
     pub fn on_typeahead(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().set(Handler::Typeahead, tag.into());
+        self
+    }
+
+    /// Hears the keys a composite's focused item does not claim (see
+    /// [`Handler::ItemKey`]): `itemkey: {code, …, item, index}` in `tag`.
+    pub fn on_item_key(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().set(Handler::ItemKey, tag.into());
         self
     }
 

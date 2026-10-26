@@ -978,6 +978,10 @@ pub struct KuiSpec {
     /// Non-zero: the click arrives on the press, which carries on into
     /// what it opens (`opensOnPress`, backlog C108). ABI 39.
     pub opens_on_press: u32,
+    /// The message a composite container hears the keys its focused item
+    /// does not claim as (`onItemKey`, backlog C120), borrowed like
+    /// `on_layout`; NULL for none. ABI 39.
+    pub on_item_key: *const KuiValue,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

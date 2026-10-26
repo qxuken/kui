@@ -735,6 +735,13 @@ impl Core {
                 {
                     return out;
                 }
+                // A key the focused item of a composite leaves goes to the
+                // composite's `on_item_key` (backlog C120), ahead of a sink
+                // further up. Not held: the composite hears presses only,
+                // so its release has nothing to find.
+                if self.item_key(&kp, &mut out) {
+                    return out;
+                }
                 if self.route_key(&kp, KeyPhase::Down, &mut out) {
                     // Held from here until its release, focus moving, or
                     // the window losing the keyboard. A repeat of a key
@@ -1729,7 +1736,62 @@ impl Core {
     /// press channel about who owns the key. False with no sink above, so
     /// a key nothing claims does exactly what it did before.
     fn bubbles(&self, i: usize, code: KeyCode, chord: bool) -> bool {
-        (chord || !self.claims(i, code)) && self.enclosing_sink(i).is_some()
+        if !(chord || !self.claims(i, code)) {
+            return false;
+        }
+        self.enclosing_sink(i).is_some() || (!chord && self.item_key_hears(i, code))
+    }
+
+    /// Whether the composite around the focused node `i` hears `code` as
+    /// an `itemkey` (backlog C120): a key `i` does not claim, pressed
+    /// without a chord, that is not Tab (the ring's), Escape (which lets
+    /// go) or a modifier on its own. The question `bubbles` asks so the
+    /// editing and text channels leave alone a key the raw press already
+    /// handed the composite.
+    fn item_key_hears(&self, i: usize, code: KeyCode) -> bool {
+        !code.is_modifier()
+            && !matches!(code, KeyCode::Tab | KeyCode::Escape)
+            && !self.claims(i, code)
+            && self.item_key_owner(i).is_some()
+    }
+
+    /// Hands the press `kp` to the composite whose focused item leaves it
+    /// (backlog C120), as its `on_item_key` message with `itemkey: {the
+    /// press, item, index, column?}` in it; whether it did. Asked before
+    /// the sinks: the composite is nearer than any sink `item_key_owner`
+    /// let it past. A key the composite takes is the keyboard in use, so
+    /// the focus shows, as a sink's does.
+    fn item_key(&mut self, kp: &KeyPress, out: &mut Vec<UiEvent>) -> bool {
+        if self.edit.focused().is_some() || kp.mods.ctrl || kp.mods.alt || kp.mods.super_key {
+            return false;
+        }
+        let Some(i) = self.focused_control() else {
+            return false;
+        };
+        if !self.item_key_hears(i, kp.code) {
+            return false;
+        }
+        let Some((c, item)) = self.item_key_owner(i) else {
+            return false;
+        };
+        let (index, column) = self.item_place(c, item);
+        let mut data = kp.to_value(KeyPhase::Down);
+        if let Value::Map(fields) = &mut data {
+            fields.push(("item".into(), Value::Int(self.tree.keys[item].0 as i64)));
+            fields.push(("index".into(), Value::Int(index as i64)));
+            if let Some(column) = column {
+                fields.push(("column".into(), Value::Int(column as i64)));
+            }
+        }
+        out.push(UiEvent::declared(
+            EventKind::ItemKey,
+            self.tree.origins[c],
+            self.tree.keys[c],
+            self.tree.specs[c].events().on_item_key(),
+            data,
+        ));
+        self.focus_visible = true;
+        true
     }
 
     /// Whether the focused node `i` takes `code` for itself: the keys the

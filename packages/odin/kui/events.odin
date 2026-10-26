@@ -196,6 +196,24 @@ Typeahead_Event :: struct {
 	text: string,
 }
 
+// A key a composite's focused item did not claim (backlog C120), heard on
+// the composite's on_item_key: Delete on a checklist's row. The press is a
+// Key_Event's; item is the focused item's key, index its data index (else
+// its place among the items), column a table cell's column.
+Item_Key_Event :: struct {
+	phase:                   string, // always "down"
+	code:                    string,
+	physical:                string,
+	shift, ctrl, alt, super: bool,
+	text:                    string,
+	repeat:                  bool,
+	location:                string,
+	caps_lock, num_lock:     bool,
+	item:                    u64,
+	index:                   i64,
+	column:                  Maybe(i64),
+}
+
 Slider_Change_Event :: struct {
 	value: f64,
 	phase: string, // "move" | "end"
@@ -352,6 +370,10 @@ With_Query :: struct {
 
 With_Typeahead :: struct {
 	typeahead: Typeahead_Event,
+}
+
+With_Item_Key :: struct {
+	itemkey: Item_Key_Event,
 }
 
 With_Slider_Change :: struct {

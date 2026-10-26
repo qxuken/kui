@@ -216,6 +216,28 @@ fn read_typeahead(p: &Value) -> Option<Typeahead> {
     })
 }
 
+/// An `itemkey`: a key the focused item of a composite did not claim,
+/// heard by the composite's `onItemKey` (backlog C120) — Delete on a
+/// checklist's row. `item` is the focused item; `index` its data index
+/// when it declared one, else its place among the composite's items; in a
+/// table `column` is the cell's column.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemKey {
+    pub press: KeyPress,
+    pub item: crate::key::Key,
+    pub index: u64,
+    pub column: Option<u64>,
+}
+
+fn read_item_key(p: &Value) -> Option<ItemKey> {
+    Some(ItemKey {
+        press: read_key(p)?.press,
+        item: crate::key::Key(p.get("item")?.as_int()? as u64),
+        index: p.get("index")?.as_int()? as u64,
+        column: p.get("column").and_then(Value::as_int).map(|c| c as u64),
+    })
+}
+
 fn read_range(p: &Value) -> Option<RowRange> {
     Some(RowRange {
         first: p.get("first")?.as_int()? as u64,
@@ -886,6 +908,7 @@ pub enum Event {
     Range(RowRange),
     Query(QueryChange),
     Typeahead(Typeahead),
+    ItemKey(ItemKey),
     /// A component instance's event (ADR 0060): the host's own message
     /// for the event prop is [`UiEvent::message`]'s to decode.
     Component,
@@ -983,6 +1006,7 @@ impl UiEvent {
             EventKind::Range => Event::Range(read_range(p)?),
             EventKind::Query => Event::Query(read_query(p)?),
             EventKind::Typeahead => Event::Typeahead(read_typeahead(p)?),
+            EventKind::ItemKey => Event::ItemKey(read_item_key(p)?),
         })
     }
 }

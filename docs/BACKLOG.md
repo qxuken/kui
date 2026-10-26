@@ -3656,6 +3656,7 @@ filed the same day for the round that builds them.
 - `.` **C116** — [A script cannot tell which platform it is on](backlog/closed-2026-09.md#-c116--a-script-cannot-tell-which-platform-it-is-on--done-2026-10-26) — done (2026-10-26) — `env.platform` in Lua and Node, `kui_platform` in C and Odin, the fact `when`'s `platform` reads
 - `.` **C117** — [A script can neither list the system's fonts nor load one](backlog/closed-2026-09.md#-c117--a-script-can-neither-list-the-systems-fonts-nor-load-one--done-2026-10-26) — done (2026-10-26) — `env.system_font_families()` and `env.load_font_file(path)`, the path under the runner's folder rules
 - `.` **C118** — [The docs do not travel with kui](backlog/closed-2026-09.md#-c118--the-docs-do-not-travel-with-kui--done-2026-10-26) — done (2026-10-26) — ADR 0071 built: `kui docs` over the docs the runner carries, opt-in `--docs` / `--agents` remembered as `tooling`, `.kui/` kept at the runner's version, `kui_native::docs`, the book's text and Kit's reference on npm
+- `.` **C120** — [A composite cannot hear a key its items do not claim](backlog/closed-2026-09.md#-c120--a-composite-cannot-hear-a-key-its-items-do-not-claim--done-2026-10-26) — done (2026-10-26) — `onItemKey` on the composite: the keys its focused item leaves, as `itemkey: {the press, item, index, column?}`; no Tab stop, the arrows kept, every binding
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3683,16 +3684,6 @@ door, so "the sample nearest the pointer" is approximated by 3 px hover
 bands Kit builds while the pointer is over the plot. **Do.** The pointer's
 position relative to a node (`env.pointer_in(label)` or the like) in
 every binding, read without owing frames when nothing moved.
-
-### `.` C120 — A composite cannot hear a key its items do not claim
-
-**Found** in Kit's `checklist`: a container key sink is itself a Tab stop,
-an item that is a sink loses the composite's arrows, and a focusable
-control inside an item warns (`focusable-inside-item`) — so Delete /
-Backspace cannot remove an item, and its × is pointer-only. **Do.** A
-composite's unclaimed keys (Delete, Backspace, letters past type-ahead)
-delivered to the composite's own handler, with the focused item named,
-without the composite becoming a Tab stop.
 
 ### `.` C121 — A list item's `checked` is not read
 

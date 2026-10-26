@@ -6018,6 +6018,7 @@ SCENE_TREES.sampler = (fx) =>
           onHover: { kind: 'hov' },
           onLayout: { kind: 'lay' },
           onTypeahead: { kind: 'ta' },
+          onItemKey: { kind: 'ik' },
           activeIndex: 2,
           onForceClick: { kind: 'force' },
           clickSound: fx().sound,
