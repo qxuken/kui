@@ -450,7 +450,8 @@ extern "C" {
  * focus ring's colour (backlog C93), then min_column, hidden, on_query and
  * when (840 bytes; ADR 0069), then on_typeahead and active_index (856
  * bytes; ADR 0070, kui_answer_typeahead answering the first), then
- * essential_motion (864 bytes; backlog C107);
+ * essential_motion (864 bytes; backlog C107), then dx and dy (872 bytes;
+ * backlog C105);
  * kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92) are new
  * functions.
@@ -1521,6 +1522,12 @@ typedef struct KuiSpec {
      * ever holds still there and a finite one rests where it ends. ABI 39,
      * appended (864 bytes on 64-bit). */
     uint32_t essential_motion;
+    /* How far the node and its subtree are moved from where layout put
+     * them, logical px (dx / dy, backlog C105): drawn, hit and read there
+     * on whole pixels, the room it takes its place's; eased by
+     * transition_ms, and settable by a `when` entry. 0 for none. ABI 39,
+     * appended (872 bytes on 64-bit). */
+    float dx, dy;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

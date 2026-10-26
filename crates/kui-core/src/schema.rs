@@ -200,6 +200,8 @@ pub const P_ON_QUERY: u32 = 148;
 pub const P_ON_TYPEAHEAD: u32 = 149;
 pub const P_ACTIVE_INDEX: u32 = 150;
 pub const P_ESSENTIAL_MOTION: u32 = 151;
+pub const P_DX: u32 = 152;
+pub const P_DY: u32 = 153;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -945,6 +947,20 @@ pub const PROPS: &[PropDef] = &[
             s.pivot(fx, v)
         }),
         doc: "Where down the box `rotate` and `scale` are about, as a fraction of its height: 0 the top, 0.5 (the default) the middle, 1 the bottom. C: `pivot_y` with `pivot_set`.",
+    },
+    PropDef {
+        name: "dx",
+        id: P_DX,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.dx(v)),
+        doc: "Moves this node and everything under it this many logical px across from where layout put it (backlog C105) — negative to the left. The move is made to the places after layout, as a keyframe's position stop is: the subtree is drawn there on whole physical pixels, hit there and read there by assistive technology, while the room it takes is its place's, nothing around it moves, and `onLayout` reports the place. Tweens with `transition` (with `rotate` and `scale`, one slot), and a `when` entry may set it, so a button's face lifts on hover and sinks on press with no view code: `when: [{ hovered: true, dy: -1 }, { pressed: true, dy: 1 }]`. Hit where it is drawn, so a hover that moves the node out from under a resting pointer flickers: move by a pixel or two. Not a float's `dx`, which is inside the `float` table and places the float.",
+    },
+    PropDef {
+        name: "dy",
+        id: P_DY,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.dy(v)),
+        doc: "Moves this node and everything under it this many logical px down from where layout put it (backlog C105) — negative up. See `dx`, which it pairs with: drawn, hit and read there, its room its place's, eased by `transition`, settable by a `when` entry.",
     },
     PropDef {
         name: "rules",

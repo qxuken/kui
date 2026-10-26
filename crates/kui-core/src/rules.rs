@@ -546,6 +546,10 @@ pub mod field {
     pub const HIDDEN: u32 = 1 << 27;
     pub const MIN_COLUMN: u32 = 1 << 28;
     pub const HIDE: u32 = 1 << 29;
+    /// The move off the node's laid place, each lane its own (backlog
+    /// C105): an entry that sets `dy` keeps the node's `dx`.
+    pub const DX: u32 = 1 << 30;
+    pub const DY: u32 = 1 << 31;
 
     /// What an entry over the node's own size may set (ADR 0069,
     /// decision 7): the layout of its children, never its own size.
@@ -567,7 +571,7 @@ pub mod field {
         | LAYOUT_OF_CHILDREN;
 
     /// Each field's name, for the devtools and the warnings.
-    pub const NAMES: [(u32, &str); 30] = [
+    pub const NAMES: [(u32, &str); 32] = [
         (WIDTH, "width"),
         (HEIGHT, "height"),
         (MIN_W, "minWidth"),
@@ -598,6 +602,8 @@ pub mod field {
         (HIDDEN, "hidden"),
         (MIN_COLUMN, "minColumn"),
         (HIDE, "hidden (children)"),
+        (DX, "dx"),
+        (DY, "dy"),
     ];
 }
 
@@ -616,6 +622,8 @@ pub struct Patch {
     slide: bool,
     hidden: bool,
     min_column: f32,
+    /// The move off the node's laid place (`dx`, `dy`; backlog C105).
+    offset: crate::geom::Vec2,
     /// The key labels of the children an own-size entry hides.
     hide: Vec<String>,
 }
@@ -662,7 +670,13 @@ fn sentinel() -> NodeSpec {
     spec.transition = Some(crate::anim::Transition::ms(S));
     spec.slide = true;
     spec.hidden = true;
-    spec
+    spec.dx(S).dy(S)
+}
+
+/// The move a spec declares off its laid place (`dx`, `dy`).
+fn offset_of(s: &NodeSpec) -> crate::geom::Vec2 {
+    s.transform_spec()
+        .map_or(crate::geom::Vec2::new(0.0, 0.0), |t| t.translate)
 }
 
 /// Whether two values differ. `==` is enough because each field is read
@@ -678,9 +692,17 @@ fn differ<T: PartialEq>(a: &T, b: &T) -> bool {
 /// its rules aside: `hide` and `min_column` write those, and they live in
 /// that box.
 fn interact_moved(out: &NodeSpec, base: &NodeSpec) -> bool {
+    // And the move, which `dx` / `dy` write into the transform there
+    // (backlog C105): a transform holding nothing else is no transform.
     let strip = |s: &NodeSpec| {
         let mut i = s.interact().clone();
         i.when = None;
+        if let Some(t) = i.transform.as_deref_mut() {
+            t.translate = crate::geom::Vec2::new(0.0, 0.0);
+            if *t == crate::spec::TransformSpec::NONE {
+                i.transform = None;
+            }
+        }
         i
     };
     match (&out.interact, &base.interact) {
@@ -707,6 +729,7 @@ impl Patch {
             slide: out_a.slide,
             hidden: out_a.hidden,
             min_column: out_a.rules_spec().min_column,
+            offset: offset_of(&out_a),
             ..Patch::default()
         };
         let mut set = 0u32;
@@ -752,6 +775,10 @@ impl Patch {
         cmp!(field::TRANSITION, transition);
         cmp!(field::SLIDE, slide);
         cmp!(field::HIDDEN, hidden);
+        let (oa, ob) = (offset_of(&out_a), offset_of(&out_b));
+        let (ba, bb) = (offset_of(&base_a), offset_of(&base_b));
+        mark(field::DX, differ(&oa.x, &ba.x), differ(&ob.x, &bb.x));
+        mark(field::DY, differ(&oa.y, &ba.y), differ(&ob.y, &bb.y));
         let (ra, rb) = (out_a.rules_spec(), out_b.rules_spec());
         mark(
             field::MIN_COLUMN,
@@ -851,6 +878,8 @@ impl Patch {
         take!(field::SLIDE, self.slide, other.slide);
         take!(field::HIDDEN, self.hidden, other.hidden);
         take!(field::MIN_COLUMN, self.min_column, other.min_column);
+        take!(field::DX, self.offset.x, other.offset.x);
+        take!(field::DY, self.offset.y, other.offset.y);
         if s & field::HIDE != 0 {
             self.hide.extend(other.hide.iter().cloned());
         }
@@ -900,6 +929,12 @@ impl Patch {
         put!(field::TRANSITION, spec.transition, self.transition);
         put!(field::SLIDE, spec.slide, self.slide);
         put!(field::HIDDEN, spec.hidden, self.hidden);
+        if s & field::DX != 0 {
+            spec.transform_mut().translate.x = self.offset.x;
+        }
+        if s & field::DY != 0 {
+            spec.transform_mut().translate.y = self.offset.y;
+        }
         if s & field::MIN_COLUMN != 0
             && let Some(r) = spec.rules_ref_mut()
         {

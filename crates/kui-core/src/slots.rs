@@ -145,10 +145,11 @@ impl Slots {
         }
     }
 
-    /// The transform slot's lanes — `[rotate, scale, 0, 0]` — when the
-    /// stop or the entrance names either, each lane it leaves out taken
-    /// from `base`, the node's own value: a stop that names only `rotate`
-    /// does not shrink the box to a scale of nothing.
+    /// The transform slot's lanes — `[rotate, scale, dx, dy]` — when the
+    /// stop or the entrance names a turn or a scale, each lane it leaves
+    /// out taken from `base`, the node's own value: a stop that names
+    /// only `rotate` does not shrink the box to a scale of nothing, nor
+    /// move it off the `dx` / `dy` it declares (backlog C105).
     #[inline]
     pub(crate) fn transform_lanes(&self, base: [f32; 4]) -> Option<[f32; 4]> {
         if self.rotate.is_none() && self.scale.is_none() {
@@ -159,8 +160,8 @@ impl Slots {
         Some([
             pick(self.rotate, base[0]),
             pick(self.scale, base[1]),
-            0.0,
-            0.0,
+            base[2],
+            base[3],
         ])
     }
 }

@@ -968,6 +968,10 @@ pub struct KuiSpec {
     /// Non-zero: the `keyframes` cycle is essential motion and keeps running
     /// under reduced motion (`essentialMotion`, backlog C107). ABI 39.
     pub essential_motion: u32,
+    /// The move off the node's laid place, logical px (`dx` / `dy`,
+    /// backlog C105); 0 is none. ABI 39.
+    pub dx: f32,
+    pub dy: f32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

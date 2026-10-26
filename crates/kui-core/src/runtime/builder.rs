@@ -77,12 +77,15 @@ fn anim_turns(a: &crate::spec::AnimSpec) -> bool {
             .any(|k| k.rotate.is_some() || k.scale.is_some())
 }
 
-/// The transform slot's lanes a node declares: `[rotate, scale, 0, 0]`,
-/// the identity for a node that declares none (ADR 0043).
+/// The transform slot's lanes a node declares: `[rotate, scale, dx, dy]`,
+/// the identity for a node that declares none (ADR 0043; the move is
+/// backlog C105's, in the two lanes that were spare).
 #[inline]
 fn transform_lanes(spec: &NodeSpec) -> [f32; 4] {
     let t = spec.transform_spec().unwrap_or_default();
-    crate::geom::Transform::lanes(t.rotate, t.scale)
+    let [r, s, ..] = crate::geom::Transform::lanes(t.rotate, t.scale);
+    let d = t.offset().unwrap_or_default();
+    [r, s, d.x, d.y]
 }
 
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
@@ -280,6 +283,7 @@ impl Core {
             let tr = spec.transform_mut();
             tr.rotate = v[0];
             tr.scale = v[1];
+            tr.translate = crate::geom::Vec2::new(v[2], v[3]);
         }
     }
 

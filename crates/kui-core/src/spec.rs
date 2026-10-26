@@ -1710,6 +1710,13 @@ pub struct TransformSpec {
     /// The point the turn and the scale are about, as fractions of the
     /// node's box: `(0.5, 0.5)` is the centre.
     pub pivot: crate::geom::Vec2,
+    /// How far the node and its subtree are moved from where layout put
+    /// them, logical px (`dx` / `dy`, backlog C105): applied to their
+    /// places after layout, as a keyframe's position stop is, so it is
+    /// drawn, hit and read there on whole pixels while the room it takes
+    /// is its place's. Not a turn: [`Self::active`] does not count it.
+    /// Tweens with `transition` in the transform slot's two spare lanes.
+    pub translate: crate::geom::Vec2,
 }
 
 impl Default for TransformSpec {
@@ -1724,7 +1731,19 @@ impl TransformSpec {
         rotate: 0.0,
         scale: 1.0,
         pivot: crate::geom::Vec2 { x: 0.5, y: 0.5 },
+        translate: crate::geom::Vec2 { x: 0.0, y: 0.0 },
     };
+
+    /// The move from the node's laid place (`dx` / `dy`), when there is
+    /// one: a lane that is not a finite number is none.
+    #[inline]
+    pub fn offset(&self) -> Option<crate::geom::Vec2> {
+        let d = crate::geom::Vec2::new(
+            crate::geom::finite_or(self.translate.x, 0.0),
+            crate::geom::finite_or(self.translate.y, 0.0),
+        );
+        (d.x != 0.0 || d.y != 0.0).then_some(d)
+    }
 
     /// Whether this moves anything: a turn, or a scale that is not 1. A
     /// turn or a scale that is not a finite number is none.
@@ -2562,6 +2581,33 @@ impl NodeSpec {
     /// bottom-left corner.
     pub fn pivot(mut self, fx: f32, fy: f32) -> Self {
         self.transform_mut().pivot = crate::geom::Vec2::new(fx, fy);
+        self
+    }
+
+    /// Moves this node and everything under it `dx` px across from where
+    /// layout put it, after layout (backlog C105): drawn, hit and read by
+    /// assistive technology there, on whole pixels, while the room it
+    /// takes and what `onLayout` reports stay its place's. Tweens with
+    /// `transition`, and a `when` entry may set it — a button that lifts
+    /// on hover and sinks on press:
+    ///
+    /// ```
+    /// # use kui_core::{Cond, NodeSpec};
+    /// let face = NodeSpec::row()
+    ///     .transition(120.0)
+    ///     .when(Cond::Hovered, |p| p.dy(-1.0))
+    ///     .when(Cond::Pressed, |p| p.dy(1.0));
+    /// assert_eq!(face.rules_spec().entries().len(), 2);
+    /// ```
+    pub fn dx(mut self, dx: f32) -> Self {
+        self.transform_mut().translate.x = dx;
+        self
+    }
+
+    /// Moves this node and everything under it `dy` px down from where
+    /// layout put it; see [`Self::dx`].
+    pub fn dy(mut self, dy: f32) -> Self {
+        self.transform_mut().translate.y = dy;
         self
     }
 

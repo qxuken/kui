@@ -1107,7 +1107,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                      on_click = {{ kind = "card" }}, on_hover = {{ kind = "hov" }},
                      on_layout = {{ kind = "lay" }}, on_typeahead = {{ kind = "ta" }}, active_index = 2, on_force_click = {{ kind = "force" }},
                      click_sound = {snd}, hover_sound = {snd}, animate = true,
-                     transition = 100, easing = "easeInOut", bounce = 0.3, slide = true, delay = 20, iterations = 0.25, essential_motion = true,
+                     transition = 100, easing = "easeInOut", bounce = 0.3, slide = true, delay = 20, iterations = 0.25, essential_motion = true, dx = 2, dy = -1,
                      direction = "alternate",
                      keyframes = {{ {{ bg = 0x1b1d27ff }}, {{ at = 1, bg = 0x3b5bd4ff, radius = 12, dy = -4 }} }},
                      enter = {{ dx = -12, opacity = 0 }},

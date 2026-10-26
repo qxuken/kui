@@ -710,6 +710,11 @@ impl Core {
         if self.tree.any_offset_stop {
             self.offset_stops();
         }
+        // And a declared move, eased where the node transitions (backlog
+        // C105), composing with both.
+        if self.tree.any_moved {
+            self.move_declared();
+        }
         // Text set for a key nothing had declared yet was held for this
         // frame (backlog F25). What it declared has taken its seed; what
         // is left named an editor no view draws, so drop it and say so.
@@ -1905,6 +1910,8 @@ impl Core {
                             .spec
                             .transform_spec()
                             .map_or(crate::spec::TransformSpec::NONE.pivot, |t| t.pivot),
+                        // A ghost's rects already carry its move (C105).
+                        ..crate::spec::TransformSpec::NONE
                     })
             } else {
                 node.spec.transform_spec()
@@ -2174,6 +2181,30 @@ impl Core {
             };
             // Whole physical pixels, as a slide's are.
             let d = Vec2::new(o[0], o[1]).snapped(self.scale);
+            if d.x == 0.0 && d.y == 0.0 {
+                continue;
+            }
+            let end = self.tree.subtree_end(i);
+            for p in &mut self.tree.pos[i..end] {
+                p.x += d.x;
+                p.y += d.y;
+            }
+        }
+    }
+
+    /// After the keyframe positions: every node that declares `dx` / `dy`
+    /// (backlog C105) is moved, with its subtree, by what its transform
+    /// holds this frame — the declared move, or where its `transition` has
+    /// eased it to, a `when` entry's included. On whole physical pixels,
+    /// as a slide and a bob are; drawn, hit and read where it is moved to,
+    /// the room it takes its place's, and `onLayout` reporting the place.
+    #[inline(never)]
+    fn move_declared(&mut self) {
+        for i in 0..self.tree.len() {
+            let Some(d) = self.tree.specs[i].transform_spec().and_then(|t| t.offset()) else {
+                continue;
+            };
+            let d = d.snapped(self.scale);
             if d.x == 0.0 && d.y == 0.0 {
                 continue;
             }

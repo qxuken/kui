@@ -230,7 +230,8 @@
 ///   `hidden`, `on_query` and `when` (840 bytes; ADR 0069), then
 ///   `on_typeahead` and `active_index` (856 bytes; ADR 0070,
 ///   `kui_answer_typeahead` answering the first), then
-///   `essential_motion` (864 bytes; backlog C107), with
+///   `essential_motion` (864 bytes; backlog C107), then `dx` and `dy`
+///   (872 bytes; backlog C105), with
 ///   `kui_tab_moves_focus` (backlog C99), `kui_is_group_hovered` and
 ///   `kui_is_group_pressed` (backlog C92), new functions.
 pub const KUI_ABI_VERSION: u32 = 39;

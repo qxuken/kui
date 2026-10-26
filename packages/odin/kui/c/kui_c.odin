@@ -729,6 +729,8 @@ Spec :: struct {
 	on_typeahead: ^Value,
 	active_index: ^Value,
 	essential_motion: u32,
+	dx: f32,
+	dy: f32,
 }
 
 Announcement :: struct {
