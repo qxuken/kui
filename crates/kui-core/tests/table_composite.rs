@@ -148,11 +148,17 @@ const VIEW_ROWS: u64 = 10;
 /// spacers keep the height of the rest — the shape Kit's list has.
 /// `table` makes it a table of rows of three cells instead.
 fn virtual_frame(core: &mut Core, table: bool) {
+    virtual_frame_with(core, table, |_| {});
+}
+
+/// [`virtual_frame`], with `during` run in the build before the list opens.
+fn virtual_frame_with(core: &mut Core, table: bool, during: impl FnOnce(&mut kui_core::Ui<'_>)) {
     let list = Key::ROOT.str("list");
     let off = core.scroll_offset(list).y.max(0.0);
     let first = ((off / ROW_H).floor() as u64).min(N);
     let last = (first + VIEW_ROWS + 1).min(N);
     let mut ui = core.frame(Size::new(300.0, 300.0), 1.0);
+    during(&mut ui);
     ui.configure_root(NodeSpec::column().fill());
     ui.leaf_keyed(
         "before",
@@ -521,6 +527,35 @@ fn an_unanswered_type_ahead_is_asked_and_the_answer_reached_for() {
     core.handle_input(InputEvent::Text("q".into()));
     core.set_focus(Some(Key::ROOT.str("before")));
     assert!(!core.answer_typeahead(list, 7));
+}
+
+/// An answer given while a view builds (backlog C104) — the only place an
+/// extension with no env in its event handler can give one — is taken
+/// and applied when the frame ends, against the tree that frame built.
+#[test]
+fn a_type_ahead_answer_from_a_view_lands_when_the_frame_ends() {
+    let mut core = Core::new();
+    virtual_frame(&mut core, false);
+    core.set_focus(Some(row_key(0)));
+    virtual_frame(&mut core, false);
+    let list = Key::ROOT.str("list");
+    let out = core.handle_input(InputEvent::Text("z".into()));
+    assert!(out.iter().any(|e| e.event.name() == "typeahead"), "asked");
+    // The answer from inside a build: before the list is even open.
+    virtual_frame_with(&mut core, false, |ui| {
+        assert!(ui.answer_typeahead(list, 400), "taken during the build");
+        assert!(!ui.answer_typeahead(list, 401), "once");
+    });
+    settle(&mut core, false);
+    assert_eq!(core.focus(), Some(row_key(400)), "reached for and landed");
+    // Taken during a build whose focus then left the list: dropped.
+    core.handle_input(InputEvent::Text("q".into()));
+    virtual_frame_with(&mut core, false, |ui| {
+        assert!(ui.answer_typeahead(list, 9));
+        ui.core().set_focus(Some(Key::ROOT.str("before")));
+    });
+    settle(&mut core, false);
+    assert_ne!(core.focus(), Some(row_key(9)), "stale by the frame's end");
 }
 
 /// Re-entry (ADR 0070): a windowed list remembers the row focus last held

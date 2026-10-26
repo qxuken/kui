@@ -754,6 +754,10 @@ impl Core {
         if let Some(forward) = self.pending_focus_step.take() {
             self.focus_next(forward);
         }
+        // A type-ahead answer a view gave while building goes where it
+        // says now that the tree is whole (backlog C104): onto the row, or
+        // reaching for it, which the line below lands when it can.
+        self.resolve_typeahead_answer();
         // And a composite step that reached for a row the last frame had
         // not built lands on it, now that this one may have (ADR 0070).
         self.resolve_composite_reach();

@@ -2237,11 +2237,14 @@ fn a_long_list_steps_past_its_window_and_types_ahead() {
     r.frames(2);
     let sel: Option<i64> = r.app.globals().get("sel").unwrap();
     assert_eq!(sel, Some(995), "a type-ahead lands on a built row");
-    // One past the window asks Kit, which answers from the channel; the
-    // core takes the answer only outside a frame being built (backlog
-    // candidate: `answer_typeahead` from a view looks the composite up
-    // in the tree still being built, finds nothing and refuses), so the
-    // answer is not asserted here.
+    // One past the window asks Kit, which answers from the channel in its
+    // draw, the core taking an answer given while a view builds and
+    // applying it when the frame ends (backlog C104).
+    let e = r.core.handle_input(kui_core::InputEvent::Text("z".into()));
+    r.route(e);
+    r.frames(4);
+    let sel: Option<i64> = r.app.globals().get("sel").unwrap();
+    assert_eq!(sel, Some(700), "answered in a draw");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 

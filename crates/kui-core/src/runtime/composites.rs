@@ -583,11 +583,34 @@ impl Core {
     /// toward it and landing when the frame that builds it finishes. False
     /// when `key` asked nothing (an answer is taken once), or focus has
     /// left the composite since, which makes the answer stale.
+    ///
+    /// An answer given while a view is building — from a draw, which is
+    /// where an extension with no env in its event handler answers — is
+    /// taken (true) and applied when the frame ends, against the tree that
+    /// frame built, as a reach is landed (backlog C104); it is dropped
+    /// there if focus has left the composite by then.
     pub fn answer_typeahead(&mut self, key: Key, index: u64) -> bool {
         if self.typeahead_asked != Some(key) {
             return false;
         }
         self.typeahead_asked = None;
+        if self.building {
+            self.typeahead_answer = Some((key, index));
+            return true;
+        }
+        self.apply_typeahead_answer(key, index)
+    }
+
+    /// An answer taken while the view built, applied now that the frame's
+    /// tree is whole and laid out (backlog C104).
+    pub(crate) fn resolve_typeahead_answer(&mut self) {
+        if let Some((key, index)) = self.typeahead_answer.take() {
+            self.apply_typeahead_answer(key, index);
+        }
+    }
+
+    /// Goes to row `index` of composite `key`, if focus is still inside it.
+    fn apply_typeahead_answer(&mut self, key: Key, index: u64) -> bool {
         let (Some(c), Some(f)) = (self.tree.index_of(key), self.focus_index()) else {
             return false;
         };

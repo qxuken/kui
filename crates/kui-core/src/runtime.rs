@@ -774,6 +774,10 @@ pub struct Core {
     /// The composite a `typeahead` event asked (ADR 0070): what
     /// `answer_typeahead` accepts an answer for, once.
     typeahead_asked: Option<Key>,
+    /// An answer `answer_typeahead` took while a view was building (backlog
+    /// C104): the composite and the row, applied when the frame ends, as a
+    /// reach is landed, against the tree that frame built.
+    typeahead_answer: Option<(Key, u64)>,
     /// The data row (and, in a table, the column) focus last held in each
     /// windowed composite, by its key (ADR 0070): where Tab enters it
     /// again, unless it declares `active_index`. Pruned to the composites
@@ -1454,6 +1458,7 @@ impl Core {
             tab_armed: None,
             composite_reach: None,
             typeahead_asked: None,
+            typeahead_answer: None,
             composite_rows: FxHashMap::default(),
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),
