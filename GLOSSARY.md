@@ -32,6 +32,14 @@ setting (dark, reduced motion, contrast, platform, scale) or the node's
 state (hovered, pressed, focused).
 _Avoid_: query (that is the lazy form's), media query
 
+**Table**:
+Cells in rows that a reader hears by row and column: a node of role
+`table` holding `row`s of `cell`s, header cells among them, or a layout
+`table()`, which implies those roles. With a focusable cell it is a
+composite moved through in two dimensions (ADR 0070). A table that moves
+whole rows is a `list`.
+_Avoid_: grid (that is CSS layout)
+
 **Container**:
 A node that reads its own size in an axis, so its size there does not
 come from its content.

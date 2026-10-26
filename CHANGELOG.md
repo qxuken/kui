@@ -187,11 +187,25 @@ was the first bare bump to break an app in five releases).
   it is held whenever `doc` is; on one it is the key ⌘ is not, and Ctrl+Tab
   there is `ctrl` and no longer `doc`. Node's `key(name, mods)` takes
   `ctrl`, and C has `KUI_MOD_CTRL` (8).
-- `access::Role` gained `Grid`, `Row` and `Cell` at its tail (`Role::ALL`
-  is 30; C `KUI_ROLE_GRID`, `KUI_ROLE_ROW`, `KUI_ROLE_CELL`; ADR 0070): an
-  exhaustive `match` adds three arms. Page Up and Page Down on a focused
-  `list` item move the focus by a page of rows, where they did nothing
-  and, under a sink, bubbled to it.
+- `access::Role` gained `Table`, `Row`, `Cell`, `ColumnHeader` and
+  `RowHeader` at its tail (`Role::ALL` is 32; C `KUI_ROLE_TABLE`,
+  `KUI_ROLE_ROW`, `KUI_ROLE_CELL`, `KUI_ROLE_COLUMN_HEADER`,
+  `KUI_ROLE_ROW_HEADER`; ADR 0070): an exhaustive `match` adds five arms.
+  Page Up and Page Down on a focused `list` item move the focus by a page
+  of rows, where they did nothing and, under a sink, bubbled to it.
+- A layout table (`table()`, `dir="table"`) that declares no role reads to
+  assistive technology as a `table` of `row`s of `cell`s (a text or image
+  in a row a cell named by its text), where its texts were loose children
+  of the window; with focusable cells it is a composite, one Tab stop
+  (ADR 0070). A clickable row is still a button.
+- `AccessNode` gained `row_index`, `column_index`, `row_count`,
+  `column_count` and `cells_focus` (Node `rowIndex` and the rest; C
+  `KuiAccessNode`'s four fields, appended inside ABI 39, with
+  `KUI_ACCESS_HAS_ROW_INDEX` and its neighbours and
+  `KUI_ACCESS_CELLS_FOCUS`); a windowed list's items report their data
+  index as `pos_in_set` and the list its `rowCount` as `set_size`. And
+  `KuiSpec` gained `on_typeahead` and `active_index` after ADR 0069's
+  fields (856 bytes on 64-bit), so a C host recompiles.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -355,24 +369,36 @@ for lua-language-server, and a new runner beside the window's.
   *What you can delete:* a `ch:column` copied into a script to bucket
   it, and the bucketing loop.
 
-- **A grid composite** (backlog C90, [ADR
-  0070](docs/adr/0070-a-grid-and-composites-past-the-window.md),
-  proposed): `role="grid"` around `role="row"`s of `role="cell"`s, the
-  focusable cells one Tab stop. Left / Right move along a row, Up / Down
-  between rows keeping the column, Home / End to the row's ends and with
-  Ctrl (or the primary) to the grid's, Page Up / Page Down by the rows its
-  scroller shows; it clamps, and moving activates nothing. A cell reports
-  no "n of m" (its row and column are an open question). In every binding
-  by the role names; AccessKit `Grid`, `Row`, `GridCell`.
+- **A table of cells** (backlog C90, [ADR
+  0070](docs/adr/0070-a-table-of-cells-and-composites-past-the-window.md),
+  accepted after a grilling round): `role="table"` around `role="row"`s
+  of `role="cell"`s — `columnHeader` and `rowHeader` cells among them, a
+  layout `table()` implying all of it. With a focusable cell it is one Tab
+  stop: Left / Right along a row, Up / Down between rows keeping the
+  column, Home / End to the row's ends and with Ctrl (or the primary) to
+  the table's, Page Up / Page Down by the rows its scroller shows; it
+  clamps, and moving activates nothing. Enter or F2 enters a cell's
+  controls, Tab cycles them and Escape comes back to the cell; a cell with
+  one control presses it on Enter or Space. Readers get each cell's row
+  and column and the table's counts (AccessKit `row_index` /
+  `column_index` / `row_count` / `column_count`; `Grid` and `GridCell`
+  when cells take focus, `Table` and `Cell` when not), a header linked to
+  its column by index. A table that moves whole rows stays a `list`.
 - **Composites that walk past their window** (backlog C89, ADR 0070): a
-  `list` or `grid` whose rows carry their data `index` under a `rowCount`
-  (on the list or the scroller between, as `uniformList` and Kit's body
-  declare it) steps by index over all its rows — End is the data's last
-  row, not the window's — and a step to a row the frame has not built
-  scrolls toward it and lands the focus when the next frame builds it, as
-  `onRange` pagers already expect. A key pressed again before that frame
-  goes on from the row reached for; focus moving any other way lets the
-  reach go.
+  `list` or `table` whose rows carry their data `index` under a
+  `rowCount` (on the list or the scroller between, as `uniformList` and
+  Kit's body declare it) steps by index over all its rows — End is the
+  data's last row, not the window's — and a step to a row the frame has
+  not built scrolls toward it and lands the focus when the next frame
+  builds it, as `onRange` pagers already expect. A key pressed again
+  before that frame goes on from the row reached for; focus moving any
+  other way lets the reach go. Readers hear "row 120 of 4,000" with no
+  `label`. Type-ahead searches the built rows first and then asks the
+  composite's `onTypeahead` (`typeahead: {text}`), answered with
+  `answer_typeahead(key, index)` in every binding (C
+  `kui_answer_typeahead`, Node `answerTypeahead`, Lua
+  `env.answer_typeahead`, Odin `answer_typeahead`). Tab back in lands on
+  the row focus last held there, or on the one `activeIndex` names.
 - **A hover group read by its name in every binding** (backlog C92):
   Lua `env.is_group_hovered(name)` and `env.is_group_pressed(name)`,
   Node `isGroupHovered(name)` and `isGroupPressed(name)`, C
