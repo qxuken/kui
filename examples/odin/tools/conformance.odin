@@ -2046,6 +2046,7 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			expanded       = .Expanded,
 			on_layout      = msg("lay"),
 			on_typeahead   = msg("ta"),
+			active_index   = 2,
 			on_force_click = msg("force"),
 			click_sound    = f.sound,
 			hover_sound    = f.sound,
@@ -2288,6 +2289,7 @@ ROLE_NAMES := [?]string {
 	"group", "window", "titleBar", "staticText", "textInput",
 	"multilineTextInput", "scrollView", "line",
 	"radioGroup", "menu", "menuItem", "terminal", "passwordInput",
+	"table", "row", "cell", "columnHeader", "rowHeader",
 }
 
 role_name :: proc(role: kui.Role) -> string {

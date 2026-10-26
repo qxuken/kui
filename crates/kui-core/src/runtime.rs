@@ -774,6 +774,11 @@ pub struct Core {
     /// The composite a `typeahead` event asked (ADR 0070): what
     /// `answer_typeahead` accepts an answer for, once.
     typeahead_asked: Option<Key>,
+    /// The data row (and, in a table, the column) focus last held in each
+    /// windowed composite, by its key (ADR 0070): where Tab enters it
+    /// again, unless it declares `active_index`. Pruned to the composites
+    /// the frame declares.
+    composite_rows: FxHashMap<Key, (u64, usize)>,
     /// Reused by the composite walks (the ring, arrow motion), so a frame
     /// with composites in it pays one allocation rather than one each.
     items_scratch: Vec<usize>,
@@ -1449,6 +1454,7 @@ impl Core {
             tab_armed: None,
             composite_reach: None,
             typeahead_asked: None,
+            composite_rows: FxHashMap::default(),
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),
             ghost_clip: Vec::new(),

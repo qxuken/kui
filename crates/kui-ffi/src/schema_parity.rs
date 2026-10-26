@@ -366,6 +366,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onSelectionRange" => s.on_selection_range = &layout_tag,
             "onRange" => s.on_range = &layout_tag,
             "onTypeahead" => s.on_typeahead = &layout_tag,
+            "activeIndex" => s.active_index = &layout_tag,
             "onQuery" => s.on_query = &layout_tag,
             "minColumn" => s.min_column = F,
             "hidden" => s.hidden = 1,
@@ -451,6 +452,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
     ];
     let modal_tag = KuiValue(Value::str("m"));
     let menu_tag = KuiValue(Value::str("cm"));
+    let row_index = KuiValue(Value::Int(3));
     let submit_msg = KuiValue(Value::str("sub"));
     let cancel_msg = KuiValue(Value::str("esc"));
     let s = KuiSpec {
@@ -575,6 +577,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_selection_range: &menu_tag,
         on_range: &menu_tag,
         on_typeahead: &menu_tag,
+        active_index: &row_index,
         min_column: 0.0,
         hidden: 0,
         on_query: std::ptr::null(),
@@ -692,6 +695,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_selection_range("cm")
         .on_range("cm")
         .on_typeahead("cm")
+        .active_index(3)
         .reveal_on_hover()
         .floats_in_order()
         .modifier_keys()

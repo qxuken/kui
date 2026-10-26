@@ -99,6 +99,7 @@ static const char *role_name(uint32_t role) {
         "group", "window", "titleBar", "staticText", "textInput",
         "multilineTextInput", "scrollView", "line",
         "radioGroup", "menu", "menuItem", "terminal", "passwordInput",
+        "table", "row", "cell", "columnHeader", "rowHeader",
     };
     return role < sizeof names / sizeof *names ? names[role] : "?";
 }
@@ -2441,6 +2442,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_value_map_set(layout, KUI_STR("kind"), kui_value_str(KUI_STR("lay")));
     KuiValue *force = kui_value_map();
     kui_value_map_set(force, KUI_STR("kind"), kui_value_str(KUI_STR("force")));
+    KuiValue *two = kui_value_int(2); /* activeIndex (ADR 0070) */
     KuiKeyframe stops[] = {
         {.set = KUI_KF_BG, .bg = 0x1b1d27ff},
         {.set = KUI_KF_AT | KUI_KF_BG | KUI_KF_RADIUS | KUI_KF_OFFSET, .at = 1, .bg = 0x3b5bd4ff,
@@ -2460,7 +2462,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
         .accent = 1,
         .cursor = KUI_CURSOR_POINTER,
         .selected = 1, .expanded = KUI_EXPANDED_EXPANDED,
-        .on_layout = layout, .on_typeahead = layout, .on_force_click = force,
+        .on_layout = layout, .on_typeahead = layout, .active_index = two, .on_force_click = force,
         .click_sound = f->sound, .hover_sound = f->sound,
         .animate = 1,
         .transition_ms = 100, .easing = KUI_EASE_IN_OUT, .bounce = 0.3f, .slide = 1,
@@ -2474,6 +2476,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_text(ui, KUI_STR("ab"), &s12);
     kui_close(ui);
     kui_value_free(layout);
+    kui_value_free(two);
     kui_value_free(force);
     KuiSpec strip = {.dir = KUI_ROW, .width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 10},
                      .bg = 0x3a3f52ff, .window_role = KUI_WINDOW_DRAG};

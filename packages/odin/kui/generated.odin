@@ -882,6 +882,10 @@ Spec :: struct {
 	// in it, after the frame that first lays it out and whenever either changes;
 	// what a table pages an unbounded source by.
 	on_range: any,
+	// On a windowed `list` or `table` composite (ADR 0070): the data row (a whole
+	// number, its `index`) Tab enters it on — the selected one after a reload
+	// — scrolled to and landed on when the frame did not build it.
+	active_index: any,
 	// Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search
 	// its built rows did not answer arrives as this message with `typeahead:
 	// {text}` in it, the whole search so far.
@@ -1150,6 +1154,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.on_drop = borrow(scratch, s.on_drop)
 	out.on_layout = borrow(scratch, s.on_layout)
 	out.on_range = borrow(scratch, s.on_range)
+	out.active_index = borrow(scratch, s.active_index)
 	out.on_typeahead = borrow(scratch, s.on_typeahead)
 	out.key_up = 1 if s.key_up else 0
 	out.modifier_keys = 1 if s.modifier_keys else 0

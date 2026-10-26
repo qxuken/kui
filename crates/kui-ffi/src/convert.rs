@@ -457,6 +457,11 @@ pub(crate) fn spec_of(
     if let Some(msg) = unsafe { s.on_typeahead.as_ref() } {
         spec = spec.on_typeahead(msg.0.clone());
     }
+    if let Some(i) = unsafe { s.active_index.as_ref() }.and_then(|v| v.0.as_int())
+        && i >= 0
+    {
+        spec = spec.active_index(i as u64);
+    }
     if s.reveal_on_hover != 0 {
         spec = spec.reveal_on_hover();
     }

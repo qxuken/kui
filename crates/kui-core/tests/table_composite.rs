@@ -522,3 +522,94 @@ fn an_unanswered_type_ahead_is_asked_and_the_answer_reached_for() {
     core.set_focus(Some(Key::ROOT.str("before")));
     assert!(!core.answer_typeahead(list, 7));
 }
+
+/// Re-entry (ADR 0070): a windowed list remembers the row focus last held
+/// there, and Tab back into it reaches for that row though the frame has
+/// scrolled it away.
+#[test]
+fn tab_back_into_a_windowed_list_reaches_the_row_it_left() {
+    let mut core = Core::new();
+    virtual_frame(&mut core, false);
+    core.set_focus(Some(row_key(0)));
+    key(&mut core, EditKey::End, Mods::NONE);
+    settle(&mut core, false);
+    assert_eq!(core.focus(), Some(row_key(N - 1)));
+    // Out to the button, the list scrolled back to its top meanwhile.
+    let before = Key::ROOT.str("before");
+    core.set_focus(Some(before));
+    core.set_scroll(Key::ROOT.str("list"), kui_core::Vec2::ZERO);
+    settle(&mut core, false);
+    tab(&mut core, false);
+    settle(&mut core, false);
+    assert_eq!(core.focus(), Some(row_key(N - 1)), "back where it was");
+}
+
+/// `active_index` names the row Tab enters on, and wins over the
+/// remembered one.
+#[test]
+fn active_index_names_the_row_tab_enters_on() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let list = Key::ROOT.str("list");
+        let off = core.scroll_offset(list).y.max(0.0);
+        let first = ((off / ROW_H).floor() as u64).min(N);
+        let last = (first + VIEW_ROWS + 1).min(N);
+        let mut ui = core.frame(Size::new(300.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.leaf_keyed(
+            "before",
+            NodeSpec::row()
+                .size(60.0, 20.0)
+                .on_click("b")
+                .label("Before"),
+        );
+        ui.with_keyed(
+            "list",
+            NodeSpec::column()
+                .size(200.0, VIEW_ROWS as f32 * ROW_H)
+                .scroll_y()
+                .role(Role::List)
+                .label("rows")
+                .active_index(700),
+            |ui| {
+                ui.row_count(N);
+                if first > 0 {
+                    ui.leaf_keyed(
+                        "lead",
+                        NodeSpec::row().width(200.0).height(first as f32 * ROW_H),
+                    );
+                }
+                for i in first..last {
+                    ui.leaf_indexed(
+                        i,
+                        NodeSpec::row()
+                            .size(200.0, ROW_H)
+                            .role(Role::ListItem)
+                            .focusable()
+                            .label(format!("row {i}")),
+                    );
+                }
+                if last < N {
+                    ui.leaf_keyed(
+                        "tail",
+                        NodeSpec::row()
+                            .width(200.0)
+                            .height((N - last) as f32 * ROW_H),
+                    );
+                }
+            },
+        );
+        ui.finish();
+    };
+    frame(&mut core);
+    core.set_focus(Some(Key::ROOT.str("before")));
+    frame(&mut core);
+    tab(&mut core, false);
+    for _ in 0..5 {
+        frame(&mut core);
+        if !core.animating() {
+            break;
+        }
+    }
+    assert_eq!(core.focus(), Some(row_key(700)));
+}

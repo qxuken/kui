@@ -962,6 +962,9 @@ pub struct KuiSpec {
     /// arrives as on a list or table composite (`onTypeahead`, ADR 0070),
     /// borrowed like `on_layout`; NULL for none. ABI 39.
     pub on_typeahead: *const KuiValue,
+    /// The data row Tab enters a windowed composite on (`activeIndex`, ADR
+    /// 0070), a `KuiValue` holding a whole number; NULL for none. ABI 39.
+    pub active_index: *const KuiValue,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

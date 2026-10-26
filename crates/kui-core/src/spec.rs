@@ -1596,6 +1596,12 @@ pub struct InteractSpec {
     /// draws, so the core's ring is in its colour; a `$token` resolves
     /// against the declaring node's origin.
     pub focus_ring: Option<Color>,
+    /// On a windowed `list` or `table` composite (ADR 0070): the data row
+    /// Tab enters it on — the selected one after a reload, say — reached
+    /// for when the frame has not built it. Wins over the row the
+    /// composite remembers focus last held. `None`: the remembered row,
+    /// else ADR 0007's entry.
+    pub active_index: Option<u64>,
     /// Background while files dragged in from the OS are over this node.
     /// Wins over pressed, focus and hover — a press
     /// cannot be held while the OS holds a drag — and eases with
@@ -1867,6 +1873,7 @@ impl InteractSpec {
         hover_sound: None,
         focus_bg: None,
         focus_ring: None,
+        active_index: None,
         drop_bg: None,
         selectable: false,
         focus_region: false,
@@ -2646,6 +2653,13 @@ impl NodeSpec {
     /// field); replaces the default focus ring.
     pub fn focus_bg(mut self, c: Color) -> Self {
         self.interact_mut().focus_bg = Some(c);
+        self
+    }
+
+    /// The data row Tab enters this windowed composite on (see the
+    /// `active_index` field).
+    pub fn active_index(mut self, index: u64) -> Self {
+        self.interact_mut().active_index = Some(index);
         self
     }
 

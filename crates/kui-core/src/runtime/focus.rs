@@ -28,7 +28,72 @@ impl Core {
             None if forward => ring[0],
             None => ring[ring.len() - 1],
         };
+        // Into a windowed composite whose wanted row the frame did not
+        // build: the entry landed on a built row, and the core reaches for
+        // the wanted one from there (ADR 0070).
+        let wanted = self.entry_wanted(i);
         self.land_focus(i);
+        if let Some((c, index, column)) = wanted {
+            self.reach_index(c, i, index, Some(column));
+        }
+    }
+
+    /// The row Tab entering a windowed composite at item `i` wants, when
+    /// `i` is not on it: the composite's `active_index`, else the row focus
+    /// last held there (ADR 0070) — with the column a table keeps. None
+    /// when `i` is on it already, or the composite is not windowed.
+    fn entry_wanted(&self, i: usize) -> Option<(usize, u64, usize)> {
+        if self.tree.indexed.is_empty() {
+            return None;
+        }
+        let c = crate::composite::owner(&self.tree, i, &mut Vec::new())?;
+        let (index, column) = self.wanted_row(c)?;
+        let unit = self.composite_unit(c, i);
+        let at = crate::composite::data_index(&self.tree, unit)?;
+        crate::composite::row_count(&self.tree, unit, c)?;
+        (at != index).then_some((c, index, column))
+    }
+
+    /// The unit item `i` is of in the composite at `c`: a table's row, a
+    /// list's item itself.
+    pub(crate) fn composite_unit(&self, c: usize, i: usize) -> usize {
+        if crate::composite::role(&self.tree, c) == Some(crate::access::Role::Table) {
+            crate::composite::row_of(&self.tree, c, i)
+        } else {
+            i
+        }
+    }
+
+    /// The row a windowed composite at `c` is entered on: its declared
+    /// `active_index`, else the remembered row (ADR 0070).
+    fn wanted_row(&self, c: usize) -> Option<(u64, usize)> {
+        let remembered = self.composite_rows.get(&self.tree.keys[c]).copied();
+        match self.tree.specs[c].interact().active_index {
+            Some(index) => Some((index, remembered.map_or(0, |r| r.1))),
+            None => remembered,
+        }
+    }
+
+    /// Remembers the data row (and column) focus now holds in a windowed
+    /// composite, for Tab to enter it there again (ADR 0070). Free where
+    /// the frame built no indexed row.
+    fn remember_composite_row(&mut self) {
+        if self.tree.indexed.is_empty() {
+            return;
+        }
+        let Some(i) = self.focus_index() else {
+            return;
+        };
+        let Some(c) = crate::composite::owner(&self.tree, i, &mut Vec::new()) else {
+            return;
+        };
+        let unit = self.composite_unit(c, i);
+        let Some(index) = crate::composite::data_index(&self.tree, unit) else {
+            return;
+        };
+        let column = if unit == i { 0 } else { self.column_of(c, i) };
+        self.composite_rows
+            .insert(self.tree.keys[c], (index, column));
     }
 
     /// Puts keyboard focus on node `i` of the last frame the way a Tab
@@ -152,7 +217,7 @@ impl Core {
             {
                 crate::composite::items(&self.tree, i, item, &mut items);
                 if crate::composite::is_composite(&self.tree, i, &items) {
-                    let chosen = self.composite_entry(&items);
+                    let chosen = self.composite_entry(i, &items);
                     open.push((self.tree.subtree_end(i), item, chosen));
                 }
             }
@@ -410,10 +475,25 @@ impl Core {
     /// tells a reader which one is current tells the keyboard where to
     /// enter. Only focusable items are candidates, so a disabled one is
     /// skipped here as it is everywhere else.
-    fn composite_entry(&self, items: &[usize]) -> Option<usize> {
+    fn composite_entry(&self, container: usize, items: &[usize]) -> Option<usize> {
         let live = |&&j: &&usize| crate::access::focusable(&self.tree, j);
         let pick = |f: &dyn Fn(usize) -> bool| items.iter().filter(live).copied().find(|&j| f(j));
+        // A windowed composite's wanted row, when the frame built it: its
+        // `active_index`, else where focus last was (ADR 0070) — in a
+        // table, the cell in the column kept, else the row's first.
+        let wanted = (!self.tree.indexed.is_empty())
+            .then(|| self.wanted_row(container))
+            .flatten()
+            .and_then(|(index, column)| {
+                let on = |j: usize| {
+                    crate::composite::data_index(&self.tree, self.composite_unit(container, j))
+                        == Some(index)
+                };
+                pick(&|j| on(j) && self.column_of_entry(container, j) == column)
+                    .or_else(|| pick(&on))
+            });
         pick(&|j| Some(self.tree.keys[j]) == self.focus)
+            .or(wanted)
             .or_else(|| pick(&|j| self.tree.specs[j].initial_focus))
             .or_else(|| pick(&|j| self.tree.specs[j].access().selected))
             // A radio group's current one is the radio that is on: what a
@@ -932,6 +1012,7 @@ impl Core {
         }
         self.focus = key;
         self.edit.set_focus(edit_key);
+        self.remember_composite_row();
     }
 
     /// Whether the window's "Tab moves focus" toggle is on (backlog C99):

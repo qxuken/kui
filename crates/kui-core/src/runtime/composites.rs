@@ -603,6 +603,16 @@ impl Core {
         true
     }
 
+    /// The column of item `j` of the composite at `container`: a table
+    /// cell's place in its row, 0 for a list's item.
+    pub(crate) fn column_of_entry(&self, container: usize, j: usize) -> usize {
+        if self.composite_unit(container, j) == j {
+            0
+        } else {
+            self.column_of(container, j)
+        }
+    }
+
     /// The column of the cell at `cell` in the table at `table`: its place
     /// among its row's cells.
     pub(crate) fn column_of(&self, table: usize, cell: usize) -> usize {

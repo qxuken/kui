@@ -7846,6 +7846,7 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             .on_hover(tag("hov"))
             .on_layout(tag("lay"))
             .on_typeahead(tag("ta"))
+            .active_index(2)
             .on_force_click(tag("force"))
             .click_sound(f.sound)
             .hover_sound(f.sound)

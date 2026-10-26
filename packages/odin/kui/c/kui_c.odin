@@ -727,6 +727,7 @@ Spec :: struct {
 	on_query: ^Value,
 	when_: ^Value,
 	on_typeahead: ^Value,
+	active_index: ^Value,
 }
 
 Announcement :: struct {

@@ -198,6 +198,7 @@ pub const P_MIN_COLUMN: u32 = 146;
 pub const P_HIDDEN: u32 = 147;
 pub const P_ON_QUERY: u32 = 148;
 pub const P_ON_TYPEAHEAD: u32 = 149;
+pub const P_ACTIVE_INDEX: u32 = 150;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1076,6 +1077,16 @@ pub const PROPS: &[PropDef] = &[
         doc: "Range handler (ADR 0065): on a node whose children carry data indices — `index`, a virtual list's rows — the least and greatest index among its children inside its box arrive as this message with `range: {first, last}` in it, after the frame that first lays it out and whenever either changes; what a table pages an unbounded source by. Needs a stable key.",
     },
     PropDef {
+        name: "activeIndex",
+        id: P_ACTIVE_INDEX,
+        kind: Kind::Msg,
+        apply: Apply::SpecMsg(|s, v| match v.as_int() {
+            Some(i) if i >= 0 => s.active_index(i as u64),
+            _ => s,
+        }),
+        doc: "On a windowed `list` or `table` composite (ADR 0070): the data row (a whole number, its `index`) Tab enters it on — the selected one after a reload — scrolled to and landed on when the frame did not build it. Wins over the row the composite remembers focus last held there; without either, ADR 0007's entry (`initialFocus`, `selected`, the first row). A value that is not a whole number is no row.",
+    },
+    PropDef {
         name: "onTypeahead",
         id: P_ON_TYPEAHEAD,
         kind: Kind::Handler,
@@ -1888,6 +1899,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     (
         "onRange",
         "`on_range` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
+    (
+        "activeIndex",
+        "`active_index` (a borrowed `KuiValue*` holding a whole number; NULL for none)",
     ),
     (
         "onTypeahead",

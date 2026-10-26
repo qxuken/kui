@@ -448,8 +448,9 @@ extern "C" {
  * provider that raised a component event (80 bytes on 64-bit, from 64).
  * And KuiSpec appends focus_ring (816 bytes on 64-bit, from 808), the core
  * focus ring's colour (backlog C93), then min_column, hidden, on_query and
- * when (840 bytes; ADR 0069), then on_typeahead (848 bytes; ADR 0070,
- * which kui_answer_typeahead answers); kui_tab_moves_focus (backlog C99),
+ * when (840 bytes; ADR 0069), then on_typeahead and active_index (856
+ * bytes; ADR 0070, kui_answer_typeahead answering the first);
+ * kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92) are new
  * functions.
  */
@@ -1508,6 +1509,11 @@ typedef struct KuiSpec {
      * kui_answer_typeahead. A borrowed KuiValue*, cloned while the node
      * opens; NULL for none. ABI 39, appended (848 bytes on 64-bit). */
     const KuiValue *on_typeahead;
+    /* On a windowed list or table composite: the data row Tab enters it on
+     * (activeIndex, ADR 0070), a KuiValue holding a whole number, reached
+     * for when the frame did not build it; it wins over the row focus last
+     * held there. NULL for none. ABI 39, appended (856 bytes on 64-bit). */
+    const KuiValue *active_index;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

@@ -757,6 +757,11 @@ impl Core {
         // And a composite step that reached for a row the last frame had
         // not built lands on it, now that this one may have (ADR 0070).
         self.resolve_composite_reach();
+        // The rows remembered for composites this frame no longer has.
+        if !self.composite_rows.is_empty() {
+            let tree = &self.tree;
+            self.composite_rows.retain(|k, _| tree.index_of(*k).is_some());
+        }
     }
 
     /// Numbers the text nodes of the selection's scope in tree order and

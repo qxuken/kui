@@ -368,6 +368,8 @@ global type kui = record
     on_layout: any
     -- Range handler (ADR 0065): on a node whose children carry data indices — `index`, a virtual list's rows — the least and greatest index among its children inside its box arrive as this message with `range: {first, last}` in it, after the frame that first lays it out and whenever either changes; what a table pages an unbounded source by. Needs a stable key.
     on_range: any
+    -- On a windowed `list` or `table` composite (ADR 0070): the data row (a whole number, its `index`) Tab enters it on — the selected one after a reload — scrolled to and landed on when the frame did not build it. Wins over the row the composite remembers focus last held there; without either, ADR 0007's entry (`initialFocus`, `selected`, the first row). A value that is not a whole number is no row.
+    active_index: any
     -- Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search its built rows did not answer arrives as this message with `typeahead: {text}` in it, the whole search so far. A windowed list's unbuilt rows have no names the core can see; the app searches its data and answers with `answerTypeahead(key, index)`, and the core reaches for that row as a step does.
     on_typeahead: any
     -- Message emitted when clicked (data, not a callback).
