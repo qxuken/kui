@@ -3701,6 +3701,18 @@ without the composite becoming a Tab stop.
 through its description ("done" / "not done"). **Do.** `checked` on a
 `listItem` (and a `cell`) mapped to AccessKit's toggled state.
 
+### `.` C122 — A runner app has no test runner
+
+**Found** by the user (2026-10-26): an app's tests run as `kui run test
+--headless`, a convention with no discovery, report, snapshots or CI
+output. **Do.** [ADR 0072](adr/0072-a-test-runner-for-kui-apps.md):
+`kui test` (discovery, a fresh headless runner per file, a report, exit
+code), `kui.test` (`describe` / `it`, the driving API, `expect`), four
+snapshots (`expect_tree`, `expect_quads`, `expect_shot`, `expect_table`)
+with `--update`, a fixed environment with bundled fonts, `--filter`,
+`--watch`, `--reporter junit`; the samples and the task list moved onto
+it.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
