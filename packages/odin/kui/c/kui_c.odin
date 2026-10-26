@@ -726,6 +726,7 @@ Spec :: struct {
 	hidden: u32,
 	on_query: ^Value,
 	when_: ^Value,
+	on_typeahead: ^Value,
 }
 
 Announcement :: struct {
@@ -1384,6 +1385,7 @@ foreign lib {
 	clear_selection :: proc(ctx: ^Ctx) -> bool ---
 	request_copy :: proc(ctx: ^Ctx, out: ^string) -> u32 ---
 	answer_selection_range :: proc(ctx: ^Ctx, text: string) -> bool ---
+	answer_typeahead :: proc(ctx: ^Ctx, key: u64, index: u64) -> bool ---
 	set_clipboard :: proc(ctx: ^Ctx, text: string, html: string) ---
 	set_clipboard_secret :: proc(ctx: ^Ctx, text: string) ---
 	set_clipboard_image :: proc(ctx: ^Ctx, rgba: [^]u8, width: u32, height: u32) -> bool ---

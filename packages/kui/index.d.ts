@@ -858,7 +858,7 @@ export type EventName =
   | 'scroll' | 'focus' | 'hover' | 'drop' | 'files' | 'open' | 'layout'
   | 'resize' | 'window' | 'system' | 'fonts' | 'modifiers' | 'change'
   | 'submit' | 'cancel' | 'boundary' | 'sound' | 'capture' | 'dismiss'
-  | 'component' | 'range' | 'query';
+  | 'component' | 'range' | 'query' | 'typeahead';
 // -- end generated --
 
 /** A position in an editor's text: one of its `runs` and a character

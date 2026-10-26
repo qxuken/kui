@@ -23,6 +23,7 @@ import type {
   WithFiles,
   WithLayout,
   WithRange,
+  WithTypeahead,
   WithQuery,
   WithEditChange,
   WithSliderChange,
@@ -529,6 +530,8 @@ export interface GeneratedSpecProps {
   onSelectionRange?: HandlerMsg<WithSelectionRange> | null;
   /** Enter in a single-line editor, as this message — a map as declared, any other message under `tag`, none as `{}` (ADR 0047). */
   onSubmit?: AppMsg | null;
+  /** Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search its built rows did not answer arrives as this message with `typeahead: {text}` in it, the whole search so far. A windowed list's unbuilt rows have no names the core can see; the app searches its data and answers with `answerTypeahead(key, index)`, and the core reaches for that row as a step does. */
+  onTypeahead?: HandlerMsg<WithTypeahead> | null;
   /** Group opacity 0..1 (default 1): fades this node and its whole subtree, drawn as one picture and faded once in a window (ADR 0056), so a label on its own fill and overlapping pieces fade as one; a renderer that draws the quads itself without groups fades each quad, and overlapping pieces show their seams. Layout, hit-testing and the access tree are untouched; eases with `transition`, and `enter: { opacity: 0 }` fades a panel in. A node's `tooltip` fades with the node's ancestors and not with the node, so a dimmed box keeps a hint that can be read (backlog F178). */
   opacity?: LengthProp;
   /** Paint this node and its subtree after its siblings, over any it overlaps: a tab that glides past its neighbour under `slide` passes over it whichever way it moved, so the selected tab declared `overSiblings` stays on top without the view tracking when it moves. Siblings otherwise paint in tree order, a later place over an earlier. Only the sibling order changes: the parent still paints under it, what follows the parent over it, it keeps the parent's clip, and a float still opens above it. The hit test reads the same order, so where it overlaps a sibling it takes the press. Two siblings that both declare it paint in tree order between themselves. Not a z-index: there is no number to outbid (`docs/adr/0046-a-node-over-its-siblings-paints-after-them.md`). */

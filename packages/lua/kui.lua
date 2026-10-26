@@ -85,6 +85,7 @@
 ---@field on_drop? any Drop-zone handler (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): files dragged in from the OS over this node arrive as this message with `drop: {phase: "enter" | "move" | "leave" | "drop", paths, x, y}` in it (ADR 0047) — `paths` the OS paths as strings, `x`/`y` the pointer in logical viewport coordinates (absent on `leave`). The zone under the files is the topmost zone by paint order: a node inside a zone is the zone's (a button in it, a field in it), and a node that is no zone and has none enclosing it is looked past, so an overlay shown on `enter` cannot make the zone lose the files. No `leave` follows a `drop`; a drop off every zone is refused by the driver. Implies hover tracking. No access row — a screen-reader user's way in is a button beside the zone. On Windows and Linux the position is the OS cursor at enter and release only, so `move` never fires there.
 ---@field on_layout? any Layout handler: the node's laid-out rect arrives as this message with `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on its first frame and whenever it changes (needs a stable key).
 ---@field on_range? any Range handler (ADR 0065): on a node whose children carry data indices — `index`, a virtual list's rows — the least and greatest index among its children inside its box arrive as this message with `range: {first, last}` in it, after the frame that first lays it out and whenever either changes; what a table pages an unbounded source by. Needs a stable key.
+---@field on_typeahead? any Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search its built rows did not answer arrives as this message with `typeahead: {text}` in it, the whole search so far. A windowed list's unbuilt rows have no names the core can see; the app searches its data and answers with `answerTypeahead(key, index)`, and the core reaches for that row as a step does.
 ---@field on_click? any Message emitted when clicked (data, not a callback).
 ---@field on_drag? any Drag handler: the drag arrives as this message with `drag: {phase, x, y, dx, dy, parent}` in it (ADR 0047), `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role="line"` rows they carry `line`, `byte` and `clicks` — see the events table. A press on a child that does nothing with a press itself drags the nearest enclosing `onDrag` node, stopping at a clickable, a key sink, window chrome, a slider, the modal boundary and the selection scope the press is in (backlog F176).
 ---@field on_key? any Key sink: with key focus held, presses arrive as this message with `key: {phase: "down", code, …}` in it, and a composition, a commit and a reader's selection as `preedit`, `text` and `select` the same way (ADR 0047). Releases only with `keyUp` beside it.
@@ -340,7 +341,7 @@ function channel(columns) end
 ---field named for the event (`drag`, `change`, …), and the envelope beside them.
 ---An app's message names its field by inheriting it: `---@class Pan: kui.Event, kui.WithDrag`.
 ---@class kui.Event
----@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range"|"query" What happened: the event kind, beside the message rather than in it.
+---@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range"|"query"|"typeahead" What happened: the event kind, beside the message rather than in it.
 ---@field node_key integer The emitting node's key, what `env.edit_text` and the rest take.
 ---@field window integer|kui.WindowEvent The window it came from, as `env.window.id` reads; a `window` event's data, which has the name.
 ---@field instance? integer The key of the component instance the node was drawn in.
@@ -353,7 +354,7 @@ function channel(columns) end
 ---`on_event`'s second argument: the envelope alone, whatever fields the message has.
 ---The first argument's envelope fields give way to the message's own; these never do.
 ---@class kui.Envelope
----@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range"|"query"
+---@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range"|"query"|"typeahead"
 ---@field node_key integer
 ---@field window integer The window it came from, as `env.window.id` reads.
 ---@field instance? integer
@@ -561,6 +562,14 @@ function channel(columns) end
 ---A message that carries a `drop` event: its `drop` field alone.
 ---@class kui.WithDrop
 ---@field drop kui.DropEvent
+
+---A `typeahead` event's data.
+---@class kui.TypeaheadEvent
+---@field text string
+
+---A message that carries a `typeahead` event: its `typeahead` field alone.
+---@class kui.WithTypeahead
+---@field typeahead kui.TypeaheadEvent
 
 ---A `files` event's data.
 ---@class kui.FilesEvent

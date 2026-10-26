@@ -79,6 +79,12 @@ pub(crate) fn items(tree: &Tree, container: usize, item: Role, out: &mut Vec<usi
     let end = tree.subtree_end(container);
     let mut i = container + 1;
     while i < end {
+        // A hidden node is nothing to a reader or the ring (ADR 0069), so
+        // nothing to count or step onto either.
+        if tree.is_hidden(i) {
+            i = tree.subtree_end(i);
+            continue;
+        }
         let role = role(tree, i);
         if role.is_some_and(|r| is_item(r, item)) {
             out.push(i);

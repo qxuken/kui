@@ -114,7 +114,7 @@ global type kui = record
   end
 
   enum EventKind
-    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "component" "range" "query"
+    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "component" "range" "query" "typeahead"
   end
 
   enum DragEventPhase
@@ -368,6 +368,8 @@ global type kui = record
     on_layout: any
     -- Range handler (ADR 0065): on a node whose children carry data indices — `index`, a virtual list's rows — the least and greatest index among its children inside its box arrive as this message with `range: {first, last}` in it, after the frame that first lays it out and whenever either changes; what a table pages an unbounded source by. Needs a stable key.
     on_range: any
+    -- Type-ahead handler, on a `list` or `table` composite (ADR 0070): a search its built rows did not answer arrives as this message with `typeahead: {text}` in it, the whole search so far. A windowed list's unbuilt rows have no names the core can see; the app searches its data and answers with `answerTypeahead(key, index)`, and the core reaches for that row as a step does.
+    on_typeahead: any
     -- Message emitted when clicked (data, not a callback).
     on_click: any
     -- Drag handler: the drag arrives as this message with `drag: {phase, x, y, dx, dy, parent}` in it (ADR 0047), `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role="line"` rows they carry `line`, `byte` and `clicks` — see the events table. A press on a child that does nothing with a press itself drags the nearest enclosing `onDrag` node, stopping at a clickable, a key sink, window chrome, a slider, the modal boundary and the selection scope the press is in (backlog F176).
@@ -1051,6 +1053,16 @@ global type kui = record
     drop: DropEvent
   end
 
+  -- A `typeahead` event's data.
+  record TypeaheadEvent
+    text: string
+  end
+
+  -- A message that carries a `typeahead` event: its `typeahead` field alone.
+  interface WithTypeahead
+    typeahead: TypeaheadEvent
+  end
+
   -- A `files` event's data.
   record FilesEvent
     paths: {string}
@@ -1493,6 +1505,8 @@ global type kui = record
     focus_region: function(key: KeyRef)
     -- Whether a node has focus.
     is_focused: function(key: KeyRef): boolean
+    -- The app's answer to a `typeahead` event (ADR 0070): the data index of the row its search names, which the core reaches for in the composite that asked — landing on it, or scrolling to it and landing the frame that builds it. False when that composite asked nothing, or focus has left it.
+    answer_typeahead: function(key: KeyRef, index: integer): boolean
     -- The label a key was opened under, in the frame being built and then the last one; none for an auto-keyed node. The reverse of `key_of`.
     label_of: function(key: KeyRef): string
     -- Whether the pointer is over a node.
