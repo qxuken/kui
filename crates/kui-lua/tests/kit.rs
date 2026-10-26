@@ -2378,3 +2378,146 @@ fn a_line_chart_breaks_its_line_at_a_gap_and_keeps_its_window() {
     let (a, b) = (runs[0], runs[1]);
     assert!(a.x + a.w <= b.x + 1.0 || b.x + b.w <= a.x + 1.0, "side by side, not overlapping: {runs:?}");
 }
+
+/// The x labels of a line chart `width` px wide over x 0..=100: each text
+/// node ending in ` s`, left to right.
+fn x_labels(width: u32) -> Vec<(kui_core::Rect, String)> {
+    let (core, w) = lua_app(
+        &format!(
+            r#"
+            local t, a = {{}}, {{}}
+            for i = 0, 100 do t[#t + 1] = i; a[#a + 1] = 50 + 30 * math.sin(i / 9) end
+            local ch = channel({{ t = t, a = a }})
+            function view(env)
+              return column {{ width = {width}, height = "grow",
+                component("kit/line_chart", {{ data = ch, x = "t", x_unit = "s", height = 160,
+                  series = {{ {{ field = "a", name = "A" }} }} }}) }}
+            end
+            "#
+        ),
+        4,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+    let mut labels: Vec<(kui_core::Rect, String)> = core
+        .nodes()
+        .into_iter()
+        .filter_map(|n| n.text.filter(|t| t.ends_with(" s")).map(|t| (n.rect, t)))
+        .collect();
+    labels.sort_by(|a, b| a.0.x.total_cmp(&b.0.x));
+    labels
+}
+
+#[test]
+fn a_line_charts_x_labels_are_spaced_by_their_measured_widths() {
+    // The step was a guess — a tick every 90 px, every label 80 px wide —
+    // so labels went long before they touched. Each is measured now, and
+    // ticks come as close as two neighbours' half widths and a gap.
+    let wide = x_labels(1100);
+    let texts: Vec<&str> = wide.iter().map(|(_, t)| t.as_str()).collect();
+    assert!(wide.len() > 11, "more ticks than one every 90 px: {texts:?}");
+    assert!(texts.iter().all(|t| !t.contains('.')), "whole steps read whole: {texts:?}");
+    for pair in wide.windows(2) {
+        let (a, b) = (&pair[0], &pair[1]);
+        assert!(a.0.x + a.0.w + 4.0 <= b.0.x, "{a:?} and {b:?} do not touch");
+    }
+    // Narrow, it steps out to labels that still fit.
+    let narrow = x_labels(260);
+    let texts: Vec<&str> = narrow.iter().map(|(_, t)| t.as_str()).collect();
+    assert!(narrow.len() >= 3, "{texts:?}");
+    for pair in narrow.windows(2) {
+        assert!(pair[0].0.x + pair[0].0.w + 4.0 <= pair[1].0.x, "{texts:?}");
+    }
+}
+
+/// A line chart's y labels: the text nodes that read as plain numbers
+/// (with ` ms` after them, for a unit).
+fn y_labels(core: &Core) -> Vec<(kui_core::Rect, f64)> {
+    core.nodes()
+        .into_iter()
+        .filter_map(|n| {
+            let t = n.text?;
+            let v: f64 = t.trim_end_matches(" ms").trim_end_matches('k').parse().ok()?;
+            Some((n.rect, v))
+        })
+        .collect()
+}
+
+#[test]
+fn a_line_charts_gutter_is_as_wide_as_its_widest_label() {
+    // The y labels took 44 px, or 56 with a unit, whatever they said.
+    for (top, unit, old) in [(9.0, "nil", 44.0), (12000.0, "\"ms\"", 56.0)] {
+        let (core, w) = lua_app(
+            &format!(
+                r#"
+                local t, a = {{}}, {{}}
+                for i = 1, 50 do t[i] = i; a[i] = {top} * i / 50 end
+                local ch = channel({{ t = t, a = a }})
+                function view(env)
+                  return column {{ width = 600, height = "grow",
+                    component("kit/line_chart", {{ data = ch, x = "t", x_unit = "s", y_unit = {unit}, height = 160,
+                      series = {{ {{ field = "a", name = "A" }} }} }}) }}
+                end
+                "#
+            ),
+            4,
+        );
+        assert!(w.is_empty(), "{w:#?}");
+        let ys: Vec<_> = y_labels(&core).into_iter().filter(|(r, _)| r.x < 100.0).collect();
+        assert!(ys.len() >= 3, "{ys:?}");
+        let right = ys.iter().map(|(r, _)| r.x + r.w).fold(f32::MIN, f32::max);
+        let widest = ys.iter().map(|(r, _)| r.w).fold(f32::MIN, f32::max);
+        assert!(right - widest <= 4.0, "the gutter hugs its widest label ({top}): {right} vs {widest}");
+        assert!(right < old, "narrower than the old fixed gutter ({top}): {right}");
+        for (r, _) in &ys {
+            assert!((r.x + r.w - right).abs() < 1.0, "right-aligned: {ys:?}");
+        }
+    }
+}
+
+#[test]
+fn a_line_chart_glides_to_a_new_range_and_jumps_under_reduced_motion() {
+    for reduced in [false, true] {
+        let mut r = LuaRig::new(
+            r#"
+            local function make(top)
+              local t, a = {}, {}
+              for i = 1, 50 do t[i] = i; a[i] = top * i / 50 end
+              return channel({ t = t, a = a })
+            end
+            local small, big = make(10), make(100)
+            ch = small
+            function grow() ch = big end
+            function view(env)
+              return column { width = 600, height = "grow",
+                component("kit/line_chart", { data = ch, x = "t", x_unit = "s", height = 160,
+                  series = { { field = "a", name = "A" } } }) }
+            end
+            "#,
+        );
+        if reduced {
+            let mut system = r.core.env.system;
+            system.motion = kui_core::MotionPref::Reduced;
+            r.core.set_system(system);
+        }
+        r.core.set_time(1.0);
+        r.frames(3);
+        let top = |r: &mut LuaRig| y_labels(&r.core).iter().map(|(_, v)| *v).fold(f64::MIN, f64::max);
+        assert_eq!(top(&mut r), 10.0);
+        r.app.globals().get::<mlua::Function>("grow").unwrap().call::<()>(()).unwrap();
+        r.core.set_time(1.05);
+        r.frames(1);
+        r.core.set_time(1.1);
+        r.frames(1);
+        let mid = top(&mut r);
+        if reduced {
+            assert_eq!(mid, 100.0, "under reduced motion the range jumps");
+        } else {
+            assert!(mid > 10.0 && mid < 100.0, "on its way: {mid}");
+            assert!(r.core.animating(), "a frame is asked for while it glides");
+        }
+        r.core.set_time(1.6);
+        r.frames(2);
+        assert_eq!(top(&mut r), 100.0, "there in the end (reduced {reduced})");
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
