@@ -1601,6 +1601,14 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- **A Kit live line chart's readout is opaque again.** Each sample's
+  slide opens a float of its own, and floats stack in the order they
+  opened (ADR 0053), so the lines slid over a readout box opened before
+  them and showed through it, as if it were clear — on a dark skin most of
+  all. The plot and the readout paint in tree order (`floats_in_order`),
+  the box over every line, and it carries the skin's shadow, as a raised
+  float does. Kit's test draws it in every skin and half over a sliding
+  window: an opaque fill, no segment over it, its text at 4.5:1.
 - **Tab moves focus in the Kit gallery again.** The key sink the gallery
   wrapped itself in for ⌥↑ / ⌥↓ was a Tab stop — the first — and a sink
   holding focus keeps every key, Tab included, so the first Tab put

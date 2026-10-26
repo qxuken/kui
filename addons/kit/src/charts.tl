@@ -875,6 +875,8 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       bg = ref(c, "raised"), border = { w = "$kitHair", color = ref(c, "ink") },
       live = "polite", min_width = "fit",
       ctx.data(c, title, { size = "$kitSizeLabel", color = ref(c, "muted"), max_lines = 1 }) }
+    -- Raised over the plot as a float is: the skin's shadow under it.
+    ctx.shadow(c, box)
     -- Its width, near enough to say which side it fits on: the labels'
     -- (measured at the axis' size, so scaled up a little) and the swatch,
     -- the gaps and the padding around them.
@@ -926,7 +928,13 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     role = focusable and "group" or "image",
     label = "line chart",
     row(legend),
-    row { width = "grow", gap = 6, column(labels), column { width = "grow", height = h, column(plot), said_box } },
+    -- The plot's floats and the readout in tree order (ADR 0053): floats
+    -- stack in the order they opened by default, and each sample's slide
+    -- opens a box of its own, which went over the readout box opened
+    -- before it — the lines showed through the readout as if it were
+    -- clear.
+    row { width = "grow", gap = 6, column(labels),
+      column { width = "grow", height = h, floats_in_order = true, column(plot), said_box } },
     -- The axis under the plot alone: a spacer as wide as the gutter and
     -- the gap, easing with it.
     row { width = "grow", gap = 6,

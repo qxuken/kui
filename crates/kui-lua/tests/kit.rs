@@ -4374,3 +4374,85 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
     }
     assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
 }
+/// A live line chart's readout box is opaque and over everything in the
+/// plot, in every skin and half: each sample's slide opens a float of its
+/// own, and floats stack in the order they opened, so the lines slid over
+/// a readout box opened before them and showed through it. Its fill is
+/// opaque, every segment under it is drawn before it, it does not move
+/// with the slide, and its text reads at 4.5:1 on it.
+#[test]
+fn a_live_charts_readout_is_opaque_and_over_its_lines_in_every_skin() {
+    use kui_core::{InputEvent, QuadKind, Vec2};
+    for skin in [kit::Skin::Ledger, kit::Skin::Neutral, kit::Skin::Phosphor] {
+        for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
+            let case = format!("{skin:?} {appearance:?}");
+            let mut r = rig();
+            let ground = std::cell::Cell::new(None);
+            let frame = |r: &mut Rig, ch: &Channel, t: f64| {
+                r.core.set_time(t);
+                r.frame(|ui| {
+                    kit::Settings::new().skin(skin).appearance(appearance).place(ui);
+                    ui.with(NodeSpec::column().size(700.0, 300.0), |ui| {
+                        kit::LineChart::new(ch.clone(), "t", vec![kit::Series::new("a", "A")])
+                            .window(20.0)
+                            .area(true)
+                            .focusable(true)
+                            .place(ui);
+                    });
+                    ground.set(ui.token_color("kitBg"));
+                });
+                let ev = r.core.take_pending_events();
+                r.exts.route(ev, |_| {});
+            };
+            let mut n = 30;
+            let mut ch = live_samples(None, n);
+            let mut t = 1.0;
+            for _ in 0..4 {
+                frame(&mut r, &ch, t);
+                t += 0.1;
+                n += 1;
+                ch = live_samples(Some(&ch), n);
+            }
+            let plot = r.core.nodes().into_iter().find(|n| n.label.as_deref() == Some("plot")).unwrap().rect;
+            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(plot.x + plot.w * 0.3, plot.y + plot.h * 0.5)));
+            r.exts.route(e, |_| {});
+            // Samples land after the readout opened: each opens a slide.
+            for _ in 0..3 {
+                frame(&mut r, &ch, t);
+                frame(&mut r, &ch, t + 0.04);
+                t += 0.1;
+                n += 1;
+                ch = live_samples(Some(&ch), n);
+            }
+            frame(&mut r, &ch, t);
+            frame(&mut r, &ch, t + 0.03);
+            let bx = r.core.nodes().into_iter().find(|n| n.label.as_deref() == Some("readout")).expect("a readout").rect;
+            let (dl, _) = r.core.output();
+            let fill_at = dl
+                .quads
+                .iter()
+                .rposition(|q| q.kind == QuadKind::Solid && (q.rect.w - bx.w).abs() < 1.5 && (q.rect.h - bx.h).abs() < 1.5 && (q.rect.x - bx.x).abs() < 1.5)
+                .unwrap_or_else(|| panic!("{case}: the readout's fill"));
+            let fill = dl.quads[fill_at].color;
+            assert_eq!(fill.a, 1.0, "{case}: the readout's fill is opaque: {fill:?}");
+            let overlaps = |q: &kui_core::Quad| {
+                q.rect.x < bx.x + bx.w && q.rect.x + q.rect.w > bx.x && q.rect.y < bx.y + bx.h && q.rect.y + q.rect.h > bx.y
+            };
+            let late: Vec<usize> = dl
+                .quads
+                .iter()
+                .enumerate()
+                .filter(|(i, q)| *i > fill_at && q.kind == QuadKind::Segment && overlaps(q))
+                .map(|(i, _)| i)
+                .collect();
+            assert!(late.is_empty(), "{case}: segments drawn over the readout: {late:?}");
+            let glyphs = glyphs_on(&mut r.core, bx, ground.get().unwrap());
+            assert!(!glyphs.is_empty(), "{case}: the readout says something");
+            for (c, under) in glyphs {
+                let k = contrast(c, under);
+                assert!(k >= 4.49, "{case}: {c:?} on {under:?} reads at {k:.2}");
+            }
+            assert!(r.core.take_warnings().is_empty());
+        }
+    }
+}

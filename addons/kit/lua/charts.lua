@@ -877,6 +877,8 @@ bg = ref(c, "raised"), border = { w = "$kitHair", color = ref(c, "ink") },
 live = "polite", min_width = "fit",
 ctx.data(c, title, { size = "$kitSizeLabel", color = ref(c, "muted"), max_lines = 1 }), }
 
+      ctx.shadow(c, box)
+
 
 
       local box_w = label_w(c, title)
@@ -927,7 +929,13 @@ dx = right and px + 8 or px - 8, dy = math.max(4, dy), clip = true, }
       role = focusable and "group" or "image",
       label = "line chart",
       row(legend),
-      row({ width = "grow", gap = 6, column(labels), column({ width = "grow", height = h, column(plot), said_box }) }),
+
+
+
+
+
+      row({ width = "grow", gap = 6, column(labels),
+column({ width = "grow", height = h, floats_in_order = true, column(plot), said_box }), }),
 
 
       row({ width = "grow", gap = 6,
