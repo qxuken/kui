@@ -265,6 +265,12 @@ export interface WhenConditions {
   focusVisible?: boolean;
   disabled?: boolean;
   selected?: boolean;
+  /** The node's hover group's state (backlog C106): the pointer over a
+   *  member, a press held on one, focus on one, that focus shown. */
+  groupHovered?: boolean;
+  groupPressed?: boolean;
+  groupFocused?: boolean;
+  groupFocusVisible?: boolean;
 }
 
 /** One entry of a node's `when` list (ADR 0069): the conditions it tests
@@ -287,7 +293,19 @@ export interface LazyProps {
   needs?: { w?: number; h?: number };
   /** Or the conditions over the parent's size, the window's or the
    *  environment's while which `render` is built. */
-  query?: Omit<WhenConditions, 'hovered' | 'pressed' | 'focused' | 'focusVisible' | 'disabled' | 'selected'>;
+  query?: Omit<
+    WhenConditions,
+    | 'hovered'
+    | 'pressed'
+    | 'focused'
+    | 'focusVisible'
+    | 'disabled'
+    | 'selected'
+    | 'groupHovered'
+    | 'groupPressed'
+    | 'groupFocused'
+    | 'groupFocusVisible'
+  >;
   render: () => KuiNode;
   fallback?: () => KuiNode;
   onQuery?: Msg;

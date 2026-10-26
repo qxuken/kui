@@ -44,7 +44,7 @@ pub(crate) struct LazyMemo {
 impl Core {
     /// The facts a condition other than the node's own size reads, with
     /// `state` the node's state bits.
-    pub(crate) fn rule_facts(&self, state: u8) -> Facts {
+    pub(crate) fn rule_facts(&self, state: u16) -> Facts {
         Facts {
             viewport: Size::new(self.dt_area.w, self.dt_area.h),
             scale: self.scale,
@@ -58,8 +58,9 @@ impl Core {
 
     /// Node `key`'s state bits, as `hoverBg` reads them: hovered is the
     /// pointer over it or anything inside it, or over its hover group, or
-    /// a press it holds.
-    fn state_bits(&self, key: Key, spec: &NodeSpec) -> u8 {
+    /// a press it holds. And its hover group's, when it is in one and an
+    /// entry reads them (backlog C106).
+    fn state_bits(&self, key: Key, spec: &NodeSpec, mask: u16) -> u16 {
         let group = spec.interact().hover_group;
         let pressed = self.interaction.is_pressed(key)
             || group.is_some_and(|g| self.interaction.is_group_pressed(g));
@@ -87,6 +88,22 @@ impl Core {
         if spec.access().selected {
             s |= state::SELECTED;
         }
+        if mask & state::GROUP != 0
+            && let Some(g) = group
+        {
+            if self.interaction.is_group_pressed(g) {
+                s |= state::GROUP_PRESSED | state::GROUP_HOVERED;
+            }
+            if self.interaction.is_group_hovered(g) {
+                s |= state::GROUP_HOVERED;
+            }
+            if self.focus_group == Some(g) {
+                s |= state::GROUP_FOCUSED;
+                if self.focus_visible {
+                    s |= state::GROUP_FOCUS_VISIBLE;
+                }
+            }
+        }
         s
     }
 
@@ -110,9 +127,9 @@ impl Core {
             .copied()
             .filter(|m| m.seen + 1 >= self.frame_no)
             .unwrap_or_default();
-        let reads_state = rules.entries().iter().any(|r| r.cond.reads_state());
-        let facts = self.rule_facts(if reads_state {
-            self.state_bits(key, spec)
+        let reads = rules.entries().iter().fold(0, |m, r| m | r.cond.state_mask);
+        let facts = self.rule_facts(if reads != 0 {
+            self.state_bits(key, spec, reads)
         } else {
             0
         });

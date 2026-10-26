@@ -778,6 +778,10 @@ pub struct Core {
     /// C104): the composite and the row, applied when the frame ends, as a
     /// reach is landed, against the tree that frame built.
     typeahead_answer: Option<(Key, u64)>,
+    /// The hover group of the focused node, read off the last frame's tree
+    /// as a frame begins (backlog C106): what `group_focused` and
+    /// `group_focus_visible` test a node's own group against.
+    focus_group: Option<u64>,
     /// The data row (and, in a table, the column) focus last held in each
     /// windowed composite, by its key (ADR 0070): where Tab enters it
     /// again, unless it declares `active_index`. Pruned to the composites
@@ -1459,6 +1463,7 @@ impl Core {
             composite_reach: None,
             typeahead_asked: None,
             typeahead_answer: None,
+            focus_group: None,
             composite_rows: FxHashMap::default(),
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),
@@ -2252,6 +2257,14 @@ impl Core {
         // Read before the tree goes: a `reveal_on_hover` node opening in
         // this frame asks where the pointer and the focus were in it.
         self.note_reveal_anchors();
+        // And the focused node's hover group, which a `group_focused` rule
+        // reads as the members open (backlog C106): focus moved by input
+        // since is on a node the last frame laid out.
+        self.focus_group = self
+            .focus
+            .and_then(|k| self.tree.index_of(k))
+            .and_then(|i| self.tree.specs[i].interact.as_deref())
+            .and_then(|i| i.hover_group);
         let keep_prev = self.tree.any_exit;
         if keep_prev {
             std::mem::swap(&mut self.tree, &mut self.prev_tree);

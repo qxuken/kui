@@ -135,21 +135,35 @@ impl Platform {
 
 /// The state bits a condition reads, in [`Cond::state_mask`].
 pub mod state {
-    pub const HOVERED: u8 = 1;
-    pub const PRESSED: u8 = 2;
-    pub const FOCUSED: u8 = 4;
-    pub const FOCUS_VISIBLE: u8 = 8;
-    pub const DISABLED: u8 = 16;
-    pub const SELECTED: u8 = 32;
+    pub const HOVERED: u16 = 1;
+    pub const PRESSED: u16 = 2;
+    pub const FOCUSED: u16 = 4;
+    pub const FOCUS_VISIBLE: u16 = 8;
+    pub const DISABLED: u16 = 16;
+    pub const SELECTED: u16 = 32;
+    /// The node's hover group's state (backlog C106): the pointer over a
+    /// member, a press held on one, focus on one, and that focus shown —
+    /// what a mark inside a row reads of the row, the two sharing a
+    /// `hoverGroup`. None holds for a node in no group.
+    pub const GROUP_HOVERED: u16 = 64;
+    pub const GROUP_PRESSED: u16 = 128;
+    pub const GROUP_FOCUSED: u16 = 256;
+    pub const GROUP_FOCUS_VISIBLE: u16 = 512;
     /// The names a binding spells them by, in bit order.
-    pub const NAMES: [(&str, u8); 6] = [
+    pub const NAMES: [(&str, u16); 10] = [
         ("hovered", HOVERED),
         ("pressed", PRESSED),
         ("focused", FOCUSED),
         ("focus_visible", FOCUS_VISIBLE),
         ("disabled", DISABLED),
         ("selected", SELECTED),
+        ("group_hovered", GROUP_HOVERED),
+        ("group_pressed", GROUP_PRESSED),
+        ("group_focused", GROUP_FOCUSED),
+        ("group_focus_visible", GROUP_FOCUS_VISIBLE),
     ];
+    /// The bits read off the node's hover group rather than the node.
+    pub const GROUP: u16 = GROUP_HOVERED | GROUP_PRESSED | GROUP_FOCUSED | GROUP_FOCUS_VISIBLE;
 }
 
 /// A condition set: every condition in it must hold. Built from the
@@ -176,13 +190,13 @@ pub struct Cond {
     /// The window's scale factor.
     pub scale: Option<Range>,
     /// The state bits this set reads, and what each must be.
-    pub state_mask: u8,
-    pub state_want: u8,
+    pub state_mask: u16,
+    pub state_want: u16,
 }
 
 #[allow(non_upper_case_globals)]
 impl Cond {
-    const fn flag(state: u8) -> Cond {
+    const fn flag(state: u16) -> Cond {
         Cond {
             width: None,
             height: None,
@@ -236,6 +250,17 @@ impl Cond {
     pub const Disabled: Cond = Cond::flag(state::DISABLED);
     /// The node's access spec says `selected`.
     pub const Selected: Cond = Cond::flag(state::SELECTED);
+    /// The pointer is over a member of the node's hover group (backlog
+    /// C106), or a press holds one.
+    pub const GroupHovered: Cond = Cond::flag(state::GROUP_HOVERED);
+    /// A press began on a member of the node's hover group and holds.
+    pub const GroupPressed: Cond = Cond::flag(state::GROUP_PRESSED);
+    /// A member of the node's hover group holds keyboard focus.
+    pub const GroupFocused: Cond = Cond::flag(state::GROUP_FOCUSED);
+    /// A member of the node's hover group holds keyboard focus that
+    /// shows: a checkbox's mark drawing its tight ring while its row has
+    /// the keyboard.
+    pub const GroupFocusVisible: Cond = Cond::flag(state::GROUP_FOCUS_VISIBLE);
 
     /// The node's own width under `n`.
     pub fn width_below(n: f32) -> Cond {
@@ -511,7 +536,7 @@ pub(crate) struct Facts {
     pub reduced_motion: bool,
     pub contrast: ContrastPref,
     pub platform: Platform,
-    pub state: u8,
+    pub state: u16,
 }
 
 /// The props an entry may set, as bits of [`Patch`]'s set.
@@ -1494,9 +1519,13 @@ pub fn is_condition_key(name: &str, v: &Value) -> bool {
     }
 }
 
-fn state_bit(name: &str) -> Option<u8> {
+fn state_bit(name: &str) -> Option<u16> {
     match name {
         "focusVisible" => Some(state::FOCUS_VISIBLE),
+        "groupHovered" => Some(state::GROUP_HOVERED),
+        "groupPressed" => Some(state::GROUP_PRESSED),
+        "groupFocused" => Some(state::GROUP_FOCUSED),
+        "groupFocusVisible" => Some(state::GROUP_FOCUS_VISIBLE),
         _ => state::NAMES
             .iter()
             .find(|(n, _)| *n == name)
