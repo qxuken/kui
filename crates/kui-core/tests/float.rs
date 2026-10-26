@@ -462,3 +462,86 @@ fn a_departing_clipped_float_is_cut_by_its_parent() {
     assert_eq!(rect.y, 20.0);
     assert_eq!(clip.y, 40.0, "the ghost's node over the toolbar: {clip:?}");
 }
+
+/// A 14 px mark (which clips nothing) in a scroller padded by `pad`,
+/// scrolled down by `scrolled`, wearing a 22 px ring 4 px out from its
+/// edge as a clipped parent-anchored float — Kit's focus ring (backlog
+/// C123). Returns the scroller's key.
+fn ringed_mark(core: &mut Core, pad: f32, scrolled: f32) -> kui_core::Key {
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.leaf(NodeSpec::row().grow_width().height(40.0).bg(BLUE));
+        let pane = ui.with_keyed(
+            "pane",
+            NodeSpec::column().size(300.0, 120.0).scroll_y().pad(pad),
+            |ui| {
+                ui.with(NodeSpec::row().size(14.0, 14.0), |ui| {
+                    ui.leaf(
+                        NodeSpec::column()
+                            .size(22.0, 22.0)
+                            .bg(RED)
+                            .float(FloatConfig::parent().offset(-4.0, -4.0).clipped()),
+                    );
+                });
+                ui.leaf(NodeSpec::column().size(10.0, 400.0));
+            },
+        );
+        ui.finish();
+        pane
+    };
+    let pane = build(core);
+    if scrolled > 0.0 {
+        core.set_scroll(pane, Vec2::new(0.0, scrolled));
+        build(core);
+    }
+    pane
+}
+
+/// `clip` on a parent-anchored float is the clip a child of that parent
+/// gets (backlog C123): the parent's rect only where the parent clips.
+/// A mark that clips nothing hands on its scroller's, so a ring 4 px
+/// round it is drawn whole inside a padded scroller.
+#[test]
+fn a_clipped_float_takes_the_clip_its_parent_hands_its_children() {
+    let mut core = Core::new();
+    ringed_mark(&mut core, 10.0, 0.0);
+    let (rect, clip, _) = node_quad(&mut core);
+    assert_eq!(
+        (rect.x, rect.y, rect.w),
+        (6.0, 46.0, 22.0),
+        "4 px out from the mark"
+    );
+    assert_eq!(
+        (clip.x, clip.y, clip.w, clip.h),
+        (0.0, 40.0, 300.0, 120.0),
+        "the scroller's clip, not the mark's rect"
+    );
+}
+
+/// And the scroller's clip cuts it, as it cuts every child: scrolled up
+/// past the scroller's top, the float stops at that edge instead of
+/// drawing over the bar above (Kit's slider handle); flush against an
+/// unpadded scroller's edge, the ring's outer 4 px are past the clip and
+/// cut there — the cut the Tasks tutorial showed, which is the scroller's.
+#[test]
+fn a_clipped_float_is_cut_at_the_scroller_it_sits_in() {
+    let mut core = Core::new();
+    ringed_mark(&mut core, 10.0, 12.0);
+    let (rect, clip, _) = node_quad(&mut core);
+    assert!(rect.y < 40.0, "scrolled past the top: {rect:?}");
+    assert_eq!(
+        clip.y, 40.0,
+        "cut at the scroller's top, not the bar: {clip:?}"
+    );
+
+    let mut core = Core::new();
+    ringed_mark(&mut core, 0.0, 0.0);
+    let (rect, clip, _) = node_quad(&mut core);
+    assert_eq!((rect.x, rect.y), (-4.0, 36.0));
+    assert_eq!(
+        (clip.x, clip.y),
+        (0.0, 40.0),
+        "the scroller's edge cuts the ring"
+    );
+}

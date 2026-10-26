@@ -3657,6 +3657,7 @@ filed the same day for the round that builds them.
 - `.` **C117** — [A script can neither list the system's fonts nor load one](backlog/closed-2026-09.md#-c117--a-script-can-neither-list-the-systems-fonts-nor-load-one--done-2026-10-26) — done (2026-10-26) — `env.system_font_families()` and `env.load_font_file(path)`, the path under the runner's folder rules
 - `.` **C118** — [The docs do not travel with kui](backlog/closed-2026-09.md#-c118--the-docs-do-not-travel-with-kui--done-2026-10-26) — done (2026-10-26) — ADR 0071 built: `kui docs` over the docs the runner carries, opt-in `--docs` / `--agents` remembered as `tooling`, `.kui/` kept at the runner's version, `kui_native::docs`, the book's text and Kit's reference on npm
 - `.` **C120** — [A composite cannot hear a key its items do not claim](backlog/closed-2026-09.md#-c120--a-composite-cannot-hear-a-key-its-items-do-not-claim--done-2026-10-26) — done (2026-10-26) — `onItemKey` on the composite: the keys its focused item leaves, as `itemkey: {the press, item, index, column?}`; no Tab stop, the arrows kept, every binding
+- `.` **C123** — [A clipped float seems cut by its parent](backlog/closed-2026-09.md#-c123--a-clipped-float-seems-cut-by-its-parent--done-2026-10-26) — done (2026-10-26) — it is cut where a child of its parent is; Kit's ring was cut by the Tasks tutorial's unpadded scroller; docs say so, tests pin both cuts
 
 ### `.` C101 — A table or list has no keyboard range selection
 

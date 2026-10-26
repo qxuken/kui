@@ -373,10 +373,15 @@ pub struct FloatConfig {
     /// the window, so a dropdown taller than the viewport, or a menu with
     /// nowhere in-window to go, is clamped rather than placed.
     pub fit: bool,
-    /// Take the parent's clip, as a child does, instead of escaping every
+    /// Take the clip a child of the parent takes, instead of escaping every
     /// ancestor's: a node on a `clip` canvas panned past the canvas's edge
     /// is cut there, and its hit region with it, rather than drawn over
-    /// and clicked through the toolbar beside it. Only a
+    /// and clicked through the toolbar beside it. That is the parent's own
+    /// rect only when the parent clips or scrolls; a parent that does
+    /// neither hands on the clip it was given, the nearest clipping or
+    /// scrolling ancestor's, so a focus ring a few px out from a mark is
+    /// cut by the scroller the mark sits in and never by the mark (backlog
+    /// C123, `tests/float.rs`). Only a
     /// [`FloatAnchor::Parent`] float reads it; a viewport or node anchor is
     /// placed against something other than the parent, and escapes with it
     /// set or not. A declared float's paint order is unchanged: it is a
