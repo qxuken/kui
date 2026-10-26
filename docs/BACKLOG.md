@@ -3671,6 +3671,24 @@ in a channel (ADR 0065) answers by searching that channel itself.
 searches (prefix, case-blind, from the row after focus), so a channel-
 backed list needs no handler.
 
+### `.` C114 — A `when` entry that sets a shadow's offsets drops the shadow
+
+**Found** in Kit's adoption of C105 (2026-10-26): an entry setting
+`shadow_x` / `shadow_y` draws no shadow at all, even with every shadow
+lane set; one setting only `shadow_color` draws it at offset 0. Rules
+seem to patch the shadow as one struct taken from the probe base. Kit
+puts the shadow on a still box instead. **Do.** Shadow lanes patched one
+by one, as C105's move lanes are.
+
+### `.` C115 — An opening press's release picks the item under it before asking whether the pointer moved
+
+**Found** the same way: in `release_opened` (`dispatch.rs`) the item
+check runs before the slop check, so with the current option over the
+field (as C108 prescribes) a quick click picks that option and closes
+the menu, where a native pop-up stays open. Kit ignores the first pick
+of the value it already has after a pointer open. **Do.** The `moved`
+check first; then drop Kit's workaround.
+
 ### `.` C103 — A table cell cannot span columns
 
 **Filed** by the ADR 0070 grilling round (2026-10-26): columns are by
