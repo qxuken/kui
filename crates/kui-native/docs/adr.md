@@ -79,3 +79,4 @@ reference and the task index this crate carries (ADR 0071).
 - [0069 Props by condition](https://github.com/qxuken/kui/blob/main/docs/adr/0069-props-by-condition.md)
 - [0070 A table of cells, and composites that reach past their window](https://github.com/qxuken/kui/blob/main/docs/adr/0070-a-table-of-cells-and-composites-past-the-window.md)
 - [0071 Docs that travel with kui](https://github.com/qxuken/kui/blob/main/docs/adr/0071-docs-that-travel-with-kui.md)
+- [0072 A test runner for kui apps](https://github.com/qxuken/kui/blob/main/docs/adr/0072-a-test-runner-for-kui-apps.md)
