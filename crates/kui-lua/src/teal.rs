@@ -529,7 +529,7 @@ fn env(body: &mut String) {
     }
     body.push_str("  end\n\n");
     body.push_str(
-        "  -- `env.tokens`: the named tokens in force, the script's own over the host's.\n  \
+        "  -- `env.tokens`: the named tokens in force, the script's own over the host's over other origins' exported ones; colours as 0xRRGGBBAA integers.\n  \
          record Tokens\n    colors: {string:integer}\n    lengths: {string:number}\n    \
          families: {string:string}\n  end\n\n",
     );

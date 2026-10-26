@@ -2383,9 +2383,11 @@ fn load_tokens(lua: &Lua, (path, opts): (String, Option<Table>)) -> mlua::Result
 /// linearly: `measured × zoom` is not `measure(size × zoom)`, because
 /// shaping rounds per size, so anything that zooms measures at the size it
 /// draws.
-/// `env.tokens`: the frame's resolved tokens, own over host, as three
-/// tables of name → value: colours as `0xRRGGBBAA`, lengths, and each
-/// family token's pick (`sans` for a list nothing matched).
+/// `env.tokens`: the frame's resolved tokens, own over host over every
+/// other origin's exported ones (backlog C112), as three tables of name →
+/// value: colours as `0xRRGGBBAA` integers — what a colour prop takes and
+/// what Teal types them as — lengths, and each family token's pick (`sans`
+/// for a list nothing matched).
 fn tokens_table(lua: &Lua, ui: &Ui<'_>) -> mlua::Result<Table> {
     let look = ui.tokens();
     let tokens = lua.create_table()?;

@@ -892,13 +892,28 @@ impl<'a> TokenLookup<'a> {
         self.table().and_then(|t| t.lengths.get(i)).map(|(_, v)| *v)
     }
 
+    /// The tables a listing reads, each with whether it overrides what an
+    /// earlier one listed: the host's, the running origin's over it, then
+    /// every other origin's exported table where neither names the token —
+    /// the first exported table naming it, as [`Self::resolve`] reads
+    /// them (backlog C112: a script reads `$kitAccent`'s value as it
+    /// paints with it).
+    fn listed(&self) -> impl Iterator<Item = (&'a Tokens, bool)> {
+        [self.host, self.own]
+            .into_iter()
+            .flatten()
+            .map(|t| (t, true))
+            .chain(self.shared.iter().map(|t| (t, false)))
+    }
+
     /// Every colour token a reader in this origin sees, resolved for the
     /// frame: the running origin's over the host's, by name, in the host's
-    /// order then the guest's additions. Roles are not listed — they are
-    /// the theme's reading.
+    /// order then the guest's additions, then the exported tokens of other
+    /// origins that neither names. Roles are not listed — they are the
+    /// theme's reading.
     pub fn colors(&self) -> Vec<(&'a str, Color)> {
         let mut out: Vec<(&'a str, Color)> = Vec::new();
-        for t in [self.host, self.own].into_iter().flatten() {
+        for (t, wins) in self.listed() {
             for (i, (name, _)) in t.colors.iter().enumerate() {
                 // A name later declared as a length leaves its colour
                 // entry behind; the name binds the length, so the
@@ -908,7 +923,8 @@ impl<'a> TokenLookup<'a> {
                 }
                 let c = t.resolve_color(i as u16, self.theme);
                 match out.iter_mut().find(|(n, _)| *n == name.as_str()) {
-                    Some(slot) => slot.1 = c,
+                    Some(slot) if wins => slot.1 = c,
+                    Some(_) => {}
                     None => out.push((name.as_str(), c)),
                 }
             }
@@ -919,13 +935,14 @@ impl<'a> TokenLookup<'a> {
     /// The same for lengths.
     pub fn lengths(&self) -> Vec<(&'a str, f32)> {
         let mut out: Vec<(&'a str, f32)> = Vec::new();
-        for t in [self.host, self.own].into_iter().flatten() {
+        for (t, wins) in self.listed() {
             for (i, (name, v)) in t.lengths.iter().enumerate() {
                 if t.id(name) != Some(TokenRef::Length(i as u16)) {
                     continue;
                 }
                 match out.iter_mut().find(|(n, _)| *n == name.as_str()) {
-                    Some(slot) => slot.1 = *v,
+                    Some(slot) if wins => slot.1 = *v,
+                    Some(_) => {}
                     None => out.push((name.as_str(), *v)),
                 }
             }
@@ -933,16 +950,18 @@ impl<'a> TokenLookup<'a> {
         out
     }
 
-    /// The same for families: each name with its token, own over host.
+    /// The same for families: each name with its token, own over host
+    /// over the other origins' exported ones.
     pub fn families(&self) -> Vec<(&'a str, &'a FamilyToken)> {
         let mut out: Vec<(&'a str, &'a FamilyToken)> = Vec::new();
-        for t in [self.host, self.own].into_iter().flatten() {
+        for (t, wins) in self.listed() {
             for (i, (name, tok)) in t.families.iter().enumerate() {
                 if t.id(name) != Some(TokenRef::Family(i as u16)) {
                     continue;
                 }
                 match out.iter_mut().find(|(n, _)| *n == name.as_str()) {
-                    Some(slot) => slot.1 = tok,
+                    Some(slot) if wins => slot.1 = tok,
+                    Some(_) => {}
                     None => out.push((name.as_str(), tok)),
                 }
             }
