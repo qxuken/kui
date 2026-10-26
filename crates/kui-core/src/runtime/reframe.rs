@@ -7,7 +7,8 @@
 //! whole view again, at the display's rate: a Kit chart's slide drew the
 //! runner app's `view` 57 times a second where its data changed ten.
 //!
-//! So while something of the core's animates, a build keeps what it needs
+//! So once a driver has asked for such a frame, while something of the
+//! core's animates, a build keeps what it needs
 //! to be built again without the view: the spec each node whose look the
 //! frame decides (a `transition`, `keyframes`, a `when` list) declared
 //! before the frame touched it, and every fact of the frame the build
@@ -35,6 +36,10 @@ use crate::runtime::replay::Read;
 /// What a build kept to be built again from its tree.
 #[derive(Default)]
 pub(crate) struct Reframe {
+    /// A driver has asked for a frame built from the tree: until one
+    /// does, no build keeps anything, so a host that never asks pays one
+    /// branch a node.
+    wanted: bool,
     /// This build keeps what follows: the last frame owed an animation
     /// of the core's.
     pub(crate) logging: bool,
@@ -57,7 +62,7 @@ impl Core {
     /// needs while the last frame owed an animation of the core's own,
     /// and the devtools are not in the window.
     pub(super) fn reframe_begin(&mut self) {
-        let logging = self.core_animated() && self.dt_app.is_none();
+        let logging = self.reframe.wanted && self.core_animated() && self.dt_app.is_none();
         let r = &mut self.reframe;
         r.ready = false;
         r.reads.get_mut().clear();
@@ -109,6 +114,9 @@ impl Core {
     /// timer's data). The frame is then laid out and emitted, and its
     /// events, hits and display list are what a built frame's are.
     pub fn reframe(&mut self, viewport: Size, scale: f32) -> bool {
+        // From the first ask on, a build that may be built again keeps what
+        // that needs; the first one is refused for want of it.
+        self.reframe.wanted = true;
         if !self.reframe_possible(viewport, scale) {
             return false;
         }

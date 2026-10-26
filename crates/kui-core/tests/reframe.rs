@@ -46,6 +46,8 @@ fn pulse_red(core: &mut Core) -> f32 {
 fn an_animation_frame_is_built_from_the_last_tree_with_the_cycle_sampled_again() {
     let mut core = Core::new();
     build(&mut core, 0.0, false);
+    // Nothing is kept until a driver asks: the first ask is refused.
+    assert!(!core.reframe(view(), 1.0));
     // A frame needs a frame owed by the animation before it.
     build(&mut core, 0.05, false);
     let before = pulse_red(&mut core);
@@ -77,6 +79,7 @@ fn an_animation_frame_is_built_from_the_last_tree_with_the_cycle_sampled_again()
 fn a_frame_something_else_asks_for_runs_the_view() {
     let mut core = Core::new();
     build(&mut core, 0.0, false);
+    assert!(!core.reframe(view(), 1.0));
     build(&mut core, 0.05, false);
     core.set_time(0.1);
     core.note_frame_cause(FrameCause::WAKE);
@@ -91,6 +94,7 @@ fn a_frame_something_else_asks_for_runs_the_view() {
 fn a_view_that_read_the_clock_runs_again() {
     let mut core = Core::new();
     build(&mut core, 0.0, true);
+    assert!(!core.reframe(view(), 1.0));
     build(&mut core, 0.05, true);
     core.set_time(0.1);
     assert!(!core.reframe(view(), 1.0), "the clock never reads the same");

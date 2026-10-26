@@ -328,7 +328,10 @@ fn line_chart_live_window(bencher: divan::Bencher, frame: &str) {
             chart_frame(&mut core, &mut exts, &props);
         });
     } else {
-        // The frame after one built with the view keeps what it needs.
+        // The frame after one built with the view keeps what it needs,
+        // once a driver has asked.
+        core.set_time(t + 0.004);
+        let _ = core.reframe(Size::new(1400.0, 500.0), 1.0);
         core.set_time(t + 0.008);
         chart_frame(&mut core, &mut exts, &props);
         let mut k = 0u32;
