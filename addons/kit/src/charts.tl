@@ -361,17 +361,50 @@ end
 -- equal x spans, so rows evenly spaced in x land where they would). A
 -- value that is not a number (NaN) breaks the line: the result is a list
 -- of runs, each two points or more.
-local function reduced_runs(ch: kui.Channel, rx: kui.ChannelReduction, field: string, from: integer, to: integer,
-                            buckets: integer, x0: number, x1: number, y0: number, y1: number,
-                            w: number, h: number): {{{number}}}
+-- A stretch of rows reduced in buckets of equal row counts, and its x.
+local record Seg
+  from: integer
+  to: integer
+  buckets: integer
+  rx: kui.ChannelReduction
+end
+
+-- The stretches rows [from, to) are reduced in, a bucket per two px of a
+-- plot `w` wide: buckets of `k` rows whose edges sit on whole multiples
+-- of `k` — the first reaching back before `from`, drawn left of the plot
+-- and cut by its clip — and the rows past the last full one as a bucket of
+-- their own. Buckets counted from `from` moved with every row a live
+-- window slid by, so each tick bucketed the line afresh and its spikes
+-- came and went; on whole multiples, a slide by a row moves nothing but
+-- the ends.
+local function segments(ch: kui.Channel, xf: string, from: integer, to: integer, w: number): {Seg}
+  local segs: {Seg} = {}
+  if to <= from then return segs end
+  local buckets = math.max(1, math.floor(w / 2))
+  local k = math.max(1, (to - from + buckets - 1) // buckets)
+  local start = (from // k) * k
+  local full = start + ((to - start) // k) * k
+  if full > start then
+    local nb = (full - start) // k
+    segs[#segs + 1] = { from = start, to = full, buckets = nb, rx = ch:reduce(xf, start, full, nb) }
+  end
+  if to > full then
+    segs[#segs + 1] = { from = full, to = to, buckets = 1, rx = ch:reduce(xf, full, to, 1) }
+  end
+  return segs
+end
+
+local function reduced_runs(ch: kui.Channel, segs: {Seg}, field: string, x0: number, x1: number,
+                            y0: number, y1: number, w: number, h: number): {{{number}}}
   local runs: {{{number}}} = {}
-  if to <= from then return runs end
-  local ry = ch:reduce(field, from, to, buckets)
   local sx = w / math.max(x1 - x0, 1e-12)
   local sy = h / math.max(y1 - y0, 1e-12)
   local base = h + y0 * sy
   local run: {{number}} = {}
   local n = 0
+  for _, seg in ipairs(segs) do
+  local rx = seg.rx
+  local ry = ch:reduce(field, seg.from, seg.to, seg.buckets)
   -- One loop, no closure, table or sort a bucket: it runs on every tick
   -- of a live chart, a bucket per two px (or a row, for fewer rows).
   local xfs, xls, xfr, xlr = rx.first, rx.last, rx.first_row, rx.last_row
@@ -405,6 +438,7 @@ local function reduced_runs(ch: kui.Channel, rx: kui.ChannelReduction, field: st
         end
       end
     end
+  end
   end
   if n >= 2 then runs[#runs + 1] = run end
   return runs
@@ -565,12 +599,11 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     end
   end
   local legend: kui.Props = { gap = 12, cross_align = "center" }
-  -- A bucket per two px of plot; the x reduction shared by every series.
-  local buckets = math.max(1, math.floor(w / 2))
-  local rx = to > from and ch:reduce(xf, from, to, buckets) or nil
+  -- Buckets on whole multiples of their row count, the x reductions shared by every series.
+  local segs = segments(ch, xf, from, to, w)
   for k, s in ipairs(series) do
     local color: kui.Color = (s.color as kui.Color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
-    local runs = rx and reduced_runs(ch, rx, s.field as string, from, to, buckets, x0, x1, lo, hi, w, h) or {}
+    local runs = reduced_runs(ch, segs, s.field as string, x0, x1, lo, hi, w, h)
     for _, pts in ipairs(runs) do
     if k == 1 and p.area == true and #pts >= 2 then
       -- The series' colour faded: a skin's own as its area token, a

@@ -50,6 +50,8 @@ local record fleet
   tick: function(): boolean
   latencies: function(n: integer): {number}
   find: function(name: string): Service
+  -- Its new numbers are its level now (a restart, a scale).
+  rebase: function(name: string)
 end
 
 local HOUR = 3600
@@ -100,7 +102,7 @@ fleet.services = {
 local DEPLOY = 47 * 60
 
 -- Slow noise: each sample leans on the last, as real metrics do.
-local drift: {number} = { 0, 0, 0, 0, 0 }
+local drift: {number} = { 0, 0, 0, 0, 0, 0, 0, 0 }
 local function wander(k: integer, keep: number): number
   drift[k] = drift[k] * keep + gauss() * (1 - keep)
   return drift[k]
@@ -114,9 +116,9 @@ local function sample(s: fleet.Series, t: number)
   local base = 44 * (1 + wave)
   s.t[i] = t
   s.p50[i] = round(base + wander(2, 0.8) * 3, 1)
-  s.p95[i] = round(base * 2.6 + hot * (190 + wander(3, 0.9) * 120) + gauss() * 4, 1)
-  s.p99[i] = round(base * 4.4 + hot * (540 + wander(4, 0.9) * 300) + math.abs(gauss()) * 18, 1)
-  s.rps[i] = round(1840 * (1 + wave * 1.4) + gauss() * 18, 0)
+  s.p95[i] = round(base * 2.6 + hot * (190 + wander(3, 0.97) * 120) + wander(6, 0.9) * 4, 1)
+  s.p99[i] = round(base * 4.4 + hot * (540 + wander(4, 0.97) * 300) + math.abs(wander(7, 0.9)) * 18, 1)
+  s.rps[i] = round(1840 * (1 + wave * 1.4) + wander(8, 0.9) * 18, 0)
   s.errors[i] = round(math.max(0, 0.22 + hot * 1.05 + wander(5, 0.85) * 0.9), 2)
 end
 
@@ -165,6 +167,9 @@ local MESSAGES: {{string, string}} = {
   { "warn", "pricing-engine: cache hit rate %d%%" },
 }
 
+-- Each service's level, as it first ticked: rate, p95, cpu.
+local baseline: {string:{number}} = {}
+
 -- One more second: a sample for the edge and the services, and now and
 -- then a log line. Returns whether a line was added.
 function fleet.tick(): boolean
@@ -176,9 +181,18 @@ function fleet.tick(): boolean
   end
   for _, v in ipairs(fleet.services) do
     if v.status ~= "down" then
-      v.rps = math.max(0, v.rps * (1 + 0.01 * gauss()))
-      v.p95 = math.max(1, v.p95 * (1 + 0.02 * gauss()))
-      v.cpu = math.min(99, math.max(1, v.cpu + gauss()))
+      -- Each pulled back toward where it sat, with a little noise: a
+      -- service's numbers drift about their level, as real ones do, and
+      -- do not walk off (a walk with no pull ran a service's rate and p95
+      -- anywhere in an hour).
+      local b = baseline[v.name]
+      if not b then
+        b = { v.rps, v.p95, v.cpu }
+        baseline[v.name] = b
+      end
+      v.rps = math.max(0, v.rps + (b[1] - v.rps) * 0.05 + b[1] * 0.006 * gauss())
+      v.p95 = math.max(1, v.p95 + (b[2] - v.p95) * 0.05 + b[2] * 0.01 * gauss())
+      v.cpu = math.min(99, math.max(1, v.cpu + (b[3] - v.cpu) * 0.05 + 0.6 * gauss()))
     end
     table.remove(v.trend, 1)
     v.trend[#v.trend + 1] = v.status == "down" and 0 or v.rps
@@ -203,6 +217,10 @@ function fleet.latencies(n: integer): {number}
     out[i] = round(math.exp(3.7 + 0.5 * gauss()) + (slow and 400 + 300 * rand() or 0), 0)
   end
   return out
+end
+
+function fleet.rebase(name: string)
+  baseline[name] = nil
 end
 
 function fleet.find(name: string): fleet.Service

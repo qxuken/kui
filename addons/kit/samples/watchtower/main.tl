@@ -110,6 +110,7 @@ global function update(msg: Msg)
     if v then
       v.status = v.name == "inventory-sync" and "down" or "healthy"
       if v.name == "checkout-api" then v.p95, v.errors, v.cpu = 210, 0.3, 48 end
+      fleet.rebase(v.name)
       toast(m, v.status == "down" and v.name .. " restarted but is still down: the warehouse is not answering."
         or v.name .. " restarted: all instances healthy.", v.status == "down" and "warn" or "ok")
     end
@@ -124,6 +125,7 @@ global function update(msg: Msg)
       local from = v.instances
       v.instances = m.scale_to
       v.cpu = math.min(99, v.cpu * from / v.instances)
+      fleet.rebase(v.name)
       toast(m, ("%s scaled %d → %d instances."):format(v.name, from, v.instances), "ok")
     end
     m.scaling = nil

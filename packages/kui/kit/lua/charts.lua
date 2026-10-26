@@ -362,47 +362,81 @@ end
 
 
 
-local function reduced_runs(ch, rx, field, from, to,
-   buckets, x0, x1, y0, y1,
-   w, h)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local function segments(ch, xf, from, to, w)
+   local segs = {}
+   if to <= from then return segs end
+   local buckets = math.max(1, math.floor(w / 2))
+   local k = math.max(1, (to - from + buckets - 1) // buckets)
+   local start = (from // k) * k
+   local full = start + ((to - start) // k) * k
+   if full > start then
+      local nb = (full - start) // k
+      segs[#segs + 1] = { from = start, to = full, buckets = nb, rx = ch:reduce(xf, start, full, nb) }
+   end
+   if to > full then
+      segs[#segs + 1] = { from = full, to = to, buckets = 1, rx = ch:reduce(xf, full, to, 1) }
+   end
+   return segs
+end
+
+local function reduced_runs(ch, segs, field, x0, x1,
+   y0, y1, w, h)
    local runs = {}
-   if to <= from then return runs end
-   local ry = ch:reduce(field, from, to, buckets)
    local sx = w / math.max(x1 - x0, 1e-12)
    local sy = h / math.max(y1 - y0, 1e-12)
    local base = h + y0 * sy
    local run = {}
    local n = 0
+   for _, seg in ipairs(segs) do
+      local rx = seg.rx
+      local ry = ch:reduce(field, seg.from, seg.to, seg.buckets)
 
 
-   local xfs, xls, xfr, xlr = rx.first, rx.last, rx.first_row, rx.last_row
-   local yfr, ymnr, ymxr, ylr = ry.first_row, ry.min_row, ry.max_row, ry.last_row
-   local yf, ymn, ymx, yl = ry.first, ry.min, ry.max, ry.last
-   for i = 1, #yf do
-      local fr, lr = xfr[i], xlr[i]
-      local xa, xb = xfs[i], xls[i]
-      local k = lr > fr and (xb - xa) / (lr - fr) or 0
+      local xfs, xls, xfr, xlr = rx.first, rx.last, rx.first_row, rx.last_row
+      local yfr, ymnr, ymxr, ylr = ry.first_row, ry.min_row, ry.max_row, ry.last_row
+      local yf, ymn, ymx, yl = ry.first, ry.min, ry.max, ry.last
+      for i = 1, #yf do
+         local fr, lr = xfr[i], xlr[i]
+         local xa, xb = xfs[i], xls[i]
+         local k = lr > fr and (xb - xa) / (lr - fr) or 0
 
 
-      local r1, v1 = yfr[i], yf[i]
-      local r2, v2, r3, v3 = ymnr[i], ymn[i], ymxr[i], ymx[i]
-      if r3 < r2 then r2, v2, r3, v3 = r3, v3, r2, v2 end
-      local r4, v4 = ylr[i], yl[i]
-      for j = 1, 4 do
-         local row, v
-         if j == 1 then row, v = r1, v1
-         elseif j == 2 then row, v = r2, v2
-         elseif j == 3 then row, v = r3, v3
-         else row, v = r4, v4 end
-         local again = (j > 1 and row == r1) or (j > 2 and row == r2) or (j > 3 and row == r3)
-         if not again then
-            if v ~= v then
+         local r1, v1 = yfr[i], yf[i]
+         local r2, v2, r3, v3 = ymnr[i], ymn[i], ymxr[i], ymx[i]
+         if r3 < r2 then r2, v2, r3, v3 = r3, v3, r2, v2 end
+         local r4, v4 = ylr[i], yl[i]
+         for j = 1, 4 do
+            local row, v
+            if j == 1 then row, v = r1, v1
+            elseif j == 2 then row, v = r2, v2
+            elseif j == 3 then row, v = r3, v3
+            else row, v = r4, v4 end
+            local again = (j > 1 and row == r1) or (j > 2 and row == r2) or (j > 3 and row == r3)
+            if not again then
+               if v ~= v then
 
-               if n >= 2 then runs[#runs + 1] = run end
-               run, n = {}, 0
-            else
-               n = n + 1
-               run[n] = { (xa + (row - fr) * k - x0) * sx, base - v * sy }
+                  if n >= 2 then runs[#runs + 1] = run end
+                  run, n = {}, 0
+               else
+                  n = n + 1
+                  run[n] = { (xa + (row - fr) * k - x0) * sx, base - v * sy }
+               end
             end
          end
       end
@@ -567,11 +601,10 @@ text(tick_label[i], { size = 10, family = "$kitData", color = faint, max_lines =
    end
    local legend = { gap = 12, cross_align = "center" }
 
-   local buckets = math.max(1, math.floor(w / 2))
-   local rx = to > from and ch:reduce(xf, from, to, buckets) or nil
+   local segs = segments(ch, xf, from, to, w)
    for k, s in ipairs(series) do
       local color = (s.color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
-      local runs = rx and reduced_runs(ch, rx, s.field, from, to, buckets, x0, x1, lo, hi, w, h) or {}
+      local runs = reduced_runs(ch, segs, s.field, x0, x1, lo, hi, w, h)
       for _, pts in ipairs(runs) do
          if k == 1 and p.area == true and #pts >= 2 then
 

@@ -87,6 +87,19 @@ kui.spawn(function()
   for _, s in ipairs({ "neutral", "phosphor", "ledger" }) do update({ kind = "skin", change = { value = s } }) end
   kui.sleep(200)
 
+  -- the numbers drift, they do not jump: ten minutes of ticks
+  local s = fleet.series
+  local worst_step, auth = 0, fleet.find("auth-svc")
+  local lo, hi = auth.rps, auth.rps
+  for _ = 1, 600 do
+    fleet.tick()
+    local n = #s.p95
+    worst_step = math.max(worst_step, math.abs(s.p95[n] - s.p95[n - 1]))
+    lo, hi = math.min(lo, auth.rps), math.max(hi, auth.rps)
+  end
+  check(worst_step < 20, ("a second's step of the edge's p95 is small: %.1f ms"):format(worst_step))
+  check(lo > 520 * 0.8 and hi < 520 * 1.2, ("a service stays about its level: %.0f..%.0f req/s"):format(lo, hi))
+
   print(("%s: %d failure(s)"):format(failed == 0 and "PASS" or "FAIL", failed))
   kui.exit(failed)
 end)
