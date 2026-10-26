@@ -13,11 +13,17 @@ local record state
     selected: string
     events: string
     split: number
-    -- What the timer last published, a second apart.
+    -- What the timer last published, a second apart: channels, so a
+    -- component a tick did not change is kept by comparing a handle.
     chart: kui.Channel
     log: kui.Channel
     latencies: kui.Channel
     errors: kui.Channel
+    -- Each service's last minute of requests a second, by name.
+    trends: {string:kui.Channel}
+    -- The services the table shows, as the filter and the sort leave
+    -- them; published after every message, not every frame.
+    services: kui.Channel
     updated: string
     -- The service a restart waits on the dialog for.
     confirm: string

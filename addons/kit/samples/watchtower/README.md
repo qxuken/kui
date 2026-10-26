@@ -7,7 +7,11 @@ edge's latency and throughput as live line charts, a sortable, filterable
 services table, the selected service's detail with a rolling restart
 (confirmed) and a scale (a popover with a slider), and an events pane
 with the log, errors by service and the latency spread. A timer moves the
-simulated fleet (`fleet.tl`) a second at a time.
+simulated fleet (`fleet.tl`) a second at a time. What changes is handed
+to Kit as channels — the edge's series, the log, the errors, each
+service's trend and the table's rows — published when they move, not
+every frame, so a frame a hover asks for keeps every component whose
+data did not.
 
 ![Watchtower](shots/watchtower-overview.png)
 

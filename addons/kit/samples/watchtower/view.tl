@@ -10,6 +10,7 @@ local type Model = state.Model
 
 local record view
   visible: function(m: Model): {fleet.Service}
+  publish_services: function(m: Model)
   window: function(m: Model, env: kui.Env): kui.Node
 end
 
@@ -79,8 +80,22 @@ local COLUMNS: {kit.Column} = {
   { field = "cpu", title = "CPU", width = 56, align = "end", mono = true },
 }
 
-local services_ch: kui.Channel = nil
-local function services_channel(list: {fleet.Service}): kui.Channel
+-- The table's rows as a channel, published by `update` after a message
+-- that changed them rather than by every frame: a frame a hover or a
+-- click elsewhere asked for hands the table the same handle, and the
+-- table is kept.
+local shown: {string:{any}} = {}
+local function same(a: {string:{any}}, b: {string:{any}}): boolean
+  for name, col in pairs(a) do
+    local other = b[name]
+    if not other or #other ~= #col then return false end
+    for i = 1, #col do if col[i] ~= other[i] then return false end end
+  end
+  return true
+end
+
+function view.publish_services(m: Model)
+  local list = view.visible(m)
   local c: {string:{any}} = { name = {}, status = {}, tone = {}, version = {}, instances = {}, rps = {}, p95 = {}, errors = {}, cpu = {} }
   for i, v in ipairs(list) do
     c.name[i] = v.name
@@ -93,8 +108,9 @@ local function services_channel(list: {fleet.Service}): kui.Channel
     c.errors[i] = pct(v.errors)
     c.cpu[i] = ("%d%%"):format(math.floor(v.cpu + 0.5))
   end
-  services_ch = services_ch and services_ch:publish(c) or channel(c)
-  return services_ch
+  if m.services and same(c, shown) then return end
+  shown = c
+  m.services = m.services and m.services:publish(c) or channel(c)
 end
 
 local function services_panel(m: Model): kui.Node
@@ -111,7 +127,7 @@ local function services_panel(m: Model): kui.Node
     body = kit.empty({ title = "No services match", detail = m.query ~= "" and ("Nothing named or owned by “%s”."):format(m.query) or "Nothing in this state right now." },
       { kit.button({ label = "Show all", on_press = { kind = "reset_filters" } }) })
   else
-    body = kit.table({ key = "services", columns = COLUMNS, rows = services_channel(list), selected = selected, sort = m.sort,
+    body = kit.table({ key = "services", columns = COLUMNS, rows = m.services, selected = selected, sort = m.sort,
       descending = m.descending, grow = true, on_select = { kind = "select" }, on_sort = { kind = "sort" } })
   end
   return kit.panel({ key = "services-panel", title = "Services", grow = true, pad = 0 }, {
@@ -214,7 +230,7 @@ local function detail(m: Model): kui.Node
       },
       row { key = "trend", width = "grow", gap = 8, cross_align = "center",
         muted("Req/s, last minute"),
-        kit.sparkline({ data = channel({ rps = v.trend as {any} }), field = "rps", width = 200, height = 20 }),
+        kit.sparkline({ data = m.trends[v.name], field = "rps", width = 200, height = 20 }),
       },
       kit.inspector({ key = "facts", key_width = 110, entries = {
         { key = "Version", value = v.version, mono = true },

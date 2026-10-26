@@ -15,18 +15,30 @@ local type Msg = state.Msg
 
 global model: Model
 
--- The edge's series and the log as channels, published again each tick.
-local function publish(m: Model)
+-- Whether two lists hold the same values.
+local function same(a: {any}, b: {any}): boolean
+  if #a ~= #b then return false end
+  for i = 1, #a do if a[i] ~= b[i] then return false end end
+  return true
+end
+
+-- The edge's series, the log, the errors and each service's trend as
+-- channels, published again each tick — each only when it moved, so the
+-- components that draw one that did not are kept as they were. `logged`
+-- says whether the tick added a log line.
+local function publish(m: Model, logged: boolean)
   local s = fleet.series
   -- x is minutes from now, so the chart's ends read "-15" and "0"
   local ago: {any} = {}
   for i, t in ipairs(s.t) do ago[i] = (t - fleet.now) / 60 end
   local cols: {string:{any}} = { ago = ago, p50 = s.p50, p95 = s.p95, p99 = s.p99, rps = s.rps, errors = s.errors }
   m.chart = m.chart and m.chart:publish(cols) or channel(cols)
-  local time, level, message: {any}, {any}, {any} = {}, {}, {}
-  for i, l in ipairs(fleet.lines) do time[i], level[i], message[i] = l.time, l.level, l.message end
-  local lc: {string:{any}} = { time = time, level = level, message = message }
-  m.log = m.log and m.log:publish(lc) or channel(lc)
+  if logged or not m.log then
+    local time, level, message: {any}, {any}, {any} = {}, {}, {}
+    for i, l in ipairs(fleet.lines) do time[i], level[i], message[i] = l.time, l.level, l.message end
+    local lc: {string:{any}} = { time = time, level = level, message = message }
+    m.log = m.log and m.log:publish(lc) or channel(lc)
+  end
   -- the services erring at all, worst first
   local erring: {fleet.Service} = {}
   for _, v in ipairs(fleet.services) do if v.errors > 0.1 then erring[#erring + 1] = v end end
@@ -36,8 +48,16 @@ local function publish(m: Model)
     label[i] = v.name
     value[i] = math.min(v.errors, 5)
   end
-  local ec: {string:{any}} = { service = label, rate = value }
-  m.errors = m.errors and m.errors:publish(ec) or channel(ec)
+  if not m.errors or not same(m.errors:column("service") as {any}, label) or not same(m.errors:column("rate") as {any}, value) then
+    local ec: {string:{any}} = { service = label, rate = value }
+    m.errors = m.errors and m.errors:publish(ec) or channel(ec)
+  end
+  m.trends = m.trends or {}
+  for _, v in ipairs(fleet.services) do
+    local ch = m.trends[v.name]
+    local tc: {string:{any}} = { rps = v.trend as {any} }
+    m.trends[v.name] = ch and ch:publish(tc) or channel(tc)
+  end
   m.updated = fleet.clock(fleet.now)
 end
 
@@ -57,7 +77,8 @@ global function init(): Model
     tick = 0,
   }
   m.latencies = channel({ ms = fleet.latencies(2400) as {any} })
-  publish(m)
+  publish(m, true)
+  view_of.publish_services(m)
   return m
 end
 
@@ -76,9 +97,9 @@ global function update(msg: Msg)
   local k = msg.kind
   if k == "tick" then
     if m.live then
-      fleet.tick()
+      local logged = fleet.tick()
       m.tick = m.tick + 1
-      publish(m)
+      publish(m, logged)
     end
   elseif k == "skin" then m.skin = msg.change.value as string
   elseif k == "env" then m.env = msg.change.value as string
@@ -131,6 +152,9 @@ global function update(msg: Msg)
     m.scaling = nil
   elseif k == "toast_off" then m.toast = nil
   end
+  -- The table's rows, as this message left the services, the filter and
+  -- the sort.
+  view_of.publish_services(m)
 end
 
 global function view(env: kui.Env): kui.Node
