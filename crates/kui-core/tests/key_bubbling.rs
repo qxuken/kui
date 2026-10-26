@@ -542,11 +542,10 @@ fn a_sink_with_nothing_focusable_inside_is_a_stop() {
     assert_eq!(core.focus(), Some(term), "the sink is a stop");
 }
 
-/// A press on a control inside a shell gives the shell the keyboard
-/// (ADR 0002, decision 9), and Tab, which the shell hands on with
-/// `focus_next`, goes on from the node pressed — as a browser's Tab goes
-/// on from a click — not from the top. Focus moved anywhere else lets the
-/// press's place go.
+/// A press on a control inside a shell focuses the control (ADR 0002,
+/// decision 9 as amended by backlog C135), and Tab goes on from it — as a
+/// browser's Tab goes on from a click — not from the top. Focus moved
+/// anywhere else lets the press's place go.
 #[test]
 fn tab_handed_on_by_a_shell_a_press_focused_goes_on_from_the_press() {
     let mut core = Core::new();
@@ -554,13 +553,13 @@ fn tab_handed_on_by_a_shell_a_press_focused_goes_on_from_the_press() {
     kui_core::testing::click_at(&mut core, 50.0, H * 1.5);
     assert_eq!(
         core.focus(),
-        Some(k.shell),
-        "the press on the slider gives the shell the keyboard"
+        Some(k.vol),
+        "the press on the slider focuses the slider"
     );
     core.focus_next(true);
     assert_eq!(core.focus(), Some(k.deep), "on from the slider pressed");
     kui_core::testing::click_at(&mut core, 50.0, H * 0.5);
-    assert_eq!(core.focus(), Some(k.shell));
+    assert_eq!(core.focus(), Some(k.go));
     core.focus_next(false);
     assert_eq!(
         core.focus(),

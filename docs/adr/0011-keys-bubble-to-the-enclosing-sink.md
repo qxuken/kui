@@ -195,8 +195,10 @@ around its content, which is what both reports already wrote.
     container or any host that configures the root itself, the app's
     outermost node is the root's child, a sink and so a stop — the
     *first* stop, ringed round the whole window, which kept every Tab
-    from then on. And a press anywhere inside a shell gives the shell the
-    keyboard (`press_focus`), so after any click the shell held focus and
+    from then on. And a press anywhere inside a shell gave the shell the
+    keyboard (`press_focus`; since backlog C135 a press on a stop focuses
+    the stop, and only one on a non-stop gives it the shell — ADR 0002,
+    amended 2026-10-26), so after any click the shell held focus and
     a shell that handed Tab on with `focus_next` went to the top of the
     ring, wherever the click was. Now:
     - **A sink that is a stop only for being a sink — no `focusable`, no

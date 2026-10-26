@@ -148,7 +148,10 @@ fn a_composite_that_goes_with_the_item_leaves_focus_as_before() {
     ui.configure_root(NodeSpec::column().fill());
     ui.leaf_keyed("before", NodeSpec::row().size(60.0, 20.0).on_click("b"));
     ui.finish();
-    assert_eq!(core.focus(), Some(rows[1]), "today's fallback");
+    // No composite to recover it, and no sink around it: dropped, so a
+    // `keyFocus` shell can take it (backlog C136).
+    let _ = rows;
+    assert_eq!(core.focus(), None, "the vanished focus's fallback");
 }
 
 #[test]

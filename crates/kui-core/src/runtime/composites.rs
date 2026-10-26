@@ -1085,6 +1085,7 @@ impl Core {
         });
         self.items_scratch = scratch;
         self.focus_place = place;
+        self.note_focus_home();
     }
 
     /// At a frame's end: when the composite item focus was on is gone

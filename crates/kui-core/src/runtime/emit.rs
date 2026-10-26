@@ -789,6 +789,9 @@ impl Core {
             let tree = &self.tree;
             self.composite_rows.retain(|k, _| tree.index_of(*k).is_some());
         }
+        // A focus left on a node the frame no longer has, that nothing
+        // above recovered, goes to the nearest sink it had (backlog C136).
+        self.recover_vanished_focus();
         // Where the focused item sits, for the frame that may remove it.
         self.note_focus_place();
     }

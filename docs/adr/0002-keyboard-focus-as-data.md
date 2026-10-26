@@ -450,3 +450,33 @@ sends what it sent; Node in the mods object; Rust as `with_location` and
 - **Lock bits in `KeyMods`.** One word for the C door, and exact
   comparisons of held modifiers — accelerators, chords — start failing
   whenever Caps Lock is on.
+
+## Amendment: a press on a Tab stop inside a sink focuses the stop, built (2026-10-26)
+
+Decision 9 resolved every press inside a sink to the sink, so that a
+multiplexer's first click would not kill its chords. Since ADR 0011 a
+key the focused node does not claim walks up to the nearest sink, so a
+chord reaches the sink from a focused control anyway, and decision 9 had
+come to cost without buying anything (backlog C135): a click on a button
+or a chart inside an app shell left it unfocused, Space and the arrows
+went to the shell, and the shell had to hand Tab on itself (ADR 0011,
+decision 11). Decision 9 now reads:
+
+9. **A primary press on a Tab stop focuses it, inside a key sink or
+   not, as a browser focuses what a click lands on.** A press on a node
+   that is no stop — a label, an image, dead space — gives the keyboard
+   to the nearest enclosing sink, and outside one drops it, as before.
+   The sink keeps its chords: a key the stop does not claim bubbles to
+   it. What the stop acts on stays with the stop — Space and Enter on a
+   button, the arrows on a slider — and that is the browser's trade
+   too. A surface an app draws that must leave the keyboard on its sink
+   — a multiplexer's pane, which a terminal in it would want Space and
+   Enter through — says `keepFocus`, which leaves focus where it was
+   (backlog DX10); `examples/rust/apps/splitmux.rs` does, on its panes.
+
+Decision 10 (window chrome) stands. With a press on a control focusing
+the control, Tab after it is the ring's own, from the control; ADR 0011's
+`ring_from` still serves a press on a non-stop inside a shell. Tested in
+`crates/kui-core/tests/keys.rs` (a stop pressed has the keyboard and the
+sink its chords; a `keepFocus` surface leaves it on the sink; dead space
+gives it the sink) and `tests/key_bubbling.rs`.

@@ -805,6 +805,12 @@ pub struct Core {
     /// windowed one, and its column. When the item vanishes, the frame
     /// without it lands focus on the item now at that place.
     focus_place: Option<composites::ItemPlace>,
+    /// Where the focused node last stood in a frame that had it (backlog
+    /// C136): its key, the key sinks around it, nearest first, and the
+    /// composite holding it. When the node goes and nothing recovers it,
+    /// focus moves to the nearest of those sinks the frame still has, or
+    /// is dropped.
+    focus_home: Option<focus::FocusHome>,
     /// A `focus_item` asked for since the last frame's end (backlog C125):
     /// the composite and the item's index, landed when the frame ends.
     pending_item_focus: Option<(Key, u64)>,
@@ -1515,6 +1521,7 @@ impl Core {
             typeahead_asked: None,
             typeahead_answer: None,
             focus_place: None,
+            focus_home: None,
             pending_item_focus: None,
             focus_group: None,
             press_opened: None,

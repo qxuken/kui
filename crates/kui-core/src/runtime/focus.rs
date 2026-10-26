@@ -678,20 +678,20 @@ impl Core {
     }
 
     /// Where a primary press on node `key` puts the keyboard: the node
-    /// itself when it is focusable, and nothing when it is not — except
-    /// on window chrome, which leaves focus alone, and inside a key sink,
-    /// which keeps the keyboard through any press landing in its subtree.
+    /// itself when it is a Tab stop, inside a key sink or not, as a
+    /// browser focuses what a click lands on (ADR 0002, decision 9 as
+    /// amended by backlog C135). A press on nothing focusable gives the
+    /// keyboard to the nearest key sink around it, and outside one drops
+    /// it; a press on window chrome leaves focus alone.
     ///
-    /// A sink is an app that owns its keyboard (the same reason Tab stays
-    /// with it). The panes, buttons and dead
-    /// space it draws are that app's surface, and a derived button among
-    /// them is focusable enough to be a Tab stop without being entitled to
-    /// take the keys away from the app drawing it — otherwise the first
-    /// click anywhere in a multiplexer kills every chord, permanently,
-    /// because `take_key_focus` is edge-triggered and will not ask twice.
-    /// An editor or a nested sink is its own keyboard owner and still
-    /// takes focus (the editor through the caret arm above). A press on a
-    /// `keepFocus` node never gets here: see [`Self::keeps_focus`].
+    /// A sink keeps its chords through a press on a control inside it all
+    /// the same: since ADR 0011 a key the focused control does not claim
+    /// walks up to the sink, so only what the control acts on — Space and
+    /// Enter on a button, the arrows on a slider — stops there. A surface
+    /// an app draws that must leave the keyboard on its sink (a pane of a
+    /// terminal multiplexer, which would otherwise take Space) says
+    /// `keepFocus`, and a press on it never gets here: see
+    /// [`Self::keeps_focus`].
     pub(crate) fn press_focus(&self, key: Key, focusable: bool) -> Option<Key> {
         let Some(i) = self.tree.index_of(key) else {
             return focusable.then_some(key);
@@ -703,13 +703,10 @@ impl Core {
         if self.tree.specs[i].window.is_some() {
             return self.focus;
         }
-        if self.tree.specs[i].events().on_key().is_some() {
+        if focusable || self.tree.specs[i].events().on_key().is_some() {
             return Some(key);
         }
-        match self.enclosing_sink(i) {
-            Some(j) => Some(self.tree.keys[j]),
-            None => focusable.then_some(key),
-        }
+        self.enclosing_sink(i).map(|j| self.tree.keys[j])
     }
 
     /// The nearest key sink strictly above node `i`: the walk
@@ -1163,5 +1160,93 @@ impl Core {
     #[cfg(feature = "conformance")]
     pub(crate) fn declared_focus(&self) -> &[Key] {
         &self.declared_focus
+    }
+}
+
+/// Where the focused node last stood in a frame that had it (backlog
+/// C136): what the frame that loses it falls back on.
+#[derive(Clone, Debug)]
+pub(crate) struct FocusHome {
+    /// The node focused.
+    key: Key,
+    /// The live key sinks around it, nearest first.
+    sinks: Vec<Key>,
+    /// The composite it is an item of, or inside an item of: that
+    /// composite recovers it (C125) or holds it on a row it did not build
+    /// (ADR 0070), and the fallback leaves it alone while it is there.
+    composite: Option<Key>,
+}
+
+impl Core {
+    /// Reads where the focused node stands, for
+    /// [`Self::recover_vanished_focus`]: run at the end of
+    /// `note_focus_place`, when focus moves between frames and at each
+    /// frame's end. A focus on a node the tree does not have keeps the
+    /// home it had.
+    pub(crate) fn note_focus_home(&mut self) {
+        let Some(focus) = self.focus else {
+            self.focus_home = None;
+            return;
+        };
+        let Some(i) = self.focus_index() else {
+            if self.focus_home.as_ref().is_some_and(|h| h.key != focus) {
+                self.focus_home = None;
+            }
+            return;
+        };
+        let mut sinks = Vec::new();
+        let mut n = self.tree.parent[i];
+        while n != crate::tree::NIL {
+            let j = n as usize;
+            if self.tree.specs[j].events().on_key().is_some() && !self.tree.specs[j].disabled {
+                sinks.push(self.tree.keys[j]);
+            }
+            n = self.tree.parent[j];
+        }
+        let composite = self.focus_place.as_ref().map(|p| p.container);
+        self.focus_home = Some(FocusHome {
+            key: focus,
+            sinks,
+            composite,
+        });
+    }
+
+    /// At a frame's end, after every rule that moves focus on purpose (a
+    /// composite's recovery, an item asked for, a modal's restore, a
+    /// region's): a focus left on a node this frame no longer has — a
+    /// page changed under the focused control — moves to the nearest key
+    /// sink it had around it that the frame still has, and is dropped
+    /// when none is, so a `keyFocus` shell takes it (backlog C136).
+    /// Before, every key went nowhere until a click: there is no sink
+    /// above a node that is not there. A focus the frame never had is left
+    /// alone (a view focusing what the next frame builds), and so is one a
+    /// composite still around it holds — on a row a windowed list scrolled
+    /// out (ADR 0070), or reaching for one. The focus shows as it did: a
+    /// removal is no new input.
+    pub(crate) fn recover_vanished_focus(&mut self) {
+        let Some(focus) = self.focus else { return };
+        if self.focus_index().is_some() || self.composite_reach.is_some() {
+            return;
+        }
+        let Some(home) = self.focus_home.take_if(|h| h.key == focus) else {
+            return;
+        };
+        if home
+            .composite
+            .is_some_and(|c| self.tree.index_of(c).is_some())
+        {
+            self.focus_home = Some(home);
+            return;
+        }
+        let sink = home.sinks.iter().copied().find(|&k| {
+            self.tree.index_of(k).is_some_and(|j| {
+                self.interactive(j)
+                    && self.tree.specs[j].events().on_key().is_some()
+                    && !self.tree.specs[j].disabled
+            })
+        });
+        let visible = self.focus_visible;
+        self.move_focus(sink);
+        self.focus_visible = visible && sink.is_some();
     }
 }

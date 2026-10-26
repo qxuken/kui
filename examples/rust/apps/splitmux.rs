@@ -719,7 +719,13 @@ impl Splitmux {
                 .bg(pal.panel)
                 .border(1.0, border)
                 .clip()
-                .on_click(Msg::Focus { pane: id }),
+                .on_click(Msg::Focus { pane: id })
+                // A pane is the app's surface, not a control of its own: a
+                // terminal drawn in it would want Space and Enter, which a
+                // focused pane would take as its press (backlog C135). The
+                // click picks the pane in the model and leaves the keyboard
+                // on the sink.
+                .keep_focus(),
             |ui| {
                 let color = if focused { pal.accent } else { pal.faint };
                 ui.text(&format!("{id}"), TextStyle::new(48.0).color(color));

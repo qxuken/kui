@@ -3667,6 +3667,8 @@ filed the same day for the round that builds them.
 - `.` **C131** — [`faint` and `muted` text fall below 4.5:1 on hover and press washes](backlog/closed-2026-09.md#-c131--faint-and-muted-text-fall-below-451-on-hover-and-press-washes--done-2026-10-26) — done (2026-10-26) — Kit's text roles read at 4.5:1 on the hover and press washes too; the contrast test hovers and presses every washed row
 - `.` **C132** — [A disabled row at a recovered or asked-for index lands nowhere](backlog/closed-2026-09.md#-c132--a-disabled-row-at-a-recovered-or-asked-for-index-lands-nowhere--done-2026-10-26) — done (2026-10-26) — a disabled row asked for or recovered to steps to the nearest live one, as an arrow steps past it
 - `.` **C134** — [An app cannot name its own nodes inside a component](backlog/closed-2026-09.md#-c134--an-app-cannot-name-its-own-nodes-inside-a-component--done-2026-10-26) — done (2026-10-26) — host children are labelled in the placer's scope: `layout_of`, `edit_text` and the rest find them
+- `.` **C135** — [A press on a control inside a key sink gives the sink the keyboard](backlog/closed-2026-09.md#-c135--a-press-on-a-control-inside-a-key-sink-gives-the-sink-the-keyboard--done-2026-10-26) — done (2026-10-26) — a press on a Tab stop inside a key sink focuses the stop; the sink keeps its chords, which bubble; `keepFocus` for a surface that must not take it; ADR 0002 decision 9 amended
+- `.` **C136** — [Focus left on a node the frame no longer has stays there](backlog/closed-2026-09.md#-c136--focus-left-on-a-node-the-frame-no-longer-has-stays-there--done-2026-10-26) — done (2026-10-26) — a focus on a vanished node nothing recovers goes to the nearest sink it had, or is dropped for a `keyFocus` shell
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3783,30 +3785,6 @@ beside their docs, no design system to try, no place to craft a repro.
 (proposed): `kui play` — Kit's gallery, a page per primitive with its doc
 and an editable live example, the design system with the Theme panel, a
 scratchpad saving a folder or a `.kui` archive, one search.
-
-### `.` C135 — A press on a control inside a key sink gives the sink the keyboard
-
-**Found** in the Kit gallery's Tab regression (2026-10-26):
-`press_focus` resolves a press anywhere inside a sink to the sink (ADR
-0002, decision 9: a multiplexer's buttons must not take its chords).
-Since ADR 0011 a chord bubbles from a focused control anyway, so the rule
-now only costs: a click on a button or a chart inside an app shell leaves
-the button unfocused, Space and the arrows then go to the shell, and the
-shell must hand Tab on itself (ADR 0011, decision 11 makes it go on from
-the press). **Do.** Decide whether a press on a Tab stop inside a shell
-focuses the stop, as a browser does — the mux's toolbar buttons would
-then take Enter and Space — or say why the shell keeps it; amend ADR
-0002.
-
-### `.` C136 — Focus left on a node the frame no longer has stays there
-
-**Found** the same way: a page change that removes the focused node
-leaves `focus` naming it (only a composite's item recovers, C125), so
-every key goes nowhere — no sink above a node that is not there — until
-a click. The Kit gallery's shell takes the keyboard back itself after its
-page shortcut. **Do.** When the focused node is gone and no composite
-recovers it, focus the nearest enclosing sink it had, or drop focus so a
-`keyFocus` shell takes it.
 
 ### `.` C137 — A keyframe cycle out of view still owes frames
 

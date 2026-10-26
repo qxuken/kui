@@ -364,6 +364,17 @@ was the first bare bump to break an app in five releases).
   reads its quads between samples reads them slid; under reduced motion,
   with no frame clock, or with the plot out of the viewport it steps as
   before.
+- A press on a Tab stop inside a key sink focuses the stop, as a browser
+  focuses what a click lands on, where it gave the sink the keyboard
+  (backlog C135, ADR 0002 decision 9 amended). The sink keeps its chords
+  — a key the stop does not claim bubbles to it (ADR 0011) — but what
+  the stop acts on stays with it: Space and Enter on a button, the
+  arrows on a slider. A surface an app draws inside its sink that must
+  leave the keyboard there — a multiplexer's pane — says `keepFocus`.
+- A focus left on a node the frame no longer has moves to the nearest
+  key sink it had around it, or is dropped when it had none, where it
+  stayed on the vanished node (backlog C136). A test that read `focus`
+  after a page change reads the sink, or nothing.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -1681,6 +1692,25 @@ for lua-language-server, and a new runner beside the window's.
   the box over every line, and it carries the skin's shadow, as a raised
   float does. Kit's test draws it in every skin and half over a sliding
   window: an opaque fill, no segment over it, its text at 4.5:1.
+- **A click on a control inside an app shell focuses the control**
+  (backlog C135). A press anywhere inside a key sink gave the sink the
+  keyboard, so a clicked button stayed unfocused, Space and the arrows
+  went to the shell, and the shell had to hand Tab on itself. Since keys
+  bubble from a focused control to the sink around it (ADR 0011) the rule
+  bought nothing: a press on a Tab stop now focuses it, inside a sink or
+  not, and the shell still hears every key the control leaves. A press
+  on what is no stop — a label, dead space — gives the sink the keyboard
+  as before. `examples/rust/apps/splitmux.rs`'s panes say `keepFocus`, so
+  a terminal drawn in one would keep Space.
+- **A page changed under the focused control leaves the keyboard
+  somewhere** (backlog C136). Focus stayed on the vanished node, under no
+  sink, and every key went nowhere until a click — the Kit gallery's
+  shell took the keyboard back by hand after its page shortcut. Now,
+  when nothing recovers it (a composite's item, C125; a modal's restore;
+  a region's), it moves to the nearest key sink it had around it that
+  the frame still has, and is dropped when there is none, so a
+  `keyFocus` shell takes it. A focus on a node never built is left alone,
+  and so is one a windowed list holds on a row scrolled out (ADR 0070).
 - **Tab moves focus in the Kit gallery again.** The key sink the gallery
   wrapped itself in for ⌥↑ / ⌥↓ was a Tab stop — the first — and a sink
   holding focus keeps every key, Tab included, so the first Tab put

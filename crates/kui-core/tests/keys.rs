@@ -636,47 +636,94 @@ fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
 }
 
 /// splitmux's shape: one sink wrapping the panes, each pane clickable so a
-/// click can focus it. A pane is a derived button and so a Tab stop, but it
-/// is drawn *by* the app that owns the keyboard — clicking it must not take
-/// the keyboard away, or every Alt chord dies on the first click and never
-/// comes back (`take_key_focus` is edge-triggered).
-fn multiplexer(core: &mut Core) -> (Key, Key) {
+/// click can focus it. A pane is a derived button and so a Tab stop; with
+/// `keep` it says `keepFocus`, a surface of the app that owns the keyboard.
+fn multiplexer(core: &mut Core, keep: bool) -> (Key, Key) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let mut pane = None;
     let sink = ui.with_keyed("main", NodeSpec::row().fill().key_sink(), |ui| {
-        pane = Some(
-            ui.leaf_keyed(
-                "pane1",
-                NodeSpec::column()
-                    .fill()
-                    .on_click(Value::map([("kind", Value::str("focus"))])),
-            ),
-        );
+        let spec = NodeSpec::column()
+            .fill()
+            .on_click(Value::map([("kind", Value::str("focus"))]));
+        let spec = if keep { spec.keep_focus() } else { spec };
+        pane = Some(ui.leaf_keyed("pane1", spec));
     });
     ui.take_key_focus(sink);
     ui.finish();
     (sink, pane.unwrap())
 }
 
+/// A press on a Tab stop inside a sink focuses the stop, as a browser
+/// focuses what a click lands on (backlog C135, ADR 0002 decision 9 as
+/// amended): the sink keeps its chords all the same, since a key the
+/// focused control does not claim walks up to it (ADR 0011), and only
+/// what the control acts on — Space on a button — stops there.
 #[test]
-fn a_click_inside_a_sink_leaves_the_keyboard_on_the_sink() {
+fn a_click_on_a_stop_inside_a_sink_focuses_the_stop_and_the_sink_keeps_its_chords() {
     let mut core = Core::new();
-    let (sink, pane) = multiplexer(&mut core);
-    // The click still reaches the pane as a click...
+    let (sink, pane) = multiplexer(&mut core, false);
     let evs = click_at(&mut core, 200.0, 150.0);
     assert!(
         evs.iter().any(|e| e.key == pane
             && e.is(EventKind::Click)
             && e.payload.get_str("kind") == Some("focus")),
-        "the pane still hears its own click"
+        "the pane hears its own click"
     );
-    // ...but the keyboard stayed put, without the view asking again.
-    assert_eq!(core.key_focus(), Some(sink));
-    multiplexer(&mut core);
+    assert_eq!(
+        core.key_focus(),
+        Some(pane),
+        "the stop pressed has the keyboard"
+    );
+    multiplexer(&mut core, false);
     let evs = drive(&mut core, &[press(KeyCode::Char('v'))]);
     assert_eq!(keys(&evs), [("down".into(), "v".into())]);
-    assert_eq!(evs[0].key, sink);
+    assert_eq!(
+        evs[0].key, sink,
+        "a key the pane does not claim bubbles to the sink"
+    );
+    // Space is the pane's: it does not bubble, and the press channel
+    // clicks the pane with it.
+    let evs = drive(&mut core, &[press(KeyCode::Space)]);
+    assert!(
+        evs.iter().all(|e| e.key != sink),
+        "Space stays with the pane: {evs:?}"
+    );
+    let evs = core.press(KeyPress::new(KeyCode::Space, KeyMods::default()));
+    assert!(
+        evs.iter().any(|e| e.key == pane && e.is(EventKind::Click)),
+        "Space presses the focused pane: {evs:?}"
+    );
+}
+
+/// A surface that must leave the keyboard on its sink says `keepFocus`.
+#[test]
+fn a_keep_focus_surface_inside_a_sink_leaves_the_keyboard_on_the_sink() {
+    let mut core = Core::new();
+    let (sink, pane) = multiplexer(&mut core, true);
+    let evs = click_at(&mut core, 200.0, 150.0);
+    assert!(evs.iter().any(|e| e.key == pane && e.is(EventKind::Click)));
+    assert_eq!(core.key_focus(), Some(sink));
+    multiplexer(&mut core, true);
+    let evs = drive(&mut core, &[press(KeyCode::Space)]);
+    assert_eq!(keys(&evs), [("down".into(), "space".into())]);
+    assert_eq!(evs[0].key, sink, "Space is the sink's");
+}
+
+/// A press on nothing focusable inside a sink still gives the sink the
+/// keyboard.
+#[test]
+fn a_click_on_nothing_focusable_inside_a_sink_focuses_the_sink() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let sink = ui.with_keyed("main", NodeSpec::row().fill().key_sink(), |ui| {
+        ui.leaf_keyed("art", NodeSpec::column().fill());
+    });
+    ui.finish();
+    assert_eq!(core.key_focus(), None);
+    click_at(&mut core, 200.0, 150.0);
+    assert_eq!(core.key_focus(), Some(sink));
 }
 
 #[test]
