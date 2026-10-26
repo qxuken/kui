@@ -613,3 +613,116 @@ fn active_index_names_the_row_tab_enters_on() {
     }
     assert_eq!(core.focus(), Some(row_key(700)));
 }
+
+/// Actionable mode (ADR 0070): a cell with one control presses it on
+/// Enter or Space without entering; a cell with more is entered on Enter
+/// (or F2, either kind), Tab cycles among its controls, Escape comes back
+/// to the cell, and the arrows walk the table again. Its controls warn no
+/// `focusable-inside-item`.
+#[test]
+fn a_cells_controls_are_reached_with_enter_and_left_with_escape() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("t", NodeSpec::column().role(Role::Table).label("t"), |ui| {
+        ui.with_keyed("r", NodeSpec::row().role(Role::Row), |ui| {
+            let cell = |l: &str| {
+                NodeSpec::row()
+                    .size(120.0, 24.0)
+                    .role(Role::Cell)
+                    .focusable()
+                    .label(l)
+            };
+            ui.with_keyed("one", cell("one"), |ui| {
+                ui.leaf_keyed(
+                    "go",
+                    NodeSpec::row().size(20.0, 20.0).on_click("go").label("go"),
+                );
+            });
+            ui.with_keyed("two", cell("two"), |ui| {
+                ui.leaf_keyed(
+                    "a",
+                    NodeSpec::row().size(20.0, 20.0).on_click("a").label("a"),
+                );
+                ui.leaf_keyed(
+                    "b",
+                    NodeSpec::row().size(20.0, 20.0).on_click("b").label("b"),
+                );
+            });
+            ui.leaf_keyed("three", cell("three"));
+        });
+    });
+    ui.finish();
+    let t = Key::ROOT.str("t").str("r");
+    let warned = core
+        .take_warnings()
+        .iter()
+        .any(|w| w.code == "focusable-inside-item");
+    assert!(!warned, "a cell's controls are reachable");
+    core.set_focus(Some(t.str("one")));
+    let out = core.press(kui_core::KeyPress::new(
+        kui_core::KeyCode::Enter,
+        kui_core::KeyMods::NONE,
+    ));
+    assert!(
+        out.iter()
+            .any(|e| e.key == t.str("one").str("go") && e.event.name() == "click"),
+        "{out:?}"
+    );
+    assert_eq!(core.focus(), Some(t.str("one")), "pressed without entering");
+    let out = core.press(
+        kui_core::KeyPress::new(kui_core::KeyCode::Space, kui_core::KeyMods::NONE).with_text(" "),
+    );
+    assert!(
+        out.iter()
+            .any(|e| e.key == t.str("one").str("go") && e.event.name() == "click")
+    );
+    core.press(kui_core::KeyPress::new(
+        kui_core::KeyCode::F(2),
+        kui_core::KeyMods::NONE,
+    ));
+    assert_eq!(
+        core.focus(),
+        Some(t.str("one").str("go")),
+        "F2 enters even one control"
+    );
+    core.press(kui_core::KeyPress::new(
+        kui_core::KeyCode::Escape,
+        kui_core::KeyMods::NONE,
+    ));
+    assert_eq!(
+        core.focus(),
+        Some(t.str("one")),
+        "Escape comes back to the cell"
+    );
+    key(&mut core, EditKey::Right, Mods::NONE);
+    assert_eq!(
+        core.focus(),
+        Some(t.str("two")),
+        "and the arrows walk again"
+    );
+    core.press(kui_core::KeyPress::new(
+        kui_core::KeyCode::Enter,
+        kui_core::KeyMods::NONE,
+    ));
+    assert_eq!(
+        core.focus(),
+        Some(t.str("two").str("a")),
+        "entered on its first control"
+    );
+    tab(&mut core, false);
+    assert_eq!(core.focus(), Some(t.str("two").str("b")));
+    tab(&mut core, false);
+    assert_eq!(
+        core.focus(),
+        Some(t.str("two").str("a")),
+        "Tab cycles inside the cell"
+    );
+    tab(&mut core, true);
+    assert_eq!(core.focus(), Some(t.str("two").str("b")));
+    core.press(kui_core::KeyPress::new(
+        kui_core::KeyCode::Escape,
+        kui_core::KeyMods::NONE,
+    ));
+    assert_eq!(core.focus(), Some(t.str("two")));
+}

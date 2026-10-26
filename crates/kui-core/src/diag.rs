@@ -1439,6 +1439,11 @@ impl Diagnostics {
             if !crate::composite::is_composite(tree, c, &items) {
                 continue;
             }
+            // A table's cell may hold controls: Enter or F2 reaches them
+            // (actionable mode, ADR 0070), so they are not unreachable.
+            if item == Role::Cell {
+                continue;
+            }
             for &i in &items {
                 let end = tree.subtree_end(i);
                 for j in i + 1..end {

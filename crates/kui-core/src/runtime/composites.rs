@@ -603,6 +603,122 @@ impl Core {
         true
     }
 
+    // -- Actionable mode (ADR 0070) ------------------------------------
+    // A table's cell can hold controls — a checkbox, a button, a field.
+    // The cell is the composite's roving stop; its controls are out of the
+    // ring (`focusable-inside-item` does not fire for them). Enter or F2
+    // moves focus into the cell, Tab cycles among its controls, and Escape
+    // brings focus back to the cell, where the arrows walk the table again.
+
+    /// Whether node `c` is a cell of a composite table.
+    fn is_table_cell(&self, c: usize) -> bool {
+        crate::composite::role(&self.tree, c)
+            .is_some_and(|r| crate::composite::is_item(r, crate::access::Role::Cell))
+            && crate::composite::owner(&self.tree, c, &mut Vec::new()).is_some()
+    }
+
+    /// The controls inside the table cell `c`, in tree order — the
+    /// focusable nodes of its subtree, the cell itself not among them.
+    /// Empty for a node that is not such a cell.
+    pub(crate) fn cell_controls(&self, c: usize) -> Vec<usize> {
+        if !self.is_table_cell(c) {
+            return Vec::new();
+        }
+        let end = self.tree.subtree_end(c);
+        let mut out = Vec::new();
+        let mut j = c + 1;
+        while j < end {
+            if self.tree.is_hidden(j) {
+                j = self.tree.subtree_end(j);
+                continue;
+            }
+            if crate::access::focusable(&self.tree, j) {
+                out.push(j);
+            }
+            j += 1;
+        }
+        out
+    }
+
+    /// The one control a table cell `c` holds, when it holds exactly one
+    /// that presses — not an editor, which is entered, never pressed.
+    pub(crate) fn sole_control(&self, c: usize) -> Option<usize> {
+        let controls = self.cell_controls(c);
+        let editor = |j: usize| {
+            matches!(self.tree.content[j], NodeContent::Edit(_))
+                || crate::access::is_custom_editor(&self.tree, j)
+        };
+        match controls.as_slice() {
+            [j] if !editor(*j) => Some(*j),
+            _ => None,
+        }
+    }
+
+    /// Enter (or, with `always`, F2) on the focused table cell `c`: its one
+    /// control is pressed (Enter only), or focus moves to its first
+    /// control. False for a cell with no controls, or a node that is no
+    /// cell, which Enter then presses as it presses any control.
+    pub(crate) fn enter_cell(&mut self, c: usize, always: bool, out: &mut Vec<UiEvent>) -> bool {
+        let controls = self.cell_controls(c);
+        let Some(&first) = controls.first() else {
+            return false;
+        };
+        self.focus_visible = true;
+        match self.sole_control(c) {
+            Some(j) if !always => self.click_node(self.tree.keys[j], out),
+            _ => self.land_focus(first),
+        }
+        true
+    }
+
+    /// The composite table cell focus is inside, strictly — focus on one of
+    /// its controls.
+    fn cell_around_focus(&self) -> Option<usize> {
+        let f = self.focus_index()?;
+        let mut n = self.tree.parent[f];
+        while n != NIL {
+            let j = n as usize;
+            if self.is_table_cell(j) {
+                return Some(j);
+            }
+            n = self.tree.parent[j];
+        }
+        None
+    }
+
+    /// Tab inside a table cell: the next (or, back, the previous) of the
+    /// cell's controls, wrapping. False when focus is not inside a cell.
+    pub(crate) fn cycle_in_cell(&mut self, forward: bool) -> bool {
+        let Some(c) = self.cell_around_focus() else {
+            return false;
+        };
+        let controls = self.cell_controls(c);
+        let Some(at) = self
+            .focus_index()
+            .and_then(|f| controls.iter().position(|&j| j == f))
+        else {
+            return false;
+        };
+        let n = controls.len();
+        let next = if forward {
+            (at + 1) % n
+        } else {
+            (at + n - 1) % n
+        };
+        self.land_focus(controls[next]);
+        true
+    }
+
+    /// Escape from a control inside a table cell: focus back on the cell.
+    /// False when focus is not inside one.
+    pub(crate) fn leave_cell(&mut self) -> bool {
+        let Some(c) = self.cell_around_focus() else {
+            return false;
+        };
+        self.land_focus(c);
+        true
+    }
+
     /// The column of item `j` of the composite at `container`: a table
     /// cell's place in its row, 0 for a list's item.
     pub(crate) fn column_of_entry(&self, container: usize, j: usize) -> usize {

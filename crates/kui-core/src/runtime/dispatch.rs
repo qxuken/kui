@@ -435,9 +435,12 @@ impl Core {
                         && s == " "
                     {
                         // The press shows the focus, as Enter's does
-                        // (`docs/adr/0002`, decision 4a).
+                        // (`docs/adr/0002`, decision 4a). A table's cell
+                        // holding one control presses that control
+                        // instead, without entering the cell (ADR 0070).
                         self.focus_visible = true;
-                        self.click_node(self.tree.keys[i], &mut out);
+                        let target = self.sole_control(i).unwrap_or(i);
+                        self.click_node(self.tree.keys[target], &mut out);
                     }
                 }
             }
@@ -546,13 +549,22 @@ impl Core {
                     && match self.edit.focused() {
                         Some(k) if self.edit.keeps_tab(k) => false,
                         Some(k) if self.edit.inserts_tab(k) => {
-                            mods.word || mods.doc || mods.ctrl || self.tab_moves_focus || armed == Some(k)
+                            mods.word
+                                || mods.doc
+                                || mods.ctrl
+                                || self.tab_moves_focus
+                                || armed == Some(k)
                         }
                         Some(_) => true,
                         None => !sink,
                     };
                 if traverse {
-                    self.focus_next(!mods.shift);
+                    // Inside a table's cell (actionable mode, ADR 0070) Tab
+                    // cycles among the cell's own controls; elsewhere it
+                    // walks the ring.
+                    if !self.cycle_in_cell(!mods.shift) {
+                        self.focus_next(!mods.shift);
+                    }
                 } else if let Some(key) = self.edit.focused() {
                     let done = self.edit_with_fonts(|edit, fs| edit.apply_key(key, ek, mods, fs));
                     self.editor_took_selection(key);
@@ -586,7 +598,7 @@ impl Core {
                         if self.edit.inserts_tab(key) && !self.tab_moves_focus && armed != Some(key)
                         {
                             self.tab_armed = Some(key);
-                        } else {
+                        } else if !self.leave_cell() {
                             self.move_focus(None);
                         }
                     }
@@ -630,11 +642,22 @@ impl Core {
                             self.focus_visible = true;
                             self.keyboard_select(scope.unwrap_or(Key::ROOT), ek, mods);
                         }
+                        // A table's cell with controls in it (ADR 0070):
+                        // Enter presses its one control, or enters it — its
+                        // first control takes focus — when it has more, or
+                        // an editor.
+                        EditKey::Enter if self.enter_cell(i, false, &mut out) => {}
                         EditKey::Enter => {
                             self.focus_visible = true;
                             self.click_node(self.tree.keys[i], &mut out);
                         }
-                        EditKey::Escape => self.move_focus(None),
+                        // Escape from a control inside a cell goes back to
+                        // the cell, where the arrows walk the table again.
+                        EditKey::Escape => {
+                            if !self.leave_cell() {
+                                self.move_focus(None);
+                            }
+                        }
                         EditKey::Right | EditKey::Up if slider => {
                             self.focus_visible = true;
                             self.nudge(i, SliderMove::Step(1), &mut out);
@@ -693,6 +716,14 @@ impl Core {
                 // An open menu's row whose accelerator this is takes it,
                 // as a native menu's key equivalent does (backlog C98).
                 if self.menu_accel(&kp, &mut out) {
+                    return out;
+                }
+                // F2 enters a focused table cell's controls (ADR 0070),
+                // as a spreadsheet's edit key does, whatever they are.
+                if kp.code == KeyCode::F(2)
+                    && let Some(i) = self.focused_control()
+                    && self.enter_cell(i, true, &mut out)
+                {
                     return out;
                 }
                 if self.route_key(&kp, KeyPhase::Down, &mut out) {
