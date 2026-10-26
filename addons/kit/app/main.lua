@@ -26,8 +26,8 @@ function init()
     side = 0.18,
     -- The Theme panel: open or not, and what it sets.
     theme_open = false, theme_colors = false, theme = theme.defaults(),
-    -- Which cards show their source.
-    source = {},
+    -- Which cards show their source, and which their guideline.
+    source = {}, guide = {},
     -- The worker's data.
     rows = nil, rows_ms = nil, filtered = false, spans = nil,
     -- The HTTP server.
@@ -95,7 +95,8 @@ function update(msg)
     end
   elseif k == "side" then m.side = msg.resize.fraction
   elseif k == "live" then m.live = msg.toggle.on
-  elseif k == "source" then m.source[msg.name] = not m.source[msg.name] or nil
+  elseif k == "source" then m.source[msg.name] = not m.source[msg.name] or nil; m.guide[msg.name] = nil
+  elseif k == "guide" then m.guide[msg.name] = not m.guide[msg.name] or nil; m.source[msg.name] = nil
   elseif k == "rows" then m.rows, m.rows_ms, m.filtered = msg.rows, msg.ms, msg.filtered
   elseif k == "trace" then m.spans = msg.spans
   elseif k == "press" then toasts.push(m, { message = "Pressed " .. msg.what })
@@ -127,7 +128,7 @@ function view(env)
   local refocus = paged
   paged = false
   local page = column { key = "page." .. m.page, width = "grow", height = "grow", scroll_y = true, pad = 16, gap = 16,
-    pages.page(m, m.page) }
+    pages.page(m, m.page, env) }
   -- The whole app inside one key sink: the page shortcut. Its keys are
   -- the ones nothing focused inside it uses, so it takes the keyboard
   -- itself whenever nothing has it — at launch, and when the focused

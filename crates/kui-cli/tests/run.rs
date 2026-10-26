@@ -372,13 +372,27 @@ fn lua_files(dir: &Path, rel: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The Kit app (addons/kit/app), every Lua file of it copied but its
-/// manifest (whose entry would win over the walker), with an entry that
-/// walks it.
+/// The files under `dir` a test copies of an app: its Lua and its docs
+/// (the design system's Markdown and tokens.json), as paths relative to it.
+fn app_files(dir: &Path, rel: &Path, out: &mut Vec<PathBuf>) {
+    for e in std::fs::read_dir(dir.join(rel)).unwrap() {
+        let e = e.unwrap();
+        let r = rel.join(e.file_name());
+        if e.file_type().unwrap().is_dir() {
+            app_files(dir, &r, out);
+        } else if r.extension().is_some_and(|x| x == "lua" || x == "md" || x == "json") {
+            out.push(r);
+        }
+    }
+}
+
+/// The Kit app (addons/kit/app), every Lua file and doc of it copied but
+/// its manifest (whose entry would win over the walker), with an entry
+/// that walks it.
 fn kit_app(name: &str, entry: &str) -> PathBuf {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit/app");
     let mut rels = Vec::new();
-    lua_files(&src, Path::new(""), &mut rels);
+    app_files(&src, Path::new(""), &mut rels);
     rels.retain(|r| r != Path::new("kui.config.lua"));
     let mut files: Vec<(String, String)> = Vec::new();
     for rel in rels {
@@ -684,7 +698,7 @@ fn the_kit_app_pages_with_alt_up_and_down_but_not_in_an_editor() {
         .collect();
     assert_eq!(
         pages,
-        ["inputs", "data", "keyboard", "keyboard", "overview"],
+        ["inputs", "data", "icons", "icons", "overview"],
         "⌥↓ on, ⌥↑ back round the first, ⇧⌥↓ nothing:\n{s}"
     );
     let editing = lines
@@ -692,6 +706,125 @@ fn the_kit_app_pages_with_alt_up_and_down_but_not_in_an_editor() {
         .find(|l| l.0 == "editing")
         .expect("the editing probe");
     assert_eq!(editing.1, "inputs", "a text field keeps ⌥↓:\n{s}");
+}
+
+
+/// The Kit app describes its own design system (addons/kit/app/design):
+/// the Foundations page draws the brand book, the Colours page every colour
+/// role Kit exports now, with its usage note and following the Theme
+/// panel's skin, the Type and Icons pages draw, ⌥↓ from the last card page
+/// reaches them, and a card's Guide shows its components' guidelines.
+#[test]
+fn the_kit_app_describes_its_design_system() {
+    let dir = kit_app(
+        "kit-app-design",
+        &format!(
+            "{KIT_WALK_HEAD}{}",
+            r##"
+        local design = require("design")
+        local inner2, said = view, nil
+        function view(env)
+          local t = inner2(env)
+          if said then
+            local live = design.live_colors(env)
+            local n = 0
+            for _ in pairs(live) do n = n + 1 end
+            print("design", said, model.page, n, string.format("%08x", live.panel or 0),
+              tostring(design.tokens() ~= nil), #design.icon_names())
+            said = nil
+          end
+          return t
+        end
+        run({
+          function() kui.dispatch({ kind = "page", change = { value = "keyboard" } }) end,
+          function() kui.input.key("down", { alt = true }) end, function() probe("paged") end,
+          function() said = "foundations" end,
+          function() kui.dispatch({ kind = "page", change = { value = "colours" } }) end,
+          function() said = "ledger" end,
+          function() kui.dispatch({ kind = "theme", field = "skin", change = { value = "phosphor" } }) end,
+          function() end, function() said = "phosphor" end,
+          function() kui.dispatch({ kind = "page", change = { value = "type" } }) end, function() said = "type" end,
+          function() kui.dispatch({ kind = "page", change = { value = "icons" } }) end, function() said = "icons" end,
+          function() kui.dispatch({ kind = "page", change = { value = "inputs" } }) end,
+          function() kui.dispatch({ kind = "guide", name = "inputs/buttons" }) end,
+          function() print("guides", table.concat(design.guides_of(require("pages").DEMOS["inputs/buttons"].call), " "),
+            tostring(model.guide["inputs/buttons"])) end,
+        })
+        "##
+        ),
+    );
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(!s.contains("warning"), "{s}");
+    let lines = focus_lines(&s);
+    let paged = lines.iter().find(|l| l.0 == "paged").expect("the paged probe");
+    assert_eq!(paged.1, "foundations", "⌥↓ from the last card page reaches the design system:\n{s}");
+    let design: Vec<Vec<&str>> = s.lines().filter_map(|l| l.strip_prefix("design\t")).map(|l| l.split('\t').collect()).collect();
+    let at = |name: &str| design.iter().find(|d| d[0] == name).unwrap_or_else(|| panic!("no {name}:\n{s}")).clone();
+    for name in ["foundations", "ledger", "phosphor", "type", "icons"] {
+        let d = at(name);
+        assert!(d[2].parse::<usize>().unwrap() >= 60, "{name}: Kit's colour roles read live: {d:?}");
+        assert_eq!(d[4], "true", "{name}: design/tokens.json read: {d:?}");
+        assert_eq!(d[5], "40", "{name}: the icon set read from the brand book: {d:?}");
+    }
+    assert_ne!(at("ledger")[3], at("phosphor")[3], "the Colours page follows the skin:\n{s}");
+    let guides = s.lines().find_map(|l| l.strip_prefix("guides\t")).expect("the guides line");
+    assert!(guides.starts_with("Button IconButton") && guides.ends_with("true"), "the Buttons card's guides open: {guides}");
+}
+
+/// Kit's design system docs stay true to Kit: a guideline for every
+/// component of the schema and none for a component Kit lacks; the
+/// brand book's icon set Kit's own; and tokens.json's colour roles and
+/// values what Kit computes in every theme (design/tokens.lua's check,
+/// which `-- --write` turns into a rewrite of the file).
+#[test]
+fn kits_design_docs_match_kit() {
+    let kit = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit");
+    let schema = std::fs::read_to_string(kit.join("schema.lua")).unwrap();
+    let components: Vec<String> = schema
+        .lines()
+        .filter_map(|l| l.strip_prefix("    { \""))
+        .filter_map(|l| l.split('"').next())
+        .map(|n| {
+            n.split('_')
+                .map(|w| {
+                    let mut c = w.chars();
+                    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+                })
+                .collect::<String>()
+        })
+        .collect();
+    let mut guides: Vec<String> = std::fs::read_dir(kit.join("app/design/components"))
+        .unwrap()
+        .filter_map(|e| e.ok()?.file_name().to_str()?.strip_suffix(".md").map(str::to_string))
+        .collect();
+    guides.sort();
+    let mut want = components.clone();
+    want.sort();
+    let missing: Vec<&String> = want.iter().filter(|c| !guides.contains(c)).collect();
+    let stray: Vec<&String> = guides.iter().filter(|g| !want.contains(g)).collect();
+    assert!(missing.is_empty(), "components with no guideline in app/design/components: {missing:?}");
+    assert!(stray.is_empty(), "guidelines for no component of the schema: {stray:?}");
+
+    let icons_src = std::fs::read_to_string(kit.join("src/icons.tl")).unwrap();
+    let body = icons_src.split("local BODY").nth(1).unwrap().split("\n}").next().unwrap();
+    let mut icons: Vec<&str> = body
+        .lines()
+        .filter_map(|l| l.trim_start().split_once(" = "))
+        .map(|(n, _)| n.trim())
+        .filter(|n| n.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+        .collect();
+    icons.sort();
+    let book = std::fs::read_to_string(kit.join("app/design/README.md")).unwrap();
+    let line = book.lines().find(|l| l.starts_with("- The set: ")).expect("the brand book's icon set");
+    let mut listed: Vec<&str> = line.split('`').skip(1).step_by(2).collect();
+    listed.sort();
+    assert_eq!(listed, icons, "the brand book lists Kit's icons");
+
+    let o = kui(&kit.join("app/design"), &["run", "--headless", "tokens.lua", "--", "--check"], 60);
+    let s = out(&o);
+    assert!(o.status.success() && s.contains("tokens.json matches Kit"), "{s}");
 }
 
 /// The Kit app is Kit's gallery: every component its schema describes is

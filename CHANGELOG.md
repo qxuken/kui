@@ -339,6 +339,10 @@ was the first bare bump to break an app in five releases).
   segment's hover and press over its track too, it had gone most of the
   way to `fg`, and nothing faint is drawn there (`fg` and `muted`, a
   segment's label and count, still read there).
+- Kit's design system moved into the Kit app: `addons/kit/design-system/`
+  is `addons/kit/app/design/` — the brand book, `tokens.json`, and a
+  guideline per component as `components/<Component>.md` — and the static
+  HTML previews and `bundle.css` are gone; the app draws each.
 - A click whose message is a map carries what it was made with in its
   `click` data: `mods` while a modifier is held, `clicks` from a double
   click's second click on, `key` (`enter` / `space`) when a key made it;
@@ -1529,6 +1533,22 @@ for lua-language-server, and a new runner beside the window's.
   (C101, in part): a click's `mods`, `clicks` and `key`, a focus move's
   `mods`, select all to `onItemKey`. Filed: C139, a list's
   `multiselectable` for assistive technology.
+- **Kit's design system in the Kit app.** The sidebar's Design system
+  section draws Kit describing itself: **Foundations** (the brand book),
+  **Colours** (every colour role of the theme the Theme panel sets, live
+  from `env.tokens`: swatch, value, usage note, and a text role's
+  contrast on each ground its note names), **Type and spacing** (the type
+  styles, the spacing and hairline scales to size, radius, shadow) and
+  **Icons**; ⌥↑ / ⌥↓ walk them with the rest. Each card's **Guide**
+  button, beside Source, draws the guidelines of the components it
+  places. They are drawn by a new component, `markdown { text }` — `#` to
+  `####` headings, paragraphs, nested `-` / `*` / `1.` lists, quotes,
+  rules, fenced code as `code`, pipe tables, inline `code`, bold, italic
+  and links as their text — in every binding. `tokens.json`'s values are
+  Kit's own, written by `kui run --headless addons/kit/app/design/tokens.lua
+  -- --write`; the runner tests check that file against Kit (`--check`),
+  a guideline for every component and none for a missing one, and the
+  brand book's icon list against `src/icons.tl`.
 - **Where the pointer is over a node** (backlog C119): `pointer_in(key)`
   — `{x, y, w, h}`, the pointer's place from the node's top-left
   (through any turn) and the node's size, as of the last frame — for a

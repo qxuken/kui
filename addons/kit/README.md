@@ -90,8 +90,8 @@ kui run addons/kit/app
 ```
 
 `app/` is Kit on the `kui` runner (ADR 0064): every component on nine
-pages, a worker building 100,000 rows as a channel, live chart and log
-feeds, and an HTTP server — a living reference, and the template for an
+pages, Kit's design system on four more, a worker building 100,000 rows
+as a channel, live chart and log feeds, and an HTTP server — a living reference, and the template for an
 app of your own (`kui run --watch addons/kit/app`, then edit a card).
 
 - Every card is a file of its own under `app/demos/`: its data, its
@@ -135,28 +135,38 @@ the Kit test in `packages/kui/test.mjs`.
 
 ## The design system
 
-`design-system/` describes Kit as a design system, written from this
-folder's sources (2026-10-26):
+Kit describes itself as a design system inside the Kit app, under the
+sidebar's **Design system** section, from the files in `app/design/`:
 
-- `design-system/README.md`, the brand book: the three skins, how Kit's
-  labels and messages are worded, the visual foundations (colour, type,
-  spacing, rules and borders, shadows, motion, states and focus, density)
-  and the icons.
-- `design-system/tokens.json`: every colour role per skin and appearance
-  (six themes, Ledger light first), the type styles, spacing, radii,
-  shadows, sizes and opacities — Kit's own names and values, the derived
-  roles as `skin.tl` computes them with no accent given, each with a usage
-  note naming the grounds a text colour reads on.
-- `design-system/components/<Component>/README.md`: when to use it, what
-  the app provides, do's and don'ts; `preview.html` beside it is a static
-  HTML rendition styled by `components/bundle.css` over the tokens' CSS
-  variables (it expects the tokens as CSS custom properties, so it is
-  read, not opened on its own).
+- **Foundations** draws `app/design/README.md`, the brand book (the three
+  skins, how Kit's labels and messages are worded, the visual
+  foundations, the icons), with Kit's own `markdown` component.
+- **Colours** lists every colour role of the skin and appearance the Theme
+  panel sets, live from `env.tokens`: a swatch, its value, its usage note
+  from `app/design/tokens.json`, and for a text role its contrast on each
+  ground the note names.
+- **Type and spacing** draws the type styles, the spacing and hairline
+  scales to size, the radius and the shadow, in the current theme.
+- **Icons** draws every icon with its name.
+- Each card's **Guide** button (beside Source) draws the guideline of
+  each component the card places, `app/design/components/<Component>.md`:
+  when to use it, what the app provides, do's and don'ts.
 
-It is a description, not a source: `src/` is what Kit draws. When a skin's
-values, a component's props or its look change, update the matching file
-here (the gallery's Theme panel prints the settings a theme is made of).
-The samples' pictures it refers to are the ones under `samples/*/shots/`.
+`app/design/tokens.json` is the tokens for the web — every colour role per
+skin and appearance (six themes, Ledger light first), the type styles,
+spacing, radii, shadows, sizes and opacities — its values Kit's own, read
+live by `app/design/tokens.lua`; the usage notes are the file's:
+
+```bash
+kui run --headless addons/kit/app/design/tokens.lua -- --write  # values from Kit
+kui run --headless addons/kit/app/design/tokens.lua -- --check  # what the test runs
+```
+
+The runner tests keep the docs honest: tokens.json names exactly the
+colour roles Kit exports with the values it computes (`--check`), every
+component in `schema.lua` has a guideline and every guideline a component,
+and the brand book's icon list is `src/icons.tl`'s. A new role, component
+or icon fails them until its note, guideline or name is written.
 
 ## Layout of this folder
 
@@ -166,11 +176,11 @@ The samples' pictures it refers to are the ones under `samples/*/shots/`.
 | `src/*.tl` | The Teal source: `kit` (the entry), `skin` and the three skins, `ctx` (what every component paints through), `icons`, and the components by group: `layout`, `inputs`, `data`, `overlays`, `charts`, `waterfall`. |
 | `lua/*.lua` | What a host loads, generated from `src/`. Edit the `.tl`, never these. |
 | `bindings/` | The wrappers generated from `schema.lua`. Never edit these either. |
-| `app/` | The Kit app, on the `kui` runner: `main.lua` the shell, `pages.lua` the pages, `theme.lua` the Theme panel, a card a file under `demos/`. |
+| `app/` | The Kit app, on the `kui` runner: `main.lua` the shell, `pages.lua` the pages, `theme.lua` the Theme panel, `design.lua` the design system's pages, a card a file under `demos/`. |
+| `app/design/` | Kit as a design system: the brand book, `tokens.json` (and `tokens.lua`, which writes its values from Kit), a guideline per component. |
 | `shaders/` | Kit's own WGSL, embedded by `build.lua` and registered by Kit: `shimmer.wgsl` (the skeletons' sweep), `noise.wgsl`. |
 | `build.lua` | Type-checks `src/` against `packages/lua/kui.d.tl` with the Teal compiler kui-lua vendors, and writes `lua/`. `--check` fails on a stale `lua/` instead. |
 | `M0.md` | The spike that came first: its findings and numbers. |
-| `design-system/` | Kit as a design system: the brand book, the tokens per skin and appearance, a guideline and a static rendition per component. |
 
 ```bash
 nu scripts/gen.nu --skip lua,node,odin,book

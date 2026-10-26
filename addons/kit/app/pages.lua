@@ -6,6 +6,7 @@
 -- `the_kit_app_places_every_component` checks).
 
 local kit = require("kit.ui")
+local design = require("design")
 
 local M = {}
 
@@ -22,12 +23,18 @@ M.PAGES = {
   { value = "layout", label = "Layout", cards = { "layout/split", "layout/tabs", "layout/conditions", "layout/divider", "layout/empty" } },
   { value = "loading", label = "Loading", cards = { { "loading/profile", "loading/skeleton" }, "loading/shader" } },
   { value = "keyboard", label = "Keyboard", cards = { { "keyboard/segments", "keyboard/list" }, "keyboard/bars", "keyboard/cells", "keyboard/elsewhere" } },
+  -- Kit describing itself (design.lua, from the files under design/): a
+  -- page drawn by its `view`, not of cards.
+  { value = "foundations", label = "Foundations", section = "Design system", view = design.foundations },
+  { value = "colours", label = "Colours", section = "Design system", view = design.colours },
+  { value = "type", label = "Type and spacing", section = "Design system", view = design.type },
+  { value = "icons", label = "Icons", section = "Design system", view = design.icons },
 }
 
 -- Every card's module, by its name.
 M.DEMOS = {}
 for _, p in ipairs(M.PAGES) do
-  for _, c in ipairs(p.cards) do
+  for _, c in ipairs(p.cards or {}) do
     for _, name in ipairs(type(c) == "table" and c or { c }) do
       M.DEMOS[name] = require("demos." .. name:gsub("/", "."))
     end
@@ -103,15 +110,37 @@ local function sources(name)
   return out
 end
 
--- A card: its title and what it shows, the thing itself, and under it the
--- call that places it — or, with Source on, the card's whole file.
+-- A card's guidelines (design/components/<Component>.md), one for each
+-- component its call places, each with its name over it.
+local function guides(name)
+  local out = {}
+  for _, comp in ipairs(design.guides_of(M.DEMOS[name].call)) do
+    out[#out + 1] = kit.markdown({ text = design.guideline(comp) })
+  end
+  return out
+end
+
+-- A card: its title and what it shows, the thing itself — the preview —
+-- and under it the call that places it; with Source on, the card's whole
+-- file; with Guide on, the guideline of each component it places.
 local function card(m, name)
   local d = M.DEMOS[name]
   local open = m.source[name] == true
-  local foot = open and sources(name) or { kit.code({ text = d.call, wrap = true }) }
+  local guided = m.guide[name] == true
+  local foot = { kit.code({ text = d.call, wrap = true }) }
+  if open then foot = sources(name) end
+  if guided then
+    local g = guides(name)
+    foot = #g > 0 and g or { text("No guideline under design/components/ for this card.",
+      { size = 11, family = "$kitUi", color = "$kitMuted" }) }
+  end
+  local has_guide = #design.guides_of(d.call) > 0
   return kit.panel({ title = d.title, subtitle = d.note }, {
     column { width = "grow", gap = 12, d.view(m) },
     actions = {
+      has_guide and kit.button({ label = "Guide", icon = "info", variant = "ghost", pressed = guided, name = "Guide to " .. d.title,
+        tooltip = guided and "Show the call" or "When to use it, what to give it, do's and don'ts",
+        on_press = { kind = "guide", name = name } }) or nil,
       kit.button({ label = "Source", icon = "code", variant = "ghost", pressed = open, name = "Source of " .. d.title,
         tooltip = open and "Show the call" or "Show the card's whole file", on_press = { kind = "source", name = name } }),
     },
@@ -158,12 +187,16 @@ local HEADS = {
   end,
 }
 
-function M.page(m, value)
+function M.page(m, value, env)
   local page = M.PAGES[1]
   for _, p in ipairs(M.PAGES) do
     if p.value == value then page = p end
   end
   local t = { width = "grow", gap = 16 }
+  if page.view then
+    for _, n in ipairs({ page.view(m, env) }) do t[#t + 1] = n end
+    return column(t)
+  end
   local head = HEADS[page.value]
   if head then
     for _, n in ipairs({ head(m) }) do t[#t + 1] = n end
@@ -176,7 +209,14 @@ end
 
 function M.nav(m)
   local t = {}
+  local section = nil
   for _, p in ipairs(M.PAGES) do
+    -- A section's name over its first page.
+    if p.section ~= section then
+      section = p.section
+      t[#t + 1] = row { width = "grow", pad = { x = 10, t = 12, b = 4 }, role = "none",
+        text(section, { size = 11, bold = true, family = "$kitUi", color = "$kitMuted" }) }
+    end
     local here = p.value == m.page
     t[#t + 1] = row {
       key = "nav." .. p.value,
