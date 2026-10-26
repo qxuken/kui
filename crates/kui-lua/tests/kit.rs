@@ -5021,3 +5021,134 @@ fn a_fields_error_is_laid_out_whole_at_any_width() {
         }
     }
 }
+
+/// The gallery's feed: a sample every 0.1 of x, x accumulated as the feed
+/// adds it (`t = t + 0.1`, so not exactly k / 10), the last 600 kept; CPU
+/// on a wave, memory on another.
+fn feed_samples(ch: Option<&Channel>, n: usize) -> Channel {
+    let (mut t, mut cpu, mut mem) = (Vec::new(), Vec::new(), Vec::new());
+    let mut x = 0.0f64;
+    for i in 0..n {
+        x += 0.1;
+        t.push(x);
+        cpu.push(40.0 + 25.0 * (x * 0.9).sin() + (i * 7 % 13) as f64);
+        mem.push(55.0 + 10.0 * (x * 0.21).sin());
+    }
+    let skip = n.saturating_sub(600);
+    let cols = vec![
+        ("t".into(), Column::F64(t[skip..].to_vec())),
+        ("cpu".into(), Column::F64(cpu[skip..].to_vec())),
+        ("mem".into(), Column::F64(mem[skip..].to_vec())),
+    ];
+    match ch {
+        Some(ch) => ch.publish(cols).unwrap(),
+        None => Channel::table(cols).unwrap(),
+    }
+}
+
+#[test]
+fn a_live_line_charts_area_covers_what_its_line_covers_at_both_edges() {
+    // As samples left the plot at the left, the area went before the line
+    // and jumped back with each sample. The rows drawn started at the first
+    // one at or past the window's edge, found by comparing floats: x
+    // accumulated by 0.1 put the row meant for the edge a hair before it,
+    // the search landed a row late, the slide uncovered a sample's width of
+    // nothing at the plot's left edge, and the line's round cap stood past
+    // its area's end there. Through several samples of the gallery's feed,
+    // its frames built by the view and again by the core, at 1 and 1.5:
+    // the line and the area under it are both cut by the plot's clip, at
+    // both its edges, on every frame — the old samples leaving at the left
+    // and the newest coming in at the right.
+    let red = kui_core::Color::hex(0xff0000ff);
+    for scale in [1.0f32, 1.5] {
+        let mut r = rig();
+        let mut n = 400;
+        let mut ch = feed_samples(None, n);
+        let frame = |r: &mut Rig, ch: &Channel, t: f64| {
+            r.core.set_time(t);
+            let mut ui = r.core.frame_with(VIEW, scale, &mut r.exts);
+            ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(6.0));
+            ui.with(NodeSpec::column().size(700.0, 300.0).pad_xy(7.3, 0.0), |ui| {
+                kit::LineChart::new(
+                    ch.clone(),
+                    "t",
+                    vec![kit::Series::new("cpu", "CPU").color(0xff0000ffu32), kit::Series::new("mem", "Memory")],
+                )
+                .window(30.0)
+                .area(true)
+                .place(ui);
+            });
+            ui.finish();
+            let ev = r.core.take_pending_events();
+            r.exts.route(ev, |_| {});
+        };
+        let mut t = 1.0;
+        // The pace learnt, and the y range settled.
+        for _ in 0..12 {
+            frame(&mut r, &ch, t);
+            t += 0.1;
+            n += 1;
+            ch = feed_samples(Some(&ch), n);
+        }
+        let mut frames = 0;
+        let mut slid = false;
+        for _ in 0..8 {
+            for k in 0..6 {
+                let now = t + k as f64 * 0.016;
+                r.core.set_time(now);
+                // As the runner draws them: a view where a frame needs one,
+                // the kept tree where only the slide moved.
+                if k % 2 == 0 || !r.core.reframe(VIEW, scale) {
+                    frame(&mut r, &ch, now);
+                }
+                let (dl, _) = r.core.output();
+                let line: Vec<_> = dl
+                    .quads
+                    .iter()
+                    .filter(|q| q.kind == kui_core::QuadKind::Segment && q.color == red)
+                    .collect();
+                let area: Vec<_> = dl.quads.iter().filter(|q| q.kind == kui_core::QuadKind::Fragment).collect();
+                assert!(line.len() > 50 && area.len() > 10, "drawn: {} {}", line.len(), area.len());
+                let clip = dl.clip_of(line[0]).rect;
+                assert!(area.iter().all(|q| dl.clip_of(q).rect == clip), "one clip, the plot's");
+                // Where each paints, inside the clip: the line with its
+                // round caps, the area by its polygons' vertices.
+                let cut = |lo: f32, hi: f32| (lo.max(clip.x), hi.min(clip.x + clip.w));
+                let (mut l_lo, mut l_hi) = (f32::MAX, f32::MIN);
+                for q in &line {
+                    let e = q.segment_ends();
+                    let half = q.border_w / 2.0;
+                    l_lo = l_lo.min(e[0].min(e[2]) - half);
+                    l_hi = l_hi.max(e[0].max(e[2]) + half);
+                }
+                let (mut a_lo, mut a_hi) = (f32::MAX, f32::MIN);
+                for q in &area {
+                    let p = dl.fragments[q.uv[0] as usize].params;
+                    for v in 0..8 {
+                        let x = q.rect.x + p[v * 2] * q.rect.w;
+                        a_lo = a_lo.min(x);
+                        a_hi = a_hi.max(x);
+                    }
+                }
+                let (line_seen, area_seen) = (cut(l_lo, l_hi), cut(a_lo, a_hi));
+                let at = format!("scale {scale}, at {now:.3}, frame {k}");
+                assert!(
+                    (line_seen.0 - area_seen.0).abs() < 0.01 && (line_seen.1 - area_seen.1).abs() < 0.01,
+                    "{at}: the area covers what the line does: line {line_seen:?}, area {area_seen:?}"
+                );
+                assert!(
+                    line_seen.0 <= clip.x + 0.01 && line_seen.1 >= clip.x + clip.w - 0.01,
+                    "{at}: both cross the plot's edges, cut there: {line_seen:?} in {clip:?}"
+                );
+                slid |= area_seen.0 > a_lo + 0.5;
+                frames += 1;
+            }
+            t += 0.1;
+            n += 1;
+            ch = feed_samples(Some(&ch), n);
+        }
+        assert_eq!(frames, 48);
+        assert!(slid, "what is drawn reached past the left edge, the clip cutting it");
+        assert!(r.core.take_warnings().is_empty());
+    }
+}

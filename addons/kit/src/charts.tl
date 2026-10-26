@@ -635,10 +635,19 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       slide_ms = st.every * 1000 * 0.95
     end
   end
-  -- What is drawn reaches a sample further back than the window while it
-  -- slides: the slide uncovers it at the plot's left edge.
-  local drawn_from = from
-  if slide > 0 then drawn_from = lower_row(ch, xf, 0, n, x0 - st.step_x) end
+  -- What is drawn starts at a row left of everything the plot shows, so
+  -- the line and its area both cross the plot's left edge and its clip
+  -- cuts them there together (ADR 0074): the row before the window's
+  -- first, and while it slides the row before the first one a sample
+  -- further back, which the slide uncovers. It started at the first row
+  -- at or past the edge, found by comparing floats: x accumulated by 0.1
+  -- puts the row meant to sit on the edge a hair before it, so the search
+  -- landed a row late, the slide uncovered a sample's width of nothing at
+  -- the left, and the end of the line — its round cap past its area's
+  -- end — showed there: the area went before the line, and jumped back
+  -- with each sample.
+  local drawn_from = math.max(0, from - 1)
+  if slide > 0 then drawn_from = math.max(0, lower_row(ch, xf, 0, n, x0 - st.step_x) - 1) end
   -- The value range: one bucket over the window per series.
   local lo, hi = math.huge, -math.huge
   for _, s in ipairs(series) do

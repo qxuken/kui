@@ -51,6 +51,10 @@ was the first bare bump to break an app in five releases).
   — where it was cut short at the field's end with the whole message in a
   tooltip. A narrow field in error is taller by the message's lines
   (backlog C156).
+- A Kit line chart with a `window` draws its lines and area from the row
+  before the window's first (before the slide's, while it slides), cut at
+  the plot's left edge, where they started at the first row at or past
+  it (backlog C157).
 
 - A key sink's press under a Mac's Option carries what the Option typed
   in `text` — ⌥- `–`, ⌥⇧- `—`, ⌥m `µ` — where it carried null; under an
@@ -1796,6 +1800,22 @@ for lua-language-server, and a new runner beside the window's.
   Choose… button, a text area and a field in a settings row that stacks
   below 640 px, at 150 to 900 px, in Ledger and Neutral: every glyph of it
   drawn, inside the field's column, what follows under it.
+- **A Kit live line chart's area leaves the plot with its line** (backlog
+  C157). As samples left at the left, the area went before the line and
+  jumped back with each sample. The rows drawn started at the first one
+  at or past the window's edge (or the slide's), found by comparing
+  floats, and x accumulated by 0.1 — the gallery's feed — puts the row
+  meant for the edge a hair before it: the search landed a row late, the
+  slide uncovered a sample's width of nothing at the plot's left edge,
+  and the line's round cap stood past its area's end there. What is
+  drawn starts a row left of everything the plot shows, so the line and
+  the area both cross its edges and its clip cuts them together (ADR
+  0074). Recorded through kui-wgpu at 1.5, the gallery's line and area
+  now start at the plot's edge on every frame, where they started up to
+  four device pixels in. Kit's test runs the gallery's feed through
+  several samples, frames built by the view and by the core, at 1 and
+  1.5: the line and its area, both cut by the plot's clip, cover the
+  same span on every frame, the plot's whole width.
 - **A Kit waterfall reads on a dark skin.** Its spans were navy and
   forest blocks on near-black (1.3:1), the selected one a bright block
   that drowned them. Every group's bar now reads at 3:1 on every surface

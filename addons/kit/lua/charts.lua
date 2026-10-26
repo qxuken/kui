@@ -638,8 +638,17 @@ function M.line_chart(c, p)
    end
 
 
-   local drawn_from = from
-   if slide > 0 then drawn_from = lower_row(ch, xf, 0, n, x0 - st.step_x) end
+
+
+
+
+
+
+
+
+
+   local drawn_from = math.max(0, from - 1)
+   if slide > 0 then drawn_from = math.max(0, lower_row(ch, xf, 0, n, x0 - st.step_x) - 1) end
 
    local lo, hi = math.huge, -math.huge
    for _, s in ipairs(series) do

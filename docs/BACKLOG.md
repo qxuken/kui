@@ -3681,6 +3681,7 @@ filed the same day for the round that builds them.
 - `.` **C154** — [A Kit toast seems to leave its edge behind as it goes](backlog/closed-2026-09.md#-c154--a-kit-toast-seems-to-leave-its-edge-behind-as-it-goes--done-2026-10-27) — done (2026-10-27) — every quad moved together; a card's border under its right edge showed through the fade; it slides out past the window's edge opaque
 - `.` **C155** — [A Kit toast's close button jumps left as it starts to leave](backlog/closed-2026-09.md#-c155--a-kit-toasts-close-button-jumps-left-as-it-starts-to-leave--done-2026-10-27) — done (2026-10-27) — the node raising a timed-out toast's dismiss took a gap in its row on the frame the exit holds; a float now
 - `.` **C156** — [A Kit field's error is cut off](backlog/closed-2026-09.md#-c156--a-kit-fields-error-is-cut-off--done-2026-10-27) — done (2026-10-27) — whole beside the text with room, under the field and wrapping without, by the field's own-size rule
+- `.` **C157** — [A Kit live line chart's area leaves the plot before its line](backlog/closed-2026-09.md#-c157--a-kit-live-line-charts-area-leaves-the-plot-before-its-line--done-2026-10-27) — done (2026-10-27) — the rows drawn started a row late on float x; they start a row left of the plot, its clip cutting line and area together
 
 ### `.` C101 — A table or list has no keyboard range selection
 
