@@ -1865,6 +1865,19 @@ fn env_table(
             Ok(ui.answer_typeahead(key, index))
         })?,
     )?;
+    // Registers a WGSL fragment function and returns its id, for `fragment
+    // { id = }` (ADR 0015, backlog C111): nil, with a
+    // `fragment-rejected` warning naming the line, when it does not
+    // compile. Idempotent by source, so a view or a component's function
+    // may call it every frame and get the same id back; the fragment lasts
+    // as long as the session.
+    t.set(
+        "add_fragment",
+        lua.create_function(move |_, wgsl: String| {
+            let mut ui = ui.borrow_mut()?;
+            Ok(ui.core().add_fragment(&wgsl).map(|id| id.to_ffi()))
+        })?,
+    )?;
     // Answers a `selectionrange` ask with the text for the range it named,
     // whole. False when nothing asked.
     t.set(
@@ -3004,10 +3017,10 @@ fn open_box(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
 
 #[inline(never)]
 fn open_fragment(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
-    // Handle from the host (kui_fragment_add / Core::add_fragment),
-    // passed to scripts as a plain integer, like an image's — and
-    // `image`, the image handle the function samples (backlog V1),
-    // absent or 0 for none.
+    // Handle from the host (kui_fragment_add / Core::add_fragment) or
+    // the script's own `env.add_fragment` (backlog C111), a plain integer
+    // like an image's — and `image`, the image handle the function
+    // samples (backlog V1), absent or 0 for none.
     let id = handle_at(t, "id", "fragment id")?
         .ok_or_else(|| bad("fragment needs an id, the handle the host added it as"))?;
     let image = handle_at(t, "image", "fragment image")?;

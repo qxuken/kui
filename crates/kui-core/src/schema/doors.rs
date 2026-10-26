@@ -122,8 +122,8 @@ pub const DOORS: &[Door] = &[
         c: Is("kui_fragment_add"),
         odin: Is("fragment_add"),
         node: Is("addFragment"),
-        lua: No(NO_HANDLE),
-        doc: "Registers a WGSL function and mints an id for `<fragment src>` (ADR 0015).",
+        lua: Is("add_fragment"),
+        doc: "Registers a WGSL function and mints an id for `<fragment src>` (ADR 0015); idempotent by source, so a Lua view or extension registers its own from `env` every frame (backlog C111).",
     },
     Door {
         rust: "Core::remove_fragment",
