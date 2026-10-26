@@ -824,8 +824,10 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
     }
     // A text or an image straight in a layout table's row is one of its
     // cells (ADR 0070), its text still its name.
-    if matches!(tree.content[i], NodeContent::Text(_) | NodeContent::Image(..))
-        && crate::composite::implied_role(tree, i) == Some(Role::Cell)
+    if matches!(
+        tree.content[i],
+        NodeContent::Text(_) | NodeContent::Image(..)
+    ) && crate::composite::implied_role(tree, i) == Some(Role::Cell)
     {
         return Some(Role::Cell);
     }
