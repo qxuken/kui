@@ -773,6 +773,76 @@ fn the_kit_app_describes_its_design_system() {
     assert!(guides.starts_with("Button IconButton") && guides.ends_with("true"), "the Buttons card's guides open: {guides}");
 }
 
+/// The Kit app's live feeds tick only while the page in view reads them:
+/// on the Inputs page, Live on, no timer wakes the app and the view stands
+/// still; the Charts page's chart ticks every 100 ms, the Data page's log
+/// every 400 ms, kept to its last 500 lines, and Overview's sample count
+/// once a second, ten samples at a time.
+#[test]
+fn the_kit_apps_feeds_tick_only_for_a_page_that_reads_them() {
+    let dir = kit_app(
+        "kit-app-feeds",
+        r##"
+        require("main")
+        model = init()
+        local live = require("demos.feeds")
+        local views, inner = 0, view
+        function view(env) views = views + 1 return inner(env) end
+        local function rev(ch) return ch and ch.rev or -1 end
+        local at = {}
+        local function mark(name) at[name] = { views = views, chart = rev(model.chart), log = rev(model.log), n = #model.series.t } end
+        local function say(name)
+          local a = at[name]
+          print(name, views - a.views, rev(model.chart) ~= a.chart, rev(model.log) ~= a.log, #model.series.t - a.n)
+        end
+        local plan = {
+          { 1500, function() kui.dispatch({ kind = "page", change = { value = "inputs" } }) end },
+          { 2000, function() mark("inputs") end },
+          { 3500, function() say("inputs") kui.dispatch({ kind = "page", change = { value = "charts" } }) end },
+          { 3700, function() mark("charts") end },
+          { 4700, function() say("charts") kui.dispatch({ kind = "page", change = { value = "data" } }) end },
+          { 4900, function() mark("data") end },
+          { 5900, function() say("data") kui.dispatch({ kind = "page", change = { value = "overview" } }) end },
+          { 6100, function() mark("overview") end },
+          { 8200, function() say("overview") kui.dispatch({ kind = "live", toggle = { on = false } }) end },
+          { 8400, function() mark("paused") end },
+          { 9500, function() say("paused")
+            -- The log keeps its last 500 lines.
+            model.live = true
+            for _ = 1, 600 do live.log_line(model) end
+            print("lines", #model.log, #model.log_lines.time)
+            kui.exit(0)
+          end },
+        }
+        for _, step in ipairs(plan) do kui.timer.after(step[1], step[2]) end
+        "##,
+    );
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(!s.contains("warning"), "{s}");
+    let line = |name: &str| -> Vec<String> {
+        s.lines()
+            .find_map(|l| l.strip_prefix(&format!("{name}\t")))
+            .unwrap_or_else(|| panic!("no {name} line:\n{s}"))
+            .split('\t')
+            .map(str::to_string)
+            .collect()
+    };
+    let views = |name: &str| line(name)[0].parse::<u32>().unwrap();
+    let (inputs, charts, data, overview, paused) = (line("inputs"), line("charts"), line("data"), line("overview"), line("paused"));
+    // Over 1.5 s on Inputs the worker's rows may still land, and a cancelled
+    // timer wakes once more to end: three views at most.
+    assert!(views("inputs") <= 3 && inputs[1] == "false" && inputs[2] == "false", "nothing ticks on Inputs: {inputs:?}\n{s}");
+    assert!(views("charts") >= 3 && charts[1] == "true" && charts[2] == "false", "the chart ticks on Charts, the log not: {charts:?}");
+    assert!(data[1] == "false" && data[2] == "true", "the log ticks on Data, the chart not: {data:?}");
+    let n: i64 = overview[3].parse().unwrap();
+    assert!(views("overview") <= 4 && overview[2] == "false" && n >= 10 && n % 10 == 0, "Overview counts ten samples a second: {overview:?}");
+    // The cancelled timer wakes once more to end, as on Inputs.
+    assert!(views("paused") <= 2 && paused[1] == "false" && paused[3] == "0", "Live off on Overview, nothing ticks: {paused:?}");
+    assert_eq!(line("lines"), ["500", "500"], "the log keeps its last 500 lines");
+}
+
 /// Kit's design system docs stay true to Kit: a guideline for every
 /// component of the schema and none for a component Kit lacks; the
 /// brand book's icon set Kit's own; and tokens.json's colour roles and

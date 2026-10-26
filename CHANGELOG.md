@@ -1764,6 +1764,25 @@ for lua-language-server, and a new runner beside the window's.
   the frame still has, and is dropped when there is none, so a
   `keyFocus` shell takes it. A focus on a node never built is left alone,
   and so is one a windowed list holds on a row scrolled out (ADR 0070).
+- **The Kit gallery idles when no page in view is live.** Its chart and
+  log feeds ticked behind every page, ~12 views a second, and its log
+  grew without end — 9,000 lines after an hour, republished whole every
+  400 ms, most of what the app did. A feed's timer now runs only while
+  the page in view reads it (`demos/feeds.lua`, `pace`): the chart's on
+  Charts, the log's on Data, and on Overview, which only counts the
+  samples, once a second ten samples at a time; the log keeps its last
+  500 lines. Headless release, Overview: 2.70% of a core and 12 views a
+  second before, 0.30% and 1.1 after. The worker filters and sorts the
+  100,000 rows by reading the channel it built, a column at a time,
+  where it kept a Lua copy for good: its Lua heap holds 0.2 MB where it
+  held 10.2, and a view takes 120 ms where it took 80 (a channel has no
+  filter or sort of its own). The shell's `paged` / `refocus` dance
+  after ⌥↑ / ⌥↓ is gone: the core hands the keyboard back to the sink
+  (C136). Kit's live line chart no longer checks its plot against the
+  viewport before it slides (C137). Watchtower publishes each service's
+  trend and the table's rows as channels when they move, where it made a
+  new channel every frame: a frame no tick asked for (a hover, a click
+  elsewhere) costs 2.6 ms where it cost 4.9.
 - **Tab moves focus in the Kit gallery again.** The key sink the gallery
   wrapped itself in for ⌥↑ / ⌥↓ was a Tab stop — the first — and a sink
   holding focus keeps every key, Tab included, so the first Tab put

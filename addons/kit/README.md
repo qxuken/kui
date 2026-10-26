@@ -91,8 +91,11 @@ kui run addons/kit/app
 
 `app/` is Kit on the `kui` runner (ADR 0064): every component on nine
 pages, Kit's design system on four more, a worker building 100,000 rows
-as a channel, live chart and log feeds, and an HTTP server — a living reference, and the template for an
-app of your own (`kui run --watch addons/kit/app`, then edit a card).
+as a channel, live chart and log feeds, and an HTTP server — a living
+reference, and the template for an app of your own (`kui run --watch
+addons/kit/app`, then edit a card). A feed's timer runs only while the
+page in view reads it (`demos/feeds.lua`), so the app sits idle on a page
+that shows nothing live.
 
 - Every card is a file of its own under `app/demos/`: its data, its
   helpers, the state it keeps in the model, the messages it answers and

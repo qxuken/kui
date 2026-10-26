@@ -35,18 +35,20 @@ function init()
   }
   for k, v in pairs(live.state) do m[k] = v end
   pages.state(m)
+  live.pace(m, timers)
   return m
 end
 
 -- A worker builds the big data; what it sends comes back to `update`.
 worker = worker or kui.worker("jobs/generate.lua")
 
--- Timers survive a reload only once: they live in globals too.
-if not feeds then
-  feeds = {
-    kui.timer.every(100, function() kui.dispatch({ kind = "tick" }) end),
-    kui.timer.every(400, function() kui.dispatch({ kind = "log" }) end),
-  }
+-- The live feeds' timers, by feed, running only while the page in view
+-- reads them (demos/feeds.lua, `pace`): a global, so a reload keeps them.
+timers = timers or {}
+
+-- The worker is asked once, not again on a reload.
+if not worker_asked then
+  worker_asked = true
   worker:dispatch({ kind = "rows", n = 100000 })
   worker:dispatch({ kind = "trace", n = 3000 })
 end
@@ -67,14 +69,11 @@ end
 -- Whether a text editor had the keyboard at the last frame: it keeps
 -- ⌥↑ and ⌥↓ (they bubble from it, as every key it does not use does).
 local editing = false
--- Whether ⌥↑ or ⌥↓ changed the page since the last frame: the control
--- that had the keyboard went with the page, and the key sink takes it.
-local paged = false
 
 function update(msg)
   local m = model
   local k = msg.kind
-  if k == "tick" then live.tick(m)
+  if k == "tick" then live.tick(m, msg.steps)
   elseif k == "log" then live.log_line(m)
   elseif k == "page" then m.page = msg.change.value
   elseif k == "keys" then
@@ -84,12 +83,12 @@ function update(msg)
     if key and key.phase == "down" and key.alt and not (key.ctrl or key.super or key.shift) and not editing
       and (key.code == "up" or key.code == "down") then
       m.page = pages.step(m.page, key.code == "up" and -1 or 1)
-      paged = true
     elseif key and key.phase == "down" and key.code == "tab" and not (key.ctrl or key.alt or key.super) then
-      -- The sink hears Tab only while it holds the focus itself — a press
-      -- on the page's background, or on a control inside it, gives it the
-      -- focus — and Tab is the ring's: handed on from where the press was
-      -- (ADR 0011, decision 4).
+      -- The sink hears Tab only while it holds the focus itself — at
+      -- launch, after a press on the page's background, and once the
+      -- focused control went with the page — and Tab is the ring's:
+      -- handed on from where the sink is (ADR 0011, decision 4). A press
+      -- on a control focuses the control, which keeps its Tab.
       local back = key.shift
       kui.next_frame(function(env) if back then env.focus_prev() else env.focus_next() end end)
     end
@@ -115,6 +114,8 @@ function update(msg)
   theme.update(m, msg)
   -- And the cards: each answers the messages its own controls send.
   pages.update(m, msg)
+  -- The feeds the page now in view reads tick; the rest stand still.
+  live.pace(m, timers)
 end
 
 function view(env)
@@ -125,17 +126,16 @@ function view(env)
   local held = m.theme.appearance
   env.set_rules_appearance(held ~= "system" and held or nil)
   editing = env.focus ~= nil and env.edit_text(env.focus) ~= nil
-  local refocus = paged
-  paged = false
   local page = column { key = "page." .. m.page, width = "grow", height = "grow", scroll_y = true, pad = 16, gap = 16,
     pages.page(m, m.page, env) }
   -- The whole app inside one key sink: the page shortcut. Its keys are
-  -- the ones nothing focused inside it uses, so it takes the keyboard
-  -- itself whenever nothing has it — at launch, and when the focused
-  -- control went with the page ⌥↓ left — and hands Tab on (`update`).
-  -- It is no Tab stop: a sink around stops is a keymap over them.
+  -- the ones nothing focused inside it uses. It takes the keyboard at
+  -- launch, when nothing has it; a control that goes with the page ⌥↓
+  -- left hands the keyboard back to it (the core's doing). It hands Tab
+  -- on (`update`), and is no Tab stop: a sink around stops is a keymap
+  -- over them.
   return column { width = "grow", height = "grow", bg = "$kitBg", on_key = { kind = "keys" },
-    key_focus = (env.focus == nil or refocus) or nil,
+    key_focus = env.focus == nil or nil,
     kit.settings(theme.settings(m.theme)),
     kit.toolbar({}, {
       row { gap = 8, cross_align = "center",
