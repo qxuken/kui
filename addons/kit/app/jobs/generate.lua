@@ -16,9 +16,11 @@ local function rand()
   return seed / 2147483648
 end
 
--- The rows as built, kept for the views the app asks for: a list a column.
----@type table<string, any[]>
-local all = {}
+-- The rows as built, kept for the views the app asks for: the channel
+-- itself, read a column at a time while a view is made. (A copy as Lua
+-- lists, kept beside it, was 21 MB the worker held for good.)
+---@type any
+local all = nil
 
 local NAMES = { "id", "method", "path", "status", "tone", "ms", "size" }
 
@@ -42,20 +44,28 @@ local function rows(n)
     ms[i] = math.floor((rand() ^ 3) * 1800 + 2) + 0.0
     size[i] = math.floor(rand() * 64000)
   end
-  all = { id = id, method = method, path = path, status = status, tone = tone, ms = ms, size = size }
-  return channel(all)
+  all = channel({ id = id, method = method, path = path, status = status, tone = tone, ms = ms, size = size })
+  return all
 end
 
 -- The rows whose path holds `query`, sorted by `field`: a new channel.
+-- The columns it reads are read out of the rows' channel for the while,
+-- and let go once the view is made.
 local function view(query, field, descending)
   local keep = {}
   local q = query and query ~= "" and query:lower() or nil
-  for i = 1, #all.id do
-    if not q or all.path[i]:lower():find(q, 1, true) or all.method[i]:lower() == q then
-      keep[#keep + 1] = i
+  local n = #all
+  if q then
+    local path, method = all:column("path"), all:column("method")
+    for i = 1, n do
+      if path[i]:lower():find(q, 1, true) or method[i]:lower() == q then keep[#keep + 1] = i end
     end
+  else
+    for i = 1, n do keep[i] = i end
   end
-  local col = field and all[field]
+  local sortable = false
+  for _, name in ipairs(NAMES) do sortable = sortable or name == field end
+  local col = sortable and all:column(field) or nil
   if col then
     table.sort(keep, function(a, b)
       if col[a] == col[b] then return a < b end
@@ -65,11 +75,14 @@ local function view(query, field, descending)
   end
   local out = {}
   for _, name in ipairs(NAMES) do
-    local src, dst = all[name], {}
+    local src, dst = all:column(name), {}
     for j, i in ipairs(keep) do dst[j] = src[i] end
     out[name] = dst
   end
-  return channel(out)
+  local ch = channel(out)
+  out, keep, col = nil, nil, nil
+  collectgarbage()
+  return ch
 end
 
 local function trace(frames)
@@ -99,7 +112,7 @@ function on_message(msg)
   if msg.kind == "rows" then
     local ch = rows(msg.n)
     kui.dispatch({ kind = "rows", rows = ch, ms = kui.now() - t0 })
-  elseif msg.kind == "view" and all.id then
+  elseif msg.kind == "view" and all then
     local ch = view(msg.query, msg.sort, msg.descending)
     kui.dispatch({ kind = "rows", rows = ch, ms = kui.now() - t0, filtered = true })
   elseif msg.kind == "trace" then
