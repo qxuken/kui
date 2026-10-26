@@ -3673,6 +3673,7 @@ filed the same day for the round that builds them.
 - `.` **C138** — [A frame owed only by an animation runs the host's whole view](backlog/closed-2026-09.md#-c138--a-frame-owed-only-by-an-animation-runs-the-hosts-whole-view--done-2026-10-26) — done (2026-10-26) — a frame only a core animation asks for is built from the last tree (`Core::reframe`) while the app (`App::view_state`) and its roots say their state held; the runner says it
 - `.` **C141** — [A runner timer that dispatches draws two frames a tick](backlog/closed-2026-09.md#-c141--a-runner-timer-that-dispatches-draws-two-frames-a-tick--done-2026-10-26) — done (2026-10-26) — a poke while the runner drains rings nothing: one frame a timer tick, not two
 - `.` **C142** — [A covered window still renders every frame its timers ask for](backlog/closed-2026-09.md#-c142--a-covered-window-still-renders-every-frame-its-timers-ask-for--done-2026-10-26) — done (2026-10-26) — a covered or minimized window's redraws are built as unseen frames: nothing rendered or submitted
+- `.` **C143** — [A channel made or published from Lua makes a `Value` a cell](backlog/closed-2026-09.md#-c143--a-channel-made-or-published-from-lua-makes-a-value-a-cell--done-2026-10-26) — done (2026-10-26) — a column is built straight from the Lua values, no `Value` a cell: the 9,000-line log publishes in 1.62 ms, not 2.31
 
 ### `.` C101 — A table or list has no keyboard range selection
 

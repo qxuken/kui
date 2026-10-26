@@ -148,3 +148,30 @@ fn a_script_reduces_a_range_into_buckets() {
     assert!(g.get::<f64>("gap").unwrap().is_nan());
     assert!(g.get::<String>("bad").unwrap().contains("strings"));
 }
+
+/// A column is made straight from the Lua values (backlog C143): numbers
+/// that start whole and turn fractional are floats, whole ones integers,
+/// and a stray kind says which row.
+#[test]
+fn a_scripts_columns_keep_their_kinds() {
+    let ext = LuaExtension::from_source(
+        "kinds.lua",
+        r#"
+        local ch = channel { i = { 1, 2, 3 }, f = { 1, 2.5, 3 }, b = { true, false, true }, s = { "x", "yz", "" } }
+        kinds = { math.type(ch:get(0, "i")), math.type(ch:get(0, "f")), tostring(ch:get(1, "b")), ch:get(1, "s") }
+        empty = #channel { e = {} }
+        stray = tostring(select(2, pcall(channel, { a = { true, 1 } })))
+        function view(env) return column {} end
+        "#,
+    )
+    .unwrap();
+    let g = ext.lua().globals();
+    let kinds: Vec<String> = g.get("kinds").unwrap();
+    assert_eq!(kinds, ["integer", "float", "false", "yz"]);
+    assert_eq!(g.get::<i64>("empty").unwrap(), 0);
+    let stray: String = g.get("stray").unwrap();
+    assert!(
+        stray.contains("row 2 is a number, in a column of booleans"),
+        "{stray}"
+    );
+}

@@ -138,16 +138,92 @@ fn columns_of(spec: &Table) -> mlua::Result<Vec<(String, Column)>> {
     let mut cols = Vec::new();
     for pair in spec.pairs::<String, Table>() {
         let (name, list) = pair?;
-        let values = list
-            .sequence_values::<Value>()
-            .map(|v| v.and_then(|v| crate::lua_to_value(&v)))
-            .collect::<mlua::Result<Vec<KValue>>>()?;
-        let column = channel::column_of(&values)
+        let column = column_from(&list)?
             .map_err(|e| mlua::Error::runtime(format!("channel column `{name}`: {e}")))?;
         cols.push((name, column));
     }
     cols.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(cols)
+}
+
+/// One list as a column, straight from the Lua values: what
+/// `channel::column_of` makes of the same list as `Value`s, without a
+/// `Value` — and a `String` — a cell on the way. A gallery's log, 9,000
+/// lines republished every 400 ms, spent half its main thread making
+/// them (backlog C143).
+fn column_from(list: &Table) -> mlua::Result<Result<Column, channel::ChannelError>> {
+    enum Build {
+        Empty,
+        Ints(Vec<i64>),
+        Floats(Vec<f64>),
+        Bools(Vec<bool>),
+        Strs(channel::Strs),
+    }
+    let kind = |v: &Value| match v {
+        Value::Nil => "nothing",
+        Value::Boolean(_) => "a boolean",
+        Value::Integer(_) | Value::Number(_) => "a number",
+        Value::String(_) => "a string",
+        Value::Table(_) => "a list",
+        _ => "a value",
+    };
+    let bad = |i: usize, v: &Value, want: &str| {
+        Ok(Err(channel::ChannelError(format!(
+            "row {} is {}, in a column of {want}s",
+            i + 1,
+            kind(v)
+        ))))
+    };
+    let mut b = Build::Empty;
+    for (i, v) in list.sequence_values::<Value>().enumerate() {
+        let v = v?;
+        b = match (b, &v) {
+            (Build::Empty, Value::Integer(x)) => Build::Ints(vec![*x]),
+            (Build::Empty, Value::Number(x)) => Build::Floats(vec![*x]),
+            (Build::Empty, Value::Boolean(x)) => Build::Bools(vec![*x]),
+            (Build::Empty, Value::String(x)) => {
+                let mut out = channel::Strs::default();
+                out.push(&x.to_str()?);
+                Build::Strs(out)
+            }
+            (Build::Empty, _) => return bad(0, &v, "number, boolean or string"),
+            (Build::Ints(mut out), Value::Integer(x)) => {
+                out.push(*x);
+                Build::Ints(out)
+            }
+            (Build::Ints(out), Value::Number(x)) => {
+                let mut f: Vec<f64> = out.into_iter().map(|n| n as f64).collect();
+                f.push(*x);
+                Build::Floats(f)
+            }
+            (Build::Floats(mut out), Value::Integer(x)) => {
+                out.push(*x as f64);
+                Build::Floats(out)
+            }
+            (Build::Floats(mut out), Value::Number(x)) => {
+                out.push(*x);
+                Build::Floats(out)
+            }
+            (Build::Ints(_) | Build::Floats(_), _) => return bad(i, &v, "number"),
+            (Build::Bools(mut out), Value::Boolean(x)) => {
+                out.push(*x);
+                Build::Bools(out)
+            }
+            (Build::Bools(_), _) => return bad(i, &v, "boolean"),
+            (Build::Strs(mut out), Value::String(x)) => {
+                out.push(&x.to_str()?);
+                Build::Strs(out)
+            }
+            (Build::Strs(_), _) => return bad(i, &v, "string"),
+        };
+    }
+    Ok(Ok(match b {
+        Build::Empty => Column::F64(Vec::new()),
+        Build::Ints(v) => Column::I64(v),
+        Build::Floats(v) => Column::F64(v),
+        Build::Bools(v) => Column::Bool(v),
+        Build::Strs(v) => Column::Str(v),
+    }))
 }
 
 /// Registers `channel(spec)` in a script's globals.

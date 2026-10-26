@@ -1692,6 +1692,11 @@ for lua-language-server, and a new runner beside the window's.
   the box over every line, and it carries the skin's shadow, as a raised
   float does. Kit's test draws it in every skin and half over a sliding
   window: an opaque fill, no segment over it, its text at 4.5:1.
+- **A channel made or published from Lua costs less** (backlog C143):
+  each column is built straight from the Lua values, where every cell
+  went through a `Value` — a `String` allocated per string cell — first.
+  The Kit gallery's log after an hour, 9,000 lines republished every
+  400 ms, publishes in 1.62 ms where it took 2.31.
 - **A runner timer that dispatches draws one frame a tick, not two**
   (backlog C141). The callback runs in the drain its wake started, and
   its `kui.dispatch` rang the loop again although that drain delivers it:
