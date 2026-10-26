@@ -241,6 +241,13 @@ Column :: struct {
 	title: string,
 	// Its width in px; shares the rest when left out.
 	width: Maybe(f64),
+	// How narrow a sharing column goes before the table hides a column or scrolls
+	// sideways (80 when left out).
+	min_width: Maybe(f64),
+	// How much it matters when the table is narrow: the columns that do not fit
+	// hide lowest first, the header with them; left out, it never hides. What
+	// still does not fit scrolls sideways.
+	priority: Maybe(f64),
 	// Where its cells sit; numbers read best at the end.
 	align: Maybe(Align),
 	// Its cells in the data face: ids, timings, hashes.
@@ -258,6 +265,8 @@ column_value :: proc(p: Column) -> ^c.Value {
 	c.value_map_set(m, "field", c.value_str(p.field))
 	c.value_map_set(m, "title", c.value_str(p.title))
 	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
+	if x, ok := p.min_width.?; ok do c.value_map_set(m, "min_width", c.value_float(x))
+	if x, ok := p.priority.?; ok do c.value_map_set(m, "priority", c.value_float(x))
 	if x, ok := p.align.?; ok do c.value_map_set(m, "align", c.value_str(ALIGN_NAMES[x]))
 	if x, ok := p.mono.?; ok do c.value_map_set(m, "mono", c.value_bool(x))
 	if p.tone != "" do c.value_map_set(m, "tone", c.value_str(p.tone))

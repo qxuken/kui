@@ -60,6 +60,8 @@
 ---@field field string The channel column it reads.
 ---@field title string Its header.
 ---@field width? number Its width in px; shares the rest when left out.
+---@field min_width? number How narrow a sharing column goes before the table hides a column or scrolls sideways (80 when left out).
+---@field priority? number How much it matters when the table is narrow: the columns that do not fit hide lowest first, the header with them; left out, it never hides. What still does not fit scrolls sideways.
 ---@field align? kit.Align Where its cells sit; numbers read best at the end.
 ---@field mono? boolean Its cells in the data face: ids, timings, hashes.
 ---@field tone? string A channel column naming each cell's tone (`ok`, `warn`, `danger`, `accent`, `neutral`): the cell is drawn in it — a status, an HTTP method.

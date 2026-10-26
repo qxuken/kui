@@ -133,6 +133,46 @@ function M.table(c: Ctx, p: P): kui.Node
   local cells = p.cells == true
   typeahead(c, seen, ch, cols[1] and cols[1].field as string or "")
 
+  -- Narrow: the columns with a `priority` hide lowest first as the table
+  -- narrows past what they need, header and cells alike — each row's own
+  -- width rules hide its keyed cells (ADR 0069), so a row and the header
+  -- above it, as wide as each other, hide the same ones. What still does
+  -- not fit scrolls sideways: the header and the rows are as wide as the
+  -- columns left need, in a scroller.
+  local function need(col: P): number
+    return ((col.width or col.min_width or 80) as number)
+  end
+  local function width_of(shown: {boolean}): number
+    local w, k = 20.0, 0
+    for i, col in ipairs(cols) do
+      if shown[i] then w, k = w + need(col), k + 1 end
+    end
+    return w + 10 * math.max(k - 1, 0) + 2
+  end
+  local shown: {boolean} = {}
+  local hides: {integer} = {}
+  for i, col in ipairs(cols) do
+    shown[i] = true
+    if col.priority ~= nil then hides[#hides + 1] = i end
+  end
+  -- Lowest priority first; of two alike, the later column.
+  table.sort(hides, function(a: integer, b: integer): boolean
+    local pa, pb = cols[a].priority as number, cols[b].priority as number
+    if pa ~= pb then return pa < pb end
+    return a > b
+  end)
+  local head_rules: {{string:any}} = {}
+  local cell_rules: {{string:any}} = {}
+  local gone_h, gone_c: {string}, {string} = {}, {}
+  for _, i in ipairs(hides) do
+    local below = width_of(shown)
+    shown[i] = false
+    gone_h[#gone_h + 1], gone_c[#gone_c + 1] = "h" .. i, "c" .. i
+    head_rules[#head_rules + 1] = { width = { below = below, band = 8 }, hidden = { table.unpack(gone_h) } }
+    cell_rules[#cell_rules + 1] = { width = { below = below, band = 8 }, hidden = { table.unpack(gone_c) } }
+  end
+  local least = width_of(shown)
+
   -- The header on a plane of its own (the sunken colour) rather than over
   -- a rule; `border` frames the whole table and rules the header instead.
   local framed = p.border == true
@@ -141,7 +181,8 @@ function M.table(c: Ctx, p: P): kui.Node
   local sorts = p.on_sort ~= nil
   local selects = p.on_select ~= nil
   local head: kui.Props = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
-    bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil }
+    bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil,
+    when = #head_rules > 0 and head_rules or nil }
   for i, col in ipairs(cols) do
     local field = col.field as string
     local sorted = p.sort == field
@@ -191,6 +232,7 @@ function M.table(c: Ctx, p: P): kui.Node
       bg = sel and ref(c, "sel") or ((striped and i % 2 == 1) and ref(c, "hover") or nil),
       hover_bg = selects and (sel and ref(c, "sel") or ref(c, "hover")) or nil,
       on_click = selects and act(c, "table.select", { row = i }) or nil,
+      when = #cell_rules > 0 and cell_rules or nil,
     }
     local ink = ref(c, sel and "sel_fg" or "fg")
     local name: {string} = {}
@@ -216,7 +258,7 @@ function M.table(c: Ctx, p: P): kui.Node
         })
       end
       line[#line + 1] = row {
-        key = cells and ("c" .. j) or nil,
+        key = "c" .. j,
         role = cells and "cell" or nil,
         label = cells and s or nil,
         focusable = (cells and selects) or nil,
@@ -248,9 +290,11 @@ function M.table(c: Ctx, p: P): kui.Node
     -- under the header stops at the frame and does not cross it).
     border = framed and { w = "$kitHair", color = ref(c, "rule") } or nil,
     pad = framed and "$kitHair" or nil,
-    row(head),
-    framed and ctx.rule(c, "rule", "$kitHair") or nil,
-    n == 0 and column { width = "grow", pad = 16, ctx.muted(c, "No rows") } or view,
+    column { key = "wide", width = "grow", height = p.grow == true and "grow" or nil, scroll_x = true,
+      column { key = "sheet", width = "grow", min_width = least, height = p.grow == true and "grow" or nil,
+        row(head),
+        framed and ctx.rule(c, "rule", "$kitHair") or nil,
+        n == 0 and column { width = "grow", pad = 16, ctx.muted(c, "No rows") } or view } },
   }
 end
 

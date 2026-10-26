@@ -849,6 +849,8 @@ A table's column: which field of the channel it shows, and how.
 | `field` | `field` | string | The channel column it reads. |
 | `title` | `title` | string | Its header. |
 | `width` | `width` | number? | Its width in px; shares the rest when left out. |
+| `min_width` | `minWidth` | number? | How narrow a sharing column goes before the table hides a column or scrolls sideways (80 when left out). |
+| `priority` | `priority` | number? | How much it matters when the table is narrow: the columns that do not fit hide lowest first, the header with them; left out, it never hides. What still does not fit scrolls sideways. |
 | `align` | `align` | [Align](#align)? | Where its cells sit; numbers read best at the end. |
 | `mono` | `mono` | boolean? | Its cells in the data face: ids, timings, hashes. |
 | `tone` | `tone` | string? | A channel column naming each cell's tone (`ok`, `warn`, `danger`, `accent`, `neutral`): the cell is drawn in it — a status, an HTTP method. |

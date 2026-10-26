@@ -6,6 +6,21 @@
 // Each function builds an `el('component')` element, and each is a JSX
 // function component as it stands: `<Button label="Run" />`.
 
+function wireColumn(v) {
+  if (v == null) return v;
+  return {
+    field: v.field,
+    title: v.title,
+    width: v.width,
+    min_width: v.minWidth,
+    priority: v.priority,
+    align: v.align,
+    mono: v.mono,
+    tone: v.tone,
+    badge: v.badge,
+  };
+}
+
 function flat(children) {
   if (children == null) return [];
   return Array.isArray(children) ? children : [children];
@@ -342,7 +357,7 @@ function make(namespace) {
     },
     Table(props = {}, children) {
       const wire = {};
-      if (props.columns !== undefined) wire.columns = props.columns;
+      if (props.columns !== undefined) wire.columns = props.columns?.map(wireColumn);
       if (props.rows !== undefined) wire.rows = props.rows;
       if (props.selected !== undefined) wire.selected = props.selected;
       if (props.sort !== undefined) wire.sort = props.sort;

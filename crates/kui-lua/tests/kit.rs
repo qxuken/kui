@@ -2096,6 +2096,52 @@ fn a_slider_lands_on_the_step_nearest_the_pointer_and_its_handle_on_the_value() 
     assert_eq!(drag_to(&mut r, 2.45), 2.0, "2.45 is nearest 2");
 }
 
+/// A narrow table hides its lowest-priority columns first, header and
+/// cells alike and still lined up, and scrolls sideways once only the
+/// columns that never hide are left and they do not fit.
+#[test]
+fn a_narrow_table_hides_columns_by_priority_then_scrolls_sideways() {
+    let mut r = LuaRig::new(
+        r#"
+        w = 700
+        local ch = channel({ id = { 1, 2, 3 }, name = { "alpha", "beta", "gamma" }, ms = { 10, 20, 30 }, size = { 100, 200, 300 } })
+        function view(env)
+          return column { width = w, height = "grow", pad = 10,
+            component("kit/table", { rows = ch, grow = true, columns = {
+              { field = "id", title = "Id", width = 60, priority = 2 },
+              { field = "name", title = "Name", min_width = 120 },
+              { field = "ms", title = "Time", width = 80, priority = 3 },
+              { field = "size", title = "Size", width = 80, priority = 1 } } }) }
+        end
+        "#,
+    );
+    // Which columns show, by header, and whether each header sits over
+    // its column's cells.
+    let shown = |r: &mut LuaRig, w: f64| -> Vec<&'static str> {
+        r.app.globals().set("w", w).unwrap();
+        r.frames(3);
+        let mut out = Vec::new();
+        for (i, name) in ["Id", "Name", "Time", "Size"].into_iter().enumerate() {
+            let h = r.node(|n| n.label.as_deref() == Some(&format!("h{}", i + 1)) && n.rect.w > 0.0).map(|n| n.rect);
+            let c = r.node(|n| n.label.as_deref() == Some(&format!("c{}", i + 1)) && n.rect.w > 0.0).map(|n| n.rect);
+            assert_eq!(h.is_some(), c.is_some(), "at {w}: {name}'s header and cells show together");
+            if let (Some(h), Some(c)) = (h, c) {
+                assert!((h.x - c.x).abs() < 0.5 && (h.w - c.w).abs() < 0.5, "at {w}: {name}'s header {h:?} over its cells {c:?}");
+                out.push(name);
+            }
+        }
+        out
+    };
+    assert_eq!(shown(&mut r, 700.0), ["Id", "Name", "Time", "Size"], "wide: every column");
+    assert_eq!(shown(&mut r, 360.0), ["Id", "Name", "Time"], "Size goes first");
+    assert_eq!(shown(&mut r, 280.0), ["Name", "Time"], "then the id");
+    assert_eq!(shown(&mut r, 150.0), ["Name"], "then Time, and Name never");
+    let g = r.core.nodes().into_iter().find(|n| n.label.as_deref() == Some("sheet")).expect("the sheet").rect;
+    let wide = r.core.nodes().into_iter().find(|n| n.label.as_deref() == Some("wide")).expect("the scroller").rect;
+    assert!(g.w > wide.w + 1.0, "what does not fit scrolls sideways: the sheet {g:?} in {wide:?}");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
 /// A value moved by a click, a key or the host springs there, the handle
 /// on the fill's end all the way; a drag is followed directly, a resize
 /// moves it at once, and under reduced motion it jumps.

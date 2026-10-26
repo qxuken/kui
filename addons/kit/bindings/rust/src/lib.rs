@@ -454,6 +454,13 @@ pub struct Column {
     pub title: String,
     /// Its width in px; shares the rest when left out.
     pub width: Option<f64>,
+    /// How narrow a sharing column goes before the table hides a column or
+    /// scrolls sideways (80 when left out).
+    pub min_width: Option<f64>,
+    /// How much it matters when the table is narrow: the columns that do not
+    /// fit hide lowest first, the header with them; left out, it never hides.
+    /// What still does not fit scrolls sideways.
+    pub priority: Option<f64>,
     /// Where its cells sit; numbers read best at the end.
     pub align: Option<Align>,
     /// Its cells in the data face: ids, timings, hashes.
@@ -473,6 +480,8 @@ impl Column {
             field: field.into(),
             title: title.into(),
             width: None,
+            min_width: None,
+            priority: None,
             align: None,
             mono: None,
             tone: None,
@@ -483,6 +492,21 @@ impl Column {
     /// Its width in px; shares the rest when left out.
     pub fn width(mut self, v: f64) -> Self {
         self.width = Some(v);
+        self
+    }
+
+    /// How narrow a sharing column goes before the table hides a column or
+    /// scrolls sideways (80 when left out).
+    pub fn min_width(mut self, v: f64) -> Self {
+        self.min_width = Some(v);
+        self
+    }
+
+    /// How much it matters when the table is narrow: the columns that do not
+    /// fit hide lowest first, the header with them; left out, it never hides.
+    /// What still does not fit scrolls sideways.
+    pub fn priority(mut self, v: f64) -> Self {
+        self.priority = Some(v);
         self
     }
 
@@ -519,6 +543,12 @@ impl Column {
         m.push(("title".into(), Value::str((&self.title).as_str())));
         if let Some(v) = &self.width {
             m.push(("width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.min_width {
+            m.push(("min_width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.priority {
+            m.push(("priority".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.align {
             m.push(("align".into(), v.to_value()));

@@ -64,6 +64,10 @@ export interface Column {
   title: string;
   /** Its width in px; shares the rest when left out. */
   width?: number;
+  /** How narrow a sharing column goes before the table hides a column or scrolls sideways (80 when left out). */
+  minWidth?: number;
+  /** How much it matters when the table is narrow: the columns that do not fit hide lowest first, the header with them; left out, it never hides. What still does not fit scrolls sideways. */
+  priority?: number;
   /** Where its cells sit; numbers read best at the end. */
   align?: Align;
   /** Its cells in the data face: ids, timings, hashes. */

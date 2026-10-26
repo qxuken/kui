@@ -311,6 +311,19 @@ typedef struct KitColumn {
     double width;
     bool width_set;
     /*
+     * How narrow a sharing column goes before the table hides a column or
+     * scrolls sideways (80 when left out).
+     */
+    double min_width;
+    bool min_width_set;
+    /*
+     * How much it matters when the table is narrow: the columns that do not fit
+     * hide lowest first, the header with them; left out, it never hides. What
+     * still does not fit scrolls sideways.
+     */
+    double priority;
+    bool priority_set;
+    /*
      * Where its cells sit; numbers read best at the end.
      */
     KitAlign align;
@@ -337,6 +350,8 @@ static inline KuiValue *kit_column_value(const KitColumn *p) {
     kui_value_map_set(m, KUI_STR("field"), kui_value_str(p->field));
     kui_value_map_set(m, KUI_STR("title"), kui_value_str(p->title));
     if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
+    if (p->min_width_set) kui_value_map_set(m, KUI_STR("min_width"), kui_value_float(p->min_width));
+    if (p->priority_set) kui_value_map_set(m, KUI_STR("priority"), kui_value_float(p->priority));
     if (p->align != 0) kui_value_map_set(m, KUI_STR("align"), kui_value_str(kit_align_name(p->align)));
     if (p->mono_set) kui_value_map_set(m, KUI_STR("mono"), kui_value_bool(p->mono));
     if (p->tone.len > 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(p->tone));

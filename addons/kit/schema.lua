@@ -37,6 +37,8 @@ return {
         { "field", "string", doc = "The channel column it reads." },
         { "title", "string", doc = "Its header." },
         { "width", "number?", doc = "Its width in px; shares the rest when left out." },
+        { "min_width", "number?", doc = "How narrow a sharing column goes before the table hides a column or scrolls sideways (80 when left out)." },
+        { "priority", "number?", doc = "How much it matters when the table is narrow: the columns that do not fit hide lowest first, the header with them; left out, it never hides. What still does not fit scrolls sideways." },
         { "align", "Align?", doc = "Where its cells sit; numbers read best at the end." },
         { "mono", "boolean?", doc = "Its cells in the data face: ids, timings, hashes." },
         { "tone", "string?", doc = "A channel column naming each cell's tone (`ok`, `warn`, `danger`, `accent`, `neutral`): the cell is drawn in it — a status, an HTTP method." },

@@ -136,13 +136,54 @@ function M.table(c, p)
 
 
 
+
+
+
+
+   local function need(col)
+      return ((col.width or col.min_width or 80))
+   end
+   local function width_of(shown)
+      local w, k = 20.0, 0
+      for i, col in ipairs(cols) do
+         if shown[i] then w, k = w + need(col), k + 1 end
+      end
+      return w + 10 * math.max(k - 1, 0) + 2
+   end
+   local shown = {}
+   local hides = {}
+   for i, col in ipairs(cols) do
+      shown[i] = true
+      if col.priority ~= nil then hides[#hides + 1] = i end
+   end
+
+   table.sort(hides, function(a, b)
+      local pa, pb = cols[a].priority, cols[b].priority
+      if pa ~= pb then return pa < pb end
+      return a > b
+   end)
+   local head_rules = {}
+   local cell_rules = {}
+   local gone_h, gone_c = {}, {}
+   for _, i in ipairs(hides) do
+      local below = width_of(shown)
+      shown[i] = false
+      gone_h[#gone_h + 1], gone_c[#gone_c + 1] = "h" .. i, "c" .. i
+      head_rules[#head_rules + 1] = { width = { below = below, band = 8 }, hidden = { table.unpack(gone_h) } }
+      cell_rules[#cell_rules + 1] = { width = { below = below, band = 8 }, hidden = { table.unpack(gone_c) } }
+   end
+   local least = width_of(shown)
+
+
+
    local framed = p.border == true
 
 
    local sorts = p.on_sort ~= nil
    local selects = p.on_select ~= nil
    local head = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
-bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil, }
+bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil,
+when = #head_rules > 0 and head_rules or nil, }
    for i, col in ipairs(cols) do
       local field = col.field
       local sorted = p.sort == field
@@ -192,6 +233,7 @@ bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil, }
          bg = sel and ref(c, "sel") or ((striped and i % 2 == 1) and ref(c, "hover") or nil),
          hover_bg = selects and (sel and ref(c, "sel") or ref(c, "hover")) or nil,
          on_click = selects and act(c, "table.select", { row = i }) or nil,
+         when = #cell_rules > 0 and cell_rules or nil,
       }
       local ink = ref(c, sel and "sel_fg" or "fg")
       local name = {}
@@ -217,7 +259,7 @@ bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil, }
             })
          end
          line[#line + 1] = row({
-            key = cells and ("c" .. j) or nil,
+            key = "c" .. j,
             role = cells and "cell" or nil,
             label = cells and s or nil,
             focusable = (cells and selects) or nil,
@@ -249,9 +291,11 @@ bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil, }
 
       border = framed and { w = "$kitHair", color = ref(c, "rule") } or nil,
       pad = framed and "$kitHair" or nil,
-      row(head),
-      framed and ctx.rule(c, "rule", "$kitHair") or nil,
-      n == 0 and column({ width = "grow", pad = 16, ctx.muted(c, "No rows") }) or view,
+      column({ key = "wide", width = "grow", height = p.grow == true and "grow" or nil, scroll_x = true,
+column({ key = "sheet", width = "grow", min_width = least, height = p.grow == true and "grow" or nil,
+row(head),
+framed and ctx.rule(c, "rule", "$kitHair") or nil,
+n == 0 and column({ width = "grow", pad = 16, ctx.muted(c, "No rows") }) or view, }), }),
    })
 end
 

@@ -14,13 +14,15 @@ local demo = {
   state = { selected = nil, sort = nil, descending = false, data_query = "" },
 }
 
+-- Narrow, Size hides first, then the id, then Time; what still does not
+-- fit scrolls sideways.
 local COLUMNS = {
-  { field = "id", title = "#", width = 70, align = "end", mono = true },
+  { field = "id", title = "#", width = 70, align = "end", mono = true, priority = 2 },
   { field = "method", title = "Method", width = 80 },
-  { field = "path", title = "Path" },
+  { field = "path", title = "Path", min_width = 160 },
   { field = "status", title = "Status", width = 90, badge = true, tone = "tone" },
-  { field = "ms", title = "Time", width = 80, align = "end", mono = true },
-  { field = "size", title = "Size", width = 80, align = "end", mono = true },
+  { field = "ms", title = "Time", width = 80, align = "end", mono = true, priority = 3 },
+  { field = "size", title = "Size", width = 80, align = "end", mono = true, priority = 1 },
 }
 
 -- The worker builds the view the table asks for.
@@ -41,6 +43,12 @@ function demo.update(m, msg)
   end
 end
 
+local function selected(entries)
+  return kit.panel({ title = "Selected" }, {
+    #entries > 0 and kit.inspector({ entries = entries, key_width = 70 })
+      or kit.empty({ title = "No row", detail = "Click a row, or Tab to the table and use the arrows." }) })
+end
+
 function demo.view(m)
   local entries = {}
   if m.rows and m.selected then
@@ -53,15 +61,20 @@ function demo.view(m)
         on_change = { kind = "data_query" } }) },
       text("Sorting and filtering run in the worker; the table reads the channel it sends back.",
         { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" }) },
-    row { width = "grow", height = 420, gap = 16,
-      column { width = "grow", height = "grow",
+    -- Beside the table while there is room, under it when the card is
+    -- narrow: the row's own width (ADR 0069) turns it to a column and
+    -- shows the panel that spans it instead of the one beside.
+    row { width = "grow", gap = 16,
+      when = {
+        { width = { above = 720, band = 16 }, hidden = { "under" } },
+        { width = { below = 720, band = 16 }, dir = "column", hidden = { "beside" } },
+      },
+      column { width = "grow", height = 420,
         m.rows and kit.table({ rows = m.rows, columns = COLUMNS, selected = m.selected, sort = m.sort, descending = m.descending,
           striped = true, border = true, grow = true, on_select = { kind = "select" }, on_sort = { kind = "sort" } })
           or kit.progress({ label = "The worker is building 100,000 rows…" }) },
-      column { width = 260, gap = 12,
-        kit.panel({ title = "Selected" }, {
-          #entries > 0 and kit.inspector({ entries = entries, key_width = 70 })
-            or kit.empty({ title = "No row", detail = "Click a row, or Tab to the table and use the arrows." }) }) } },
+      column { key = "beside", width = 260, selected(entries) },
+      column { key = "under", width = "grow", selected(entries) } },
     text('The status column is `badge = true, tone = "tone"`: a pill with a dot in the tone a field of the row names; `border = true` frames the table.',
       { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" })
 end
