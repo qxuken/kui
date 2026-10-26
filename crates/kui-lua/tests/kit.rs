@@ -2096,6 +2096,105 @@ fn a_slider_lands_on_the_step_nearest_the_pointer_and_its_handle_on_the_value() 
     assert_eq!(drag_to(&mut r, 2.45), 2.0, "2.45 is nearest 2");
 }
 
+/// A value moved by a click, a key or the host springs there, the handle
+/// on the fill's end all the way; a drag is followed directly, a resize
+/// moves it at once, and under reduced motion it jumps.
+#[test]
+fn a_slider_springs_to_a_new_value_but_not_on_a_resize_or_a_drag() {
+    for reduced in [false, true] {
+        let mut r = LuaRig::new(
+            r#"
+            v, w = 2, 400
+            function on_event(ev) if ev.kind == "v" then v = ev.change.value end end
+            function view(env)
+              return column { width = w, height = "grow", pad = 20,
+                component("kit/slider", { value = v, min = 0, max = 10, step = 1, label = "Level", on_change = { kind = "v" } }) }
+            end
+            "#,
+        );
+        if reduced {
+            let mut system = r.core.env.system;
+            system.motion = kui_core::MotionPref::Reduced;
+            r.core.set_system(system);
+        }
+        r.core.set_time(1.0);
+        r.frames(3);
+        // The handle's centre, and where on the track the value puts it.
+        let at = |r: &mut LuaRig| -> (f32, f32, f32) {
+            let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).expect("the track").rect;
+            let (start, len) = (track.x + 6.0, track.w - 12.0);
+            let handle = r.node(|n| (n.rect.w - 12.0).abs() < 0.5 && (n.rect.h - 12.0).abs() < 0.5).expect("the handle").rect;
+            let v: f64 = r.app.globals().get("v").unwrap();
+            (handle.x + 6.0, start + v as f32 / 10.0 * len, start)
+        };
+        let fill_end = |r: &mut LuaRig| -> f32 {
+            let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).unwrap().rect;
+            let fill = r.node(|n| n.parent.is_some() && n.rect.h == 4.0 && (n.rect.x - track.x - 6.0).abs() < 0.5).expect("the fill").rect;
+            fill.x + fill.w
+        };
+        let (c0, want0, _) = at(&mut r);
+        assert!((c0 - want0).abs() <= 1.0, "on 2 to begin with");
+
+        // The host moves it: on its way after a few frames, the handle on
+        // the fill's end, then there.
+        r.app.globals().set("v", 8).unwrap();
+        r.core.set_time(1.05);
+        r.frames(1);
+        r.core.set_time(1.1);
+        r.frames(1);
+        let (mid, want, _) = at(&mut r);
+        let end = fill_end(&mut r);
+        if reduced {
+            assert!((mid - want).abs() <= 1.0, "under reduced motion it jumps: {mid} vs {want}");
+        } else {
+            assert!(mid > c0 + 2.0 && mid < want - 2.0, "on its way: {c0} .. {mid} .. {want}");
+            assert!((mid - end).abs() <= 1.0, "the handle rides the fill's end: {mid} vs {end}");
+        }
+        for k in 1..=30 {
+            r.core.set_time(1.1 + k as f64 / 60.0);
+            r.frames(1);
+        }
+        let (there, want, _) = at(&mut r);
+        assert!((there - want).abs() <= 1.0, "there in the end: {there} vs {want}");
+
+        // A resize moves it at once.
+        r.app.globals().set("w", 600).unwrap();
+        r.core.set_time(3.0);
+        r.frames(1);
+        let (wide, want, _) = at(&mut r);
+        assert!((wide - want).abs() <= 1.0, "a resize does not ease it: {wide} vs {want}");
+
+        // A drag follows the pointer: each value it proposes is drawn there.
+        let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).unwrap().rect;
+        let (_, _, start) = at(&mut r);
+        let len = track.w - 12.0;
+        let y = track.y + track.h / 2.0;
+        use kui_core::{InputEvent, Vec2};
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(wide, y)));
+        r.route(e);
+        r.core.set_time(3.1);
+        r.frames(1);
+        let e = r.core.handle_input(InputEvent::mouse_down(1));
+        r.route(e);
+        r.core.set_time(3.2);
+        r.frames(1);
+        for (k, to) in [6.0f32, 4.0, 3.0].into_iter().enumerate() {
+            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(start + to / 10.0 * len, y)));
+            r.route(e);
+            r.core.set_time(3.25 + k as f64 * 0.02);
+            r.frames(1);
+            let (now, want, _) = at(&mut r);
+            if k > 0 {
+                assert!((now - want).abs() <= 1.0, "a drag is followed directly (to {to}): {now} vs {want}");
+            }
+        }
+        let e = r.core.handle_input(InputEvent::mouse_up());
+        r.route(e);
+        r.frames(2);
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
+
 #[test]
 fn an_under_way_bar_crosses_its_whole_track() {
     // It slid from -80 px to 400 px whatever the track's width: on a wide

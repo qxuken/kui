@@ -870,10 +870,23 @@ color = ref(c, here and on_fg or (o.alert == true and "danger" or "muted")), }) 
    return row(t)
 end
 
+
+
+
+
+
+
 function M.slider(c, p)
    local lo, hi = (p.min or 0), (p.max or 1)
    local v = math.max(lo, math.min(hi, (p.value or lo)))
    local f = hi > lo and (v - lo) / (hi - lo) or 0
+
+
+
+
+
+   local st = ctx.state(c, function() return { moves = 0 } end)
+   local dragged = st.moves >= 2
    local step = (p.step or (hi - lo) / 100)
 
    local shown = str(p.value_label) or string.format("%g", v)
@@ -908,6 +921,7 @@ function M.slider(c, p)
       cursor = "grab",
       when = { { pressed = true, cursor = "grabbing" } },
       column({ key = "fill", width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent"),
+      transition = dragged and 0 or 260, easing = not dragged and "snappy" or nil, when = { ctx.still() },
 
       column({
          key = "handle",
@@ -1004,6 +1018,11 @@ function M.event(m, kit)
       return emit("on_change", { value = m.value })
    elseif kit == "slider.change" then
       local ch = m.change
+
+      local st = ctx.peek(m.inst)
+      if st and ch then
+         if ch.phase == "end" then st.moves = 0 else st.moves = st.moves + 1 end
+      end
       return emit("on_change", { value = ch and ch.value })
    end
    return nil

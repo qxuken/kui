@@ -869,10 +869,23 @@ function M.segmented(c: Ctx, p: P): kui.Node
   return row(t)
 end
 
+-- A slider between frames: how many values the pointer has proposed
+-- since it pressed (the first is a click's, the rest a drag's).
+local record Dragged
+  moves: integer
+end
+
 function M.slider(c: Ctx, p: P): kui.Node
   local lo, hi = (p.min or 0) as number, (p.max or 1) as number
   local v = math.max(lo, math.min(hi, (p.value or lo) as number))
   local f = hi > lo and (v - lo) / (hi - lo) or 0
+  -- A value that moves by a click, a key or the host springs there, the
+  -- handle with the fill (it hangs off the fill's end); one the pointer
+  -- drags is followed directly. What eases is the fill's share of the
+  -- track, not its pixels, so a resize moves it at once; under reduced
+  -- motion it jumps.
+  local st = ctx.state(c, function(): Dragged return { moves = 0 } end)
+  local dragged = st.moves >= 2
   local step = (p.step or (hi - lo) / 100) as number
   -- The value as the host wrote it (`20 MB/s`), or the number itself.
   local shown = str(p.value_label) or string.format("%g", v)
@@ -907,6 +920,7 @@ function M.slider(c: Ctx, p: P): kui.Node
     cursor = "grab",
     when = { { pressed = true, cursor = "grabbing" } },
     column { key = "fill", width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent"),
+      transition = dragged and 0 or 260, easing = not dragged and "snappy" or nil, when = { ctx.still() },
       -- Centred on the fill's end: the value's place, over the rail.
       column {
         key = "handle",
@@ -1003,6 +1017,11 @@ function M.event(m: P, kit: string): any
     return emit("on_change", { value = m.value })
   elseif kit == "slider.change" then
     local ch = m.change as P
+    -- Counted for the spring: a press proposes one value, a drag more.
+    local st = ctx.peek(m.inst as integer) as Dragged
+    if st and ch then
+      if ch.phase == "end" then st.moves = 0 else st.moves = st.moves + 1 end
+    end
     return emit("on_change", { value = ch and ch.value })
   end
   return nil
