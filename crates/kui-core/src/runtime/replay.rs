@@ -343,6 +343,7 @@ fn env_same(a: &EnvFacts, b: &EnvFacts) -> bool {
         && a.focus_visible == b.focus_visible
         && a.region == b.region
         && a.tab_moves_focus == b.tab_moves_focus
+        && a.platform == b.platform
 }
 
 impl Core {

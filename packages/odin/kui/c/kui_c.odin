@@ -492,6 +492,10 @@ BACKDROP_TRANSPARENT :: 1
 BACKDROP_BLUR :: 2
 BACKDROP_TINTED :: 3
 
+PLATFORM_MACOS :: 1
+PLATFORM_WINDOWS :: 2
+PLATFORM_LINUX :: 3
+
 PATH_MOVE :: 0
 PATH_LINE :: 1
 PATH_QUAD :: 2
@@ -1297,6 +1301,7 @@ foreign lib {
 	focus_visible :: proc(ctx: ^Ctx) -> bool ---
 	tab_moves_focus :: proc(ctx: ^Ctx) -> bool ---
 	set_rules_appearance :: proc(ctx: ^Ctx, appearance: u32) ---
+	platform :: proc(ctx: ^Ctx) -> u32 ---
 	caret_visible :: proc(ctx: ^Ctx) -> bool ---
 	set_caret_visible :: proc(ctx: ^Ctx, visible: bool) ---
 	has_caret :: proc(ctx: ^Ctx) -> bool ---

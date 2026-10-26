@@ -392,6 +392,13 @@ Backdrop :: enum u32 {
 	Tinted = 3, // KUI_BACKDROP_TINTED
 }
 
+Platform :: enum u32 {
+	Unset = 0,
+	Macos = 1, // KUI_PLATFORM_MACOS
+	Windows = 2, // KUI_PLATFORM_WINDOWS
+	Linux = 3, // KUI_PLATFORM_LINUX
+}
+
 Audio_Cmd :: enum u32 {
 	Unset = 0,
 	Play = 1, // KUI_AUDIO_PLAY
@@ -2970,6 +2977,15 @@ tab_moves_focus :: proc(ui: ^Ui) -> bool {
 // Rust: Ui::set_rules_appearance.
 set_rules_appearance :: proc(ui: ^Ui, appearance: Appearance) {
 	c.set_rules_appearance(ui, u32(appearance))
+}
+
+// The platform the app runs on (backlog C116): macOS, Windows or Linux
+// (`"macos"` / `"windows"` / `"linux"` in Lua and Node, a `KUI_PLATFORM_*` in
+// C), the fact a `when` entry's `platform` condition reads, so a script
+// following a platform's convention and a rule following it agree.
+// Rust: Ui::platform.
+platform :: proc(ui: ^Ui) -> Platform {
+	return Platform(c.platform(ui))
 }
 
 // The blink phase a custom editor draws its caret on.

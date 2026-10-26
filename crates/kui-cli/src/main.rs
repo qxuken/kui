@@ -286,6 +286,8 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     let (ext, baseline, load_error) = loaded?;
     let lua = ext.lua().clone();
     let kit = kit::extension().map_err(|e| format!("Kit failed to load (a bug in the runner): {e}"))?;
+    // Kit's relative paths (a skin's font file) are the app's folder's too.
+    kui_lua::set_script_dir(kit.lua(), &project.dir).map_err(|e| e.to_string())?;
     let watch = args.watch.then(|| host::Watch::start(&project, shared.clone()));
     let shot = args.shot.clone().map(|p| {
         let p = if p.is_absolute() { p } else { std::env::current_dir().unwrap_or_default().join(p) };

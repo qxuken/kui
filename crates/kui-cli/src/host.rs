@@ -37,6 +37,9 @@ pub fn load_app(
         let (shared, baseline, dir) = (shared.clone(), baseline.clone(), project.dir.clone());
         move |lua: &Lua| -> mlua::Result<()> {
             crate::project::add_path(lua, &dir)?;
+            // `env.load_tokens` and `env.load_font_file` read a relative
+            // path against the app's folder, as `kui.fs` does.
+            kui_lua::set_script_dir(lua, &dir)?;
             modules::install_loader(lua)?;
             crate::teal::install(lua)?;
             crate::kit::install_ui(lua)?;

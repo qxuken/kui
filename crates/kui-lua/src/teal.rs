@@ -67,6 +67,7 @@ const ENV_FACTS: &[(&str, &str)] = &[
     ("now", "number"),
     ("region", "integer"),
     ("tab_moves_focus", "boolean"),
+    ("platform", "string"),
 ];
 
 /// The calls `env` carries, by the name `schema::DOORS`' Lua column gives
@@ -113,6 +114,8 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("answer_selection_range", "text: string", "boolean"),
     ("answer_typeahead", "key: KeyRef, index: integer", "boolean"),
     ("add_fragment", "wgsl: string", "integer"),
+    ("system_font_families", "", "{string}"),
+    ("load_font_file", "path: string", "string, string"),
     ("set_rules_appearance", "appearance?: string", ""),
     ("set_clipboard", "text: string, html?: string", ""),
     ("set_clipboard_secret", "text: string", ""),

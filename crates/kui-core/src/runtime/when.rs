@@ -51,7 +51,7 @@ impl Core {
             dark: self.rules_appearance() == crate::env::Appearance::Dark,
             reduced_motion: self.env.system.motion.is_reduced(),
             contrast: self.env.system.contrast,
-            platform: Platform::current(),
+            platform: self.platform,
             state,
         }
     }
@@ -83,6 +83,28 @@ impl Core {
         }
         if self.rules_appearance() != was {
             self.owe_frame("set_rules_appearance");
+        }
+    }
+
+    /// The platform this core says it runs on (backlog C116): what a
+    /// `platform` condition holds on and what every binding's reading
+    /// reports (`env.platform` in Lua and Node, `kui_platform` in C), so
+    /// the two cannot disagree. The build's ([`Platform::current`]) unless
+    /// [`Self::set_platform`] said otherwise.
+    pub fn platform(&self) -> Platform {
+        self.platform
+    }
+
+    /// Says this core runs on `platform`, in place of the build's (backlog
+    /// C116): a test that checks a platform's convention — Windows
+    /// stepping a select on a bare arrow, macOS opening it — on the one
+    /// machine it runs on, or a preview of another platform's look. Both
+    /// the `platform` conditions and the env reading follow, and a change
+    /// owes a frame.
+    pub fn set_platform(&mut self, platform: Platform) {
+        if self.platform != platform {
+            self.platform = platform;
+            self.owe_frame("set_platform");
         }
     }
 

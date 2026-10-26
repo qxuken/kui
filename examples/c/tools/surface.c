@@ -516,6 +516,16 @@ static int surface(void) {
     kui_set_rules_appearance(ui, KUI_APPEARANCE_DARK);
     check(kui_animating(ui), "a changed rules appearance owes a frame");
     kui_set_rules_appearance(ui, KUI_APPEARANCE_UNKNOWN);
+    /* The platform the `platform` conditions read (backlog C116): this
+     * build's, and 0 for no context. */
+#if defined(__APPLE__)
+    check(kui_platform(ui) == KUI_PLATFORM_MACOS, "the platform is macOS");
+#elif defined(_WIN32)
+    check(kui_platform(ui) == KUI_PLATFORM_WINDOWS, "the platform is Windows");
+#else
+    check(kui_platform(ui) == KUI_PLATFORM_LINUX, "the platform is Linux");
+#endif
+    check(kui_platform(NULL) == 0, "no context, no platform");
     check(!kui_answer_typeahead(ui, first, 3), "an answer nothing asked for is refused");
 
     /* The key sink is focusable and takes focus like anything else, and a

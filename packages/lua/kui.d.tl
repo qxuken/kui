@@ -1495,6 +1495,8 @@ global type kui = record
     region: integer
     -- The window's "Tab moves focus" toggle (backlog C99): while it is on, a multiline `edit` whose Tab would type indentation walks the focus ring instead, as one declared `tabMovesFocus` does. Ctrl+M flips it in such an editor (Ctrl+Shift+M on macOS, as Monaco binds it); what an app reads to show a status label. Node: `tabMovesFocus()` on the context.
     tab_moves_focus: boolean
+    -- The platform the app runs on (backlog C116): `"macos"`, `"windows"` or `"linux"` (every other Unix reads as Linux) — `KUI_PLATFORM_*` in C, where 0 is a bad context. The same fact a `when` entry's `platform` condition reads, so a script that follows a platform's convention in Lua (a select stepping on a bare arrow off macOS) and a rule that follows it in a `when` always agree. Derived from the build, and a Rust test may say another (`Core::set_platform`), which both follow.
+    platform: string
     audio: EnvAudio
     system: EnvSystem
     window: EnvWindow
@@ -1503,6 +1505,10 @@ global type kui = record
     tokens: Tokens
     -- Registers a WGSL function and mints an id for `<fragment src>` (ADR 0015); idempotent by source, so a Lua view or extension registers its own from `env` every frame (backlog C111).
     add_fragment: function(wgsl: string): integer
+    -- Registers a font file by path. Its family is then drawn by name — `family = "Name"`, or a family token's list — as an installed one is, and listed by `system_font_families`. Lua (backlog C117) answers the family's name, or nil and why; a relative path is the script's folder's (a `kui run` app's or Kit's, the app's folder; a packed app's, its extracted folder), and the same path twice is the same font, so a view may call it every frame.
+    load_font_file: function(path: string): string, string
+    -- The installed family names `add_system_font` accepts.
+    system_font_families: function(): {string}
     -- Says something once with no node behind it (ADR 0001).
     announce: function(text: string, politeness?: string)
     -- Moves focus to a node now; an app's move stands over a modal's restore (backlog AR17). `keyFocus` is the declarative, edge-triggered form.

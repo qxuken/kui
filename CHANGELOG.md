@@ -209,7 +209,12 @@ was the first bare bump to break an app in five releases).
 - `KuiSpec` gained `essential_motion` (backlog C107), `dx` and `dy`
   (C105) and `opens_on_press` (C108), 872 bytes on 64-bit, inside ABI 39:
   a C host recompiles; zeroed, nothing changes. `KUI_ENTER_KEEP_ROOM`
-  (C110) and `kui_set_rules_appearance` (C113) are new.
+  (C110), `kui_set_rules_appearance` (C113) and `kui_platform` with its
+  `KUI_PLATFORM_*` codes (C116) are new.
+- `schema::EnvFacts` gained `platform` (backlog C116): a struct literal
+  names it. In a `kui run` app and in Kit, `env.load_tokens` reads a
+  relative path against the app's folder (a packed app's extracted one),
+  as `kui.fs` does, where it read against the working directory.
 - Under reduced motion a `keyframes` cycle that runs for ever holds still,
   the node showing its own props, and a finite one rests where it ends,
   where both ran (backlog C107): a spinner or an under-way bar that must
@@ -1253,6 +1258,23 @@ for lua-language-server, and a new runner beside the window's.
   caller's `dark` / `light` conditions read `light` or `dark` in place of
   the palette's, until set again; Kit holding its look light or dark has
   its `when` entries agree with its colours.
+- **A script can tell which platform it runs on** (backlog C116):
+  `env.platform` — `"macos"`, `"windows"` or `"linux"` — in Lua and in
+  Node's `env()`, `kui_platform` (a `KUI_PLATFORM_*`) in C, `platform` in
+  Odin, `Ui::platform` / `Core::platform` in Rust: the fact a `when`
+  entry's `platform` condition reads, so a script following a platform's
+  convention and a rule following it agree. `Core::set_platform` lets a
+  Rust test say another, which both follow.
+- **A script lists the system's fonts and loads a font file** (backlog
+  C117): `env.system_font_families()` lists every family the core can
+  see, installed or loaded, sorted (C `kui_font_families`, Node
+  `systemFontFamilies`, as before); `env.load_font_file(path)` registers a
+  TTF, OTF or TTC and answers its family — drawn by that name from then
+  on, in `family = ` or a family token's list — or nil and why. A
+  relative path is the script's folder's (in a `kui run` app and in Kit,
+  the app's folder; a packed app's, its extracted folder), and the same
+  file twice is loaded once, so a view may call it every frame.
+  `kui_lua::set_script_dir` gives a script loaded from source its folder.
 
 ### Changed
 

@@ -1674,6 +1674,12 @@ impl<'a> Ui<'a> {
         self.core.tab_moves_focus()
     }
 
+    /// The platform the core says it runs on, what a `platform` condition
+    /// reads; see `Core::platform` (backlog C116).
+    pub fn platform(&self) -> crate::rules::Platform {
+        self.core.platform()
+    }
+
     /// Sets the appearance this origin's `dark` / `light` conditions read;
     /// see `Core::set_rules_appearance` (backlog C113).
     pub fn set_rules_appearance(&mut self, appearance: crate::env::Appearance) {

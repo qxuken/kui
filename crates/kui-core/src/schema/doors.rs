@@ -162,8 +162,8 @@ pub const DOORS: &[Door] = &[
         c: Is("kui_font_load_file"),
         odin: Is("font_load_file"),
         node: Is("loadFontFile"),
-        lua: No(NO_HANDLE),
-        doc: "Registers a font file by path.",
+        lua: Is("load_font_file"),
+        doc: "Registers a font file by path. Its family is then drawn by name — `family = \"Name\"`, or a family token's list — as an installed one is, and listed by `system_font_families`. Lua (backlog C117) answers the family's name, or nil and why; a relative path is the script's folder's (a `kui run` app's or Kit's, the app's folder; a packed app's, its extracted folder), and the same path twice is the same font, so a view may call it every frame.",
     },
     Door {
         rust: "Core::load_fonts_dir",
@@ -210,7 +210,7 @@ pub const DOORS: &[Door] = &[
         c: Is("kui_font_families"),
         odin: Is("font_families"),
         node: Is("systemFontFamilies"),
-        lua: No(NO_HANDLE),
+        lua: Is("system_font_families"),
         doc: "The installed family names `add_system_font` accepts.",
     },
     Door {
@@ -417,6 +417,22 @@ pub const DOORS: &[Door] = &[
         node: Is("setRulesAppearance"),
         lua: Is("set_rules_appearance"),
         doc: "Sets the appearance the caller's `dark` / `light` conditions read in place of the palette's (backlog C113): an add-on holding its own look light or dark — Kit's `settings.appearance` — has its `when` entries agree with its colours. Per origin, kept until set again; unknown (C 0, Lua and Node nil) gives the palette's back.",
+    },
+    Door {
+        rust: "Ui::platform",
+        c: Is("kui_platform"),
+        odin: Is("platform"),
+        node: As("`env().platform`, a reading"),
+        lua: As("`env.platform`, a reading"),
+        doc: "The platform the app runs on (backlog C116): macOS, Windows or Linux (`\"macos\"` / `\"windows\"` / `\"linux\"` in Lua and Node, a `KUI_PLATFORM_*` in C), the fact a `when` entry's `platform` condition reads, so a script following a platform's convention and a rule following it agree.",
+    },
+    Door {
+        rust: "Core::set_platform",
+        c: No("the platform is the build's; a test that fakes another is a Rust test"),
+        odin: No(ODIN_IS_C),
+        node: No("the platform is the build's; a test that fakes another is a Rust test"),
+        lua: No(GUEST),
+        doc: "Says the core runs on another platform than the build's (backlog C116): a test of one platform's convention on another machine, the `platform` conditions and the env reading both following.",
     },
     Door {
         rust: "Ui::tab_moves_focus",

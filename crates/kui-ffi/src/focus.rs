@@ -137,6 +137,21 @@ pub extern "C" fn kui_set_rules_appearance(ptr: *mut KuiCtx, appearance: u32) {
     })
 }
 
+/// The platform the app runs on, a `KUI_PLATFORM_*` — macOS 1, Windows 2,
+/// Linux 3 (backlog C116): what a `when` entry's `platform` condition
+/// reads. 0 on a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_platform(ptr: *mut KuiCtx) -> u32 {
+    guard(0, || match unsafe { ctx(ptr) } {
+        Some(c) => match c.core().platform() {
+            kui_core::Platform::MacOs => 1,
+            kui_core::Platform::Windows => 2,
+            kui_core::Platform::Linux => 3,
+        },
+        None => 0,
+    })
+}
+
 /// The caret's blink phase: `true` draws it. A custom
 /// editor reads it in its view and skips its caret node on the off phase,
 /// keeping the `caret` row on its `KUI_ROLE_LINE` either way. Under

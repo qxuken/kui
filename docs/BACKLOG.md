@@ -3653,6 +3653,8 @@ filed the same day for the round that builds them.
 - `.` **C113** — [A script cannot set the appearance its conditions read](backlog/closed-2026-09.md#-c113--a-script-cannot-set-the-appearance-its-conditions-read--done-2026-10-26) — done (2026-10-26) — `set_rules_appearance`: an origin sets the appearance its `dark` / `light` conditions read
 - `.` **C114** — [A `when` entry that sets a shadow's offsets drops the shadow](backlog/closed-2026-09.md#-c114--a-when-entry-that-sets-a-shadows-offsets-drops-the-shadow--done-2026-10-26) — done (2026-10-26) — a shadow's lanes patched one by one; Ledger's face casts its own shadow again
 - `.` **C115** — [An opening press's release picks the item under it before asking whether the pointer moved](backlog/closed-2026-09.md#-c115--an-opening-presss-release-picks-the-item-under-it-before-asking-whether-the-pointer-moved--done-2026-10-26) — done (2026-10-26) — the slop check first; Kit's first-pick guard gone
+- `.` **C116** — [A script cannot tell which platform it is on](backlog/closed-2026-09.md#-c116--a-script-cannot-tell-which-platform-it-is-on--done-2026-10-26) — done (2026-10-26) — `env.platform` in Lua and Node, `kui_platform` in C and Odin, the fact `when`'s `platform` reads
+- `.` **C117** — [A script can neither list the system's fonts nor load one](backlog/closed-2026-09.md#-c117--a-script-can-neither-list-the-systems-fonts-nor-load-one--done-2026-10-26) — done (2026-10-26) — `env.system_font_families()` and `env.load_font_file(path)`, the path under the runner's folder rules
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3672,26 +3674,6 @@ in a channel (ADR 0065) answers by searching that channel itself.
 **Do.** A `typeaheadColumn` prop naming a channel column the core
 searches (prefix, case-blind, from the row after focus), so a channel-
 backed list needs no handler.
-
-### `.` C116 — A script cannot tell which platform it is on
-
-**Found** in Kit's review round (2026-10-26): Kit's event handler has no
-`env.platform`, so a select opens on a bare arrow everywhere, where
-Windows and Linux step the value and open on Alt+Down or F4; `when`
-rules have a `platform` condition, but nothing a script reads. **Do.**
-`env.platform` (`"macos"` / `"windows"` / `"linux"`) in Lua, with the
-same fact in every binding that lacks it.
-
-### `.` C117 — A script can neither list the system's fonts nor load one
-
-**Found** the same way: the gallery's Theme panel offered Inter, IBM Plex
-and Space Grotesk, which are not installed, so all three fell back to
-the system sans. Lua has no door to `Core::system_font_families` (C,
-Odin and Node have one) or to `Core::load_font_file`, so Kit probes
-candidate families by declaring tokens and cannot ship its skins' faces.
-**Do.** Both doors in Lua, the font file read through the runner's
-folder rules; then the gallery lists every installed family and Kit may
-load its skins' faces.
 
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 

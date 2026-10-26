@@ -801,6 +801,10 @@ pub struct Core {
     /// look light or dark — Kit's `settings.appearance` — says so, and its
     /// rules agree with its colours. Origins not named read the palette.
     rules_appearance: Vec<(OriginId, crate::env::Appearance)>,
+    /// The platform `platform` conditions and `env.platform` read (backlog
+    /// C116): the build's, unless a test set another
+    /// (`Core::set_platform`).
+    platform: crate::rules::Platform,
     /// The data row (and, in a table, the column) focus last held in each
     /// windowed composite, by its key (ADR 0070): where Tab enters it
     /// again, unless it declares `active_index`. Pruned to the composites
@@ -980,6 +984,7 @@ impl Core {
             // wants them counted reads `Ui::caret_visible` / `Ui::now`.
             caret_visible: self.edit.blink_visible(),
             now: self.anim.time().unwrap_or(0.0),
+            platform: self.platform,
         }
     }
 
@@ -1487,6 +1492,7 @@ impl Core {
             press_opened: None,
             rooms: Vec::new(),
             rules_appearance: Vec::new(),
+            platform: crate::rules::Platform::current(),
             composite_rows: FxHashMap::default(),
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),

@@ -1897,6 +1897,25 @@ fn env_table(
             Ok(ui.core().add_fragment(&wgsl).map(|id| id.to_ffi()))
         })?,
     )?;
+    // The family names of every font the core can see, installed or
+    // loaded, sorted and each once (backlog C117): what `family = ` and a
+    // family token's list take. Read from the font database each call, so
+    // a view that lists them keeps the answer rather than asking per frame.
+    t.set(
+        "system_font_families",
+        lua.create_function(move |lua, ()| {
+            let names = ui.borrow_mut()?.core().system_font_families();
+            lua.create_sequence_from(names)
+        })?,
+    )?;
+    // Registers a font file and answers its family's name, drawn by that
+    // name from then on (`family = name`, a family token's list), or nil
+    // and why (backlog C117). A relative path is the script's folder's;
+    // the same file twice is loaded once.
+    t.set(
+        "load_font_file",
+        lua.create_function(move |lua, path: String| load_font_file(lua, ui, &path))?,
+    )?;
     // Answers a `selectionrange` ask with the text for the range it named,
     // whole. False when nothing asked.
     t.set(
@@ -2306,6 +2325,74 @@ fn env_table(
 /// answering the table `env.set_tokens` takes plus where each name came
 /// from and what was skipped. Errors are Lua errors: a script asking for a
 /// brand file that is not there should hear it.
+/// A path a script named, against its folder when relative: the folder of
+/// the file it was loaded from, or the one its host gave with
+/// [`set_script_dir`] (a `kui run` app's folder). What `env.load_tokens`
+/// and `env.load_font_file` read. A script with neither reads against the
+/// process's working directory.
+fn script_path(lua: &Lua, path: &str) -> std::path::PathBuf {
+    let p = std::path::PathBuf::from(path);
+    if p.is_relative()
+        && let Ok(dir) = lua.named_registry_value::<String>("kui:dir")
+    {
+        return std::path::Path::new(&dir).join(p);
+    }
+    p
+}
+
+/// Gives a script the folder its relative paths are read against —
+/// `env.load_tokens`, `env.load_font_file` — in place of the one it was
+/// loaded from, if any. A host that loads a script from source calls it
+/// to put the script under its own folder rules: `kui run` names the app's
+/// folder (a packed app's extracted one) for the app and for Kit.
+pub fn set_script_dir(lua: &Lua, dir: &std::path::Path) -> mlua::Result<()> {
+    lua.set_named_registry_value("kui:dir", dir.to_string_lossy().as_ref())
+}
+
+/// `env.load_font_file(path)` (backlog C117): the file registered with
+/// `Core::load_font_file` and its family's name back, or nil and why. The
+/// path is the script's ([`script_path`]); the same file again answers
+/// from what this script loaded, so a view may call it every frame.
+fn load_font_file(
+    lua: &Lua,
+    ui: FrameUi,
+    path: &str,
+) -> mlua::Result<(Option<String>, Option<String>)> {
+    let p = script_path(lua, path);
+    if let Err(e) = std::fs::metadata(&p) {
+        return Ok((None, Some(format!("{}: {e}", p.display()))));
+    }
+    let p = std::fs::canonicalize(&p).unwrap_or(p);
+    let key = p.to_string_lossy().into_owned();
+    let cache: Table = match lua.named_registry_value::<Option<Table>>("kui:fonts")? {
+        Some(t) => t,
+        None => {
+            let t = lua.create_table()?;
+            lua.set_named_registry_value("kui:fonts", &t)?;
+            t
+        }
+    };
+    if let Some(family) = cache.get::<Option<String>>(key.as_str())? {
+        return Ok((Some(family), None));
+    }
+    let mut ui = ui.borrow_mut()?;
+    let core = ui.core();
+    let Some(family) = core
+        .load_font_file(&p)
+        .and_then(|id| core.font_family(id).map(str::to_string))
+    else {
+        return Ok((
+            None,
+            Some(format!(
+                "{}: no face in it kui can draw (a TrueType or OpenType file, .ttf, .otf or .ttc)",
+                p.display()
+            )),
+        ));
+    };
+    cache.set(key.as_str(), family.as_str())?;
+    Ok((Some(family), None))
+}
+
 fn load_tokens(lua: &Lua, (path, opts): (String, Option<Table>)) -> mlua::Result<Table> {
     use kui_core::dtcg::{self, DtcgOptions, DtcgValue};
     let mut o = DtcgOptions::default();
@@ -2333,12 +2420,7 @@ fn load_tokens(lua: &Lua, (path, opts): (String, Option<Table>)) -> mlua::Result
             }
         }
     }
-    let mut p = std::path::PathBuf::from(&path);
-    if p.is_relative()
-        && let Ok(dir) = lua.named_registry_value::<String>("kui:dir")
-    {
-        p = std::path::Path::new(&dir).join(p);
-    }
+    let p = script_path(lua, &path);
     let loaded =
         dtcg::from_path(&p, &o).map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
     let (colors, lengths, families) = (

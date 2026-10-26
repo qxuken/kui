@@ -306,6 +306,59 @@ fn new_starts_an_app_that_runs() {
     assert!(!s.contains("warning"), "{s}");
 }
 
+/// A view's font file is read under the runner's folder rules (backlog
+/// C117): against the app's folder, from wherever `kui run` was started;
+/// and the platform reads as the build's (C116).
+#[test]
+fn a_font_file_is_read_against_the_app_folder() {
+    let dir = app(
+        "fonts",
+        &[
+            (
+                "main.lua",
+                r#"
+                function view(env)
+                  if not said then
+                    said = true
+                    print("missing", env.load_font_file("fonts/none.ttf"))
+                    print("garbage", env.load_font_file("fonts/garbage.ttf"))
+                    print("listed", type(env.system_font_families()))
+                    print("platform", env.platform)
+                    kui.exit(0)
+                  end
+                  return column {}
+                end
+                "#,
+            ),
+            ("fonts/garbage.ttf", "not a font"),
+        ],
+    );
+    // Started from the folder above, naming the app's.
+    let name = dir.file_name().unwrap().to_str().unwrap().to_string();
+    let o = kui(dir.parent().unwrap(), &["run", "--headless", &name], 20);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    let missing = s.lines().find(|l| l.starts_with("missing")).unwrap_or("");
+    assert!(
+        missing.starts_with("missing\tnil\t") && missing.contains(&name) && missing.contains("none.ttf"),
+        "nil, and the path in the app's folder: {s}"
+    );
+    let garbage = s.lines().find(|l| l.starts_with("garbage")).unwrap_or("");
+    assert!(
+        garbage.starts_with("garbage\tnil\t") && garbage.contains("no face"),
+        "the file in the app's folder was read, and holds no font: {s}"
+    );
+    assert!(s.contains("listed\ttable"), "{s}");
+    let platform = if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        "linux"
+    };
+    assert!(s.contains(&format!("platform\t{platform}")), "{s}");
+}
+
 /// The Lua files under `dir`, as paths relative to it.
 fn lua_files(dir: &Path, rel: &Path, out: &mut Vec<PathBuf>) {
     for e in std::fs::read_dir(dir.join(rel)).unwrap() {

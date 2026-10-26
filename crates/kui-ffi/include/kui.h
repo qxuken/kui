@@ -453,8 +453,9 @@ extern "C" {
  * essential_motion (864 bytes; backlog C107), then dx and dy (backlog
  * C105) and opens_on_press (backlog C108), 872 bytes;
  * kui_tab_moves_focus (backlog C99),
- * kui_is_group_hovered and kui_is_group_pressed (backlog C92) are new
- * functions.
+ * kui_is_group_hovered and kui_is_group_pressed (backlog C92),
+ * kui_set_rules_appearance (backlog C113) and kui_platform with its
+ * KUI_PLATFORM_* codes (backlog C116) are new functions.
  */
 #define KUI_ABI_VERSION 39u
 uint32_t kui_abi_version(void);
@@ -3588,6 +3589,17 @@ bool kui_tab_moves_focus(KuiCtx *ctx);
  * place of the palette's (backlog C113): a KUI_APPEARANCE_*, UNKNOWN (0)
  * giving the palette's back. Per origin, kept until set again. ABI 39. */
 void kui_set_rules_appearance(KuiCtx *ctx, uint32_t appearance);
+/* The platforms kui_platform answers with; 0 is a bad context. */
+enum {
+    KUI_PLATFORM_MACOS = 1,
+    KUI_PLATFORM_WINDOWS = 2,
+    KUI_PLATFORM_LINUX = 3,
+};
+/* The platform the app runs on, a KUI_PLATFORM_* (backlog C116; every
+ * other Unix reads as Linux): the fact a `when` entry's `platform`
+ * condition reads, so a view that follows a platform's convention in C and
+ * a rule that follows it agree. 0 on a bad context. ABI 39. */
+uint32_t kui_platform(KuiCtx *ctx);
 /* The caret's blink. kui_caret_visible is the phase - true
  * draws it - which a custom editor reads in its view to skip its caret
  * node on the off phase, keeping the `caret` row on its KUI_ROLE_LINE

@@ -1793,6 +1793,10 @@ export interface Env {
   window: WindowEnv;
   /** What the driver's audio output is doing. */
   audio: AudioEnv;
+  /** The platform the app runs on (every other Unix reads as Linux): what
+   *  a `when` entry's `platform` condition reads, so code following a
+   *  platform's convention and a rule following it agree. */
+  platform: 'macos' | 'windows' | 'linux';
 }
 
 /** One node of the last finished frame, as `nodes()` reads it back (after

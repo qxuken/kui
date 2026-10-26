@@ -2948,6 +2948,9 @@ pub struct EnvFacts {
     pub caret_visible: bool,
     /// The frame clock in seconds (`Core::now`, backlog F134).
     pub now: f64,
+    /// The platform the core says it runs on (`Core::platform`, backlog
+    /// C116).
+    pub platform: crate::rules::Platform,
 }
 
 fn key_value(k: Option<crate::key::Key>) -> Value {
@@ -3220,6 +3223,15 @@ pub const ENV_FIELDS: &[EnvField] = &[
         lua: &["tab_moves_focus"],
         c: "`kui_tab_moves_focus()`",
         doc: "The window's \"Tab moves focus\" toggle (backlog C99): while it is on, a multiline `edit` whose Tab would type indentation walks the focus ring instead, as one declared `tabMovesFocus` does. Ctrl+M flips it in such an editor (Ctrl+Shift+M on macOS, as Monaco binds it); what an app reads to show a status label. Node: `tabMovesFocus()` on the context.",
+    },
+    EnvField {
+        name: "platform",
+        get: |f| Value::str(f.platform.name()),
+        from: "`Core::platform()`, derived",
+        node: &["platform"],
+        lua: &["platform"],
+        c: "`kui_platform()`",
+        doc: "The platform the app runs on (backlog C116): `\"macos\"`, `\"windows\"` or `\"linux\"` (every other Unix reads as Linux) — `KUI_PLATFORM_*` in C, where 0 is a bad context. The same fact a `when` entry's `platform` condition reads, so a script that follows a platform's convention in Lua (a select stepping on a bare arrow off macOS) and a rule that follows it in a `when` always agree. Derived from the build, and a Rust test may say another (`Core::set_platform`), which both follow.",
     },
 ];
 
