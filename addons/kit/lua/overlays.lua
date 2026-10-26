@@ -102,16 +102,13 @@ end
 
 
 
-
-local function on_fill(c, group, node, role, hot)
-   if hot == role then return node(role) end
-   return row({
-      row({ hover_group = group, when = { { group_hovered = true, opacity = 0 }, { group_pressed = true, opacity = 0 } },
-node(role), }),
-      row({ float = { anchor = "parent" }, hover_group = group, opacity = 0,
-when = { { group_hovered = true, opacity = 1 }, { group_pressed = true, opacity = 1 } },
-node(hot), }),
-   })
+local function on_fill(c, group, role, hot, node)
+   local t = { text_color = ref(c, role), node }
+   if hot ~= role then
+      t.hover_group = group
+      t.when = { { group_hovered = true, text_color = ref(c, hot) }, { group_pressed = true, text_color = ref(c, hot) } }
+   end
+   return row(t)
 end
 
 function M.menu(c, p)
@@ -152,16 +149,15 @@ function M.menu(c, p)
          opacity = off and "$disabledOpacity" or nil,
          cursor = "pointer",
          on_click = act(c, "menu.choose", { value = it.value }),
-         on_fill(c, group, function(role) return ctx.text(c, label, { color = ref(c, role) }) end,
-         danger and "danger" or "fg", danger and "on_danger" or "fg"),
+         on_fill(c, group, danger and "danger" or "fg", danger and "on_danger" or "fg",
+         text(label, { size = "$kitSize", family = "$kitUi" })),
          ctx.grow(),
       }
       if not off then focused = true end
       if str(it.shortcut) then
          local chord = it.shortcut
-         row_t[#row_t + 1] = on_fill(c, group,
-         function(role) return ctx.data(c, chord, { size = "$kitSizeLabel", color = ref(c, role) }) end,
-         "faint", danger and "on_danger" or "fg")
+         row_t[#row_t + 1] = on_fill(c, group, "faint", danger and "on_danger" or "fg",
+         text(chord, { size = "$kitSizeLabel", family = "$kitData" }))
       end
       t[#t + 1] = row(row_t)
    end

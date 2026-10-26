@@ -836,6 +836,10 @@ Spec :: struct {
 	// declaration on the focused node or above it wins, else the theme's
 	// `focusRing`.
 	focus_ring: Color,
+	// The colour of every text under this node that names none, as a box's CSS
+	// `color` is inherited (backlog C130): the nearest declaration above a text
+	// wins, else the theme's foreground.
+	text_color: Color,
 	// Props by condition (ADR 0069): a list of entries, each the conditions it
 	// tests and the props it sets while every one holds — `{ width: { below:
 	// 700, band: 16 }, dark: true, gap: 8 }`.
@@ -1173,6 +1177,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.pressed_bg = s.pressed_bg
 	out.focus_bg = s.focus_bg
 	out.focus_ring = s.focus_ring
+	out.text_color = s.text_color
 	out.when_ = borrow(scratch, s.when_)
 	out.min_column = s.min_column
 	out.hidden = 1 if s.hidden else 0

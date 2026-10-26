@@ -7837,6 +7837,7 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             .focusable()
             .focus_bg(Color::hex(0x2b3350ff))
             .focus_ring(Color::hex(0x8899aaff))
+            .text_color(Color::hex(0xd8dce8ff))
             .initial_focus()
             .accent()
             .cursor(crate::cursor::CursorShape::Pointer)

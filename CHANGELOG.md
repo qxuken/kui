@@ -77,10 +77,13 @@ was the first bare bump to break an app in five releases).
 - C's ABI is 39: `KuiSpec` gained `on_range` (808 bytes on 64-bit, from
   800; ABI 38), the slot doors went (ABI 39, below), and `KuiSpec`
   gained `focus_ring` (816 bytes; backlog C93), then `min_column`,
-  `hidden`, `on_query` and `when` (840 bytes; ADR 0069). Recompile;
+  `hidden`, `on_query` and `when` (840 bytes; ADR 0069), and later in
+  the release `text_color` (888 bytes; backlog C130). Recompile;
   zeroed, a node reports no range, colours no ring and has no rules.
-- `NodeSpec` gained `hidden`, and `InteractSpec` `when` (ADR 0069): a
-  struct literal names them or ends with `..Default::default()`.
+- `NodeSpec` gained `hidden`, and `InteractSpec` `when` (ADR 0069) and
+  `text_color` (backlog C130): a struct literal names them or ends with
+  `..Default::default()`. `rules::field`'s bits and `Patch::set` are
+  `u64`, `Patch::apply` takes a `u64` mask.
 - `SystemEnv` gained `contrast` (`ContrastPref`, ADR 0069): a struct
   literal names it, and the `system` event's payload carries it.
 - `schema::Kind`, `schema::Apply` and `schema::Parsed` gained `Rules`, a
@@ -866,8 +869,9 @@ for lua-language-server, and a new runner beside the window's.
   ⌥↓ shell is no Tab stop, hands Tab on, and takes the keyboard while
   nothing has it); a live line chart scrolls smoothly between samples,
   its crosshair held at a still pointer while the samples slide under it,
-  and a frame between samples runs no view; and a focusable line chart
-  is a slider over its samples, so ⌥↓ pages from it.
+  and a frame between samples runs no view; a focusable line chart is a
+  slider over its samples, so ⌥↓ pages from it; and a danger menu row
+  draws its label and chord once, recoloured by the row (C130).
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
@@ -1459,6 +1463,15 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* a checklist's record of each row's key, kept to
   move focus to the row before when the last one went.
+- **A box colours the texts under it** (backlog C130, ADR 0069):
+  `textColor` (`text_color`) is the colour of every text under the node
+  that names none, inherited as CSS's `color` is — the nearest
+  declaration wins, else the theme's foreground — and a `when` entry may
+  set it, so a row recolours its label on hover or press once, on the
+  row, with no view re-run: `textColor: '$danger', when: [{ hovered:
+  true, textColor: '$onDanger' }]`. Every binding: the schema row, C's
+  `KuiSpec.text_color`, Odin, Node. Kit's danger menu rows draw one label
+  and one chord with it, where each was drawn twice.
 - **Where the pointer is over a node** (backlog C119): `pointer_in(key)`
   — `{x, y, w, h}`, the pointer's place from the node's top-left
   (through any turn) and the node's size, as of the last frame — for a

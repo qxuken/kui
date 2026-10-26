@@ -1260,6 +1260,11 @@ static int surface(void) {
         float before = geo.offset_y;
         float way = before >= 5 ? 1.0f : -1.0f; /* +y is toward the start */
         kui_input_cursor(ui, at.x + 4, at.y + 4);
+        /* Where the pointer is over the card (backlog C119): 4 px in, the
+         * card's size. */
+        KuiLayoutRect over = KUI_LAYOUT_RECT_INIT;
+        check(kui_pointer_in(ui, k.card, &over) && over.x == 4 && over.y == 4 && over.w == at.w,
+              "kui_pointer_in: the pointer's place in the node, and its size");
         kui_input_scroll_gesture(ui, 0, 3 * way, true);
         kui_input_scroll_gesture(ui, 0, 2 * way, false);
         kui_frame_begin(ui, 800, 600, 2.0f);

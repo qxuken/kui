@@ -535,6 +535,9 @@ pub(crate) fn spec_of(
     if s.focus_ring != 0 {
         spec = spec.focus_ring(color_of(s.focus_ring));
     }
+    if s.text_color != 0 {
+        spec = spec.text_color(color_of(s.text_color));
+    }
     if s.min_column > 0.0 {
         spec = spec.min_column(s.min_column);
     }

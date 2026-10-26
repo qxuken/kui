@@ -1625,6 +1625,14 @@ pub struct InteractSpec {
     /// draws, so the core's ring is in its colour; a `$token` resolves
     /// against the declaring node's origin.
     pub focus_ring: Option<Color>,
+    /// The colour of the texts under this node that declare none, as a
+    /// box's CSS `color` is inherited (backlog C130): the nearest
+    /// declaration above a text wins, else the theme's foreground. A
+    /// `when` entry may set it, so a row that recolours its label on hover
+    /// or press says so once, on the row, where the text has no box of its
+    /// own for a rule. A `$token` resolves against the declaring node's
+    /// origin.
+    pub text_color: Option<Color>,
     /// On a windowed `list` or `table` composite (ADR 0070): the data row
     /// Tab enters it on — the selected one after a reload, say — reached
     /// for when the frame has not built it. Wins over the row the
@@ -1931,6 +1939,7 @@ impl InteractSpec {
         hover_sound: None,
         focus_bg: None,
         focus_ring: None,
+        text_color: None,
         active_index: None,
         drop_bg: None,
         selectable: false,
@@ -2761,6 +2770,13 @@ impl NodeSpec {
     /// `active_index` field).
     pub fn active_index(mut self, index: u64) -> Self {
         self.interact_mut().active_index = Some(index);
+        self
+    }
+
+    /// The colour of the texts here and below that declare none (see the
+    /// `text_color` field; backlog C130).
+    pub fn text_color(mut self, c: Color) -> Self {
+        self.interact_mut().text_color = Some(c);
         self
     }
 

@@ -540,3 +540,75 @@ fn the_snapshot_flags_a_node_with_rules_a_lazy_branch_and_a_hidden_one() {
     assert!(node(&nodes, "gone").flags.contains(&"hidden"));
     assert!(nodes.iter().any(|n| n.flags.contains(&"lazy")));
 }
+
+/// The colours the frame drew its glyphs in, each once, in order.
+fn glyph_colors(core: &mut Core) -> Vec<Color> {
+    let (dl, _) = core.output();
+    let mut out: Vec<Color> = Vec::new();
+    for q in dl.quads.iter() {
+        if matches!(
+            q.kind,
+            kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel
+        ) && !out.contains(&q.color)
+        {
+            out.push(q.color);
+        }
+    }
+    out
+}
+
+/// `textColor` colours every text under a node that names none, the
+/// nearest declaration winning, a text's own `color` over it, and the
+/// theme's foreground where nothing above declares one (backlog C130).
+#[test]
+fn text_color_is_inherited_by_the_texts_that_name_none() {
+    let (red, blue, own) = (
+        Color::hex(0xcc2222ff),
+        Color::hex(0x2244ccff),
+        Color::hex(0x22aa44ff),
+    );
+    let mut core = Core::new();
+    let fg = core.theme().fg;
+    let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+    ui.with(NodeSpec::column().text_color(red), |ui| {
+        ui.text("Red", kui_core::TextStyle::new(14.0));
+        ui.with(NodeSpec::row().text_color(blue), |ui| {
+            ui.text("Blue", kui_core::TextStyle::new(14.0));
+            ui.text("Own", kui_core::TextStyle::new(14.0).color(own));
+        });
+    });
+    ui.text("Plain", kui_core::TextStyle::new(14.0));
+    ui.finish();
+    assert_eq!(glyph_colors(&mut core), vec![red, blue, own, fg]);
+}
+
+/// A `when` entry sets it: a row recolours its label while hovered with
+/// no text drawn twice — the danger menu item's label, which Kit drew
+/// twice and showed one copy of by the row's hover group, since a text
+/// has no box for a rule.
+#[test]
+fn a_state_entry_recolours_the_texts_under_its_node() {
+    let (rest, hot) = (Color::hex(0xcc2222ff), Color::hex(0xffffffff));
+    let view = |ui: &mut kui_core::Ui<'_>| {
+        ui.with_keyed(
+            "row",
+            NodeSpec::row()
+                .size(200.0, 30.0)
+                .on_click("go")
+                .label("Delete")
+                .text_color(rest)
+                .when(Cond::Hovered, |p| p.bg(rest).text_color(hot)),
+            |ui| ui.text("Delete", kui_core::TextStyle::new(14.0)),
+        );
+    };
+    let mut core = Core::new();
+    frame(&mut core, Size::new(300.0, 100.0), view);
+    assert_eq!(glyph_colors(&mut core), vec![rest]);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(20.0, 10.0)));
+    frame(&mut core, Size::new(300.0, 100.0), view);
+    assert_eq!(glyph_colors(&mut core), vec![hot], "hovered");
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(250.0, 80.0)));
+    frame(&mut core, Size::new(300.0, 100.0), view);
+    assert_eq!(glyph_colors(&mut core), vec![rest], "and back");
+    assert!(core.take_warnings().is_empty());
+}

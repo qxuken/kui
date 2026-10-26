@@ -738,6 +738,7 @@ Spec :: struct {
 	dy: f32,
 	opens_on_press: u32,
 	on_item_key: ^Value,
+	text_color: u32,
 }
 
 Announcement :: struct {

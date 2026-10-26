@@ -2039,6 +2039,7 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			focusable      = true,
 			focus_bg       = 0x2b3350ff,
 			focus_ring     = 0x8899aaff,
+			text_color     = 0xd8dce8ff,
 			initial_focus  = true,
 			accent         = true,
 			cursor         = .Pointer,

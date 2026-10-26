@@ -350,6 +350,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
             "focusRing" => s.focus_ring = C,
+            "textColor" => s.text_color = C,
             "clickSound" => s.click_sound = 7,
             "hoverSound" => s.hover_sound = 7,
             "role" => s.role = 2, // KUI_ROLE_* = Role::ALL index + 1; ROLES[1] = button
@@ -597,6 +598,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         focus_ring: 0x44_55_66_ff,
+        text_color: 0x77_88_99_ff,
         tooltip: KuiStr {
             ptr: "hint".as_ptr(),
             len: 4,
@@ -718,6 +720,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .disabled(true)
         .focus_bg(Color::hex(0x11_22_33_ff))
         .focus_ring(Color::hex(0x44_55_66_ff))
+        .text_color(Color::hex(0x77_88_99_ff))
         // `tooltip` sets "hint" and the `description` field overwrites it:
         // the explicit prop wins over the shorthand.
         .description("desc")

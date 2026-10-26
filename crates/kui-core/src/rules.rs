@@ -541,48 +541,51 @@ pub(crate) struct Facts {
 
 /// The props an entry may set, as bits of [`Patch`]'s set.
 pub mod field {
-    pub const WIDTH: u32 = 1 << 0;
-    pub const HEIGHT: u32 = 1 << 1;
-    pub const MIN_W: u32 = 1 << 2;
-    pub const MAX_W: u32 = 1 << 3;
-    pub const MIN_H: u32 = 1 << 4;
-    pub const MAX_H: u32 = 1 << 5;
-    pub const DIR: u32 = 1 << 6;
-    pub const PADDING: u32 = 1 << 7;
-    pub const GAP: u32 = 1 << 8;
-    pub const WRAP: u32 = 1 << 9;
-    pub const CROSS_GAP: u32 = 1 << 10;
-    pub const MAIN_ALIGN: u32 = 1 << 11;
-    pub const CROSS_ALIGN: u32 = 1 << 12;
-    pub const ASPECT: u32 = 1 << 13;
-    pub const CLIP: u32 = 1 << 14;
-    pub const SCROLL_X: u32 = 1 << 15;
-    pub const SCROLL_Y: u32 = 1 << 16;
-    pub const BG: u32 = 1 << 17;
-    pub const BORDER_COLOR: u32 = 1 << 18;
-    pub const BORDER_W: u32 = 1 << 19;
-    pub const RADIUS: u32 = 1 << 20;
-    pub const OPACITY: u32 = 1 << 21;
-    pub const SHADOW: u32 = 1 << 22;
-    pub const PIXEL_SNAP: u32 = 1 << 23;
-    pub const CURSOR: u32 = 1 << 24;
-    pub const TRANSITION: u32 = 1 << 25;
-    pub const SLIDE: u32 = 1 << 26;
-    pub const HIDDEN: u32 = 1 << 27;
-    pub const MIN_COLUMN: u32 = 1 << 28;
-    pub const HIDE: u32 = 1 << 29;
+    pub const WIDTH: u64 = 1 << 0;
+    pub const HEIGHT: u64 = 1 << 1;
+    pub const MIN_W: u64 = 1 << 2;
+    pub const MAX_W: u64 = 1 << 3;
+    pub const MIN_H: u64 = 1 << 4;
+    pub const MAX_H: u64 = 1 << 5;
+    pub const DIR: u64 = 1 << 6;
+    pub const PADDING: u64 = 1 << 7;
+    pub const GAP: u64 = 1 << 8;
+    pub const WRAP: u64 = 1 << 9;
+    pub const CROSS_GAP: u64 = 1 << 10;
+    pub const MAIN_ALIGN: u64 = 1 << 11;
+    pub const CROSS_ALIGN: u64 = 1 << 12;
+    pub const ASPECT: u64 = 1 << 13;
+    pub const CLIP: u64 = 1 << 14;
+    pub const SCROLL_X: u64 = 1 << 15;
+    pub const SCROLL_Y: u64 = 1 << 16;
+    pub const BG: u64 = 1 << 17;
+    pub const BORDER_COLOR: u64 = 1 << 18;
+    pub const BORDER_W: u64 = 1 << 19;
+    pub const RADIUS: u64 = 1 << 20;
+    pub const OPACITY: u64 = 1 << 21;
+    pub const SHADOW: u64 = 1 << 22;
+    pub const PIXEL_SNAP: u64 = 1 << 23;
+    pub const CURSOR: u64 = 1 << 24;
+    pub const TRANSITION: u64 = 1 << 25;
+    pub const SLIDE: u64 = 1 << 26;
+    pub const HIDDEN: u64 = 1 << 27;
+    pub const MIN_COLUMN: u64 = 1 << 28;
+    pub const HIDE: u64 = 1 << 29;
     /// The move off the node's laid place, each lane its own (backlog
     /// C105): an entry that sets `dy` keeps the node's `dx`.
-    pub const DX: u32 = 1 << 30;
-    pub const DY: u32 = 1 << 31;
+    pub const DX: u64 = 1 << 30;
+    pub const DY: u64 = 1 << 31;
+    /// The colour the texts under the node take when they declare none
+    /// (backlog C130).
+    pub const TEXT_COLOR: u64 = 1 << 32;
 
     /// What an entry over the node's own size may set (ADR 0069,
     /// decision 7): the layout of its children, never its own size.
-    pub const LAYOUT_OF_CHILDREN: u32 =
+    pub const LAYOUT_OF_CHILDREN: u64 =
         DIR | PADDING | GAP | WRAP | CROSS_GAP | MAIN_ALIGN | CROSS_ALIGN | MIN_COLUMN | HIDE;
     /// The layout props among all of them: an entry that sets one of
     /// these lays the frame out with it.
-    pub const LAYOUT: u32 = WIDTH
+    pub const LAYOUT: u64 = WIDTH
         | HEIGHT
         | MIN_W
         | MAX_W
@@ -596,7 +599,7 @@ pub mod field {
         | LAYOUT_OF_CHILDREN;
 
     /// Each field's name, for the devtools and the warnings.
-    pub const NAMES: [(u32, &str); 32] = [
+    pub const NAMES: [(u64, &str); 33] = [
         (WIDTH, "width"),
         (HEIGHT, "height"),
         (MIN_W, "minWidth"),
@@ -629,6 +632,7 @@ pub mod field {
         (HIDE, "hidden (children)"),
         (DX, "dx"),
         (DY, "dy"),
+        (TEXT_COLOR, "textColor"),
     ];
 }
 
@@ -639,7 +643,7 @@ pub mod field {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Patch {
     /// The [`field`] bits set.
-    pub set: u32,
+    pub set: u64,
     layout: LayoutSpec,
     style: VisualStyle,
     cursor: Option<CursorShape>,
@@ -649,6 +653,8 @@ pub struct Patch {
     min_column: f32,
     /// The move off the node's laid place (`dx`, `dy`; backlog C105).
     offset: crate::geom::Vec2,
+    /// The colour texts under the node take (`textColor`; backlog C130).
+    text_color: Option<Color>,
     /// Which of the shadow's lanes the entry sets, as `shadow_lane` bits
     /// under `field::SHADOW` (backlog C114): an entry that sets `shadowY`
     /// keeps the node's colour, blur and the rest.
@@ -770,6 +776,8 @@ fn interact_moved(out: &NodeSpec, base: &NodeSpec) -> bool {
     let strip = |s: &NodeSpec| {
         let mut i = s.interact().clone();
         i.when = None;
+        // `textColor` is an entry's to set (backlog C130).
+        i.text_color = None;
         if let Some(t) = i.transform.as_deref_mut() {
             t.translate = crate::geom::Vec2::new(0.0, 0.0);
             if *t == crate::spec::TransformSpec::NONE {
@@ -803,10 +811,11 @@ impl Patch {
             hidden: out_a.hidden,
             min_column: out_a.rules_spec().min_column,
             offset: offset_of(&out_a),
+            text_color: out_a.interact().text_color,
             ..Patch::default()
         };
-        let mut set = 0u32;
-        let mut mark = |bit: u32, a: bool, b: bool| {
+        let mut set = 0u64;
+        let mut mark = |bit: u64, a: bool, b: bool| {
             if a || b {
                 set |= bit;
             }
@@ -870,6 +879,12 @@ impl Patch {
         }
         mark(field::DX, dx, false);
         mark(field::DY, dy, false);
+        // The texts' colour (backlog C130): neither base declares one.
+        mark(
+            field::TEXT_COLOR,
+            out_a.interact().text_color.is_some(),
+            out_b.interact().text_color.is_some(),
+        );
         let (ra, rb) = (out_a.rules_spec(), out_b.rules_spec());
         mark(
             field::MIN_COLUMN,
@@ -973,6 +988,7 @@ impl Patch {
         take!(field::HIDDEN, self.hidden, other.hidden);
         take!(field::MIN_COLUMN, self.min_column, other.min_column);
         take!(field::DX, self.offset.x, other.offset.x);
+        take!(field::TEXT_COLOR, self.text_color, other.text_color);
         take!(field::DY, self.offset.y, other.offset.y);
         if s & field::HIDE != 0 {
             self.hide.extend(other.hide.iter().cloned());
@@ -981,7 +997,7 @@ impl Patch {
     }
 
     /// Writes the props among `mask` this entry sets onto `spec`.
-    pub fn apply(&self, spec: &mut NodeSpec, mask: u32) {
+    pub fn apply(&self, spec: &mut NodeSpec, mask: u64) {
         let s = self.set & mask;
         if s == 0 {
             return;
@@ -1030,6 +1046,9 @@ impl Patch {
         }
         if s & field::DY != 0 {
             spec.transform_mut().translate.y = self.offset.y;
+        }
+        if s & field::TEXT_COLOR != 0 {
+            spec.interact_mut().text_color = self.text_color;
         }
         if s & field::MIN_COLUMN != 0
             && let Some(r) = spec.rules_ref_mut()
@@ -1116,7 +1135,7 @@ impl Rule {
     /// The fields this entry may set: the layout of its children for one
     /// over the node's own size (decision 7), every field otherwise —
     /// but `hidden` children, which name what a size entry gives way to.
-    pub fn allowed(&self) -> u32 {
+    pub fn allowed(&self) -> u64 {
         if self.cond.reads_size() {
             field::LAYOUT_OF_CHILDREN
         } else {
@@ -2037,7 +2056,7 @@ mod tests {
         let (lift, refused) = Patch::capture(&|s| s.shadow_offset(3.0, 4.0));
         assert_eq!(refused, None);
         let mut spec = base();
-        lift.apply(&mut spec, u32::MAX);
+        lift.apply(&mut spec, u64::MAX);
         let sh = spec.style.shadow;
         assert_eq!((sh.dx, sh.dy), (3.0, 4.0), "the lanes it sets");
         assert_eq!(sh.color, Color::hex(0x00000080), "the colour kept");
@@ -2048,7 +2067,7 @@ mod tests {
         let mut both = tint.clone();
         both.merge(&lift);
         let mut spec = base();
-        both.apply(&mut spec, u32::MAX);
+        both.apply(&mut spec, u64::MAX);
         let sh = spec.style.shadow;
         assert_eq!(sh.color, Color::hex(0xff000080));
         assert_eq!((sh.dx, sh.dy, sh.blur), (3.0, 4.0, 6.0));
@@ -2056,7 +2075,7 @@ mod tests {
         // A lane set to the default's value still counts as set.
         let (flat, _) = Patch::capture(&|s| s.shadow_y(0.0));
         let mut spec = base();
-        flat.apply(&mut spec, u32::MAX);
+        flat.apply(&mut spec, u64::MAX);
         assert_eq!((spec.style.shadow.dx, spec.style.shadow.dy), (2.0, 0.0));
     }
 

@@ -452,7 +452,7 @@ extern "C" {
  * bytes; ADR 0070, kui_answer_typeahead answering the first), then
  * essential_motion (864 bytes; backlog C107), then dx and dy (backlog
  * C105) and opens_on_press (backlog C108), 872 bytes, then on_item_key
- * (880 bytes; backlog C120);
+ * (880 bytes; backlog C120), then text_color (888 bytes; backlog C130);
  * kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92),
  * kui_set_rules_appearance (backlog C113), kui_platform with its
@@ -1552,6 +1552,12 @@ typedef struct KuiSpec {
      * KuiValue*, cloned while the node opens; NULL for none. ABI 39,
      * appended (880 bytes on 64-bit). */
     const KuiValue *on_item_key;
+    /* The colour of every text under the node that names none (textColor,
+     * backlog C130), as a box's CSS color is inherited: the nearest
+     * declaration above a text wins, else the theme's foreground; a `when`
+     * entry may set it. 0 for none. ABI 39, appended (888 bytes on
+     * 64-bit). */
+    uint32_t text_color;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

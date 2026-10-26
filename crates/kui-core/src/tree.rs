@@ -202,6 +202,10 @@ pub struct Tree {
     /// Whether any node turns or scales (ADR 0043): the per-node clip
     /// space is tracked only on a frame that has one.
     pub any_transform: bool,
+    /// Whether any node declares a `text_color` for the texts under it
+    /// (backlog C130): a text that names no colour looks up its ancestors
+    /// only in a frame that has one.
+    pub any_text_color: bool,
     /// Whether any node's keyframe stops name a position (backlog F132):
     /// the pass that moves them runs only on a frame that has one.
     pub any_offset_stop: bool,
@@ -388,6 +392,7 @@ impl Tree {
         self.any_gradient = false;
         self.any_backdrop_blur = false;
         self.any_transform = false;
+        self.any_text_color = false;
         self.any_offset_stop = false;
         self.any_moved = false;
         self.any_keep_room = false;
@@ -481,6 +486,7 @@ impl Tree {
             self.any_backdrop_blur |= i.backdrop_blur > 0.0;
             self.any_transform |= i.transform.as_deref().is_some_and(|t| t.active());
             self.any_moved |= i.transform.as_deref().is_some_and(|t| t.offset().is_some());
+            self.any_text_color |= i.text_color.is_some();
         }
         if let Some(a) = spec.access.as_deref() {
             self.any_line |= a.role == Some(crate::access::Role::Line);

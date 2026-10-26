@@ -1372,6 +1372,28 @@ impl Core {
         }
     }
 
+    /// The colour a text that names none takes, opened under the node at
+    /// the top of the stack: the nearest `text_color` on it or above it —
+    /// as the rules that hold this frame set it, a node's `when` having
+    /// resolved as it opened — else the theme's foreground (backlog C130).
+    /// One flag read in a frame where nothing declares one.
+    #[inline]
+    pub(crate) fn inherited_text_color(&self) -> crate::color::Color {
+        if self.tree.any_text_color && !self.tree.is_empty() {
+            let mut n = self.current();
+            loop {
+                if let Some(c) = self.tree.specs[n as usize].interact().text_color {
+                    return c;
+                }
+                match self.tree.parent[n as usize] {
+                    crate::tree::NIL => break,
+                    p => n = p,
+                }
+            }
+        }
+        self.theme.fg
+    }
+
     pub fn text_node(&mut self, content: &str, style: TextStyle) {
         if self.tree.is_empty() {
             return;
@@ -1392,11 +1414,12 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        // A style that named no colour takes the theme's foreground here,
-        // at the one door text comes through, so the shaping cache, the
+        // A style that named no colour takes the nearest `text_color`
+        // above it (backlog C130), else the theme's foreground, here, at
+        // the one door text comes through, so the shaping cache, the
         // display list and every binding downstream see a real colour
         // (ADR 0019).
-        let style = style.or_fg(self.theme.fg);
+        let style = style.or_fg(self.inherited_text_color());
         let tid = {
             let sess = &mut *self.session.state();
             self.text
@@ -2294,7 +2317,7 @@ impl Core {
             return;
         }
         // The paragraph's own colour, which each span falls back to.
-        let base = base.or_fg(self.theme.fg);
+        let base = base.or_fg(self.inherited_text_color());
         let tid = {
             let sess = &mut *self.session.state();
             self.text

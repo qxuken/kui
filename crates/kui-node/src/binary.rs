@@ -134,7 +134,7 @@ use crate::{Result, err, value_of};
 /// a contribution slot (ADR 0067's second step): name, props. And
 /// `focusRing` is a new row (backlog C93), in the same unreleased version;
 /// and ADR 0069's: the `when`, `minColumn`, `hidden` and `onQuery` rows,
-/// and `lazy` a new op (30).
+/// and `lazy` a new op (30); and `textColor` a new row (backlog C130).
 pub const VERSION: u32 = 27;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a

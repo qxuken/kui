@@ -6045,6 +6045,7 @@ SCENE_TREES.sampler = (fx) =>
           focusable: true,
           focusBg: '#2b3350',
           focusRing: '#8899aa',
+          textColor: '#d8dce8',
           initialFocus: true,
           accent: true,
           cursor: 'pointer',

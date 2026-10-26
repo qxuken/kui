@@ -982,6 +982,10 @@ pub struct KuiSpec {
     /// does not claim as (`onItemKey`, backlog C120), borrowed like
     /// `on_layout`; NULL for none. ABI 39.
     pub on_item_key: *const KuiValue,
+    /// The colour of every text under the node that names none
+    /// (`textColor`, backlog C130): the nearest declaration above a text
+    /// wins, else the theme's foreground. 0 for none. ABI 39, appended.
+    pub text_color: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

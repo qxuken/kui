@@ -98,19 +98,16 @@ end
 -- `on_danger` on the danger fill its hover and press paint (C129) — in
 -- `danger` on that fill the label vanished under the pointer. A plain
 -- row's chord is `faint` on the menu and `fg` on its hover wash, where
--- `faint` read at 3.7:1 in Ledger's dark half. A text has no box for a
--- rule to act on, so it is drawn twice, the hot copy floated over the
--- plain one, and the row's hover group's state shows one or the other. A
--- row whose text keeps its colour draws it once.
-local function on_fill(c: Ctx, group: string, node: function(string): kui.Node, role: string, hot: string): kui.Node
-  if hot == role then return node(role) end
-  return row {
-    row { hover_group = group, when = { { group_hovered = true, opacity = 0 }, { group_pressed = true, opacity = 0 } },
-      node(role) },
-    row { float = { anchor = "parent" }, hover_group = group, opacity = 0,
-      when = { { group_hovered = true, opacity = 1 }, { group_pressed = true, opacity = 1 } },
-      node(hot) },
-  }
+-- `faint` read at 3.7:1 in Ledger's dark half. The text names no colour
+-- and takes the box's `text_color`, which the row's hover group's state
+-- sets (C130): one text, where it was drawn twice and one copy shown.
+local function on_fill(c: Ctx, group: string, role: string, hot: string, node: kui.Node): kui.Node
+  local t: kui.Props = { text_color = ref(c, role), node }
+  if hot ~= role then
+    t.hover_group = group
+    t.when = { { group_hovered = true, text_color = ref(c, hot) }, { group_pressed = true, text_color = ref(c, hot) } }
+  end
+  return row(t)
 end
 
 function M.menu(c: Ctx, p: P): kui.Node
@@ -151,16 +148,15 @@ function M.menu(c: Ctx, p: P): kui.Node
       opacity = off and "$disabledOpacity" or nil,
       cursor = "pointer",
       on_click = act(c, "menu.choose", { value = it.value }),
-      on_fill(c, group, function(role: string): kui.Node return ctx.text(c, label, { color = ref(c, role) }) end,
-        danger and "danger" or "fg", danger and "on_danger" or "fg"),
+      on_fill(c, group, danger and "danger" or "fg", danger and "on_danger" or "fg",
+        text(label, { size = "$kitSize", family = "$kitUi" })),
       ctx.grow(),
     }
     if not off then focused = true end
     if str(it.shortcut) then
       local chord = it.shortcut as string
-      row_t[#row_t + 1] = on_fill(c, group,
-        function(role: string): kui.Node return ctx.data(c, chord, { size = "$kitSizeLabel", color = ref(c, role) }) end,
-        "faint", danger and "on_danger" or "fg")
+      row_t[#row_t + 1] = on_fill(c, group, "faint", danger and "on_danger" or "fg",
+        text(chord, { size = "$kitSizeLabel", family = "$kitData" }))
     end
     t[#t + 1] = row(row_t)
   end

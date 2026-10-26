@@ -263,6 +263,26 @@ Steps 1–5 were built; step 6, Kit's adoption, is a pass of its own.
   cheaper than a fingerprint of the facts would be to check. A node's
   `when` list sits behind an `Arc`, so the tree's copy of a spec and a
   journal's share it.
+- **A text is recoloured from its box** (backlog C130, 2026-10-26). A
+  text has no box of its own, so no entry could reach its colour, and Kit
+  drew a danger menu row's label twice and showed one copy by the row's
+  hover group. Of the two ways — rules on a text node, or a colour a box
+  hands its texts — the second is the one this ADR already has the shape
+  for: `textColor` is a box prop like `bg`, inherited as CSS's `color`
+  is (the nearest declaration above a text that names no colour wins,
+  else the theme's foreground), and any entry but an own-size one may
+  set it, so the row says `textColor` once and its `hovered` / `pressed`
+  entries recolour every text in it without a re-run. A text node with
+  rules of its own would have needed a box per text, hit testing for
+  state it does not have, or a group condition on every label. The text
+  takes the colour as it enters the tree (`Core::inherited_text_color`,
+  one flag read in a frame where nothing declares one), after the box's
+  entries resolved as it opened, so a replayed fill recolours too; a
+  text's own `color` and a span's win. The prop lives in the interaction
+  group (no `NodeSpec` growth), and the patch's field set is 64 bits,
+  the 33rd field being `textColor`. Doors: the schema row
+  (`textColor` / `text_color`), C's `KuiSpec.text_color` (888 bytes,
+  inside ABI 39), Odin's, Node's wire row inside protocol 27.
 - **Under reduced motion a match change jumps** by zeroing the node's
   transition for the frame the static match moved.
 - **`minColumn`'s lines are `crossGap` apart**, as a wrapping row's are.

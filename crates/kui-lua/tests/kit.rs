@@ -4102,3 +4102,68 @@ fn a_kit_buttons_hint_shown_by_tab_keeps_a_key_of_its_own() {
     assert_eq!(keys.len(), all, "a key a node");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
+
+/// A danger menu row draws its label and its chord once each — the label
+/// in `danger` and the chord in `faint` at rest, both `on_danger` hovered: the row's hover group sets the box's
+/// `textColor` (C130), where the label was drawn twice and one copy shown.
+#[test]
+fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
+    let mut r = rig();
+    let danger = std::cell::Cell::new(None);
+    let on_danger = std::cell::Cell::new(None);
+    let faint = std::cell::Cell::new(None);
+    let view = |r: &mut Rig| {
+        r.frame(|ui| {
+            kit::Settings::new().skin(kit::Skin::Ledger).appearance(kit::Appearance::Light).place(ui);
+            ui.with_keyed("opener", NodeSpec::row().size(120.0, 24.0), |ui| {
+                kit::Menu::new(vec![
+                    kit::Item::new("open", "Open file").shortcut("⌘O"),
+                    kit::Item::new("rm", "Delete forever").shortcut("⌘⌫").danger(true),
+                ])
+                .place(ui);
+            });
+            danger.set(ui.token_color("kitDanger"));
+            on_danger.set(ui.token_color("kitOnDanger"));
+            faint.set(ui.token_color("kitFaint"));
+        });
+    };
+    view(&mut r);
+    view(&mut r);
+    let texts = r.texts();
+    for t in ["Delete forever", "⌘⌫", "Open file", "⌘O"] {
+        assert_eq!(texts.iter().filter(|s| *s == t).count(), 1, "{t} drawn once: {texts:?}");
+    }
+    let row = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Delete forever"))
+        .cloned()
+        .expect("the danger row");
+    let glyphs = |core: &mut Core| -> Vec<kui_core::Color> {
+        let (dl, _) = core.output();
+        let mut out = Vec::new();
+        for q in &dl.quads {
+            let inside = q.rect.y >= row.rect.y && q.rect.y + q.rect.h <= row.rect.y + row.rect.h;
+            if inside
+                && matches!(q.kind, kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel)
+                && !out.contains(&q.color)
+            {
+                out.push(q.color);
+            }
+        }
+        out
+    };
+    assert_eq!(
+        glyphs(&mut r.core),
+        vec![danger.get().unwrap(), faint.get().unwrap()],
+        "at rest, the label in danger and the chord faint"
+    );
+    let at = kui_core::Vec2::new(row.rect.x + row.rect.w / 2.0, row.rect.y + row.rect.h / 2.0);
+    kui_core::testing::hover(&mut r.core, at);
+    view(&mut r);
+    view(&mut r);
+    assert_eq!(glyphs(&mut r.core), vec![on_danger.get().unwrap()], "hovered, on its fill");
+    assert!(r.core.take_warnings().is_empty());
+}

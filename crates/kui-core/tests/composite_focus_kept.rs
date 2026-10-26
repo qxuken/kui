@@ -445,21 +445,37 @@ fn a_disabled_row_asked_for_or_recovered_to_steps_to_the_nearest_live_one() {
     settle_off(&mut core, n, &[3, 4]);
     core.focus_item(list(), 3);
     settle_off(&mut core, n, &[3, 4]);
-    assert_eq!(core.focus(), Some(list().index(2)), "row 2 is nearer than 5");
+    assert_eq!(
+        core.focus(),
+        Some(list().index(2)),
+        "row 2 is nearer than 5"
+    );
     core.focus_item(list(), 4);
     settle_off(&mut core, n, &[3, 4]);
-    assert_eq!(core.focus(), Some(list().index(5)), "row 5 is nearer than 2");
+    assert_eq!(
+        core.focus(),
+        Some(list().index(5)),
+        "row 5 is nearer than 2"
+    );
     // An unbuilt disabled row: reached for, then stepped past.
     core.focus_item(list(), 500);
     settle_off(&mut core, n, &[500, 501]);
-    assert_eq!(core.focus(), Some(list().index(499)), "reached, then the nearest live");
+    assert_eq!(
+        core.focus(),
+        Some(list().index(499)),
+        "reached, then the nearest live"
+    );
     // The last row goes and the new last is disabled: the live one
     // before it.
     core.focus_item(list(), n - 1);
     settle_off(&mut core, n, &[n - 2]);
     assert_eq!(core.focus(), Some(list().index(n - 1)));
     settle_off(&mut core, n - 1, &[n - 2]);
-    assert_eq!(core.focus(), Some(list().index(n - 3)), "past the disabled new last");
+    assert_eq!(
+        core.focus(),
+        Some(list().index(n - 3)),
+        "past the disabled new last"
+    );
 }
 
 /// A list whose items carry no index: `focus_item` names a place, and a
@@ -469,36 +485,48 @@ fn focus_item_on_a_disabled_place_lands_on_the_nearest_live_item() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(300.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed("list", NodeSpec::column().role(Role::List).label("rows"), |ui| {
-        for (i, dead) in [false, true, true, false].into_iter().enumerate() {
-            ui.leaf_keyed(
-                &format!("i{i}"),
-                NodeSpec::row()
-                    .size(100.0, ROW_H)
-                    .role(Role::ListItem)
-                    .focusable()
-                    .disabled(dead)
-                    .label(format!("item {i}")),
-            );
-        }
-    });
+    ui.with_keyed(
+        "list",
+        NodeSpec::column().role(Role::List).label("rows"),
+        |ui| {
+            for (i, dead) in [false, true, true, false].into_iter().enumerate() {
+                ui.leaf_keyed(
+                    &format!("i{i}"),
+                    NodeSpec::row()
+                        .size(100.0, ROW_H)
+                        .role(Role::ListItem)
+                        .focusable()
+                        .disabled(dead)
+                        .label(format!("item {i}")),
+                );
+            }
+        },
+    );
     ui.finish();
     core.focus_item(list(), 2);
     let mut ui = core.frame(Size::new(300.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.with_keyed("list", NodeSpec::column().role(Role::List).label("rows"), |ui| {
-        for (i, dead) in [false, true, true, false].into_iter().enumerate() {
-            ui.leaf_keyed(
-                &format!("i{i}"),
-                NodeSpec::row()
-                    .size(100.0, ROW_H)
-                    .role(Role::ListItem)
-                    .focusable()
-                    .disabled(dead)
-                    .label(format!("item {i}")),
-            );
-        }
-    });
+    ui.with_keyed(
+        "list",
+        NodeSpec::column().role(Role::List).label("rows"),
+        |ui| {
+            for (i, dead) in [false, true, true, false].into_iter().enumerate() {
+                ui.leaf_keyed(
+                    &format!("i{i}"),
+                    NodeSpec::row()
+                        .size(100.0, ROW_H)
+                        .role(Role::ListItem)
+                        .focusable()
+                        .disabled(dead)
+                        .label(format!("item {i}")),
+                );
+            }
+        },
+    );
     ui.finish();
-    assert_eq!(core.focus(), Some(list().str("i3")), "place 2 is dead; 3 is one away, 0 two");
+    assert_eq!(
+        core.focus(),
+        Some(list().str("i3")),
+        "place 2 is dead; 3 is one away, 0 two"
+    );
 }

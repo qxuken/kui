@@ -204,6 +204,7 @@ pub const P_DX: u32 = 152;
 pub const P_DY: u32 = 153;
 pub const P_OPENS_ON_PRESS: u32 = 154;
 pub const P_ON_ITEM_KEY: u32 = 155;
+pub const P_TEXT_COLOR: u32 = 156;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1005,6 +1006,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.focus_ring(c)),
         doc: "The colour of the ring the core draws around a keyboard-visibly focused node — a control, a `focusable` box, an `onKey` sink — for this node and everything under it that declares none (backlog C93): the nearest declaration on the focused node or above it wins, else the theme's `focusRing`. A colour with no alpha draws no ring, turning it off without touching the background as `focusBg` would (in C, whose 0 is unset, any colour with no alpha but 0: `0xffffff00`). What an add-on that paints in its own palette sets once at the root of what it draws, `focusRing=\"$kitFocus\"`.",
+    },
+    PropDef {
+        name: "textColor",
+        id: P_TEXT_COLOR,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.text_color(c)),
+        doc: "The colour of every text under this node that names none, as a box's CSS `color` is inherited (backlog C130): the nearest declaration above a text wins, else the theme's foreground. A `when` entry may set it, so a row that recolours its label while hovered or pressed — a danger menu item's label on its danger fill — says so once, on the row, where a text has no box of its own for a rule: `textColor: '$danger', when: [{ hovered: true, textColor: '$onDanger' }]`. A text's own `color` wins; spans keep theirs.",
     },
     PropDef {
         name: "when",
