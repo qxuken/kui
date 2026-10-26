@@ -4507,6 +4507,22 @@ macro_rules! core_methods {
                 Ok(self.$core().layout_of(key).map(|r| readback(&r.to_value())))
             }
 
+            /// Where the pointer is over `key`, `{x, y, w, h}`: its place
+            /// from the node's top-left and the node's size, as of the
+            /// last frame (backlog C119) — over it while `0 <= x < w` and
+            /// `0 <= y < h`. `null` while the pointer is outside the
+            /// window, and for a node the last frame gave neither a hit
+            /// region (`hoverable`, `onHover`, anything that takes the
+            /// pointer) nor an `onLayout` rect. A pointer move is a frame,
+            /// so a view that follows the pointer reads it each frame.
+            #[napi(ts_return_type = "{ x: number, y: number, w: number, h: number } | null")]
+            pub fn pointer_in(&mut self, key: String) -> Result<Option<Json>> {
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(None);
+                };
+                Ok(self.$core().pointer_in(key).map(|r| readback(&r.to_value())))
+            }
+
             /// Where a point lands in the text a keyed node drew: a byte
             /// offset into its text and the visual row within that node —
             /// counted across every run the key covers, so a `line` row of

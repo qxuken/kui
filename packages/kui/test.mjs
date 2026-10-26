@@ -2825,6 +2825,12 @@ test('onLayout reports the rect once and again when it changes', () => {
   // that declared no onLayout.
   assert.deepEqual(ctx.layoutOf('panel'), { x: 0, y: 0, w: 150, h: 240 });
   assert.equal(ctx.layoutOf('nowhere'), null);
+  // Where the pointer is over it (backlog C119): its place from the
+  // node's top-left and the node's size; null with no pointer.
+  assert.equal(ctx.pointerIn('panel'), null);
+  ctx.cursor(40, 30);
+  assert.deepEqual(ctx.pointerIn('panel'), { x: 40, y: 30, w: 150, h: 240 });
+  assert.equal(ctx.pointerIn('nowhere'), null);
 });
 
 // Silent misconfigurations come back as data, once each.

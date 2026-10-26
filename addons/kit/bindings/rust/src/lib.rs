@@ -5730,7 +5730,11 @@ pub struct LineChart {
     pub height: Option<f64>,
     /// Filled under the first line.
     pub area: Option<bool>,
-    /// With it, only the last `window` of x is shown: a live chart.
+    /// With it, only the last `window` of x is shown: a live chart. While
+    /// samples come in it scrolls smoothly between them, drawn one sample
+    /// behind and slid left over the time samples take to come (a keyframe
+    /// cycle the core runs, so a frame between samples runs no view); under
+    /// reduced motion, and while the plot is out of the viewport, it steps.
     pub window: Option<f64>,
     /// How the x ticks read; the number when left out.
     pub x_format: Option<XFormat>,
@@ -5738,13 +5742,17 @@ pub struct LineChart {
     pub x_unit: Option<String>,
     /// After each y tick's number: `ms`, `%`.
     pub y_unit: Option<String>,
-    /// Under the pointer, a crosshair on the nearest sample, a dot on each
-    /// series there and a readout of the x and every series' value in its
-    /// colour, following the pointer and gone when it leaves; on when left out.
-    /// An idle chart pays one hover layer for it.
+    /// Under the pointer, a crosshair at the pointer's x, a dot on each series
+    /// there and a readout of the x and every series' value in its colour for
+    /// the sample under it — a still pointer keeps its crosshair still while
+    /// a live window slides samples under it — gone when the pointer leaves;
+    /// on when left out. An idle chart pays one hover layer for it.
     pub readout: Option<bool>,
-    /// A Tab stop: Left and Right move the readout a sample, Home and End to
-    /// the ends, and the readout is a live region a screen reader announces.
+    /// A Tab stop that is a slider over the samples: the arrows move the
+    /// readout a sample, Page Up and Down ten, Home and End to the ends, and a
+    /// screen reader hears the readout as its value and as a live region. No
+    /// key sink: every other key, Tab and the app's chords, goes on as from any
+    /// control.
     pub focusable: Option<bool>,
     /// The message `hover` arrives as, with `hover: LineChartHover` in it. The
     /// pointer moved over a row.
@@ -5788,7 +5796,11 @@ impl LineChart {
         self
     }
 
-    /// With it, only the last `window` of x is shown: a live chart.
+    /// With it, only the last `window` of x is shown: a live chart. While
+    /// samples come in it scrolls smoothly between them, drawn one sample
+    /// behind and slid left over the time samples take to come (a keyframe
+    /// cycle the core runs, so a frame between samples runs no view); under
+    /// reduced motion, and while the plot is out of the viewport, it steps.
     pub fn window(mut self, v: f64) -> Self {
         self.window = Some(v);
         self
@@ -5812,17 +5824,21 @@ impl LineChart {
         self
     }
 
-    /// Under the pointer, a crosshair on the nearest sample, a dot on each
-    /// series there and a readout of the x and every series' value in its
-    /// colour, following the pointer and gone when it leaves; on when left out.
-    /// An idle chart pays one hover layer for it.
+    /// Under the pointer, a crosshair at the pointer's x, a dot on each series
+    /// there and a readout of the x and every series' value in its colour for
+    /// the sample under it — a still pointer keeps its crosshair still while
+    /// a live window slides samples under it — gone when the pointer leaves;
+    /// on when left out. An idle chart pays one hover layer for it.
     pub fn readout(mut self, v: bool) -> Self {
         self.readout = Some(v);
         self
     }
 
-    /// A Tab stop: Left and Right move the readout a sample, Home and End to
-    /// the ends, and the readout is a live region a screen reader announces.
+    /// A Tab stop that is a slider over the samples: the arrows move the
+    /// readout a sample, Page Up and Down ten, Home and End to the ends, and a
+    /// screen reader hears the readout as its value and as a live region. No
+    /// key sink: every other key, Tab and the app's chords, goes on as from any
+    /// control.
     pub fn focusable(mut self, v: bool) -> Self {
         self.focusable = Some(v);
         self

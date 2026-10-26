@@ -3711,6 +3711,15 @@ typedef struct KuiLayoutRect {
  * NULL out or a short reservation. Read during a build it describes the
  * previous frame, like kui_scroll_geometry. */
 bool kui_layout_of(KuiCtx *ctx, uint64_t key, KuiLayoutRect *out);
+/* Where the pointer is over `key`, as of the last frame (backlog C119): x, y
+ * its place from the node's top-left (through any turn the node is drawn
+ * under), w, h the node's size - over it while 0 <= x < w and 0 <= y < h.
+ * False while the pointer is outside the window, for a node the last frame
+ * gave neither a hit region (hoverable, on_hover, anything that takes the
+ * pointer) nor an on_layout rect, a bad context, a NULL out or a short
+ * reservation. A pointer move is a frame, so a view that follows the
+ * pointer (a chart's crosshair) reads it each frame it is drawn. */
+bool kui_pointer_in(KuiCtx *ctx, uint64_t key, KuiLayoutRect *out);
 /* Everything the last layout resolved for a container: its box, its content
  * size and that offset. False (leaving out untouched) for a key no layout
  * has resolved as a scroll container.

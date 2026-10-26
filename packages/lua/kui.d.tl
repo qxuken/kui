@@ -388,7 +388,7 @@ global type kui = record
     on_click: any
     -- Drag handler: the drag arrives as this message with `drag: {phase, x, y, dx, dy, parent}` in it (ADR 0047), `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role="line"` rows they carry `line`, `byte` and `clicks` — see the events table. A press on a child that does nothing with a press itself drags the nearest enclosing `onDrag` node, stopping at a clickable, a key sink, window chrome, a slider, the modal boundary and the selection scope the press is in (backlog F176).
     on_drag: any
-    -- Key sink: with key focus held, presses arrive as this message with `key: {phase: "down", code, …}` in it, and a composition, a commit and a reader's selection as `preedit`, `text` and `select` the same way (ADR 0047). Releases only with `keyUp` beside it.
+    -- Key sink: with key focus held, presses arrive as this message with `key: {phase: "down", code, …}` in it, and a composition, a commit and a reader's selection as `preedit`, `text` and `select` the same way (ADR 0047). Releases only with `keyUp` beside it. A key a focused node inside it leaves comes up to it (ADR 0011); a sink around Tab stops is a keymap over them and no Tab stop of its own, one around nothing focusable is one.
     on_key: any
     -- With `onKey`: releases arrive too, as the same payload with phase:"up" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice.
     key_up: boolean
@@ -1577,6 +1577,8 @@ global type kui = record
     is_group_pressed: function(group: string): boolean
     -- Where layout put a node last frame (backlog C26).
     layout_of: function(key: KeyRef): Rect
+    -- Where the pointer is over a node, from its top-left, and the node's size (backlog C119).
+    pointer_in: function(key: KeyRef): Rect
     -- A scrolling node's offset.
     scroll_offset: function(key: KeyRef): Point
     -- A scrolling node's viewport and content sizes.

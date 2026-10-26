@@ -557,6 +557,42 @@ impl Core {
         p
     }
 
+    /// Where the pointer is over node `key` (backlog C119), as of the
+    /// last frame: `x` and `y` its place from the node's top-left, through
+    /// any turn the node is drawn under (ADR 0043), and `w` and `h` the
+    /// node's size — so it is over the node while `0 <= x < w` and `0 <=
+    /// y < h`. `None` while the pointer is outside the window, and for a
+    /// node the last frame gave neither a hit region (a `hoverable`, an
+    /// `on_hover`, anything that takes the pointer) nor an `on_layout`
+    /// rect. A view that follows the pointer reads it every frame it is
+    /// drawn, and a pointer move is a frame: a chart's crosshair at the
+    /// pointer's x wants nothing else. Read only while it matters — over
+    /// the node — a kept fill runs again when it changes, and only then.
+    pub fn pointer_in(&self, key: Key) -> Option<Rect> {
+        let r = self.pointer_in_raw(key);
+        self.note_read(|| replay::Read::PointerIn(key, r));
+        r
+    }
+
+    pub(crate) fn pointer_in_raw(&self, key: Key) -> Option<Rect> {
+        let raw = self.interaction.cursor()?;
+        if let Some(h) = self.interaction.hits.iter().rev().find(|h| h.key == key) {
+            let p = match &h.turn {
+                Some(t) => t.transform.unapply(raw),
+                None => raw,
+            };
+            return Some(Rect::new(
+                p.x - h.rect.x,
+                p.y - h.rect.y,
+                h.rect.w,
+                h.rect.h,
+            ));
+        }
+        let r = self.layout_of_raw(key)?;
+        let p = raw.minus(self.dt_shift());
+        Some(Rect::new(p.x - r.x, p.y - r.y, r.w, r.h))
+    }
+
     // The open chain is inlined end to end (`Ui::open` → here →
     // `open_with_key` → `Tree::push`): a `NodeSpec` is 224 bytes and moved
     // by value at every step, and each step that is a real call is a copy

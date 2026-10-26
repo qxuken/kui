@@ -1317,6 +1317,7 @@ foreign lib {
 	edge_scroll :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, rx: f32, ry: f32, rw: f32, rh: f32, dx: ^f32, dy: ^f32) -> bool ---
 	scroll_offset :: proc(ctx: ^Ctx, key: u64, x: ^f32, y: ^f32) ---
 	layout_of :: proc(ctx: ^Ctx, key: u64, out: ^LayoutRect) -> bool ---
+	pointer_in :: proc(ctx: ^Ctx, key: u64, out: ^LayoutRect) -> bool ---
 	scroll_geometry :: proc(ctx: ^Ctx, key: u64, out: ^ScrollGeometry) -> bool ---
 	font_add :: proc(ctx: ^Ctx, data: [^]u8, len: uint) -> u64 ---
 	font_add_system :: proc(ctx: ^Ctx, name: string) -> u64 ---

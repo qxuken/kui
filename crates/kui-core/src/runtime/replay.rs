@@ -228,6 +228,8 @@ pub(crate) enum Read {
         guest: bool,
     },
     Layout(Key, Option<Rect>),
+    /// The pointer over a node (`Core::pointer_in`, backlog C119).
+    PointerIn(Key, Option<Rect>),
     TextHit(Key, Vec2, Option<crate::text::TextHit>),
     /// Whether the text under a key was cut short (`Core::text_cut`).
     TextCut(Key, bool),
@@ -548,6 +550,7 @@ impl Core {
                 guest,
             } => !self.label_answers(label, *origin, *ns, *guest),
             Read::Layout(k, r) => self.layout_of_raw(*k) == *r,
+            Read::PointerIn(k, r) => self.pointer_in_raw(*k) == *r,
             Read::TextHit(k, p, h) => self.text_hit_raw(*k, *p) == *h,
             Read::TextCut(k, v) => self.text.cut(*k, self.building) == *v,
             Read::EditText(k, s) => self.edit.text(*k) == *s,

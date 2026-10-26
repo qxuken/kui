@@ -2402,6 +2402,14 @@ mod queries_headless {
         assert!(kui_layout_of(ctx, key, &mut rect));
         assert_eq!((rect.x, rect.y, rect.w, rect.h), (0.0, 0.0, 300.0, 20.0));
         assert!(!kui_layout_of(ctx, key + 1, &mut rect));
+        // Where the pointer is over it (backlog C119): its place from the
+        // node's top-left and the node's size; nothing while the pointer
+        // is outside the window.
+        assert!(!kui_pointer_in(ctx, key, &mut rect), "no pointer yet");
+        kui_input_cursor(ctx, 120.0, 15.0);
+        assert!(kui_pointer_in(ctx, key, &mut rect));
+        assert_eq!((rect.x, rect.y, rect.w, rect.h), (120.0, 15.0, 300.0, 20.0));
+        assert!(!kui_pointer_in(ctx, key + 1, &mut rect));
 
         let mut out = [KuiWarning {
             code: KUI_EMPTY,

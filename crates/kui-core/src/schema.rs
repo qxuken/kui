@@ -1145,7 +1145,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_KEY,
         kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_key(v)),
-        doc: "Key sink: with key focus held, presses arrive as this message with `key: {phase: \"down\", code, …}` in it, and a composition, a commit and a reader's selection as `preedit`, `text` and `select` the same way (ADR 0047). Releases only with `keyUp` beside it.",
+        doc: "Key sink: with key focus held, presses arrive as this message with `key: {phase: \"down\", code, …}` in it, and a composition, a commit and a reader's selection as `preedit`, `text` and `select` the same way (ADR 0047). Releases only with `keyUp` beside it. A key a focused node inside it leaves comes up to it (ADR 0011); a sink around Tab stops is a keymap over them and no Tab stop of its own, one around nothing focusable is one.",
     },
     PropDef {
         name: "keyUp",

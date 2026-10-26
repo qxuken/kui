@@ -284,6 +284,49 @@ fn line_chart_live_300(bencher: divan::Bencher) {
     });
 }
 
+/// A live window (the last 30 s of 300 samples, one every 100 ms, on a
+/// frame clock): `sample` is the frame a sample lands in — a new revision,
+/// the chart asked again and its slide started — and `between` a frame
+/// between two, which the slide's keyframe cycle draws with no view run
+/// (the fill replayed, the core moving the content).
+#[divan::bench(args = ["sample", "between"])]
+fn line_chart_live_window(bencher: divan::Bencher, frame: &str) {
+    let mut ch = kui_core::channel::Channel::table(chart_columns(0, 300)).unwrap();
+    let mut exts = Extensions::new();
+    exts.push_as("kit", Box::new(scene::load_kit())).unwrap();
+    let mut core = Core::new();
+    let mut t = 1.0;
+    let mut from = 0;
+    for _ in 0..5 {
+        from += 1;
+        t += 0.1;
+        ch = ch.publish(chart_columns(from, 300)).unwrap();
+        core.set_time(t);
+        chart_frame(&mut core, &mut exts, &chart_props(&ch, Some(30.0)));
+    }
+    let w = core.take_warnings();
+    assert!(w.is_empty(), "the chart is clean: {w:?}");
+    let props = chart_props(&ch, Some(30.0));
+    if frame == "sample" {
+        bencher.bench_local(|| {
+            from += 1;
+            t += 0.1;
+            ch = ch.publish(chart_columns(from, 300)).unwrap();
+            core.set_time(t);
+            chart_frame(&mut core, &mut exts, &chart_props(&ch, Some(30.0)));
+        });
+    } else {
+        // A sixtieth of the pace a frame, a fresh slide each hundred
+        // milliseconds' worth of frames' clock, never a new sample.
+        let mut k = 0u32;
+        bencher.bench_local(|| {
+            k = (k + 1) % 5;
+            core.set_time(t + 0.016 * f64::from(k + 1));
+            chart_frame(&mut core, &mut exts, &props);
+        });
+    }
+}
+
 /// 100,000 samples of two series in view, the chart asked again every
 /// frame (its window moves by a sample): the cut to two points a pixel
 /// is the cost, and Kit's plan gave it 1 ms.

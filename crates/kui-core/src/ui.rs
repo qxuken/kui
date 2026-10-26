@@ -1880,6 +1880,13 @@ impl<'a> Ui<'a> {
         self.core.layout_of(key)
     }
 
+    /// Where the pointer is over a node — `x`, `y` from its top-left and
+    /// `w`, `h` its size — as of the last frame; see `Core::pointer_in`
+    /// (backlog C119).
+    pub fn pointer_in(&self, key: Key) -> Option<Rect> {
+        self.core.pointer_in(key)
+    }
+
     /// Declares this node focused: it takes keyboard focus when the
     /// declaration *starts* (the first frame it is made), and a Tab press
     /// afterwards is not clobbered by the view repeating it. An `on_key`

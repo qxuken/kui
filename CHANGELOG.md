@@ -305,6 +305,25 @@ was the first bare bump to break an app in five releases).
 - A tooltip's hint is keyed under the box that declared it
   (`box.str("tooltip")`, as a leaf's already was), where it took the
   box's next child key.
+- A Kit line chart's readout follows the pointer through `pointer_in`
+  (C119): its crosshair stands at the pointer's x and names the sample
+  under it, where 3 px hover bands named a row each — a band that kept
+  its key while a live window slid kept its old row, and the crosshair
+  travelled with the data. The bands are drawn only for a host's
+  `on_hover`, each keyed by its row. A `focusable` chart is a slider over
+  its samples (role `slider`, the readout its value) and no key sink: the
+  first arrow steps from the newest sample (Left a sample back, where it
+  showed the newest), Page Up and Down move ten, a press on the plot puts
+  the keyboard's readout under the pointer, and every other key — Tab,
+  the app's chords — goes on as from any control. Its readout box is
+  beside the plot, no longer inside it.
+- A Kit line chart with a `window` scrolls between samples: drawn one
+  sample behind, its lines, areas and x ticks slide left over the time
+  samples take to come, a keyframe cycle of the core's keyed by the
+  sample (`slide<n>`), where it stepped a sample at a time. A test that
+  reads its quads between samples reads them slid; under reduced motion,
+  with no frame clock, or with the plot out of the viewport it steps as
+  before.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -843,6 +862,12 @@ for lua-language-server, and a new runner beside the window's.
   light danger button and row pressed to 3.7:1). Kit's contrast test
   draws every menu row tone, a danger button and a toast's action
   hovered and pressed.
+  A fifteenth, from the user: Tab moves in the gallery again (its ⌥↑ /
+  ⌥↓ shell is no Tab stop, hands Tab on, and takes the keyboard while
+  nothing has it); a live line chart scrolls smoothly between samples,
+  its crosshair held at a still pointer while the samples slide under it,
+  and a frame between samples runs no view; and a focusable line chart
+  is a slider over its samples, so ⌥↓ pages from it.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
@@ -1434,6 +1459,14 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* a checklist's record of each row's key, kept to
   move focus to the row before when the last one went.
+- **Where the pointer is over a node** (backlog C119): `pointer_in(key)`
+  — `{x, y, w, h}`, the pointer's place from the node's top-left
+  (through any turn) and the node's size, as of the last frame — for a
+  node with a hit region or `onLayout`; nothing while the pointer is out
+  of the window. `Ui::pointer_in`, `kui_pointer_in` (a `KuiLayoutRect`),
+  Odin `pointer_in`, Node `pointerIn`, Lua `env.pointer_in`; a kept fill
+  that read it runs again when it changes. What a chart's crosshair at
+  the pointer's x reads every frame the pointer moves.
 - **The display scale in Lua** (backlog C127): `env.scale`, device pixels
   per logical px of the window being built, what a script lands an edge
   on a whole physical pixel with; `Ui::scale`, `kui_scale` and Odin's

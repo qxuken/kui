@@ -3675,29 +3675,86 @@ fn a_focusable_line_chart_steps_its_readout_with_the_keyboard() {
     let mut r = readout_rig();
     r.frames(2);
     let tab = |r: &mut LuaRig| {
-        let e = r.core.handle_input(kui_core::testing::key_press(kui_core::KeyCode::Tab));
+        let e = r
+            .core
+            .handle_input(kui_core::testing::key_press(kui_core::KeyCode::Tab));
         r.route(e);
         let e = kui_core::testing::tab(&mut r.core, false);
         r.route(e);
         r.frames(1);
     };
     let key = |r: &mut LuaRig, code: kui_core::KeyCode| {
-        let e = r.core.press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
+        let e = r
+            .core
+            .press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
         r.route(e);
         r.frames(2);
     };
     tab(&mut r);
     tab(&mut r);
-    let focused = r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
-    assert_eq!(focused.as_deref(), Some("line chart"), "the plot is a Tab stop");
+    let focused = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.focused)
+        .and_then(|n| n.name.clone());
+    assert_eq!(
+        focused.as_deref(),
+        Some("line chart"),
+        "the plot is a Tab stop"
+    );
+    // A slider over the samples resting on the newest: Left steps back
+    // from it, Right on to it.
     key(&mut r, kui_core::KeyCode::Left);
-    assert_eq!(readout(&mut r).as_deref(), Some("9, A 90, B 91"), "the first arrow shows the newest sample");
-    key(&mut r, kui_core::KeyCode::Left);
-    assert_eq!(readout(&mut r).as_deref(), Some("8, A 80, B 92"), "Left steps back");
-    key(&mut r, kui_core::KeyCode::Home);
-    assert_eq!(readout(&mut r).as_deref(), Some("0, A 0, B 100"), "Home to the first");
+    assert_eq!(
+        readout(&mut r).as_deref(),
+        Some("8, A 80, B 92"),
+        "Left steps back from the newest"
+    );
     key(&mut r, kui_core::KeyCode::Right);
-    assert_eq!(readout(&mut r).as_deref(), Some("1, A 10, B 99"), "Right steps on");
+    assert_eq!(
+        readout(&mut r).as_deref(),
+        Some("9, A 90, B 91"),
+        "Right steps on to it"
+    );
+    key(&mut r, kui_core::KeyCode::Home);
+    assert_eq!(
+        readout(&mut r).as_deref(),
+        Some("0, A 0, B 100"),
+        "Home to the first"
+    );
+    key(&mut r, kui_core::KeyCode::Right);
+    assert_eq!(
+        readout(&mut r).as_deref(),
+        Some("1, A 10, B 99"),
+        "Right steps on"
+    );
+    // It is a slider to a screen reader, the readout its value.
+    let plot = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.focused)
+        .cloned()
+        .expect("the focused plot");
+    assert_eq!(plot.role, kui_core::Role::Slider);
+    assert_eq!(plot.value.as_deref(), Some("1, A 10, B 99"), "{plot:?}");
+    // No key sink: Tab goes on from it, Shift-Tab back.
+    tab(&mut r);
+    let focused = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.focused)
+        .and_then(|n| n.name.clone());
+    assert_eq!(
+        focused.as_deref(),
+        Some("Before"),
+        "Tab leaves the chart (round to the first stop)"
+    );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
@@ -3740,11 +3797,218 @@ fn a_bar_and_a_sparkline_show_the_value_under_the_pointer() {
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
+/// A live window of `n` samples, x 1..n, A = 7x mod 101 (so neighbours
+/// read differently), republished from `ch` when there is one.
+fn live_samples(ch: Option<&Channel>, n: usize) -> Channel {
+    let t: Vec<f64> = (1..=n).map(|i| i as f64).collect();
+    let a: Vec<f64> = (1..=n).map(|i| ((i * 7) % 101) as f64).collect();
+    let cols = vec![("t".into(), Column::F64(t)), ("a".into(), Column::F64(a))];
+    match ch {
+        Some(ch) => ch.publish(cols).unwrap(),
+        None => Channel::table(cols).unwrap(),
+    }
+}
+
+fn live_readout(core: &mut Core) -> Option<String> {
+    core.access_tree()
+        .nodes
+        .iter()
+        .find(|n| {
+            n.live != kui_core::Live::Off && n.name.as_deref().is_some_and(|s| s.contains(", A "))
+        })
+        .and_then(|n| n.name.clone())
+}
+
+/// The sliding box's label: `slide<n>`, keyed by the sample that started
+/// its slide.
+fn slide_of(core: &Core) -> Option<String> {
+    core.nodes()
+        .into_iter()
+        .find_map(|n| n.label.filter(|l| l.starts_with("slide") && l.len() > 5))
+}
+
+/// A live line chart scrolls between samples instead of stepping: each
+/// sample starts a slide of its content (a keyframe cycle of the core's,
+/// keyed by the sample) from a sample's width right of its place to its
+/// place, the frames between run no view (the fill is replayed), and a
+/// window that stops moving stops asking for frames once its slide ends.
+/// A pointer held still over it keeps its crosshair at the pointer while
+/// the readout names whichever sample slides under it. Under reduced
+/// motion it steps, and nothing slides.
+#[test]
+fn a_live_line_chart_slides_between_samples_and_its_crosshair_stays_at_a_still_pointer() {
+    for reduced in [false, true] {
+        let mut r = rig();
+        if reduced {
+            reduce_motion(&mut r.core);
+        }
+        let mut n = 30;
+        let mut ch = live_samples(None, n);
+        let mut t = 1.0;
+        let mut answers: Vec<Option<FillAnswer>> = Vec::new();
+        let frame = |r: &mut Rig, ch: &Channel, t: f64, answers: &mut Vec<Option<FillAnswer>>| {
+            r.core.set_time(t);
+            r.frame(|ui| {
+                ui.with(NodeSpec::column().size(700.0, 300.0), |ui| {
+                    answers.push(
+                        kit::LineChart::new(ch.clone(), "t", vec![kit::Series::new("a", "A")])
+                            .window(20.0)
+                            .area(true)
+                            .focusable(true)
+                            .place(ui),
+                    );
+                });
+            });
+            let ev = r.core.take_pending_events();
+            r.exts.route(ev, |_| {});
+        };
+        // Samples every 100 ms, so the chart learns the pace.
+        for _ in 0..4 {
+            frame(&mut r, &ch, t, &mut answers);
+            t += 0.1;
+            n += 1;
+            ch = live_samples(Some(&ch), n);
+        }
+        frame(&mut r, &ch, t, &mut answers);
+        let plot = r
+            .core
+            .nodes()
+            .into_iter()
+            .find(|n| n.label.as_deref() == Some("plot"))
+            .unwrap()
+            .rect;
+        use kui_core::{InputEvent, Vec2};
+        let px = plot.x + plot.w * 0.5;
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+            px,
+            plot.y + plot.h / 2.0,
+        )));
+        r.exts.route(e, |_| {});
+        frame(&mut r, &ch, t + 0.01, &mut answers);
+        frame(&mut r, &ch, t + 0.02, &mut answers);
+        let dot_x = |core: &mut Core| quads_sized(core, 7.0, 7.0).first().map(|q| q.rect.x + 3.5);
+        assert!(
+            live_readout(&mut r.core).is_some(),
+            "a readout under the pointer"
+        );
+        assert_eq!(
+            dot_x(&mut r.core),
+            Some(px),
+            "the crosshair's dot at the pointer"
+        );
+        let slide = slide_of(&r.core);
+        assert_eq!(
+            slide.is_some(),
+            !reduced,
+            "a slide while samples come (reduced {reduced}): {slide:?}"
+        );
+        // Between two samples: no view runs, and under full motion the
+        // core owes the frames of the slide.
+        // The line's segments, where they are drawn: their mean x moves
+        // left as the slide runs, and stays under reduced motion.
+        let line_x = |core: &mut Core| {
+            let segs = kui_core::testing::quads_of(core, kui_core::QuadKind::Segment);
+            segs.iter().map(|q| q.rect.x).sum::<f32>() / segs.len().max(1) as f32
+        };
+        answers.clear();
+        frame(&mut r, &ch, t + 0.04, &mut answers);
+        let early = line_x(&mut r.core);
+        frame(&mut r, &ch, t + 0.07, &mut answers);
+        let later = line_x(&mut r.core);
+        if reduced {
+            assert_eq!(early, later, "nothing slides under reduced motion");
+        } else {
+            assert!(
+                later < early - 0.5,
+                "the content slides left between samples: {early} → {later}"
+            );
+        }
+        assert!(
+            answers.iter().all(|a| *a == Some(FillAnswer::Replayed)),
+            "no view between samples: {answers:?}"
+        );
+        assert_eq!(
+            r.core.animating(),
+            !reduced,
+            "frames are owed while it slides, none under reduced motion"
+        );
+        assert_eq!(slide_of(&r.core), slide, "the same slide");
+        // A sample landing draws what the slide ended on: every segment of
+        // the line in the plot's middle is where it was a moment before.
+        if !reduced {
+            frame(&mut r, &ch, t + 0.099, &mut answers);
+            let segs =
+                |core: &mut Core| kui_core::testing::quads_of(core, kui_core::QuadKind::Segment);
+            let before = segs(&mut r.core);
+            t += 0.1;
+            n += 1;
+            ch = live_samples(Some(&ch), n);
+            frame(&mut r, &ch, t, &mut answers);
+            let after = segs(&mut r.core);
+            let mid = |q: &kui_core::Quad| {
+                q.rect.x > plot.x + plot.w * 0.15 && q.rect.x < plot.x + plot.w * 0.85
+            };
+            let moved: Vec<_> = before
+                .iter()
+                .filter(|q| mid(q) && q.rect.w > 1.5)
+                .filter(|q| {
+                    !after.iter().any(|a| {
+                        (a.rect.x - q.rect.x).abs() < 0.75 && (a.rect.y - q.rect.y).abs() < 0.75
+                    })
+                })
+                .map(|q| q.rect)
+                .collect();
+            let compared = before.iter().filter(|q| mid(q) && q.rect.w > 1.5).count();
+            assert!(compared > 20, "segments compared: {compared}");
+            assert!(
+                moved.is_empty(),
+                "the line jumped as the sample landed: {moved:?}"
+            );
+        }
+        // The next samples: the readout moves on under the still pointer,
+        // whose crosshair does not.
+        let mut seen = vec![live_readout(&mut r.core).expect("a readout")];
+        for _ in 0..3 {
+            t += 0.1;
+            n += 1;
+            ch = live_samples(Some(&ch), n);
+            frame(&mut r, &ch, t, &mut answers);
+            assert_eq!(
+                dot_x(&mut r.core),
+                Some(px),
+                "the crosshair stays at the pointer"
+            );
+            seen.push(live_readout(&mut r.core).expect("a readout"));
+        }
+        assert!(
+            seen.windows(2).all(|w| w[0] != w[1]),
+            "the sample under the pointer changes with each: {seen:?}"
+        );
+        if !reduced {
+            assert_ne!(
+                slide_of(&r.core),
+                slide,
+                "each sample starts a slide of its own"
+            );
+        }
+        // A paused feed: once the last slide has run its course, no frame
+        // is owed.
+        frame(&mut r, &ch, t + 0.5, &mut answers);
+        frame(&mut r, &ch, t + 0.6, &mut answers);
+        assert!(
+            !r.core.animating(),
+            "a paused chart asks for no frames (reduced {reduced})"
+        );
+        assert!(r.core.take_warnings().is_empty());
+    }
+}
+
 /// An app names its own nodes inside a Kit component (backlog C134): a box
 /// and an editor it declared as a panel's children answer `layout_of`,
 /// `edit_text` and `set_edit_text` by their labels, as the ones outside
 /// the panel always did — the children were filed under the panel's
-/// placement, which the app's view never asks in.
+/// placement, which the app's view never asks in. And `pointer_in`
+/// (backlog C119) says where the pointer is over one of them.
 #[test]
 fn an_app_finds_its_nodes_inside_a_kit_component_by_label() {
     let mut r = LuaRig::new(
@@ -3757,6 +4021,8 @@ fn an_app_finds_its_nodes_inside_a_kit_component_by_label() {
           seen.inside = inside and inside.w
           seen.outside = outside and outside.w
           seen.text = env.edit_text("note")
+          local at = env.pointer_in("inside")
+          seen.px, seen.pw = at and at.x, at and at.w
           if n == 2 then env.set_edit_text("note", "set by label") end
           return column { width = 600, height = "grow", pad = 20,
             column { key = "outside", width = 100, height = 20, on_layout = { kind = "noop" } },
@@ -3777,6 +4043,28 @@ fn an_app_finds_its_nodes_inside_a_kit_component_by_label() {
     assert_eq!(
         seen.get::<Option<String>>("text").unwrap().as_deref(),
         Some("set by label")
+    );
+    let inside = r
+        .node(|n| n.label.as_deref() == Some("inside"))
+        .expect("the box")
+        .rect;
+    use kui_core::{InputEvent, Vec2};
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        inside.x + 30.0,
+        inside.y + 10.0,
+    )));
+    r.route(e);
+    r.frames(1);
+    let seen: mlua::Table = r.app.globals().get("seen").unwrap();
+    assert_eq!(
+        seen.get::<Option<f64>>("px").unwrap(),
+        Some(30.0),
+        "the pointer 30 px into the box"
+    );
+    assert_eq!(
+        seen.get::<Option<f64>>("pw").unwrap(),
+        Some(120.0),
+        "and the box's width"
     );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }

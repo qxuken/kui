@@ -616,12 +616,12 @@
 ---@field series kit.Series[] The lines.
 ---@field height? number In px; 160 when left out.
 ---@field area? boolean Filled under the first line.
----@field window? number With it, only the last `window` of x is shown: a live chart.
+---@field window? number With it, only the last `window` of x is shown: a live chart. While samples come in it scrolls smoothly between them, drawn one sample behind and slid left over the time samples take to come (a keyframe cycle the core runs, so a frame between samples runs no view); under reduced motion, and while the plot is out of the viewport, it steps.
 ---@field x_format? kit.XFormat How the x ticks read; the number when left out.
 ---@field x_unit? string After each x tick's number: `min`, `s`.
 ---@field y_unit? string After each y tick's number: `ms`, `%`.
----@field readout? boolean Under the pointer, a crosshair on the nearest sample, a dot on each series there and a readout of the x and every series' value in its colour, following the pointer and gone when it leaves; on when left out. An idle chart pays one hover layer for it.
----@field focusable? boolean A Tab stop: Left and Right move the readout a sample, Home and End to the ends, and the readout is a live region a screen reader announces.
+---@field readout? boolean Under the pointer, a crosshair at the pointer's x, a dot on each series there and a readout of the x and every series' value in its colour for the sample under it — a still pointer keeps its crosshair still while a live window slides samples under it — gone when the pointer leaves; on when left out. An idle chart pays one hover layer for it.
+---@field focusable? boolean A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control.
 ---@field on_hover? any The message it arrives as: yours, with `hover = {…}` in it (kit.LineChartHover). The pointer moved over a row.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.

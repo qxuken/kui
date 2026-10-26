@@ -4213,6 +4213,17 @@ export declare class Ctx {
    */
   layoutOf(key: string): { x: number, y: number, w: number, h: number } | null
   /**
+   * Where the pointer is over `key`, `{x, y, w, h}`: its place
+   * from the node's top-left and the node's size, as of the
+   * last frame (backlog C119) — over it while `0 <= x < w` and
+   * `0 <= y < h`. `null` while the pointer is outside the
+   * window, and for a node the last frame gave neither a hit
+   * region (`hoverable`, `onHover`, anything that takes the
+   * pointer) nor an `onLayout` rect. A pointer move is a frame,
+   * so a view that follows the pointer reads it each frame.
+   */
+  pointerIn(key: string): { x: number, y: number, w: number, h: number } | null
+  /**
    * Where a point lands in the text a keyed node drew: a byte
    * offset into its text and the visual row within that node —
    * counted across every run the key covers, so a `line` row of
@@ -5903,6 +5914,17 @@ export declare class KuiWindow {
    * describes the previous frame, like `scrollGeometry`.
    */
   layoutOf(key: string): { x: number, y: number, w: number, h: number } | null
+  /**
+   * Where the pointer is over `key`, `{x, y, w, h}`: its place
+   * from the node's top-left and the node's size, as of the
+   * last frame (backlog C119) — over it while `0 <= x < w` and
+   * `0 <= y < h`. `null` while the pointer is outside the
+   * window, and for a node the last frame gave neither a hit
+   * region (`hoverable`, `onHover`, anything that takes the
+   * pointer) nor an `onLayout` rect. A pointer move is a frame,
+   * so a view that follows the pointer reads it each frame.
+   */
+  pointerIn(key: string): { x: number, y: number, w: number, h: number } | null
   /**
    * Where a point lands in the text a keyed node drew: a byte
    * offset into its text and the visual row within that node —

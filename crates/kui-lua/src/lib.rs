@@ -2121,6 +2121,25 @@ fn env_table(
             value_to_lua(lua, &r.to_value())
         })?,
     )?;
+    // Where the pointer is over a node (backlog C119): `{x, y, w, h}`, its
+    // place from the node's top-left and the node's size, as of the last
+    // frame — over it while 0 <= x < w and 0 <= y < h; nil while the
+    // pointer is outside the window, or for a node with neither a hit
+    // region (`hoverable`, `on_hover`, …) nor `on_layout`. A pointer move
+    // is a frame, so a view following the pointer reads it each frame.
+    t.set(
+        "pointer_in",
+        lua.create_function(move |lua, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(mlua::Value::Nil);
+            };
+            let Some(r) = ui.pointer_in(key) else {
+                return Ok(mlua::Value::Nil);
+            };
+            value_to_lua(lua, &r.to_value())
+        })?,
+    )?;
     // The wheel's move by hand; the next layout clamps it, so 0,0 is "jump
     // to the top" and a huge y is "jump to the end".
     t.set(
@@ -8229,7 +8248,10 @@ mod tests {
         core.handle_input(InputEvent::Key(kui_core::EditKey::Tab, Default::default()));
         assert_eq!(core.focus(), Some(cell(0, 0)));
         core.handle_input(InputEvent::Key(kui_core::EditKey::Down, Default::default()));
-        core.handle_input(InputEvent::Key(kui_core::EditKey::Right, Default::default()));
+        core.handle_input(InputEvent::Key(
+            kui_core::EditKey::Right,
+            Default::default(),
+        ));
         assert_eq!(core.focus(), Some(cell(1, 1)));
     }
 

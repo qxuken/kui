@@ -3661,6 +3661,7 @@ filed the same day for the round that builds them.
 - `.` **C125** — [Removing a composite's focused last item drops focus](backlog/closed-2026-09.md#-c125--removing-a-composites-focused-last-item-drops-focus--done-2026-10-26) — done (2026-10-26) — the frame without the item lands focus on the item now at its place, else the one before; `focus_item(key, index)` in every binding
 - `.` **C126** — [`transition = 0` with a spring easing draws the eased value at 0](backlog/closed-2026-09.md#-c126--transition--0-with-a-spring-easing-draws-the-eased-value-at-0--done-2026-10-26) — done (2026-10-26) — a zero-length transition jumps to its target whatever its easing
 - `.` **C127** — [Lua has no display scale in `env`](backlog/closed-2026-09.md#-c127--lua-has-no-display-scale-in-env--done-2026-10-26) — done (2026-10-26) — `env.scale` in Lua, `Ui::scale` / `kui_scale` / Odin `scale`; Kit's area cuts on whole device pixels
+- `.` **C119** — [A script cannot read the pointer's position](backlog/closed-2026-09.md#-c119--a-script-cannot-read-the-pointers-position--done-2026-10-26) — done (2026-10-26) — `pointer_in(key)` in every binding; Kit's line chart reads out the sample under the pointer with it, its bands gone
 - `.` **C129** — [A danger menu item's hover hides its label](backlog/closed-2026-09.md#-c129--a-danger-menu-items-hover-hides-its-label--done-2026-10-26) — done (2026-10-26) — Kit: the hovered or pressed danger row's label in `on_danger`; a loud fill's press no longer shades toward its label past 4.5:1
 - `.` **C134** — [An app cannot name its own nodes inside a component](backlog/closed-2026-09.md#-c134--an-app-cannot-name-its-own-nodes-inside-a-component--done-2026-10-26) — done (2026-10-26) — host children are labelled in the placer's scope: `layout_of`, `edit_text` and the rest find them
 
@@ -3682,14 +3683,6 @@ in a channel (ADR 0065) answers by searching that channel itself.
 **Do.** A `typeaheadColumn` prop naming a channel column the core
 searches (prefix, case-blind, from the row after focus), so a channel-
 backed list needs no handler.
-
-### `.` C119 — A script cannot read the pointer's position
-
-**Found** in Kit's chart readout (2026-10-26): `Core::cursor` has no Lua
-door, so "the sample nearest the pointer" is approximated by 3 px hover
-bands Kit builds while the pointer is over the plot. **Do.** The pointer's
-position relative to a node (`env.pointer_in(label)` or the like) in
-every binding, read without owing frames when nothing moved.
 
 ### `.` C121 — A list item's `checked` is not read
 
@@ -3789,6 +3782,52 @@ beside their docs, no design system to try, no place to craft a repro.
 (proposed): `kui play` — Kit's gallery, a page per primitive with its doc
 and an editable live example, the design system with the Theme panel, a
 scratchpad saving a folder or a `.kui` archive, one search.
+
+### `.` C135 — A press on a control inside a key sink gives the sink the keyboard
+
+**Found** in the Kit gallery's Tab regression (2026-10-26):
+`press_focus` resolves a press anywhere inside a sink to the sink (ADR
+0002, decision 9: a multiplexer's buttons must not take its chords).
+Since ADR 0011 a chord bubbles from a focused control anyway, so the rule
+now only costs: a click on a button or a chart inside an app shell leaves
+the button unfocused, Space and the arrows then go to the shell, and the
+shell must hand Tab on itself (ADR 0011, decision 11 makes it go on from
+the press). **Do.** Decide whether a press on a Tab stop inside a shell
+focuses the stop, as a browser does — the mux's toolbar buttons would
+then take Enter and Space — or say why the shell keeps it; amend ADR
+0002.
+
+### `.` C136 — Focus left on a node the frame no longer has stays there
+
+**Found** the same way: a page change that removes the focused node
+leaves `focus` naming it (only a composite's item recovers, C125), so
+every key goes nowhere — no sink above a node that is not there — until
+a click. The Kit gallery's shell takes the keyboard back itself after its
+page shortcut. **Do.** When the focused node is gone and no composite
+recovers it, focus the nearest enclosing sink it had, or drop focus so a
+`keyFocus` shell takes it.
+
+### `.` C137 — A keyframe cycle out of view still owes frames
+
+**Found** building the line chart's slide (2026-10-26): a node's
+keyframe cycle is sampled as the node is built, wherever it is drawn, so
+a looping animation scrolled out of its scroller or clipped away keeps
+the window drawing at the display's rate. Kit's chart reads its plot's
+rect against the viewport and does not slide out of view; a spinner or a
+pulse cannot. **Do.** Owe no frame for a cycle whose node the last frame
+culled (outside every clip), and sample it again when it comes back.
+
+### `.` C138 — A frame owed only by an animation runs the host's whole view
+
+**Found** measuring the line chart's slide (2026-10-26): between two
+samples the chart's fill replays (21 µs a frame, `cargo bench -p kui-lua
+--bench kit -- line_chart_live_window`), but every frame the keyframe
+cycle owes runs the app's root view again — a runner's root fill is never
+kept — so the Kit gallery's Charts page with Live on went from 22.8 views
+and 5.1% of a core a second, headless, to 57 views and 10.4%. **Do.** A
+frame whose only cause is an animation the core runs (a keyframe cycle, a
+transition) built from the last tree with the animation sampled again,
+or the root fill kept while nothing it read moved.
 
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 

@@ -687,12 +687,12 @@ Lua `kit.line_chart(props)` · Node `<LineChart />`
 | `series` | `series` | {[Series](#series)} | The lines. |
 | `height` | `height` | number? | In px; 160 when left out. |
 | `area` | `area` | boolean? | Filled under the first line. |
-| `window` | `window` | number? | With it, only the last `window` of x is shown: a live chart. |
+| `window` | `window` | number? | With it, only the last `window` of x is shown: a live chart. While samples come in it scrolls smoothly between them, drawn one sample behind and slid left over the time samples take to come (a keyframe cycle the core runs, so a frame between samples runs no view); under reduced motion, and while the plot is out of the viewport, it steps. |
 | `x_format` | `xFormat` | [XFormat](#xformat)? | How the x ticks read; the number when left out. |
 | `x_unit` | `xUnit` | string? | After each x tick's number: `min`, `s`. |
 | `y_unit` | `yUnit` | string? | After each y tick's number: `ms`, `%`. |
-| `readout` | `readout` | boolean? | Under the pointer, a crosshair on the nearest sample, a dot on each series there and a readout of the x and every series' value in its colour, following the pointer and gone when it leaves; on when left out. An idle chart pays one hover layer for it. |
-| `focusable` | `focusable` | boolean? | A Tab stop: Left and Right move the readout a sample, Home and End to the ends, and the readout is a live region a screen reader announces. |
+| `readout` | `readout` | boolean? | Under the pointer, a crosshair at the pointer's x, a dot on each series there and a readout of the x and every series' value in its colour for the sample under it — a still pointer keeps its crosshair still while a live window slides samples under it — gone when the pointer leaves; on when left out. An idle chart pays one hover layer for it. |
+| `focusable` | `focusable` | boolean? | A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control. |
 
 | event | Node | carries | description |
 |---|---|---|---|

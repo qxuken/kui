@@ -582,6 +582,14 @@ pub const DOORS: &[Door] = &[
         doc: "Where layout put a node last frame (backlog C26).",
     },
     Door {
+        rust: "Ui::pointer_in",
+        c: Is("kui_pointer_in"),
+        odin: Is("pointer_in"),
+        node: Is("pointerIn"),
+        lua: Is("pointer_in"),
+        doc: "Where the pointer is over a node, from its top-left, and the node's size (backlog C119).",
+    },
+    Door {
         rust: "Ui::scroll_offset",
         c: Is("kui_scroll_offset"),
         odin: Is("scroll_offset"),

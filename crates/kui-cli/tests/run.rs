@@ -573,6 +573,73 @@ fn the_kit_app_tabs_through_the_inputs_page_with_real_keys() {
     );
 }
 
+/// The Charts page: Tab moves focus with the pointer over the live line
+/// chart (its readout up), and after a click on the chart; the chart, a
+/// Tab stop, steps its readout with the arrows and leaves ⌥↓ to the page
+/// shortcut and Tab to the ring.
+#[test]
+fn the_kit_app_tabs_after_hovering_and_pressing_the_live_chart() {
+    let dir = kit_app(
+        "kit-app-chart-tab",
+        &format!(
+            "{KIT_WALK_HEAD}{}",
+            r##"
+        local function middle() return chart.x + chart.w / 2, chart.y + chart.h / 2 end
+        run({
+          function() kui.dispatch({ kind = "page", change = { value = "charts" } }) end,
+          function() want_chart() end, function() end,
+          function() kui.input.move(middle()) end, function() end,
+          function() kui.input.key("tab") end, function() probe("h1") end,
+          function() kui.input.key("tab") end, function() probe("h2") end,
+          function() kui.input.key("tab") end, function() probe("h3") end,
+          function() kui.input.click(middle()) end, function() probe("pressed") end,
+          function() kui.input.key("tab") end, function() probe("after") end,
+          function() kui.input.key("tab", { shift = true }) end, function() probe("chart") end,
+          function() kui.input.key("left") end, function() probe("stepped") end,
+          function() kui.input.key("down", { alt = true }) end, function() probe("paged") end,
+          function() kui.input.key("up", { alt = true }) end, function() probe("back") end,
+        })
+        "##
+        ),
+    );
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(!s.contains("warning"), "{s}");
+    let lines = focus_lines(&s);
+    let at = |name: &str| {
+        lines
+            .iter()
+            .find(|l| l.0 == name)
+            .unwrap_or_else(|| panic!("no {name} in:\n{s}"))
+            .clone()
+    };
+    let hovered: Vec<String> = ["h1", "h2", "h3"].iter().map(|n| at(n).2).collect();
+    let mut distinct = hovered.clone();
+    distinct.dedup();
+    assert!(
+        hovered.iter().all(|f| f != "none") && distinct.len() == 3,
+        "Tab moves on under a pointer over the chart: {hovered:?}"
+    );
+    let after = at("after").2;
+    assert!(
+        after != "none" && after != at("pressed").2,
+        "Tab moves on after a press on the chart:\n{s}"
+    );
+    assert_eq!(
+        at("chart").2,
+        "plot",
+        "Shift-Tab back onto the chart, a Tab stop:\n{s}"
+    );
+    assert_eq!(at("stepped").2, "plot", "an arrow keeps it there");
+    assert_eq!(
+        at("paged").1,
+        "trace",
+        "⌥↓ from the focused chart goes to the next page:\n{s}"
+    );
+    assert_eq!(at("back").1, "charts", "⌥↑ back:\n{s}");
+}
+
 /// ⌥↓ and ⌥↑, pressed as keys, go to the next and the previous page,
 /// round the ends, from the key sink around the app; a text editor with
 /// the keyboard keeps them, and another chord is not the shortcut.

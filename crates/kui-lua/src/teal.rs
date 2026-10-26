@@ -133,6 +133,7 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("caret_rect", "key: KeyRef, byte: number", "Rect"),
     ("scroll_geometry", "key: KeyRef", "ScrollGeometry"),
     ("layout_of", "key: KeyRef", "Rect"),
+    ("pointer_in", "key: KeyRef", "Rect"),
     ("set_scroll", "key: KeyRef, x: number, y: number", ""),
     (
         "shift_scroll",

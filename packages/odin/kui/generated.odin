@@ -3104,6 +3104,16 @@ layout_of :: proc(ui: ^Ui, key: u64) -> (out: Layout_Rect, ok: bool) #optional_o
 	return
 }
 
+// Where the pointer is over a node, from its top-left, and the node's size
+// (backlog C119).
+// Rust: Ui::pointer_in.
+pointer_in :: proc(ui: ^Ui, key: u64) -> (out: Layout_Rect, ok: bool) #optional_ok {
+	c_out := c.LayoutRect{size = size_of(c.LayoutRect)}
+	ok = c.pointer_in(ui, key, &c_out)
+	out = layout_rect_from_c(c_out)
+	return
+}
+
 // A scrolling node's viewport and content sizes.
 // Rust: Ui::scroll_geometry.
 scroll_geometry :: proc(ui: ^Ui, key: u64) -> (out: Scroll_Geometry, ok: bool) #optional_ok {

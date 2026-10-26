@@ -147,6 +147,35 @@ pub extern "C" fn kui_layout_of(ptr: *mut KuiCtx, key: u64, out: *mut KuiLayoutR
     })
 }
 
+/// Where the pointer is over `key` (backlog C119), as of the last frame:
+/// `x`, `y` its place from the node's top-left (through any turn the node
+/// is drawn under), `w`, `h` the node's size — over it while `0 <= x < w`
+/// and `0 <= y < h`. False while the pointer is outside the window, for a
+/// node the last frame gave neither a hit region (`hoverable`, `on_hover`,
+/// anything that takes the pointer) nor an `on_layout` rect, a bad
+/// context, a NULL `out` or a short `size`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_pointer_in(ptr: *mut KuiCtx, key: u64, out: *mut KuiLayoutRect) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(r) = c.core().pointer_in(Key(key)) else {
+            return false;
+        };
+        write_out(
+            out,
+            KuiLayoutRect {
+                x: r.x,
+                y: r.y,
+                w: r.w,
+                h: r.h,
+                ..Default::default()
+            },
+        )
+    })
+}
+
 /// Everything the last layout resolved for the scroll container `key`:
 /// its box, its content size and the clamped offset. Returns false,
 /// leaving `out` untouched, for a bad context, a NULL `out`, or a key no

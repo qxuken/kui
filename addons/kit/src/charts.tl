@@ -348,7 +348,14 @@ local record Glide
   over: boolean
   row: integer
   key_row: integer
-  hand: string
+  -- The slide (a live window's): the newest x the last frame drew, how
+  -- far x moved when a sample last landed and when, the pace samples come
+  -- at (s), and the slide's count, which keys its keyframe cycle.
+  x_last: number
+  step_x: number
+  t_landed: number
+  every: number
+  gen: integer
 end
 
 function M.sparkline(c: Ctx, p: P): kui.Node
@@ -547,6 +554,36 @@ local function glide(c: Ctx, lo: number, hi: number): number, number
   return at(k)
 end
 
+-- The row of rows [lo, hi) whose x is nearest `t`.
+local function nearest_row(ch: kui.Channel, xf: string, lo: integer, hi: integer, t: number): integer
+  local r = lower_row(ch, xf, lo, hi, t)
+  if r >= hi then return hi - 1 end
+  if r > lo and t - (num(ch:get(r - 1, xf)) or t) < (num(ch:get(r, xf)) or t) - t then return r - 1 end
+  return r
+end
+
+-- The readout's text for row `at`: the x, then each series' value.
+local function said_of(ch: kui.Channel, xf: string, at: integer, series: {P}, fmt: string, x_unit: string,
+                       y_unit: string): string, {string}
+  local xv = num(ch:get(at, xf)) or 0
+  local title: string
+  if fmt == "clock" then
+    title = os.date("%H:%M:%S", math.floor(xv + 0.5)) as string
+  elseif fmt == "ago" then
+    title = math.abs(xv) < 1e-9 and "now" or (with_unit(string.format("%.4g", math.abs(xv)), x_unit) .. " ago")
+  else
+    title = with_unit(string.format("%.4g", xv), x_unit)
+  end
+  local said: {string} = { title }
+  for _, s in ipairs(series) do
+    local v = num(ch:get(at, s.field as string))
+    if v and v == v then
+      said[#said + 1] = ((s.name or s.field) as string) .. " " .. with_unit(string.format("%.4g", v), y_unit)
+    end
+  end
+  return title, said
+end
+
 function M.line_chart(c: Ctx, p: P): kui.Node
   local ch = p.data as kui.Channel
   local env = c.env
@@ -566,6 +603,43 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     from = lower_row(ch, xf, 0, n, x0)
   end
   if x1 <= x0 then x1 = x0 + 1 end
+  local st = ctx.state(c, function(): Glide return {} end)
+  -- The glide (a live window's): drawn one sample behind and slid left
+  -- between samples, so it scrolls rather than steps. A sample landing
+  -- starts a slide of the plot's content from one sample's width right
+  -- of its place to its place, over the time samples have been coming
+  -- in — a keyframe cycle of the core's, keyed by the sample, so the
+  -- frames between two samples run no view and lay nothing out. The
+  -- content the slide starts from is what the last one ended on: the
+  -- window one sample back. Off under reduced motion, with no frame
+  -- clock, while the plot is out of the viewport, and for a window that
+  -- did not move (a paused feed, a fixed range).
+  local now = env.now or 0
+  local slide, slide_ms = 0.0, 0.0
+  if p.window and n > 1 and now > 0 then
+    if st.x_last and x1 > st.x_last then
+      local gap = now - (st.t_landed or now)
+      if st.t_landed and gap > 0 and gap < 5 then
+        st.every = st.every and st.every * 0.7 + gap * 0.3 or gap
+      end
+      st.step_x, st.t_landed, st.gen = x1 - st.x_last, now, (st.gen or 0) + 1
+    elseif st.x_last and x1 < st.x_last then
+      st.step_x, st.every, st.t_landed = nil, nil, nil
+    end
+    st.x_last = x1
+    local seen = r ~= nil and r.y + r.h > 0 and r.y < (env.viewport_h or 0) and r.x + r.w > 0
+      and r.x < (env.viewport_w or 0)
+    if st.step_x and st.every and seen and not ctx.reduced(c) then
+      slide = st.step_x / (x1 - x0) * w
+      -- A little under the measured pace: a sample early by a few ms
+      -- would cut the slide short (a jump), where one late holds still.
+      slide_ms = st.every * 1000 * 0.95
+    end
+  end
+  -- What is drawn reaches a sample further back than the window while it
+  -- slides: the slide uncovers it at the plot's left edge.
+  local drawn_from = from
+  if slide > 0 then drawn_from = lower_row(ch, xf, 0, n, x0 - st.step_x) end
   -- The value range: one bucket over the window per series.
   local lo, hi = math.huge, -math.huge
   for _, s in ipairs(series) do
@@ -602,6 +676,21 @@ function M.line_chart(c: Ctx, p: P): kui.Node
   -- `on_layout`, and a width that moves is an event that redraws it.
   local plot: kui.Props = { key = "plot", width = "grow", height = h, clip = true,
     on_layout = act(c, "line_chart.layout") }
+  -- What slides: the lines, their areas and the x ticks, in a box over the
+  -- plot keyed by the sample that started the slide, so each sample
+  -- starts its own cycle; still, a plain box.
+  local function sliding(key: string): kui.Props
+    local t: kui.Props = { width = w, height = h, float = { anchor = "parent" } }
+    if slide > 0 then
+      t.key = key .. st.gen
+      t.keyframes = { { at = 0, dx = slide }, { at = 1, dx = 0 } }
+      t.transition, t.easing, t.iterations = slide_ms, "linear", 1
+    else
+      t.key = key
+    end
+    return t
+  end
+  local moving = sliding("slide")
   -- Grid lines and their labels: at the step's multiples in view,
   -- right-aligned against the plot.
   local ys: {number} = {}
@@ -630,40 +719,49 @@ function M.line_chart(c: Ctx, p: P): kui.Node
   -- The x axis: ticks at round steps as close as their labels allow, each
   -- label as wide as it measures, the end ones kept inside the plot. An
   -- end label that would touch its neighbour gives way to it, unless its
-  -- tick is the plot's edge (`now`): then the neighbour does.
+  -- tick is the plot's edge (`now`): then the neighbour does. Sliding,
+  -- the ticks reach back a sample too and slide with the line, cut by
+  -- the axis' edges rather than kept inside them.
   local fmt = str(p.x_format) or "number"
   local tick_at, tick_label, tick_w = x_ticks(c, x0, x1, w, fmt, str(p.x_unit))
-  local axis: kui.Props = { width = "grow", height = 14 }
+  if slide > 0 and #tick_at >= 2 then
+    tick_at, tick_label = tick_labels(x0 - st.step_x, x1, tick_at[2] - tick_at[1], fmt, str(p.x_unit))
+    tick_w = {}
+    for i, s in ipairs(tick_label) do tick_w[i] = label_w(c, s) end
+  end
+  local axis: kui.Props = { width = "grow", height = 14, clip = slide > 0 }
+  local axis_moving = sliding("axis")
   local placed: {number} = {}
   local shown: {boolean} = {}
   for i, tx in ipairs(tick_at) do
     local px = (tx - x0) / (x1 - x0) * w
-    plot[#plot + 1] = line { from = { px, h - 4 }, to = { px, h }, width = 1, color = faint }
-    placed[i] = math.max(0, math.min(w - tick_w[i], px - tick_w[i] / 2))
+    moving[#moving + 1] = line { from = { px, h - 4 }, to = { px, h }, width = 1, color = faint }
+    placed[i] = slide > 0 and px - tick_w[i] / 2 or math.max(0, math.min(w - tick_w[i], px - tick_w[i] / 2))
     shown[i] = true
   end
   local nt = #tick_at
   local function touch(a: integer, b: integer): boolean
     return placed[a] + tick_w[a] + 4 > placed[b]
   end
-  if nt >= 2 and touch(1, 2) then
+  if slide == 0 and nt >= 2 and touch(1, 2) then
     local edge = (tick_at[1] - x0) / (x1 - x0) * w < 1
     if edge and nt > 2 then shown[2] = false else shown[1] = false end
   end
-  if nt >= 3 and shown[nt - 1] and touch(nt - 1, nt) then
+  if slide == 0 and nt >= 3 and shown[nt - 1] and touch(nt - 1, nt) then
     local edge = (x1 - tick_at[nt]) / (x1 - x0) * w < 1
     if edge then shown[nt - 1] = false else shown[nt] = false end
   end
   for i = 1, nt do
     if shown[i] then
-      axis[#axis + 1] = row { key = "x" .. i, width = tick_w[i],
-        float = { anchor = "parent", clip = true, dx = placed[i], dy = 0 },
+      axis_moving[#axis_moving + 1] = row { key = "x" .. i, width = tick_w[i],
+        float = { anchor = "parent", clip = slide == 0, dx = placed[i], dy = 0 },
         text(tick_label[i], { size = 10, family = "$kitData", color = faint, max_lines = 1 }) }
     end
   end
+  axis[#axis + 1] = column(axis_moving)
   local legend: kui.Props = { gap = 12, cross_align = "center" }
   -- Buckets on whole multiples of their row count, the x reductions shared by every series.
-  local segs = segments(ch, xf, from, to, w)
+  local segs = segments(ch, xf, drawn_from, to, w)
   for k, s in ipairs(series) do
     local color: kui.Color = (s.color as kui.Color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
     local runs = reduced_runs(ch, segs, s.field as string, x0, x1, lo, hi, w, h)
@@ -680,90 +778,103 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       elseif own then
         fill, opacity = color, skin.AREA_ALPHA
       end
-      area(plot, pts, h, fill, opacity, r and r.x or 0, c.env.scale or 1)
+      area(moving, pts, h, fill, opacity, r and r.x or 0, c.env.scale or 1)
     end
     if #pts >= 2 then
-      plot[#plot + 1] = line { points = pts, width = 1.5, color = color }
+      moving[#moving + 1] = line { points = pts, width = 1.5, color = color }
     end
     end
     legend[#legend + 1] = row { gap = 4, cross_align = "center",
       column { width = 10, height = 2, bg = color },
       ctx.muted(c, (s.name or s.field) as string) }
   end
-  -- The readout: one hover layer over the plot while the pointer is off
-  -- it — all an idle chart pays — and, once it is over, bands three px
-  -- wide, each naming the row at its middle, so the readout follows the
-  -- pointer with no reduction redone: the row's values are read with
-  -- `ch:get`. A host's `on_hover` hears the same bands.
-  local st = ctx.state(c, function(): Glide return {} end)
+  -- The readout: one hover layer over the plot. While the pointer is over
+  -- it the view reads where (`pointer_in`, C119) on every frame it is
+  -- drawn — a pointer move is a frame — and the crosshair stands at the
+  -- pointer's x, the readout naming the sample under it as the data
+  -- slides past: a still pointer keeps its crosshair still. The sample
+  -- is found where the slide has the line at this frame. The 3 px bands
+  -- that named rows did this by hovering, and a band that kept its key
+  -- while the window slid kept its old row: the crosshair travelled with
+  -- the data under a still pointer.
   local readout = p.readout ~= false
   local focusable = p.focusable == true
-  if st.hand then
-    if st.hand == "prev" then env.focus_prev() else env.focus_next() end
-    st.hand = nil
-  end
+  local px_at: number = nil
   if (readout or p.on_hover) and to > from then
     local layer: kui.Props = { key = "over", width = "grow", height = h, hoverable = true,
       float = { anchor = "parent", clip = true }, on_hover = act(c, "line_chart.over") }
     if st.over then
-      -- Each band names the row nearest its middle by the x scale the
-      -- line is drawn with, not by its place in the row count: a window
-      -- the data fills only part of (a live line's first seconds) has
-      -- rows over its right part alone, and bands spread over the whole
-      -- width by row index put the crosshair well off the pointer. Bands
-      -- naming the same row are one band, so the empty span is one.
-      local tell = p.on_hover ~= nil
-      local bands = math.max(1, math.floor(w / 3))
-      local bw = w / bands
-      local lo_row, run_row, run_from = from, -1, 0
-      local function flush(b: integer)
-        if run_row >= 0 then
-          layer[#layer + 1] = column { key = "b" .. run_from, width = (b - run_from) * bw, height = h, hoverable = true,
-            on_hover = act(c, "line_chart.hover", { row = run_row, tell = tell }) }
+      local at = env.pointer_in("over")
+      if at and at.x >= 0 and at.x < at.w and at.y >= 0 and at.y < at.h then
+        local off = 0.0
+        if slide > 0 then
+          off = slide * (1 - math.min(1, math.max(0, (now - st.t_landed) * 1000 / slide_ms)))
         end
+        px_at = at.x
+        st.row = nearest_row(ch, xf, drawn_from, to, x0 + (at.x - off) / w * (x1 - x0))
       end
-      for b = 0, bands - 1 do
-        local cx = x0 + (b + 0.5) * bw / w * (x1 - x0)
-        local r = lower_row(ch, xf, lo_row, to, cx)
-        if r >= to then
-          r = to - 1
-        elseif r > from and cx - (num(ch:get(r - 1, xf)) or cx) < (num(ch:get(r, xf)) or cx) - cx then
-          r = r - 1
+      if p.on_hover then
+        -- A host that hears the row: bands three px wide, each naming the
+        -- row at its middle and keyed by it, so a band that comes to name
+        -- another row under a still pointer is a new node there, entered.
+        local bands = math.max(1, math.floor(w / 3))
+        local bw = w / bands
+        local lo_row, run_row, run_from = drawn_from, -1, 0
+        local function flush(b: integer)
+          if run_row >= 0 then
+            layer[#layer + 1] = column { key = "b" .. run_row, width = (b - run_from) * bw, height = h,
+              hoverable = true, float = { anchor = "parent", dx = run_from * bw },
+              on_hover = act(c, "line_chart.hover", { row = run_row }) }
+          end
         end
-        lo_row = r
-        if r ~= run_row then
-          flush(b)
-          run_row, run_from = r, b
+        for b = 0, bands - 1 do
+          local row = nearest_row(ch, xf, lo_row, to, x0 + (b + 0.5) * bw / w * (x1 - x0))
+          lo_row = row
+          if row ~= run_row then
+            flush(b)
+            run_row, run_from = row, b
+          end
         end
+        flush(bands)
       end
-      flush(bands)
     end
     plot[#plot + 1] = row(layer)
   end
   if focusable and to > from then
-    plot.focusable = true
+    -- A Tab stop that is a slider over the samples (2026-10-26): the
+    -- arrows step the readout a sample, PageUp / PageDown ten, Home and
+    -- End to the ends, and a reader hears the readout as its value. A
+    -- slider is no key sink, so every other key — a chord the app binds,
+    -- Tab — goes on as from any control.
+    local at = st.key_row or (to - 1)
+    if at < from then at = from end
+    if at > to - 1 then at = to - 1 end
+    local _, said = said_of(ch, xf, at, series, fmt, str(p.x_unit), y_unit)
+    plot.role = "slider"
     plot.label = "line chart"
-    plot.on_key = act(c, "line_chart.key", { from = from, to = to })
+    plot.value_min, plot.value_max, plot.value_step, plot.value_now = from, to - 1, 1, at
+    plot.value_text = table.concat(said, ", ")
+    plot.on_change = act(c, "line_chart.step")
     plot.on_focus = act(c, "line_chart.focus")
   end
-  local at_row = (st.over and st.row) or st.key_row
-  if readout and at_row and at_row >= from and at_row < to then
+  local pointer_row = (st.over and px_at) and st.row or nil
+  local at_row = pointer_row or st.key_row
+  -- The readout box beside the plot rather than in it: a slider is one
+  -- row to a screen reader, its children not read, and the box is a
+  -- live region.
+  local said_box: kui.Node = nil
+  if readout and at_row and at_row >= drawn_from and at_row < to then
     local xv = num(ch:get(at_row, xf)) or x0
-    local px = (xv - x0) / (x1 - x0) * w
-    plot[#plot + 1] = line { from = { px, 0 }, to = { px, h }, width = 1, color = faint }
-    local title: string
-    if fmt == "clock" then
-      title = os.date("%H:%M:%S", math.floor(xv + 0.5)) as string
-    elseif fmt == "ago" then
-      title = math.abs(xv) < 1e-9 and "now" or (with_unit(string.format("%.4g", math.abs(xv)), str(p.x_unit)) .. " ago")
-    else
-      title = with_unit(string.format("%.4g", xv), str(p.x_unit))
-    end
+    -- The crosshair: at the pointer's x, still while the pointer is; at
+    -- the keyboard's sample, sliding with it.
+    local px = px_at or (xv - x0) / (x1 - x0) * w
+    local layer = px_at and plot or moving
+    layer[#layer + 1] = line { from = { px, 0 }, to = { px, h }, width = 1, color = faint }
+    local title, said = said_of(ch, xf, at_row, series, fmt, str(p.x_unit), y_unit)
     local box: kui.Props = { key = "readout", gap = 2, pad = { x = 8, y = 6 }, radius = "$kitRadius",
       bg = ref(c, "raised"), border = { w = "$kitHair", color = ref(c, "ink") },
       live = "polite", min_width = "fit",
       ctx.data(c, title, { size = "$kitSizeLabel", color = ref(c, "muted"), max_lines = 1 }) }
-    local said: {string} = { title }
     -- Its width, near enough to say which side it fits on: the labels'
     -- (measured at the axis' size, so scaled up a little) and the swatch,
     -- the gaps and the padding around them.
@@ -775,11 +886,10 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       if v and v == v then
         local py = h - (v - lo) / (hi - lo) * h
         pys[#pys + 1] = py
-        plot[#plot + 1] = column { float = { anchor = "parent", dx = px - 3.5, dy = py - 3.5, clip = true },
+        layer[#layer + 1] = column { float = { anchor = "parent", dx = px - 3.5, dy = py - 3.5, clip = true },
           width = 7, height = 7, radius = 3.5, bg = color, border = { w = 1, color = ref(c, "panel") } }
         local value = with_unit(string.format("%.4g", v), y_unit)
         local name = (s.name or s.field) as string
-        said[#said + 1] = name .. " " .. value
         box_w = math.max(box_w, label_w(c, name) + label_w(c, value) + 32)
         box[#box + 1] = row { gap = 6, cross_align = "center",
           column { width = 8, height = 3, bg = color },
@@ -806,15 +916,17 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     end
     box.float = { anchor = "parent", at = { "start", "start" }, self = { right and "start" or "end", "start" },
       dx = right and px + 8 or px - 8, dy = math.max(4, dy), clip = true }
-    plot[#plot + 1] = column(box)
+    said_box = column(box)
   end
+  -- The sliding box under the hover layer and the readout, over the grid.
+  table.insert(plot, #ys + 1, column(moving))
   return column {
     width = "grow",
     gap = 4,
     role = focusable and "group" or "image",
     label = "line chart",
     row(legend),
-    row { width = "grow", gap = 6, column(labels), column(plot) },
+    row { width = "grow", gap = 6, column(labels), column { width = "grow", height = h, column(plot), said_box } },
     -- The axis under the plot alone: a spacer as wide as the gutter and
     -- the gap, easing with it.
     row { width = "grow", gap = 6,
@@ -1019,26 +1131,19 @@ function M.event(m: P, kit: string): any
     local hv = m.hover as P
     if hv and st then st.over = hv.phase == "enter" end
     if hv and hv.phase == "enter" then
-      if st then st.row = m.row as integer end
-      if m.tell == true then return emit("on_hover", { row = m.row }) end
+      if kit == "sparkline.hover" then
+        if st then st.row = m.row as integer end
+      else
+        return emit("on_hover", { row = m.row })
+      end
     end
   elseif kit == "line_chart.focus" then
     local f = m.focus as P
     if st and f and f.phase == "out" then st.key_row = nil end
-  elseif kit == "line_chart.key" then
-    local k = m.key as P
-    if not st or not k or k.phase ~= "down" then return nil end
-    local from, to = m.from as integer, m.to as integer
-    local code = k.code as string
-    local row = st.key_row or (to - 1)
-    if code == "tab" then
-      -- The ring's: a chart that hears its arrows hands Tab on.
-      st.hand = k.shift == true and "prev" or "next"
-    elseif code == "left" then st.key_row = st.key_row and math.max(from, row - 1) or row
-    elseif code == "right" then st.key_row = math.min(to - 1, st.key_row and row + 1 or row)
-    elseif code == "home" then st.key_row = from
-    elseif code == "end" then st.key_row = to - 1
-    end
+  elseif kit == "line_chart.step" then
+    -- The slider's step: an arrow, a page, Home or End, a press.
+    local ch = m.change as P
+    if st and ch and ch.value then st.key_row = math.floor(ch.value as number + 0.5) end
   elseif kit == "bar_chart.select" then
     return emit("on_select", { row = m.row })
   end
