@@ -3738,6 +3738,53 @@ had): a rect that moves names what moves it (a scroller's glide that
 never settles, a split, a sibling); a `prev` from two frames back names
 a frame that dropped the node. Fix that, in the core if it is the core's.
 
+A lead from Kit's round (2026-10-26): a live line chart's y gutter eases
+(`transition 160`) whenever the glided range changes its widest label,
+which moves the plot's width each tick and fires `line_chart.layout` — a
+stream of layout events from the chart, not the progress track.
+
+### `.` C125 — Removing a composite's focused last item drops focus
+
+**Found** in Kit's checklist (C120 adoption, 2026-10-26): Delete on the
+last item leaves focus on the vanished row's key, and nothing focuses
+the row before it; `env.set_focus` cannot name a list item either, since
+items are keyed by `index` (`"i0"` errors "no node is keyed"). Kit's
+workaround records each row's key while focused, which fails when Tab
+lands on the last row and Delete follows at once. **Do.** When a
+composite's focused item vanishes, focus moves to the item now at its
+place, else the one before it (as roving focus in ARIA practice); and a
+door to focus an item by index.
+
+### `.` C126 — `transition = 0` with a spring easing draws the eased value at 0
+
+**Found** in Kit's slider spring: a zero transition with `snappy` easing
+collapsed the fill to zero width. Kit drops the easing whenever it zeroes
+the transition. **Do.** A zero-length transition jumps to the target
+whatever its easing.
+
+### `.` C127 — Lua has no display scale in `env`
+
+**Found** in Kit's area chart: its polygon chunks end on whole window
+pixels to hide seams, which is exact only at integer scales because Lua
+cannot read the scale. **Do.** `env.scale` (and the same fact where a
+binding lacks it).
+
+### `.` C128 — A test UI for `kui test`
+
+**Filed** as ADR 0072's later follow-up (2026-10-26): Playwright's trace
+viewer in kui's terms — a devtools tab or `kui test --ui` that lists the
+tests, runs one and steps through it with the frame before and after each
+driving call, the events and messages it produced, the I/O it asked for,
+tree and snapshot diffs, and an optional perf recording. **Do.** After
+ADR 0072 is built.
+
+### `.` C129 — A danger menu item's hover hides its label
+
+**Found** while writing Kit's design system (2026-10-26): Kit paints a
+danger menu item's hover in `danger` with its text also in `danger`, so
+the label vanishes under the pointer. **Do.** The hovered danger item's
+label in `on-danger` (Kit, `addons/kit/src/overlays.tl`).
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
