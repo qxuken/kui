@@ -703,8 +703,8 @@ for lua-language-server, and a new runner beside the window's.
   bars for what is loading.
   A ninth, adopting C104–C113: no Kit control reads its hover, press or
   focus in Lua to pick a look — Ledger's primary face moves by `dx` /
-  `dy` from rules on the hover group it shares with the still box that
-  casts its shadow, and a checkbox's, a switch's and a radio's ring shows
+  `dy`, its shadow lengthened or dropped, from rules on the hover group
+  it shares with the still box that takes the pointer, and a checkbox's, a switch's and a radio's ring shows
   on `group_focus_visible`; the under-way bar and the skeleton leave a
   loop to the core under reduced motion; a `select` opens on the press
   with its current option over the field, so a press, drag and release
@@ -1339,6 +1339,13 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- A `when` entry that sets a shadow's offsets keeps the node's shadow
+  colour, blur and spread (backlog C114): an entry patched the shadow
+  whole, from a probe whose colour was transparent, so `shadowX` /
+  `shadowY` in a rule drew no shadow.
+- A quick click on a field that opens on the press leaves its menu open
+  even with the current row under the pointer (backlog C115): the release
+  picked the item under it before asking whether the pointer had moved.
 - `answer_typeahead` given while a view builds is taken and applied when
   the frame ends, against the tree it built, as a reach is landed
   (backlog C104): Kit, which answers from its draw, was refused, so

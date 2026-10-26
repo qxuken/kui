@@ -85,13 +85,14 @@ end
 -- with the pointer: lifted a pixel toward the light under it, the shadow
 -- a pixel longer; pressed into the shadow's place, the shadow gone. The
 -- shadow's far edge never moves, so the face reads as sliding on it.
--- Done as a still box that takes the pointer and casts the shadow (so the
--- face moving cannot flicker the hover, and the shadow cannot move), and a
--- face over it moved by `dx` / `dy` from rules on the pair's hover group:
--- lifted, it uncovers a pixel more of the shadow; pressed by the shadow's
--- length, it covers all of it. A hover or a press repaints and runs no
--- view (the face read `is_hovered` and `is_pressed`, and every hover
--- re-ran the button). Instant, not eased, as a pressed key is.
+-- Done as a still box that takes the pointer (so the face moving cannot
+-- flicker the hover), and a face in it that casts the shadow, moved by
+-- `dx` / `dy` and its shadow lengthened or dropped by rules on the pair's
+-- hover group: lifted a pixel with the shadow a pixel longer, its far
+-- edge stays put; pressed by the shadow's length with no shadow, it sits
+-- where the shadow was. A hover or a press repaints and runs no view
+-- (the face read `is_hovered` and `is_pressed`, and every hover re-ran
+-- the button). Instant, not eased, as a pressed key is.
 local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
   local sk = c.s.skin
   if variant ~= "primary" or t.disabled == true or not c.s.shadows or sk.shadow <= 0 or sk.shadow_blur > 0 then
@@ -112,9 +113,12 @@ local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
     radius = t.radius,
     bg = t.bg,
     border = t.border,
+    shadow_color = t.shadow_color,
+    shadow_x = s,
+    shadow_y = s,
     when = {
-      { group_hovered = true, bg = t.hover_bg, dx = -1, dy = -1 },
-      { group_pressed = true, bg = t.pressed_bg, dx = s, dy = s },
+      { group_hovered = true, bg = t.hover_bg, dx = -1, dy = -1, shadow_x = s + 1, shadow_y = s + 1 },
+      { group_pressed = true, bg = t.pressed_bg, dx = s, dy = s, shadow_x = 0, shadow_y = 0 },
     },
   }
   for i = 1, #t do face[i] = t[i] end
@@ -122,9 +126,6 @@ local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
     key = "hit",
     hover_group = group,
     radius = t.radius,
-    shadow_color = t.shadow_color,
-    shadow_x = t.shadow_x,
-    shadow_y = t.shadow_y,
     -- Hover-tracked, so its group reads hovered (a box with only a click
     -- is not).
     hoverable = true,
@@ -474,21 +475,11 @@ end
 
 local record Open
   open: boolean
-  -- Opened by a press, and nothing picked since; the value shown.
-  fresh: boolean
-  value: any
 end
 
 function M.select(c: Ctx, p: P): kui.Node
   local options = (p.options or {}) as {P}
   local st = ctx.state(c, function(): Open return { open = false } end)
-  -- The current option opens over the field, so a quick click's release
-  -- lands on it, and the core clicks a menu item under an opening press's
-  -- release before it asks whether the pointer moved: Kit keeps the menu
-  -- open for that first pick of the value it already has, as a native
-  -- pop-up does. Opened from the keyboard (focus shown), it does not.
-  st.value = p.value
-  if st.fresh and c.env.focus_visible == true then st.fresh = false end
   local current = chosen(options, p.value)
   local field = pressable(c, "default", {
     label = (str(p.label) or "choice") .. ": " .. (current or "none"),
@@ -853,18 +844,13 @@ function M.event(m: P, kit: string): any
     return emit("on_change", { text = "" })
   elseif kit == "select.open" then
     local st = ctx.peek(m.inst as integer) as Open
-    if st then st.open = not st.open; st.fresh = st.open end
+    if st then st.open = not st.open end
   elseif kit == "select.dismiss" then
     local st = ctx.peek(m.inst as integer) as Open
-    if st then st.open = false; st.fresh = false end
+    if st then st.open = false end
   elseif kit == "select.pick" then
     local st = ctx.peek(m.inst as integer) as Open
-    if st and st.fresh and m.value == st.value then
-      -- A quick click's release on the option over the field.
-      st.fresh = false
-      return nil
-    end
-    if st then st.open = false; st.fresh = false end
+    if st then st.open = false end
     return emit("on_change", { value = m.value })
   elseif kit == "checkbox.toggle" then
     return emit("on_toggle", { checked = m.checked })

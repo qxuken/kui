@@ -93,6 +93,7 @@ end
 
 
 
+
 local function pressed_face(c, variant, t)
    local sk = c.s.skin
    if variant ~= "primary" or t.disabled == true or not c.s.shadows or sk.shadow <= 0 or sk.shadow_blur > 0 then
@@ -113,9 +114,12 @@ local function pressed_face(c, variant, t)
       radius = t.radius,
       bg = t.bg,
       border = t.border,
+      shadow_color = t.shadow_color,
+      shadow_x = s,
+      shadow_y = s,
       when = {
-         { group_hovered = true, bg = t.hover_bg, dx = -1, dy = -1 },
-         { group_pressed = true, bg = t.pressed_bg, dx = s, dy = s },
+         { group_hovered = true, bg = t.hover_bg, dx = -1, dy = -1, shadow_x = s + 1, shadow_y = s + 1 },
+         { group_pressed = true, bg = t.pressed_bg, dx = s, dy = s, shadow_x = 0, shadow_y = 0 },
       },
    }
    for i = 1, #t do face[i] = t[i] end
@@ -123,9 +127,6 @@ local function pressed_face(c, variant, t)
       key = "hit",
       hover_group = group,
       radius = t.radius,
-      shadow_color = t.shadow_color,
-      shadow_x = t.shadow_x,
-      shadow_y = t.shadow_y,
 
 
       hoverable = true,
@@ -477,19 +478,9 @@ end
 
 
 
-
-
-
 function M.select(c, p)
    local options = (p.options or {})
    local st = ctx.state(c, function() return { open = false } end)
-
-
-
-
-
-   st.value = p.value
-   if st.fresh and c.env.focus_visible == true then st.fresh = false end
    local current = chosen(options, p.value)
    local field = pressable(c, "default", {
       label = (str(p.label) or "choice") .. ": " .. (current or "none"),
@@ -854,18 +845,13 @@ function M.event(m, kit)
       return emit("on_change", { text = "" })
    elseif kit == "select.open" then
       local st = ctx.peek(m.inst)
-      if st then st.open = not st.open; st.fresh = st.open end
+      if st then st.open = not st.open end
    elseif kit == "select.dismiss" then
       local st = ctx.peek(m.inst)
-      if st then st.open = false; st.fresh = false end
+      if st then st.open = false end
    elseif kit == "select.pick" then
       local st = ctx.peek(m.inst)
-      if st and st.fresh and m.value == st.value then
-
-         st.fresh = false
-         return nil
-      end
-      if st then st.open = false; st.fresh = false end
+      if st then st.open = false end
       return emit("on_change", { value = m.value })
    elseif kit == "checkbox.toggle" then
       return emit("on_toggle", { checked = m.checked })
