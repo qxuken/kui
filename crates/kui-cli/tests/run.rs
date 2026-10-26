@@ -809,6 +809,7 @@ fn packer(name: &str) -> PathBuf {
             ("data.txt", "an asset"),
             ("lib.lua", r#"return { said = "a module" }"#),
             ("test/skip.lua", "error('test/ is not packed')"),
+            (".kui/docs/props.md", "written for the editor, not packed (ADR 0071)"),
             (
                 "main.lua",
                 r#"
@@ -819,6 +820,7 @@ fn packer(name: &str) -> PathBuf {
                 print("asset", kui.fs.read("data.txt"))
                 print("module", require("lib").said)
                 print("test dir", kui.fs.exists("test/skip.lua"))
+                print("kui dir", kui.fs.exists(".kui/docs/props.md"))
                 local ok, err = pcall(kui.fs.write, "x.txt", "no")
                 print("write", ok, (tostring(err):find("read%-only")) ~= nil)
                 kui.exit(0)
@@ -845,6 +847,7 @@ fn a_packed_archive_runs_from_itself_read_only_with_its_arguments() {
     assert!(s.contains("asset\tan asset"), "{s}");
     assert!(s.contains("module\ta module"), "{s}");
     assert!(s.contains("test dir\tfalse"), "{s}");
+    assert!(s.contains("kui dir\tfalse"), ".kui/ stays out of the archive:\n{s}");
     assert!(s.contains("write\tfalse\ttrue"), "a packed app's own files are read-only:\n{s}");
 }
 
@@ -962,4 +965,136 @@ fn docs_searches_what_the_runner_carries_and_prints_an_adr() {
     assert!(o.status.success() && s.matches("https://kui-book.qxuken.dev").count() == 2, "said and opened:\n{s}");
     let help = out(&kui(&dir, &["help"], 20));
     assert!(help.contains("kui docs [query]"), "{help}");
+}
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Without `--docs` or `--agents`, `kui new` writes what it always did:
+/// no docs, no agent file, no `tooling` (ADR 0071, decision 3).
+#[test]
+fn new_without_flags_writes_no_docs_or_agent_files() {
+    let root = app("new-plain", &[]);
+    std::fs::create_dir_all(&root).unwrap();
+    let o = kui(&root, &["new", "plain"], 20);
+    assert!(o.status.success(), "{}", out(&o));
+    let dir = root.join("plain");
+    assert!(dir.join(".kui/types/kui.lua").exists());
+    for f in [".kui/docs", "AGENTS.md", "CLAUDE.md"] {
+        assert!(!dir.join(f).exists(), "{f} was written unasked");
+    }
+    let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
+    assert!(!manifest.contains("tooling"), "{manifest}");
+    assert_eq!(std::fs::read_to_string(dir.join(".kui/version")).unwrap().trim(), VERSION);
+}
+
+/// `--docs` writes `.kui/docs`, `--agents` the agent block too, and each
+/// is remembered as `tooling` in the manifest — written into a new app's,
+/// and placed in an existing one's with the rest of it untouched.
+#[test]
+fn docs_and_agents_write_them_and_the_manifests_tooling() {
+    let root = app("new-tooling", &[]);
+    std::fs::create_dir_all(&root).unwrap();
+    let o = kui(&root, &["new", "docs", "--docs"], 20);
+    assert!(o.status.success(), "{}", out(&o));
+    let dir = root.join("docs");
+    for f in ["props.md", "howto.md", "kit.md", "book/runner.md", "adr/0071-docs-that-travel-with-kui.md"] {
+        assert!(dir.join(".kui/docs").join(f).exists(), "{f}");
+    }
+    assert!(!dir.join("AGENTS.md").exists(), "--docs alone writes no agent block");
+    let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
+    assert!(manifest.contains("tooling = { docs = true },"), "{manifest}");
+
+    let o = kui(&root, &["new", "agents", "--agents"], 20);
+    assert!(o.status.success(), "{}", out(&o));
+    let dir = root.join("agents");
+    assert!(dir.join(".kui/docs/props.md").exists(), "--agents implies --docs");
+    let block = std::fs::read_to_string(dir.join("AGENTS.md")).unwrap();
+    assert!(block.starts_with("<!-- kui:begin") && block.trim_end().ends_with("<!-- kui:end -->"), "{block}");
+    for want in [VERSION, ".kui/types", ".kui/docs", "kui run --watch", "kui check", "Lua 5.5", "kit.ui", "Events are data"] {
+        assert!(block.contains(want), "{want} missing from:\n{block}");
+    }
+    let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
+    assert!(manifest.contains("tooling = { docs = true, agents = true },"), "{manifest}");
+
+    // An app of its own: `kui types --docs` adds one line to its manifest.
+    let mine = "-- my app\nreturn {\n    name = \"mine\", -- the name\n    size = { w = 300, h = 200 },\n}\n";
+    let dir = app("types-tooling", &[("main.lua", "kui.exit(0)\n"), ("kui.config.lua", mine)]);
+    let o = kui(&dir, &["types", "--docs"], 20);
+    assert!(o.status.success(), "{}", out(&o));
+    let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
+    assert_eq!(manifest, mine.replacen("return {\n", "return {\n    tooling = { docs = true },\n", 1));
+    let o = kui(&dir, &["types", "--agents"], 20);
+    assert!(o.status.success(), "{}", out(&o));
+    let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
+    assert_eq!(manifest, mine.replacen("return {\n", "return {\n    tooling = { docs = true, agents = true },\n", 1));
+    let o = kui(&dir, &["run", "--headless"], 20);
+    assert!(o.status.success(), "the manifest still runs: {}", out(&o));
+    let o = kui(&dir, &["run", "--docs"], 20);
+    assert!(!o.status.success() && out(&o).contains("kui new's and kui types'"), "{}", out(&o));
+}
+
+/// The agent block goes after what a `CLAUDE.md` the app already has
+/// says, and is rewritten between its markers alone.
+#[test]
+fn the_agent_block_is_appended_to_claude_md_and_rewritten_in_place() {
+    let mine = "# Mine\n\nKeep this.\n";
+    let dir = app("agents-claude", &[("main.lua", "kui.exit(0)\n"), ("CLAUDE.md", mine)]);
+    let o = kui(&dir, &["types", "--agents"], 20);
+    assert!(o.status.success(), "{}", out(&o));
+    assert!(!dir.join("AGENTS.md").exists(), "the block went into CLAUDE.md");
+    let text = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
+    assert!(text.starts_with("# Mine\n\nKeep this.\n\n<!-- kui:begin"), "{text}");
+    // Written by an older runner, with more of the app's own after it.
+    let old = text.replace(VERSION, "0.0.1") + "\nAfter the block.\n";
+    std::fs::write(dir.join("CLAUDE.md"), &old).unwrap();
+    std::fs::write(dir.join(".kui/version"), "0.0.1\n").unwrap();
+    let o = kui(&dir, &["check"], 20);
+    assert!(out(&o).contains("the agent block in CLAUDE.md"), "{}", out(&o));
+    let now = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
+    assert_eq!(now, text + "\nAfter the block.\n");
+    assert_eq!(now.matches("<!-- kui:begin").count(), 1);
+}
+
+/// `.kui/` written by another runner is rewritten by `kui run` and `kui
+/// check` — the types, and the docs where the app opted in — in one line,
+/// once; an app that opted into nothing gets nothing (decision 6).
+#[test]
+fn a_version_change_refreshes_kui_and_creates_nothing_unasked() {
+    let dir = app("refresh-types", &[("main.lua", "kui.exit(0)\n")]);
+    assert!(kui(&dir, &["types"], 20).status.success());
+    std::fs::write(dir.join(".kui/version"), "0.0.1\n").unwrap();
+    std::fs::remove_file(dir.join(".kui/types/kui.lua")).unwrap();
+    let o = kui(&dir, &["run", "--headless"], 20);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert_eq!(s.matches("kui: rewrote .kui/types for kui").count(), 1, "{s}");
+    assert!(s.contains("(written by kui 0.0.1)"), "{s}");
+    assert!(dir.join(".kui/types/kui.lua").exists());
+    assert_eq!(std::fs::read_to_string(dir.join(".kui/version")).unwrap().trim(), VERSION);
+    assert!(!dir.join(".kui/docs").exists() && !dir.join("AGENTS.md").exists(), "not opted into");
+    let o = kui(&dir, &["run", "--headless"], 20);
+    assert!(!out(&o).contains("rewrote"), "once: {}", out(&o));
+
+    // Opted into docs, as a fresh clone is: no .kui/ yet.
+    let dir = app(
+        "refresh-docs",
+        &[("main.lua", "kui.exit(0)\n"), ("kui.config.lua", "return { tooling = { docs = true } }\n")],
+    );
+    let o = kui(&dir, &["check"], 20);
+    assert!(out(&o).contains("rewrote .kui/types and .kui/docs"), "{}", out(&o));
+    assert!(dir.join(".kui/docs/howto.md").exists() && dir.join(".kui/types/kui.d.tl").exists());
+    assert!(!dir.join("AGENTS.md").exists());
+    std::fs::write(dir.join(".kui/version"), "0.0.1\n").unwrap();
+    std::fs::remove_file(dir.join(".kui/docs/howto.md")).unwrap();
+    let o = kui(&dir, &["run", "--headless"], 20);
+    assert!(out(&o).contains("rewrote .kui/types and .kui/docs"), "{}", out(&o));
+    assert!(dir.join(".kui/docs/howto.md").exists());
+
+    // Nothing opted into and no .kui/: nothing written.
+    let dir = app("refresh-none", &[("main.lua", "kui.exit(0)\n")]);
+    let o = kui(&dir, &["run", "--headless"], 20);
+    assert!(o.status.success() && !out(&o).contains("rewrote"), "{}", out(&o));
+    assert!(!dir.join(".kui").exists());
+    let o = kui(&dir, &["check"], 20);
+    assert!(o.status.success() && !dir.join(".kui").exists(), "{}", out(&o));
 }

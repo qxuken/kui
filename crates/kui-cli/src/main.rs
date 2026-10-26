@@ -30,6 +30,7 @@ mod project;
 mod release;
 mod rename;
 mod teal;
+mod tooling;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -62,6 +63,12 @@ run options:
                  pin the light or dark appearance over the OS's (headless has none of its own)
   -- ARGS        what follows is the app's, in kui.args
 
+new and types options:
+  --docs         also write this kui's docs into .kui/docs, and remember it in kui.config.lua
+  --agents       also write a short block for coding agents into AGENTS.md (or between
+                 markers in an AGENTS.md or CLAUDE.md the app has); implies --docs
+  kui run and kui check write .kui/ (and the agent block) again when another kui wrote it.
+
 An app defines view(env) and, to hear its events and kui.dispatch, update(msg).
 ";
 
@@ -79,6 +86,8 @@ struct Args {
     devtools: bool,
     no_rename: bool,
     appearance: kui_native::Appearance,
+    /// `kui new` / `kui types`: `--docs` and `--agents` (ADR 0071).
+    tooling: project::Tooling,
 }
 
 fn parse(argv: Vec<String>) -> Result<Args, String> {
@@ -96,6 +105,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
         devtools: false,
         no_rename: false,
         appearance: kui_native::Appearance::Unknown,
+        tooling: project::Tooling::default(),
     };
     match it.peek().map(String::as_str) {
         Some("run" | "check" | "new" | "types") => a.cmd = it.next().unwrap(),
@@ -119,6 +129,8 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
             "--watch" => a.watch = true,
             "--devtools" => a.devtools = true,
             "--no-rename" => a.no_rename = true,
+            "--docs" => a.tooling.docs = true,
+            "--agents" => a.tooling = project::Tooling { docs: true, agents: true },
             "--headless" => a.headless = true,
             "--shot" => {
                 a.shot = Some(PathBuf::from(it.next().ok_or("--shot needs a file, as out.png")?));
@@ -159,6 +171,9 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
     if let Some(p) = path {
         a.path = p;
     }
+    if a.tooling.any() && !matches!(a.cmd.as_str(), "new" | "types") {
+        return Err("--docs and --agents are kui new's and kui types' options".into());
+    }
     Ok(a)
 }
 
@@ -193,7 +208,7 @@ fn main() -> ExitCode {
         }
         "check" => check(&args),
         "new" => new(&args),
-        "types" => types(&args.path).map(|()| 0),
+        "types" => types(&args.path, args.tooling).map(|()| 0),
         // `kui run app.kui`: an archive `kui pack` wrote, run as packed.
         _ if args.path.extension().is_some_and(|e| e == "kui") && args.path.is_file() => {
             packed::from_file(&args.path).and_then(|p| {
@@ -237,6 +252,11 @@ fn run_packed(p: packed::Packed) -> Result<i32, String> {
 
 fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     let mut project = project::find(&args.path)?;
+    // `.kui/` written by another runner is written again (ADR 0071,
+    // decision 6); a packed app has none.
+    if packed.is_none() {
+        tooling::refresh(&project);
+    }
     if let Some(p) = packed {
         if let Some(entry) = &p.entry {
             project.entry = project.dir.join(entry);
@@ -349,6 +369,7 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
 
 fn check(args: &Args) -> Result<i32, String> {
     let project = project::find(&args.path)?;
+    tooling::refresh(&project);
     let files = project::teal_files(&project.dir);
     if files.is_empty() {
         println!("no .tl files under {}; plain .lua needs no check", project.dir.display());
@@ -418,23 +439,24 @@ fn new(args: &Args) -> Result<i32, String> {
     }
     let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "app".into());
     std::fs::write(&main, NEW_MAIN).map_err(|e| format!("{}: {e}", main.display()))?;
+    let tooling = if args.tooling.any() { format!("  tooling = {},\n", args.tooling.lua()) } else { String::new() };
     std::fs::write(
         dir.join("kui.config.lua"),
-        format!("return {{\n  name = {name:?},\n  entry = \"main.lua\",\n  size = {{ w = 900, h = 600 }},\n}}\n"),
+        format!("return {{\n  name = {name:?},\n  entry = \"main.lua\",\n  size = {{ w = 900, h = 600 }},\n{tooling}}}\n"),
     )
     .map_err(|e| e.to_string())?;
-    types(dir)?;
+    types(dir, args.tooling)?;
     println!("started {}: kui run --watch {}", dir.display(), dir.display());
     Ok(0)
 }
 
 /// `kui types`: the declarations an editor reads, in `.kui/types`, and a
 /// `.luarc.json` that points lua-language-server at them (left alone when
-/// there is one).
-fn types(dir: &std::path::Path) -> Result<(), String> {
-    let types = dir.join(".kui").join("types");
-    teal::write_types(&types).map_err(|e| format!("{}: {e}", types.display()))?;
-    std::fs::write(dir.join(".kui").join(".gitignore"), "*\n").map_err(|e| e.to_string())?;
+/// there is one); with `--docs` or `--agents`, or a manifest that opted
+/// into them, the docs in `.kui/docs` and the agent block too, the flags
+/// remembered in the manifest (ADR 0071).
+fn types(dir: &std::path::Path, want: project::Tooling) -> Result<(), String> {
+    let types = tooling::write_types(dir)?;
     let luarc = dir.join(".luarc.json");
     if !luarc.exists() {
         std::fs::write(
@@ -458,6 +480,23 @@ fn types(dir: &std::path::Path) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", tlconfig.display()))?;
     }
     println!("wrote {} (LuaLS and Teal declarations)", types.display());
+    // Without the flags a manifest that does not run is `kui run`'s to
+    // report, as it was before the manifest had a say here.
+    let have = if want.any() { project::tooling_of(dir)? } else { project::tooling_of(dir).unwrap_or_default() };
+    let opted = have.union(want);
+    if want.any()
+        && let Some(manifest) = tooling::remember(dir, want)?
+    {
+        println!("wrote tooling = {} into {}", opted.lua(), manifest.display());
+    }
+    if opted.any() {
+        let docs = tooling::write_docs(dir)?;
+        println!("wrote {} (this kui's docs: props.md, howto.md, kit.md, book/, adr/)", docs.display());
+    }
+    if opted.agents {
+        let file = tooling::write_agent_block(dir)?;
+        println!("wrote the agent block in {}", file.display());
+    }
     Ok(())
 }
 

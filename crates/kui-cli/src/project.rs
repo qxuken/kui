@@ -54,6 +54,38 @@ pub struct Project {
     /// Ctrl+Shift+I, and the macOS View menu, still reach them), and a
     /// string names another chord, as a menu item spells one.
     pub devtools_key: DevtoolsKey,
+    /// `tooling = { docs = true, agents = true }`: what the app opted into
+    /// beside its types (ADR 0071, decision 4).
+    pub tooling: Tooling,
+}
+
+/// The manifest's `tooling`: `.kui/docs` and the agent block, written by
+/// `kui new` / `kui types` with `--docs` / `--agents` and kept fresh by
+/// `kui run` and `kui check` (ADR 0071).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Tooling {
+    pub docs: bool,
+    pub agents: bool,
+}
+
+impl Tooling {
+    /// Either: the agent block points at the docs, so it implies them.
+    pub fn any(self) -> bool {
+        self.docs || self.agents
+    }
+
+    pub fn union(self, other: Tooling) -> Tooling {
+        Tooling { docs: self.any() || other.any(), agents: self.agents || other.agents }
+    }
+
+    /// As the manifest spells it: `{ docs = true, agents = true }`.
+    pub fn lua(self) -> String {
+        match (self.docs, self.agents) {
+            (_, true) => "{ docs = true, agents = true }".into(),
+            (true, false) => "{ docs = true }".into(),
+            (false, false) => "{}".into(),
+        }
+    }
 }
 
 /// The manifest's `devtools_key`.
@@ -119,12 +151,9 @@ pub fn find(path: &Path) -> Result<Project, String> {
         pack: PackConfig { devtools: true, ..Default::default() },
         devtools_reachable: true,
         devtools_key: DevtoolsKey::F12,
+        tooling: Tooling::default(),
     };
-    if let Some(config) = ["kui.config.lua", "kui.config.tl"]
-        .iter()
-        .map(|n| dir.join(n))
-        .find(|c| c.exists())
-    {
+    if let Some(config) = manifest(&dir) {
         read_config(&config, &mut p, &mut entry)?;
     }
     p.entry = match entry {
@@ -146,6 +175,39 @@ pub fn find(path: &Path) -> Result<Project, String> {
     Ok(p)
 }
 
+/// The app's manifest in `dir`: `kui.config.lua`, else `kui.config.tl`.
+pub fn manifest(dir: &Path) -> Option<PathBuf> {
+    ["kui.config.lua", "kui.config.tl"].iter().map(|n| dir.join(n)).find(|c| c.exists())
+}
+
+/// The manifest's table, run.
+fn eval_manifest(path: &Path) -> Result<(Lua, mlua::Table), String> {
+    let source = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let source = crate::teal::source_for(path, &source).map_err(|e| e.to_string())?;
+    let lua = Lua::new();
+    let t: mlua::Table = lua
+        .load(&source)
+        .set_name(format!("@{}", path.display()))
+        .eval()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok((lua, t))
+}
+
+fn tooling_in(t: &mlua::Table) -> mlua::Result<Tooling> {
+    let Some(tt) = t.get::<Option<mlua::Table>>("tooling")? else { return Ok(Tooling::default()) };
+    let agents = tt.get::<Option<bool>>("agents")?.unwrap_or(false);
+    Ok(Tooling { docs: tt.get::<Option<bool>>("docs")?.unwrap_or(false) || agents, agents })
+}
+
+/// What the manifest in `dir` opted into; nothing without one. Read
+/// alone, so a folder that is not an app yet (`kui types` in it) has an
+/// answer.
+pub fn tooling_of(dir: &Path) -> Result<Tooling, String> {
+    let Some(path) = manifest(dir) else { return Ok(Tooling::default()) };
+    let (_lua, t) = eval_manifest(&path)?;
+    tooling_in(&t).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 /// The id an app without one gets: its name, lowercased, with anything but
 /// letters, digits, `.`, `-` and `_` turned into `-`.
 pub fn default_id(name: &str) -> String {
@@ -164,15 +226,9 @@ fn entry_name_from_file(p: &Project) -> bool {
 }
 
 fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Result<(), String> {
-    let source = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let source = crate::teal::source_for(path, &source).map_err(|e| e.to_string())?;
-    let lua = Lua::new();
-    let t: mlua::Table = lua
-        .load(&source)
-        .set_name(format!("@{}", path.display()))
-        .eval()
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let (_lua, t) = eval_manifest(path)?;
     let mut get = || -> mlua::Result<()> {
+        p.tooling = tooling_in(&t)?;
         if let Some(e) = t.get::<Option<String>>("entry")? {
             *entry = Some(p.dir.join(e));
         }
