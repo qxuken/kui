@@ -1054,6 +1054,17 @@ fn drive_entry(
     follow: bool,
 ) -> [f32; 4] {
     {
+        // A transition of no length jumps to its target, whatever its
+        // easing (backlog C126). A timed curve gets there by its progress
+        // being whole; a spring has no such thing — it is integrated at a
+        // response time, and at none it blew up (Kit's slider fill, zeroed
+        // while dragged, drew at zero width). Left at rest on the target,
+        // so a length given back eases on from there.
+        if transition.duration_ms.is_nan() || transition.duration_ms <= 0.0 {
+            let (start, last) = now.map_or((0.0, 0.0), |n| (f64::NEG_INFINITY, n));
+            *entry = Some(Tween::settled(target, start, last, transition, frame_no));
+            return target;
+        }
         let stale = entry.is_none_or(|t| t.last_used + 1 < frame_no);
         let Some(now) = now else {
             *entry = Some(Tween::settled(target, 0.0, 0.0, transition, frame_no));
@@ -1442,6 +1453,76 @@ mod tests {
             5.0
         );
         assert!(!a.animating());
+    }
+
+    /// Backlog C126: a zero-length transition jumps to its target whatever
+    /// its easing — Kit's slider zeroed a `snappy` fill's transition while
+    /// dragged, and the spring, integrated at a response of nothing, drew
+    /// the fill at zero width.
+    #[test]
+    fn a_zero_length_transition_jumps_whatever_its_easing() {
+        for e in [
+            Easing::Linear,
+            Easing::EaseOut,
+            Easing::Spring,
+            Easing::Bouncy,
+            Easing::Smooth,
+            Easing::Snappy,
+        ] {
+            for t in [
+                Transition::ms(0.0).easing(e),
+                Transition::ms(0.0).easing(e).bounce(0.4),
+                Transition::ms(-5.0).easing(e),
+            ] {
+                let mut a = AnimStore::default();
+                let mut frame = Frames(0);
+                let k = Key::ROOT.str("x");
+                a.set_time(0.0);
+                a.begin_frame(frame.next());
+                assert_eq!(a.drive(k, Slot::Width, None, one(40.0), t, true)[0], 40.0);
+                // A new target, the next frame and a frame after that: there
+                // at once, owing nothing.
+                for (i, target) in [(1, 120.0), (2, 120.0), (3, 7.0)] {
+                    a.set_time(i as f64 * 0.016);
+                    a.begin_frame(frame.next());
+                    let v = a.drive(k, Slot::Width, None, one(target), t, true)[0];
+                    assert_eq!(v, target, "{e:?} {t:?} frame {i}");
+                    assert!(!a.animating(), "{e:?} owes nothing");
+                }
+                // An entrance with no length is no entrance.
+                let j = Key::ROOT.str("y");
+                assert_eq!(
+                    a.drive(j, Slot::Width, Some(one(0.0)), one(50.0), t, true)[0],
+                    50.0
+                );
+                assert!(!a.animating());
+            }
+        }
+        // And a leg already moving on a spring ends where the zero one says.
+        let mut a = AnimStore::default();
+        let mut frame = Frames(0);
+        let k = Key::ROOT.str("x");
+        let springy = Transition::ms(300.0).easing(Easing::Snappy);
+        a.set_time(0.0);
+        a.begin_frame(frame.next());
+        a.drive(k, Slot::Width, None, one(0.0), springy, true);
+        a.set_time(0.016);
+        a.begin_frame(frame.next());
+        a.drive(k, Slot::Width, None, one(100.0), springy, true);
+        assert!(a.animating());
+        a.set_time(0.032);
+        a.begin_frame(frame.next());
+        let zero = Transition::ms(0.0).easing(Easing::Snappy);
+        assert_eq!(
+            a.drive(k, Slot::Width, None, one(60.0), zero, true)[0],
+            60.0
+        );
+        assert!(!a.animating());
+        // Given its length back, it eases from there.
+        a.set_time(0.048);
+        a.begin_frame(frame.next());
+        let v = a.drive(k, Slot::Width, None, one(90.0), springy, true)[0];
+        assert!(v > 60.0 && v < 90.0, "eases on from 60: {v}");
     }
 
     #[test]
