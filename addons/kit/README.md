@@ -109,6 +109,31 @@ Working hosts: `crates/kui-lua/tests/kit.rs` (Rust),
 `examples/c/features/kit/kit.c`, `examples/odin/features/kit/kit.odin`, and
 the Kit test in `packages/kui/test.mjs`.
 
+## The design system
+
+`design-system/` describes Kit as a design system, written from this
+folder's sources (2026-10-26):
+
+- `design-system/README.md`, the brand book: the three skins, how Kit's
+  labels and messages are worded, the visual foundations (colour, type,
+  spacing, rules and borders, shadows, motion, states and focus, density)
+  and the icons.
+- `design-system/tokens.json`: every colour role per skin and appearance
+  (six themes, Ledger light first), the type styles, spacing, radii,
+  shadows, sizes and opacities — Kit's own names and values, the derived
+  roles as `skin.tl` computes them with no accent given, each with a usage
+  note naming the grounds a text colour reads on.
+- `design-system/components/<Component>/README.md`: when to use it, what
+  the app provides, do's and don'ts; `preview.html` beside it is a static
+  HTML rendition styled by `components/bundle.css` over the tokens' CSS
+  variables (it expects the tokens as CSS custom properties, so it is
+  read, not opened on its own).
+
+It is a description, not a source: `src/` is what Kit draws. When a skin's
+values, a component's props or its look change, update the matching file
+here (the gallery's Theme panel prints the settings a theme is made of).
+The samples' pictures it refers to are the ones under `samples/*/shots/`.
+
 ## Layout of this folder
 
 | Path | What |
@@ -121,6 +146,7 @@ the Kit test in `packages/kui/test.mjs`.
 | `shaders/` | Kit's own WGSL, embedded by `build.lua` and registered by Kit: `shimmer.wgsl` (the skeletons' sweep), `noise.wgsl`. |
 | `build.lua` | Type-checks `src/` against `packages/lua/kui.d.tl` with the Teal compiler kui-lua vendors, and writes `lua/`. `--check` fails on a stale `lua/` instead. |
 | `M0.md` | The spike that came first: its findings and numbers. |
+| `design-system/` | Kit as a design system: the brand book, the tokens per skin and appearance, a guideline and a static rendition per component. |
 
 ```bash
 nu scripts/gen.nu --skip lua,node,odin,book

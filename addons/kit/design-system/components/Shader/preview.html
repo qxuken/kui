@@ -1,0 +1,17 @@
+<!-- @dsCard group="Data" height=230 subtitle="kit.shader" -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Shader</title></head>
+<body>
+<div class="kit-stage">
+<div class="kit-seg" style="align-self:flex-start"><span class="kit-seg__o is-on kit-cap">Noise</span><span class="kit-seg__o kit-cap">Shimmer</span><span class="kit-seg__o kit-cap">Your own</span></div>
+<div style="height:120px;border-radius:var(--k-radius);background:var(--sunken);position:relative;overflow:hidden">
+  <svg width="100%" height="120" preserveAspectRatio="none" viewBox="0 0 560 120" aria-hidden="true" style="display:block">
+    <defs><filter id="n" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="7" result="t"/><feColorMatrix in="t" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.6 -0.55" result="a"/><feFlood style="flood-color:var(--accent)" result="c"/><feComposite in="c" in2="a" operator="in"/></filter></defs>
+    <rect width="560" height="120" filter="url(#n)"/>
+  </svg>
+</div>
+<span class="kit-muted">Noise drifts between the skin's well and its accent; Shimmer is a skeleton's sweep; Your own is your WGSL.</span>
+</div>
+</body>
+</html>
