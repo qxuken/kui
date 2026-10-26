@@ -339,6 +339,42 @@ function M.layout(m)
       kit.section({ title = "Advanced", count = 2, collapsed = m.folded, on_toggle = { kind = "fold" } }, {
         kit.checkbox({ label = "Verbose logging", checked = false }),
         kit.checkbox({ label = "Keep history", checked = true }) })),
+    demo("Conditions", "props by condition (ADR 0069): drag the rule, hover and press the card, Tab to it, switch the skin's appearance",
+      'row { width = "grow", gap = 12,\n  when = { { width = { below = 360, band = 16 }, dir = "column", gap = 4, hidden = { "hint" } } },\n  ... }\nrow { on_click = ..., bg = "$kitPanel",\n  when = { { hovered = true, bg = "$kitHover" }, { pressed = true, bg = "$kitPress" },\n           { dark = true, border = { w = 1, color = "$kitRule" } } } }\nrow { min_column = 140, ... }',
+      column { width = "grow", height = 120,
+        kit.split({ fraction = m.split, on_resize = { kind = "split" } }, {
+          first = { column { width = "grow", height = "grow", pad = 12, gap = 8, bg = "$kitSunken",
+            -- A row that reads its own width: label, field and hint in a
+            -- line, stacked and the hint dropped when the pane is narrow.
+            row { width = "grow", gap = 12, cross_align = "center",
+              when = { { width = { below = 360, band = 16 }, dir = "column", cross_align = "start", gap = 4, hidden = { "hint" } } },
+              text("Name", { size = "$kitSize", family = "$kitUi", bold = true, color = "$kitFg" }),
+              row { width = "grow", min_width = 0, kit.text_field({ label = "Name", hide_label = true, value = m.name, on_change = { kind = "name" } }) },
+              row { key = "hint", text("what the others see", { size = 11, family = "$kitUi", color = "$kitMuted" }) } } } },
+          second = { column { width = "grow", height = "grow", pad = 12,
+            note("the other pane") } },
+        }) },
+      row { width = "grow", gap = 12, cross_align = "center",
+        -- A card that colours itself by its own state: a hover repaints, the
+        -- view is not run.
+        row { key = "card", role = "button", label = "A card", width = 180, height = 56, pad = 12, radius = "$kitRadius",
+          cross_align = "center", cursor = "pointer", bg = "$kitPanel", transition = 120,
+          border = { w = 1, color = "$kitRule" },
+          on_click = { kind = "press", what = "the card" },
+          when = {
+            { hovered = true, bg = "$kitHover" },
+            { pressed = true, bg = "$kitPress" },
+            { dark = true, border = { w = 1, color = "$kitInk" } },
+            { reduced_motion = true, transition = 0 },
+          },
+          text("Hover, press, Tab", { size = "$kitSize", family = "$kitUi", color = "$kitFg" }) },
+        -- As many columns as fit at 140 px.
+        row { width = "grow", gap = 8, cross_gap = 8, min_column = 140,
+          column { height = 24, bg = "$kitSunken", radius = "$kitRadius" },
+          column { height = 24, bg = "$kitSunken", radius = "$kitRadius" },
+          column { height = 24, bg = "$kitSunken", radius = "$kitRadius" },
+          column { height = 24, bg = "$kitSunken", radius = "$kitRadius" },
+          column { height = 24, bg = "$kitSunken", radius = "$kitRadius" } } }),
     demo("Divider", "a rule between groups, as the skin draws regions", 'kit.divider({})',
       note("Above the rule: one group."),
       kit.divider({}),
@@ -373,6 +409,12 @@ function M.keyboard(m)
       'kit.bar_chart({ data = by_status, label = "status", value = "n", on_select = { kind = "bar" } })',
       kit.bar_chart({ data = statuses, label = "status", value = "n", height = 140, on_select = { kind = "bar" } }),
       said(m.bar and statuses and #statuses > m.bar and ("bar = " .. tostring(statuses:get(m.bar, "status"))) or "bar = none")),
+    demo("A table of cells", "cells = true: the arrows walk cells, Up and Down keep the column, the header a row of column headers",
+      'kit.table({ rows = endpoints, cells = true, columns = { ... }, selected = model.item, on_select = { kind = "item" } })',
+      column { width = "grow", height = 180,
+        kit.table({ rows = ENDPOINTS, cells = true, selected = m.item, grow = true, on_select = { kind = "item" },
+          columns = { { field = "method", title = "Method", width = 80 }, { field = "title", title = "Path" },
+            { field = "detail", title = "Traffic" } } }) }),
     demo("Tabs, a table, a trace, a text area", "", 'kit.tabs(...)  -- Left and Right\nkit.table({ ..., on_select = ... })  -- Up, Down, Home, End, Page Up and Down\nkit.waterfall({ ..., on_select = ... })  -- the arrows walk the spans\nkit.text_area({ ... })  -- Tab types; Escape then Tab, or Ctrl+M, leaves it (tab_moves_focus: Tab leaves)',
       note("The Layout page's tabs, the Data page's table, the Trace page's spans and the Inputs page's text areas answer the keyboard the same way.")),
   }

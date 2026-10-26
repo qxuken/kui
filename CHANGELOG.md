@@ -602,6 +602,30 @@ for lua-language-server, and a new runner beside the window's.
   lands on the step nearest the pointer (the handle was laid out after
   the fill, half a handle and more past the value's place). An under-way
   progress bar crosses its whole track, however wide.
+  A seventh, adopting what the core gained (ADR 0069, ADR 0070, C89–C99):
+  `list` and `table` are core composites rather than key sinks — focusable
+  rows under the `row_count` their body declares, so the arrows, Page keys
+  and End step past the window, Tab enters on the selected row
+  (`active_index`), focus landing on a row proposes it as the selection,
+  and a search the built rows cannot answer comes to Kit as `on_typeahead`;
+  `table` takes `cells = true` for a table of focusable cells with a row
+  of column headers. Every Kit root sets `focus_ring = "$kitFocus"`, which
+  replaces Kit's own per-control rings and the list's focus edge; the
+  checkbox, switch and radio keep their tight mark ring. The slider's
+  handle shares a hover group with the track and takes its look from
+  `hovered` and `pressed` rules, so a hover no longer re-fills it. A
+  browse field's Choose… goes under the field when its row is narrow,
+  Tidewater's setting rows stack below 640 px of their own width,
+  Watchtower's headline cards line up by `min_column` and its charts stack
+  in a narrow pane (its minimum width is 880 now), and the Kit app's demo
+  grid is `min_column`. Every node Kit eases carries a `reduced_motion`
+  entry, and the under-way bar stands still under it. `text_area` takes
+  `tab_moves_focus` in place of `tab_inserts`: Tab types by default, with
+  Escape then Tab or Ctrl+M (Ctrl+Shift+M on macOS) as the ways out. The
+  line chart draws from `ch:reduce` — a binary search for its window, one
+  bucket for its range, per two px the first, least, greatest and last —
+  and a value that is no number breaks its line (`line_chart_100k` 5.0 →
+  2.6 ms). The Kit app shows a Conditions demo and a table of cells.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
