@@ -8,9 +8,9 @@ Lua places a component with `kit.<name>(props, children)` after `local kit = req
 
 ## Contents
 
-Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
+Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.checklist`](#kitchecklist), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
 
-Types: [`Variant`](#variant), [`Tone`](#tone), [`Align`](#align), [`Axis`](#axis), [`Skin`](#skin), [`Density`](#density), [`Level`](#level), [`Browse`](#browse), [`XFormat`](#xformat), [`Appearance`](#appearance), [`ShaderPreset`](#shaderpreset), [`SkeletonShape`](#skeletonshape), [`Choice`](#choice), [`Column`](#column), [`Tab`](#tab), [`Item`](#item), [`Entry`](#entry), [`Series`](#series).
+Types: [`Variant`](#variant), [`Tone`](#tone), [`Align`](#align), [`Axis`](#axis), [`Skin`](#skin), [`Density`](#density), [`Level`](#level), [`Browse`](#browse), [`XFormat`](#xformat), [`Appearance`](#appearance), [`ShaderPreset`](#shaderpreset), [`SkeletonShape`](#skeletonshape), [`Choice`](#choice), [`Column`](#column), [`Tab`](#tab), [`Item`](#item), [`Check`](#check), [`Entry`](#entry), [`Series`](#series).
 
 ## kit.settings
 
@@ -296,6 +296,23 @@ Lua `kit.checkbox(props, children)` · Node `<Checkbox />`
 Children:
 
 - the list part draws after the box, the label's place: read as part of it, so nothing in it is a control.
+
+## kit.checklist
+
+A list of things to tick, one Tab stop: Up and Down walk the items, Home and End the ends, Space or a click ticks the one focused.
+
+Lua `kit.checklist(props)` · Node `<Checklist />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `items` | `items` | {[Check](#check)} | The items, in order: yours to keep. |
+| `label` | `label` | string? | What it lists, as it is read. |
+| `removable` | `removable` | boolean? | An × on each item, which the pointer presses to remove it. |
+
+| event | Node | carries | description |
+|---|---|---|---|
+| `on_toggle` | `onToggle` | `toggle` = { `index`: integer — Its place, 0-based.; `checked`: boolean — What it asks to be. } | An item was ticked or unticked. |
+| `on_remove` | `onRemove` | `remove` = { `index`: integer — Its place, 0-based. } | An item asked to go. |
 
 ## kit.switch
 
@@ -654,6 +671,8 @@ Lua `kit.sparkline(props)` · Node `<Sparkline />`
 | `color` | `color` | color? | The accent when left out. |
 | `width` | `width` | number? | In px; 80 when left out. |
 | `height` | `height` | number? | In px; 18 when left out. |
+| `unit` | `unit` | string? | After the value under the pointer: `ms`, `%`. |
+| `readout` | `readout` | boolean? | The value under the pointer, as a hint and a dot on its sample; on when left out. |
 
 ## kit.line_chart
 
@@ -672,6 +691,8 @@ Lua `kit.line_chart(props)` · Node `<LineChart />`
 | `x_format` | `xFormat` | [XFormat](#xformat)? | How the x ticks read; the number when left out. |
 | `x_unit` | `xUnit` | string? | After each x tick's number: `min`, `s`. |
 | `y_unit` | `yUnit` | string? | After each y tick's number: `ms`, `%`. |
+| `readout` | `readout` | boolean? | Under the pointer, a crosshair on the nearest sample, a dot on each series there and a readout of the x and every series' value in its colour, following the pointer and gone when it leaves; on when left out. An idle chart pays one hover layer for it. |
+| `focusable` | `focusable` | boolean? | A Tab stop: Left and Right move the readout a sample, Home and End to the ends, and the readout is a live region a screen reader announces. |
 
 | event | Node | carries | description |
 |---|---|---|---|
@@ -854,6 +875,16 @@ A menu row.
 | `shortcut` | `shortcut` | string? | The chord beside it, as text: `⌘K`. |
 | `disabled` | `disabled` | boolean? | Shown, not choosable. |
 | `danger` | `danger` | boolean? | A destructive action, drawn as one. |
+
+### Check
+
+One item of a checklist.
+
+| field | Node | type | description |
+|---|---|---|---|
+| `label` | `label` | string | What it says; its name. |
+| `checked` | `checked` | boolean | Ticked. |
+| `disabled` | `disabled` | boolean? | Shown, not tickable. |
 
 ### Entry
 
