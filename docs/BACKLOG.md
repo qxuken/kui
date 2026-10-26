@@ -3675,6 +3675,17 @@ in a channel (ADR 0065) answers by searching that channel itself.
 searches (prefix, case-blind, from the row after focus), so a channel-
 backed list needs no handler.
 
+### `.` C118 — The docs do not travel with kui
+
+**Found** by the user (2026-10-26): crates.io carries none of kui's
+prose, the runner carries types but no docs, and a project's types go
+stale after `kui upgrade`. **Do.** [ADR 0071](adr/0071-docs-that-travel-with-kui.md):
+`kui docs` (open, search, `--adr`) over docs the runner carries; opt-in
+`--docs` / `--agents` writing `.kui/docs` and a marked agent block,
+remembered as `tooling` in the manifest; a version stamp that refreshes
+`.kui/` on `kui run` / `kui check`; rustdoc pages in the `kui` crate;
+the book's text and Kit's generated reference on npm.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
