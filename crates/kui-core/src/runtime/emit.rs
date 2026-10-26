@@ -2162,7 +2162,14 @@ impl Core {
             };
             let key = self.tree.keys[i];
             let iterations = spec.anim().iterations;
-            let Some(o) = self.anim.sample_cycle(key, &track, t, iterations) else {
+            // Under reduced motion a bob holds still, or rests where it
+            // ends, unless it is essential (backlog C107).
+            let o = if self.holds_cycles(spec) {
+                crate::anim::held_still(&track, t, iterations)
+            } else {
+                self.anim.sample_cycle(key, &track, t, iterations)
+            };
+            let Some(o) = o else {
                 continue;
             };
             // Whole physical pixels, as a slide's are.

@@ -1426,6 +1426,12 @@ pub struct AnimSpec {
     /// frame (CSS's `animation-fill-mode: both`). A fraction of an
     /// iteration ends partway through one.
     pub iterations: Option<f32>,
+    /// Whether the `keyframes` cycle is essential motion — a spinner that
+    /// says work is under way — and keeps running when the user asked
+    /// for reduced motion (backlog C107). Off, the default, a cycle that
+    /// runs for ever holds still under reduced motion, the node showing
+    /// its own props, and a finite one rests where it would have ended.
+    pub essential_motion: bool,
 }
 
 impl AnimSpec {
@@ -1436,6 +1442,7 @@ impl AnimSpec {
         enter: None,
         exit: None,
         iterations: None,
+        essential_motion: false,
     };
 }
 
@@ -3174,6 +3181,25 @@ impl NodeSpec {
     /// ```
     pub fn iterations(mut self, n: f32) -> Self {
         self.anim_mut().iterations = (n.is_finite() && n > 0.0).then_some(n);
+        self
+    }
+
+    /// Keeps this node's `keyframes` cycle running when the user asked for
+    /// reduced motion (see the `essential_motion` field, backlog C107):
+    /// for motion that carries meaning, a spinner or an under-way bar.
+    /// Without it a cycle that runs for ever holds still there and a
+    /// finite one rests where it ends.
+    ///
+    /// ```
+    /// # use kui_core::{Keyframe, NodeSpec};
+    /// let spinner = NodeSpec::column()
+    ///     .transition(800.0)
+    ///     .keyframes(vec![Keyframe::default().rotate(0.0), Keyframe::default().rotate(1.0)])
+    ///     .essential_motion();
+    /// assert!(spinner.anim().essential_motion);
+    /// ```
+    pub fn essential_motion(mut self) -> Self {
+        self.anim_mut().essential_motion = true;
         self
     }
 

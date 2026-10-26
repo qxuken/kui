@@ -199,6 +199,7 @@ pub const P_HIDDEN: u32 = 147;
 pub const P_ON_QUERY: u32 = 148;
 pub const P_ON_TYPEAHEAD: u32 = 149;
 pub const P_ACTIVE_INDEX: u32 = 150;
+pub const P_ESSENTIAL_MOTION: u32 = 151;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1280,6 +1281,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.iterations(v)),
         doc: "How many times the `keyframes` cycle runs (CSS `animation-iteration-count`, backlog F133); left out, for ever. A finite cycle plays from the first frame the node is declared with it — a node that leaves and comes back plays again — holds its first stop through its `delay`, and rests where its last iteration ended (CSS's fill `both`): `1` plays a burst or a shake once, `2` with `repeat: \"alternate\"` goes out and back and ends where it began, `0.5` stops halfway. Once it is over the node owes no frame, so `animating()` and `owed()` go quiet as a settled transition's do; `delay` plus `iterations: 1` staggers one-shots. A count that is not a positive number is for ever. C: 0 is for ever.",
+    },
+    PropDef {
+        name: "essentialMotion",
+        id: P_ESSENTIAL_MOTION,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.essential_motion()),
+        doc: "The node's `keyframes` cycle is essential motion — a spinner or an under-way bar, whose movement says work is going on — and keeps running when the user asked for reduced motion (backlog C107). Without it, under reduced motion a cycle that runs for ever holds still, the node showing its own props as if it declared no stops, and a finite one (`iterations`) rests where its last iteration ends, as a transition jumps; neither owes a frame. A `when` entry cannot set `keyframes`, so this is how a view honours the setting without reading `env.system.motion`.",
     },
     PropDef {
         name: "clickSound",

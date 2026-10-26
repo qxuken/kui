@@ -449,7 +449,8 @@ extern "C" {
  * And KuiSpec appends focus_ring (816 bytes on 64-bit, from 808), the core
  * focus ring's colour (backlog C93), then min_column, hidden, on_query and
  * when (840 bytes; ADR 0069), then on_typeahead and active_index (856
- * bytes; ADR 0070, kui_answer_typeahead answering the first);
+ * bytes; ADR 0070, kui_answer_typeahead answering the first), then
+ * essential_motion (864 bytes; backlog C107);
  * kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92) are new
  * functions.
@@ -1514,6 +1515,12 @@ typedef struct KuiSpec {
      * for when the frame did not build it; it wins over the row focus last
      * held there. NULL for none. ABI 39, appended (856 bytes on 64-bit). */
     const KuiValue *active_index;
+    /* Non-zero: the keyframes cycle is essential motion - a spinner, an
+     * under-way bar - and keeps running when the user asked for reduced
+     * motion (essentialMotion, backlog C107); zero, a cycle that runs for
+     * ever holds still there and a finite one rests where it ends. ABI 39,
+     * appended (864 bytes on 64-bit). */
+    uint32_t essential_motion;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

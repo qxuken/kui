@@ -866,6 +866,26 @@ impl AnimStore {
     }
 }
 
+/// Where a keyframe cycle holds under reduced motion (backlog C107): a
+/// cycle that runs for ever is not run at all — `None`, the node's own
+/// value — and a finite one rests where its last iteration ends, as if it
+/// had played, the way a transition jumps. Neither reads the clock nor
+/// owes a frame.
+pub(crate) fn held_still(
+    track: &Track,
+    transition: Transition,
+    iterations: Option<f32>,
+) -> Option<[f32; 4]> {
+    let n = iterations?;
+    let &(_, first) = track.first()?;
+    Some(segment_at(
+        track,
+        transition,
+        transition.repeat.end(n as f64),
+        first,
+    ))
+}
+
 /// Where `now` lands in `track`'s cycle, shaped by `transition`'s easing.
 /// The walk behind [`NodeAnim::sample`]. None without a clock or a
 /// duration.

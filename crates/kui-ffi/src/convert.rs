@@ -535,6 +535,9 @@ pub(crate) fn spec_of(
     if s.hidden != 0 {
         spec = spec.hidden(true);
     }
+    if s.essential_motion != 0 {
+        spec = spec.essential_motion();
+    }
     if let Some(msg) = unsafe { s.on_query.as_ref() } {
         spec = spec.on_query(msg.0.clone());
     }

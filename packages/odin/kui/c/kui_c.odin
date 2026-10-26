@@ -728,6 +728,7 @@ Spec :: struct {
 	when_: ^Value,
 	on_typeahead: ^Value,
 	active_index: ^Value,
+	essential_motion: u32,
 }
 
 Announcement :: struct {

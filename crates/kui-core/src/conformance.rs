@@ -7862,6 +7862,9 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             // step, so the card rests where it stopped, which an infinite
             // cycle would have run past.
             .iterations(0.25)
+            // Essential motion (backlog C107): the cycle runs under reduced
+            // motion too, which the corpus does not ask for.
+            .essential_motion()
             .keyframes(vec![
                 Keyframe::default().bg(Color::hex(0x1b1d27ff)),
                 Keyframe::default()

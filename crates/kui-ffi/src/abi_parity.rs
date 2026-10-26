@@ -883,6 +883,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         when: *const KuiValue => "const KuiValue *",
         on_typeahead: *const KuiValue => "const KuiValue *",
         active_index: *const KuiValue => "const KuiValue *",
+        essential_motion: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1633,8 +1634,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // then `min_column` into that padding, `hidden`, and `on_query`
         // and `when` (ADR 0069): 816 + 4 rounds up to 824, plus two
         // pointers; then `on_typeahead` and `active_index` (ADR 0070), two
-        // more.
-        ("KuiSpec", 856, 39),
+        // more; then `essential_motion` (backlog C107), past the end, so
+        // 856 + 4 rounds up to 864.
+        ("KuiSpec", 864, 39),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),

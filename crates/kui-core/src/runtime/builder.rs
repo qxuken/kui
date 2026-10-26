@@ -188,17 +188,21 @@ impl Core {
 
     #[inline(never)]
     fn ease_transitioning(&mut self, key: Key, spec: &mut NodeSpec, t: crate::anim::Transition) {
+        let tracks = (!spec.anim().keyframes.is_empty()).then(|| Tracks::of(spec));
+        // Under reduced motion a cycle holds still unless it is essential
+        // (backlog C107).
+        let still = tracks.is_some() && self.holds_cycles(spec);
         // One lookup for the whole node. Every slot below used to reach
         // `AnimStore` by key on its own, which was seven to nine hashes and
         // probes of the same entry per transitioning node, per frame.
         let mut anim = self.anim.node(key);
-        let tracks = (!spec.anim().keyframes.is_empty()).then(|| Tracks::of(spec));
         let track = |slot: Slot| tracks.as_ref().and_then(|k| k.get(slot));
         let enter = spec.anim().enter.unwrap_or_default();
         let iterations = spec.anim().iterations;
         // Each slot: sampled from its track when keyframed, else tweened
         // toward its declared value from where the entrance says it starts.
         let mut ease = |slot: Slot, target: [f32; 4]| match track(slot) {
+            Some(track) if still => crate::anim::held_still(track, t, iterations).unwrap_or(target),
             Some(track) => anim.sample(track, t, iterations).unwrap_or(target),
             None => anim.drive(slot, enter.lanes(slot), target, t, true),
         };
@@ -249,6 +253,9 @@ impl Core {
             })
         };
         let v = match track {
+            Some(track) if self.holds_cycles(spec) => {
+                crate::anim::held_still(&track, t, spec.anim().iterations).unwrap_or(base)
+            }
             Some(track) => self
                 .anim
                 .sample_cycle(key, &track, t, spec.anim().iterations)
@@ -274,6 +281,16 @@ impl Core {
             tr.rotate = v[0];
             tr.scale = v[1];
         }
+    }
+
+    /// Whether node `spec`'s keyframe cycle holds still this frame: the
+    /// user asked for reduced motion and the node did not say its motion
+    /// is essential (backlog C107). A cycle that runs for ever is then
+    /// not run, the node showing its own props, and a finite one rests
+    /// where it ends ([`crate::anim::held_still`]).
+    #[inline]
+    pub(crate) fn holds_cycles(&self, spec: &NodeSpec) -> bool {
+        self.env.system.motion.is_reduced() && !spec.anim().essential_motion
     }
 
     /// The root node's key — for hover/press queries or `set_key_focus` when

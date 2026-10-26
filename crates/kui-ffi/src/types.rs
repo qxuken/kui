@@ -965,6 +965,9 @@ pub struct KuiSpec {
     /// The data row Tab enters a windowed composite on (`activeIndex`, ADR
     /// 0070), a `KuiValue` holding a whole number; NULL for none. ABI 39.
     pub active_index: *const KuiValue,
+    /// Non-zero: the `keyframes` cycle is essential motion and keeps running
+    /// under reduced motion (`essentialMotion`, backlog C107). ABI 39.
+    pub essential_motion: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.
