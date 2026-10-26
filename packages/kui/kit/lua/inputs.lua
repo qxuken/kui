@@ -478,10 +478,29 @@ end
 
 
 
+
+
+
+local function neighbours(options, value)
+   local at = 0
+   for i, o in ipairs(options) do
+      if o.value == value then at = i end
+   end
+   local before, after = nil, nil
+   for i = at - 1, 1, -1 do
+      if options[i].disabled ~= true then before = options[i].value; break end
+   end
+   for i = at + 1, #options do
+      if options[i].disabled ~= true then after = options[i].value; break end
+   end
+   return before, after
+end
+
 function M.select(c, p)
    local options = (p.options or {})
    local st = ctx.state(c, function() return { open = false } end)
    local current = chosen(options, p.value)
+   local before, after = neighbours(options, p.value)
    local field = pressable(c, "default", {
       label = (str(p.label) or "choice") .. ": " .. (current or "none"),
       expanded = st.open and "expanded" or "collapsed",
@@ -499,7 +518,8 @@ function M.select(c, p)
 
 
 
-      on_key = act(c, "select.key"),
+
+      on_key = act(c, "select.key", { mac = c.env.platform == "macos", before = before, after = after }),
       ctx.text(c, current or str(p.placeholder) or "Choose…", {
          color = ref(c, current and "fg" or "faint"), max_lines = 1, ellipsis = true,
       }),
@@ -856,8 +876,17 @@ function M.event(m, kit)
       local k = m.key
       local code = k and k.code
       local st = ctx.peek(m.inst)
-      if st and not st.open and k.phase == "down" and (code == "up" or code == "down" or code == "f4" or code == "space" or code == "enter") then
+      if not st or st.open or k.phase ~= "down" then return nil end
+      if code == "space" or code == "enter" or code == "f4" then
          st.open = true
+      elseif code == "up" or code == "down" then
+         if m.mac == true or k.alt == true then
+            st.open = true
+         elseif not (k.ctrl == true or k.super == true or k.shift == true) then
+            local to = m.after
+            if code == "up" then to = m.before end
+            if to ~= nil then return emit("on_change", { value = to }) end
+         end
       end
    elseif kit == "select.dismiss" then
       local st = ctx.peek(m.inst)

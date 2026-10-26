@@ -26,61 +26,83 @@ local ACCENTS = {
   { label = "Teal", color = 0x0d9488ff },
 }
 
--- The faces worth offering, each a family list: the skins' own and the
--- common ones of each platform. Only those installed on this machine are
--- offered (see `installed`): a family that is not falls back to the
--- system's sans, so Inter, IBM Plex and Space Grotesk all drew the same
--- where none of them is installed. Kit ships no font files, and a script
--- can neither load one nor list the system's families, so the panel asks
--- the font database family by family.
-local function face(name, generic)
-  return { value = name, label = name, list = { name, generic } }
+-- Each skin's own faces, as its font lists name them (addons/kit/src/
+-- ledger.tl, phosphor.tl, neutral.tl): listed first where installed, and
+-- named where not, since a family that is not installed draws as the
+-- system's sans.
+local SKIN_FACES = {
+  ledger = { "Space Grotesk", "IBM Plex Sans", "IBM Plex Mono" },
+  phosphor = { "IBM Plex Mono", "JetBrains Mono" },
+  neutral = { "Inter", "JetBrains Mono", "IBM Plex Mono" },
+}
+
+-- The system's own faces, by the names a family list takes.
+local GENERIC = { sans = "System sans", serif = "System serif", mono = "System mono" }
+
+-- Every family the core can see, installed or loaded from a file, sorted:
+-- asked once a run, and again after a file adds one (the door reads the
+-- font database each call, and this view runs on every message).
+local all_families = nil
+-- The families a file loaded here brought, for their badge, and how often
+-- that list changed.
+local from_file, files_rev = {}, 0
+-- What the list showed last, by row: a pick's row is read back against it.
+local shown = {}
+local shown_key, shown_rows = nil, nil
+
+local function families(env)
+  if not all_families then all_families = env.system_font_families() end
+  return all_families
 end
 
-local UI_FACES = {
-  { value = "skin", label = "The skin's" },
-  { value = "sans", label = "System sans", list = { "sans" } },
-  { value = "serif", label = "System serif", list = { "serif" } },
-  face("Inter", "sans"), face("IBM Plex Sans", "sans"), face("Space Grotesk", "sans"),
-  face("Helvetica Neue", "sans"), face("Avenir Next", "sans"), face("SF Pro Text", "sans"),
-  face("Segoe UI", "sans"), face("Roboto", "sans"), face("Noto Sans", "sans"), face("DejaVu Sans", "sans"),
-  face("Ubuntu", "sans"), face("Georgia", "serif"), face("Times New Roman", "serif"),
-}
-
-local DATA_FACES = {
-  { value = "skin", label = "The skin's" },
-  { value = "mono", label = "System mono", list = { "mono" } },
-  face("IBM Plex Mono", "mono"), face("JetBrains Mono", "mono"), face("SF Mono", "mono"),
-  face("Menlo", "mono"), face("Monaco", "mono"), face("Consolas", "mono"), face("Cascadia Code", "mono"),
-  face("Fira Code", "mono"), face("DejaVu Sans Mono", "mono"), face("Ubuntu Mono", "mono"),
-}
-
--- Whether each named family is on this machine: the app declares a family
--- token per candidate, that family then its generic, once — a token picks the
--- first of its list the font database has, so one that picked the generic is
--- not installed — and reads which picked. Asked once a run (a reload asks
--- again); declaring tokens re-asks everything that paints with them.
-local probed = false
-local function installed(env)
-  if not probed then
-    local families = {}
-    for _, list in ipairs({ UI_FACES, DATA_FACES }) do
-      for i, f in ipairs(list) do
-        if f.list and #f.list == 2 then families["face" .. tostring(list == UI_FACES and "U" or "D") .. i] = { f.value, f.list[2] } end
-      end
-    end
-    env.set_tokens({ families = families })
-    probed = true
-  end
-  local picked = env.tokens and env.tokens.families or {}
+-- The families as the list shows them, filtered by `filter` (a part of the
+-- name, any case): the skin's installed faces first, then those a file
+-- brought, then the rest in order; and as a channel, made again only when
+-- the filter or the families change.
+local function family_rows(env, skin, filter)
+  local all = families(env)
+  local key = table.concat({ skin, filter, #all, files_rev }, "\0")
+  if key == shown_key then return shown_rows end
   local have = {}
-  for _, list in ipairs({ UI_FACES, DATA_FACES }) do
-    for i, f in ipairs(list) do
-      local p = picked["face" .. tostring(list == UI_FACES and "U" or "D") .. i]
-      if p == f.value then have[f.value] = true end
-    end
+  for _, f in ipairs(all) do have[f] = true end
+  local want = filter:lower()
+  local function match(f) return want == "" or f:lower():find(want, 1, true) ~= nil end
+  local rows = { family = {}, badge = {}, tone = {} }
+  local placed = {}
+  local function add(f, badge, tone)
+    if placed[f] or not match(f) then return end
+    placed[f] = true
+    local n = #rows.family + 1
+    rows.family[n], rows.badge[n], rows.tone[n] = f, badge, tone
   end
-  return have
+  for _, f in ipairs(SKIN_FACES[skin] or {}) do
+    if have[f] then add(f, "skin", "accent") end
+  end
+  for _, f in ipairs(all) do
+    if from_file[f] then add(f, "file", "info") end
+  end
+  -- macOS's own interface faces (`.SF NS Mono`) are the system's to use,
+  -- not an app's: left out, as a font menu leaves them.
+  for _, f in ipairs(all) do
+    if f:sub(1, 1) ~= "." then add(f, "", "neutral") end
+  end
+  local listed = 0
+  for _, f in ipairs(all) do
+    if f:sub(1, 1) ~= "." then listed = listed + 1 end
+  end
+  shown, shown_key, shown_rows = rows.family, key, { ch = channel(rows), n = #rows.family, of = listed }
+  return shown_rows
+end
+
+-- The skin's faces this machine has not got.
+local function missing_faces(env, skin)
+  local have = {}
+  for _, f in ipairs(families(env)) do have[f] = true end
+  local out = {}
+  for _, f in ipairs(SKIN_FACES[skin] or {}) do
+    if not have[f] then out[#out + 1] = f end
+  end
+  return out
 end
 
 -- The colour roles worth setting by hand, and what each paints.
@@ -100,25 +122,21 @@ local COLORS = {
   { role = "danger", label = "Danger" },
 }
 
-local function list_of(faces, value)
-  for _, f in ipairs(faces) do
-    if f.value == value then return f.list end
-  end
-  return nil
+-- A face's family list as `kit.settings` takes it: nil for the skin's, a
+-- generic alone, or a family with the generic after it, which draws where
+-- the family is not installed.
+local function face_list(value, generic)
+  if value == nil or value == "skin" then return nil end
+  if GENERIC[value] then return { value } end
+  return { value, generic }
 end
 
--- The faces as a select's options: the skin's (named by the family it
--- resolved to), the system's generic ones, and the families installed
--- here; the one chosen stays listed even if it is not.
-local function choices(faces, have, skin_picked, chosen)
-  local out = {}
-  for _, f in ipairs(faces) do
-    if f.value == "skin" then
-      out[#out + 1] = { value = f.value, label = skin_picked and ("The skin's (" .. skin_picked .. ")") or f.label }
-    elseif #f.list == 1 or have[f.value] or f.value == chosen then
-      out[#out + 1] = { value = f.value, label = f.label }
-    end
-  end
+-- A face select's options: the skin's (named by the family it resolved
+-- to), the system's generic ones, and the family picked from the list.
+local function choices(generics, skin_picked, chosen)
+  local out = { { value = "skin", label = skin_picked and ("The skin's (" .. skin_picked .. ")") or "The skin's" } }
+  for _, g in ipairs(generics) do out[#out + 1] = { value = g, label = GENERIC[g] } end
+  if chosen ~= "skin" and not GENERIC[chosen] then out[#out + 1] = { value = chosen, label = chosen } end
   return out
 end
 
@@ -133,6 +151,9 @@ function M.defaults()
   return {
     skin = "ledger", appearance = "system", density = "comfortable", shadows = true,
     accent = nil, radius = nil, hair = nil, rule = nil, font_ui = "skin", font_data = "skin",
+    -- The family list: which face a pick sets, the filter, and a font file
+    -- loaded from disk (its path as typed or chosen).
+    font_target = "ui", font_filter = "", font_file = nil,
     -- Colours by role, each `{ light, dark }` with either half left out;
     -- and what is typed in a colour's field, valid or not yet.
     colors = {}, typed = {},
@@ -163,7 +184,7 @@ function M.settings(t)
   return {
     skin = t.skin, appearance = t.appearance, density = t.density, shadows = t.shadows,
     radius = t.radius, hair = t.hair, rule = t.rule,
-    font_ui = list_of(UI_FACES, t.font_ui), font_data = list_of(DATA_FACES, t.font_data),
+    font_ui = face_list(t.font_ui, "sans"), font_data = face_list(t.font_data, "mono"),
     roles = roles,
   }
 end
@@ -185,9 +206,13 @@ function M.lua(t)
   if t.radius then add(string.format("radius = %g,", t.radius)) end
   if t.hair then add(string.format("hair = %g,", t.hair)) end
   if t.rule then add(string.format("rule = %g,", t.rule)) end
-  local ui, data = list_of(UI_FACES, t.font_ui), list_of(DATA_FACES, t.font_data)
+  local ui, data = face_list(t.font_ui, "sans"), face_list(t.font_data, "mono")
   if ui then add("font_ui = " .. lua_list(ui) .. ",") end
   if data then add("font_data = " .. lua_list(data) .. ",") end
+  -- A family a file brought is the app's to load too, from its view.
+  if t.font_file and (from_file[t.font_ui] or from_file[t.font_data]) then
+    table.insert(lines, 1, string.format("-- env.load_font_file(%q) first, in the view", t.font_file))
+  end
   local roles = {}
   if t.accent then roles[#roles + 1] = string.format("    accent = 0x%08x,", t.accent) end
   for _, c in ipairs(COLORS) do
@@ -241,6 +266,13 @@ function M.update(m, msg)
       t.colors[msg.role] = t.colors[msg.role] or {}
       t.colors[msg.role][msg.half] = c
     end
+  elseif k == "theme_font_filter" then
+    t.font_filter = msg.change.text
+  elseif k == "theme_font_pick" then
+    local f = shown[(msg.select.row or -1) + 1]
+    if f then t[t.font_target == "data" and "font_data" or "font_ui"] = f end
+  elseif k == "theme_font_file" then
+    t.font_file = msg.change.text ~= "" and msg.change.text or nil
   elseif k == "theme_colors" then
     m.theme_colors = not msg.toggle.collapsed
   elseif k == "theme_color_reset" then
@@ -313,7 +345,24 @@ function M.view(m, env)
   -- Kit's tokens as they resolve now: its colours (0xRRGGBBAA) and lengths.
   local tokens = env.tokens or {}
   local now, lengths, fams = tokens.colors or {}, tokens.lengths or {}, tokens.families or {}
-  local have = installed(env)
+  -- A font file named here is loaded (the same file again is the same
+  -- family), and the family it brought joins the list.
+  local file_family, file_err = nil, nil
+  if t.font_file then
+    file_family, file_err = env.load_font_file(t.font_file)
+    if file_family and not from_file[file_family] then
+      from_file[file_family] = true
+      files_rev = files_rev + 1
+      all_families = nil
+    end
+  end
+  local list = family_rows(env, t.skin, t.font_filter)
+  local target = t.font_target == "data" and t.font_data or t.font_ui
+  local picked = nil
+  for i, f in ipairs(shown) do
+    if f == target then picked = i - 1 end
+  end
+  local missing = missing_faces(env, t.skin)
   local swatches = { swatch(nil, "The skin's accent", t.accent == nil, { kind = "theme_accent" }) }
   for _, a in ipairs(ACCENTS) do
     swatches[#swatches + 1] = swatch(a.color, "Accent: " .. a.label, t.accent == a.color,
@@ -347,11 +396,27 @@ function M.view(m, env)
     length(t, "hair", "Hairline", 0.5, 3, 0.5, lengths.kitHair or 1),
     length(t, "rule", "Region rule", 0, 4, 0.5, lengths.kitRuleW or 1),
     kit.select({ label = "UI face", value = t.font_ui, on_change = { kind = "theme", field = "font_ui" },
-      options = choices(UI_FACES, have, t.font_ui == "skin" and fams.kitUi or nil, t.font_ui) }),
+      options = choices({ "sans", "serif" }, t.font_ui == "skin" and fams.kitUi or nil, t.font_ui) }),
     kit.select({ label = "Data face", value = t.font_data, on_change = { kind = "theme", field = "font_data" },
-      options = choices(DATA_FACES, have, t.font_data == "skin" and fams.kitData or nil, t.font_data) }),
-    text("Only the families installed here are listed; Kit ships no font files.",
-      { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" }),
+      options = choices({ "mono" }, t.font_data == "skin" and fams.kitData or nil, t.font_data) }),
+    setting("Families", column { width = "grow", gap = 6,
+      kit.segmented({ label = "A pick sets", value = t.font_target, on_change = { kind = "theme", field = "font_target" },
+        options = { { value = "ui", label = "UI face" }, { value = "data", label = "Data face" } } }),
+      kit.search({ label = "Filter the families", placeholder = "Filter families", value = t.font_filter,
+        count = list.n < list.of and string.format("%d of %d", list.n, list.of) or tostring(list.of),
+        on_change = { kind = "theme_font_filter" } }),
+      column { width = "grow", height = 200,
+        kit.list({ rows = list.ch, title = "family", badge = "badge", tone = "tone", badge_width = 36,
+          label = "Families", selected = picked, grow = true, on_select = { kind = "theme_font_pick" } }) },
+      kit.text_field({ label = "Font file", hide_label = true, mono = true, browse = "open", browse_label = "Load…",
+        placeholder = "A .ttf, .otf or .ttc", value = t.font_file or "", error = file_err,
+        on_change = { kind = "theme_font_file" } }),
+      file_family and caption("Loaded " .. file_family .. ": pick it above.") or nil,
+      text(#missing > 0
+          and string.format("Kit ships no font files: the skin's %s %s not installed here, and draws in the system's face instead.",
+            table.concat(missing, ", "), #missing > 1 and "are" or "is")
+          or "Kit ships no font files: these are the families installed here, and any a file loaded.",
+        { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" }) }),
     kit.section({ title = "Colours, " .. half, collapsed = not m.theme_colors, on_toggle = { kind = "theme_colors" } },
       { column { width = "grow", gap = 6, table.unpack(colors) } }),
     kit.code({ label = "Your theme", text = M.lua(t), copy = true }),

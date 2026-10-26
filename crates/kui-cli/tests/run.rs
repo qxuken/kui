@@ -418,6 +418,12 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
         steps[#steps + 1] = { kind = "theme_number", field = "radius", change = { value = 6 } }
         steps[#steps + 1] = { kind = "theme_color", role = "panel", half = "dark", change = { text = "#202830" } }
         steps[#steps + 1] = { kind = "theme", field = "font_ui", change = { value = "serif" } }
+        -- The family list: a pick for the data face, a filter that leaves
+        -- nothing, and a font file that is not there.
+        steps[#steps + 1] = { kind = "theme", field = "font_target", change = { value = "data" } }
+        steps[#steps + 1] = { kind = "theme_font_pick", select = { row = 0 } }
+        steps[#steps + 1] = { kind = "theme_font_filter", change = { text = "kui-no-such-family" } }
+        steps[#steps + 1] = { kind = "theme_font_file", change = { text = "fonts/none.ttf" } }
         steps[#steps + 1] = { kind = "toast_all" }
         steps[#steps + 1] = { kind = "menu", open = true }
         steps[#steps + 1] = { kind = "dialog", open = true }
@@ -440,7 +446,7 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     assert!(!s.contains("could not be read"), "every card's source was read:\n{s}");
     assert!(s.contains("rows\t100000\tspans\t18000"), "the worker's channels arrived:\n{s}");
     assert!(s.contains("profile\tloaded"), "the loading card loaded:\n{s}");
-    for line in ["appearance = \"dark\"", "radius = 6,", "accent = 0x16a34aff,", "panel = { dark = 0x202830ff },", "font_ui = { \"serif\" },"] {
+    for line in ["appearance = \"dark\"", "radius = 6,", "accent = 0x16a34aff,", "panel = { dark = 0x202830ff },", "font_ui = { \"serif\" },", "font_data = { \""] {
         assert!(s.contains(line), "the theme as Lua has {line}:\n{s}");
     }
 }

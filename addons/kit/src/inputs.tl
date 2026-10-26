@@ -477,10 +477,29 @@ local record Open
   open: boolean
 end
 
+-- The enabled options a bare arrow steps to off macOS: the nearest before
+-- the value and the nearest after it, nil past either end (the step
+-- clamps). With nothing chosen, Down steps to the first and Up nowhere.
+local function neighbours(options: {P}, value: any): any, any
+  local at = 0
+  for i, o in ipairs(options) do
+    if o.value == value then at = i end
+  end
+  local before, after: any, any = nil, nil
+  for i = at - 1, 1, -1 do
+    if options[i].disabled ~= true then before = options[i].value; break end
+  end
+  for i = at + 1, #options do
+    if options[i].disabled ~= true then after = options[i].value; break end
+  end
+  return before, after
+end
+
 function M.select(c: Ctx, p: P): kui.Node
   local options = (p.options or {}) as {P}
   local st = ctx.state(c, function(): Open return { open = false } end)
   local current = chosen(options, p.value)
+  local before, after = neighbours(options, p.value)
   local field = pressable(c, "default", {
     label = (str(p.label) or "choice") .. ": " .. (current or "none"),
     expanded = st.open and "expanded" or "collapsed",
@@ -492,13 +511,14 @@ function M.select(c: Ctx, p: P): kui.Node
     -- press here is outside it and arrives as `select.dismiss`.
     on_click = act(c, "select.open"),
     opens_on_press = true,
-    -- From the keyboard: Up, Down (Alt or not), F4, Space and Enter open
-    -- it, focus on the current option — a macOS pop-up's and a browser's
-    -- select on a Mac. (A key sink, the field hears Space and Enter as
-    -- keys rather than as presses.) Windows and Linux step the value with
-    -- a bare arrow; a script cannot tell which platform it is on, so the
-    -- arrows open everywhere.
-    on_key = act(c, "select.key"),
+    -- From the keyboard, as the platform's own select: on macOS Up and
+    -- Down open it, focus on the current option, as a pop-up button does;
+    -- on Windows and Linux a bare Up or Down steps the value to the
+    -- previous or next enabled option without opening, and Alt+Up,
+    -- Alt+Down and F4 open it. Space and Enter open it everywhere. (A key
+    -- sink, the field hears Space and Enter as keys rather than as
+    -- presses.) The step's two values ride in the message, read here.
+    on_key = act(c, "select.key", { mac = c.env.platform == "macos", before = before, after = after }),
     ctx.text(c, current or str(p.placeholder) or "Choose…", {
       color = ref(c, current and "fg" or "faint"), max_lines = 1, ellipsis = true,
     }),
@@ -855,8 +875,17 @@ function M.event(m: P, kit: string): any
     local k = m.key as P
     local code = k and k.code as string
     local st = ctx.peek(m.inst as integer) as Open
-    if st and not st.open and k.phase == "down" and (code == "up" or code == "down" or code == "f4" or code == "space" or code == "enter") then
+    if not st or st.open or k.phase ~= "down" then return nil end
+    if code == "space" or code == "enter" or code == "f4" then
       st.open = true
+    elseif code == "up" or code == "down" then
+      if m.mac == true or k.alt == true then
+        st.open = true
+      elseif not (k.ctrl == true or k.super == true or k.shift == true) then
+        local to: any = m.after
+        if code == "up" then to = m.before end
+        if to ~= nil then return emit("on_change", { value = to }) end
+      end
     end
   elseif kit == "select.dismiss" then
     local st = ctx.peek(m.inst as integer) as Open

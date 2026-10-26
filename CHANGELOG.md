@@ -739,6 +739,19 @@ for lua-language-server, and a new runner beside the window's.
   row keeps its chips; and the Theme panel offers only the faces installed
   on the machine, since Kit ships no font files and a family that is not
   installed draws as the system's sans.
+  An eleventh, adopting C116 and C117: a `select` follows the platform's
+  convention — on macOS Up and Down open it on its current option, on
+  Windows and Linux a bare Up or Down steps the value to the previous or
+  next enabled option (clamped, `on_change` as a pick) without opening,
+  and Alt+Up, Alt+Down and F4 open it; Space and Enter open it
+  everywhere. The Kit app's Theme panel lists every family the machine
+  has (`env.system_font_families`), sorted, the skin's own faces first
+  and macOS's private interface faces left out, with a filter and a
+  count, a pick setting the UI or the data face; it names the skin's
+  faces that are not installed, and a font file chosen with Load… (or
+  typed, relative to the app's folder) is loaded with
+  `env.load_font_file`, its family listed and the printed call saying to
+  load it. The probe that declared a family token per candidate is gone.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a

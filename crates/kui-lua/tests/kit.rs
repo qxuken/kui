@@ -2831,37 +2831,41 @@ fn an_accent_derives_a_palette_whose_text_reads_everywhere() {
 
 #[test]
 fn the_keyboard_opens_a_select_on_its_current_option() {
-    // Up, Down, Alt+Down, F4, Space and Enter on a closed, focused select
-    // open its menu with focus on the option it shows; Escape closes it
-    // and gives focus back.
-    use kui_core::{KeyCode, KeyMods};
-    let opening: &[(KeyCode, KeyMods)] = &[
-        (KeyCode::Down, KeyMods::NONE),
-        (KeyCode::Up, KeyMods::NONE),
-        (KeyCode::Down, KeyMods::NONE.with_alt()),
-        (KeyCode::F(4), KeyMods::NONE),
-        (KeyCode::Space, KeyMods::NONE),
-        (KeyCode::Enter, KeyMods::NONE),
-    ];
-    for &(code, mods) in opening {
-        let mut r = LuaRig::new(
-            r#"
-            function view(env)
-              return column { width = "grow", height = "grow", pad = 100,
-                row { width = 200, component("kit/select", { label = "Mode", value = "two", on_change = { kind = "mode" },
-                  options = { { value = "one", label = "One" }, { value = "two", label = "Two" }, { value = "three", label = "Three" } } }) } }
-            end
-            "#,
-        );
+    // The platform's convention (backlog C116), each faked with
+    // `Core::set_platform`, which `env.platform` reads. On macOS Up, Down
+    // (Alt or not), F4, Space and Enter on a closed, focused select open
+    // its menu with focus on the option it shows. On Windows and Linux
+    // Alt+Up, Alt+Down, F4, Space and Enter open it, and a bare Up or Down
+    // steps the value to the previous or next enabled option, clamped,
+    // without opening. Escape closes an open one and gives focus back.
+    use kui_core::{KeyCode, KeyMods, Platform};
+    const SRC: &str = r#"
+        value = value or "two"
+        changed = nil
+        function on_event(ev) if ev.kind == "mode" then changed = ev.change.value; value = ev.change.value end end
+        function view(env)
+          return column { width = "grow", height = "grow", pad = 100,
+            row { width = 200, component("kit/select", { label = "Mode", value = value, on_change = { kind = "mode" },
+              options = { { value = "zero", label = "Zero", disabled = true }, { value = "one", label = "One" },
+                { value = "two", label = "Two" }, { value = "skip", label = "Skip", disabled = true },
+                { value = "three", label = "Three" } } }) } }
+        end
+    "#;
+    let rig = |platform: Platform, value: &str| {
+        let mut r = LuaRig::new(SRC);
+        r.core.set_platform(platform);
+        r.app.globals().set("value", value).unwrap();
         r.frames(2);
         let e = r.core.handle_input(kui_core::testing::key_press(KeyCode::Tab));
         r.route(e);
         let e = kui_core::testing::tab(&mut r.core, false);
         r.route(e);
         r.frames(1);
-        let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
-        assert_eq!(focused(&mut r).as_deref(), Some("Mode: Two"), "Tab reached the field");
-        // As a window delivers it: the press, and the space's text.
+        r
+    };
+    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    // As a window delivers it: the press, and the space's text.
+    let press = |r: &mut LuaRig, code: KeyCode, mods: KeyMods| {
         let e = r.core.press(kui_core::KeyPress::new(code, mods));
         r.route(e);
         if code == KeyCode::Space {
@@ -2869,11 +2873,62 @@ fn the_keyboard_opens_a_select_on_its_current_option() {
             r.route(e);
         }
         r.frames(3);
-        assert!(r.text("Three").is_some(), "{code:?} {mods:?} opened the menu");
-        assert_eq!(focused(&mut r).as_deref(), Some("Two"), "{code:?}: focus on the current option");
-        press_key(&mut r, KeyCode::Escape);
-        r.frames(2);
-        assert!(r.text("Three").is_none(), "Escape closed it");
-        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    };
+    let alt = KeyMods::NONE.with_alt();
+    let mac: &[(KeyCode, KeyMods)] = &[
+        (KeyCode::Down, KeyMods::NONE),
+        (KeyCode::Up, KeyMods::NONE),
+        (KeyCode::Down, alt),
+        (KeyCode::F(4), KeyMods::NONE),
+        (KeyCode::Space, KeyMods::NONE),
+        (KeyCode::Enter, KeyMods::NONE),
+    ];
+    let others: &[(KeyCode, KeyMods)] = &[
+        (KeyCode::Down, alt),
+        (KeyCode::Up, alt),
+        (KeyCode::F(4), KeyMods::NONE),
+        (KeyCode::Space, KeyMods::NONE),
+        (KeyCode::Enter, KeyMods::NONE),
+    ];
+    for (platform, opening) in [(Platform::MacOs, mac), (Platform::Windows, others), (Platform::Linux, others)] {
+        for &(code, mods) in opening {
+            let mut r = rig(platform, "two");
+            assert_eq!(focused(&mut r).as_deref(), Some("Mode: Two"), "Tab reached the field");
+            press(&mut r, code, mods);
+            assert!(r.text("Three").is_some(), "{platform:?} {code:?} {mods:?} opened the menu");
+            assert_eq!(focused(&mut r).as_deref(), Some("Two"), "{platform:?} {code:?}: focus on the current option");
+            press_key(&mut r, KeyCode::Escape);
+            r.frames(2);
+            assert!(r.text("Three").is_none(), "Escape closed it");
+            assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+        }
+    }
+    // Off macOS a bare arrow steps over the disabled options, and stops at
+    // the ends: from Two, Down is Three (past Skip) and Up is One; from
+    // Three, Down is nothing; from One, Up is nothing (Zero is disabled).
+    for platform in [Platform::Windows, Platform::Linux] {
+        for (from, code, to) in [
+            ("two", KeyCode::Down, Some("three")),
+            ("two", KeyCode::Up, Some("one")),
+            ("three", KeyCode::Down, None),
+            ("one", KeyCode::Up, None),
+        ] {
+            let mut r = rig(platform, from);
+            press(&mut r, code, KeyMods::NONE);
+            let changed: Option<String> = r.app.globals().get("changed").unwrap();
+            assert_eq!(changed.as_deref(), to, "{platform:?}: {code:?} from {from}");
+            assert!(r.text("Skip").is_none(), "{platform:?}: {code:?} from {from} left it closed");
+            if let Some(to) = to {
+                let label = format!("Mode: {}{}", to[..1].to_uppercase(), &to[1..]);
+                assert_eq!(focused(&mut r).as_deref(), Some(label.as_str()), "the field shows the step, focused");
+            }
+            assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+        }
+        // And again from where it stepped to: Three, then nowhere.
+        let mut r = rig(platform, "one");
+        press(&mut r, KeyCode::Down, KeyMods::NONE);
+        press(&mut r, KeyCode::Down, KeyMods::NONE);
+        let value: String = r.app.globals().get("value").unwrap();
+        assert_eq!(value, "three", "{platform:?}: two steps down from One");
     }
 }
