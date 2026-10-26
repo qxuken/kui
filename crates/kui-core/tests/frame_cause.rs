@@ -250,5 +250,7 @@ fn a_door_that_asks_for_a_frame_names_the_line_that_called_it() {
     let mut ui = core.frame(VIEW, 1.0);
     let asked: Vec<_> = ui.core().owed_by().requests.iter().map(|r| r.why).collect();
     ui.finish();
-    assert_eq!(asked, ["list first frame"]);
+    // Its read of the scroller before the scroller was laid out owes the
+    // same frame again, as the scroll store's own reason.
+    assert_eq!(asked, ["list first frame", "resliced"]);
 }

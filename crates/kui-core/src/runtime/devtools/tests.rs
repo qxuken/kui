@@ -152,7 +152,11 @@ fn a_panel_turned_on_mid_frame_is_built_from_the_next_frame() {
     let dock = node(&core, key);
     assert_eq!((dock.rect.x, dock.rect.y), (VIEWPORT.w - DOCK_SIDE_W, 0.0));
     assert_eq!(dock.rect.h, VIEWPORT.h);
-    assert!(!core.owed().requested);
+    // The panel's scrollers are read before its first frame lays them
+    // out, so that frame asks for one more, and then it settles.
+    assert!(core.owed().requested, "its first frame asks for the next");
+    frame(&mut core);
+    assert!(!core.owed().requested, "and then it settles");
     // Re-docked mid-frame: the row root this frame began with is the
     // right dock's, so the bottom one waits a frame too.
     let mut ui = core.frame(VIEWPORT, 1.0);
