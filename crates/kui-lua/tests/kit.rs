@@ -2276,6 +2276,8 @@ fn a_table_of_cells_walks_its_cells() {
     r.slow_click(auth.x + 2.0, auth.y + auth.h / 2.0);
     r.frames(1);
     assert_eq!(focused(&mut r).as_deref(), Some("auth"));
+    let sel: Option<i64> = r.app.globals().get("sel").unwrap();
+    assert_eq!(sel, Some(0), "a click on a cell selects its row, as arrowing onto it does");
     press_key(&mut r, kui_core::KeyCode::Right);
     assert_eq!(focused(&mut r).as_deref(), Some("up"), "Right along the row");
     press_key(&mut r, kui_core::KeyCode::Down);
@@ -2930,5 +2932,73 @@ fn the_keyboard_opens_a_select_on_its_current_option() {
         press(&mut r, KeyCode::Down, KeyMods::NONE);
         let value: String = r.app.globals().get("value").unwrap();
         assert_eq!(value, "three", "{platform:?}: two steps down from One");
+    }
+}
+
+#[test]
+fn tab_and_shift_tab_leave_a_select() {
+    // The select's field is a key sink for its arrows, Space and Enter;
+    // Tab and Shift-Tab still walk the ring, out of it both ways.
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = "grow", height = "grow", pad = 40, gap = 8,
+            component("kit/button", { label = "Before" }),
+            row { width = 200, component("kit/select", { label = "Mode", value = "two", on_change = { kind = "mode" },
+              options = { { value = "one", label = "One" }, { value = "two", label = "Two" } } }) },
+            component("kit/button", { label = "After" }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    let tab = |r: &mut LuaRig, back: bool| {
+        use kui_core::testing::tab;
+        let mods = if back { kui_core::KeyMods::NONE.with_shift() } else { kui_core::KeyMods::NONE };
+        let kp = kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(kui_core::KeyCode::Tab, mods));
+        let e = r.core.handle_input(kp);
+        r.route(e);
+        let e = tab(&mut r.core, back);
+        r.route(e);
+        r.frames(1);
+    };
+    tab(&mut r, false);
+    tab(&mut r, false);
+    assert_eq!(focused(&mut r).as_deref(), Some("Mode: Two"), "on the select");
+    tab(&mut r, false);
+    assert_eq!(focused(&mut r).as_deref(), Some("After"), "Tab leaves it forward");
+    tab(&mut r, true);
+    assert_eq!(focused(&mut r).as_deref(), Some("Mode: Two"), "back on it");
+    tab(&mut r, true);
+    assert_eq!(focused(&mut r).as_deref(), Some("Before"), "Shift-Tab leaves it back");
+    assert!(r.text("One").is_none(), "and the menu never opened");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn a_sliders_handle_is_cut_at_the_scroller_it_sits_in() {
+    // Scrolled up past the scroller's top, the slider's handle drew over
+    // the app's bar: a float escapes every clip unless it says `clip`.
+    let mut r = LuaRig::new(
+        r#"
+        scrolled = false
+        function view(env)
+          if not scrolled then env.set_scroll("pane", 0, 30); scrolled = true end
+          return column { width = "grow", height = "grow",
+            row { key = "bar", label = "bar", width = "grow", height = 80 },
+            column { key = "pane", label = "pane", width = 300, height = 120, scroll_y = true, pad = 10,
+              component("kit/slider", { label = "Rule", value = 0.5, min = 0, max = 1 }),
+              column { width = "grow", height = 400 } } }
+        end
+        "#,
+    );
+    r.frames(4);
+    let pane = r.named("pane");
+    let handle = quads_sized(&mut r.core, 12.0, 12.0);
+    assert!(!handle.is_empty(), "the handle is drawn");
+    let (dl, _) = r.core.output();
+    for q in &handle {
+        let clip = dl.clips[q.clip as usize].rect;
+        assert!(clip.y >= pane.y - 0.5, "the handle is cut at the pane's top: clip {clip:?}, pane {pane:?}");
     }
 }

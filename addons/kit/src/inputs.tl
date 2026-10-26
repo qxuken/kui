@@ -475,6 +475,9 @@ end
 
 local record Open
   open: boolean
+  -- A Tab the field heard as a key sink, handed on to the ring by the
+  -- next view (a sink owns its Tab and hands focus on itself).
+  hand: string
 end
 
 -- The enabled options a bare arrow steps to off macOS: the nearest before
@@ -498,6 +501,10 @@ end
 function M.select(c: Ctx, p: P): kui.Node
   local options = (p.options or {}) as {P}
   local st = ctx.state(c, function(): Open return { open = false } end)
+  if st.hand then
+    if st.hand == "prev" then c.env.focus_prev() else c.env.focus_next() end
+    st.hand = nil
+  end
   local current = chosen(options, p.value)
   local before, after = neighbours(options, p.value)
   local field = pressable(c, "default", {
@@ -827,7 +834,7 @@ function M.slider(c: Ctx, p: P): kui.Node
       -- Centred on the fill's end: the value's place, over the rail.
       column {
         key = "handle",
-        float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" } },
+        float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" }, clip = true },
         hover_group = group,
         width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
         bg = ref(c, "panel"),
@@ -876,7 +883,10 @@ function M.event(m: P, kit: string): any
     local code = k and k.code as string
     local st = ctx.peek(m.inst as integer) as Open
     if not st or st.open or k.phase ~= "down" then return nil end
-    if code == "space" or code == "enter" or code == "f4" then
+    if code == "tab" then
+      -- The ring's, not the field's: on to the next stop, or back.
+      st.hand = k.shift == true and "prev" or "next"
+    elseif code == "space" or code == "enter" or code == "f4" then
       st.open = true
     elseif code == "up" or code == "down" then
       if m.mac == true or k.alt == true then

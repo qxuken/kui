@@ -222,6 +222,9 @@ bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil, }
             label = cells and s or nil,
             focusable = (cells and selects) or nil,
             on_focus = (cells and selects) and act(c, "table.focus", { row = i }) or nil,
+
+
+            on_click = (cells and selects) and act(c, "table.select", { row = i }) or nil,
             width = (col.width) or "grow",
             min_width = 0,
             cross_align = "center",
@@ -973,7 +976,7 @@ params = preset_params(c, "shimmer", moving), animate = moving or nil, })
    local t = { key = key, width = w, height = h, radius = radius, bg = ref(c, "sunken"), clip = true }
    if travel > 0 then
       local band = math.max(40, math.min(200, travel * 0.4))
-      t[1] = column({ width = band, height = h, float = { anchor = "parent", dx = -band },
+      t[1] = column({ width = band, height = h, float = { anchor = "parent", dx = -band, clip = true },
 gradient = { to = "right", stops = { "$kitShimmerClear", "$kitShimmer", "$kitShimmerClear" } },
 keyframes = { { dx = 0 }, { dx = travel + band } }, transition = SWEEP_MS, easing = "linear", })
    end

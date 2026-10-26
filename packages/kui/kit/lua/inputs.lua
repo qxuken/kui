@@ -481,6 +481,9 @@ end
 
 
 
+
+
+
 local function neighbours(options, value)
    local at = 0
    for i, o in ipairs(options) do
@@ -499,6 +502,10 @@ end
 function M.select(c, p)
    local options = (p.options or {})
    local st = ctx.state(c, function() return { open = false } end)
+   if st.hand then
+      if st.hand == "prev" then c.env.focus_prev() else c.env.focus_next() end
+      st.hand = nil
+   end
    local current = chosen(options, p.value)
    local before, after = neighbours(options, p.value)
    local field = pressable(c, "default", {
@@ -828,7 +835,7 @@ function M.slider(c, p)
 
       column({
          key = "handle",
-         float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" } },
+         float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" }, clip = true },
          hover_group = group,
          width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
          bg = ref(c, "panel"),
@@ -877,7 +884,10 @@ function M.event(m, kit)
       local code = k and k.code
       local st = ctx.peek(m.inst)
       if not st or st.open or k.phase ~= "down" then return nil end
-      if code == "space" or code == "enter" or code == "f4" then
+      if code == "tab" then
+
+         st.hand = k.shift == true and "prev" or "next"
+      elseif code == "space" or code == "enter" or code == "f4" then
          st.open = true
       elseif code == "up" or code == "down" then
          if m.mac == true or k.alt == true then

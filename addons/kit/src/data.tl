@@ -221,6 +221,9 @@ function M.table(c: Ctx, p: P): kui.Node
         label = cells and s or nil,
         focusable = (cells and selects) or nil,
         on_focus = (cells and selects) and act(c, "table.focus", { row = i }) or nil,
+        -- A focusable cell takes the press, so it carries the row's click:
+        -- a click selects as arrowing onto the cell does.
+        on_click = (cells and selects) and act(c, "table.select", { row = i }) or nil,
         width = (col.width as number) or "grow",
         min_width = 0,
         cross_align = "center",
@@ -915,7 +918,7 @@ local function bone(c: Ctx, key: string, w: kui.Sizing, h: number, radius: kui.L
   local t: kui.Props = { key = key, width = w, height = h, radius = radius, bg = ref(c, "sunken"), clip = true }
   if travel > 0 then
     local band = math.max(40, math.min(200, travel * 0.4))
-    t[1] = column { width = band, height = h, float = { anchor = "parent", dx = -band },
+    t[1] = column { width = band, height = h, float = { anchor = "parent", dx = -band, clip = true },
       gradient = { to = "right", stops = { "$kitShimmerClear", "$kitShimmer", "$kitShimmerClear" } },
       keyframes = { { dx = 0 }, { dx = travel + band } }, transition = SWEEP_MS, easing = "linear" }
   end
