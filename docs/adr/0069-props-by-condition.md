@@ -296,6 +296,30 @@ Steps 1–5 were built; step 6, Kit's adoption, is a pass of its own.
   all (the same guard: +5.5%, +1.8%, +8.1%, every row inside the 10%
   tolerance); a node with rules allocates the interaction group too.
 
+## Amended after Kit's adoption (2026-10-26)
+
+Kit's adoption pass found four things the rules could not say (backlog
+C105–C107, C113), each built since:
+
+- **An entry may move a node** (C105): `dx` / `dy` are box props an entry
+  sets, lane by lane, moving the node and its subtree off its laid place
+  after layout (drawn, hit and read there, its room its place's) and eased
+  by `transition` in the transform slot's spare lanes — a button face that
+  lifts on hover and sinks on press.
+- **A condition on the hover group** (C106): `group_hovered`,
+  `group_pressed`, `group_focused` and `group_focus_visible` read the
+  node's `hoverGroup`, focus counting when the focused node shares it —
+  the nearest focusable ancestor was the other candidate, but the group is
+  already how a row and its parts share hover and press.
+- **Reduced motion over a keyframe loop** (C107): not by letting an entry
+  set `keyframes` — that would make every app remember the setting and
+  put a stop list in a patch — but by the core: a cycle that runs for ever
+  holds still under reduced motion and a finite one rests where it ends,
+  unless the node declares `essentialMotion`.
+- **Whose appearance `dark` and `light` read** (C113): the palette's,
+  unless the origin set its own with `set_rules_appearance`, so an add-on
+  holding its look light or dark has its rules agree with its colours.
+
 ## Considered options
 
 - **The view reads its own size** (a layout callback, or last frame's

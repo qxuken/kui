@@ -1317,6 +1317,26 @@ the same palette from the keyboard and types the same way.
 [ADR 0052](adr/0052-a-declared-bar-beside-the-standard-menus.md) ·
 [examples/rust/widgets/menu_bar.rs](../examples/rust/widgets/menu_bar.rs)
 
+### How do I make my own dropdown open on the press, as a native pop-up button does?
+
+Give the field `opensOnPress` (`opens_on_press` in Lua and C,
+`NodeSpec::opens_on_press` in Rust) beside its `onClick`: the click then
+arrives on the press, so the view draws the menu while the button is
+still down, and the press carries on into it — released over a row whose
+role is `menuItem`, that row is clicked, as a press, drag and release
+picks an option on a Mac. A quick click (press and release on the field)
+leaves the menu open for a second click; a drag released anywhere else
+dismisses the `modal` the menu declares. Draw the menu as a `modal`
+float with `role: "menu"` and its rows `role: "menuItem"` with their own
+`onClick`; a press on the field while it is open lands outside the modal
+and closes it. The stock `select` works this way already. Two more
+things come with `role: "menu"` on the modal: an accelerator pressed
+while it is open (⌘C, Ctrl+C off a Mac) dismisses it with `reason:
+"accelerator"` and goes to the window, focus back on the field it was
+opened from; and to open with the current option over the field, offset
+the float up by that row's place in it — the rows are yours, so their
+heights are known.
+
 ### How do I put a submenu in a menu — "Move to ▸", "Sort by ▸"?
 
 Give the row `items`: `MenuItem::submenu("Move to", rows)` in Rust,

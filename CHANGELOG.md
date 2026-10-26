@@ -206,6 +206,38 @@ was the first bare bump to break an app in five releases).
   index as `pos_in_set` and the list its `rowCount` as `set_size`. And
   `KuiSpec` gained `on_typeahead` and `active_index` after ADR 0069's
   fields (856 bytes on 64-bit), so a C host recompiles.
+- `KuiSpec` gained `essential_motion` (backlog C107), `dx` and `dy`
+  (C105) and `opens_on_press` (C108), 872 bytes on 64-bit, inside ABI 39:
+  a C host recompiles; zeroed, nothing changes. `KUI_ENTER_KEEP_ROOM`
+  (C110) and `kui_set_rules_appearance` (C113) are new.
+- Under reduced motion a `keyframes` cycle that runs for ever holds still,
+  the node showing its own props, and a finite one rests where it ends,
+  where both ran (backlog C107): a spinner or an under-way bar that must
+  keep moving declares `essentialMotion`. `AnimSpec` gained
+  `essential_motion`: a struct literal names it or ends with
+  `..Default::default()`.
+- `TransformSpec` gained `translate` (`dx` / `dy`, backlog C105), and
+  `Enter` gained `keep_room` (C110): a struct literal adds them.
+- The rules' state bits are `u16` (backlog C106): `Cond::state_mask`,
+  `Cond::state_want`, `rules::Facts`'s state and the `rules::state`
+  constants, which gained `GROUP_HOVERED`, `GROUP_PRESSED`,
+  `GROUP_FOCUSED` and `GROUP_FOCUS_VISIBLE`; `rules::field` gained `DX`
+  and `DY` and its `NAMES` holds 32.
+- `DismissReason` gained `Accelerator` (backlog C109): an exhaustive
+  `match` adds an arm, and a modal's `dismiss` may carry `reason:
+  "accelerator"` — a key under ⌘ (Ctrl off a Mac) pressed while an app's
+  `role: "menu"` modal is open, which closes it, or a row of the
+  platform's menu bar chosen then. A view that closes on any dismissal
+  needs nothing.
+- The stock `select` opens its menu on the press, not the release, and a
+  release over a row of the menu picks it (backlog C108); a press held on
+  the field and released there leaves the menu open as before. A test
+  that clicked the field sees the menu open after the press.
+  `InteractSpec` gained `opens_on_press`.
+- `TokenLookup::colors`, `lengths` and `families` — Lua's `env.tokens`,
+  Node's `tokens()` — list every other origin's exported tokens after the
+  reader's own and the host's (backlog C112): a listing walked whole sees
+  more names.
 - Kit's `line_chart` draws its axes otherwise: x ticks as close as their
   measured labels allow (never under 50 px apart) where a tick came every
   90 px with an 80 px label, tick numbers with as many decimals as their
@@ -1136,6 +1168,53 @@ for lua-language-server, and a new runner beside the window's.
     - a replay compares the whole `Theme`;
     - a Lua fill's `env` costs 22 µs.
 
+- **A state rule moves a node** (backlog C105): `dx` / `dy` move a node
+  and its subtree off its laid place after layout — drawn, hit and read
+  there on whole pixels, its room its place's, `onLayout` the place —
+  eased by `transition` with `rotate` and `scale`, and a `when` entry may
+  set either: `when = { { hovered = true, dy = -1 }, { pressed = true, dy
+  = 1 } }` is a button face that lifts and sinks with no view code.
+- **Conditions on a hover group** (backlog C106): `group_hovered`,
+  `group_pressed`, `group_focused` and `group_focus_visible` (and the
+  camel spellings; `Cond::GroupHovered` and the rest) test the node's
+  hover group — a member under the pointer, pressed, holding focus, its
+  focus shown — so a checkbox's mark rings while its row holds the
+  keyboard, the two sharing a `hoverGroup`.
+- **`essentialMotion`** (backlog C107): a node whose keyframe cycle
+  carries meaning keeps it running under reduced motion; every other
+  cycle holds still there (above).
+- **A press that opens a menu hands its press on** (backlog C108):
+  `opensOnPress` makes a node's `onClick` arrive on the press, and the
+  release — over a `menuItem` of the menu that click put up — clicks the
+  item, as NSPopUpButton's press, drag and release picks an option; a
+  quick click leaves the menu open for a second click, and a drag
+  released elsewhere dismisses it. Every binding (C `opens_on_press`);
+  the stock `select` opens this way.
+- **An accelerator closes an open menu float** (backlog C109): a key
+  under ⌘ (Ctrl off a Mac) pressed while the app's own `role: "menu"`
+  modal is open — Kit's select, a popover of rows — dismisses it with
+  `reason: "accelerator"` and is then the window's, focus back where the
+  float took it from, so ⌘C copies from the field under a dropdown, as
+  the core's own menus let a chord through (C98). A row of the platform's
+  menu bar does the same. An editor inside the float keeps its chords.
+- **An exit that keeps its room** (backlog C110): `keepRoom` on an `exit`
+  (`keep_room`; `Enter::keep_room`; C `KUI_ENTER_KEEP_ROOM`) keeps the
+  departing node's room in the layout while it plays out, so a toast
+  leaving a stack goes before the rest close up behind it, gliding where
+  they `slide`.
+- **A script registers its own fragment** (backlog C111):
+  `env.add_fragment(wgsl)` returns the id for `fragment { id = }`, nil
+  with `fragment-rejected` for source that does not compile; idempotent
+  by source, so a view, a component's function or a `kui run` app calls
+  it every frame. Kit's `shader` component no longer needs a host's
+  handle.
+- **An origin sets the appearance its conditions read** (backlog C113):
+  `set_rules_appearance` (Rust `Core` / `Ui`, Lua `env`, Node
+  `setRulesAppearance`, C `kui_set_rules_appearance`, Odin) has the
+  caller's `dark` / `light` conditions read `light` or `dark` in place of
+  the palette's, until set again; Kit holding its look light or dark has
+  its `when` entries agree with its colours.
+
 ### Changed
 
 - **A debug build is about a quarter the size on disk** (backlog C72):
@@ -1239,6 +1318,13 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- `answer_typeahead` given while a view builds is taken and applied when
+  the frame ends, against the tree it built, as a reach is landed
+  (backlog C104): Kit, which answers from its draw, was refused, so
+  type-ahead to a row past a list's window never landed.
+- Lua's `env.tokens` lists a token another origin exports — `$kitAccent`
+  — whose value a prop already resolved (backlog C112); its colours are
+  `0xRRGGBBAA` integers, as Teal types them, which the docs now say.
 - The answer to a file dialog a component instance asked for (`env.
   request_files` from its fill) carries that instance, so what the
   component proposes in reply reaches its placer's message (ADR 0067):

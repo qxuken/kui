@@ -3641,6 +3641,16 @@ filed the same day for the round that builds them.
 - `.` **C98** — [An open menu ignores its items' accelerators](backlog/closed-2026-09.md#-c98--an-open-menu-ignores-its-items-accelerators--done-2026-10-26) — done (2026-10-26) — an open context menu or drawn-bar menu chooses the enabled row whose accelerator was pressed, and closes
 - `.` **C99** — [Tab in a multiline editor: insert, with a way out](backlog/closed-2026-09.md#-c99--tab-in-a-multiline-editor-insert-with-a-way-out--done-2026-10-26) — done (2026-10-26) — a multiline editor takes Tab; Escape then Tab, the Ctrl+M (Ctrl+Shift+M on macOS) toggle and Ctrl+Tab leave it; `tab_moves_focus` replaces `tab_inserts`
 - `.` **C100** — [A view guesses its size, and re-runs for every hover](backlog/closed-2026-09.md#-c100--a-view-guesses-its-size-and-re-runs-for-every-hover--done-2026-10-26) — done (2026-10-26) — ADR 0069 steps 1–5: `when` rules over own size, window, environment and state, `hidden`, `minColumn`, the lazy form with the runners' second build, `onQuery`, doors in every binding; Kit's adoption is its own pass
+- `.` **C104** — [`answer_typeahead` from a view is refused](backlog/closed-2026-09.md#-c104--answer_typeahead-from-a-view-is-refused--done-2026-10-26) — done (2026-10-26) — an answer given while a view builds is taken and applied when the frame ends
+- `.` **C105** — [A state rule cannot move a node](backlog/closed-2026-09.md#-c105--a-state-rule-cannot-move-a-node--done-2026-10-26) — done (2026-10-26) — `dx` / `dy` move a node after layout, eased by `transition`, settable by a `when` entry
+- `.` **C106** — [No condition on an ancestor's state](backlog/closed-2026-09.md#-c106--no-condition-on-an-ancestors-state--done-2026-10-26) — done (2026-10-26) — conditions on the hover group: `group_hovered`, `group_pressed`, `group_focused`, `group_focus_visible`
+- `.` **C107** — [Reduced motion cannot pause a keyframe loop](backlog/closed-2026-09.md#-c107--reduced-motion-cannot-pause-a-keyframe-loop--done-2026-10-26) — done (2026-10-26) — looping keyframes hold still under reduced motion unless `essentialMotion`
+- `.` **C108** — [A select does not press, drag and release as a native one does](backlog/closed-2026-09.md#-c108--a-select-does-not-press-drag-and-release-as-a-native-one-does--done-2026-10-26) — done (2026-10-26) — `opensOnPress`: the click on the press, and a release over a `menuItem` clicks it
+- `.` **C109** — [An accelerator does nothing while a dropdown is open](backlog/closed-2026-09.md#-c109--an-accelerator-does-nothing-while-a-dropdown-is-open--done-2026-10-26) — done (2026-10-26) — an accelerator, or a platform bar row, closes the app's open menu float and is then the window's
+- `.` **C110** — [A toast leaving lets the next one take its place too early](backlog/closed-2026-09.md#-c110--a-toast-leaving-lets-the-next-one-take-its-place-too-early--done-2026-10-26) — done (2026-10-26) — an exit may keep its room (`keepRoom`) until it ends; the siblings move in after
+- `.` **C111** — [Lua cannot register a fragment shader](backlog/closed-2026-09.md#-c111--lua-cannot-register-a-fragment-shader--done-2026-10-26) — done (2026-10-26) — `env.add_fragment(wgsl)` registers a script's own fragment, idempotent by source
+- `.` **C112** — [`env.tokens` leaves out other origins' exported tokens](backlog/closed-2026-09.md#-c112--envtokens-leaves-out-other-origins-exported-tokens--done-2026-10-26) — done (2026-10-26) — `env.tokens` lists other origins' exported tokens; colours are integers, as typed
+- `.` **C113** — [A script cannot set the appearance its conditions read](backlog/closed-2026-09.md#-c113--a-script-cannot-set-the-appearance-its-conditions-read--done-2026-10-26) — done (2026-10-26) — `set_rules_appearance`: an origin sets the appearance its `dark` / `light` conditions read
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3668,85 +3678,6 @@ index, so a header spanning two columns, or a merged cell, reports the
 wrong column for every cell after it and the arrows step through it as
 one. **Do.** A `colSpan` on a cell, counted by the column index, the
 column count, Left / Right and the layout table's column widths.
-
-### `.` C104 — `answer_typeahead` from a view is refused
-
-**Found** in Kit's adoption pass (2026-10-26): the door looks the
-composite up in the tree still being built, finds nothing and returns
-false, and Kit, which has no env in its event handler, can only answer
-from a draw — so type-ahead to an unbuilt row never lands. **Do.** Take
-an answer given during the build and apply it when the frame ends, as a
-reach is.
-
-### `.` C105 — A state rule cannot move a node
-
-**Found** the same way: ADR 0069's rules cannot set `keyframes` or a
-float offset, so Ledger's primary button face (lifted on hover, sunk on
-press) still reads `is_hovered` / `is_pressed` and re-runs on every
-hover. **Do.** An offset (`dx` / `dy`, eased by `transition`) a state
-rule may set.
-
-### `.` C106 — No condition on an ancestor's state
-
-**Found** the same way: a checkbox's mark shows a tight focus ring while
-its row holds focus, which Kit still reads in Lua. **Do.** A condition
-on the hover group's state (`group_focus_visible`, `group_hovered`,
-`group_pressed`), or on the nearest focusable ancestor's.
-
-### `.` C107 — Reduced motion cannot pause a keyframe loop
-
-**Found** the same way: a `reduced_motion` rule cannot stop a looping
-keyframe animation, so Kit's under-way progress bar reads
-`env.system.motion` itself. **Do.** Looping keyframes hold still under
-reduced motion unless the node opts in, or a rule may set `keyframes`.
-
-### `.` C108 — A select does not press, drag and release as a native one does
-
-**Found** by the user (2026-10-26) in Kit's select: it opens on a click —
-press and release on the field — and builds a modal `role = "menu"`
-float of `menuItem` rows, so a press held and dragged onto an option does
-nothing until the release, which then lands on the field and not the
-option. The core's own menus behave the same: the stock `select` opens
-its context menu from the field's click (`select_tag`, on the release),
-and a menu row chooses on a click that began on it, so nothing in the
-core carries a press from the control that opened a menu into the menu.
-NSPopUpButton's behaviour, which the user wants: a press on the field
-opens the menu; holding, dragging onto an option and releasing picks it;
-a quick click (press and release on the field) opens it and leaves it
-open for a second click; and the menu opens with the current option over
-the field. **Do.** A general core piece Kit adopts: a press that opens a
-float hands its press on, so a release over a `menuItem` in what it
-opened activates that item — an open-on-press control — documented,
-with the stock select using it; the current option over the field is
-Kit's placement.
-
-### `.` C109 — An accelerator does nothing while a dropdown is open
-
-**Found** by the user (2026-10-26): C98 made an open core menu choose the
-row whose accelerator is pressed, but a Kit dropdown is a modal `role =
-"menu"` float the app draws, and while it is open focus is inside it, so
-⌘C and the like reach its rows and nothing else: the menu stays and the
-editor under it is not copied from. A native menu closes on an
-accelerator that is not its own and the window performs it. **Do.** In
-the core, for any open modal menu float: an accelerator pressed while it
-is open dismisses it, then is performed as it would be with no menu open
-— focus back where the float took it from — so Kit's select and every
-other menu-shaped popover close on ⌘C, as the core's own menus do.
-
-### `.` C110 — A toast leaving lets the next one take its place too early
-
-**Found** by the user (2026-10-26) in Kit's toaster: when one toast
-exits, the others move into its place while it is still animating out,
-which looks bad. The core removes a departing node from layout the frame
-it goes (`depart.rs`: a ghost is frozen at its last rects and "never
-fights the live layout for space"), so the toaster column shrinks at
-once: under a bottom-anchored float the toasts above it jump down into
-the room the ghost is still leaving through, and the ones below it jump
-and glide back (C97's `slide` eases a place within the parent, the
-parent's own move followed at once). **Do.** In the core: a departing
-node may keep its room until its exit ends, then give it up, the way a
-native notification stack lets one go before the rest close up; Kit's
-toaster adopts it.
 
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
