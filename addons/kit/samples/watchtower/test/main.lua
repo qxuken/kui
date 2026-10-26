@@ -87,6 +87,22 @@ kui.spawn(function()
   for _, s in ipairs({ "neutral", "phosphor", "ledger" }) do update({ kind = "skin", change = { value = s } }) end
   kui.sleep(200)
 
+  -- a window smaller than the dashboard scrolls it: the split wide, the
+  -- halves stacked narrow, both in a page that scrolls down and sideways
+  local function find(node, key)
+    if type(node) ~= "table" then return nil end
+    if node.key == key then return node end
+    for _, child in ipairs(node) do
+      local hit = find(child, key)
+      if hit then return hit end
+    end
+  end
+  local wide = view.window(model, { viewport_w = 1320, viewport_h = 600 })
+  local page = find(wide, "page")
+  check(page and page.scroll_y and page.scroll_x and find(page, "split-box") ~= nil, "wide: the split, in a page that scrolls")
+  local narrow = view.window(model, { viewport_w = 760, viewport_h = 560 })
+  check(find(narrow, "stacked") ~= nil and find(narrow, "split-box") == nil, "narrow: the halves one over the other")
+
   -- the numbers drift, they do not jump: ten minutes of ticks
   local s = fleet.series
   local worst_step, auth = 0, fleet.find("auth-svc")

@@ -5,6 +5,6 @@ return {
   entry = "main.tl",
   size = { w = 1320, h = 880 },
   -- the headline cards wrap two a line and the charts stack as it narrows
-  -- (ADR 0069); below this the services table's columns crowd
-  min_size = { w = 880, h = 680 },
+  -- (ADR 0069); the page scrolls below the dashboard's own size
+  min_size = { w = 520, h = 420 },
 }

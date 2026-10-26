@@ -292,13 +292,29 @@ function view.window(m: Model, env: kui.Env): kui.Node
         row { key = "skin", width = 120, kit.select({ key = "skin-select", options = SKINS, value = m.skin, on_change = { kind = "skin" } }) },
       },
     }),
-    headline(m),
-    kit.split({ key = "split", fraction = m.split, min = 380, on_resize = { kind = "split" } }, {
-      first = { column { key = "left", width = "grow", height = "grow", gap = 12, pad = { x = 12, b = 12 },
-        charts(m), services_panel(m) } },
-      second = { column { key = "right", width = "grow", height = "grow", gap = 12, pad = { x = 12, b = 12 },
-        detail(m), events(m) } },
-    }),
+    -- The page scrolls when the window is smaller than the dashboard: down
+    -- always, sideways below the width the services table needs. Wide, the
+    -- two halves sit side by side in a split that takes the window's
+    -- height (and no less than the table and the events need); narrow,
+    -- one over the other, each at its own height.
+    column { key = "page", width = "grow", height = "grow", scroll_y = true, scroll_x = true,
+      column { key = "page-body", width = "grow", min_width = 720, min_height = "fit",
+        height = (env.viewport_w or 1320) >= 980 and "grow" or nil,
+        headline(m),
+        (env.viewport_w or 1320) >= 980
+          and column { key = "split-box", width = "grow", height = "grow", min_height = 560,
+            kit.split({ key = "split", fraction = m.split, min = 380, on_resize = { kind = "split" } }, {
+            first = { column { key = "left", width = "grow", height = "grow", gap = 12, pad = { x = 12, b = 12 },
+              charts(m), services_panel(m) } },
+            second = { column { key = "right", width = "grow", height = "grow", gap = 12, pad = { x = 12, b = 12 },
+              detail(m), events(m) } },
+          }) }
+          or column { key = "stacked", width = "grow", gap = 12, pad = { x = 12, b = 12 },
+            charts(m),
+            column { key = "svc-box", width = "grow", height = 420, services_panel(m) },
+            detail(m),
+            column { key = "events-box", width = "grow", height = 320, events(m) } },
+      } },
     kit.statusbar({ key = "status" }, {
       kit.badge({ label = m.env, tone = m.env == "staging" and "neutral" or "accent" }),
       muted(("%d services · %d need attention"):format(#fleet.services, attention)),
