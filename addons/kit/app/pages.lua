@@ -109,15 +109,15 @@ function M.inputs(m)
       ),
       said("name = " .. m.name .. "   version = " .. m.version .. "   query = " .. m.query .. "   mode = " .. m.mode)
     ),
-    demo("Text areas", "a well in every skin, growing with its text; Tab moves on unless `tab_inserts`",
-      'kit.text_area({ label = "Notes", value = model.notes, rows = 3, max_rows = 6, on_change = { kind = "notes" } })\nkit.text_area({ label = "Body", value = model.code, mono = true, tab_inserts = true, on_change = { kind = "code" } })',
+    demo("Text areas", "a well in every skin, growing with its text; Tab types, unless `tab_moves_focus`",
+      'kit.text_area({ label = "Notes", value = model.notes, rows = 3, max_rows = 6, tab_moves_focus = true, on_change = { kind = "notes" } })\nkit.text_area({ label = "Body", value = model.code, mono = true, on_change = { kind = "code" } })',
       grid(
-        cell(320, kit.text_area({ label = "Notes", value = m.notes, rows = 3, max_rows = 6, placeholder = "Write a note…",
+        cell(320, kit.text_area({ label = "Notes", value = m.notes, rows = 3, max_rows = 6, placeholder = "Write a note…", tab_moves_focus = true,
           on_change = { kind = "notes" } })),
-        cell(320, kit.text_area({ label = "Body", value = m.code, rows = 3, mono = true, tab_inserts = true,
+        cell(320, kit.text_area({ label = "Body", value = m.code, rows = 3, mono = true,
           on_change = { kind = "code" } }))
       ),
-      note("In Body, Tab types four spaces and Ctrl+Tab moves on; in Notes, Tab moves on.")
+      note("In Body, Tab types four spaces; Escape then Tab, or Ctrl+M (Ctrl+Shift+M on macOS), moves on. In Notes, Tab moves on.")
     ),
     demo("Choices", "boxes, switches, radios, segments, a slider",
       'kit.checkbox({ label = "Follow", checked = model.follow, on_toggle = { kind = "follow" } })\nkit.slider({ label = "Zoom", value = model.zoom, value_label = "40%", on_change = { kind = "zoom" } })',
@@ -370,7 +370,7 @@ function M.keyboard(m)
       'kit.bar_chart({ data = by_status, label = "status", value = "n", on_select = { kind = "bar" } })',
       kit.bar_chart({ data = statuses, label = "status", value = "n", height = 140, on_select = { kind = "bar" } }),
       said(m.bar and statuses and #statuses > m.bar and ("bar = " .. tostring(statuses:get(m.bar, "status"))) or "bar = none")),
-    demo("Tabs, a table, a trace, a text area", "", 'kit.tabs(...)  -- Left and Right\nkit.table({ ..., on_select = ... })  -- Up, Down, Home, End, Page Up and Down\nkit.waterfall({ ..., on_select = ... })  -- the arrows walk the spans\nkit.text_area({ ... })  -- Tab and Shift+Tab leave it',
+    demo("Tabs, a table, a trace, a text area", "", 'kit.tabs(...)  -- Left and Right\nkit.table({ ..., on_select = ... })  -- Up, Down, Home, End, Page Up and Down\nkit.waterfall({ ..., on_select = ... })  -- the arrows walk the spans\nkit.text_area({ ... })  -- Tab types; Escape then Tab, or Ctrl+M, leaves it (tab_moves_focus: Tab leaves)',
       note("The Layout page's tabs, the Data page's table, the Trace page's spans and the Inputs page's text areas answer the keyboard the same way.")),
   }
 end

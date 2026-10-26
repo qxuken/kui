@@ -2279,3 +2279,36 @@ fn a_table_of_cells_walks_its_cells() {
     assert_eq!(sel, Some(1), "and selects the row it lands on");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
+
+#[test]
+fn a_text_area_types_tab_unless_it_moves_focus() {
+    // C99: a multiline editor types Tab by default; `tab_moves_focus` is a
+    // note's, whose Tab moves on as a field's does.
+    for moves in [false, true] {
+        let mut r = LuaRig::new(&format!(
+            r#"
+            body = ""
+            function on_event(ev) if ev.kind == "b" then body = ev.change.text end end
+            function view(env)
+              return column {{ width = 400, height = "grow",
+                component("kit/text_area", {{ label = "Body", value = body, autofocus = true,
+                  tab_moves_focus = {moves}, on_change = {{ kind = "b" }} }}),
+                component("kit/button", {{ label = "After" }}) }}
+            end
+            "#
+        ));
+        r.frames(3);
+        let e = kui_core::testing::tab(&mut r.core, false);
+        r.route(e);
+        r.frames(2);
+        let body: String = r.app.globals().get("body").unwrap();
+        let on = r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+        if moves {
+            assert_eq!(on.as_deref(), Some("After"), "Tab moved on");
+            assert_eq!(body, "");
+        } else {
+            assert_eq!(on.as_deref(), Some("Body"), "focus stays");
+            assert_eq!(body, "    ", "Tab typed");
+        }
+    }
+}

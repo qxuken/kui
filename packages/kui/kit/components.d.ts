@@ -409,8 +409,8 @@ export interface TextAreaProps {
   autofocus?: boolean;
   /** What is wrong with the text, under it in the danger colour. */
   error?: string;
-  /** Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still moves on. Without it Tab and Shift+Tab move the keyboard to the next or the last control, as from a field. */
-  tabInserts?: boolean;
+  /** Tab and Shift+Tab move the keyboard to the next or the last control, as from a one-line field: a note, a comment. Left out, Tab types indentation as a code editor's does, and the ways out are Escape then Tab, or Ctrl+M (Ctrl+Shift+M on macOS). */
+  tabMovesFocus?: boolean;
   /** The message change arrives as: yours, with `change: TextAreaChange` in it. The text changed. */
   onChange?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */

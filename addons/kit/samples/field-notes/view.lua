@@ -165,6 +165,8 @@ local function editor(m)
       kit.icon_button({ key = "delete", icon = "trash", label = "Delete this note", variant = "danger", on_press = { kind = "delete" } }),
     },
     kit.text_area({ key = "body", label = "Note", hide_label = true, value = n.body, placeholder = "Write something…", rows = 8,
+      -- Prose: Tab moves on to the checklist, as from a field.
+      tab_moves_focus = true,
       on_change = { kind = "body" } }),
     checklist(m, n),
   }

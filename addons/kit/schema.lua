@@ -212,7 +212,7 @@ return {
         { "focus", "integer?", doc = "Takes the keyboard each time this number changes while it is on screen." },
         { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows." },
         { "error", "string?", doc = "What is wrong with the text, under it in the danger colour." },
-        { "tab_inserts", "boolean?", doc = "Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still moves on. Without it Tab and Shift+Tab move the keyboard to the next or the last control, as from a field." },
+        { "tab_moves_focus", "boolean?", doc = "Tab and Shift+Tab move the keyboard to the next or the last control, as from a one-line field: a note, a comment. Left out, Tab types indentation as a code editor's does, and the ways out are Escape then Tab, or Ctrl+M (Ctrl+Shift+M on macOS)." },
       },
       events = {
         { "change", doc = "The text changed.", fields = { { "text", "string", doc = "The whole text." } } },

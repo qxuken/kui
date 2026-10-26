@@ -2003,10 +2003,11 @@ pub struct TextArea {
     pub autofocus: Option<bool>,
     /// What is wrong with the text, under it in the danger colour.
     pub error: Option<String>,
-    /// Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still
-    /// moves on. Without it Tab and Shift+Tab move the keyboard to the next or
-    /// the last control, as from a field.
-    pub tab_inserts: Option<bool>,
+    /// Tab and Shift+Tab move the keyboard to the next or the last control, as
+    /// from a one-line field: a note, a comment. Left out, Tab types
+    /// indentation as a code editor's does, and the ways out are Escape then
+    /// Tab, or Ctrl+M (Ctrl+Shift+M on macOS).
+    pub tab_moves_focus: Option<bool>,
     /// The message `change` arrives as, with `change: TextAreaChange` in it.
     /// The text changed.
     pub on_change: Option<Value>,
@@ -2033,7 +2034,7 @@ impl TextArea {
             focus: None,
             autofocus: None,
             error: None,
-            tab_inserts: None,
+            tab_moves_focus: None,
             on_change: None,
             key: None,
             fresh: false,
@@ -2113,11 +2114,12 @@ impl TextArea {
         self
     }
 
-    /// Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still
-    /// moves on. Without it Tab and Shift+Tab move the keyboard to the next or
-    /// the last control, as from a field.
-    pub fn tab_inserts(mut self, v: bool) -> Self {
-        self.tab_inserts = Some(v);
+    /// Tab and Shift+Tab move the keyboard to the next or the last control, as
+    /// from a one-line field: a note, a comment. Left out, Tab types
+    /// indentation as a code editor's does, and the ways out are Escape then
+    /// Tab, or Ctrl+M (Ctrl+Shift+M on macOS).
+    pub fn tab_moves_focus(mut self, v: bool) -> Self {
+        self.tab_moves_focus = Some(v);
         self
     }
 
@@ -2179,8 +2181,8 @@ impl TextArea {
         if let Some(v) = &self.error {
             m.push(("error".into(), Value::str(v.as_str())));
         }
-        if let Some(v) = &self.tab_inserts {
-            m.push(("tab_inserts".into(), Value::Bool(*v)));
+        if let Some(v) = &self.tab_moves_focus {
+            m.push(("tab_moves_focus".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));

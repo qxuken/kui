@@ -393,7 +393,7 @@ function M.text_area(c, p)
          multiline = true,
 
 
-         tab_moves_focus = p.tab_inserts ~= true or nil,
+         tab_moves_focus = p.tab_moves_focus == true or nil,
          width = "grow",
          height = grow and "grow" or nil,
          min_height = rows * line_h + 2 * pad,
