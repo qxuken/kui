@@ -3686,6 +3686,31 @@ remembered as `tooling` in the manifest; a version stamp that refreshes
 `.kui/` on `kui run` / `kui check`; rustdoc pages in the `kui` crate;
 the book's text and Kit's generated reference on npm.
 
+### `.` C119 — A script cannot read the pointer's position
+
+**Found** in Kit's chart readout (2026-10-26): `Core::cursor` has no Lua
+door, so "the sample nearest the pointer" is approximated by 3 px hover
+bands Kit builds while the pointer is over the plot. **Do.** The pointer's
+position relative to a node (`env.pointer_in(label)` or the like) in
+every binding, read without owing frames when nothing moved.
+
+### `.` C120 — A composite cannot hear a key its items do not claim
+
+**Found** in Kit's `checklist`: a container key sink is itself a Tab stop,
+an item that is a sink loses the composite's arrows, and a focusable
+control inside an item warns (`focusable-inside-item`) — so Delete /
+Backspace cannot remove an item, and its × is pointer-only. **Do.** A
+composite's unclaimed keys (Delete, Backspace, letters past type-ahead)
+delivered to the composite's own handler, with the focused item named,
+without the composite becoming a Tab stop.
+
+### `.` C121 — A list item's `checked` is not read
+
+**Found** the same way: only checkbox, radio and switch roles carry
+`checked` to assistive technology, so a checklist row is announced
+through its description ("done" / "not done"). **Do.** `checked` on a
+`listItem` (and a `cell`) mapped to AccessKit's toggled state.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
