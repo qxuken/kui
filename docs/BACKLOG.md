@@ -3671,6 +3671,8 @@ filed the same day for the round that builds them.
 - `.` **C136** — [Focus left on a node the frame no longer has stays there](backlog/closed-2026-09.md#-c136--focus-left-on-a-node-the-frame-no-longer-has-stays-there--done-2026-10-26) — done (2026-10-26) — a focus on a vanished node nothing recovers goes to the nearest sink it had, or is dropped for a `keyFocus` shell
 - `.` **C137** — [A keyframe cycle out of view still owes frames](backlog/closed-2026-09.md#-c137--a-keyframe-cycle-out-of-view-still-owes-frames--done-2026-10-26) — done (2026-10-26) — a running cycle owes a frame only while the frame drew its node inside its clip and the window; sampled again when it comes back
 - `.` **C138** — [A frame owed only by an animation runs the host's whole view](backlog/closed-2026-09.md#-c138--a-frame-owed-only-by-an-animation-runs-the-hosts-whole-view--done-2026-10-26) — done (2026-10-26) — a frame only a core animation asks for is built from the last tree (`Core::reframe`) while the app (`App::view_state`) and its roots say their state held; the runner says it
+- `.` **C141** — [A runner timer that dispatches draws two frames a tick](backlog/closed-2026-09.md#-c141--a-runner-timer-that-dispatches-draws-two-frames-a-tick--done-2026-10-26) — done (2026-10-26) — a poke while the runner drains rings nothing: one frame a timer tick, not two
+- `.` **C142** — [A covered window still renders every frame its timers ask for](backlog/closed-2026-09.md#-c142--a-covered-window-still-renders-every-frame-its-timers-ask-for--done-2026-10-26) — done (2026-10-26) — a covered or minimized window's redraws are built as unseen frames: nothing rendered or submitted
 
 ### `.` C101 — A table or list has no keyboard range selection
 

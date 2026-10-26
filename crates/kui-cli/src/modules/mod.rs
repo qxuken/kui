@@ -418,6 +418,8 @@ pub fn drain(lua: &Lua) -> mlua::Result<bool> {
     let from_worker: mlua::Function = kui.get("__from_worker")?;
     let worker_exit: mlua::Function = kui.get("__worker_exit")?;
     let dispatch_drain: mlua::Function = kui.get("__drain")?;
+    // A dispatch queued while this runs is delivered by it (`Ops::poke`).
+    let _draining = s.ops.draining();
     let mut any = false;
     for _ in 0..64 {
         let (answers, inbound) = s.ops.take();

@@ -9,7 +9,7 @@
 //! condition variable.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use kui_core::Value;
@@ -44,6 +44,10 @@ struct Inner {
     inbox: Mutex<Inbox>,
     ready: Condvar,
     wake: Mutex<Option<Wake>>,
+    /// The owning loop is draining the inbox and the dispatch queue right
+    /// now: a dispatch queued from Lua meanwhile is drained before the
+    /// drain returns, so it rings nothing (`poke`).
+    draining: AtomicBool,
 }
 
 /// The inbox of one Lua state; cheap to clone into the threads that answer.
@@ -57,6 +61,7 @@ impl Default for Ops {
             inbox: Mutex::new(Inbox::default()),
             ready: Condvar::new(),
             wake: Mutex::new(None),
+            draining: AtomicBool::new(false),
         }))
     }
 }
@@ -92,9 +97,21 @@ impl Ops {
     }
 
     /// Rings the loop with nothing in the inbox: a dispatch queued from Lua
-    /// wants the next frame.
+    /// wants the next frame. Nothing while the loop drains: the drain
+    /// delivers it before it returns, and the frame it asks for is the
+    /// one the drain's own wake, or the view it runs in, is part of. A
+    /// timer's callback dispatching rang the loop a second time, and the
+    /// window built a second frame for each tick with nothing new in it.
     pub fn poke(&self) {
-        self.ring();
+        if !self.0.draining.load(Ordering::Relaxed) {
+            self.ring();
+        }
+    }
+
+    /// Marks the owning loop draining until the guard drops (see `poke`).
+    pub fn draining(&self) -> Draining<'_> {
+        let was = self.0.draining.swap(true, Ordering::Relaxed);
+        Draining { ops: self, was }
     }
 
     /// Everything that arrived since the last call.
@@ -136,4 +153,16 @@ pub fn run(ops: &Ops, id: u64, work: impl FnOnce() -> Answer + Send + 'static) {
         let answer = work();
         ops.answer(id, answer);
     });
+}
+
+/// [`Ops::draining`]'s guard: the flag as it was, put back when dropped.
+pub struct Draining<'a> {
+    ops: &'a Ops,
+    was: bool,
+}
+
+impl Drop for Draining<'_> {
+    fn drop(&mut self) {
+        self.ops.0.draining.store(self.was, Ordering::Relaxed);
+    }
 }

@@ -1692,6 +1692,19 @@ for lua-language-server, and a new runner beside the window's.
   the box over every line, and it carries the skin's shadow, as a raised
   float does. Kit's test draws it in every skin and half over a sliding
   window: an opaque fill, no segment over it, its text at 4.5:1.
+- **A runner timer that dispatches draws one frame a tick, not two**
+  (backlog C141). The callback runs in the drain its wake started, and
+  its `kui.dispatch` rang the loop again although that drain delivers it:
+  a second frame with nothing new in it. A poke while the runner drains
+  now rings nothing. The Kit gallery's Overview went from 23 views a
+  second to 12, its frame work a fifth less.
+- **A covered or minimized window renders nothing** (backlog C142). On
+  macOS and X11 the redraws a wake asks for still reach a window the
+  platform says is covered, and each was rendered — the glyph atlas
+  synced, the frame's instances written — before its surface refused it.
+  Such a frame is now built as one the window cannot draw (F169): the
+  view runs and what it declares applies, nothing is rendered or
+  submitted, and being uncovered draws.
 - **A frame only an animation asks for no longer runs the view**
   (backlog C138). Every frame a keyframe cycle or a transition owed ran
   the host's whole view again at the display's rate — the Kit gallery's

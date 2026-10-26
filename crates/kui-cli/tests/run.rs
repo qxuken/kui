@@ -1466,3 +1466,41 @@ fn a_version_change_refreshes_kui_and_creates_nothing_unasked() {
     let o = kui(&dir, &["check"], 20);
     assert!(o.status.success() && !dir.join(".kui").exists(), "{}", out(&o));
 }
+
+/// A timer whose callback dispatches rings the loop once (backlog C141):
+/// the dispatch is delivered by the drain the timer's own wake runs, and
+/// asks for no second frame with nothing new in it.
+#[test]
+fn a_timer_that_dispatches_draws_one_frame_a_tick() {
+    let dir = app(
+        "timer-frames",
+        &[(
+            "main.lua",
+            r#"
+            function init() return { ticks = 0, views = 0 } end
+            function update(msg)
+              if msg.kind == "tick" then model.ticks = model.ticks + 1 end
+              if model.ticks == 20 then
+                print("frames", model.views)
+                kui.exit(0)
+              end
+            end
+            function view(env)
+              model.views = model.views + 1
+              return column { text("tick " .. model.ticks) }
+            end
+            ticker = kui.timer.every(25, function() kui.dispatch({ kind = "tick" }) end)
+            "#,
+        )],
+    );
+    let o = kui(&dir, &["run", "--headless", "."], 20);
+    let s = out(&o);
+    let frames: u32 = s
+        .lines()
+        .find_map(|l| l.strip_prefix("frames\t"))
+        .and_then(|n| n.trim().parse().ok())
+        .unwrap_or_else(|| panic!("no frame count in:\n{s}"));
+    // Twenty ticks, the first frame, and slack for a tick landing while
+    // a frame is owed; two a tick was forty.
+    assert!(frames <= 26, "{frames} frames for 20 ticks:\n{s}");
+}

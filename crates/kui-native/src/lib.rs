@@ -2674,7 +2674,16 @@ impl DynShell<'_> {
 
     /// Builds and draws one window's frame.
     fn redraw(&mut self, i: usize) {
-        self.frame(i, true);
+        // A window the platform says is covered or minimized (`Occluded`)
+        // still has its redraws delivered on macOS and X11, and its
+        // surface refused every one — after the atlas was synced and the
+        // frame's instances written for a GPU that would never present
+        // them. Its frame is built as an unseen one (`mod unseen`): the
+        // view runs, the timers' work shows when it is back, and nothing
+        // is rendered or submitted. Being uncovered asks for the frame
+        // that draws.
+        let seen = !self.panes[i].cause.is_dark();
+        self.frame(i, seen);
     }
 
     /// Builds one window's frame and, `seen`, draws it. Unseen, it is the
