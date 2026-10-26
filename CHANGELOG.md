@@ -244,11 +244,20 @@ was the first bare bump to break an app in five releases).
   step, a y gutter as wide as its widest label where it was 44 px (56
   with a unit) and its labels right-aligned, and a new value range glides
   in over 240 ms where it jumped.
-- A Kit `settings` brand accent given as a colour takes along the roles
-  the skin paints in its accent — Ledger's selection, Neutral's and
-  Phosphor's focus ring, a first chart series — and works out what reads
-  on it, unless the brand names those roles too; an accent given as a
-  token name changes nothing else, as before.
+- A Kit `settings` brand accent given as a colour derives the palette
+  around it: the roles the skin paints in its accent take it (Ledger's
+  selection, Neutral's focus ring, a view switch's chosen segment, the
+  first chart series and waterfall group), those in its hue take the new
+  hue (all of Phosphor's greens), the ground, surfaces, hairline and
+  washes lean toward it, and every text role, tone and the focus colour
+  is moved in lightness until it reads at 4.5:1 on each surface — unless
+  the brand names those roles too; an accent given as a token name
+  changes nothing else, as before. An accent notice's and toast's text is
+  the new `accent_text` role, Ledger's yellow made readable on paper.
+- A Kit table's or list's badge on the selected row keeps its chip, on
+  the panel's colour, where it lost it to the selection's fill.
+- A focused, closed Kit `select` opens on Up, Down, Alt+Up/Down, F4,
+  Space and Enter; its field is a key sink.
 - Kit's `select` opens on the press, its menu over the field with the
   current option on it, where it opened on the click and hung under the
   field; a test that clicks an option by a press and a release elsewhere
@@ -716,6 +725,15 @@ for lua-language-server, and a new runner beside the window's.
   the panel holds. The Kit app and the samples carry a `.luarc.json`
   pointing lua-language-server at the repository's declarations, and are
   clean under it.
+  A tenth, from a review of the Kit app: the keyboard opens a select on
+  its current option (Up, Down, Alt+Up/Down, F4, Space, Enter — a Mac's
+  pop-up and browsers there; Windows and Linux step the value with a bare
+  arrow, which a script cannot tell apart); an accent given as a colour
+  derives the whole palette with every text at 4.5:1 on what it sits on
+  (checked over three skins, both halves and four accents); a selected
+  row keeps its chips; and the Theme panel offers only the faces installed
+  on the machine, since Kit ships no font files and a family that is not
+  installed draws as the system's sans.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
