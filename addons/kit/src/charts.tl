@@ -292,13 +292,14 @@ end
 -- Two polygons meeting along an edge each ramp it over a pixel, so a
 -- pixel on it was covered three quarters, not whole: a faint seam at
 -- every chunk's end, sliding as a live window moved. The point a chunk
--- ends on is moved to the nearest whole pixel of the window, where the
--- ramp gives each pixel to one side whole — under half a pixel, beneath
--- the line's own width. `ox` is the plot's left edge in the window. (A
--- whole logical pixel is a whole device one at scale 1 and 2; Lua is not
--- told the scale, so at 1.5 the seams are fainter, not gone.) A point
--- with a neighbour within half a pixel stays where it is.
-local function area(plot: kui.Props, pts: {{number}}, h: number, bg: kui.Color, opacity: number, ox: number)
+-- ends on is moved to the nearest whole *device* pixel of the window,
+-- where the ramp gives each pixel to one side whole — under half a pixel,
+-- beneath the line's own width. `ox` is the plot's left edge in the
+-- window and `scale` the display's (`env.scale`, C127): a whole logical
+-- pixel is a whole device one at 1 and 2 only, and at 1.5 the seams were
+-- fainter, not gone. A point with a neighbour within half a pixel stays
+-- where it is.
+local function area(plot: kui.Props, pts: {{number}}, h: number, bg: kui.Color, opacity: number, ox: number, scale: number)
   local n = #pts
   local start = pts[1]
   local i = 1
@@ -306,7 +307,7 @@ local function area(plot: kui.Props, pts: {{number}}, h: number, bg: kui.Color, 
     local j = math.min(i + 5, n)
     local stop = pts[j]
     if j < n then
-      local x = math.floor(stop[1] + ox + 0.5) - ox
+      local x = math.floor((stop[1] + ox) * scale + 0.5) / scale - ox
       local prev = j - 1 == i and start or pts[j - 1]
       if x > prev[1] and x < pts[j + 1][1] then stop = { x, stop[2] } end
     end
@@ -679,7 +680,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       elseif own then
         fill, opacity = color, skin.AREA_ALPHA
       end
-      area(plot, pts, h, fill, opacity, r and r.x or 0)
+      area(plot, pts, h, fill, opacity, r and r.x or 0, c.env.scale or 1)
     end
     if #pts >= 2 then
       plot[#plot + 1] = line { points = pts, width = 1.5, color = color }

@@ -645,6 +645,11 @@ fn a_child_left_out_with_nil_leaves_the_rest_in_place() {
 /// A Lua app placing Kit, its view run `frames` times; the warnings the
 /// frames raised, and the core to read afterwards.
 fn lua_app(src: &str, frames: usize) -> (Core, Vec<String>) {
+    lua_app_at(src, frames, 1.0)
+}
+
+/// [`lua_app`] at a display scale.
+fn lua_app_at(src: &str, frames: usize, scale: f32) -> (Core, Vec<String>) {
     let mut exts = Extensions::new();
     exts.push_as("kit", Box::new(LuaExtension::from_file(KIT).unwrap()))
         .unwrap();
@@ -657,7 +662,7 @@ fn lua_app(src: &str, frames: usize) -> (Core, Vec<String>) {
     core.set_inspect(true);
     let mut warnings = Vec::new();
     for _ in 0..frames {
-        let mut ui = core.frame_with(VIEW, 1.0, &mut exts);
+        let mut ui = core.frame_with(VIEW, scale, &mut exts);
         ui.configure_root(NodeSpec::column().fill());
         ui.finish();
         warnings.extend(core.take_warnings().into_iter().map(|w| format!("{w:?}")));
@@ -1444,6 +1449,40 @@ fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
     // but the first starts on a whole pixel (its box is a pixel out).
     let off: Vec<f32> = polys.iter().map(|p| p.rect.x + 1.0).filter(|x| *x > left + 1.5 && (x - x.round()).abs() > 1e-3).collect();
     assert!(off.is_empty(), "chunks start between pixels: {off:?}");
+}
+
+#[test]
+fn a_line_charts_area_chunks_meet_on_whole_device_pixels_at_a_fractional_scale() {
+    // At 1.5 a whole logical pixel is half a device one every other time,
+    // so the seams the cuts hide stayed, fainter. Kit reads the display
+    // scale (`env.scale`, C127) and cuts on whole device pixels.
+    let (mut core, w) = lua_app_at(
+        r#"
+        local cols = { t = {}, a = {} }
+        for i = 1, 300 do cols.t[i], cols.a[i] = i, 50 + 30 * math.sin(i / 9) end
+        local ch = channel(cols)
+        function view(env)
+          return column { width = "grow", height = "grow", pad = { l = 7.3 },
+            component("kit/line_chart", { data = ch, x = "t", area = true, height = 160,
+              series = { { field = "a", name = "A" } } }) }
+        end
+        "#,
+        4,
+        1.5,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+    let nodes = core.nodes();
+    let polys: Vec<_> = nodes.iter().filter(|n| n.kind == kui_core::NodeKind::Polygon).collect();
+    assert!(polys.len() > 10, "the area is cut into polygons: {}", polys.len());
+    let left = polys.iter().map(|p| p.rect.x).fold(f32::MAX, f32::min);
+    // Each chunk but the first starts where the one before ended: its box
+    // is a logical pixel out, and that start lands on a whole device pixel.
+    let starts: Vec<f32> = polys.iter().map(|p| p.rect.x + 1.0).filter(|x| *x > left + 1.5).collect();
+    assert!(starts.len() > 10);
+    let off: Vec<f32> = starts.iter().map(|x| x * 1.5).filter(|d| (d - d.round()).abs() > 2e-3).collect();
+    assert!(off.is_empty(), "chunks start between device pixels: {off:?}");
+    let logical_only = starts.iter().filter(|x| (*x - x.round()).abs() > 1e-3).count();
+    assert!(logical_only > 0, "some cuts are on half logical pixels, as whole device ones at 1.5 are");
 }
 
 #[test]
@@ -3347,6 +3386,71 @@ fn a_checklist_removes_its_focused_item_with_delete_and_backspace() {
     assert_eq!(labels(&mut r), "Milk", "the arrows are still the list's");
     tab(&mut r);
     assert_eq!(focused(&mut r).as_deref(), Some("After"), "still one Tab stop");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+/// Tab straight onto the last row and Delete before any frame has drawn
+/// focus there: the case Kit's old workaround (the row's key recorded by
+/// the view while focused) missed. The core hands focus to the row before
+/// (C125), with nothing of Kit's in between.
+#[test]
+fn a_checklist_tab_straight_onto_the_last_row_then_delete_lands_on_the_row_before() {
+    use kui_core::KeyCode;
+    let mut r = LuaRig::new(
+        r#"
+        items = { { label = "Milk" }, { label = "Eggs" }, { label = "Bread" } }
+        function on_event(ev)
+          if ev.kind == "rm" then table.remove(items, ev.remove.index + 1) end
+        end
+        function view(env)
+          return column { width = 300, pad = 20, gap = 8,
+            component("kit/button", { label = "Before" }),
+            component("kit/checklist", { items = items, label = "Groceries", removable = true, on_remove = { kind = "rm" } }),
+            component("kit/button", { label = "After" }) }
+        end
+        "#,
+    );
+    r.frames(2);
+    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    let labels = |r: &mut LuaRig| -> String { r.app.load("local t = {} for i, it in ipairs(items) do t[i] = it.label end return table.concat(t, ' ')").eval().unwrap() };
+    // A Tab with no frame after it: focus moves, nothing draws.
+    let tab = |r: &mut LuaRig, back: bool| {
+        let mods = if back { kui_core::KeyMods::NONE.with_shift() } else { kui_core::KeyMods::NONE };
+        let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(KeyCode::Tab, mods)));
+        r.route(e);
+        let e = kui_core::testing::tab(&mut r.core, back);
+        r.route(e);
+    };
+    let key = |r: &mut LuaRig, code: KeyCode| {
+        let e = r.core.press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
+        r.route(e);
+    };
+    // Onto Bread, the last row, and out to After.
+    tab(&mut r, false);
+    tab(&mut r, false);
+    r.frames(1);
+    key(&mut r, KeyCode::End);
+    r.frames(1);
+    assert_eq!(focused(&mut r).as_deref(), Some("Bread"));
+    tab(&mut r, false);
+    r.frames(1);
+    assert_eq!(focused(&mut r).as_deref(), Some("After"));
+    // Shift-Tab straight back onto Bread, and Delete at once.
+    tab(&mut r, true);
+    key(&mut r, KeyCode::Delete);
+    r.frames(2);
+    assert_eq!(labels(&mut r), "Milk Eggs", "Delete removed the last row");
+    assert_eq!(focused(&mut r).as_deref(), Some("Eggs"), "and focus went to the row before");
+    // Again from the far side: Before, Tab into the list (entered on Eggs,
+    // now its last row), Delete at once.
+    tab(&mut r, true);
+    r.frames(1);
+    assert_eq!(focused(&mut r).as_deref(), Some("Before"));
+    tab(&mut r, false);
+    key(&mut r, KeyCode::Delete);
+    r.frames(2);
+    assert_eq!(labels(&mut r), "Milk");
+    assert_eq!(focused(&mut r).as_deref(), Some("Milk"));
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 

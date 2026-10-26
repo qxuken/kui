@@ -625,14 +625,9 @@ local function ringed_mark(c: Ctx, mark: kui.Node, group: string, w: number, h: 
   return mark
 end
 
--- Which item of a checklist holds focus (for its Delete) and whether it
--- does now, the node key of each row focus has been on, and the row
--- Delete last removed an item from.
+-- Which item of a checklist focus was last on, the row Tab enters it on.
 local record Ticks
   focus: integer
-  inside: boolean
-  keys: {integer:integer}
-  gone: integer
   -- The item whose × the pointer is on.
   over: integer
 end
@@ -644,26 +639,18 @@ end
 -- its own. With `removable`, an × the pointer presses on each item, and
 -- Delete or Backspace on the focused item removes it: the list hears the
 -- keys its items leave (`on_item_key`, C120) and stays one Tab stop, its
--- arrows its own. Focus stays on the row, which then holds the next item
--- (the last row's goes to the one before).
+-- arrows its own. Focus stays on the row, which then holds the next item;
+-- the last row's removal takes its row with it, and the core hands focus
+-- to the row before (C125).
 function M.checklist(c: Ctx, p: P): kui.Node
   local items = (p.items or {}) as {P}
   local removable = p.removable == true
-  local st = ctx.state(c, function(): Ticks return { keys = {} } end)
-  local env = c.env
+  local st = ctx.state(c, function(): Ticks return {} end)
   local focus = st.focus
   if focus and focus >= #items then
     focus = #items > 0 and #items - 1 or nil
-    -- The focused last item went, and its row with it: focus was left on
-    -- a node no longer there, so the keyboard goes to the row before, by
-    -- the key it had when focus was on it (a row's key is its place).
-    local to = focus and st.keys[focus]
-    if to and env.focus ~= nil and env.focus == st.gone then env.set_focus(to) end
     st.focus = focus
-  elseif focus and st.inside and env.focus ~= nil then
-    st.keys[focus] = env.focus
   end
-  st.gone = nil
   local t: kui.Props = {
     key = "checklist",
     role = "list",
@@ -940,7 +927,7 @@ function M.slider(c: Ctx, p: P): kui.Node
     cursor = "grab",
     when = { { pressed = true, cursor = "grabbing" } },
     column { key = "fill", width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent"),
-      transition = dragged and 0 or 260, easing = not dragged and "snappy" or nil, when = { ctx.still() },
+      transition = dragged and 0 or 260, easing = "snappy", when = { ctx.still() },
       -- Centred on the fill's end: the value's place, over the rail.
       column {
         key = "handle",
@@ -1017,10 +1004,7 @@ function M.event(m: P, kit: string): any
   elseif kit == "checklist.focus" then
     local st = ctx.peek(m.inst as integer) as Ticks
     local f = m.focus as P
-    if st and f then
-      if f.phase == "in" then st.focus, st.inside = m.index as integer, true
-      elseif st.focus == m.index then st.inside = false end
-    end
+    if st and f and f.phase == "in" then st.focus = m.index as integer end
   elseif kit == "checklist.toggle" then
     local st = ctx.peek(m.inst as integer) as Ticks
     if st and st.over == m.index then return emit("on_remove", { index = m.index }) end
@@ -1029,8 +1013,6 @@ function M.event(m: P, kit: string): any
     -- A key the focused item left: Delete and Backspace remove it.
     local k = m.itemkey as P
     if k and (k.code == "delete" or k.code == "backspace") then
-      local st = ctx.peek(m.inst as integer) as Ticks
-      if st then st.gone = k.item as integer end
       return emit("on_remove", { index = k.index })
     end
   elseif kit == "checklist.over" then

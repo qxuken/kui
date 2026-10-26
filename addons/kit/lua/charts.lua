@@ -299,7 +299,8 @@ end
 
 
 
-local function area(plot, pts, h, bg, opacity, ox)
+
+local function area(plot, pts, h, bg, opacity, ox, scale)
    local n = #pts
    local start = pts[1]
    local i = 1
@@ -307,7 +308,7 @@ local function area(plot, pts, h, bg, opacity, ox)
       local j = math.min(i + 5, n)
       local stop = pts[j]
       if j < n then
-         local x = math.floor(stop[1] + ox + 0.5) - ox
+         local x = math.floor((stop[1] + ox) * scale + 0.5) / scale - ox
          local prev = j - 1 == i and start or pts[j - 1]
          if x > prev[1] and x < pts[j + 1][1] then stop = { x, stop[2] } end
       end
@@ -680,7 +681,7 @@ text(tick_label[i], { size = 10, family = "$kitData", color = faint, max_lines =
             elseif own then
                fill, opacity = color, skin.AREA_ALPHA
             end
-            area(plot, pts, h, fill, opacity, r and r.x or 0)
+            area(plot, pts, h, fill, opacity, r and r.x or 0, c.env.scale or 1)
          end
          if #pts >= 2 then
             plot[#plot + 1] = line({ points = pts, width = 1.5, color = color })

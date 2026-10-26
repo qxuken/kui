@@ -643,28 +643,15 @@ end
 
 
 
-
-
-
-
 function M.checklist(c, p)
    local items = (p.items or {})
    local removable = p.removable == true
-   local st = ctx.state(c, function() return { keys = {} } end)
-   local env = c.env
+   local st = ctx.state(c, function() return {} end)
    local focus = st.focus
    if focus and focus >= #items then
       focus = #items > 0 and #items - 1 or nil
-
-
-
-      local to = focus and st.keys[focus]
-      if to and env.focus ~= nil and env.focus == st.gone then env.set_focus(to) end
       st.focus = focus
-   elseif focus and st.inside and env.focus ~= nil then
-      st.keys[focus] = env.focus
    end
-   st.gone = nil
    local t = {
       key = "checklist",
       role = "list",
@@ -941,7 +928,7 @@ function M.slider(c, p)
       cursor = "grab",
       when = { { pressed = true, cursor = "grabbing" } },
       column({ key = "fill", width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent"),
-      transition = dragged and 0 or 260, easing = not dragged and "snappy" or nil, when = { ctx.still() },
+      transition = dragged and 0 or 260, easing = "snappy", when = { ctx.still() },
 
       column({
          key = "handle",
@@ -1018,10 +1005,7 @@ function M.event(m, kit)
    elseif kit == "checklist.focus" then
       local st = ctx.peek(m.inst)
       local f = m.focus
-      if st and f then
-         if f.phase == "in" then st.focus, st.inside = m.index, true
-         elseif st.focus == m.index then st.inside = false end
-      end
+      if st and f and f.phase == "in" then st.focus = m.index end
    elseif kit == "checklist.toggle" then
       local st = ctx.peek(m.inst)
       if st and st.over == m.index then return emit("on_remove", { index = m.index }) end
@@ -1030,8 +1014,6 @@ function M.event(m, kit)
 
       local k = m.itemkey
       if k and (k.code == "delete" or k.code == "backspace") then
-         local st = ctx.peek(m.inst)
-         if st then st.gone = k.item end
          return emit("on_remove", { index = k.index })
       end
    elseif kit == "checklist.over" then
