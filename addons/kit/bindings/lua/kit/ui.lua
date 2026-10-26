@@ -355,8 +355,9 @@
 ---@field descending? boolean Sorted from the top down.
 ---@field striped? boolean Every other row tinted.
 ---@field border? boolean Framed in a hairline, the header ruled off inside it; left out, no frame and the header on a plane of its own (in a panel, which is framed already).
+---@field cells? boolean A table of cells: the arrows walk cells (Left and Right along a row, Up and Down keeping the column), the header a row of column headers, landing on a row selecting it. Left out, a list of rows, the arrows moving whole rows.
 ---@field grow? boolean Takes the room its parent leaves.
----@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.TableSelect). A row was clicked or reached by the arrows.
+---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.TableSelect). A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in).
 ---@field on_sort? any The message it arrives as: yours, with `sort = {…}` in it (kit.TableSort). A header was clicked.
 ---@field on_range? any The message it arrives as: yours, with `range = {…}` in it (kit.TableRange). The rows in view changed: page your source by it.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -386,7 +387,7 @@
 ---@field label? string Its name, read and not drawn: what the list holds (History).
 ---@field selected? integer The selected row (0-based): yours to keep.
 ---@field grow? boolean Takes the room its parent leaves.
----@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.ListSelect). A row was clicked or reached by the arrows.
+---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.ListSelect). A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in).
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 

@@ -46,19 +46,6 @@ local function slice(env: kui.Env, key: string, n: integer, row_h: number): inte
   return first, last
 end
 
--- Scrolls `key` so row `i` shows, when it does not.
-local function reveal(env: kui.Env, key: string, i: integer, row_h: number)
-  local g = env.scroll_geometry(key)
-  if not g then return end
-  local top = g.offset.y
-  local y = i * row_h
-  if y < top then
-    env.set_scroll(key, 0, y)
-  elseif y + row_h > top + g.h then
-    env.set_scroll(key, 0, y + row_h - g.h)
-  end
-end
-
 -- A virtual body: `build(i)` makes row i's node, keyed by its index; the
 -- spacers keep the height of the rest.
 local function body(c: Ctx, key: string, n: integer, row_h: number, t: kui.Props, build: function(i: integer): kui.Node): kui.Node
@@ -73,53 +60,36 @@ local function body(c: Ctx, key: string, n: integer, row_h: number, t: kui.Props
   return column(t)
 end
 
+-- What a list or a table keeps between fills: a type-ahead the core
+-- passed on, answered by the next fill (an event handler holds no env),
+-- and what the search reads.
 local record Seen
-  selected: integer
-  n: integer
-  -- Tab heard by the list's key sink, to hand the focus on with when it
-  -- is next drawn: 1 forward, -1 back.
-  tab: integer
-  -- A key reached the sink since the last click on a row: the keyboard
-  -- is driving it. The core shows focus after Tab, not after a key a sink
-  -- takes, so after a click and the arrows nothing showed where the
-  -- cursor was.
-  keyed: boolean
+  ask: string
+  ch: kui.Channel
+  field: string
 end
 
--- A list or a table is a key sink (its arrows move the selection), and a
--- sink owns Tab, so Tab went in and never came out. Its handler notes the
--- Tab and the next draw hands the focus on, as a sink is meant to.
-local function hand_on(c: Ctx, seen: Seen)
-  local dir = seen.tab
-  if not dir then return end
-  seen.tab = nil
-  if dir > 0 then c.env.focus_next() else c.env.focus_prev() end
-end
-
--- The focus, drawn: the sink's own edge in the focus colour while it holds
--- the keyboard (a scroller's ring was clipped by the pane around it).
--- Whether the list or table is the keyboard's: focus shown on it (Tab),
--- or keys taken by it since the last click on a row.
-local function keyboard_on(c: Ctx, seen: Seen): boolean
-  if ctx.focus_shows(c, "rows") then return true end
-  if not seen.keyed then return false end
-  local ok, here = pcall(c.env.is_focused, "rows")
-  return ok and here == true
-end
-
--- Only when the keyboard drives it (focus-visible, or its keys): a click
--- on a row focuses the list without a ring round it. With a row selected
--- the ring is on that row instead (`cursor_ring`): the selection and the
--- ring are one cursor, which the arrows move together.
-local function focus_edge(c: Ctx, t: kui.Props, selected: integer, on: boolean)
-  if selected == nil and on then
-    t.border = { w = "$kitRuleW", color = ref(c, "focus") }
+-- A list's or a table's keyboard is the core's (ADR 0070): a `list` of
+-- focusable `listItem`s, or a `table` of focusable `cell`s, under the
+-- `row_count` its body declares, steps past its window, pages, enters on
+-- the selected row (`active_index`), and draws the ring (in Kit's focus
+-- colour, `focus_ring` on every Kit root). It was a key sink that moved
+-- the selection by index, scrolled it into view and handed Tab on.
+-- Selection is the host's: a click, or the keyboard landing on a row,
+-- proposes it. A type-ahead the built rows cannot answer comes here and
+-- is answered from the channel.
+local function typeahead(c: Ctx, seen: Seen, ch: kui.Channel, field: string)
+  seen.ch, seen.field = ch, field
+  local text = seen.ask
+  if not text then return end
+  seen.ask = nil
+  local want = text:lower()
+  for i = 0, count(ch) - 1 do
+    if cell_text(ch:get(i, field)):lower():sub(1, #want) == want then
+      pcall(c.env.answer_typeahead, "rows", i)
+      return
+    end
   end
-end
-
--- The selected row's ring while the keyboard drives the list or table.
-local function cursor_ring(c: Ctx, t: kui.Props, sel: boolean, on: boolean)
-  if sel and on then t.border = { w = 2, color = ref(c, "focus") } end
 end
 
 -- A tone a channel cell names, as the role its text is drawn in; nil for
@@ -149,32 +119,15 @@ local function pill(c: Ctx, label: string, tone: string, dot: boolean, sel: bool
   }
 end
 
--- Up, Down, Home, End and the pages from `selected` in `n` rows.
-local function step(code: string, selected: integer, n: integer, page: integer): integer
-  local s = selected or -1
-  if code == "down" then s = s + 1
-  elseif code == "up" then s = s - 1
-  elseif code == "home" then s = 0
-  elseif code == "end" then s = n - 1
-  elseif code == "pagedown" then s = s + page
-  elseif code == "pageup" then s = s - page
-  else return nil end
-  return math.max(0, math.min(n - 1, s))
-end
-
 function M.table(c: Ctx, p: P): kui.Node
   local ch = p.rows as kui.Channel
   local cols = (p.columns or {}) as {P}
   local n = count(ch)
   local row_h = c.s.density == "compact" and 20 or 22
-  local env = c.env
   local selected = p.selected as integer
   local seen = ctx.state(c, function(): Seen return {} end)
-  hand_on(c, seen)
-  if selected ~= seen.selected then
-    if selected then reveal(env, "rows", selected, row_h) end
-    seen.selected = selected
-  end
+  local cells = p.cells == true
+  typeahead(c, seen, ch, cols[1] and cols[1].field as string or "")
 
   -- The header on a plane of its own (the sunken colour) rather than over
   -- a rule; `border` frames the whole table and rules the header instead.
@@ -184,13 +137,15 @@ function M.table(c: Ctx, p: P): kui.Node
   local sorts = p.on_sort ~= nil
   local selects = p.on_select ~= nil
   local head: kui.Props = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
-    bg = ref(c, framed and "panel" or "sunken") }
+    bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil }
   for i, col in ipairs(cols) do
     local field = col.field as string
     local sorted = p.sort == field
     local h: kui.Props = {
       key = "h" .. i,
-      role = sorts and "button" or nil,
+      -- In a table of cells, a header cell; sorting it is its action.
+      role = cells and "columnHeader" or (sorts and "button" or nil),
+      focusable = (cells and selects) or nil,
       label = (col.title as string) .. (sorted and (p.descending == true and ", sorted descending" or ", sorted ascending") or ""),
       width = (col.width as number) or "grow",
       height = "grow",
@@ -201,7 +156,6 @@ function M.table(c: Ctx, p: P): kui.Node
       on_click = sorts and act(c, "table.sort", { field = field }) or nil,
       ctx.caption(c, col.title as string, { color = ref(c, sorted and "fg" or "muted") }),
     }
-    if sorts then ctx.ring(c, h, "h" .. i) end
     if sorted then h[#h + 1] = icons.node(c, p.descending == true and "chevron_down" or "chevron_up", 11, "fg") end
     head[#head + 1] = row(h)
   end
@@ -209,22 +163,21 @@ function M.table(c: Ctx, p: P): kui.Node
   local striped = p.striped == true
   local rows_t: kui.Props = {
     height = "grow",
-    focusable = selects or nil,
-    on_key = selects and act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }) or nil,
     on_range = act(c, "table.range"),
-    role = "list",
+    -- A list of rows (the arrows move whole rows), or with `cells` the
+    -- body of a table whose cells the arrows walk.
+    role = not cells and "list" or nil,
     label = "rows",
+    active_index = selects and selected or nil,
+    on_typeahead = selects and act(c, "table.typeahead") or nil,
   }
-  local on = keyboard_on(c, seen)
-  focus_edge(c, rows_t, selected, on)
   local view = body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
     local sel = selected == i
     local line: kui.Props = {
       index = i,
-      -- A row of the list, not a control of its own: a row with a click
-      -- and no role was a Tab stop, and a click on it focused the row,
-      -- whose ring then stayed while the arrows moved the selection.
-      role = "listItem",
+      role = cells and "row" or "listItem",
+      focusable = (selects and not cells) or nil,
+      on_focus = (selects and not cells) and act(c, "table.focus", { row = i }) or nil,
       selected = sel,
       height = row_h,
       width = "grow",
@@ -259,6 +212,11 @@ function M.table(c: Ctx, p: P): kui.Node
         })
       end
       line[#line + 1] = row {
+        key = cells and ("c" .. j) or nil,
+        role = cells and "cell" or nil,
+        label = cells and s or nil,
+        focusable = (cells and selects) or nil,
+        on_focus = (cells and selects) and act(c, "table.focus", { row = i }) or nil,
         width = (col.width as number) or "grow",
         min_width = 0,
         cross_align = "center",
@@ -267,7 +225,6 @@ function M.table(c: Ctx, p: P): kui.Node
       }
     end
     line.label = table.concat(name, ", ")
-    cursor_ring(c, line, sel, on)
     return row(line)
   end)
 
@@ -275,6 +232,10 @@ function M.table(c: Ctx, p: P): kui.Node
     width = "grow",
     height = p.grow == true and "grow" or nil,
     bg = ref(c, "panel"),
+    role = cells and "table" or nil,
+    label = cells and "table" or nil,
+    active_index = (cells and selects) and selected or nil,
+    on_typeahead = (cells and selects) and act(c, "table.typeahead") or nil,
     -- Framed: a hairline in the soft rule colour around the table, inside
     -- which the header sits (the border's width is padding, so the rule
     -- under the header stops at the frame and does not cross it).
@@ -293,22 +254,16 @@ function M.list(c: Ctx, p: P): kui.Node
   local row_h = two and 40 or (c.s.density == "compact" and 22 or 26)
   local selected = p.selected as integer
   local seen = ctx.state(c, function(): Seen return {} end)
-  hand_on(c, seen)
-  if selected ~= seen.selected then
-    if selected then reveal(c.env, "rows", selected, row_h) end
-    seen.selected = selected
-  end
+  typeahead(c, seen, ch, p.title as string)
   -- A list nobody selects in takes no keyboard: no stop that does nothing.
   local selects = p.on_select ~= nil
   local rows_t: kui.Props = {
     height = p.grow == true and "grow" or nil,
     role = "list",
     label = str(p.label),
-    focusable = selects or nil,
-    on_key = selects and act(c, "list.key", { selected = selected, n = n, page = 8 }) or nil,
+    active_index = selects and selected or nil,
+    on_typeahead = selects and act(c, "list.typeahead") or nil,
   }
-  local on = keyboard_on(c, seen)
-  focus_edge(c, rows_t, selected, on)
   return body(c, "rows", n, row_h, rows_t, function(i: integer): kui.Node
     local sel = selected == i
     local title = cell_text(ch:get(i, p.title as string))
@@ -330,6 +285,8 @@ function M.list(c: Ctx, p: P): kui.Node
     local item: kui.Props = {
       index = i,
       role = "listItem",
+      focusable = selects or nil,
+      on_focus = selects and act(c, "list.focus", { row = i }) or nil,
       label = badge ~= "" and (badge .. " " .. title) or title,
       selected = sel,
       height = row_h,
@@ -344,7 +301,6 @@ function M.list(c: Ctx, p: P): kui.Node
         pill(c, badge, tone, false, sel) } or nil,
       column(t),
     }
-    cursor_ring(c, item, sel, on)
     return row(item)
   end)
 end
@@ -542,7 +498,6 @@ local function jump(c: Ctx): kui.Node
     icons.node(c, "chevron_down", 12, "fg"),
     ctx.caption(c, "Latest", { size = "$kitSizeLabel" }),
   }
-  ctx.ring(c, t, "jump")
   return row(t)
 end
 
@@ -893,9 +848,18 @@ end
 
 function M.event(m: P, kit: string): any
   if kit == "table.select" or kit == "list.select" or kit == "log.select" then
-    local seen = ctx.peek(m.inst as integer) as Seen
-    if seen and kit ~= "log.select" then seen.keyed = false end
     return emit("on_select", { row = m.row })
+  elseif kit == "table.focus" or kit == "list.focus" then
+    -- Focus landed on a row: it is the selection. By the keyboard, by a
+    -- screen reader, or at a frame's end (`program`: a step to a row the
+    -- window had not built lands there); a click selects by its own
+    -- message.
+    local f = m.focus as P
+    if f and f.phase == "in" and f.by ~= "pointer" then return emit("on_select", { row = m.row }) end
+  elseif kit == "table.typeahead" or kit == "list.typeahead" then
+    local seen = ctx.peek(m.inst as integer) as Seen
+    local t = m.typeahead as P
+    if seen and t then seen.ask = t.text as string end
   elseif kit == "log.end" then
     local st = ctx.peek(m.inst as integer) as Follow
     if st then st.follow, st.last_y = true, nil end
@@ -904,20 +868,6 @@ function M.event(m: P, kit: string): any
   elseif kit == "table.range" then
     local r = m.range as P
     if r then return emit("on_range", { first = r.first, last = r.last }) end
-  elseif kit == "table.key" or kit == "list.key" then
-    local k = m.key as P
-    if not k or k.phase ~= "down" then return nil end
-    if k.code == "tab" then
-      local seen = ctx.peek(m.inst as integer) as Seen
-      if seen then seen.tab = k.shift == true and -1 or 1 end
-      return nil
-    end
-    local n = (m.n or 0) as integer
-    if n == 0 then return nil end
-    local seen = ctx.peek(m.inst as integer) as Seen
-    if seen then seen.keyed = true end
-    local s = step(k.code as string, m.selected as integer, n, (m.page or 8) as integer)
-    if s and s ~= m.selected then return emit("on_select", { row = s }) end
   end
   return nil
 end

@@ -250,7 +250,6 @@ local function lane_row(c, lane, st, v0, v1, width, selected, picks)
                on_click = picks and act(c, "waterfall.pick", { row = b.row }) or nil,
             }
             if w >= 4 then bar.border = { w = 1, color = ref(c, sel and "ink" or "rule") } end
-            if picks then ctx.ring(c, bar, "span" .. b.row) end
             if w >= 48 then
                bar[#bar + 1] = text(b.n, { size = 11, max_lines = 1, ellipsis = true, family = "$kitData",
 color = ref(c, sel and "sel_fg" or "fg"), })
@@ -274,7 +273,6 @@ local function tool(c, icon, label, action, v0, v1)
       on_click = act(c, "waterfall." .. action, { v0 = v0, v1 = v1 }),
       icons.node(c, icon, 13, "fg"),
    }
-   ctx.ring(c, t, "tool." .. action)
    return row(t)
 end
 

@@ -1469,9 +1469,14 @@ Table :: struct {
 	// Framed in a hairline, the header ruled off inside it; left out, no frame and
 	// the header on a plane of its own (in a panel, which is framed already).
 	border: Maybe(bool),
+	// A table of cells: the arrows walk cells (Left and Right along a row, Up and
+	// Down keeping the column), the header a row of column headers, landing on a
+	// row selecting it. Left out, a list of rows, the arrows moving whole rows.
+	cells: Maybe(bool),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
-	// The message `select` arrives as. A row was clicked or reached by the arrows.
+	// The message `select` arrives as. A row was clicked, or the keyboard landed
+	// on it (the arrows, Page keys, a type-ahead, Tab back in).
 	on_select: any,
 	// The message `sort` arrives as. A header was clicked.
 	on_sort: any,
@@ -1483,7 +1488,8 @@ Table :: struct {
 	fresh: bool,
 }
 
-// What `select` carries: A row was clicked or reached by the arrows.
+// What `select` carries: A row was clicked, or the keyboard landed on it (the
+// arrows, Page keys, a type-ahead, Tab back in).
 Table_Select :: struct {
 	// Its index, 0-based.
 	row: i64,
@@ -1528,6 +1534,7 @@ table_props :: proc(p: Table) -> ^c.Value {
 	if x, ok := p.descending.?; ok do c.value_map_set(m, "descending", c.value_bool(x))
 	if x, ok := p.striped.?; ok do c.value_map_set(m, "striped", c.value_bool(x))
 	if x, ok := p.border.?; ok do c.value_map_set(m, "border", c.value_bool(x))
+	if x, ok := p.cells.?; ok do c.value_map_set(m, "cells", c.value_bool(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
 	if p.on_sort != nil do c.value_map_set(m, "on_sort", (^c.Value)(kui.encode(p.on_sort)))
@@ -1570,14 +1577,16 @@ List :: struct {
 	selected: Maybe(i64),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
-	// The message `select` arrives as. A row was clicked or reached by the arrows.
+	// The message `select` arrives as. A row was clicked, or the keyboard landed
+	// on it (the arrows, Page keys, a type-ahead, Tab back in).
 	on_select: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
 }
 
-// What `select` carries: A row was clicked or reached by the arrows.
+// What `select` carries: A row was clicked, or the keyboard landed on it (the
+// arrows, Page keys, a type-ahead, Tab back in).
 List_Select :: struct {
 	// Its index, 0-based.
 	row: i64,

@@ -89,25 +89,13 @@ function M.focus_shows(c: Ctx, key: string): boolean
   return ok and here == true
 end
 
--- The skin's focus ring on control `t`, keyed `key` among its instance's
--- nodes: while the keyboard holds it, its edge is the skin's focus colour
--- at 2 px (a border takes no room, so nothing moves), and the core's own
--- ring is turned off with a `focus_bg` of the control's own fill. The
--- core's ring is the theme's colour, the same blue in every skin, and a
--- Lua add-on cannot set the theme (ADR 0019: the palette is the host's).
-function M.ring(c: Ctx, t: kui.Props, key: string)
-  t.key = t.key or key
-  if not M.focus_shows(c, key) then return end
-  t.focus_bg = t.bg or 0x00000000
-  t.border = { w = 2, color = M.ref(c, "focus") }
-end
-
 -- A focus ring hugging a mark `w`×`h` (a checkbox's square, a switch's
 -- track) 2 px out from its edge, for a control whose focusable node is
 -- larger than what it draws: the core's ring went round the whole row,
 -- its label and its height, far from the box. A float, so it takes no
 -- room and moves nothing; the control turns the core's ring off with a
--- `focus_bg`.
+-- `focus_ring` that has no alpha. (A state condition reads the node's own
+-- state, and the mark is a child of the focused row: hence the read.)
 function M.focus_ring(c: Ctx, w: number, h: number, radius?: number): kui.Node
   return column {
     float = { anchor = "parent", dx = -4, dy = -4 },

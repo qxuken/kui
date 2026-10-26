@@ -313,10 +313,11 @@ return {
         { "descending", "boolean?", doc = "Sorted from the top down." },
         { "striped", "boolean?", doc = "Every other row tinted." },
         { "border", "boolean?", doc = "Framed in a hairline, the header ruled off inside it; left out, no frame and the header on a plane of its own (in a panel, which is framed already)." },
+        { "cells", "boolean?", doc = "A table of cells: the arrows walk cells (Left and Right along a row, Up and Down keeping the column), the header a row of column headers, landing on a row selecting it. Left out, a list of rows, the arrows moving whole rows." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
       },
       events = {
-        { "select", doc = "A row was clicked or reached by the arrows.", fields = { { "row", "integer", doc = "Its index, 0-based." } } },
+        { "select", doc = "A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in).", fields = { { "row", "integer", doc = "Its index, 0-based." } } },
         { "sort", doc = "A header was clicked.", fields = { { "field", "string", doc = "The column's field." } } },
         { "range", doc = "The rows in view changed: page your source by it.", fields = {
           { "first", "integer", doc = "The first row in view." },
@@ -337,7 +338,7 @@ return {
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
       },
       events = {
-        { "select", doc = "A row was clicked or reached by the arrows.", fields = { { "row", "integer", doc = "Its index, 0-based." } } },
+        { "select", doc = "A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in).", fields = { { "row", "integer", doc = "Its index, 0-based." } } },
       } },
     { "inspector",
       doc = "Keys and their values, aligned: a request's headers, a record's fields.",

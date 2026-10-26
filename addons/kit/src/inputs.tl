@@ -92,7 +92,6 @@ end
 local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
   local sk = c.s.skin
   if variant ~= "primary" or t.disabled == true or not c.s.shadows or sk.shadow <= 0 or sk.shadow_blur > 0 then
-    ctx.ring(c, t, "ctl")
     return row(t)
   end
   local function state(f: function(kui.KeyRef): boolean): boolean
@@ -122,10 +121,6 @@ local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
     -- A keyframe cycle runs over `transition`; one stop, so any length holds it.
     transition = d ~= 0 and 1 or nil,
   }
-  -- The keyboard's ring on the face, the box that takes the focus its own
-  -- core ring off.
-  local ringed = ctx.focus_shows(c, "hit")
-  if ringed then face.border = { w = 2, color = ref(c, "focus") } end
   for i = 1, #t do face[i] = t[i] end
   local hit: kui.Props = {
     key = "hit",
@@ -138,7 +133,6 @@ local function pressed_face(c: Ctx, variant: string, t: kui.Props): kui.Node
     selected = t.selected,
     on_click = t.on_click,
     cursor = t.cursor,
-    focus_bg = ringed and 0x00000000 or nil,
     width = t.width,
     height = t.height,
     min_width = t.min_width,
@@ -492,7 +486,6 @@ function M.select(c: Ctx, p: P): kui.Node
   })
   -- Up to its width, less in a narrow row, its choice ellipsized.
   ctx.up_to(field, p.width, 80)
-  ctx.ring(c, field, "field")
   if st.open then
     local list: kui.Props = {
       key = "menu",
@@ -527,8 +520,6 @@ function M.select(c: Ctx, p: P): kui.Node
         cursor = "pointer",
         opacity = o.disabled == true and "$disabledOpacity" or nil,
         on_click = act(c, "select.pick", { value = o.value }),
-        focus_bg = ctx.focus_shows(c, "o" .. i) and (here and ref(c, "sel") or ref(c, "hover")) or nil,
-        border = ctx.focus_shows(c, "o" .. i) and { w = 2, color = ref(c, "focus") } or nil,
         ctx.text(c, o.label as string, { color = ref(c, here and "sel_fg" or "fg") }),
       }
     end
@@ -574,7 +565,7 @@ function M.checkbox(c: Ctx, p: P): kui.Node
   end
   return row {
     key = "ctl",
-    focus_bg = 0x00000000,
+    focus_ring = 0xffffff00,
     role = "checkbox",
     label = str(p.label),
     checked = on,
@@ -638,7 +629,7 @@ function M.switch(c: Ctx, p: P): kui.Node
   if ctx.focus_shows(c, "ctl") then track[#track + 1] = ctx.focus_ring(c, 32, 18, round and 9 or 0) end
   return row {
     key = "ctl",
-    focus_bg = 0x00000000,
+    focus_ring = 0xffffff00,
     role = "switch",
     label = str(p.label),
     checked = on,
@@ -672,7 +663,7 @@ function M.radio_group(c: Ctx, p: P): kui.Node
       cross_align = "center",
       cursor = "pointer",
       on_click = act(c, "radio_group.pick", { value = o.value }),
-      focus_bg = ctx.focus_shows(c, "r" .. i) and 0x00000000 or nil,
+      focus_ring = 0xffffff00,
       ringed_mark(c, tickbox(c, here, false, true), "r" .. i, 7),
       ctx.text(c, o.label as string),
     }
@@ -726,7 +717,6 @@ function M.segmented(c: Ctx, p: P): kui.Node
       o.count ~= nil and ctx.data(c, tostring(o.count), { size = "$kitSizeLabel", bold = o.alert == true,
         color = ref(c, here and on_fg or (o.alert == true and "danger" or "muted")) }) or nil,
     }
-    ctx.ring(c, seg, "s" .. i)
     t[#t + 1] = row(seg)
   end
   return row(t)
@@ -740,22 +730,16 @@ function M.slider(c: Ctx, p: P): kui.Node
   -- The value as the host wrote it (`20 MB/s`), or the number itself.
   local shown = str(p.value_label) or string.format("%g", v)
   -- The handle lights while the pointer is over the track and stays lit,
-  -- a shade deeper, while it is held there and dragged (it went dark the
-  -- moment the press began, as if let go). Read off the track, the one
-  -- region the pointer meets: the handle declares nothing that tracks the
-  -- pointer. As a hover-group member it was a region of its own, on top
-  -- of the track, so a press on it was the handle's and not the slider's
-  -- — the handle could not be dragged — and it showed the arrow over a
-  -- track that showed the hand. The whole track is taken hold of now: an
-  -- open hand over it, a closed one while it is held.
-  local okp, held = pcall(c.env.is_pressed, "track")
-  held = okp and held
-  local okh, over = pcall(c.env.is_hovered, "track")
-  over = okh and over
-  local ringed = ctx.focus_shows(c, "track")
+  -- a shade deeper, while it is held there and dragged: the track and the
+  -- handle share a hover group, and the handle's look is rules on that
+  -- group's state (ADR 0069), so a hover repaints and the slider replays.
+  -- A press on the handle passes to the track (C91), so a drag can start
+  -- on it. The whole track is taken hold of: an open hand over it, a
+  -- closed one while it is held.
+  local group = "kit-slider-" .. tostring(c.inst)
   local track = row {
     key = "track",
-    hoverable = true,
+    hover_group = group,
     role = "slider",
     label = str(p.label),
     value_now = v,
@@ -773,16 +757,22 @@ function M.slider(c: Ctx, p: P): kui.Node
     -- the far end: a drag landed a step past the one under the pointer.
     pad = { x = 6 },
     cross_align = "center",
-    cursor = held and "grabbing" or "grab",
-    focus_bg = ringed and 0x00000000 or nil,
+    cursor = "grab",
+    when = { { pressed = true, cursor = "grabbing" } },
     column { key = "fill", width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent"),
       -- Centred on the fill's end: the value's place, over the rail.
       column {
         key = "handle",
         float = { anchor = "parent", at = { "end", "center" }, self = { "center", "center" } },
+        hover_group = group,
         width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
-        bg = ref(c, held and "accent_press" or ((over or ringed) and "accent" or "panel")),
-        border = { w = ringed and 2 or "$kitRuleW", color = ref(c, ringed and "focus" or "ink") },
+        bg = ref(c, "panel"),
+        border = { w = "$kitRuleW", color = ref(c, "ink") },
+        cursor = "grab",
+        when = {
+          { hovered = true, bg = ref(c, "accent") },
+          { pressed = true, bg = ref(c, "accent_press"), cursor = "grabbing" },
+        },
       } },
     column { width = "grow", height = 4, radius = 2, bg = ref(c, "rule") },
   }

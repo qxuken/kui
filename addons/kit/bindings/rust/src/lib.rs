@@ -3169,10 +3169,16 @@ pub struct Table {
     /// and the header on a plane of its own (in a panel, which is framed
     /// already).
     pub border: Option<bool>,
+    /// A table of cells: the arrows walk cells (Left and Right along a row, Up
+    /// and Down keeping the column), the header a row of column headers,
+    /// landing on a row selecting it. Left out, a list of rows, the arrows
+    /// moving whole rows.
+    pub cells: Option<bool>,
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
     /// The message `select` arrives as, with `select: TableSelect` in it. A row
-    /// was clicked or reached by the arrows.
+    /// was clicked, or the keyboard landed on it (the arrows, Page keys, a
+    /// type-ahead, Tab back in).
     pub on_select: Option<Value>,
     /// The message `sort` arrives as, with `sort: TableSort` in it. A header
     /// was clicked.
@@ -3197,6 +3203,7 @@ impl Table {
             descending: None,
             striped: None,
             border: None,
+            cells: None,
             grow: None,
             on_select: None,
             on_sort: None,
@@ -3238,14 +3245,23 @@ impl Table {
         self
     }
 
+    /// A table of cells: the arrows walk cells (Left and Right along a row, Up
+    /// and Down keeping the column), the header a row of column headers,
+    /// landing on a row selecting it. Left out, a list of rows, the arrows
+    /// moving whole rows.
+    pub fn cells(mut self, v: bool) -> Self {
+        self.cells = Some(v);
+        self
+    }
+
     /// Takes the room its parent leaves.
     pub fn grow(mut self, v: bool) -> Self {
         self.grow = Some(v);
         self
     }
 
-    /// The message `select` arrives as. A row was clicked or reached by the
-    /// arrows.
+    /// The message `select` arrives as. A row was clicked, or the keyboard
+    /// landed on it (the arrows, Page keys, a type-ahead, Tab back in).
     pub fn on_select(mut self, msg: impl Into<Value>) -> Self {
         self.on_select = Some(msg.into());
         self
@@ -3295,6 +3311,9 @@ impl Table {
         }
         if let Some(v) = &self.border {
             m.push(("border".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.cells {
+            m.push(("cells".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.grow {
             m.push(("grow".into(), Value::Bool(*v)));
@@ -3406,7 +3425,8 @@ pub struct List {
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
     /// The message `select` arrives as, with `select: ListSelect` in it. A row
-    /// was clicked or reached by the arrows.
+    /// was clicked, or the keyboard landed on it (the arrows, Page keys, a
+    /// type-ahead, Tab back in).
     pub on_select: Option<Value>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
@@ -3477,8 +3497,8 @@ impl List {
         self
     }
 
-    /// The message `select` arrives as. A row was clicked or reached by the
-    /// arrows.
+    /// The message `select` arrives as. A row was clicked, or the keyboard
+    /// landed on it (the arrows, Page keys, a type-ahead, Tab back in).
     pub fn on_select(mut self, msg: impl Into<Value>) -> Self {
         self.on_select = Some(msg.into());
         self

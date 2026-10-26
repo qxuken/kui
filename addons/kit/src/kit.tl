@@ -88,7 +88,12 @@ for name, view in pairs(VIEWS) do
   components[name] = function(env: kui.Env, props: P, inst: kui.Instance): kui.Node
     ensure_tokens(env)
     local c: ctx.Ctx = { env = env, s = settings, inst = inst.key }
-    return view(c, props or {})
+    local node = view(c, props or {}) as kui.Props
+    -- The core's focus ring in the skin's focus colour, for everything
+    -- the component draws (C93: inherited, the nearest declaration wins).
+    -- Kit drew its own 2 px rings per control to get there.
+    if node and node.focus_ring == nil then node.focus_ring = ctx.ref(c, "focus") end
+    return node as kui.Node
   end
 end
 

@@ -584,10 +584,15 @@ local record kit
     -- frame and the header on a plane of its own (in a panel, which is framed
     -- already).
     border: boolean
+    -- A table of cells: the arrows walk cells (Left and Right along a row, Up
+    -- and Down keeping the column), the header a row of column headers,
+    -- landing on a row selecting it. Left out, a list of rows, the arrows
+    -- moving whole rows.
+    cells: boolean
     -- Takes the room its parent leaves.
     grow: boolean
-    -- The message `select` arrives as. A row was clicked or reached by the
-    -- arrows.
+    -- The message `select` arrives as. A row was clicked, or the keyboard
+    -- landed on it (the arrows, Page keys, a type-ahead, Tab back in).
     on_select: any
     -- The message `sort` arrives as. A header was clicked.
     on_sort: any
@@ -636,8 +641,8 @@ local record kit
     selected: integer
     -- Takes the room its parent leaves.
     grow: boolean
-    -- The message `select` arrives as. A row was clicked or reached by the
-    -- arrows.
+    -- The message `select` arrives as. A row was clicked, or the keyboard
+    -- landed on it (the arrows, Page keys, a type-ahead, Tab back in).
     on_select: any
     key: string
     fresh: boolean

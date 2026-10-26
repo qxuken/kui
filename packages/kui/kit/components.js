@@ -329,6 +329,7 @@ function make(namespace) {
       if (props.descending !== undefined) wire.descending = props.descending;
       if (props.striped !== undefined) wire.striped = props.striped;
       if (props.border !== undefined) wire.border = props.border;
+      if (props.cells !== undefined) wire.cells = props.cells;
       if (props.grow !== undefined) wire.grow = props.grow;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
       if (props.onSort !== undefined) wire.on_sort = props.onSort;

@@ -96,18 +96,6 @@ end
 
 
 
-function M.ring(c, t, key)
-   t.key = t.key or key
-   if not M.focus_shows(c, key) then return end
-   t.focus_bg = t.bg or 0x00000000
-   t.border = { w = 2, color = M.ref(c, "focus") }
-end
-
-
-
-
-
-
 
 function M.focus_ring(c, w, h, radius)
    return column({

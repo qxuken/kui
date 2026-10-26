@@ -89,7 +89,12 @@ for name, view in pairs(VIEWS) do
    components[name] = function(env, props, inst)
       ensure_tokens(env)
       local c = { env = env, s = settings, inst = inst.key }
-      return view(c, props or {})
+      local node = view(c, props or {})
+
+
+
+      if node and node.focus_ring == nil then node.focus_ring = ctx.ref(c, "focus") end
+      return node
    end
 end
 

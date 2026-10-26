@@ -647,9 +647,11 @@ export interface TableProps {
   striped?: boolean;
   /** Framed in a hairline, the header ruled off inside it; left out, no frame and the header on a plane of its own (in a panel, which is framed already). */
   border?: boolean;
+  /** A table of cells: the arrows walk cells (Left and Right along a row, Up and Down keeping the column), the header a row of column headers, landing on a row selecting it. Left out, a list of rows, the arrows moving whole rows. */
+  cells?: boolean;
   /** Takes the room its parent leaves. */
   grow?: boolean;
-  /** The message select arrives as: yours, with `select: TableSelect` in it. A row was clicked or reached by the arrows. */
+  /** The message select arrives as: yours, with `select: TableSelect` in it. A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in). */
   onSelect?: unknown;
   /** The message sort arrives as: yours, with `sort: TableSort` in it. A header was clicked. */
   onSort?: unknown;
@@ -707,7 +709,7 @@ export interface ListProps {
   selected?: number;
   /** Takes the room its parent leaves. */
   grow?: boolean;
-  /** The message select arrives as: yours, with `select: ListSelect` in it. A row was clicked or reached by the arrows. */
+  /** The message select arrives as: yours, with `select: ListSelect` in it. A row was clicked, or the keyboard landed on it (the arrows, Page keys, a type-ahead, Tab back in). */
   onSelect?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;

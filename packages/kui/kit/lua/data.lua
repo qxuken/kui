@@ -48,19 +48,6 @@ local function slice(env, key, n, row_h)
 end
 
 
-local function reveal(env, key, i, row_h)
-   local g = env.scroll_geometry(key)
-   if not g then return end
-   local top = g.offset.y
-   local y = i * row_h
-   if y < top then
-      env.set_scroll(key, 0, y)
-   elseif y + row_h > top + g.h then
-      env.set_scroll(key, 0, y + row_h - g.h)
-   end
-end
-
-
 
 local function body(c, key, n, row_h, t, build)
    local first, last = slice(c.env, key, n, row_h)
@@ -90,37 +77,20 @@ end
 
 
 
-local function hand_on(c, seen)
-   local dir = seen.tab
-   if not dir then return end
-   seen.tab = nil
-   if dir > 0 then c.env.focus_next() else c.env.focus_prev() end
-end
 
 
-
-
-
-local function keyboard_on(c, seen)
-   if ctx.focus_shows(c, "rows") then return true end
-   if not seen.keyed then return false end
-   local ok, here = pcall(c.env.is_focused, "rows")
-   return ok and here == true
-end
-
-
-
-
-
-local function focus_edge(c, t, selected, on)
-   if selected == nil and on then
-      t.border = { w = "$kitRuleW", color = ref(c, "focus") }
+local function typeahead(c, seen, ch, field)
+   seen.ch, seen.field = ch, field
+   local text = seen.ask
+   if not text then return end
+   seen.ask = nil
+   local want = text:lower()
+   for i = 0, count(ch) - 1 do
+      if cell_text(ch:get(i, field)):lower():sub(1, #want) == want then
+         pcall(c.env.answer_typeahead, "rows", i)
+         return
+      end
    end
-end
-
-
-local function cursor_ring(c, t, sel, on)
-   if sel and on then t.border = { w = 2, color = ref(c, "focus") } end
 end
 
 
@@ -150,32 +120,15 @@ local function pill(c, label, tone, dot, sel)
    })
 end
 
-
-local function step(code, selected, n, page)
-   local s = selected or -1
-   if code == "down" then s = s + 1
-   elseif code == "up" then s = s - 1
-   elseif code == "home" then s = 0
-   elseif code == "end" then s = n - 1
-   elseif code == "pagedown" then s = s + page
-   elseif code == "pageup" then s = s - page
-   else return nil end
-   return math.max(0, math.min(n - 1, s))
-end
-
 function M.table(c, p)
    local ch = p.rows
    local cols = (p.columns or {})
    local n = count(ch)
    local row_h = c.s.density == "compact" and 20 or 22
-   local env = c.env
    local selected = p.selected
    local seen = ctx.state(c, function() return {} end)
-   hand_on(c, seen)
-   if selected ~= seen.selected then
-      if selected then reveal(env, "rows", selected, row_h) end
-      seen.selected = selected
-   end
+   local cells = p.cells == true
+   typeahead(c, seen, ch, cols[1] and cols[1].field or "")
 
 
 
@@ -185,13 +138,15 @@ function M.table(c, p)
    local sorts = p.on_sort ~= nil
    local selects = p.on_select ~= nil
    local head = { width = "grow", height = row_h + 4, pad = { x = 10 }, gap = 10, cross_align = "center",
-bg = ref(c, framed and "panel" or "sunken"), }
+bg = ref(c, framed and "panel" or "sunken"), role = cells and "row" or nil, }
    for i, col in ipairs(cols) do
       local field = col.field
       local sorted = p.sort == field
       local h = {
          key = "h" .. i,
-         role = sorts and "button" or nil,
+
+         role = cells and "columnHeader" or (sorts and "button" or nil),
+         focusable = (cells and selects) or nil,
          label = (col.title) .. (sorted and (p.descending == true and ", sorted descending" or ", sorted ascending") or ""),
          width = (col.width) or "grow",
          height = "grow",
@@ -202,7 +157,6 @@ bg = ref(c, framed and "panel" or "sunken"), }
          on_click = sorts and act(c, "table.sort", { field = field }) or nil,
          ctx.caption(c, col.title, { color = ref(c, sorted and "fg" or "muted") }),
       }
-      if sorts then ctx.ring(c, h, "h" .. i) end
       if sorted then h[#h + 1] = icons.node(c, p.descending == true and "chevron_down" or "chevron_up", 11, "fg") end
       head[#head + 1] = row(h)
    end
@@ -210,22 +164,21 @@ bg = ref(c, framed and "panel" or "sunken"), }
    local striped = p.striped == true
    local rows_t = {
       height = "grow",
-      focusable = selects or nil,
-      on_key = selects and act(c, "table.key", { selected = selected, n = n, page = math.max(1, math.floor((env.viewport_h or 400) / row_h) - 1) }) or nil,
       on_range = act(c, "table.range"),
-      role = "list",
+
+
+      role = not cells and "list" or nil,
       label = "rows",
+      active_index = selects and selected or nil,
+      on_typeahead = selects and act(c, "table.typeahead") or nil,
    }
-   local on = keyboard_on(c, seen)
-   focus_edge(c, rows_t, selected, on)
    local view = body(c, "rows", n, row_h, rows_t, function(i)
       local sel = selected == i
       local line = {
          index = i,
-
-
-
-         role = "listItem",
+         role = cells and "row" or "listItem",
+         focusable = (selects and not cells) or nil,
+         on_focus = (selects and not cells) and act(c, "table.focus", { row = i }) or nil,
          selected = sel,
          height = row_h,
          width = "grow",
@@ -260,6 +213,11 @@ bg = ref(c, framed and "panel" or "sunken"), }
             })
          end
          line[#line + 1] = row({
+            key = cells and ("c" .. j) or nil,
+            role = cells and "cell" or nil,
+            label = cells and s or nil,
+            focusable = (cells and selects) or nil,
+            on_focus = (cells and selects) and act(c, "table.focus", { row = i }) or nil,
             width = (col.width) or "grow",
             min_width = 0,
             cross_align = "center",
@@ -268,7 +226,6 @@ bg = ref(c, framed and "panel" or "sunken"), }
          })
       end
       line.label = table.concat(name, ", ")
-      cursor_ring(c, line, sel, on)
       return row(line)
    end)
 
@@ -276,6 +233,10 @@ bg = ref(c, framed and "panel" or "sunken"), }
       width = "grow",
       height = p.grow == true and "grow" or nil,
       bg = ref(c, "panel"),
+      role = cells and "table" or nil,
+      label = cells and "table" or nil,
+      active_index = (cells and selects) and selected or nil,
+      on_typeahead = (cells and selects) and act(c, "table.typeahead") or nil,
 
 
 
@@ -294,22 +255,16 @@ function M.list(c, p)
    local row_h = two and 40 or (c.s.density == "compact" and 22 or 26)
    local selected = p.selected
    local seen = ctx.state(c, function() return {} end)
-   hand_on(c, seen)
-   if selected ~= seen.selected then
-      if selected then reveal(c.env, "rows", selected, row_h) end
-      seen.selected = selected
-   end
+   typeahead(c, seen, ch, p.title)
 
    local selects = p.on_select ~= nil
    local rows_t = {
       height = p.grow == true and "grow" or nil,
       role = "list",
       label = str(p.label),
-      focusable = selects or nil,
-      on_key = selects and act(c, "list.key", { selected = selected, n = n, page = 8 }) or nil,
+      active_index = selects and selected or nil,
+      on_typeahead = selects and act(c, "list.typeahead") or nil,
    }
-   local on = keyboard_on(c, seen)
-   focus_edge(c, rows_t, selected, on)
    return body(c, "rows", n, row_h, rows_t, function(i)
       local sel = selected == i
       local title = cell_text(ch:get(i, p.title))
@@ -331,6 +286,8 @@ color = ref(c, sel and "sel_fg" or "muted"), })
       local item = {
          index = i,
          role = "listItem",
+         focusable = selects or nil,
+         on_focus = selects and act(c, "list.focus", { row = i }) or nil,
          label = badge ~= "" and (badge .. " " .. title) or title,
          selected = sel,
          height = row_h,
@@ -345,7 +302,6 @@ color = ref(c, sel and "sel_fg" or "muted"), })
 pill(c, badge, tone, false, sel), }) or nil,
          column(t),
       }
-      cursor_ring(c, item, sel, on)
       return row(item)
    end)
 end
@@ -543,7 +499,6 @@ local function jump(c)
       icons.node(c, "chevron_down", 12, "fg"),
       ctx.caption(c, "Latest", { size = "$kitSizeLabel" }),
    }
-   ctx.ring(c, t, "jump")
    return row(t)
 end
 
@@ -894,9 +849,18 @@ end
 
 function M.event(m, kit)
    if kit == "table.select" or kit == "list.select" or kit == "log.select" then
-      local seen = ctx.peek(m.inst)
-      if seen and kit ~= "log.select" then seen.keyed = false end
       return emit("on_select", { row = m.row })
+   elseif kit == "table.focus" or kit == "list.focus" then
+
+
+
+
+      local f = m.focus
+      if f and f.phase == "in" and f.by ~= "pointer" then return emit("on_select", { row = m.row }) end
+   elseif kit == "table.typeahead" or kit == "list.typeahead" then
+      local seen = ctx.peek(m.inst)
+      local t = m.typeahead
+      if seen and t then seen.ask = t.text end
    elseif kit == "log.end" then
       local st = ctx.peek(m.inst)
       if st then st.follow, st.last_y = true, nil end
@@ -905,20 +869,6 @@ function M.event(m, kit)
    elseif kit == "table.range" then
       local r = m.range
       if r then return emit("on_range", { first = r.first, last = r.last }) end
-   elseif kit == "table.key" or kit == "list.key" then
-      local k = m.key
-      if not k or k.phase ~= "down" then return nil end
-      if k.code == "tab" then
-         local seen = ctx.peek(m.inst)
-         if seen then seen.tab = k.shift == true and -1 or 1 end
-         return nil
-      end
-      local n = (m.n or 0)
-      if n == 0 then return nil end
-      local seen = ctx.peek(m.inst)
-      if seen then seen.keyed = true end
-      local s = step(k.code, m.selected, n, (m.page or 8))
-      if s and s ~= m.selected then return emit("on_select", { row = s }) end
    end
    return nil
 end

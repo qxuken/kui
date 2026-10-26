@@ -126,7 +126,6 @@ function M.menu(c: Ctx, p: P): kui.Node
       ctx.text(c, it.label as string, { color = ref(c, danger and "danger" or "fg") }),
       ctx.grow(),
     }
-    ctx.ring(c, row_t, "i" .. i)
     if not off then focused = true end
     if str(it.shortcut) then
       row_t[#row_t + 1] = ctx.data(c, it.shortcut as string, { size = "$kitSizeLabel", color = ref(c, "faint") })
@@ -149,12 +148,6 @@ end
 
 -- How long a toast stays when the host says nothing, in ms.
 local TOAST_MS = 5000
-
--- A row with the skin's focus ring (`ctx.ring`), by the key it carries.
-local function ringed(c: Ctx, t: kui.Props): kui.Node
-  ctx.ring(c, t, t.key as string)
-  return row(t)
-end
 
 function M.toast(c: Ctx, p: P): kui.Node
   local tone = str(p.tone) or "info"
@@ -209,18 +202,18 @@ function M.toast(c: Ctx, p: P): kui.Node
     -- Live on the message alone, so the close button stays a control.
     row { width = "grow", live = "polite", ctx.text(c, message, { wrap = "word" }) },
     -- One action on what just happened (Undo), quiet beside the message.
-    str(p.action) and ringed(c, {
+    str(p.action) and row {
       key = "action", role = "button", label = str(p.action_name) or str(p.action), height = "$kitCtl", min_width = "fit",
       pad = { x = 8 }, cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "raised_hover"),
       pressed_bg = ref(c, "raised_press"), cursor = "pointer", on_click = act(c, "toast.action"),
       ctx.caption(c, str(p.action), { color = ref(c, "fg") }),
-    }) or nil,
-    ringed(c, {
+    } or nil,
+    row {
       key = "dismiss", role = "button", label = "Dismiss", width = 20, height = 20, main_align = "center",
       cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "hover"), cursor = "pointer",
       on_click = act(c, "toast.dismiss"),
       icons.node(c, "x", 12, "muted"),
-    }),
+    },
     },
     expire,
   }))

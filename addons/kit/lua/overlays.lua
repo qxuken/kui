@@ -127,7 +127,6 @@ function M.menu(c, p)
          ctx.text(c, it.label, { color = ref(c, danger and "danger" or "fg") }),
          ctx.grow(),
       }
-      ctx.ring(c, row_t, "i" .. i)
       if not off then focused = true end
       if str(it.shortcut) then
          row_t[#row_t + 1] = ctx.data(c, it.shortcut, { size = "$kitSizeLabel", color = ref(c, "faint") })
@@ -150,12 +149,6 @@ local TONE_BAR = { ok = "ok", warn = "warn", danger = "danger", accent = "accent
 
 
 local TOAST_MS = 5000
-
-
-local function ringed(c, t)
-   ctx.ring(c, t, t.key)
-   return row(t)
-end
 
 function M.toast(c, p)
    local tone = str(p.tone) or "info"
@@ -210,13 +203,13 @@ function M.toast(c, p)
 
       row({ width = "grow", live = "polite", ctx.text(c, message, { wrap = "word" }) }),
 
-      str(p.action) and ringed(c, {
+      str(p.action) and row({
          key = "action", role = "button", label = str(p.action_name) or str(p.action), height = "$kitCtl", min_width = "fit",
          pad = { x = 8 }, cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "raised_hover"),
          pressed_bg = ref(c, "raised_press"), cursor = "pointer", on_click = act(c, "toast.action"),
          ctx.caption(c, str(p.action), { color = ref(c, "fg") }),
       }) or nil,
-      ringed(c, {
+      row({
          key = "dismiss", role = "button", label = "Dismiss", width = 20, height = 20, main_align = "center",
          cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "hover"), cursor = "pointer",
          on_click = act(c, "toast.dismiss"),

@@ -1622,13 +1622,22 @@ typedef struct KitTable {
     bool border;
     bool border_set;
     /*
+     * A table of cells: the arrows walk cells (Left and Right along a row, Up
+     * and Down keeping the column), the header a row of column headers, landing
+     * on a row selecting it. Left out, a list of rows, the arrows moving whole
+     * rows.
+     */
+    bool cells;
+    bool cells_set;
+    /*
      * Takes the room its parent leaves.
      */
     bool grow;
     bool grow_set;
     /*
      * The message `select` arrives as, consumed; NULL for none. A row was
-     * clicked or reached by the arrows.
+     * clicked, or the keyboard landed on it (the arrows, Page keys, a
+     * type-ahead, Tab back in).
      */
     KuiValue *on_select;
     /*
@@ -1660,6 +1669,7 @@ static inline KuiValue *kit_table_props(const KitTable *p) {
     if (p->descending_set) kui_value_map_set(m, KUI_STR("descending"), kui_value_bool(p->descending));
     if (p->striped_set) kui_value_map_set(m, KUI_STR("striped"), kui_value_bool(p->striped));
     if (p->border_set) kui_value_map_set(m, KUI_STR("border"), kui_value_bool(p->border));
+    if (p->cells_set) kui_value_map_set(m, KUI_STR("cells"), kui_value_bool(p->cells));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
     if (p->on_sort != NULL) kui_value_map_set(m, KUI_STR("on_sort"), p->on_sort);
@@ -1724,7 +1734,8 @@ typedef struct KitList {
     bool grow_set;
     /*
      * The message `select` arrives as, consumed; NULL for none. A row was
-     * clicked or reached by the arrows.
+     * clicked, or the keyboard landed on it (the arrows, Page keys, a
+     * type-ahead, Tab back in).
      */
     KuiValue *on_select;
     /* Keys the instance (empty: where it is placed); fresh asks the
