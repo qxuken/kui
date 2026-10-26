@@ -574,6 +574,15 @@ warnings! {
     /// layout gave it — a branch whose room depends on itself. The frame
     /// is drawn as it was laid out and the next frame decides again.
     pub const QUERY_UNSETTLED: &str = "query-unsettled";
+    /// With the paint audit on (`Core::set_paint_audit`, `KUI_PAINT_AUDIT=1`
+    /// for a kui-native driver), a node drew a quad, a glyph or a mask
+    /// outside the clip of the nearest box above it that clips or scrolls
+    /// (ADR 0074): what the rule forbids, raised once per node. A node
+    /// that means to leave declares it — a viewport float, or `escape` on
+    /// a float anchored to its parent (a menu, a popover, a tooltip) — and
+    /// is not audited past the box it leaves. A test aid, off unless asked
+    /// for.
+    pub const PAINT_ESCAPE: &str = "paint-escape";
 }
 
 /// The [`DUPLICATE_TAB`] warning for one name. Keyed by the name, the way

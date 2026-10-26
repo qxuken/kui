@@ -1142,6 +1142,12 @@ impl Launcher {
         }
         // `KUI_PERF_TRACE=path` records the session to a file (ADR 0058).
         core.perf_from_env();
+        // `KUI_PAINT_AUDIT=1` checks every frame's quads against the clip
+        // their node is held by (ADR 0074): a test aid, a `paint-escape`
+        // warning per node that drew outside it.
+        if std::env::var_os("KUI_PAINT_AUDIT").is_some_and(|v| !v.is_empty() && v != "0") {
+            core.set_paint_audit(true);
+        }
         for f in std::mem::take(&mut self.setup_core) {
             f(&mut core);
         }

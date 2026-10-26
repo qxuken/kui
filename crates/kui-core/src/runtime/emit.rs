@@ -321,6 +321,7 @@ impl Core {
         let Paint {
             clip_rect, scale, ..
         } = paint;
+        self.audit_span(i as u32);
         // The turn the node is drawn through, for its regions (ADR 0043):
         // looked up by node, and only on a frame that turns something.
         let turn = if self.tree.any_transform {
@@ -1040,6 +1041,9 @@ impl Core {
         self.display.viewport = Size::new(self.viewport.w * scale, self.viewport.h * scale);
         self.display.scale = scale;
         self.display.time = self.anim.time().unwrap_or(0.0) as f32;
+        if let Some(spans) = self.audit_spans.as_mut() {
+            spans.clear();
+        }
 
         // Read once each: what the frame declared, noted by `Tree::push`
         // (and by `configure_root`, whose spec replaces the root's). A
@@ -1578,6 +1582,7 @@ impl Core {
 
         // Rounded span backgrounds, joined into one shape with the ones
         // they meet now that every text is painted (backlog F101).
+        self.audit_span(NIL);
         let joins = self.text.take_joins();
         if !joins.is_empty() {
             let sess = &mut *self.session.state();
@@ -1589,6 +1594,10 @@ impl Core {
         // Each group's bounds, from what it drew in its final shape.
         if grouping {
             self.finish_groups();
+        }
+        // The paint audit (ADR 0074), when a test asked for it.
+        if self.audit_spans.is_some() {
+            self.audit_frame();
         }
 
         let shapes = std::mem::take(&mut self.hit_shapes);
@@ -1911,6 +1920,7 @@ impl Core {
     /// border, its content) and none of the parts a node has — no hit
     /// region, no scroll region, no access row.
     fn emit_ghost(&mut self, g: &Ghost, play: &Playback, scale: f32) {
+        self.audit_span(NIL);
         // Whole physical pixels, for the reason a slide's is: a ghost is
         // mostly text, and it moves for its whole life.
         let offset = play.offset.snapped(scale);
@@ -2514,6 +2524,7 @@ impl Core {
                 let mut bar =
                     scrollbar_quad(thumb, scale, clip_id, self.thumb_color(&style, active));
                 bar.color.a *= opacity;
+                self.audit_span(i as u32);
                 self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
                     key: r.key,
@@ -2721,6 +2732,7 @@ impl Core {
         if editor || i == 0 || spec.interact().focus_bg.is_some() || spec.disabled {
             return;
         }
+        let radius = spec.style.radius;
         let mut ring = self.focus_ring_color(i);
         if ring.a <= 0.0 {
             return;
@@ -2757,11 +2769,12 @@ impl Core {
             return;
         }
         ring.a *= self.opacity.get(i).copied().unwrap_or(1.0);
+        self.audit_span(i as u32);
         self.display.quads.push(Quad {
             rect: rect.scaled(scale),
             color: Color::TRANSPARENT,
             border_color: ring,
-            radius: spec.style.radius.map(|r| (r + gap) * scale),
+            radius: radius.map(|r| (r + gap) * scale),
             border_w: FOCUS_RING_W * scale,
             blur: 0.0,
             kind: QuadKind::Solid,

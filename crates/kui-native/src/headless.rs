@@ -673,6 +673,16 @@ impl DynHeadless<'_> {
         self.ended = true;
         if !self.torn_down {
             self.torn_down = true;
+            // What the paint audit counted, for the test that asked for it
+            // to tell an audit that ran clean from one that never ran.
+            if let Some(a) = self.core.paint_audit() {
+                eprintln!(
+                    "kui: paint audit: {} frames, {} quads, {} escapes",
+                    a.frames,
+                    a.quads,
+                    a.escapes.len()
+                );
+            }
             self.app.teardown();
             let _ = self.core.perf_flush();
         }

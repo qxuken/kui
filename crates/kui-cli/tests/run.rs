@@ -473,6 +473,156 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     }
 }
 
+/// The walk the paint audit runs over (ADR 0074): every page in every skin,
+/// each scrolled from its top to its end under the toolbar, then what
+/// moves while it is drawn — the live line chart sliding under the edge of
+/// its scroller, a slider springing to its ends, a checkbox's ring swept
+/// past the edge, skeletons shimmering, toasts leaving, a menu and a dialog
+/// open — each step a frame or more.
+const KIT_AUDIT_WALK: &str = r##"
+local kit = require("kit.ui")
+local checkbox = kit.checkbox
+kit.checkbox = function(p)
+  if p.label ~= "Follow the log" then return checkbox(p) end
+  return column { key = "probe.box", on_layout = { kind = "noop" }, checkbox(p) }
+end
+require("main")
+model = init()
+local inner = view
+local scroll_y, reveal, box, pressed, ringed = nil, false, nil, nil, false
+function view(env)
+  local t = inner(env)
+  if scroll_y then env.set_scroll("page." .. model.page, 0, scroll_y); scroll_y = nil end
+  if reveal then env.reveal("probe.box"); reveal = false end
+  if model.page == "inputs" then box = env.layout_of("probe.box") end
+  if pressed == true then pressed = env.focus end
+  ringed = pressed ~= nil and pressed ~= true and env.focus == pressed
+  return t
+end
+local steps = {}
+local function add(f) steps[#steps + 1] = f end
+local function send(m) add(function() kui.dispatch(m) end) end
+local function scroll(y) add(function() scroll_y = y; kui.dispatch({ kind = "audit_scroll" }) end) end
+local function wait(n) for _ = 1, n do add(function() end) end end
+local function page(p) send({ kind = "page", change = { value = p } }) end
+for _, s in ipairs({ { "phosphor", "dark" }, { "neutral", "light" }, { "ledger", "dark" } }) do
+  send({ kind = "theme", field = "skin", change = { value = s[1] } })
+  send({ kind = "theme", field = "appearance", change = { value = s[2] } })
+  for _, p in ipairs(PAGES) do
+    page(p.value)
+    for _, y in ipairs({ 0, 90, 260, 700, 1e9 }) do scroll(y) end
+  end
+  -- The live chart sliding under the scroller's top edge: it is the
+  -- Charts page's first card, swept past the edge a few px a frame.
+  page("charts")
+  wait(20)
+  for y = 0, 320, 6 do scroll(y) end
+  -- Skeletons shimmering past the edge.
+  page("loading")
+  for y = 0, 300, 12 do scroll(y) end
+end
+-- A slider springing to its ends, and a checkbox's ring swept past the
+-- edge: pressed (the focus, no ring), then Tab and Shift-Tab back (the
+-- ring).
+page("inputs")
+send({ kind = "zoom", change = { value = 1 } })
+wait(3)
+send({ kind = "zoom", change = { value = 0 } })
+wait(3)
+add(function() reveal = true; kui.dispatch({ kind = "audit_scroll" }) end)
+wait(3)
+add(function() kui.input.click(box.x + 8, box.y + box.h / 2) end)
+wait(3)
+add(function() pressed = true; kui.dispatch({ kind = "audit_scroll" }) end)
+wait(2)
+add(function() kui.input.key("tab") end)
+wait(1)
+add(function() kui.input.key("tab", { shift = true }) end)
+wait(2)
+add(function() print("ringed", ringed, tostring(pressed), box and box.y) end)
+for y = 0, 1400, 7 do scroll(y) end
+-- Toasts arriving and leaving, a menu and a dialog open.
+page("overlays")
+send({ kind = "toast_all" })
+wait(10)
+add(function() kui.dispatch({ kind = "toast_off", id = model.toast_n }) end)
+wait(3)
+add(function() kui.dispatch({ kind = "toast_off", id = model.toast_n - 1 }) end)
+wait(10)
+for y = 0, 600, 20 do scroll(y) end
+scroll(0)
+send({ kind = "menu", open = true })
+wait(3)
+send({ kind = "menu", open = false })
+send({ kind = "popover", open = true })
+wait(3)
+send({ kind = "popover", open = false })
+send({ kind = "dialog", open = true })
+wait(5)
+local i = 0
+kui.timer.every(30, function()
+  i = i + 1
+  if steps[i] then steps[i]() else kui.exit(0) end
+end)
+"##;
+
+/// Runs the audit walk at `scale` and checks that nothing escaped: every
+/// quad, glyph and mask a node drew inside a box that clips or scrolls
+/// stayed inside it (ADR 0074), the audit having looked at many frames.
+fn kit_paint_audit(name: &str, scale: &str) {
+    let dir = kit_app(name, KIT_AUDIT_WALK);
+    // Its output to a file, not a pipe: a walk that finds escapes writes a
+    // line per node, past what a pipe holds while nothing reads it, and
+    // would block there until killed.
+    let log = dir.join("walk.log");
+    let mut child = Command::new(KUI)
+        .args(["run", "--headless", "--scale", scale, "walk.lua"])
+        .current_dir(&dir)
+        .env("KUI_CACHE_DIR", dir.join(".cache"))
+        .env("KUI_PAINT_AUDIT", "1")
+        .env_remove("KUI_FLAGS")
+        .env_remove("KUI_LOG")
+        .stdout(std::fs::File::create(&log).unwrap())
+        .stderr(std::fs::File::options().append(true).open(&log).unwrap())
+        .spawn()
+        .expect("run kui");
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break Some(status);
+        }
+        if start.elapsed() > Duration::from_secs(240) {
+            let _ = child.kill();
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let s = std::fs::read_to_string(&log).unwrap();
+    assert!(status.is_some_and(|s| s.success()), "{s}");
+    let escapes: Vec<&str> = s.lines().filter(|l| l.contains("[paint-escape]")).collect();
+    assert!(escapes.is_empty(), "{} node(s) drew outside the box they are in:\n{}", escapes.len(), escapes.join("\n"));
+    assert!(s.contains("ringed\ttrue"), "Tab put the ring on the checkbox:\n{s}");
+    let line = s.lines().find(|l| l.starts_with("kui: paint audit: ")).unwrap_or_else(|| panic!("no audit line:\n{s}"));
+    let n: Vec<u64> = line
+        .trim_start_matches("kui: paint audit: ")
+        .split(", ")
+        .map(|f| f.split(' ').next().unwrap().parse().unwrap())
+        .collect();
+    assert!(n[0] > 400 && n[1] > 100_000, "the audit looked at enough: {line}");
+    assert_eq!(n[2], 0, "{line}");
+    assert!(!s.contains("warning"), "{s}");
+}
+
+#[test]
+fn nothing_the_kit_app_draws_leaves_the_box_it_is_in() {
+    kit_paint_audit("kit-app-audit", "1");
+}
+
+#[test]
+fn nothing_the_kit_app_draws_leaves_the_box_it_is_in_at_a_fractional_scale() {
+    kit_paint_audit("kit-app-audit-1-5", "1.5");
+}
+
 /// A walk of the Kit app driven by real input (`kui.input`): a view that
 /// prints where focus is when asked (`probe(name)`) — the focused node's
 /// label, or its key, and the page — and the live line chart wrapped in a

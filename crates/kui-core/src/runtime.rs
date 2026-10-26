@@ -53,8 +53,10 @@ use crate::window::{WindowConfig, WindowEvents, WindowId, WindowLifecycle};
 
 // `impl Core` continues in these, one concern per file (each opens with
 // what it holds). Children of this module, so the fields stay private.
+mod audit;
 mod builder;
 mod capture_api;
+pub use audit::{PaintAudit, PaintEscape};
 pub use builder::Content;
 pub use replay::FillAnswer;
 pub use svg_node::{SvgOpts, SvgSource};
@@ -481,6 +483,10 @@ pub struct Core {
     /// Whether a faded subtree is drawn as one picture (ADR 0056): the
     /// renderer's switch, off for a host that draws the quads itself.
     opacity_groups: bool,
+    /// The paint audit's counts (ADR 0074), `None` while it is off, and
+    /// the runs of quads by node the frame being emitted noted for it.
+    paint_audit: Option<Box<audit::PaintAudit>>,
+    audit_spans: Option<Vec<(u32, u32)>>,
     /// The groups open while the walk emits, innermost last, and the ones
     /// it closed this frame, inner before outer, for `finish_groups`.
     groups: Vec<groups::OpenGroup>,
@@ -1470,6 +1476,8 @@ impl Core {
             clip_ids: Vec::new(),
             opacity: Vec::new(),
             opacity_groups: false,
+            paint_audit: None,
+            audit_spans: None,
             groups: Vec::new(),
             group_spans: Vec::new(),
             float_root: Vec::new(),

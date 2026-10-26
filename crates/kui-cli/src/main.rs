@@ -81,6 +81,7 @@ run options:
   --watch        reload the app when its files change, keeping its model
   --headless     no window: for a server, a script, a test
   --size WxH     the window's size in logical px (default 1000x700)
+  --scale S      with --headless or --shot, the display scale (default 1; 1.5 draws as a 150% display)
   --devtools     open with the devtools panel (its Log tab has what the app printed)
   --no-rename    keep the name kui in the Dock (macOS names an app by its binary)
   --shot FILE    no window: write a frame to FILE (.png) and end
@@ -105,6 +106,9 @@ struct Args {
     watch: bool,
     headless: bool,
     size: Option<(f64, f64)>,
+    /// `--scale`: the headless display's scale (a window takes its
+    /// monitor's).
+    scale: f32,
     shot: Option<PathBuf>,
     after: f64,
     record: Option<f64>,
@@ -125,6 +129,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
         watch: false,
         headless: false,
         size: None,
+        scale: 1.0,
         shot: None,
         after: 800.0,
         record: None,
@@ -177,6 +182,14 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
                     Some("dark") => kui_native::Appearance::Dark,
                     _ => return Err("--appearance needs light or dark".into()),
                 };
+            }
+            "--scale" => {
+                let v = it.next().ok_or("--scale needs a number, as 1.5")?;
+                a.scale = v
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|s| s.is_finite() && *s >= 0.25 && *s <= 8.0)
+                    .ok_or_else(|| format!("--scale: bad scale {v} (0.25 to 8)"))?;
             }
             "--size" => {
                 let v = it.next().ok_or("--size needs WxH, as 1200x800")?;
@@ -389,7 +402,7 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     }
     modules::on_interrupt(shared.clone());
     if args.headless {
-        let headless = launcher.open_headless(runner, w as f32, h as f32, 1.0);
+        let headless = launcher.open_headless(runner, w as f32, h as f32, args.scale);
         modules::input::set(headless.input());
         headless.run();
     } else {
