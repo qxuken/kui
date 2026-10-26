@@ -1364,6 +1364,20 @@ for lua-language-server, and a new runner beside the window's.
 - A quick click on a field that opens on the press leaves its menu open
   even with the current row under the pointer (backlog C115): the release
   picked the item under it before asking whether the pointer had moved.
+- A view that reads its scroller's geometry before the scroller has been
+  laid out — by label before it declares it, or by key before its first
+  layout — gets the next frame built against the layout (a
+  `read before layout` or `resliced` request in a recording). Every
+  binding's `list` and `uniform_list` and every Kit list read that way on
+  the frame its tab was picked, sliced by a screenful of the window, and
+  nothing asked for the frame after: Watchtower's events log showed its
+  wrapped rows piled on each other for up to a second after each switch
+  back to Events, until the sample's one-second timer drew a frame. The
+  log now settles two frames after the click. An `on_layout` box read
+  with `layout_of` by label before it is declared owes the same frame.
+
+  *What you can delete:* a `request_frame` a view made on the frame its
+  list or chart first appeared, to get the frame after it.
 - `answer_typeahead` given while a view builds is taken and applied when
   the frame ends, against the tree it built, as a reach is landed
   (backlog C104): Kit, which answers from its draw, was refused, so

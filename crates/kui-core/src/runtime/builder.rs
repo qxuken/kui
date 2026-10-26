@@ -656,6 +656,12 @@ impl Core {
                         ns,
                         guest,
                     });
+                    // And the frame that lays it out owes the one built
+                    // against it, or the guess stays on screen until the
+                    // next event (`unanswered_reads_answer`).
+                    if self.building {
+                        self.label_misses.push((label.into(), origin, ns, guest));
+                    }
                 }
                 return None;
             };
@@ -666,6 +672,31 @@ impl Core {
                 .raise(crate::diag::ambiguous_key(label, first, count));
         }
         Some(first)
+    }
+
+    /// Whether a label this build asked for and found undeclared
+    /// ([`Self::find_label`]) was then declared and laid out as something a
+    /// query reads — a scroll container (`scroll_geometry`) or an
+    /// `on_layout` node (`layout_of`). The view that asked built by a
+    /// guess: a list's rows by a screenful of the window, a chart by a
+    /// width it made up. Called after layout; drains the misses.
+    pub(crate) fn unanswered_reads_answer(&mut self) -> bool {
+        let misses = std::mem::take(&mut self.label_misses);
+        let frame_no = self.frame_no;
+        misses.iter().any(|(label, origin, ns, guest)| {
+            let found = if *guest {
+                self.key_labels.find_in_fill(label, *origin, *ns).0
+            } else {
+                self.key_labels.find_for(label, *origin).0
+            };
+            found.is_some_and(|key| {
+                self.scroll.laid_in(key, frame_no)
+                    || self
+                        .layouts
+                        .get(&key)
+                        .is_some_and(|(_, seen)| *seen == frame_no)
+            })
+        })
     }
 
     /// Whether `label` answers for a fill of `origin` under `ns` (or the

@@ -310,6 +310,12 @@ pub struct Core {
     /// keys nothing costs two clears.
     key_labels: LabelIndex,
     key_labels_last: LabelIndex,
+    /// The labels this build asked for that neither frame had declared —
+    /// a fill's own scroller or measured box, on the frame it first
+    /// declares it — with whom they were asked for: a view handed "none"
+    /// builds by a guess, and once layout has laid the label out the frame
+    /// built against it is owed (`unanswered_reads_answer`).
+    label_misses: Vec<(Box<str>, crate::tree::OriginId, Key, bool)>,
     /// A component instance replayed (ADR 0060, `runtime::replay`): the
     /// fill being kept and the ask for the next one to keep.
     recording: Option<replay::Recording>,
@@ -1375,6 +1381,7 @@ impl Core {
             focus_asked: false,
             key_labels: LabelIndex::default(),
             key_labels_last: LabelIndex::default(),
+            label_misses: Vec::new(),
             recording: None,
             keep_next: None,
             kept_instances: Default::default(),
@@ -2257,6 +2264,7 @@ impl Core {
         // And the labels `key_of` resolves through, the same way.
         std::mem::swap(&mut self.key_labels, &mut self.key_labels_last);
         self.key_labels.clear();
+        self.label_misses.clear();
         // Slots are positions, not declarations to diff: one clear.
         self.ns_depth = usize::MAX;
         self.building = true;

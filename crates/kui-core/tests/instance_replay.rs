@@ -29,6 +29,9 @@ struct Ext {
     /// Ask for `row0` by label before declaring it, as a view asks for
     /// its own scroller's geometry at its top.
     read_label: bool,
+    /// Read its own scroller's geometry by label before declaring it, as
+    /// a virtual list slices its rows, then declare it.
+    read_scroller: bool,
     /// Draw the theme's accent, read through `Ui::theme`.
     read_theme: bool,
     /// Draw the metrics' radius, read through `Ui::metrics`.
@@ -81,6 +84,21 @@ impl Extension for Ext {
             if self.read_label {
                 let found = ui.key_of("row0").is_some();
                 ui.text(if found { "found row0" } else { "no row0 yet" }, TextStyle::new(12.0));
+            }
+            if self.read_scroller {
+                let h = ui
+                    .key_of("rows")
+                    .and_then(|k| ui.scroll_geometry(k))
+                    .map(|g| g.rect.h);
+                let said = h.map_or("sliced blind".to_owned(), |h| format!("sliced by {h}"));
+                ui.text(&said, TextStyle::new(12.0));
+                ui.with_keyed(
+                    "rows",
+                    NodeSpec::column().size(80.0, 60.0).scroll_y(),
+                    |ui| {
+                        ui.leaf(NodeSpec::column().size(80.0, 400.0));
+                    },
+                );
             }
             if self.read_clock {
                 let now = ui.now();
@@ -416,6 +434,28 @@ fn a_label_asked_for_before_it_answered_runs_the_fill_again_once_it_does() {
     // Answered from then on: replayed.
     assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     assert_eq!(r.views.get(), 2);
+}
+
+/// A fill that slices by its own scroller's geometry, read by label
+/// before it declares it — a log in a tab just picked — gets nothing on
+/// the scroller's first frame and builds by a guess. That frame owes the
+/// next, built against the layout, or the guess stays on screen until
+/// some other event (Watchtower's events log, for a second until its
+/// timer ticked). Once it slices by a layout, nothing more is owed.
+#[test]
+fn a_fill_that_read_its_scroller_before_declaring_it_owes_the_next_frame() {
+    let mut r = rig(Ext {
+        read_scroller: true,
+        ..Default::default()
+    });
+    r.frame(false);
+    assert!(r.texts().iter().any(|t| t == "sliced blind"));
+    assert!(r.core.owed().requested, "the first frame sliced by a guess");
+    r.frame(false);
+    assert!(r.texts().iter().any(|t| t == "sliced by 60"));
+    assert!(!r.core.owed().requested, "sliced by the layout: settled");
+    r.frame(false);
+    assert!(!r.core.owed().requested);
 }
 
 #[test]

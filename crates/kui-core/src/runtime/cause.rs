@@ -276,8 +276,8 @@ pub struct FrameRequest {
     /// `"request_focus_step"` (`Ui::focus_next`, `Ui::focus_prev`),
     /// `"request_files"`. The core's and its widgets' own asks say what
     /// they are for: `"scrollbar fade"`, `"atlas full"`,
-    /// `"long line rows"`, `"resliced"`, `"devtools"`,
-    /// `"list first frame"`.
+    /// `"long line rows"`, `"resliced"`, `"read before layout"`,
+    /// `"devtools"`, `"list first frame"`.
     pub why: &'static str,
     /// The source line that asked (`#[track_caller]`): the app's own for
     /// its calls, a binding's for a guest's, kui's for its own asks.

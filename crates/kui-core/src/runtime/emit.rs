@@ -705,6 +705,14 @@ impl Core {
         if self.tree.any_range {
             self.emit_range_events();
         }
+        // A label a view asked for before it declared it read "none", and
+        // the view built by a guess — a log's rows the frame its tab is
+        // picked. Laid out now, it owes the frame built against it: with
+        // nothing else asking, the guess stayed on screen until the next
+        // event (a second, in a dashboard whose timer ticks once a second).
+        if !self.label_misses.is_empty() && self.unanswered_reads_answer() {
+            self.owe_frame("read before layout");
+        }
         self.settle_svg_sizes();
         self.diag
             .check(&self.tree, &self.text, &self.edit, self.frame_no);

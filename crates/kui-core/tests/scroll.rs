@@ -1455,6 +1455,72 @@ fn a_geometry_read_before_the_frame_begins_is_that_frames_read() {
     assert!(core.owed().requested, "the read was sliced by a 100 box");
 }
 
+/// A view that asks for its scroller by label before declaring it — a
+/// binding's list, every Kit list, on the frame its tab is picked — reads
+/// nothing and slices by a guess (a screenful of the window). The frame
+/// that first lays the scroller out owes the one built against it: the
+/// next frame used to wait for some other event, and Watchtower's events
+/// log showed its rows piled on each other for a second after each pick,
+/// until its timer ticked. Each time the scroller comes back after a
+/// frame away, the same; a hidden one owes nothing.
+#[test]
+fn a_scroller_read_by_label_before_it_is_declared_owes_a_frame() {
+    let build = |core: &mut Core, show: bool| -> bool {
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let read = ui
+            .key_of("log")
+            .and_then(|k| ui.scroll_geometry(k))
+            .is_some();
+        if show {
+            ui.with_keyed("log", NodeSpec::column().fill().scroll_y(), |ui| {
+                ui.leaf_keyed("tall", NodeSpec::column().height(1000.0));
+            });
+        }
+        ui.finish();
+        read
+    };
+    let mut core = Core::new();
+    build(&mut core, false);
+    build(&mut core, false);
+    assert!(!core.owed().requested, "hidden: nothing to correct");
+    assert!(!build(&mut core, true), "its first frame reads nothing");
+    assert!(core.owed().requested, "sliced by a guess: one more frame");
+    assert!(build(&mut core, true), "the next reads the layout");
+    assert!(!core.owed().requested, "settled");
+    // Away a frame, and back: its label lapsed, so it reads nothing again.
+    build(&mut core, false);
+    assert!(!core.owed().requested);
+    assert!(!build(&mut core, true));
+    assert!(
+        core.owed().requested,
+        "back from a hidden tab: one more frame"
+    );
+    build(&mut core, true);
+    assert!(!core.owed().requested);
+}
+
+/// The same read by key: a container no layout has resolved yet answers
+/// `None`, and the frame that lays it out owes the frame sliced by it.
+#[test]
+fn a_scroller_read_by_key_before_its_first_layout_owes_a_frame() {
+    let build = |core: &mut Core| -> bool {
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let read = ui.scroll_geometry(list_key()).is_some();
+        ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
+            ui.leaf_keyed("tall", NodeSpec::column().height(1000.0));
+        });
+        ui.finish();
+        read
+    };
+    let mut core = Core::new();
+    assert!(!build(&mut core));
+    assert!(core.owed().requested, "sliced by a guess: one more frame");
+    assert!(build(&mut core));
+    assert!(!core.owed().requested, "settled");
+}
+
 /// RG25: a container read and then not laid out — a pane in a hidden tab
 /// — owes nothing, however its offset moved since: there is no frame of
 /// it on screen to correct.

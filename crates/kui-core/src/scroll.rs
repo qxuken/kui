@@ -329,9 +329,10 @@ pub struct ScrollStore {
     /// a view sliced its rows by — as the box size and the clamped
     /// offset it was handed, so that after layout the core can tell
     /// whether the frame came out as the view assumed
-    /// ([`Self::resliced`]). Interior mutability because a read is a
-    /// read.
-    reads: std::cell::RefCell<Vec<(Key, Size, Vec2)>>,
+    /// ([`Self::resliced`]). `None` for a read that found no layout of
+    /// the key yet — a scroller this frame declares for the first time,
+    /// sliced by a guess. Interior mutability because a read is a read.
+    reads: std::cell::RefCell<Vec<(Key, Option<(Size, Vec2)>)>>,
     /// How a wheel's notch goes ([`WheelFeel`]), clamped.
     feel: WheelFeel,
 }
@@ -456,6 +457,14 @@ impl ScrollStore {
     /// for a key no layout has resolved as a scroll container. Unlike
     /// [`Self::geometry`]'s `offset`, an offset written since is not in
     /// it: this is where the frame on screen *is*.
+    /// Whether the layout of frame `frame_no` resolved `key` as a scroll
+    /// container.
+    pub(crate) fn laid_in(&self, key: Key, frame_no: u64) -> bool {
+        self.entries
+            .get(&key)
+            .is_some_and(|e| e.laid_frame == frame_no && e.geom.is_some())
+    }
+
     pub(crate) fn laid_offset(&self, key: Key) -> Option<Vec2> {
         let e = self.entries.get(&key)?;
         e.geom?;
@@ -463,8 +472,17 @@ impl ScrollStore {
     }
 
     pub fn geometry(&self, key: Key) -> Option<ScrollGeometry> {
-        let e = self.entries.get(&key)?;
-        let (rect, content, max_offset) = e.geom?;
+        let Some((e, (rect, content, max_offset))) =
+            self.entries.get(&key).and_then(|e| e.geom.map(|g| (e, g)))
+        else {
+            // Read, and found nothing: the view slices by a guess (a
+            // screenful of the window), and the frame that first lays the
+            // key out owes the one built against it (`take_resliced`).
+            if let Ok(mut reads) = self.reads.try_borrow_mut() {
+                reads.push((key, None));
+            }
+            return None;
+        };
         // Clamped here, not just at layout: a `set_scroll` between two
         // frames leaves a raw number in the store, and a view slicing
         // its data by it would index far off the end.
@@ -493,7 +511,7 @@ impl ScrollStore {
             (None, None, _) => clamp(e.offset),
         };
         if let Ok(mut reads) = self.reads.try_borrow_mut() {
-            reads.push((key, Size::new(rect.w, rect.h), offset));
+            reads.push((key, Some((Size::new(rect.w, rect.h), offset))));
         }
         Some(ScrollGeometry {
             rect,
@@ -517,22 +535,28 @@ impl ScrollStore {
     /// correct, and comparing its stale placement with a `set_scroll`
     /// written since asked for a frame on every frame until the tab came
     /// back.
+    ///
+    /// A read that found no layout, of a container this frame then laid
+    /// out, owes one too: the view sliced by a guess — a list's first
+    /// frame, the tab that shows it just picked — and with nothing else
+    /// asking, the guess stayed on screen until the next event (a log
+    /// half built for the second until a dashboard's timer ticked).
     pub(crate) fn take_resliced(&mut self) -> bool {
         let reads = std::mem::take(self.reads.get_mut());
         let frame_no = self.frame_no;
-        reads.iter().any(|(key, size, offset)| {
+        reads.iter().any(|(key, read)| {
             match self
                 .entries
                 .get(key)
                 .filter(|e| e.laid_frame == frame_no)
                 .and_then(|e| e.geom.map(|g| (g, e.laid)))
             {
-                Some(((rect, _, _), laid)) => {
+                Some(((rect, _, _), laid)) => read.is_none_or(|(size, offset)| {
                     (rect.w - size.w).abs() > 0.5
                         || (rect.h - size.h).abs() > 0.5
                         || (laid.x - offset.x).abs() > 0.5
                         || (laid.y - offset.y).abs() > 0.5
-                }
+                }),
                 None => false,
             }
         })
