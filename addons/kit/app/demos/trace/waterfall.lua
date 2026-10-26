@@ -3,6 +3,8 @@
 -- zoom about the pointer, drag to pan, click a span or walk them with
 -- the arrows.
 
+-- Source also: jobs/generate.lua
+
 local kit = require("kit.ui")
 
 local demo = {

@@ -53,11 +53,10 @@ end
 -- The app's own files, read once each (a --watch reload reads them again).
 local files = {}
 
--- A module's source by its name (`demos.inputs.buttons`): its path in the
--- app's folder, and its text — nil when it cannot be read. A packed app
--- (`kui pack`) runs from its files extracted, so this reads there too.
-local function source(module)
-  local path = module:gsub("%.", "/") .. ".lua"
+-- A file's text by its path in the app's folder (`demos/inputs/buttons.lua`),
+-- nil when it cannot be read. A packed app (`kui pack`) runs from its files
+-- extracted, so this reads there too.
+local function source(path)
   local text = files[path]
   if text == nil then
     local ok, t = pcall(kui.fs.read, path)
@@ -70,23 +69,34 @@ local function source(module)
     end
     files[path] = text
   end
-  return path, text or nil
+  return text or nil
 end
 
 -- A card's full source: its own file, then each of the app's modules it
--- requires (the sample data two cards share), each read-only, monospace,
--- scrolled past 24 lines and with a Copy button.
-local function sources(name)
-  local out, seen = {}, {}
-  local function add(module)
-    if seen[module] then return end
-    seen[module] = true
-    local path, text = source(module)
+-- requires (the sample data two cards share) and each file a line
+-- `-- Source also: path` names (where its data comes from: the live feeds,
+-- the worker's job), each read-only, monospace, scrolled past 24 lines and
+-- with a Copy button — so no card shows data the reader cannot see made.
+function M.files_of(name)
+  local paths, seen = {}, {}
+  local function add(path)
+    if seen[path] then return end
+    seen[path] = true
+    local text = source(path)
     if not text then return end
-    out[#out + 1] = kit.code({ label = path, text = text, copy = true, line_numbers = true, max_lines = 24 })
-    for dep in text:gmatch('require%(%s*"(demos%.[%w_.]+)"%s*%)') do add(dep) end
+    paths[#paths + 1] = path
+    for dep in text:gmatch('require%(%s*"(demos%.[%w_.]+)"%s*%)') do add(dep:gsub("%.", "/") .. ".lua") end
+    for also in text:gmatch("%-%- Source also: ([%w_./]+)") do add(also) end
   end
-  add("demos." .. name:gsub("/", "."))
+  add("demos/" .. name .. ".lua")
+  return paths
+end
+
+local function sources(name)
+  local out = {}
+  for _, path in ipairs(M.files_of(name)) do
+    out[#out + 1] = kit.code({ label = path, text = source(path), copy = true, line_numbers = true, max_lines = 24 })
+  end
   if #out == 0 then
     out[1] = text("The source could not be read from the app's folder.", { size = 11, family = "$kitUi", color = "$kitMuted" })
   end

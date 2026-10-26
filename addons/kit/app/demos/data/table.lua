@@ -3,6 +3,8 @@
 -- worker's own messages arrive here too): sorting and filtering ask the
 -- worker for a new view, and the table reads the channel it sends back.
 
+-- Source also: jobs/generate.lua
+
 local kit = require("kit.ui")
 
 local demo = {

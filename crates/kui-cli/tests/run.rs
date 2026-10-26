@@ -433,6 +433,9 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
           if steps[i] then kui.dispatch(steps[i]) else
             print("rows", model.rows and #model.rows or 0, "spans", model.spans and #model.spans or 0)
             print("profile", model.profile)
+            for _, card in ipairs({ "charts/live_line", "charts/bars", "charts/histogram", "data/log" }) do
+              print("source", card, table.concat(pages.files_of(card), " "))
+            end
             print(require("theme").lua(model.theme))
             kui.exit(0)
           end
@@ -446,6 +449,11 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     assert!(!s.contains("could not be read"), "every card's source was read:\n{s}");
     assert!(s.contains("rows\t100000\tspans\t18000"), "the worker's channels arrived:\n{s}");
     assert!(s.contains("profile\tloaded"), "the loading card loaded:\n{s}");
+    // A chart card's Source shows where its data is made.
+    for (card, data) in [("charts/live_line", "demos/feeds.lua"), ("charts/bars", "jobs/generate.lua"), ("charts/histogram", "jobs/generate.lua"), ("data/log", "demos/feeds.lua")] {
+        let line = s.lines().find(|l| l.starts_with(&format!("source\t{card}\t"))).unwrap_or_else(|| panic!("no source line for {card}:\n{s}"));
+        assert!(line.contains(data), "{card}'s Source shows {data}: {line}");
+    }
     for line in ["appearance = \"dark\"", "radius = 6,", "accent = 0x16a34aff,", "panel = { dark = 0x202830ff },", "font_ui = { \"serif\" },", "font_data = { \""] {
         assert!(s.contains(line), "the theme as Lua has {line}:\n{s}");
     }

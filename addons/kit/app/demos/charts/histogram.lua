@@ -1,6 +1,8 @@
 -- A histogram of request times across the worker's 100,000 rows
 -- (`model.rows`, built by jobs/generate.lua).
 
+-- Source also: jobs/generate.lua
+
 local kit = require("kit.ui")
 
 local demo = {

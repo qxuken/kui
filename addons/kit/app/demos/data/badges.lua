@@ -1,6 +1,8 @@
 -- Badges and progress: badges carry a tooltip, `fade` brings one in and
--- out, a progress bar springs to its value. `model.t` is main.lua's clock
+-- out, a progress bar springs to its value. `model.t` is demos/feeds.lua's clock
 -- for the live feeds, so the upload bar moves while they run.
+
+-- Source also: demos/feeds.lua
 
 local kit = require("kit.ui")
 

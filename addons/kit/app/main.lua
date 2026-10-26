@@ -14,6 +14,7 @@ local kit = require("kit.ui")
 local pages = require("pages")
 local theme = require("theme")
 local toasts = require("demos.overlays.toasts")
+local live = require("demos.feeds")
 
 -- The pages, in the sidebar's order.
 PAGES = pages.PAGES
@@ -27,51 +28,18 @@ function init()
     theme_open = false, theme_colors = false, theme = theme.defaults(),
     -- Which cards show their source.
     source = {},
-    -- The live feeds, and the switch that runs them.
-    live = true, t = 0, series = { t = {}, cpu = {}, mem = {} }, chart = nil,
-    log_lines = { time = {}, level = {}, message = {} }, log = nil,
     -- The worker's data.
     rows = nil, rows_ms = nil, filtered = false, spans = nil,
     -- The HTTP server.
     serving = false, port = nil, hits = 0,
   }
+  for k, v in pairs(live.state) do m[k] = v end
   pages.state(m)
   return m
 end
 
 -- A worker builds the big data; what it sends comes back to `update`.
 worker = worker or kui.worker("jobs/generate.lua")
-
-local LEVELS = { "debug", "info", "info", "info", "warn", "error" }
-local WORDS = { "request handled", "cache miss", "retrying upstream", "token refreshed",
-  "query planned", "batch flushed", "connection reused", "slow response" }
-
--- The live feeds: a sample every 100 ms, a log line every 400 ms.
-local function tick()
-  local m = model
-  if not m.live then return end
-  m.t = m.t + 0.1
-  local s = m.series
-  local n = #s.t + 1
-  s.t[n] = m.t
-  s.cpu[n] = 40 + 25 * math.sin(m.t * 0.9) + math.random() * 12
-  s.mem[n] = 55 + 10 * math.sin(m.t * 0.21) + math.random() * 4
-  if n > 600 then
-    table.remove(s.t, 1); table.remove(s.cpu, 1); table.remove(s.mem, 1)
-  end
-  m.chart = m.chart and m.chart:publish(s) or channel(s)
-end
-
-local function log_line()
-  local m = model
-  if not m.live then return end
-  local l = m.log_lines
-  local n = #l.time + 1
-  l.time[n] = os.date("%H:%M:%S")
-  l.level[n] = LEVELS[math.random(#LEVELS)]
-  l.message[n] = WORDS[math.random(#WORDS)] .. " #" .. math.random(1000, 9999)
-  m.log = m.log and m.log:publish(l) or channel(l)
-end
 
 -- Timers survive a reload only once: they live in globals too.
 if not feeds then
@@ -99,8 +67,8 @@ end
 function update(msg)
   local m = model
   local k = msg.kind
-  if k == "tick" then tick()
-  elseif k == "log" then log_line()
+  if k == "tick" then live.tick(m)
+  elseif k == "log" then live.log_line(m)
   elseif k == "page" then m.page = msg.change.value
   elseif k == "side" then m.side = msg.resize.fraction
   elseif k == "live" then m.live = msg.toggle.on

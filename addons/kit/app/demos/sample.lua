@@ -1,6 +1,8 @@
 -- The sample data more than one card shows: a few endpoints as a small
 -- channel, and the requests counted by status.
 
+-- Source also: jobs/generate.lua
+
 local M = {}
 
 -- A few named things with a method and a tone, for a list and a table.

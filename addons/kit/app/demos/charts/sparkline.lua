@@ -1,5 +1,7 @@
 -- A sparkline inline, over the live feed's `cpu` column (`model.chart`,
--- which main.lua publishes every 100 ms).
+-- which demos/feeds.lua publishes every 100 ms).
+
+-- Source also: demos/feeds.lua
 
 local kit = require("kit.ui")
 
