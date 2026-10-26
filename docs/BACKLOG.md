@@ -3669,6 +3669,37 @@ wrong column for every cell after it and the arrows step through it as
 one. **Do.** A `colSpan` on a cell, counted by the column index, the
 column count, Left / Right and the layout table's column widths.
 
+### `.` C104 — `answer_typeahead` from a view is refused
+
+**Found** in Kit's adoption pass (2026-10-26): the door looks the
+composite up in the tree still being built, finds nothing and returns
+false, and Kit, which has no env in its event handler, can only answer
+from a draw — so type-ahead to an unbuilt row never lands. **Do.** Take
+an answer given during the build and apply it when the frame ends, as a
+reach is.
+
+### `.` C105 — A state rule cannot move a node
+
+**Found** the same way: ADR 0069's rules cannot set `keyframes` or a
+float offset, so Ledger's primary button face (lifted on hover, sunk on
+press) still reads `is_hovered` / `is_pressed` and re-runs on every
+hover. **Do.** An offset (`dx` / `dy`, eased by `transition`) a state
+rule may set.
+
+### `.` C106 — No condition on an ancestor's state
+
+**Found** the same way: a checkbox's mark shows a tight focus ring while
+its row holds focus, which Kit still reads in Lua. **Do.** A condition
+on the hover group's state (`group_focus_visible`, `group_hovered`,
+`group_pressed`), or on the nearest focusable ancestor's.
+
+### `.` C107 — Reduced motion cannot pause a keyframe loop
+
+**Found** the same way: a `reduced_motion` rule cannot stop a looping
+keyframe animation, so Kit's under-way progress bar reads
+`env.system.motion` itself. **Do.** Looping keyframes hold still under
+reduced motion unless the node opts in, or a rule may set `keyframes`.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
