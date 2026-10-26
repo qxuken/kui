@@ -822,6 +822,13 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
     if i == 0 {
         return Some(Role::Window);
     }
+    // A text or an image straight in a layout table's row is one of its
+    // cells (ADR 0070), its text still its name.
+    if matches!(tree.content[i], NodeContent::Text(_) | NodeContent::Image(..))
+        && crate::composite::implied_role(tree, i) == Some(Role::Cell)
+    {
+        return Some(Role::Cell);
+    }
     match tree.content[i] {
         NodeContent::Text(_) => return Some(Role::StaticText),
         NodeContent::Edit(_) => return Some(Role::TextInput),
@@ -855,6 +862,11 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
     }
     if spec.layout.scroll_x || spec.layout.scroll_y {
         return Some(Role::ScrollView);
+    }
+    // A layout table and its rows and cells read as the table they are
+    // (ADR 0070), where nothing above made them something else.
+    if let Some(r) = crate::composite::implied_role(tree, i) {
+        return Some(r);
     }
     if spec.events().on_key().is_some() || spec.focusable {
         // A key sink or a focusable box is at least somewhere focus can
@@ -952,10 +964,14 @@ pub(crate) fn semantic(
             .to_string(),
         ),
         (None, _) => match role {
-            Role::StaticText => match tree.content[i] {
-                NodeContent::Text(id) => Some(text.content(id).to_string()),
-                _ => None,
-            },
+            // A text that is a table's cell (ADR 0070) is named by its
+            // text as a static text is.
+            Role::StaticText | Role::Cell | Role::ColumnHeader | Role::RowHeader => {
+                match tree.content[i] {
+                    NodeContent::Text(id) => Some(text.content(id).to_string()),
+                    _ => None,
+                }
+            }
             // The window carries the title; a drawn titlebar naming
             // itself the same thing would have a screen reader read it
             // twice (it keeps its children, so its own text is read).

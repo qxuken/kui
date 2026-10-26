@@ -333,3 +333,55 @@ fn a_windowed_table_reaches_an_unbuilt_row_and_keeps_the_column() {
     settle(&mut core, true);
     assert_eq!(core.focus(), Some(table_cell(0, 0)));
 }
+
+/// A layout table that declares no role reads as a table (ADR 0070): the
+/// `table()` is a `table`, its in-flow rows `row`s and their children
+/// `cell`s — a text among them named by its text — and with focusable
+/// cells it is the composite, nothing spelled.
+#[test]
+fn a_layout_table_implies_the_roles_and_its_focusable_cells_are_a_composite() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("t", NodeSpec::table(), |ui| {
+        for r in 0..2 {
+            ui.with_keyed(&format!("r{r}"), NodeSpec::row(), |ui| {
+                ui.text(&format!("row {r}"), kui_core::TextStyle::new(12.0));
+                ui.leaf_keyed(
+                    "go",
+                    NodeSpec::row().size(40.0, 20.0).focusable().label("go"),
+                );
+            });
+        }
+        // A clickable row is still a button, and holds no cells.
+        ui.with_keyed("x", NodeSpec::row().on_click("x").label("extra"), |ui| {
+            ui.leaf_keyed("in", NodeSpec::row().size(40.0, 20.0));
+        });
+    });
+    ui.finish();
+    let t = Key::ROOT.str("t");
+    let tree = core.access_tree().clone();
+    let role = |k: Key| tree.nodes.iter().find(|n| n.key == k).map(|n| n.role);
+    assert_eq!(role(t), Some(Role::Table));
+    assert_eq!(role(t.str("r0")), Some(Role::Row));
+    assert_eq!(role(t.str("r0").str("go")), Some(Role::Cell));
+    let text = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("row 1"))
+        .expect("the text cell");
+    assert_eq!(text.role, Role::Cell);
+    assert_eq!(role(t.str("x")), Some(Role::Button));
+    assert_eq!(
+        role(t.str("x").str("in")),
+        None,
+        "a button's box holds no cell"
+    );
+    core.set_focus(Some(t.str("r0").str("go")));
+    key(&mut core, EditKey::Down, Mods::NONE);
+    assert_eq!(
+        core.focus(),
+        Some(t.str("r1").str("go")),
+        "the arrows walk it"
+    );
+}

@@ -17,7 +17,7 @@
 
 use crate::access::{Orientation, Role, focusable};
 use crate::spec::Dir;
-use crate::tree::Tree;
+use crate::tree::{NodeContent, Tree};
 
 /// The container / item pairs, and nothing else. `group`, a row of links
 /// and a bar of icon buttons stay ordinary Tab rings. The fifth is the
@@ -168,12 +168,53 @@ pub(crate) fn row_of(tree: &Tree, container: usize, i: usize) -> usize {
     }
 }
 
-/// The role a composite reads for node `i`: the one it declares. Every
-/// composite walk asks here rather than reading the spec, so the roles a
-/// layout table implies (ADR 0070) reach navigation as they reach a
-/// reader.
+/// The role a composite reads for node `i`: the one it declares, else the
+/// one a layout table implies for it ([`implied_role`]). Every composite
+/// walk asks here rather than reading the spec, so a `table()` of
+/// focusable cells is a composite with no role spelled, and navigation and
+/// a reader see the same table.
 pub(crate) fn role(tree: &Tree, i: usize) -> Option<Role> {
-    tree.specs[i].access().role
+    let spec = &tree.specs[i];
+    spec.access().role.or_else(|| {
+        let plain = spec.events().on_click().is_none()
+            && spec.window.is_none()
+            && spec.events().modal().is_none()
+            && !(spec.layout.scroll_x || spec.layout.scroll_y);
+        plain.then(|| implied_role(tree, i)).flatten()
+    })
+}
+
+/// The role a layout table implies for node `i`, which declares none (ADR
+/// 0070): the table itself is a `table`, its in-flow `Row` children
+/// (`layout::is_table_row`) are `row`s, and their in-flow container
+/// children `cell`s — where the row is a row, so a row that declared
+/// itself a `listItem` holds no cells. A text or an image straight in a
+/// row is a cell too, as the layout counts it, named by its own text or
+/// label. Asked only where nothing else made
+/// the node something — `access::derived_role` asks it after a click, a
+/// scroller, a modal and chrome, and [`role`] checks the same — so a
+/// clickable row is still a button. Free on a frame with no table.
+pub(crate) fn implied_role(tree: &Tree, i: usize) -> Option<Role> {
+    if !tree.any_table {
+        return None;
+    }
+    let leaf = match tree.content[i] {
+        NodeContent::Container => false,
+        NodeContent::Text(_) | NodeContent::Image(..) => true,
+        _ => return None,
+    };
+    if !leaf && tree.specs[i].layout.is_table() {
+        return Some(Role::Table);
+    }
+    if !leaf && crate::layout::is_table_row(tree, i as u32) {
+        return Some(Role::Row);
+    }
+    let p = tree.parent[i];
+    (p != crate::tree::NIL
+        && tree.specs[i].layout.float.is_none()
+        && crate::layout::is_table_row(tree, p)
+        && role(tree, p as usize) == Some(Role::Row))
+    .then_some(Role::Cell)
 }
 
 /// Whether a node of role `role` is an item of a composite whose items are
