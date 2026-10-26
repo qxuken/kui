@@ -320,6 +320,13 @@ was the first bare bump to break an app in five releases).
   the keyboard's readout under the pointer, and every other key — Tab,
   the app's chords — goes on as from any control. Its readout box is
   beside the plot, no longer inside it.
+- Kit's text roles — `fg`, `muted`, `faint` and the tones — read at
+  4.5:1 on the hover and press washes too, so they move in lightness
+  where they did not (backlog C131): Ledger light's `muted` and `faint`
+  are a shade darker, Neutral light's too, Phosphor's a shade further
+  from its ground in both halves, and with an accent each moves as far as
+  the accent's washes ask. A test or a picture that pinned a role's value
+  reads the new one.
 - A Kit line chart with a `window` scrolls between samples: drawn one
   sample behind, its lines, areas and x ticks slide left over the time
   samples take to come, a keyframe cycle of the core's keyed by the
@@ -870,8 +877,13 @@ for lua-language-server, and a new runner beside the window's.
   nothing has it); a live line chart scrolls smoothly between samples,
   its crosshair held at a still pointer while the samples slide under it,
   and a frame between samples runs no view; a focusable line chart is a
-  slider over its samples, so ⌥↓ pages from it; and a danger menu row
-  draws its label and chord once, recoloured by the row (C130).
+  slider over its samples, so ⌥↓ pages from it; a danger menu row
+  draws its label and chord once, recoloured by the row (C130); and the
+  text roles read on every row Kit washes, hovered or pressed — a list's
+  detail, a table's mono column, a log's time and level, a tab's and a
+  segment's count, a checklist's done item, a menu's chords, a select's
+  options — in every skin, half and accent (C131). Kit's contrast test
+  hovers and presses each.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a

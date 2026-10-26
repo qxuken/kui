@@ -422,14 +422,29 @@ function M.tokens(s: Settings): Decl
   -- notice on the well, a badge's label, a toast's mark — read at 4.5:1
   -- on every surface, accent or none: moved in lightness alone, so a tone
   -- stays itself. Ledger's blue info text sat at 4:1 on its well. Roles
-  -- the brand names are kept as named.
+  -- the brand names are kept as named. A surface counts with the hover
+  -- and press washes a row lays over it too (C131): a list's detail, a
+  -- log's time and level, a tab's label stay on the row the pointer is
+  -- on, and `muted` read 4.2:1 on Ledger's hovered paper, `faint` 3.7:1 in
+  -- its dark half.
   for _, half in ipairs({ "light", "dark" }) do
     local function at(name: string): integer return colors[name][half] end
     local grounds: {integer} = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
+    local washed: {integer} = {}
+    for i = 1, 5 do
+      local pressed = over(grounds[i], at("kitPress"))
+      washed[#washed + 1] = grounds[i]
+      washed[#washed + 1] = over(grounds[i], at("kitHover"))
+      washed[#washed + 1] = pressed
+      -- A segment's hover and press over its track, itself the press wash.
+      washed[#washed + 1] = over(pressed, at("kitHover"))
+      washed[#washed + 1] = over(pressed, at("kitPress"))
+    end
     for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
       if not (s.roles and s.roles[role]) then
         local slot = colors["kit" .. camel(role)]
-        slot[half] = legible_on(slot[half], grounds, M.TEXT_CONTRAST)
+        -- The focus colour is a ring and a notice's text, on no row.
+        slot[half] = legible_on(slot[half], role == "focus" and grounds or washed, M.TEXT_CONTRAST)
       end
     end
   end
@@ -438,7 +453,15 @@ function M.tokens(s: Settings): Decl
   -- yellow was its own notice's text on paper.
   local function accent_text(half: string): integer
     local function at(name: string): integer return colors[name][half] end
-    return legible_on(rgb(at("kitAccent")) | 0xff, { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }, M.TEXT_CONTRAST)
+    local grounds: {integer} = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
+    for i = 1, 5 do
+      local pressed = over(grounds[i], at("kitPress"))
+      grounds[#grounds + 1] = over(grounds[i], at("kitHover"))
+      grounds[#grounds + 1] = pressed
+      grounds[#grounds + 1] = over(pressed, at("kitHover"))
+      grounds[#grounds + 1] = over(pressed, at("kitPress"))
+    end
+    return legible_on(rgb(at("kitAccent")) | 0xff, grounds, M.TEXT_CONTRAST)
   end
   colors.kitAccentText = { light = accent_text("light"), dark = accent_text("dark") }
   local text_role = s.roles and s.roles.accent_text

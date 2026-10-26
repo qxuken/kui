@@ -424,13 +424,28 @@ function M.tokens(s)
 
 
 
+
+
+
+
    for _, half in ipairs({ "light", "dark" }) do
       local function at(name) return colors[name][half] end
       local grounds = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
+      local washed = {}
+      for i = 1, 5 do
+         local pressed = over(grounds[i], at("kitPress"))
+         washed[#washed + 1] = grounds[i]
+         washed[#washed + 1] = over(grounds[i], at("kitHover"))
+         washed[#washed + 1] = pressed
+
+         washed[#washed + 1] = over(pressed, at("kitHover"))
+         washed[#washed + 1] = over(pressed, at("kitPress"))
+      end
       for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
          if not (s.roles and s.roles[role]) then
             local slot = colors["kit" .. camel(role)]
-            slot[half] = legible_on(slot[half], grounds, M.TEXT_CONTRAST)
+
+            slot[half] = legible_on(slot[half], role == "focus" and grounds or washed, M.TEXT_CONTRAST)
          end
       end
    end
@@ -439,7 +454,15 @@ function M.tokens(s)
 
    local function accent_text(half)
       local function at(name) return colors[name][half] end
-      return legible_on(rgb(at("kitAccent")) | 0xff, { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }, M.TEXT_CONTRAST)
+      local grounds = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
+      for i = 1, 5 do
+         local pressed = over(grounds[i], at("kitPress"))
+         grounds[#grounds + 1] = over(grounds[i], at("kitHover"))
+         grounds[#grounds + 1] = pressed
+         grounds[#grounds + 1] = over(pressed, at("kitHover"))
+         grounds[#grounds + 1] = over(pressed, at("kitPress"))
+      end
+      return legible_on(rgb(at("kitAccent")) | 0xff, grounds, M.TEXT_CONTRAST)
    end
    colors.kitAccentText = { light = accent_text("light"), dark = accent_text("dark") }
    local text_role = s.roles and s.roles.accent_text

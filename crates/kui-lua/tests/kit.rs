@@ -4167,3 +4167,210 @@ fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
     assert_eq!(glyphs(&mut r.core), vec![on_danger.get().unwrap()], "hovered, on its fill");
     assert!(r.core.take_warnings().is_empty());
 }
+
+/// What is drawn under point `p`: every solid quad over it laid in order on
+/// `ground`, and the rect of the topmost (the row's wash, when one is
+/// drawn there) — skipping a quad smaller than a glyph, a mark or a rule.
+fn wash_at(core: &mut Core, p: kui_core::Vec2, ground: kui_core::Color) -> (kui_core::Color, kui_core::Rect) {
+    let (dl, _) = core.output();
+    let mut fill = ground;
+    let mut top = kui_core::Rect::new(0.0, 0.0, 0.0, 0.0);
+    for q in &dl.quads {
+        let r = q.rect;
+        if q.kind == kui_core::QuadKind::Solid
+            && q.color.a > 0.0
+            && r.w >= 16.0
+            && r.h >= 14.0
+            && p.x >= r.x
+            && p.x <= r.x + r.w
+            && p.y >= r.y
+            && p.y <= r.y + r.h
+        {
+            fill = over(fill, q.color);
+            top = r;
+        }
+    }
+    (fill, top)
+}
+
+/// Every glyph drawn inside `rect`, each with what lies under its middle:
+/// the solid quads painted before it there, laid in order on `ground` — a
+/// checkbox's tick on its box, a badge's text on its pill, the rest on the
+/// row's wash.
+fn glyphs_on(core: &mut Core, rect: kui_core::Rect, ground: kui_core::Color) -> Vec<(kui_core::Color, kui_core::Color)> {
+    let (dl, _) = core.output();
+    let mut out: Vec<(kui_core::Color, kui_core::Color)> = Vec::new();
+    for (i, q) in dl.quads.iter().enumerate() {
+        let (x, y) = (q.rect.x + q.rect.w / 2.0, q.rect.y + q.rect.h / 2.0);
+        if !(matches!(q.kind, kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel)
+            && q.color.a > 0.01
+            && x >= rect.x
+            && x <= rect.x + rect.w
+            && y >= rect.y
+            && y <= rect.y + rect.h)
+        {
+            continue;
+        }
+        let mut under = ground;
+        for s in &dl.quads[..i] {
+            let r = s.rect;
+            if s.kind == kui_core::QuadKind::Solid
+                && s.color.a > 0.0
+                && r.w >= 6.0
+                && r.h >= 6.0
+                && x >= r.x
+                && x <= r.x + r.w
+                && y >= r.y
+                && y <= r.y + r.h
+            {
+                under = over(under, s.color);
+            }
+        }
+        if !out.contains(&(q.color, under)) {
+            out.push((q.color, under));
+        }
+    }
+    out
+}
+
+/// Every row Kit washes on hover and press — a list's, a table's, a tab's,
+/// a segment's, a menu's, a select's options, a log's lines, a checklist's
+/// items — hovered and then pressed in every skin, both halves and five
+/// accents: each text on the row, `faint` and `muted` included, reads at
+/// 4.5:1 on the wash under it (backlog C131). A menu row's shortcut in
+/// `faint` read 3.7:1 on Ledger dark's hover, `muted` 4.36 on Phosphor
+/// dark's with a red accent.
+#[test]
+fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
+    use kui_core::{InputEvent, Vec2};
+    let accents: [Option<i64>; 5] = [None, Some(0xffd400ff), Some(0x7fe9ffff), Some(0x1e2a5aff), Some(0xdc2626ff)];
+    let choices = || {
+        vec![
+            kit::Choice::new("a", "Alpha").count(4),
+            kit::Choice::new("b", "Beta").count(12),
+            kit::Choice::new("c", "Gamma"),
+        ]
+    };
+    let mut failures: Vec<String> = Vec::new();
+    for skin in [kit::Skin::Ledger, kit::Skin::Neutral, kit::Skin::Phosphor] {
+        for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
+            for accent in accents {
+                let case = format!("{skin:?} {appearance:?} {accent:x?}");
+                // Two scenes, so a float opened by one is not over the
+                // other's rows: the rows on the page, and the menus.
+                for scene in 0..4 {
+                    let mut r = rig();
+                    let bg = std::cell::Cell::new(None);
+                    let view = |r: &mut Rig| {
+                        r.frame(|ui| {
+                            let mut s = kit::Settings::new().skin(skin).appearance(appearance);
+                            if let Some(a) = accent {
+                                s = s.roles(Value::map([("accent", Value::Int(a))]));
+                            }
+                            s.place(ui);
+                            match scene {
+                                0 => {
+                                    kit::List::new(rows(), "name").detail("ms").on_select(msg("l")).place(ui);
+                                    kit::Table::new(
+                                        vec![
+                                            kit::Column::new("name", "Name"),
+                                            kit::Column::new("ms", "Time").mono(true).width(80.0),
+                                        ],
+                                        rows(),
+                                    )
+                                    .on_select(msg("t"))
+                                    .place(ui);
+                                    kit::Log::new(logs()).on_select(msg("g")).place(ui);
+                                }
+                                1 => {
+                                    kit::Tabs::new(
+                                        vec![kit::Tab::new("a", "First").count(3), kit::Tab::new("b", "Second").count(9)],
+                                        "a",
+                                    )
+                                    .place_with(ui, |_, _| {});
+                                    kit::Segmented::new(choices(), "a").label("Filter").place(ui);
+                                    kit::Checklist::new(vec![kit::Check::new("Milk", true), kit::Check::new("Eggs", false)])
+                                        .place(ui);
+                                }
+                                2 => {
+                                    ui.with_keyed("opener", NodeSpec::row().size(120.0, 24.0), |ui| {
+                                        kit::Menu::new(vec![
+                                            kit::Item::new("open", "Open file").shortcut("⌘O"),
+                                            kit::Item::new("rm", "Delete forever").shortcut("⌘⌫").danger(true),
+                                        ])
+                                        .place(ui);
+                                    });
+                                }
+                                _ => {
+                                    kit::Select::new(choices()).value("a").label("Mode").place(ui);
+                                }
+                            }
+                            bg.set(ui.token_color("kitBg"));
+                        });
+                    };
+                    view(&mut r);
+                    view(&mut r);
+                    let targets: &[&str] = match scene {
+                        0 => &["beta", "12:00:02"],
+                        1 => &["Second", "Beta", "Eggs", "Milk"],
+                        2 => &["Open file", "Delete forever"],
+                        _ => &["Beta", "Gamma"],
+                    };
+                    if scene == 3 {
+                        // The select open, its options a menu of their own.
+                        let field = r
+                            .core
+                            .nodes()
+                            .into_iter()
+                            .find(|n| n.text.as_deref().is_some_and(|t| t.eq_ignore_ascii_case("Alpha")))
+                            .map(|n| n.rect)
+                            .expect("the select's value");
+                        let p = Vec2::new(field.x + 4.0, field.y + field.h / 2.0);
+                        let e = kui_core::testing::click(&mut r.core, p);
+                        r.exts.route(e, |_| {});
+                        view(&mut r);
+                        view(&mut r);
+                    }
+                    for &name in targets {
+                        let Some(at) = r
+                            .core
+                            .nodes()
+                            .into_iter()
+                            .filter(|n| n.text.as_deref().is_some_and(|t| t.eq_ignore_ascii_case(name)))
+                            .last()
+                            .map(|n| n.rect)
+                        else {
+                            failures.push(format!("{case}: no {name}"));
+                            continue;
+                        };
+                        let p = Vec2::new(at.x + 2.0, at.y + at.h / 2.0);
+                        for pressed in [false, true] {
+                            kui_core::testing::hover(&mut r.core, p);
+                            if pressed {
+                                r.core.handle_input(InputEvent::mouse_down(1));
+                            }
+                            view(&mut r);
+                            view(&mut r);
+                            let (_, wash) = wash_at(&mut r.core, p, bg.get().unwrap());
+                            let state = if pressed { "pressed" } else { "hovered" };
+                            for (c, fill) in glyphs_on(&mut r.core, wash, bg.get().unwrap()) {
+                                let k = contrast(c, fill);
+                                if k < 4.49 {
+                                    failures.push(format!("{case}: {name} {state}: {c:?} on {fill:?} reads at {k:.2}"));
+                                }
+                            }
+                            if pressed {
+                                // Let go away from the row: a release over it
+                                // would pick it, and a select's would close.
+                                kui_core::testing::hover(&mut r.core, Vec2::new(1199.0, 899.0));
+                                r.core.handle_input(InputEvent::mouse_up());
+                                view(&mut r);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
+}
