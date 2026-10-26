@@ -511,6 +511,11 @@ static int surface(void) {
     kui_focus_next(ui, false);
     check(kui_focused(ui) == first, "Shift-Tab comes back");
     check(!kui_tab_moves_focus(ui), "the Tab toggle starts off");
+    /* The appearance the host's dark / light conditions read (backlog
+     * C113): a change owes a frame; unknown gives the palette's back. */
+    kui_set_rules_appearance(ui, KUI_APPEARANCE_DARK);
+    check(kui_animating(ui), "a changed rules appearance owes a frame");
+    kui_set_rules_appearance(ui, KUI_APPEARANCE_UNKNOWN);
     check(!kui_answer_typeahead(ui, first, 3), "an answer nothing asked for is refused");
 
     /* The key sink is focusable and takes focus like anything else, and a
