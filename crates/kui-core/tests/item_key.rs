@@ -274,3 +274,169 @@ fn a_table_names_the_cells_row_and_column() {
     assert_eq!(heard[0].item, cell);
     assert_eq!((heard[0].index, heard[0].column), (1, Some(2)));
 }
+
+/// The platform's primary modifier: ⌘ on a Mac, Ctrl elsewhere.
+fn primary() -> KeyMods {
+    if cfg!(target_os = "macos") {
+        KeyMods::NONE.with_super()
+    } else {
+        KeyMods::NONE.with_ctrl()
+    }
+}
+
+/// Select all — the primary modifier and A — is the one chord a
+/// composite's `onItemKey` hears: in a list or a table select all is the
+/// rows' (Kit's multiple selection). Any other chord still bubbles past.
+#[test]
+fn select_all_is_the_one_chord_an_item_key_hears() {
+    let mut core = Core::new();
+    let rows = frame(&mut core, true, true, false);
+    core.set_focus(Some(rows[1]));
+    let mut evs = key_down(&mut core, KeyCode::Char('a'), primary());
+    evs.extend(key_up(&mut core, KeyCode::Char('a'), primary()));
+    let heard = item_keys(&evs);
+    assert_eq!(heard.len(), 1, "{evs:?}");
+    assert_eq!(heard[0].press.code, KeyCode::Char('a'));
+    assert_eq!(heard[0].index, 11);
+    assert!(
+        !evs.iter().any(|e| e.event == EventKind::Key),
+        "the shell does not hear it too: {evs:?}"
+    );
+    assert_eq!(core.focus(), Some(rows[1]), "no type-ahead moved focus");
+    let evs = press(&mut core, KeyCode::Char('n'), primary());
+    assert!(item_keys(&evs).is_empty(), "⌘N is the shell's: {evs:?}");
+}
+
+/// A list of three rows whose messages are maps, each reporting its focus.
+fn map_rows(core: &mut Core) -> Vec<Key> {
+    let mut rows = Vec::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed(
+        "list",
+        NodeSpec::column().role(Role::List).label("Rows"),
+        |ui| {
+            for r in 0..3 {
+                let msg = |kind: &str| {
+                    kui_core::Value::map([
+                        ("kind", kui_core::Value::str(kind)),
+                        ("row", kui_core::Value::Int(r)),
+                    ])
+                };
+                rows.push(
+                    ui.leaf_keyed(
+                        &format!("r{r}"),
+                        NodeSpec::row()
+                            .size(200.0, 20.0)
+                            .role(Role::ListItem)
+                            .focusable()
+                            .on_click(msg("click"))
+                            .on_focus(msg("focus"))
+                            .label(format!("Row {r}")),
+                    ),
+                );
+            }
+        },
+    );
+    ui.leaf_keyed(
+        "bare",
+        NodeSpec::row()
+            .size(60.0, 20.0)
+            .on_click("bare")
+            .label("Bare"),
+    );
+    ui.finish();
+    rows
+}
+
+fn data_of(evs: &[UiEvent], kind: EventKind) -> Vec<kui_core::Value> {
+    evs.iter()
+        .filter(|e| e.event == kind)
+        .map(|e| e.data().cloned().unwrap_or(kui_core::Value::Null))
+        .collect()
+}
+
+/// A click says what it was made with (backlog C101's facts): Enter or
+/// Space, a modifier held, the second click of a double click — while a
+/// plain click and a bare message arrive as declared. A focus move the
+/// keyboard made under Shift says so too: what a list extending a range
+/// reads.
+#[test]
+fn a_click_and_a_focus_move_say_what_they_were_made_with() {
+    use kui_core::{Value, Vec2};
+    let mut core = Core::new();
+    let rows = map_rows(&mut core);
+    core.set_focus(Some(rows[0]));
+    let evs = press(&mut core, KeyCode::Enter, KeyMods::NONE);
+    assert_eq!(
+        data_of(&evs, EventKind::Click)[0].get_str("key"),
+        Some("enter")
+    );
+    let mut evs = key_down(&mut core, KeyCode::Space, KeyMods::NONE);
+    evs.extend(core.handle_input(InputEvent::Text(" ".into())));
+    assert_eq!(
+        data_of(&evs, EventKind::Click)[0].get_str("key"),
+        Some("space")
+    );
+
+    // The pointer: a plain click carries nothing; ⌘ held, its mods; the
+    // second click of a double click, the count.
+    let click = |core: &mut Core, y: f32, mods: KeyMods, clicks: u8| {
+        core.handle_input(InputEvent::Modifiers(mods));
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(20.0, y)));
+        let mut out = core.handle_input(InputEvent::mouse_down(clicks));
+        out.extend(core.handle_input(InputEvent::mouse_up()));
+        core.handle_input(InputEvent::Modifiers(KeyMods::NONE));
+        out
+    };
+    let evs = click(&mut core, 30.0, KeyMods::NONE, 1);
+    assert_eq!(
+        data_of(&evs, EventKind::Click),
+        [Value::Null],
+        "a plain click as declared: {evs:?}"
+    );
+    let evs = click(&mut core, 30.0, primary(), 1);
+    let mods = data_of(&evs, EventKind::Click)[0]
+        .get("mods")
+        .cloned()
+        .expect("mods");
+    assert_eq!(
+        mods.get_bool(if cfg!(target_os = "macos") {
+            "super"
+        } else {
+            "ctrl"
+        }),
+        Some(true)
+    );
+    let evs = click(&mut core, 30.0, KeyMods::NONE, 2);
+    assert_eq!(
+        data_of(&evs, EventKind::Click)[0].get_int("clicks"),
+        Some(2)
+    );
+    let evs = click(&mut core, 70.0, primary(), 2);
+    assert_eq!(
+        kui_core::testing::tags(&evs),
+        ["bare"],
+        "a bare message stays bare: {evs:?}"
+    );
+
+    // Shift+Down: the row it lands on hears focus with the modifiers.
+    core.set_focus(Some(rows[0]));
+    let evs = press(&mut core, KeyCode::Down, KeyMods::NONE.with_shift());
+    let focus = data_of(&evs, EventKind::Focus);
+    let landed = focus
+        .iter()
+        .find(|d| d.get_str("phase") == Some("in") && d.get_str("by") == Some("keyboard"))
+        .expect("a focus in by the keyboard");
+    assert_eq!(
+        landed.get("mods").and_then(|m| m.get_bool("shift")),
+        Some(true),
+        "{landed:?}"
+    );
+    let evs = press(&mut core, KeyCode::Down, KeyMods::NONE);
+    let focus = data_of(&evs, EventKind::Focus);
+    assert!(
+        focus.iter().all(|d| d.get("mods").is_none()),
+        "no modifier, no mods: {focus:?}"
+    );
+}

@@ -1132,7 +1132,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_ITEM_KEY,
         kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_item_key(v)),
-        doc: "Item-key handler, on a composite container — a `list`, a `table`, a `menu`, a `radioGroup` or a `tabList` (backlog C120): a key its focused item does not claim arrives as this message with `itemkey: {code, …, item, index, column?}` in it — Delete or Backspace on a checklist's row, Enter on an item with nothing to press, a function key. Not the arrows, Home / End, the pages, Space or the type-ahead letters the composite moves with, not Tab or Escape, and not a chord with Ctrl, Alt or ⌘, which still bubbles to the key sink above. `item` is the focused item's key, `index` its data `index` (else its place among the items, from 0), `column` a table cell's column; the press's fields are a `key` event's. The container stays one Tab stop and its items keep their arrows, where an `onKey` on either would take them; a control focused inside an item reports the item.",
+        doc: "Item-key handler, on a composite container — a `list`, a `table`, a `menu`, a `radioGroup` or a `tabList` (backlog C120): a key its focused item does not claim arrives as this message with `itemkey: {code, …, item, index, column?}` in it — Delete or Backspace on a checklist's row, Enter on an item with nothing to press, a function key. Not the arrows, Home / End, the pages, Space or the type-ahead letters the composite moves with, not Tab or Escape, and not a chord with Ctrl, Alt or ⌘, which still bubbles to the key sink above — but select all (⌘A on a Mac, Ctrl+A elsewhere), which is the rows' in a list or a table. `item` is the focused item's key, `index` its data `index` (else its place among the items, from 0), `column` a table cell's column; the press's fields are a `key` event's. The container stays one Tab stop and its items keep their arrows, where an `onKey` on either would take them; a control focused inside an item reports the item.",
     },
     PropDef {
         name: "onClick",
@@ -2617,8 +2617,8 @@ pub const EVENTS: &[EventDef] = &[
         kind: "click",
         handler: "onClick",
         field: Some("click"),
-        payload: "the `onClick` message as a map (a non-map one under `tag`); `click: { cell?: { row, col }, line?, byte?, inside?, clicks? }` in it where the node can say more",
-        doc: "A press and release on the node (suppressed when a drag moved past the slop). A plain click arrives as declared — a map as it is, any other message under `tag`. Where the node can say more the message gains `click`: `cell: {row, col}` on a `cells` grid, and inside an `onKey` sink that draws `role=\"line\"` rows, `line`, `byte`, `inside` and `clicks` as a `drag` inside one carries them. A message that is not a map is kept under `tag` beside it.",
+        payload: "the `onClick` message as a map (a non-map one under `tag`); `click: { cell?: { row, col }, line?, byte?, inside?, clicks?, mods?: { shift, ctrl, alt, super }, key?: \"enter\" | \"space\" }` in it where the node can say more",
+        doc: "A press and release on the node (suppressed when a drag moved past the slop). A plain click arrives as declared — a map as it is, any other message under `tag`. Where the node can say more the message gains `click`: `cell: {row, col}` on a `cells` grid, and inside an `onKey` sink that draws `role=\"line\"` rows, `line`, `byte`, `inside` and `clicks` as a `drag` inside one carries them. A map message also says what the click was made with (backlog C101's facts): `mods` while a modifier is held (a ⌘-click, a Shift-click), `clicks` from a double click's second click on, and `key` — `enter` or `space` — for a click a key made; a plain click carries none of them. A message that is not a map is kept under `tag` beside it, and gains none of these.",
     },
     EventDef {
         kind: "drag",
@@ -2701,8 +2701,8 @@ pub const EVENTS: &[EventDef] = &[
         kind: "focus",
         handler: "onFocus",
         field: Some("focus"),
-        payload: "`focus: { phase: \"in\" | \"out\", by: \"pointer\" | \"keyboard\" | \"assistive\" | \"program\" }` in the `onFocus` message",
-        doc: "Keyboard focus entered or left an `onFocus` node's subtree (backlog DX18). `by` is what moved it — a press, a key, a screen reader's request, or the view and the app — so a pane that follows a click into its sink tells that apart from a move the app made itself.",
+        payload: "`focus: { phase: \"in\" | \"out\", by: \"pointer\" | \"keyboard\" | \"assistive\" | \"program\", mods?: { shift, ctrl, alt, super } }` in the `onFocus` message",
+        doc: "Keyboard focus entered or left an `onFocus` node's subtree (backlog DX18). `by` is what moved it — a press, a key, a screen reader's request, or the view and the app — so a pane that follows a click into its sink tells that apart from a move the app made itself. A move the keyboard or the pointer made with a modifier held carries `mods` — a Shift+arrow in a list, what a selection extending a range reads.",
     },
     EventDef {
         kind: "hover",

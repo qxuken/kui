@@ -53,13 +53,16 @@ Text_Position :: struct {
 }
 
 // A click that can say more (ADR 0047, decision 2): on a cells grid, or
-// inside an on_key sink that draws line rows. A plain click has none.
+// inside an on_key sink that draws line rows; and on a map message, what
+// it was made with (backlog C101's facts). A plain click has none.
 Click_Event :: struct {
 	cell:   Maybe(Cell_Position), // on a cells grid
 	line:   Maybe(int),
 	byte:   Maybe(int),
 	inside: Maybe(bool), // on the line's own box, not the margin beside it
-	clicks: Maybe(int),
+	clicks: Maybe(int), // from a double click's second click on
+	mods:   Maybe(Held_Mods), // while a modifier is held
+	key:    Maybe(string), // "enter" | "space": a click a key made
 }
 
 Drag_Event :: struct {
@@ -149,6 +152,7 @@ Scroll_Event :: struct {
 Focus_Event :: struct {
 	phase: string, // "in" | "out"
 	by:    string, // "pointer" | "keyboard" | "assistive" | "program"
+	mods:  Maybe(Held_Mods), // a move made with a modifier held
 }
 
 Hover_Event :: struct {

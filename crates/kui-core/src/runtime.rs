@@ -370,6 +370,9 @@ pub struct Core {
     /// driving one channel, a host's editing-key door — has no chord to
     /// agree with and falls back to what its own `Mods` say.
     pressed_mods: Option<KeyMods>,
+    /// The modifiers the input being handled was made under: what a focus
+    /// move it makes reports beside `by` (`Core::report_focus`).
+    input_mods: KeyMods,
     pub(crate) tree: Tree,
     /// Whether the host asked for `finish_frame` to copy the frame into
     /// `inspected` (see `runtime/inspect.rs`, `set_inspect`); off unless
@@ -1428,6 +1431,7 @@ impl Core {
             declared_windows_last: Vec::new(),
             keys_held: Vec::new(),
             pressed_mods: None,
+            input_mods: KeyMods::NONE,
             access: Default::default(),
             access_built: 0,
             access_inputs: None,

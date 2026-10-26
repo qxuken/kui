@@ -998,8 +998,17 @@ impl Core {
                 (self.tree.keys[i], self.tree.origins[i], tag)
             })
             .collect();
+        // A move the keyboard or the pointer made with a modifier held — a
+        // Shift-arrow in a list, a ⌘-click — says which (backlog C101's
+        // facts): what a list extending a range reads.
+        let mods = self.input_mods;
+        let held = mods.any() && (by == "keyboard" || by == "pointer");
         let event = |(key, origin, tag): &(Key, crate::tree::OriginId, Value), phase: &str| {
-            let data = Value::map([("phase", Value::str(phase)), ("by", Value::str(by))]);
+            let mut fields = vec![("phase", Value::str(phase)), ("by", Value::str(by))];
+            if held {
+                fields.push(("mods", mods.to_fields()));
+            }
+            let data = Value::map(fields);
             UiEvent::declared(EventKind::Focus, *origin, *key, Some(tag), data)
         };
         for r in self.focus_reported.iter().rev() {

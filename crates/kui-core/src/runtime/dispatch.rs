@@ -16,6 +16,20 @@ impl Core {
         // The next frame's reason (backlog F111).
         self.trace_input(&ev);
         self.perf_input(&ev);
+        // The modifiers this input was made under, for a focus move or a
+        // click it makes to carry (backlog C101's facts): a key's own —
+        // the raw press, or the press an editing key is the second channel
+        // of — else the pointer's held ones.
+        self.input_mods = match &ev {
+            InputEvent::KeyDown(kp) => kp.mods,
+            InputEvent::Key(_, m) => self.pressed_mods.unwrap_or(crate::input::KeyMods {
+                shift: m.shift,
+                ctrl: m.ctrl,
+                alt: false,
+                super_key: m.doc && cfg!(target_os = "macos"),
+            }),
+            _ => self.interaction.modifiers(),
+        };
         // What a focus move this input makes is reported as (DX18).
         let by = match &ev {
             InputEvent::CursorMoved(_)
@@ -126,6 +140,60 @@ impl Core {
     /// fields appear wherever the shape they describe is drawn, and a
     /// handler that does not read them is not slower for their being
     /// there.
+    /// A click a press made says what it was made with (backlog C101's
+    /// facts, built for Kit's row selection): `mods` while a modifier is
+    /// held — a ⌘-click, a Shift-click — and `clicks` from the second
+    /// click of a double click on. A plain single click carries neither and
+    /// arrives as declared, as it always did.
+    fn attach_click_facts(&mut self, out: &mut [UiEvent], n: usize) {
+        if n == 0 {
+            return;
+        }
+        let mods = self.interaction.modifiers();
+        let clicks = self.interaction.press_clicks();
+        if !mods.any() && clicks < 2 {
+            return;
+        }
+        let from = out.len() - n;
+        for ev in &mut out[from..] {
+            if !ev.is(EventKind::Click) || !Self::takes_click_facts(ev) {
+                continue;
+            }
+            let fields = ev.data_fields_or_new();
+            if mods.any() && !fields.iter().any(|(k, _)| k == "mods") {
+                fields.push(("mods".to_string(), mods.to_fields()));
+            }
+            if clicks >= 2 && !fields.iter().any(|(k, _)| k == "clicks") {
+                fields.push(("clicks".to_string(), Value::Int(i64::from(clicks))));
+            }
+        }
+    }
+
+    /// Whether a click's message takes these facts: a map, as a script's
+    /// messages are, with no `click` field of the app's own. A bare
+    /// message (`on_click("go")`) stays bare, and an app's `click` field is
+    /// its own, so a message that arrived as declared still does.
+    fn takes_click_facts(ev: &UiEvent) -> bool {
+        match &ev.payload {
+            // A bare message is kept under `tag`, alone.
+            Value::Map(m) if m.len() == 1 && m[0].0 == "tag" && !ev.data => false,
+            Value::Map(m) => ev.data || !m.iter().any(|(k, _)| k == "click"),
+            _ => false,
+        }
+    }
+
+    /// A click a key made says which (backlog C101's facts): `key: "enter"`
+    /// or `"space"` in its `click` data, so a list that selects on Space
+    /// and opens on Enter tells the two apart, as a native one does.
+    fn key_click(out: &mut [UiEvent], key: &str) {
+        for ev in out {
+            if ev.is(EventKind::Click) && Self::takes_click_facts(ev) {
+                ev.data_fields_or_new()
+                    .push(("key".to_string(), Value::str(key)));
+            }
+        }
+    }
+
     fn attach_pointer(&mut self, out: &mut [UiEvent], n: usize) {
         if n == 0 || self.tree.is_empty() || !(self.tree.any_text || self.tree.any_line) {
             return;
@@ -441,7 +509,9 @@ impl Core {
                         // instead, without entering the cell (ADR 0070).
                         self.focus_visible = true;
                         let target = self.sole_control(i).unwrap_or(i);
+                        let from = out.len();
                         self.click_node(self.tree.keys[target], &mut out);
+                        Self::key_click(&mut out[from..], "space");
                     }
                 }
             }
@@ -650,7 +720,9 @@ impl Core {
                         EditKey::Enter if self.enter_cell(i, false, &mut out) => {}
                         EditKey::Enter => {
                             self.focus_visible = true;
+                            let from = out.len();
                             self.click_node(self.tree.keys[i], &mut out);
+                            Self::key_click(&mut out[from..], "enter");
                         }
                         // Escape from a control inside a cell goes back to
                         // the cell, where the arrows walk the table again.
@@ -1047,6 +1119,7 @@ impl Core {
                     .interaction
                     .handle(InputEvent::MouseUp { button }, &mut out);
                 self.attach_pointer(&mut out, n);
+                self.attach_click_facts(&mut out, n);
                 if button == MouseButton::Primary
                     && let Some((trigger, at)) = self.press_opened.take()
                 {
@@ -1743,7 +1816,20 @@ impl Core {
         if !(chord || !self.claims(i, code)) {
             return false;
         }
-        self.enclosing_sink(i).is_some() || (!chord && self.item_key_hears(i, code))
+        self.enclosing_sink(i).is_some()
+            || (!chord && self.item_key_hears(i, code))
+            || (chord && code == KeyCode::Char('a') && self.item_key_owner(i).is_some())
+    }
+
+    /// Whether `kp` is the select-all chord — the platform's primary
+    /// modifier and A, Shift allowed — which a composite's `on_item_key`
+    /// hears though it is a chord: in a list or a table, select all is the
+    /// rows', as it is in every native one (Kit's multiple selection).
+    fn select_all_chord(kp: &KeyPress) -> bool {
+        kp.code == KeyCode::Char('a')
+            && kp.mods.primary()
+            && !kp.mods.alt
+            && !(kp.mods.ctrl && kp.mods.super_key)
     }
 
     /// Whether the composite around the focused node `i` hears `code` as
@@ -1766,13 +1852,21 @@ impl Core {
     /// let it past. A key the composite takes is the keyboard in use, so
     /// the focus shows, as a sink's does.
     fn item_key(&mut self, kp: &KeyPress, out: &mut Vec<UiEvent>) -> bool {
-        if self.edit.focused().is_some() || kp.mods.ctrl || kp.mods.alt || kp.mods.super_key {
+        let chord = kp.mods.ctrl || kp.mods.alt || kp.mods.super_key;
+        if self.edit.focused().is_some() || (chord && !Self::select_all_chord(kp)) {
             return false;
         }
         let Some(i) = self.focused_control() else {
             return false;
         };
-        if !self.item_key_hears(i, kp.code) {
+        // Select all is a chord, never type-ahead: what the item claims of
+        // `a` alone is not asked.
+        let hears = if chord {
+            self.item_key_owner(i).is_some()
+        } else {
+            self.item_key_hears(i, kp.code)
+        };
+        if !hears {
             return false;
         }
         let Some((c, item)) = self.item_key_owner(i) else {
