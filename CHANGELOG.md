@@ -282,6 +282,18 @@ was the first bare bump to break an app in five releases).
   current option on it, where it opened on the click and hung under the
   field; a test that clicks an option by a press and a release elsewhere
   presses on the option.
+- A Kit `table`'s header and rows sit in a sideways scroller (`wide`,
+  around a `sheet` as wide as its columns need: a sharing column's
+  `min_width`, 80 px unset), so a table narrower than that scrolls where
+  it squeezed its columns to nothing; every cell is keyed `c1`, `c2`, …
+  where only a table of cells keyed them.
+- A Kit `slider`'s fill eases to a new value (a click, a key, the host)
+  where it jumped; under a clock a test that sets the value and reads the
+  handle at once reads it on its way. A drag is followed directly, as
+  before.
+- A Kit line chart's hover bands are as wide as the rows they name, by
+  the line's x scale, where each was 3 px naming the row at its share of
+  the row count; a host's `on_hover` hears the row nearest the pointer.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -785,6 +797,27 @@ for lua-language-server, and a new runner beside the window's.
   and dot, a bar's hint — for one hover layer an idle chart pays
   (`line_chart_live_300` and `line_chart_100k` unchanged). A chart
   card's Source in the Kit app shows the data it draws.
+  A thirteenth, from the demo notes again: Watchtower keeps its split
+  down to 980 px wide and stacks the halves below that, in a page that
+  scrolls (its minimum window is 520×420); a line chart's readout lands
+  on the sample nearest the pointer by the x scale its line is drawn
+  with, where a window the data filled only part of (a live line's first
+  seconds) put the crosshair well off it, and its box keeps beside the
+  crosshair and away from the samples it reads (the sparkline's bands
+  name the sample nearest where its line draws it, too); a line chart's
+  area has no seams where its polygons meet, each chunk ending on a whole
+  pixel of the window (a single path was benched again: +0.6 ms a frame
+  at 300 points, +7 ms at 100,000 rows); a slider springs to a new value,
+  its handle riding the fill's end, but not on a resize or a drag; a
+  table's columns take a `priority` and hide lowest first as it narrows,
+  the header with them, and what still does not fit scrolls sideways (the
+  Kit app's Data card hides Size, the id and Time in turn, and puts its
+  Selected panel under the table when the card is narrow); a checklist's
+  Delete and Backspace remove the focused item (C120's `on_item_key`);
+  and the Kit app's pages change with ⌥↑ and ⌥↓ (Alt+Up and Alt+Down off
+  a Mac), from a key sink around the app that a text field keeps them
+  from. The Tasks tutorial's list is padded so its checkboxes' rings are
+  not cut at the scroller's edge.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
