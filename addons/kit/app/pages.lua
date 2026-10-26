@@ -95,7 +95,7 @@ end
 local function sources(name)
   local out = {}
   for _, path in ipairs(M.files_of(name)) do
-    out[#out + 1] = kit.code({ label = path, text = source(path), copy = true, line_numbers = true, max_lines = 24 })
+    out[#out + 1] = kit.code({ label = path, text = source(path) or "", copy = true, line_numbers = true, max_lines = 24 })
   end
   if #out == 0 then
     out[1] = text("The source could not be read from the app's folder.", { size = 11, family = "$kitUi", color = "$kitMuted" })

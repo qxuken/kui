@@ -8,10 +8,10 @@ typed wrappers generated from [`schema.lua`](schema.lua) (ADR 0066).
 | Group | Components |
 | --- | --- |
 | Layout | `panel`, `toolbar`, `statusbar`, `split`, `tabs`, `section`, `divider` |
-| Inputs | `button`, `icon_button`, `text_field`, `text_area`, `search`, `select`, `checkbox`, `switch`, `radio_group`, `segmented`, `slider` |
+| Inputs | `button`, `icon_button`, `text_field`, `text_area`, `search`, `select`, `checkbox`, `checklist`, `switch`, `radio_group`, `segmented`, `slider` |
 | Data | `table`, `list`, `log` (over a channel, ADR 0065), `inspector`, `badge`, `stat`, `code`, `empty`, `progress`, `notice`, `skeleton`, `shader` |
 | Overlays | `dialog`, `popover`, `menu`, `toast` |
-| Charts | `sparkline`, `line_chart`, `bar_chart`, `histogram`, `waterfall` |
+| Charts | `sparkline`, `line_chart`, `bar_chart`, `histogram`, `waterfall` — each reads out the value under the pointer (a line chart from the keyboard too, with `focusable`) |
 | Look | `settings`: the skin (Ledger, Phosphor, Neutral), light or dark held or the OS's, the density, the shadows, the radius, hairline and rule widths, the faces, brand roles |
 
 Every component is controlled: what it shows is the host's prop, and an

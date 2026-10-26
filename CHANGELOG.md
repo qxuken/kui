@@ -263,6 +263,14 @@ was the first bare bump to break an app in five releases).
   the panel's colour, where it lost it to the selection's fill.
 - A focused, closed Kit `select` opens on Up, Down, Alt+Up/Down, F4,
   Space and Enter; its field is a key sink.
+- Kit's tones and focus colour are moved in lightness until they read at
+  4.5:1 on every surface in every skin, accent or none (Ledger's blue
+  focus and info text are a shade darker); a neutral notice is framed in
+  the faint ink, not the hairline.
+- A Kit line chart draws a hover layer over its plot (its `readout`, on
+  by default; `readout = false` leaves it out), and its buckets sit on
+  whole multiples of their row count, so its first bucket reaches before
+  the window's first row and is cut at the plot's edge.
 - Kit's `select` opens on the press, its menu over the field with the
   current option on it, where it opened on the click and hung under the
   field; a test that clicks an option by a press and a release elsewhere
@@ -752,6 +760,24 @@ for lua-language-server, and a new runner beside the window's.
   typed, relative to the app's folder) is loaded with
   `env.load_font_file`, its family listed and the printed call saying to
   load it. The probe that declared a family token per candidate is gone.
+  A twelfth, from the demo notes: Tab and Shift-Tab leave a select (its
+  field, a key sink, hands focus on itself); a click on a cell of a table
+  of cells selects its row; the slider's handle, a mark's focus ring and
+  the skeleton's band stay inside the scroller they sit in (each a float
+  that said no `clip`); every notice's and toast's text reads at 4.5:1
+  on its own ground and its frame or tone bar at 3:1, in every skin,
+  accent or none (the tones and the focus colour are made legible
+  always, not only under an accent; Ledger's info notice read at 3.8:1);
+  a `checklist` component, one Tab stop whose arrows walk its items, which
+  Field Notes' checklist now is; a line chart's buckets sit on whole
+  multiples of their row count, so a sliding window no longer buckets the
+  line afresh each tick (Watchtower's charts, whose numbers now drift as
+  damped walks about their level); and every chart reads out the value
+  under the pointer — a line chart's crosshair, dots and readout of each
+  series (from the keyboard too, with `focusable`), a sparkline's value
+  and dot, a bar's hint — for one hover layer an idle chart pays
+  (`line_chart_live_300` and `line_chart_100k` unchanged). A chart
+  card's Source in the Kit app shows the data it draws.
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a

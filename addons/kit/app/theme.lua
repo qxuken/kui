@@ -48,7 +48,9 @@ local all_families = nil
 local from_file, files_rev = {}, 0
 -- What the list showed last, by row: a pick's row is read back against it.
 local shown = {}
-local shown_key, shown_rows = nil, nil
+local shown_key = nil
+---@type { ch: any, n: integer, of: integer }
+local shown_rows = nil
 
 local function families(env)
   if not all_families then all_families = env.system_font_families() end
