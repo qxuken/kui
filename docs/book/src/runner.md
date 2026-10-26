@@ -38,6 +38,41 @@ kui run --watch tasks
 `--watch` reloads the script when you save it and keeps the model, so the
 window you are looking at is the one you are editing.
 
+## The docs, at your version
+
+The runner carries kui's docs for its own version: the prop reference,
+the how-do-I index, Kit's components, this book as text and the design
+records. Ask it from a terminal:
+
+```bash
+kui docs hover_bg
+```
+
+```bash
+kui docs kit.table
+```
+
+A prop in either spelling, a component or a question finds the rows and
+entries that match, best first; `kui docs --adr 64` prints a design
+record, and `kui docs` alone opens this book.
+
+To keep them beside the app, for your editor or the coding agent you
+work with, ask when you start it:
+
+```bash
+kui new tasks --docs
+```
+
+`--docs` writes them into `.kui/docs`, next to the types in `.kui/types`
+(both gitignored). `--agents` writes them too, and a short block for
+coding agents into `AGENTS.md` — or between markers at the end of an
+`AGENTS.md` or `CLAUDE.md` the app already has — naming the version,
+where the types and docs are, and the commands. `kui types --docs` (or
+`--agents`) does the same for an app that already exists. Either is
+remembered in `kui.config.lua` as `tooling = { docs = true }`, and when
+`kui upgrade` brings a new runner, the next `kui run` or `kui check`
+writes `.kui/` — and the block, between its markers — again for it.
+
 ## The folder
 
 An app is a folder. `kui.config.lua` names it, gives it an `id` and a

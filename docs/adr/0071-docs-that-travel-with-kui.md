@@ -5,7 +5,7 @@ date: 2026-10-26
 
 # Docs that travel with kui
 
-> **Accepted (2026-10-26); backlog C118.** Settled by a grilling round
+> **Accepted and built (2026-10-26); backlog C118.** Settled by a grilling round
 > with the user. What each channel kui reaches a machine by (ADR 0068)
 > carries of its docs, and how a developer — or the coding agent they
 > work with — finds the docs that match the kui they run. Writing docs
@@ -80,6 +80,51 @@ date: 2026-10-26
    `kui-addon-schema` (a Markdown emitter beside the C, Odin, Rust and
    Teal ones), checked by `gen.nu --check` like every other generated
    file.
+
+## What the building changed
+
+- **There is no `kui` crate**: the pages are `kui_native::docs::props`,
+  `::howto` and `::adr` (`crates/kui-native/src/lib.rs`), in the crate
+  most apps depend on, which re-exports all of kui-core. The copies in
+  `crates/kui-native/docs` are not verbatim: a bare fence is `text` and a
+  `rust` one `rust,ignore`, so rustdoc runs none as a doctest; links to
+  props.md and howto.md are the crate's own pages, links into the
+  repository go to GitHub (`main`). The ADR index links each record on
+  GitHub — the book does not carry them — and the book from its head.
+- **The book has no copy per version.** `book.yml` publishes each
+  release to the one address, so `kui docs` opens its root (the
+  workspace's `homepage`) and says it is the latest release's, pointing
+  at `kui docs <query>` and `--adr` for this version's own. The opener is
+  `kui_native::open_external`, or the command `KUI_BROWSER` names, which
+  is how a test reads the address without a browser.
+- **Kit's reference is `addons/kit/bindings/reference.md`**: the
+  generator writes into the folder `gen` is given, beside the bindings.
+  It is `kit.md` in the runner's bundle and in `.kui/docs`, and
+  `kit/reference.md` on npm, beside Kit's wrappers there.
+- **The book's text is its chapters with their includes expanded**: each
+  mdBook `{{#include file:anchor}}` / `{{#rustdoc_include …}}` is the
+  lines it names (`crates/kui-cli/build.rs`, `packages/kui/prepack.mjs`),
+  so a chapter reads whole without `examples/`. The chapters are
+  `docs/book/src/*.md`; the generated Examples part, all pictures, stays
+  out.
+- **`kui docs <query>`** searches the props.md rows (every table, not
+  only props), the howto's questions and Kit's components and types; an
+  exact name in either spelling (`hoverBg`, `hover_bg`, `kit.table`,
+  `table`) ranks first, ten print (`--all` for every one), and the ADRs
+  whose title holds the query's words are named after them. No match
+  exits 1. `kui docs --adr` alone lists the records.
+- **There is no `kui test`.** The agent block names `kui run test
+  --headless`, the command the book's tests run with.
+- **The stamp is `.kui/version`**, written with `.kui/types`. A refresh
+  writes `.kui/types` where the app has them *or* its manifest opted into
+  docs or agents — a fresh clone of an opted-in app has no `.kui/`, and
+  the types came with the flag — and says so on stderr. `kui types`
+  without flags keeps what the manifest opted into, as any refresh does.
+- **Placing `tooling` in an app's manifest**: its `tooling = { … }` is
+  replaced in place if it has one, else a line opens the table after
+  `return`, indented as the line after it; the manifest is read back and
+  put back if it does not say what was meant, the error asking for the
+  line by hand. A folder with no manifest gets one of `tooling` alone.
 
 ## Considered options
 

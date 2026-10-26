@@ -1314,6 +1314,32 @@ for lua-language-server, and a new runner beside the window's.
   the app's folder; a packed app's, its extracted folder), and the same
   file twice is loaded once, so a view may call it every frame.
   `kui_lua::set_script_dir` gives a script loaded from source its folder.
+- **Docs that travel with kui** (backlog C118, [ADR
+  0071](docs/adr/0071-docs-that-travel-with-kui.md)). The `kui` runner
+  carries props.md, howto.md, Kit's component reference, the book's
+  chapters as text and the ADRs, for its own version (about 0.7 MB of
+  the binary): `kui docs <query>` prints the props.md rows, howto
+  questions and Kit components that match — `kui docs hover_bg`,
+  `kui docs kit.table`, `kui docs animate a removal` — best first;
+  `kui docs --adr 64` prints an ADR; `kui docs` alone opens the book.
+  `kui new` and `kui types` take `--docs`, which writes them into
+  `.kui/docs`, and `--agents`, which also writes a short block for
+  coding agents — the version, where the types and docs are, the
+  commands, a few house rules — into `AGENTS.md`, or between
+  `<!-- kui:begin` / `<!-- kui:end -->` markers at the end of an
+  `AGENTS.md` or `CLAUDE.md` the app has; kui rewrites only what is
+  between them. Without the flags a project gets what it got before.
+  The choice is kept in the manifest as `tooling = { docs = true,
+  agents = true }`. `.kui/version` names the runner that wrote `.kui/`,
+  and `kui run` and `kui check` write `.kui/types` — and the docs and
+  the block, where the app opted in — again when it differs, saying so
+  in one line, so `kui upgrade` no longer leaves a project's types
+  behind. Kit's component reference is generated from its schema by
+  `kui-addon-schema` (`addons/kit/bindings/reference.md`); the
+  `kui-native` crate has props.md and howto.md as rustdoc pages,
+  `kui_native::docs::props` and `::howto`, with an index of the ADRs
+  (`::adr`); and `@qxuken/kui` adds the book's text (`docs/book/`) and
+  Kit's reference (`kit/reference.md`).
 
 ### Changed
 

@@ -3655,6 +3655,7 @@ filed the same day for the round that builds them.
 - `.` **C115** — [An opening press's release picks the item under it before asking whether the pointer moved](backlog/closed-2026-09.md#-c115--an-opening-presss-release-picks-the-item-under-it-before-asking-whether-the-pointer-moved--done-2026-10-26) — done (2026-10-26) — the slop check first; Kit's first-pick guard gone
 - `.` **C116** — [A script cannot tell which platform it is on](backlog/closed-2026-09.md#-c116--a-script-cannot-tell-which-platform-it-is-on--done-2026-10-26) — done (2026-10-26) — `env.platform` in Lua and Node, `kui_platform` in C and Odin, the fact `when`'s `platform` reads
 - `.` **C117** — [A script can neither list the system's fonts nor load one](backlog/closed-2026-09.md#-c117--a-script-can-neither-list-the-systems-fonts-nor-load-one--done-2026-10-26) — done (2026-10-26) — `env.system_font_families()` and `env.load_font_file(path)`, the path under the runner's folder rules
+- `.` **C118** — [The docs do not travel with kui](backlog/closed-2026-09.md#-c118--the-docs-do-not-travel-with-kui--done-2026-10-26) — done (2026-10-26) — ADR 0071 built: `kui docs` over the docs the runner carries, opt-in `--docs` / `--agents` remembered as `tooling`, `.kui/` kept at the runner's version, `kui_native::docs`, the book's text and Kit's reference on npm
 
 ### `.` C101 — A table or list has no keyboard range selection
 
@@ -3674,17 +3675,6 @@ in a channel (ADR 0065) answers by searching that channel itself.
 **Do.** A `typeaheadColumn` prop naming a channel column the core
 searches (prefix, case-blind, from the row after focus), so a channel-
 backed list needs no handler.
-
-### `.` C118 — The docs do not travel with kui
-
-**Found** by the user (2026-10-26): crates.io carries none of kui's
-prose, the runner carries types but no docs, and a project's types go
-stale after `kui upgrade`. **Do.** [ADR 0071](adr/0071-docs-that-travel-with-kui.md):
-`kui docs` (open, search, `--adr`) over docs the runner carries; opt-in
-`--docs` / `--agents` writing `.kui/docs` and a marked agent block,
-remembered as `tooling` in the manifest; a version stamp that refreshes
-`.kui/` on `kui run` / `kui check`; rustdoc pages in the `kui` crate;
-the book's text and Kit's generated reference on npm.
 
 ### `.` C119 — A script cannot read the pointer's position
 
