@@ -3779,6 +3779,16 @@ until they read on the washes.
 `focus_item` names) is disabled, focus stays where it was. **Do.** Step
 to the nearest enabled row, as arrows do.
 
+### `~` C133 — The runner carries no playground
+
+**Filed** by the user (2026-10-26), for later: a developer who installed
+only the runner has no gallery, no live examples of kui's primitives
+beside their docs, no design system to try, no place to craft a repro.
+**Do, when picked up.** Grill and settle [ADR 0073](adr/0073-the-runner-carries-a-playground.md)
+(proposed): `kui play` — Kit's gallery, a page per primitive with its doc
+and an editable live example, the design system with the Theme panel, a
+scratchpad saving a folder or a `.kui` archive, one search.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
