@@ -448,21 +448,30 @@ function M.tokens(s: Settings): Decl
   for _, half in ipairs({ "light", "dark" }) do
     local function at(name: string): integer return colors[name][half] end
     local grounds: {integer} = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
-    local washed: {integer} = {}
+    local washed, stacked: {integer}, {integer} = {}, {}
     for i = 1, 5 do
       local pressed = over(grounds[i], at("kitPress"))
       washed[#washed + 1] = grounds[i]
       washed[#washed + 1] = over(grounds[i], at("kitHover"))
       washed[#washed + 1] = pressed
-      -- A segment's hover and press over its track, itself the press wash.
-      washed[#washed + 1] = over(pressed, at("kitHover"))
-      washed[#washed + 1] = over(pressed, at("kitPress"))
+      -- A segment's hover and press over its track, itself the press wash:
+      -- what its label (fg) and its count (muted) sit on. Asked of those
+      -- two alone — `faint` asked to read there too went most of the way
+      -- to `fg` in the dark halves, and nothing faint is drawn there.
+      stacked[#stacked + 1] = over(pressed, at("kitHover"))
+      stacked[#stacked + 1] = over(pressed, at("kitPress"))
     end
     for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
       if not (s.roles and s.roles[role]) then
         local slot = colors["kit" .. camel(role)]
         -- The focus colour is a ring and a notice's text, on no row.
-        slot[half] = legible_on(slot[half], role == "focus" and grounds or washed, M.TEXT_CONTRAST)
+        local on = role == "focus" and grounds or washed
+        if role == "fg" or role == "muted" then
+          on = {}
+          for _, g in ipairs(washed) do on[#on + 1] = g end
+          for _, g in ipairs(stacked) do on[#on + 1] = g end
+        end
+        slot[half] = legible_on(slot[half], on, M.TEXT_CONTRAST)
       end
     end
   end

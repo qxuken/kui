@@ -449,21 +449,30 @@ function M.tokens(s)
    for _, half in ipairs({ "light", "dark" }) do
       local function at(name) return colors[name][half] end
       local grounds = { at("kitPanel"), at("kitBg"), at("kitSide"), at("kitSunken"), at("kitRaised") }
-      local washed = {}
+      local washed, stacked = {}, {}
       for i = 1, 5 do
          local pressed = over(grounds[i], at("kitPress"))
          washed[#washed + 1] = grounds[i]
          washed[#washed + 1] = over(grounds[i], at("kitHover"))
          washed[#washed + 1] = pressed
 
-         washed[#washed + 1] = over(pressed, at("kitHover"))
-         washed[#washed + 1] = over(pressed, at("kitPress"))
+
+
+
+         stacked[#stacked + 1] = over(pressed, at("kitHover"))
+         stacked[#stacked + 1] = over(pressed, at("kitPress"))
       end
       for _, role in ipairs({ "fg", "muted", "faint", "focus", "ok", "warn", "danger" }) do
          if not (s.roles and s.roles[role]) then
             local slot = colors["kit" .. camel(role)]
 
-            slot[half] = legible_on(slot[half], role == "focus" and grounds or washed, M.TEXT_CONTRAST)
+            local on = role == "focus" and grounds or washed
+            if role == "fg" or role == "muted" then
+               on = {}
+               for _, g in ipairs(washed) do on[#on + 1] = g end
+               for _, g in ipairs(stacked) do on[#on + 1] = g end
+            end
+            slot[half] = legible_on(slot[half], on, M.TEXT_CONTRAST)
          end
       end
    end

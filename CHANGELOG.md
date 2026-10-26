@@ -335,6 +335,10 @@ was the first bare bump to break an app in five releases).
   selection's fill with a 2 px edge in the text colour; a time mark is
   drawn in `$kitAccentText`. An app that painted with a group token draws
   the new colour, and text on it reads with `$kitGroupFg<n>`.
+- Kit's `faint` is dimmer again in the dark halves: asked to read on a
+  segment's hover and press over its track too, it had gone most of the
+  way to `fg`, and nothing faint is drawn there (`fg` and `muted`, a
+  segment's label and count, still read there).
 - A click whose message is a map carries what it was made with in its
   `click` data: `mods` while a modifier is held, `clicks` from a double
   click's second click on, `key` (`enter` / `space`) when a key made it;
