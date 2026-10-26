@@ -93,6 +93,26 @@ function M.popover(c: Ctx, p: P): kui.Node
   }))
 end
 
+-- What a menu row says, in `role`, and in `hot` while the row is hovered
+-- or pressed: a danger row's label and chord are `danger` on the menu and
+-- `on_danger` on the danger fill its hover and press paint (C129) — in
+-- `danger` on that fill the label vanished under the pointer. A plain
+-- row's chord is `faint` on the menu and `fg` on its hover wash, where
+-- `faint` read at 3.7:1 in Ledger's dark half. A text has no box for a
+-- rule to act on, so it is drawn twice, the hot copy floated over the
+-- plain one, and the row's hover group's state shows one or the other. A
+-- row whose text keeps its colour draws it once.
+local function on_fill(c: Ctx, group: string, node: function(string): kui.Node, role: string, hot: string): kui.Node
+  if hot == role then return node(role) end
+  return row {
+    row { hover_group = group, when = { { group_hovered = true, opacity = 0 }, { group_pressed = true, opacity = 0 } },
+      node(role) },
+    row { float = { anchor = "parent" }, hover_group = group, opacity = 0,
+      when = { { group_hovered = true, opacity = 1 }, { group_pressed = true, opacity = 1 } },
+      node(hot) },
+  }
+end
+
 function M.menu(c: Ctx, p: P): kui.Node
   local items = (p.items or {}) as {P}
   local t = surface(c, {
@@ -111,12 +131,15 @@ function M.menu(c: Ctx, p: P): kui.Node
   for i, it in ipairs(items) do
     local off = it.disabled == true
     local danger = it.danger == true
+    local group = "kit.menu." .. tostring(c.inst) .. "." .. i
+    local label = it.label as string
     local row_t: kui.Props = {
       key = "i" .. i,
       role = "menuItem",
-      label = it.label as string,
+      label = label,
       disabled = off,
       initial_focus = not off and not focused,
+      hover_group = group,
       width = "grow",
       height = "$kitRow",
       pad = { x = 8 },
@@ -124,15 +147,20 @@ function M.menu(c: Ctx, p: P): kui.Node
       cross_align = "center",
       radius = "$kitRadius",
       hover_bg = danger and ref(c, "danger") or ref(c, "hover"),
+      pressed_bg = danger and ref(c, "danger_press") or nil,
       opacity = off and "$disabledOpacity" or nil,
       cursor = "pointer",
       on_click = act(c, "menu.choose", { value = it.value }),
-      ctx.text(c, it.label as string, { color = ref(c, danger and "danger" or "fg") }),
+      on_fill(c, group, function(role: string): kui.Node return ctx.text(c, label, { color = ref(c, role) }) end,
+        danger and "danger" or "fg", danger and "on_danger" or "fg"),
       ctx.grow(),
     }
     if not off then focused = true end
     if str(it.shortcut) then
-      row_t[#row_t + 1] = ctx.data(c, it.shortcut as string, { size = "$kitSizeLabel", color = ref(c, "faint") })
+      local chord = it.shortcut as string
+      row_t[#row_t + 1] = on_fill(c, group,
+        function(role: string): kui.Node return ctx.data(c, chord, { size = "$kitSizeLabel", color = ref(c, role) }) end,
+        "faint", danger and "on_danger" or "fg")
     end
     t[#t + 1] = row(row_t)
   end

@@ -3267,6 +3267,125 @@ fn every_notice_and_toast_reads_on_its_own_ground() {
     }
 }
 
+/// The fill under the centre of `rect` that the frame draws for it — the
+/// last solid quad the size of `rect` there, laid over `ground` where it
+/// is a wash — and the visible glyphs inside it.
+fn fill_and_glyphs(core: &mut Core, rect: kui_core::Rect, ground: kui_core::Color) -> (kui_core::Color, Vec<kui_core::Color>) {
+    let (dl, _) = core.output();
+    let (cx, cy) = (rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+    let inside = |q: &kui_core::Quad| {
+        let (x, y) = (q.rect.x + q.rect.w / 2.0, q.rect.y + q.rect.h / 2.0);
+        x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
+    };
+    let fill = dl
+        .quads
+        .iter()
+        .filter(|q| {
+            q.kind == kui_core::QuadKind::Solid
+                && q.color.a > 0.0
+                && (q.rect.w - rect.w).abs() < 1.5
+                && (q.rect.h - rect.h).abs() < 1.5
+                && cx >= q.rect.x
+                && cx <= q.rect.x + q.rect.w
+                && cy >= q.rect.y
+                && cy <= q.rect.y + q.rect.h
+        })
+        .last()
+        .map_or(ground, |q| over(ground, q.color));
+    let glyphs = dl
+        .quads
+        .iter()
+        .filter(|q| matches!(q.kind, kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel))
+        .filter(|q| q.color.a > 0.01 && inside(q))
+        .map(|q| q.color)
+        .collect();
+    (fill, glyphs)
+}
+
+#[test]
+fn a_hovered_or_pressed_menu_item_button_or_toast_action_reads_on_its_fill() {
+    // C129: a danger menu item's hover painted its label in `danger` on a
+    // `danger` fill, and the label vanished under the pointer. Drawn, not
+    // looked up: every menu item tone hovered and pressed, a danger button
+    // hovered and pressed, and a toast's action hovered and pressed — each
+    // label at 4.5:1 on the fill under it, in every skin and half, accent
+    // or none.
+    let accents: [Option<i64>; 5] = [None, Some(0xffd400ff), Some(0x7fe9ffff), Some(0x1e2a5aff), Some(0xdc2626ff)];
+    for skin in [kit::Skin::Ledger, kit::Skin::Neutral, kit::Skin::Phosphor] {
+        for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
+            for accent in accents {
+                let case = format!("{skin:?} {appearance:?} {accent:x?}");
+                for menu in [true, false] {
+                    let mut r = rig();
+                    // The grounds a wash is laid over: the menu and the
+                    // toast are raised, the button sits on the window.
+                    let raised = std::cell::Cell::new(None);
+                    let bg = std::cell::Cell::new(None);
+                    let view = |r: &mut Rig| {
+                        r.frame(|ui| {
+                            let mut s = kit::Settings::new().skin(skin).appearance(appearance);
+                            if let Some(a) = accent {
+                                s = s.roles(Value::map([("accent", Value::Int(a))]));
+                            }
+                            s.place(ui);
+                            if menu {
+                                // Under an opener, as a menu is placed.
+                                ui.with_keyed("opener", NodeSpec::row().size(120.0, 24.0), |ui| {
+                                    kit::Menu::new(vec![
+                                        kit::Item::new("open", "Open file").shortcut("⌘O"),
+                                        kit::Item::new("rm", "Delete forever").shortcut("⌘⌫").danger(true),
+                                    ])
+                                    .place(ui);
+                                });
+                            } else {
+                                kit::Button::new("Erase all").variant(kit::Variant::Danger).place(ui);
+                                kit::Toast::new("Moved to the bin.").action("Undo").inline(true).duration(0.0).place(ui);
+                            }
+                            raised.set(ui.token_color("kitRaised"));
+                            bg.set(ui.token_color("kitBg"));
+                        });
+                    };
+                    view(&mut r);
+                    view(&mut r);
+                    let targets: &[&str] = if menu { &["Open file", "Delete forever"] } else { &["Erase all", "Undo"] };
+                    for &name in targets {
+                        let node = r
+                            .core
+                            .access_tree()
+                            .nodes
+                            .iter()
+                            .find(|n| n.name.as_deref() == Some(name))
+                            .cloned()
+                            .unwrap_or_else(|| panic!("{case}: no {name}"));
+                        let at = kui_core::Vec2::new(node.rect.x + node.rect.w / 2.0, node.rect.y + node.rect.h / 2.0);
+                        for pressed in [false, true] {
+                            kui_core::testing::hover(&mut r.core, at);
+                            if pressed {
+                                r.core.handle_input(kui_core::InputEvent::mouse_down(1));
+                            }
+                            view(&mut r);
+                            view(&mut r);
+                            let g = if menu || name == "Undo" { raised.get() } else { bg.get() };
+                            let (fill, glyphs) = fill_and_glyphs(&mut r.core, node.rect, g.unwrap());
+                            let state = if pressed { "pressed" } else { "hovered" };
+                            assert!(!glyphs.is_empty(), "{case}: {name} {state} draws its label");
+                            for c in glyphs {
+                                let k = contrast(c, fill);
+                                assert!(k >= 4.49, "{case}: {name} {state}: {c:?} on {fill:?} reads at {k:.2}");
+                            }
+                            if pressed {
+                                kui_core::testing::hover(&mut r.core, kui_core::Vec2::new(2.0, 2.0));
+                                kui_core::testing::release(&mut r.core);
+                                view(&mut r);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn a_checklist_is_one_tab_stop_its_arrows_walk_and_space_ticks() {
     let mut r = LuaRig::new(

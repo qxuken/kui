@@ -196,16 +196,6 @@ local function over(fill: integer, wash: integer): integer
   return mix(fill, wash | 0xff, a / 255)
 end
 
--- A fill's hover and press shades in one half, from the colours in force.
-local function shades(colors: {string:{string:integer}}, half: string, fill: string, value: integer): integer, integer
-  local toward = TOWARD[fill]
-  if toward then
-    local t = colors["kit" .. (toward == "on_accent" and "OnAccent" or "OnDanger")][half]
-    return mix(value, t, 0.16), mix(value, t, 0.30)
-  end
-  return over(value, colors.kitHover[half]), over(value, colors.kitPress[half])
-end
-
 -- How opaque the area under a chart's line is.
 local AREA_ALPHA = M.AREA_ALPHA
 
@@ -229,6 +219,23 @@ local function contrast(a: integer, b: integer): number
   local x, y = luminance(a), luminance(b)
   if x < y then x, y = y, x end
   return (x + 0.05) / (y + 0.05)
+end
+
+-- A fill's hover and press shades in one half, from the colours in force.
+-- A loud fill moves toward what reads on it while that still reads on
+-- the press shade at 4.5:1, and away from it otherwise (C129): Ledger's
+-- light danger pressed toward its paper-white label until the label read
+-- at 3.7:1, on a danger button and a danger menu row alike.
+local function shades(colors: {string:{string:integer}}, half: string, fill: string, value: integer): integer, integer
+  local toward = TOWARD[fill]
+  if toward then
+    local t = colors["kit" .. (toward == "on_accent" and "OnAccent" or "OnDanger")][half]
+    if contrast(t, mix(value, t, 0.30)) < M.TEXT_CONTRAST then
+      t = luminance(t) > 0.18 and 0x000000ff or 0xffffffff
+    end
+    return mix(value, t, 0.16), mix(value, t, 0.30)
+  end
+  return over(value, colors.kitHover[half]), over(value, colors.kitPress[half])
 end
 
 -- 0xRRGGBBAA as hue (degrees), saturation and lightness (0 to 1), and back.

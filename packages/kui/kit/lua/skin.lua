@@ -198,16 +198,6 @@ local function over(fill, wash)
 end
 
 
-local function shades(colors, half, fill, value)
-   local toward = TOWARD[fill]
-   if toward then
-      local t = colors["kit" .. (toward == "on_accent" and "OnAccent" or "OnDanger")][half]
-      return mix(value, t, 0.16), mix(value, t, 0.30)
-   end
-   return over(value, colors.kitHover[half]), over(value, colors.kitPress[half])
-end
-
-
 local AREA_ALPHA = M.AREA_ALPHA
 
 
@@ -230,6 +220,23 @@ local function contrast(a, b)
    local x, y = luminance(a), luminance(b)
    if x < y then x, y = y, x end
    return (x + 0.05) / (y + 0.05)
+end
+
+
+
+
+
+
+local function shades(colors, half, fill, value)
+   local toward = TOWARD[fill]
+   if toward then
+      local t = colors["kit" .. (toward == "on_accent" and "OnAccent" or "OnDanger")][half]
+      if contrast(t, mix(value, t, 0.30)) < M.TEXT_CONTRAST then
+         t = luminance(t) > 0.18 and 0x000000ff or 0xffffffff
+      end
+      return mix(value, t, 0.16), mix(value, t, 0.30)
+   end
+   return over(value, colors.kitHover[half]), over(value, colors.kitPress[half])
 end
 
 

@@ -94,6 +94,26 @@ function M.popover(c, p)
    }))
 end
 
+
+
+
+
+
+
+
+
+
+local function on_fill(c, group, node, role, hot)
+   if hot == role then return node(role) end
+   return row({
+      row({ hover_group = group, when = { { group_hovered = true, opacity = 0 }, { group_pressed = true, opacity = 0 } },
+node(role), }),
+      row({ float = { anchor = "parent" }, hover_group = group, opacity = 0,
+when = { { group_hovered = true, opacity = 1 }, { group_pressed = true, opacity = 1 } },
+node(hot), }),
+   })
+end
+
 function M.menu(c, p)
    local items = (p.items or {})
    local t = surface(c, {
@@ -112,12 +132,15 @@ function M.menu(c, p)
    for i, it in ipairs(items) do
       local off = it.disabled == true
       local danger = it.danger == true
+      local group = "kit.menu." .. tostring(c.inst) .. "." .. i
+      local label = it.label
       local row_t = {
          key = "i" .. i,
          role = "menuItem",
-         label = it.label,
+         label = label,
          disabled = off,
          initial_focus = not off and not focused,
+         hover_group = group,
          width = "grow",
          height = "$kitRow",
          pad = { x = 8 },
@@ -125,15 +148,20 @@ function M.menu(c, p)
          cross_align = "center",
          radius = "$kitRadius",
          hover_bg = danger and ref(c, "danger") or ref(c, "hover"),
+         pressed_bg = danger and ref(c, "danger_press") or nil,
          opacity = off and "$disabledOpacity" or nil,
          cursor = "pointer",
          on_click = act(c, "menu.choose", { value = it.value }),
-         ctx.text(c, it.label, { color = ref(c, danger and "danger" or "fg") }),
+         on_fill(c, group, function(role) return ctx.text(c, label, { color = ref(c, role) }) end,
+         danger and "danger" or "fg", danger and "on_danger" or "fg"),
          ctx.grow(),
       }
       if not off then focused = true end
       if str(it.shortcut) then
-         row_t[#row_t + 1] = ctx.data(c, it.shortcut, { size = "$kitSizeLabel", color = ref(c, "faint") })
+         local chord = it.shortcut
+         row_t[#row_t + 1] = on_fill(c, group,
+         function(role) return ctx.data(c, chord, { size = "$kitSizeLabel", color = ref(c, role) }) end,
+         "faint", danger and "on_danger" or "fg")
       end
       t[#t + 1] = row(row_t)
    end
