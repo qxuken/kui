@@ -361,9 +361,10 @@ was the first bare bump to break an app in five releases).
   sample behind, its lines, areas and x ticks slide left over the time
   samples take to come, a keyframe cycle of the core's keyed by the
   sample (`slide<n>`), where it stepped a sample at a time. A test that
-  reads its quads between samples reads them slid; under reduced motion,
-  with no frame clock, or with the plot out of the viewport it steps as
-  before.
+  reads its quads between samples reads them slid; under reduced motion
+  or with no frame clock it steps as before. Scrolled out of view it
+  slides still, and costs nothing: the core runs no frame for a cycle it
+  culled (backlog C137).
 - A press on a Tab stop inside a key sink focuses the stop, as a browser
   focuses what a click lands on, where it gave the sink the keyboard
   (backlog C135, ADR 0002 decision 9 amended). The sink keeps its chords

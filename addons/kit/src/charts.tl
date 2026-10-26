@@ -612,8 +612,9 @@ function M.line_chart(c: Ctx, p: P): kui.Node
   -- frames between two samples run no view and lay nothing out. The
   -- content the slide starts from is what the last one ended on: the
   -- window one sample back. Off under reduced motion, with no frame
-  -- clock, while the plot is out of the viewport, and for a window that
-  -- did not move (a paused feed, a fixed range).
+  -- clock, and for a window that did not move (a paused feed, a fixed
+  -- range). A plot scrolled out of view costs nothing: the core runs no
+  -- frame for a cycle on a node it culled.
   local now = env.now or 0
   local slide, slide_ms = 0.0, 0.0
   if p.window and n > 1 and now > 0 then
@@ -627,9 +628,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       st.step_x, st.every, st.t_landed = nil, nil, nil
     end
     st.x_last = x1
-    local seen = r ~= nil and r.y + r.h > 0 and r.y < (env.viewport_h or 0) and r.x + r.w > 0
-      and r.x < (env.viewport_w or 0)
-    if st.step_x and st.every and seen and not ctx.reduced(c) then
+    if st.step_x and st.every and not ctx.reduced(c) then
       slide = st.step_x / (x1 - x0) * w
       -- A little under the measured pace: a sample early by a few ms
       -- would cut the slide short (a jump), where one late holds still.

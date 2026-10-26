@@ -615,6 +615,7 @@ function M.line_chart(c, p)
 
 
 
+
    local now = env.now or 0
    local slide, slide_ms = 0.0, 0.0
    if p.window and n > 1 and now > 0 then
@@ -628,9 +629,7 @@ function M.line_chart(c, p)
          st.step_x, st.every, st.t_landed = nil, nil, nil
       end
       st.x_last = x1
-      local seen = r ~= nil and r.y + r.h > 0 and r.y < (env.viewport_h or 0) and r.x + r.w > 0 and
-      r.x < (env.viewport_w or 0)
-      if st.step_x and st.every and seen and not ctx.reduced(c) then
+      if st.step_x and st.every and not ctx.reduced(c) then
          slide = st.step_x / (x1 - x0) * w
 
 
