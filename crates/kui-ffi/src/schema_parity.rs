@@ -186,10 +186,17 @@ fn every_schema_prop_has_a_c_counterpart() {
                     kui_core::GradientStop::from((Color::WHITE, 0.5)),
                 ],
             )),
+            Kind::Rules => Parsed::Rules(vec![kui_core::Rule::new(kui_core::Cond::Dark, &|s| {
+                s.gap(7.0)
+            })]),
         };
         let mut expected = PropsOut::new();
         apply(def, sample, &mut expected).unwrap();
         let layout_tag = KuiValue(Value::Int(7));
+        let when_list = KuiValue(Value::List(vec![Value::map([
+            ("dark", Value::Bool(true)),
+            ("gap", Value::Int(7)),
+        ])]));
 
         let stops = [KuiKeyframe {
             set: KUI_KF_AT | KUI_KF_RADIUS,
@@ -358,6 +365,10 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onMenu" => s.on_menu = &layout_tag,
             "onSelectionRange" => s.on_selection_range = &layout_tag,
             "onRange" => s.on_range = &layout_tag,
+            "onQuery" => s.on_query = &layout_tag,
+            "minColumn" => s.min_column = F,
+            "hidden" => s.hidden = 1,
+            "when" => s.when = &when_list,
             "selected" => s.selected = 1,
             "expanded" => s.expanded = KUI_EXPANDED_EXPANDED,
             "live" => s.live = KUI_LIVE_POLITE, // the parity index is 1; LIVE[1] = polite
@@ -562,6 +573,10 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_menu: &menu_tag,
         on_selection_range: &menu_tag,
         on_range: &menu_tag,
+        min_column: 0.0,
+        hidden: 0,
+        on_query: std::ptr::null(),
+        when: std::ptr::null(),
         reveal_on_hover: 1,
         floats_in_order: 1,
         disabled: 1,

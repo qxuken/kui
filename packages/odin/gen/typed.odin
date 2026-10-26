@@ -374,7 +374,7 @@ prop_row :: proc(g: ^Gen, p: ^Prop) -> Row {
 		// A zero Size is Fit, which on a clamp is "the fit size": unset has
 		// to be its own value.
 		typ = "Maybe(Size)"
-	case "msg", "handler":
+	case "msg", "handler", "rules":
 		typ = "any"
 	case "str":
 		typ = "string"
@@ -422,7 +422,7 @@ prop_row :: proc(g: ^Gen, p: ^Prop) -> Row {
 
 default_lowering :: proc(g: ^Gen, p: ^Prop, f, typ: string, cf: ^Field) -> string {
 	ct := bare(cf.type)
-	dst := fmt.tprintf("out.%s", cf.name)
+	dst := fmt.tprintf("out.%s", ident(cf.name))
 	// A string row that is a set of bits in C (buttons, scrollMods).
 	if e := enum_def(g, typ); e != nil && e.bits do return fmt.tprintf("%s = transmute(u32)s.%s", dst, f)
 	switch p.kind {
@@ -444,7 +444,7 @@ default_lowering :: proc(g: ^Gen, p: ^Prop, f, typ: string, cf: ^Field) -> strin
 		return fmt.tprintf("%s, out.keyframes_len = ([^]c.Keyframe)(raw_data(s.%s)), uint(len(s.%s))", dst, f, f)
 	case "gradient":
 		return fmt.tprintf("if gr, ok := s.%s.?; ok do %s = lower_gradient(gr)", f, dst)
-	case "msg", "handler":
+	case "msg", "handler", "rules":
 		return fmt.tprintf("%s = borrow(scratch, s.%s)", dst, f)
 	}
 	fail("prop %s: no default lowering for kind %s", p.name, p.kind)
@@ -456,7 +456,13 @@ note_writes :: proc(code: string, written: ^map[string]bool) {
 		if !strings.has_prefix(code[i:], "out.") || (i > 0 && is_ident_byte(code[i - 1])) do continue
 		j := i + 4
 		for j < len(code) && is_ident_byte(code[j]) do j += 1
-		written[code[i + 4:j]] = true
+		name := code[i + 4:j]
+		// A C field named after an Odin keyword is written as `ident`
+		// spells it, with a `_` after (`when_`).
+		if strings.has_suffix(name, "_") && slice.contains(KEYWORDS, name[:len(name) - 1]) {
+			name = name[:len(name) - 1]
+		}
+		written[name] = true
 	}
 	for hw in HELPER_WRITES {
 		if strings.contains(code, fmt.tprintf("%s(", hw[0])) {

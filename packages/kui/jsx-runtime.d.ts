@@ -23,6 +23,7 @@ import type {
   WithFiles,
   WithLayout,
   WithRange,
+  WithQuery,
   WithEditChange,
   WithSliderChange,
   WithBoundary,
@@ -235,6 +236,63 @@ export interface GradientProp {
   stops: (ColorProp | [ColorProp, number])[];
 }
 
+/** One side of a threshold, or both, over a length (ADR 0069): `below`
+ *  holds under it, `above` at or over it, and a range that holds keeps
+ *  holding `band` past its threshold. */
+export interface RangeProp {
+  below?: LengthProp;
+  above?: LengthProp;
+  band?: LengthProp;
+}
+
+/** What a `when` entry or a `<Lazy query>` tests: every condition named
+ *  must hold (ADR 0069). `width` and `height` are the node's own size —
+ *  in a `<Lazy query>`, its parent's. */
+export interface WhenConditions {
+  width?: RangeProp;
+  height?: RangeProp;
+  window?: { width?: RangeProp; height?: RangeProp };
+  dark?: boolean;
+  light?: boolean;
+  reducedMotion?: boolean;
+  contrast?: 'more' | 'normal';
+  platform?: 'macos' | 'windows' | 'linux' | ('macos' | 'windows' | 'linux')[];
+  scale?: RangeProp;
+  hovered?: boolean;
+  pressed?: boolean;
+  focused?: boolean;
+  focusVisible?: boolean;
+  disabled?: boolean;
+  selected?: boolean;
+}
+
+/** One entry of a node's `when` list (ADR 0069): the conditions it tests
+ *  and the props it sets while they hold. An entry over the node's own
+ *  size sets the layout of its children only, `hidden` there naming the
+ *  keyed children it hides. A `width` that is a range is a condition; one
+ *  that is a sizing is the prop. */
+export type WhenEntry = Omit<WhenConditions, 'width' | 'height'> & {
+  width?: RangeProp | SizingProp;
+  height?: RangeProp | SizingProp;
+  hidden?: boolean | string[];
+  dir?: 'row' | 'column';
+} & Omit<Partial<GeneratedSpecProps>, 'width' | 'height' | 'hidden' | 'when'> &
+  Omit<Partial<CustomSpecProps>, 'dir'>;
+
+/** `<Lazy>`'s props (ADR 0069): `needs` or `query`, the two builders and
+ *  the message the decision's changes arrive as. */
+export interface LazyProps {
+  /** The room the branch needs from its parent, in either axis or both. */
+  needs?: { w?: number; h?: number };
+  /** Or the conditions over the parent's size, the window's or the
+   *  environment's while which `render` is built. */
+  query?: Omit<WhenConditions, 'hovered' | 'pressed' | 'focused' | 'focusVisible' | 'disabled' | 'selected'>;
+  render: () => KuiNode;
+  fallback?: () => KuiNode;
+  onQuery?: Msg;
+  key?: string | number;
+}
+
 export interface FloatProp {
   /** The preset to start from; every key below overrides one of its
    *  values and leaving one out keeps the preset's own, so
@@ -391,6 +449,8 @@ export interface GeneratedSpecProps {
   gradient?: GradientProp;
   /** Vertical size: px | "fit" | "grow" | "N%" | a size expression (see `width`). */
   height?: SizingProp;
+  /** Not laid out and not drawn (ADR 0069): the node and everything in it take no room in its parent — no gap either — paint nothing, take no input and are out of the access tree and the Tab ring, while their keys, focus history and retained state (scroll offsets, editor text) are kept as any declared node's are. What a `when` entry sets to drop a node at a setting or a window size; an entry over the node's own size names the children it hides instead (`hidden: ["key"]`). */
+  hidden?: boolean;
   /** Background while the pointer is over the node or anything inside it, a clickable child included (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. */
   hoverBg?: ColorProp;
   /** Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape). */
@@ -419,6 +479,8 @@ export interface GeneratedSpecProps {
   maxHeight?: MaxProp;
   /** Upper width clamp: logical px or a size expression (see `width`); grow+maxWidth is the responsive-width pattern. */
   maxWidth?: MaxProp;
+  /** On a row: wraps it into equal columns, as many as fit at this width or more — `max(1, floor((w + gap) / (n + gap)))` — every child as wide as a column, the last line's children too, which do not stretch (ADR 0069, decision 17). CSS's `repeat(auto-fill, minmax(n, 1fr))`: a gallery's cards, a settings grid. The lines are `crossGap` apart. An own-size `when` entry may set it, and on a column it does nothing. */
+  minColumn?: LengthProp;
   /** Lower height clamp: logical px, a size expression, or "fit" for the node's own fit height. Undeclared, it is the node's content where its column overflows — CSS's `min-height: auto`, none for a node that scrolls or clips — so a row keeps the height of its text; `0` asks for the squeeze back (see `minWidth`). */
   minHeight?: MinProp;
   /** Lower width clamp: logical px, a size expression (see `width`; a percentage clamp is none until the parent's width is known, as in CSS), or "fit" for the node's own fit width. "fit" under `width="grow"` is a content floor — CSS's `flex: 1 0 auto` — which is what an i3-style tab bar is: tabs that split the bar evenly while they fit and sit at their label's width, scrolling, once they do not. Opt-in, because a fit width is the unwrapped one: a paragraph in a grow column would stop wrapping under it. Left out, a child giving in an overflowing row that holds a percentage or a size expression stops at its content, CSS's `min-width: auto`; `0` lets it go below, CSS's `min-width: 0` (backlog RG92). A fit node across a column is no wider than the column's box — CSS's `fit-content` — down to this floor, 0 left out, unless the column scrolls x, so a text one wrapper deep in a capped card wraps there; "fit" keeps its content's width and runs past (backlog F116). */
@@ -457,6 +519,8 @@ export interface GeneratedSpecProps {
   onLayout?: HandlerMsg<WithLayout> | null;
   /** A choice from a menu opened for this node — a `select`'s, or one `openMenu` named it the target of — as this message with `menu: {role, item}` in it (ADR 0047): `item` is the row's `id`, else its label. The stock right-click menu, whose roles the core performs itself, sends nothing. */
   onMenu?: HandlerMsg<WithMenu> | null;
+  /** Query handler (ADR 0069): when the set of this node's `when` entries over its own size and the window's that match changes — and after the frame that first lays it out — this message arrives with `query: {matched, width, height}` in it, `matched` the 0-based indices of every matching entry. On a lazy branch's node, its decision: `matched` is `[0]` while `render` is built. State and environment changes do not raise it. Nothing needs it to lay out; it is for a view that keeps the fact in its model. */
+  onQuery?: HandlerMsg<WithQuery> | null;
   /** Range handler (ADR 0065): on a node whose children carry data indices — `index`, a virtual list's rows — the least and greatest index among its children inside its box arrive as this message with `range: {first, last}` in it, after the frame that first lays it out and whenever either changes; what a table pages an unbounded source by. Needs a stable key. */
   onRange?: HandlerMsg<WithRange> | null;
   /** Scroll handler: the wheel over this node arrives on it as this message with `scroll: {x, y, dx, dy, lines}` in it (ADR 0047) instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel on the axes `scrollAxes` names (both unless it narrows them): a gesture that starts over it is its own whether or not it has anywhere to go — except on an axis the node also scrolls (`scrollX`/`scrollY`, its offset the app's to set), where it is answered by its room as a container is, so at its edge a gesture that way passes to the scroller around it (backlog F118) — and stays its own until it ends, wherever the pointer goes (backlog F107); it reaches no scroll container above it, and a scroller inside it still takes the axes it scrolls while it can move that way, passing this node the rest — the other axis, and a gesture that begins with that scroller at its limit (`overscroll: "contain"` on the scroller keeps it there). The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`). */
@@ -545,6 +609,8 @@ export interface GeneratedSpecProps {
   valueStep?: LengthProp;
   /** What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute. */
   valueText?: string;
+  /** Props by condition (ADR 0069): a list of entries, each the conditions it tests and the props it sets while every one holds — `{ width: { below: 700, band: 16 }, dark: true, gap: 8 }`. Every entry that matches applies, in list order, over the node's own props, so a later entry wins a prop an earlier one set; `hoverBg`, `pressedBg` and `focusBg` are entries ahead of the list. The conditions: the node's own `width` / `height` (`{ below, above, band }`, each a length or a `$length` token; `below` holds under it, `above` at or over it, and a range that holds keeps holding `band` past its threshold, so a size resting on one does not flicker); `window: { width, height }`, the same against the window's content size; `dark`, `light`, `reducedMotion` (`reduced_motion`), `contrast: "more"`, `platform` (`"macos"`, `"windows"`, `"linux"` or a list), `scale: { above }`; and the node's state, `hovered`, `pressed`, `focused`, `focusVisible`, `disabled`, `selected`, each true or false — hovered as `hoverBg` reads it, over the node or anything inside it or its hover group. The core resolves them, so a view declares a responsive, themed, interactive box once and is not re-run for a resize, a theme switch or a hover: window, environment and state entries as the node opens, before its `transition` eases what they set (layout props jump unless `slide`; under reduced motion everything jumps); own-size entries inside layout, a width entry once the node's width is final and before its children are laid across it, a height entry with one more layout pass on the frame its match changes — no frame is drawn with a stale match. An entry over the node's own size sets the layout of its children only — `dir`, `gap`, `crossGap`, padding, `wrapChildren`, `mainAlign`, `crossAlign`, `minColumn`, and `hidden` as the list of the keyed children it hides (`hidden: ["chooser"]`) — and makes the node a container in that axis: a `fit` size there is refused (`query-on-fit`) and the node takes the room its parent offers. Other entries set any box prop but handlers, access props, keys and children. What an entry may not set is left out with `rule-prop-refused`, the rest of it standing. `onQuery` tells the view when its own-size and window matches change. */
+  when?: WhenEntry[];
   /** Horizontal size: px | "fit" | "grow" | "N%" | a size expression — `"clamp(400px, 80%, 1000px)"`, `"min(720px, 100%)"`, `"max(50%, 300)"`, nested — which layout resolves against the parent's content box, the box a percentage takes its cut of (backlog F109). An expression with no percentage in it is a length; a calc does not ease under `transition`. A percentage or an expression gives, with the fit children, when its parent overflows — two `"50%"` children and a gap fit their row (backlog F110) — where a px size keeps its own. A row holding one gives as CSS's flex items do: every child that can give gives in proportion to its size, and stops at its content — the widest thing in it that cannot wrap, a label's longest word — unless `minWidth` says otherwise (backlog RG92). The process keeps 65 536 distinct expressions and never lets one go: past that a new one leaves its prop at its default, with a `size-expressions-full` warning, so declare one per layout — a px size for the part that moves each frame, a splitter's drag — not one per frame (backlog RG93). */
   width?: SizingProp;
   /** Window-chrome role: interactions become window commands, not events. */

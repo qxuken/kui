@@ -1737,6 +1737,74 @@ scene_virtual :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// conformance::build_rules (docs/adr/0069): a row ruled by its own width and
+// the palette, with on_query; a min_column row; a hidden box. The `when`
+// list is the plain data every binding passes: maps, not structs, which
+// would carry a `kind`.
+scene_rules :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	range := make(map[string]any, context.temp_allocator)
+	range["below"] = 400
+	range["band"] = 16
+	hidden := []any{"extra"}
+	narrow := make(map[string]any, context.temp_allocator)
+	narrow["width"] = range
+	narrow["dir"] = "column"
+	narrow["gap"] = 4
+	narrow["hidden"] = hidden
+	dark := make(map[string]any, context.temp_allocator)
+	dark["dark"] = true
+	dark["bg"] = 0x202020ff
+	entries := []any{narrow, dark}
+	if kui.box(ui, {}) {
+		row := kui.Spec {
+			key      = "row",
+			dir      = .Row,
+			width    = kui.px(300),
+			gap      = 10,
+			when_    = entries,
+			on_query = msg("q"),
+		}
+		if kui.box(ui, row) {
+			a := kui.Spec {
+				key      = "a",
+				dir      = .Row,
+				width    = kui.px(50),
+				height   = kui.px(20),
+				bg       = 0xc04040ff,
+				label    = "go",
+				on_click = "go",
+			}
+			if kui.box(ui, a) {}
+			extra := kui.Spec {
+				key      = "extra",
+				dir      = .Row,
+				width    = kui.px(50),
+				height   = kui.px(20),
+				bg       = 0x4040c0ff,
+				label    = "more",
+				on_click = "more",
+			}
+			if kui.box(ui, extra) {}
+		}
+		if kui.box(ui, {key = "grid", dir = .Row, width = kui.px(300), gap = 10, min_column = 100}) {
+			for k in ([]string{"c0", "c1", "c2"}) {
+				if kui.box(ui, {key = k, dir = .Row, width = kui.px(10), height = kui.px(10), bg = 0x40c040ff}) {}
+			}
+		}
+		gone := kui.Spec {
+			key    = "gone",
+			dir    = .Row,
+			width  = kui.px(40),
+			height = kui.px(40),
+			bg     = 0xffffffff,
+			label  = "gone",
+			role   = .Button,
+			hidden = true,
+		}
+		if kui.box(ui, gone) {}
+	}
+}
+
 // conformance::build_selection_range: the virtual scene's list, selectable,
 // a line of text in each built row, and the message the copy's ask arrives
 // as (ADR 0047's on_selection_range).
@@ -2181,6 +2249,7 @@ SCENES := [?]Scene {
 	{"menu", scene_selection},
 	{"menubar", scene_menu_bar},
 	{"virtual", scene_virtual},
+	{"rules", scene_rules},
 	{"selection-range", scene_selection_range},
 	{"layers", scene_layers},
 	{"floats-in-order", scene_floats_in_order},

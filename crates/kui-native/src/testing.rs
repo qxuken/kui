@@ -157,6 +157,13 @@ impl<C: BorrowMut<Core>> Drive<C> {
         let mut ui = core.frame_with(viewport, scale, &mut self.exts);
         app.view(&mut ui);
         ui.finish();
+        // Built once more when a lazy branch's decision crossed (ADR 0069).
+        if self.core().rerun_owed() {
+            let core = self.core.borrow_mut();
+            let mut ui = core.frame_with(viewport, scale, &mut self.exts);
+            app.view(&mut ui);
+            ui.finish();
+        }
         if !self.hidden {
             let _ = self.core().output();
             self.drawn += 1;

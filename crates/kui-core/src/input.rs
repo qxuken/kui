@@ -1531,6 +1531,9 @@ pub enum EventKind {
     Component,
     /// The data rows in a node's view changed (ADR 0065).
     Range,
+    /// A node's matched own-size and window entries changed, or a lazy
+    /// branch's decision did (ADR 0069).
+    Query,
 }
 
 impl EventKind {
@@ -1568,6 +1571,7 @@ impl EventKind {
         EventKind::Dismiss,
         EventKind::Component,
         EventKind::Range,
+        EventKind::Query,
     ];
 
     /// The wire name: what `ev.event` reads in every binding, a root
@@ -1606,6 +1610,7 @@ impl EventKind {
             EventKind::Dismiss => "dismiss",
             EventKind::Component => "component",
             EventKind::Range => "range",
+            EventKind::Query => "query",
         }
     }
 

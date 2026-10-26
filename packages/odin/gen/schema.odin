@@ -9,7 +9,7 @@ import "core:os"
 Prop :: struct {
 	odin:        string, // its Odin spelling in docs/props.md, pinned by check_odin_spellings
 	name, snake: string,
-	kind:        string, // f32 color flag enum sizing min max msg handler str family resource keyframes enter gradient
+	kind:        string, // f32 color flag enum sizing min max msg handler str family resource keyframes enter gradient rules
 	values:      []string,
 	target:      string, // spec | style
 	c, doc:      string,

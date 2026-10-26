@@ -132,7 +132,9 @@ use crate::{Result, err, value_of};
 /// 0067); `devtoolsTab` carries a component and its props (a JSON strref,
 /// absent for none) where it carried a slot; and `slot` is a new op (29),
 /// a contribution slot (ADR 0067's second step): name, props. And
-/// `focusRing` is a new row (backlog C93), in the same unreleased version.
+/// `focusRing` is a new row (backlog C93), in the same unreleased version;
+/// and ADR 0069's: the `when`, `minColumn`, `hidden` and `onQuery` rows,
+/// and `lazy` a new op (30).
 pub const VERSION: u32 = 27;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
@@ -197,6 +199,13 @@ pub const OP_COMPONENT: u32 = 28;
 /// strref (absent for none). Every component the loaded extensions
 /// contribute to the name is placed there.
 pub const OP_SLOT: u32 = 29;
+/// A lazy branch (ADR 0069): the width and the height it needs (0 for an
+/// axis it does not name), its query as a JSON strref (absent for a
+/// `needs` branch), its `onQuery` message as a JSON strref, its key label
+/// (absent for none), which branch the encoder built — 1 `render`, 0
+/// `fallback`, -1 neither, taken from `lazyChoices()` — then the length in
+/// slots of the branch's ops and those ops.
+pub const OP_LAZY: u32 = 30;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -234,6 +243,7 @@ pub fn protocol_json() -> Json {
                 ("svg", OP_SVG),
                 ("component", OP_COMPONENT),
                 ("slot", OP_SLOT),
+                ("lazy", OP_LAZY),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1009,6 +1019,11 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                         )
                         .map_err(err)?,
                     ),
+                    // JSON as well: the entries read in the core (ADR 0069).
+                    Kind::Rules => Parsed::Rules(
+                        kui_core::rules::parse_with(&payload(r.req_str()?)?, Some(&mut refs.names))
+                            .map_err(err)?,
+                    ),
                 };
                 schema::apply(def, parsed, &mut out)?;
             }
@@ -1431,6 +1446,41 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             };
             ui.slot(name, &props);
             Ok(())
+        }
+        OP_LAZY => {
+            let (w, h) = (r.f()? as f32, r.f()? as f32);
+            let query = r.str_ref()?;
+            let on_query = r.str_ref()?;
+            let label = r.str_ref()?;
+            let built = match r.f()? as i32 {
+                1 => Some(true),
+                0 => Some(false),
+                _ => None,
+            };
+            let len = r.count()?;
+            let mut spec = match query {
+                Some(q) => kui_core::LazySpec::query(
+                    kui_core::rules::parse_cond(&payload(q)?, None).map_err(err)?,
+                ),
+                None => kui_core::LazySpec::needs(kui_core::Needs {
+                    w: (w > 0.0).then_some(w),
+                    h: (h > 0.0).then_some(h),
+                }),
+            };
+            if let Some(m) = on_query {
+                spec = spec.on_query(payload(m)?);
+            }
+            ui.core().lazy_open_as(label, spec, built);
+            let end = r.i + len;
+            let mut result = Ok(());
+            while r.i < end {
+                if let Err(e) = r.u().and_then(|op| decode_op(op, r, ui)) {
+                    result = Err(e);
+                    break;
+                }
+            }
+            ui.core().lazy_close();
+            result
         }
         OP_COMPONENT => {
             let name = r.req_str()?;
@@ -1943,6 +1993,13 @@ mod tests {
                             kui_core::GradientStop::from((kui_core::Color::WHITE, 0.5)),
                         ],
                     ))
+                }
+                Kind::Rules => {
+                    strings = br#"[{"dark":true,"gap":7}]"#;
+                    stream.extend([0.0, strings.len() as f64]);
+                    Parsed::Rules(vec![kui_core::Rule::new(kui_core::Cond::Dark, &|s| {
+                        s.gap(7.0)
+                    })])
                 }
             };
             let mut expected = PropsOut::new();

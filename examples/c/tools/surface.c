@@ -298,6 +298,22 @@ static void surface_view(void *user, KuiCtx *ui) {
     kui_close(ui);
 }
 
+/* A lazy branch's two builders (kui_lazy): each counts its calls in the
+ * pair `user` points at and builds a box. */
+static void lazy_render(void *user, KuiCtx *ui) {
+    ((int *)user)[0]++;
+    KuiSpec s = {.width = {KUI_FIXED, 10}, .height = {KUI_FIXED, 10}};
+    kui_open(ui, &s, NULL);
+    kui_close(ui);
+}
+
+static void lazy_fallback(void *user, KuiCtx *ui) {
+    ((int *)user)[1]++;
+    KuiSpec s = {.width = {KUI_FIXED, 4}, .height = {KUI_FIXED, 4}};
+    kui_open(ui, &s, NULL);
+    kui_close(ui);
+}
+
 static int surface(void) {
     KuiCtx *ui = kui_ctx_new();
     if (!ui) {
@@ -1667,6 +1683,41 @@ static int surface(void) {
         while (kui_take_window_command(ui, &cmd)) {}
         KuiEvent dev = KUI_EVENT_INIT;
         while (kui_poll_event(ui, &dev)) {}
+    }
+
+    /* Props by condition (ADR 0069), on a context of its own: a lazy
+     * branch decided by the room its row offers - nothing on the first
+     * frame, which kui_rerun_owed asks to build again - and a `when` entry
+     * on the contrast setting that widens the row's gap past what the
+     * branch needs. */
+    {
+        KuiCtx *lz = kui_ctx_new();
+        int counts[2] = {0, 0}; /* renders, fallbacks */
+        KuiValue *when = kui_value_list();
+        KuiValue *entry = kui_value_map();
+        kui_value_map_set(entry, KUI_STR("contrast"), kui_value_str(KUI_STR("more")));
+        kui_value_map_set(entry, KUI_STR("gap"), kui_value_int(60));
+        kui_value_list_push(when, entry);
+        int built[4];
+        for (int f = 0; f < 4; f++) {
+            if (f == 2) kui_env_set_contrast(lz, KUI_CONTRAST_MORE);
+            kui_frame_begin(lz, 400, 100, 1);
+            KuiSpec row = {.dir = KUI_ROW, .width = {KUI_FIXED, 300}, .gap = 10,
+                           .when = when};
+            kui_open(lz, &row, NULL);
+            KuiSpec label = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20}};
+            kui_open(lz, &label, NULL);
+            kui_close(lz);
+            built[f] = kui_lazy(lz, 180, 0, NULL, NULL, lazy_render, lazy_fallback, counts);
+            kui_close(lz);
+            kui_frame_finish(lz);
+            if (f == 0) check(kui_rerun_owed(lz), "kui_rerun_owed: the first frame lays out before it builds");
+        }
+        check(built[0] == -1 && built[1] == 1, "kui_lazy: nothing before a layout, then render in 300 - 110");
+        check(built[2] == 1 && built[3] == 0, "and the fallback once the contrast entry's gap takes the room");
+        check(counts[0] == 2 && counts[1] == 1, "each builder called for the branch it builds");
+        kui_value_free(when);
+        kui_ctx_free(lz);
     }
 
     /* Why a frame runs (backlog F111), on a context of its own: the

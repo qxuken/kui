@@ -933,6 +933,12 @@ pub struct NodeSpec {
     /// disabled control's `notAllowed` are all the view's to declare. The
     /// stock button declares `Pointer` itself.
     pub cursor: Option<CursorShape>,
+    /// Not laid out and not drawn (ADR 0069): the node and its subtree
+    /// take no room, paint nothing, take no input and are out of the
+    /// access tree and the Tab ring, while their keys, focus history and
+    /// retained state are kept, as they are for any node still declared.
+    /// What a `when` entry sets to drop a node at a size or a setting.
+    pub hidden: bool,
 
     /// See [`EventSpec`]. `None` when the node declares none of it.
     pub events: Option<Box<EventSpec>>,
@@ -945,6 +951,10 @@ pub struct NodeSpec {
 
     /// See [`InteractSpec`]. `None` when the node declares none of it.
     pub interact: Option<Box<InteractSpec>>,
+
+    /// The node's `when` list, `min_column` and lazy ask (ADR 0069; see
+    /// [`crate::rules::RulesSpec`]). `None` when it declares none of it.
+    pub rules: Option<Box<crate::rules::RulesSpec>>,
 }
 
 /// A handler row a node can declare: which message an event of its kind
@@ -1128,6 +1138,13 @@ pub enum Handler {
     /// unbounded source by, since scrolling alone tells it nothing. Needs
     /// a stable key.
     Range,
+    /// The node's matched entries changed (ADR 0069): when the set of its
+    /// `when` entries over its own size and the window's that match
+    /// moves, or a lazy branch's decision does, this message with
+    /// `query: {matched, width, height}` in it — the indices of the
+    /// matched entries, 0-based, and the node's size. State and
+    /// environment changes have events of their own and do not raise it.
+    Query,
 }
 
 /// Event payloads a node declares. Boxed on `NodeSpec` because most
@@ -1340,6 +1357,12 @@ impl EventSpec {
     #[inline]
     pub fn on_range(&self) -> Option<&Value> {
         self.get(Handler::Range)
+    }
+
+    /// The message for [`Handler::Query`], if declared.
+    #[inline]
+    pub fn on_query(&self) -> Option<&Value> {
+        self.get(Handler::Query)
     }
 
     /// The message for [`Handler::SelectionRange`], if declared.
@@ -1891,6 +1914,20 @@ impl NodeSpec {
         self.access.get_or_insert_with(Box::default)
     }
 
+    /// The node's rules (ADR 0069), empty if it declares none.
+    #[inline]
+    pub fn rules_spec(&self) -> &crate::rules::RulesSpec {
+        static EMPTY: std::sync::LazyLock<crate::rules::RulesSpec> =
+            std::sync::LazyLock::new(crate::rules::RulesSpec::default);
+        self.rules.as_deref().unwrap_or(&EMPTY)
+    }
+
+    /// Allocates the group on first write.
+    #[inline]
+    pub fn rules_mut(&mut self) -> &mut crate::rules::RulesSpec {
+        self.rules.get_or_insert_with(Box::default)
+    }
+
     /// Hover / pressed / focus styling, empty if this node declares none.
     #[inline]
     pub fn interact(&self) -> &InteractSpec {
@@ -1944,6 +1981,8 @@ impl NodeSpec {
                     // settles the ring there.
                     || i.focus_region
             })
+            // An entry that reads the pointer has to be found under it.
+            || self.rules.as_deref().is_some_and(|r| r.tracks_hover)
     }
 
     /// The group id `hover_group(name)` assigns — reproducible from any
@@ -2667,6 +2706,68 @@ impl NodeSpec {
     /// [`Handler::Range`]): `range: {first, last}` in `tag`.
     pub fn on_range(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().set(Handler::Range, tag.into());
+        self
+    }
+
+    /// Reports a change of the matched own-size and window entries as an
+    /// event (see [`Handler::Query`]): `query: {matched, width, height}`
+    /// in `tag`.
+    pub fn on_query(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().set(Handler::Query, tag.into());
+        self
+    }
+
+    /// The main axis: `Dir::Row` lays the children left to right,
+    /// `Dir::Column` top to bottom. What a `when` entry turns a row into a
+    /// column with.
+    pub fn dir(mut self, dir: Dir) -> Self {
+        self.layout.dir = dir;
+        self
+    }
+
+    /// Appends an entry to the node's `when` list (ADR 0069): the props
+    /// `f` sets apply while every condition of `cond` holds, over the
+    /// node's own props and after the entries before it.
+    ///
+    /// ```rust
+    /// use kui_core::{Cond, Dir, NodeSpec};
+    ///
+    /// let row = NodeSpec::row()
+    ///     .grow_width()
+    ///     .gap(16.0)
+    ///     .when(Cond::width_below(600.0), |p| p.dir(Dir::Column).gap(8.0));
+    /// assert_eq!(row.rules_spec().entries().len(), 1);
+    /// ```
+    ///
+    /// An entry over the node's own size sets the layout of its children
+    /// only (direction, gaps, padding, wrap, alignment, `min_column`, and
+    /// which children it [`hide`](Self::hide)s); a prop it may not set is
+    /// left out, and the core warns (`rule-prop-refused`).
+    pub fn when(mut self, cond: crate::rules::Cond, f: impl Fn(NodeSpec) -> NodeSpec) -> Self {
+        let rule = crate::rules::Rule::new(cond, &f);
+        self.rules_mut().push(rule);
+        self
+    }
+
+    /// Wraps a row into equal columns, as many as fit at `n` wide or more
+    /// (ADR 0069, decision 17): every child as wide as a column, the last
+    /// line's children too. CSS's `repeat(auto-fill, minmax(n, 1fr))`.
+    pub fn min_column(mut self, n: f32) -> Self {
+        self.rules_mut().min_column = n.max(0.0);
+        self
+    }
+
+    /// Not laid out and not drawn (see [`NodeSpec::hidden`]).
+    pub fn hidden(mut self, hidden: bool) -> Self {
+        self.hidden = hidden;
+        self
+    }
+
+    /// Inside a `when` entry over the node's own size: the child keyed
+    /// `label` is hidden while the entry matches — a control that gives
+    /// way in a narrow row. Meaningless on a spec outside an entry.
+    pub fn hide(mut self, label: &str) -> Self {
+        self.rules_mut().hide.push(label.to_string());
         self
     }
 
@@ -3468,6 +3569,8 @@ impl PartialEq for NodeSpec {
             && self.anim() == other.anim()
             && self.access() == other.access()
             && self.interact() == other.interact()
+            && self.hidden == other.hidden
+            && self.rules_spec() == other.rules_spec()
     }
 }
 
@@ -3488,7 +3591,9 @@ mod size_tests {
     /// on every node of every frame.
     #[test]
     fn node_spec_stays_small() {
-        const BOUND: usize = 256;
+        // 256 until ADR 0069 added its one pointer, `rules`: the price the
+        // ADR set for a node with no rules (decision 19).
+        const BOUND: usize = 264;
         let size = std::mem::size_of::<NodeSpec>();
         assert!(
             size <= BOUND,

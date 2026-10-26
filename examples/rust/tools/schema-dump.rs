@@ -44,6 +44,7 @@ fn props() -> Json {
             Kind::Keyframes => ("keyframes", None),
             Kind::Enter => ("enter", None),
             Kind::Gradient => ("gradient", None),
+            Kind::Rules => ("rules", None),
         };
         let mut p = Map::new();
         p.insert("name".into(), def.name.into());

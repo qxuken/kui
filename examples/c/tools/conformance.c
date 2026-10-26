@@ -2139,6 +2139,63 @@ static void conf_virtual(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_rules (ADR 0069): a row ruled by its own width and the
+ * palette, with on_query; a min_column row; a hidden box. The `when` list
+ * is the plain data every binding passes, borrowed for the open call. */
+static void conf_rules(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {0};
+    kui_open(ui, &outer, NULL);
+    KuiValue *when = kui_value_list();
+    KuiValue *narrow = kui_value_map();
+    KuiValue *range = kui_value_map();
+    kui_value_map_set(range, KUI_STR("below"), kui_value_int(400));
+    kui_value_map_set(range, KUI_STR("band"), kui_value_int(16));
+    kui_value_map_set(narrow, KUI_STR("width"), range);
+    kui_value_map_set(narrow, KUI_STR("dir"), kui_value_str(KUI_STR("column")));
+    kui_value_map_set(narrow, KUI_STR("gap"), kui_value_int(4));
+    KuiValue *hidden = kui_value_list();
+    kui_value_list_push(hidden, kui_value_str(KUI_STR("extra")));
+    kui_value_map_set(narrow, KUI_STR("hidden"), hidden);
+    kui_value_list_push(when, narrow);
+    KuiValue *dark = kui_value_map();
+    kui_value_map_set(dark, KUI_STR("dark"), kui_value_bool(true));
+    kui_value_map_set(dark, KUI_STR("bg"), kui_value_int(0x202020ff));
+    kui_value_list_push(when, dark);
+    KuiValue *q = conf_kind("q");
+    KuiSpec row = {.dir = KUI_ROW, .width = {KUI_FIXED, 300}, .gap = 10,
+                   .when = when, .on_query = q};
+    kui_open_keyed(ui, KUI_STR("row"), &row, NULL);
+    kui_value_free(when);
+    kui_value_free(q);
+    KuiSpec a = {.dir = KUI_ROW, .width = {KUI_FIXED, 50}, .height = {KUI_FIXED, 20},
+                 .bg = 0xc04040ff, .label = KUI_STR("go")};
+    kui_open_keyed(ui, KUI_STR("a"), &a, kui_value_str(KUI_STR("go")));
+    kui_close(ui);
+    KuiSpec extra = {.dir = KUI_ROW, .width = {KUI_FIXED, 50}, .height = {KUI_FIXED, 20},
+                     .bg = 0x4040c0ff, .label = KUI_STR("more")};
+    kui_open_keyed(ui, KUI_STR("extra"), &extra, kui_value_str(KUI_STR("more")));
+    kui_close(ui);
+    kui_close(ui);
+    KuiSpec grid = {.dir = KUI_ROW, .width = {KUI_FIXED, 300}, .gap = 10, .min_column = 100};
+    kui_open_keyed(ui, KUI_STR("grid"), &grid, NULL);
+    const char *cells[3] = {"c0", "c1", "c2"};
+    for (int i = 0; i < 3; i++) {
+        KuiSpec c = {.dir = KUI_ROW, .width = {KUI_FIXED, 10}, .height = {KUI_FIXED, 10},
+                     .bg = 0x40c040ff};
+        kui_open_keyed(ui, KUI_STR(cells[i]), &c, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    KuiSpec gone = {.dir = KUI_ROW, .width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 40},
+                    .bg = 0xffffffff, .label = KUI_STR("gone"), .role = KUI_ROLE_BUTTON,
+                    .hidden = 1};
+    kui_open_keyed(ui, KUI_STR("gone"), &gone, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 /* conformance::build_selection_range: the virtual scene's list, selectable,
  * a line of text in each built row, and the message the copy's ask arrives
  * as (ADR 0047's on_selection_range). */
@@ -2618,6 +2675,7 @@ static const ConfScene CONF_SCENES[] = {
     {"menu", conf_selection},
     {"menubar", conf_menu_bar},
     {"virtual", conf_virtual},
+    {"rules", conf_rules},
     {"selection-range", conf_selection_range},
     {"layers", conf_layers},
     {"floats-in-order", conf_floats_in_order},

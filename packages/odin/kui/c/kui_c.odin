@@ -422,6 +422,10 @@ MOTION_UNKNOWN :: 0
 MOTION_FULL :: 1
 MOTION_REDUCED :: 2
 
+CONTRAST_UNKNOWN :: 0
+CONTRAST_NORMAL :: 1
+CONTRAST_MORE :: 2
+
 ASSISTIVE_UNKNOWN :: 0
 ASSISTIVE_NONE :: 1
 ASSISTIVE_LISTENING :: 2
@@ -522,6 +526,7 @@ TITLEBAR_MEDIUM :: 1
 TITLEBAR_TALL :: 2
 
 // -- Callbacks
+LazyFn :: #type proc "c" (rawptr, ^Ctx)
 ViewFn :: #type proc "c" (rawptr, ^Ctx)
 EventFn :: #type proc "c" (rawptr, ^Event)
 TeardownFn :: #type proc "c" (rawptr)
@@ -710,6 +715,10 @@ Spec :: struct {
 	floats_in_order: u32,
 	on_range: ^Value,
 	focus_ring: u32,
+	min_column: f32,
+	hidden: u32,
+	on_query: ^Value,
+	when_: ^Value,
 }
 
 Announcement :: struct {
@@ -1174,6 +1183,7 @@ foreign lib {
 	poll_event :: proc(ctx: ^Ctx, out: ^Event) -> bool ---
 	env_set :: proc(ctx: ^Ctx, refresh_hz: f32, focused: bool) ---
 	env_set_system :: proc(ctx: ^Ctx, appearance: u32, accent: u32, motion: u32, locale: string) ---
+	env_set_contrast :: proc(ctx: ^Ctx, contrast: u32) ---
 	env_set_assistive :: proc(ctx: ^Ctx, assistive: u32) ---
 	env_set_audio :: proc(ctx: ^Ctx, device: u32, live: u32) ---
 	theme :: proc(ctx: ^Ctx, out: ^Theme) -> bool ---
@@ -1324,6 +1334,8 @@ foreign lib {
 	path_parse :: proc(d: string, out: [^]f32, cap: uint) -> uint ---
 	path_d :: proc(ctx: ^Ctx, label: string, d: string, fill_rule: u32, width: f32, color: u32, rotate: f32, pivot: [^]f32, dash: [^]f32, spec: ^Spec, on_click: ^Value, on_drag: ^Value, on_hover: ^Value) ---
 	close :: proc(ctx: ^Ctx) ---
+	lazy :: proc(ctx: ^Ctx, need_w: f32, need_h: f32, query: ^Value, on_query: ^Value, render: LazyFn, fallback: LazyFn, user: rawptr) -> i32 ---
+	rerun_owed :: proc(ctx: ^Ctx) -> bool ---
 	text :: proc(ctx: ^Ctx, text: string, style: ^TextStyle) ---
 	rich_text :: proc(ctx: ^Ctx, spans: [^]Span, span_count: uint, base: ^TextStyle) ---
 	cells :: proc(ctx: ^Ctx, label: string, rows: u32, cols: u32, cells: [^]Cell, count: uint, style: ^TextStyle, spec: ^Spec, on_click: ^Value, on_drag: ^Value, on_key: ^Value, cursor_row: u32, cursor_col: u32, cursor_shape: u32, cursor_color: u32, origin_line: u64) ---

@@ -144,6 +144,7 @@ c_type! {
     KuiChannelBuilder => "KuiChannelBuilder",
     KuiChannel => "KuiChannel",
     Option<crate::types::ChildrenFn> => "KuiChildrenFn",
+    Option<crate::types::LazyFn> => "KuiLazyFn",
 }
 #[cfg(feature = "runner")]
 c_type! {
@@ -870,6 +871,10 @@ fn asserts() -> (String, Vec<&'static str>) {
         floats_in_order: u32 => "uint32_t",
         on_range: *const KuiValue => "const KuiValue *",
         focus_ring: u32 => "uint32_t",
+        min_column: f32 => "float",
+        hidden: u32 => "uint32_t",
+        on_query: *const KuiValue => "const KuiValue *",
+        when: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1612,8 +1617,11 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `reveal_on_hover` (ADR 0051), past the end, so 792 + 4 rounds up
         // to 800. ABI 36: `floats_in_order` (ADR 0053), into that padding.
         // ABI 38: `on_range` (ADR 0065), a pointer past the end. ABI 39:
-        // `focus_ring` (backlog C93), past it, so 808 + 4 rounds up to 816.
-        ("KuiSpec", 816, 39),
+        // `focus_ring` (backlog C93), past it, so 808 + 4 rounds up to 816;
+        // then `min_column` into that padding, `hidden`, and `on_query`
+        // and `when` (ADR 0069): 816 + 4 rounds up to 824, plus two
+        // pointers.
+        ("KuiSpec", 840, 39),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),

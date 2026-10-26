@@ -149,6 +149,10 @@ export function createEncoder(P) {
   let f = new Float64Array(1 << 14);
   let u = new Uint8Array(1 << 16);
   let shownTab = null;
+  // What the last layout decided for each `<Lazy>` of the last view, by
+  // position (`lazyChoices()`, ADR 0069), and how many this view has met.
+  let lazyChoices = null;
+  let lazyAt = 0;
   let fi = 0;
   let ui = 0;
   const textEncoder = new TextEncoder();
@@ -672,6 +676,7 @@ export function createEncoder(P) {
             case 'keyframes':
             case 'enter':
             case 'gradient':
+            case 'rules':
               strRef(JSON.stringify(v));
               break;
             case 'str':
@@ -870,9 +875,51 @@ export function createEncoder(P) {
   // handled in the switch below.
   const JSX_FRAGMENT = Symbol.for('kui.jsx.fragment');
 
+  // A branch built only when it can be shown (ADR 0069): the encoder
+  // calls `render` or `fallback` as the last layout decided for the
+  // `<Lazy>` at this position, and neither before any layout has; the
+  // core checks the choice against this frame's layout and asks for the
+  // view again when it disagrees (`rerunOwed()`).
+  function lazy(el) {
+    const p = el.props ?? {};
+    for (const k of Object.keys(p)) {
+      if (!['needs', 'query', 'render', 'fallback', 'onQuery', 'key'].includes(k)) {
+        throw new Error(`<Lazy> takes needs or query, render, fallback and onQuery, not ${JSON.stringify(k)}`);
+      }
+    }
+    if ((p.needs == null) === (p.query == null)) throw new Error('<Lazy> takes needs ({ w, h }) or query, one of the two');
+    if (typeof p.render !== 'function') throw new Error('<Lazy> needs a render function');
+    if (p.fallback != null && typeof p.fallback !== 'function') throw new Error('<Lazy> fallback must be a function');
+    const needs = p.needs ?? {};
+    for (const a of ['w', 'h']) {
+      if (needs[a] != null && (typeof needs[a] !== 'number' || !(needs[a] > 0))) {
+        throw new Error(`<Lazy> needs.${a} must be a positive number`);
+      }
+    }
+    const choice = lazyChoices ? lazyChoices[lazyAt] : null;
+    lazyAt++;
+    const built = choice === true ? 1 : choice === false ? 0 : -1;
+    const branch = built === 1 ? p.render() : built === 0 && p.fallback ? p.fallback() : null;
+    reserve(10);
+    f[fi++] = OP.lazy;
+    f[fi++] = needs.w ?? 0;
+    f[fi++] = needs.h ?? 0;
+    strRef(p.query != null ? JSON.stringify(p.query) : null);
+    strRef(p.onQuery !== undefined ? JSON.stringify(p.onQuery) : null);
+    strRef(el.key != null ? String(el.key) : null);
+    f[fi++] = built;
+    const at = fi++;
+    children(branch);
+    f[at] = fi - at - 1;
+  }
+
   function element(el) {
     if (el.type === JSX_FRAGMENT) {
       children(el.children);
+      return;
+    }
+    if (el.type === 'lazy') {
+      lazy(el);
       return;
     }
     curTag = typeof el.type === 'string' ? el.type : '?';
@@ -1469,6 +1516,8 @@ export function createEncoder(P) {
       unknownTokens = [];
       tokens = tokenMap ?? null;
       shownTab = opts?.shownTab ?? null;
+      lazyChoices = opts?.lazy ?? null;
+      lazyAt = 0;
       reserve(96);
       f[fi++] = VERSION;
       f[fi++] = OP.root;

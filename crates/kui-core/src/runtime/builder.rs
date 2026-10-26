@@ -150,8 +150,12 @@ impl Core {
             return;
         }
         if !self.tree.is_empty() {
+            self.resolve_rules(Key::ROOT, &mut spec);
             self.ease_spec(Key::ROOT, &mut spec);
             self.tree.note(&spec, &NodeContent::Container);
+            if spec.rules.is_some() && self.tree.ruled.first() != Some(&0) {
+                self.tree.ruled.insert(0, 0);
+            }
             self.tree.specs[0] = spec;
         }
     }
@@ -826,6 +830,10 @@ impl Core {
             spec.style.bg = self.theme.accent;
         }
         self.resolve_hover_style(key, spec);
+        // The `when` list after the shorthands, which are entries ahead
+        // of it (ADR 0069, decision 6), and before the easing, so what an
+        // entry sets tweens under the node's transition.
+        self.resolve_rules(key, spec);
         self.ease_spec(key, spec);
     }
 
@@ -968,6 +976,153 @@ impl Core {
             });
         }
         self.hints.push((self.stack.len(), key, text.into()));
+    }
+
+    /// Opens a lazy branch's node (ADR 0069, decisions 13–16) under the
+    /// next auto key, and says which branch to build inside it: `render`
+    /// when the last layout offered the room it `needs` (or its `query`
+    /// held), `fallback` otherwise, and neither on the first frame, before
+    /// any layout — the core lays out first, then the runner builds the
+    /// frame again ([`Core::rerun_owed`]). Build the branch as the node's
+    /// children and end with [`Core::lazy_close`]. The flat door under
+    /// `Ui::lazy`, Lua's lazy table, `<Lazy>` and `kui_lazy`.
+    pub fn lazy_open(&mut self, spec: crate::rules::LazySpec) -> Option<bool> {
+        let key = self.auto_key();
+        self.lazy_open_key(key, spec, None)
+    }
+
+    /// [`Self::lazy_open`] for a binding that took the decision itself,
+    /// before the core could be asked — a Node view encodes its tree
+    /// before the frame lowers it — with what the last frame's layout
+    /// decided ([`Self::hosted_lazy_choices`]): the node is opened as
+    /// `built` says, and a disagreement with this frame's layout asks for
+    /// the build again as any crossing does. `label` keys it as
+    /// `lazy_open_keyed` does.
+    pub fn lazy_open_as(
+        &mut self,
+        label: Option<&str>,
+        spec: crate::rules::LazySpec,
+        built: Option<bool>,
+    ) -> Option<bool> {
+        let key = match label {
+            Some(l) => self.child_key(l),
+            None => self.auto_key(),
+        };
+        let built = self.lazy_open_key(key, spec, Some(built));
+        if !self.tree.is_empty() {
+            self.lazy_hosted.push(key);
+            if let Some(l) = label {
+                self.note_label(key, l);
+            }
+        }
+        built
+    }
+
+    /// What the last layout decided for each branch opened through
+    /// [`Self::lazy_open_as`], in the order the build opened them: what a
+    /// Node view reads the next build's choices from, by position.
+    pub fn hosted_lazy_choices(&self) -> &[Option<bool>] {
+        &self.lazy_hosted_choices
+    }
+
+    /// [`Self::lazy_open`] under a label key.
+    pub fn lazy_open_keyed(&mut self, label: &str, spec: crate::rules::LazySpec) -> Option<bool> {
+        let key = self.child_key(label);
+        let built = self.lazy_open_key(key, spec, None);
+        if !self.tree.is_empty() {
+            self.note_label(key, label);
+        }
+        built
+    }
+
+    fn lazy_open_key(
+        &mut self,
+        key: Key,
+        mut spec: crate::rules::LazySpec,
+        taken: Option<Option<bool>>,
+    ) -> Option<bool> {
+        if self.tree.is_empty() {
+            return None;
+        }
+        if let Some(q) = spec.query.as_mut()
+            && q.state_mask != 0
+        {
+            q.state_mask = 0;
+            q.state_want = 0;
+            self.diag.raise_once(crate::diag::QUERY_STATE, key, || {
+                "this lazy branch's query names a state condition, which was left out: a \
+                 hover must not build or drop a subtree — a `when` entry is how a node looks \
+                 different while hovered"
+                    .into()
+            });
+        }
+        // The parent reads its own size in the axes the branch names, so
+        // it is a container there (decision 8).
+        let (w, h) = spec.axes();
+        let parent = self.current() as usize;
+        let pkey = self.tree.keys[parent];
+        for (reads, width) in [(w, true), (h, false)] {
+            let l = &mut self.tree.specs[parent].layout;
+            let sizing = if width { &mut l.width } else { &mut l.height };
+            if reads && *sizing == Sizing::Fit {
+                *sizing = Sizing::Grow(1.0);
+                let axis = if width { "width" } else { "height" };
+                self.diag.raise_once(crate::diag::QUERY_ON_FIT, pkey, || {
+                    format!(
+                        "a lazy branch inside reads this node's {axis}, which comes from its \
+                         content (`fit`) and would loop; it takes the room its parent offers \
+                         instead, as `grow` would — give it a {axis} that is not `fit`"
+                    )
+                });
+            }
+        }
+        let built = taken.unwrap_or_else(|| self.lazy_decision(key, &spec));
+        self.note_read(|| replay::Read::Lazy(key, Box::new(spec.clone()), built));
+        spec.built = built;
+        let mut node = NodeSpec::column();
+        if built == Some(true)
+            && let Some((nw, nh)) = spec.needs
+        {
+            // At exactly the size it needs, so the decision never feeds
+            // back into the room it was taken from.
+            if let Some(nw) = nw {
+                node.layout.width = Sizing::Fixed(nw);
+            }
+            if let Some(nh) = nh {
+                node.layout.height = Sizing::Fixed(nh);
+            }
+        }
+        if built.is_none() {
+            node.hidden = true;
+        }
+        node.rules_mut().lazy = Some(spec);
+        self.open_with_key(key, node);
+        built
+    }
+
+    /// Closes the lazy branch's node [`Self::lazy_open`] opened. A branch
+    /// that built nothing — no `fallback`, or none yet — is hidden, so an
+    /// empty branch takes no room and no gap.
+    pub fn lazy_close(&mut self) {
+        if self.stack.len() > 1 {
+            let at = self.current() as usize;
+            if self.tree.first_child[at] == NIL {
+                self.tree.specs[at].hidden = true;
+                self.tree.any_hidden = true;
+            }
+        }
+        self.close();
+    }
+
+    /// What a lazy branch at `key` decides now, from the last layout's
+    /// room: `None` before any layout has offered it any.
+    pub(crate) fn lazy_decision(&self, key: Key, spec: &crate::rules::LazySpec) -> Option<bool> {
+        let memo = self
+            .lazy_memo
+            .get(&key)
+            .filter(|m| m.seen + 1 >= self.frame_no)?;
+        let mut held = memo.held;
+        Some(spec.decide(memo.room, memo.parent, &self.rule_facts(0), &mut held))
     }
 
     /// Names the node under `key` `label` for `key_of`: what every keyed

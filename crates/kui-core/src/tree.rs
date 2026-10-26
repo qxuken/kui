@@ -305,6 +305,19 @@ pub struct Tree {
     /// devtools' dock leaves of it. A zero rect means
     /// the window. The devtools' own nodes always use the window.
     pub host_area: crate::geom::Rect,
+    /// The nodes that carry rules (ADR 0069: a `when` list, `min_column`
+    /// or a lazy ask), by index, in tree order. A side list: a frame with
+    /// none is one empty `Vec`.
+    pub ruled: Vec<u32>,
+    /// Whether any node has an entry over its own size, a `min_column`,
+    /// or is or may be hidden: what gates the solver's rule step and its
+    /// out-of-flow test for a hidden node.
+    pub any_size_rule: bool,
+    pub any_min_column: bool,
+    pub any_hidden: bool,
+    /// The children an own-size entry hides this frame, by node; sized
+    /// only once one does (`rules::mark_hidden`).
+    pub rule_hidden: Vec<bool>,
 }
 
 impl Tree {
@@ -392,6 +405,19 @@ impl Tree {
         self.indexed.clear();
         self.row_counts.clear();
         self.fills.clear();
+        self.ruled.clear();
+        self.any_size_rule = false;
+        self.any_min_column = false;
+        self.any_hidden = false;
+        self.rule_hidden.clear();
+    }
+
+    /// Whether node `i` is hidden: declared so, or by an entry of its
+    /// parent's (ADR 0069).
+    #[inline]
+    pub fn is_hidden(&self, i: usize) -> bool {
+        self.any_hidden
+            && (self.specs[i].hidden || self.rule_hidden.get(i).copied().unwrap_or(false))
     }
 
     /// The innermost slot fill node `i` was opened inside, if any. A
@@ -456,6 +482,14 @@ impl Tree {
         }
         self.any_opacity |= spec.style.opacity < 1.0;
         self.any_animate |= spec.animate;
+        self.any_hidden |= spec.hidden;
+        if let Some(r) = spec.rules.as_deref() {
+            self.any_size_rule |= r.sized() != 0;
+            self.any_min_column |= r.min_column > 0.0;
+            self.any_hidden |= r.entries().iter().any(|e| {
+                e.patch.set & (crate::rules::field::HIDE | crate::rules::field::HIDDEN) != 0
+            });
+        }
         self.any_over_siblings |= spec.over_siblings;
         self.any_floats_in_order |= spec.floats_in_order;
         if let Some(events) = spec.events.as_deref() {
@@ -491,6 +525,9 @@ impl Tree {
         let idx = self.keys.len() as u32;
         // Read before the move, while the spec is in cache anyway.
         self.note(&spec, &content);
+        if spec.rules.is_some() {
+            self.ruled.push(idx);
+        }
         self.keys.push(key);
         self.origins.push(origin);
         self.specs.push(spec);

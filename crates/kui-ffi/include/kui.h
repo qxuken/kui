@@ -447,7 +447,8 @@ extern "C" {
  * was placed in; and KuiEvent appends `from`, the namespace of the
  * provider that raised a component event (80 bytes on 64-bit, from 64).
  * And KuiSpec appends focus_ring (816 bytes on 64-bit, from 808), the core
- * focus ring's colour (backlog C93); kui_tab_moves_focus (backlog C99),
+ * focus ring's colour (backlog C93), then min_column, hidden, on_query and
+ * when (840 bytes; ADR 0069); kui_tab_moves_focus (backlog C99),
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92) are new
  * functions.
  */
@@ -1477,6 +1478,29 @@ typedef struct KuiSpec {
      * 0 for none; a colour with no alpha but 0 (0xffffff00) turns the
      * ring off. ABI 39, appended (816 bytes on 64-bit). */
     uint32_t focus_ring;
+    /* A row wrapped into equal columns, as many as fit at this width or
+     * more, every child a column wide (minColumn, docs/adr/
+     * 0069-props-by-condition.md); 0 for none. ABI 39. */
+    float min_column;
+    /* Non-zero: not laid out and not drawn - no room, no paint, no input,
+     * out of the access tree and the Tab ring - with the node's keys and
+     * retained state kept (hidden, ADR 0069). ABI 39. */
+    uint32_t hidden;
+    /* The message a change of the matched own-size and window `when`
+     * entries arrives as, query: {matched, width, height} (onQuery, ADR
+     * 0069). A borrowed KuiValue*, cloned while the node opens; NULL for
+     * none. ABI 39. */
+    const KuiValue *on_query;
+    /* The node's `when` list (ADR 0069): a borrowed KuiValue list of maps,
+     * each the conditions it tests - width / height ({below, above,
+     * band}), window, dark, light, reduced_motion, contrast, platform,
+     * scale, hovered, pressed, focused, focus_visible, disabled, selected
+     * - and the props it sets, by their schema names in either spelling
+     * (gap, bg, pad, dir, hidden, ...). Every matching entry applies in
+     * order over the node's own props; the core resolves them, so the view
+     * is not re-run for a resize, a theme switch or a hover. NULL for
+     * none. ABI 39 (840 bytes on 64-bit). */
+    const KuiValue *when;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
@@ -3883,6 +3907,30 @@ void kui_path_d(KuiCtx *ctx, KuiStr label, KuiStr d, uint32_t fill_rule,
                 const float *dash, const KuiSpec *spec, KuiValue *on_click,
                 KuiValue *on_drag, KuiValue *on_hover);
 void kui_close(KuiCtx *ctx);
+/* A lazy branch's builder (kui_lazy): your `user`, and the context to
+ * build the branch's nodes through. */
+typedef void (*KuiLazyFn)(void *user, KuiCtx *ctx);
+/* A branch built only when it can be shown (docs/adr/
+ * 0069-props-by-condition.md): `render` is called when the parent offers
+ * need_w x need_h (0 for an axis it does not name) - the parent's content
+ * box less its other in-flow children and gaps - and the branch is laid
+ * out at exactly that size; with `query` (a KuiValue map of conditions:
+ * width / height {below, above, band}, window, dark, ...) it is called
+ * while they hold over the parent's size, the window's or the
+ * environment's instead. `fallback` (NULL for none) is called otherwise.
+ * Returns 1 for render, 0 for fallback, -1 for neither: on the first
+ * frame, before any layout, the core lays out first and kui_rerun_owed
+ * asks for the frame again. `on_query` (NULL for none) is the message the
+ * decision's changes arrive as. Both builders run inside the branch's
+ * node, which this opens and closes. */
+int32_t kui_lazy(KuiCtx *ctx, float need_w, float need_h, const KuiValue *query,
+                 const KuiValue *on_query, KuiLazyFn render, KuiLazyFn fallback,
+                 void *user);
+/* Whether a lazy branch's decision disagreed with the frame
+ * kui_frame_finish just laid out: build the frame once more -
+ * kui_frame_begin, the view, kui_frame_finish - before drawing it. kui_run
+ * does this itself. */
+bool kui_rerun_owed(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,
                    const KuiTextStyle *base);

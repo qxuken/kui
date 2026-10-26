@@ -958,6 +958,30 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        // ADR 0069: the `when` list as the table every binding passes.
+        "rules" => r#"
+            return column {
+              row { key = "row", width = 300, gap = 10, on_query = { kind = "q" },
+                    when = {
+                      { width = { below = 400, band = 16 }, dir = "column", gap = 4,
+                        hidden = { "extra" } },
+                      { dark = true, bg = 0x202020ff },
+                    },
+                row { key = "a", width = 50, height = 20, bg = 0xc04040ff,
+                      on_click = "go", label = "go" },
+                row { key = "extra", width = 50, height = 20, bg = 0x4040c0ff,
+                      on_click = "more", label = "more" },
+              },
+              row { key = "grid", width = 300, gap = 10, min_column = 100,
+                row { key = "c0", width = 10, height = 10, bg = 0x40c040ff },
+                row { key = "c1", width = 10, height = 10, bg = 0x40c040ff },
+                row { key = "c2", width = 10, height = 10, bg = 0x40c040ff },
+              },
+              row { key = "gone", width = 40, height = 40, bg = 0xffffffff,
+                    label = "gone", role = "button", hidden = true },
+            }
+        "#
+        .to_string(),
         "virtual" => {
             // `index` is a number where `key` is a string: the row's own
             // data index, which is what a virtual list opens its rows at.

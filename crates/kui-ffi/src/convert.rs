@@ -521,6 +521,25 @@ pub(crate) fn spec_of(
     if s.focus_ring != 0 {
         spec = spec.focus_ring(color_of(s.focus_ring));
     }
+    if s.min_column > 0.0 {
+        spec = spec.min_column(s.min_column);
+    }
+    if s.hidden != 0 {
+        spec = spec.hidden(true);
+    }
+    if let Some(msg) = unsafe { s.on_query.as_ref() } {
+        spec = spec.on_query(msg.0.clone());
+    }
+    if let Some(list) = unsafe { s.when.as_ref() } {
+        // A value that is not a list is no `when`, as a bad colour is no
+        // colour; an entry's own trouble rides on the entry and is raised
+        // as the node opens.
+        if let Ok(rules) = kui_core::rules::parse_with(&list.0, None) {
+            for r in rules {
+                spec.rules_mut().push(r);
+            }
+        }
+    }
     if let Some(hint) = opt_str(s.tooltip) {
         // Two of the prop's three effects; `kui_close` adds the third (the
         // float, while hovered) once it knows the node closed, and a

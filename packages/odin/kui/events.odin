@@ -180,6 +180,15 @@ Range_Event :: struct {
 	first, last: int,
 }
 
+// An on_query node's matched `when` entries over its own size and the
+// window's (docs/adr/0069): the 0-based indices of every matching entry and
+// the node's size; on a lazy branch, its decision ([0] while render is
+// built) and the room its parent offers.
+Query_Event :: struct {
+	matched:       []int,
+	width, height: f32,
+}
+
 Slider_Change_Event :: struct {
 	value: f64,
 	phase: string, // "move" | "end"
@@ -328,6 +337,10 @@ With_Layout :: struct {
 
 With_Range :: struct {
 	range: Range_Event,
+}
+
+With_Query :: struct {
+	query: Query_Event,
 }
 
 With_Slider_Change :: struct {

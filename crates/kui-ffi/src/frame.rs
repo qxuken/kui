@@ -1307,6 +1307,75 @@ pub extern "C" fn kui_is_group_pressed(ptr: *mut KuiCtx, group: KuiStr) -> bool 
     })
 }
 
+/// A branch built only when it can be shown (ADR 0069): `render` is
+/// called when the parent offers `need_w` × `need_h` (0 for an axis it
+/// does not name) — or, with `query` a map of conditions, while they hold
+/// over the parent's size, the window's or the environment's — and
+/// `fallback` (NULL for none) otherwise. Returns 1 for `render`, 0 for
+/// `fallback`, -1 for neither: the first frame, before any layout, when
+/// the core lays out first and `kui_rerun_owed` asks for the frame again.
+/// `on_query` (NULL for none) is the message the decision's changes
+/// arrive as. Both builders run inside the branch's node, which this
+/// opens and closes.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_lazy(
+    ptr: *mut KuiCtx,
+    need_w: f32,
+    need_h: f32,
+    query: *const KuiValue,
+    on_query: *const KuiValue,
+    render: Option<LazyFn>,
+    fallback: Option<LazyFn>,
+    user: *mut c_void,
+) -> i32 {
+    let built = guard(None, || {
+        let c = unsafe { ctx(ptr) }?;
+        let mut spec = match unsafe { query.as_ref() } {
+            Some(q) => kui_core::LazySpec::query(kui_core::rules::parse_cond(&q.0, None).ok()?),
+            None => kui_core::LazySpec::needs(kui_core::Needs {
+                w: (need_w > 0.0).then_some(need_w),
+                h: (need_h > 0.0).then_some(need_h),
+            }),
+        };
+        if let Some(msg) = unsafe { on_query.as_ref() } {
+            spec = spec.on_query(msg.0.clone());
+        }
+        Some(c.core().lazy_open(spec))
+    });
+    let Some(built) = built else {
+        return -1;
+    };
+    let call = match built {
+        Some(true) => render,
+        Some(false) => fallback,
+        None => None,
+    };
+    if let Some(f) = call {
+        f(user, ptr);
+    }
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().lazy_close();
+        }
+    });
+    match built {
+        Some(true) => 1,
+        Some(false) => 0,
+        None => -1,
+    }
+}
+
+/// Whether a lazy branch's decision disagreed with the frame
+/// [`kui_frame_finish`] just laid out (ADR 0069): build the frame once
+/// more — `kui_frame_begin`, the view, `kui_frame_finish` — before
+/// drawing it. `kui_run` does this itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_rerun_owed(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().rerun_owed())
+    })
+}
+
 /// Finishes the frame: lets loaded extensions fill what the view did not,
 /// lays the tree out and paints it. After it, [`kui_draw_data`] has the
 /// frame and [`kui_poll_event`] has anything the frame itself produced (a

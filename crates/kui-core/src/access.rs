@@ -795,6 +795,10 @@ pub(crate) struct Semantic {
 /// The role a node's spec and content imply, before elision. None = plain
 /// structure (elided; its descendants still appear).
 pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
+    // A hidden node and its subtree are nothing to a reader (ADR 0069).
+    if tree.is_hidden(i) {
+        return Some(Role::None);
+    }
     let spec = &tree.specs[i];
     if let Some(r) = spec.access().role {
         // A line is structure of the editor around it; on its own it is
@@ -866,7 +870,11 @@ pub(crate) fn is_custom_editor(tree: &Tree, i: usize) -> bool {
 /// skipped by the walk, not here.
 pub(crate) fn focusable(tree: &Tree, i: usize) -> bool {
     let spec = &tree.specs[i];
-    if spec.disabled || spec.access().role == Some(Role::None) || spec.window.is_some() {
+    if spec.disabled
+        || spec.access().role == Some(Role::None)
+        || spec.window.is_some()
+        || tree.is_hidden(i)
+    {
         return false;
     }
     if spec.focusable

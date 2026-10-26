@@ -339,6 +339,55 @@ component :: proc(ui: ^Ui, name: string, props: any = nil) -> i32 {
 	return c.component(ui, name, borrow(&scratch, props), nil, nil)
 }
 
+// A branch built only when it can be shown (ADR 0069): render runs when the
+// parent offers need_w x need_h (0 for an axis it does not name) - laid out
+// at exactly that size - or, with query a map of conditions (width / height
+// {below, above, band}, window, dark, ...), while they hold over the
+// parent's size, the window's or the environment's; fallback (nil for none)
+// runs otherwise, and neither before the first layout, when rerun_owed asks
+// for the frame again. on_query is the message the decision's changes
+// arrive as. Returns 1 for render, 0 for fallback, -1 for neither.
+lazy :: proc(
+	ui: ^Ui,
+	data: ^$T,
+	render: proc(data: ^T, ui: ^Ui),
+	fallback: proc(data: ^T, ui: ^Ui) = nil,
+	need_w: f32 = 0,
+	need_h: f32 = 0,
+	query: any = nil,
+	on_query: any = nil,
+) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		render:   proc(data: ^T, ui: ^Ui),
+		fallback: proc(data: ^T, ui: ^Ui),
+		ctx:      Saved_Context,
+	}
+	call_render :: proc "c" (user: rawptr, ui: ^c.Ctx) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.render(b.data, ui)
+	}
+	call_fallback :: proc "c" (user: rawptr, ui: ^c.Ctx) {
+		b := (^Body)(user)
+		context = b.ctx
+		if b.fallback != nil do b.fallback(b.data, ui)
+	}
+	b := Body{data, render, fallback, context}
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return c.lazy(
+		ui,
+		need_w,
+		need_h,
+		borrow(&scratch, query),
+		borrow(&scratch, on_query),
+		call_render,
+		call_fallback,
+		&b,
+	)
+}
+
 // component with your own children: children builds the group the component
 // asks for (an empty group is the unnamed one), under your origin, keyed by
 // the instance and the group.

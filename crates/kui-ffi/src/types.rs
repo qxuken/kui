@@ -12,6 +12,9 @@ pub(crate) type ViewFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx);
 /// A component's children builder (`kui_component`, ADR 0060): your
 /// `user`, a context borrowing the frame for the call, and the group.
 pub(crate) type ChildrenFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx, group: KuiStr);
+/// A lazy branch's builder (`kui_lazy`, ADR 0069): your `user`, and a
+/// context borrowing the frame for the call.
+pub(crate) type LazyFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx);
 /// A C callback that receives one event: `kui_run`'s, and only its — so
 /// unlike `ViewFn` it is not here in a build without the runner.
 #[cfg(feature = "runner")]
@@ -941,6 +944,20 @@ pub struct KuiSpec {
     /// else the theme's. 0 for none; a colour with no alpha but 0
     /// (`0xffffff00`) turns the ring off. ABI 39, appended.
     pub focus_ring: u32,
+    /// `minColumn` (ADR 0069): a row wrapped into equal columns at least
+    /// this wide; 0 for none. ABI 39, appended into `focus_ring`'s
+    /// padding.
+    pub min_column: f32,
+    /// Non-zero: not laid out and not drawn (`hidden`, ADR 0069). ABI 39.
+    pub hidden: u32,
+    /// The message a change of the matched own-size and window entries
+    /// arrives as (`onQuery`, ADR 0069), borrowed like `on_layout`; NULL
+    /// for none. ABI 39.
+    pub on_query: *const KuiValue,
+    /// The node's `when` list (ADR 0069): a borrowed `KuiValue` list of
+    /// maps, each the conditions it tests and the props it sets, read as
+    /// every binding's plain-data form is; NULL for none. ABI 39.
+    pub when: *const KuiValue,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

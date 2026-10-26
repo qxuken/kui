@@ -250,6 +250,19 @@ function slot(name, props)
   return { type = "slot", name = name, props = props }
 end
 
+-- lazy { needs = { w = 320 }, render = function() return chart() end,
+-- fallback = function() return text("too narrow") end }: a branch built
+-- only when it can be shown (docs/adr/0069) -- `render` when the parent
+-- offers the room `needs` names (`w`, `h` or both), laid out at exactly
+-- that size, or while `query` (`{ width = { below = 700 } }`, the
+-- parent's size, the window's or the environment's) holds; `fallback`
+-- otherwise, and neither before the first layout. A bare child table with
+-- a `render` function is the same thing; this names it for Teal.
+function lazy(t)
+  t.type = "lazy"
+  return t
+end
+
 -- In a component's function (`components.card = function(env, props,
 -- inst) … end`): where the host's children of `group` go, the unnamed group
 -- without one.

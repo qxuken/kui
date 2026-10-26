@@ -38,11 +38,13 @@ use crate::scroll::ScrollStore;
 use crate::spec::{Align, Dir, FloatAnchor, Min, Sizing};
 use crate::tree::{NIL, NodeContent, Tree};
 
-/// Gated on the tree-level flag first: on a frame with no floats this is
-/// one predicted branch rather than a read through every child's spec.
+/// Whether node `i` is out of flow: a float, or hidden (ADR 0069), which
+/// takes no room in its parent either. Gated on the tree-level flags
+/// first: on a frame with neither this is two predicted branches rather
+/// than a read through every child's spec.
 #[inline]
 fn is_float(tree: &Tree, i: u32) -> bool {
-    tree.any_float && tree.specs[i as usize].layout.float.is_some()
+    (tree.any_float && tree.specs[i as usize].layout.float.is_some()) || tree.is_hidden(i as usize)
 }
 
 /// Where in the free space one thing sits: 0 at the start, 1 at the end.
@@ -788,13 +790,95 @@ pub fn compute(
     } else {
         Vec::new()
     };
+    // A height entry whose match moves lays the frame out once more
+    // (ADR 0069, decision 12), from the clamps as declared.
+    let declared_all = if tree.any_size_rule {
+        all_declared_clamps(tree)
+    } else {
+        Vec::new()
+    };
     fit_widths(tree, text, 0..tree.len());
     grow_widths(tree, text, viewport);
     fit_heights(tree, text, 0..tree.len());
     grow_heights(tree, text, viewport);
+    if tree.any_size_rule && height_moved(tree) {
+        for &(i, min_w, max_w, min_h, max_h) in &declared_all {
+            let l = &mut tree.specs[i].layout;
+            (l.min_w, l.max_w, l.min_h, l.max_h) = (min_w, max_w, min_h, max_h);
+        }
+        fit_widths(tree, text, 0..tree.len());
+        grow_widths(tree, text, viewport);
+        fit_heights(tree, text, 0..tree.len());
+        grow_heights(tree, text, viewport);
+    }
     positions(tree, scroll, viewport, scale, 0..tree.len());
     if tree.any_node_float {
         anchored(tree, text, scroll, viewport, scale, &declared);
+    }
+    if tree.any_hidden {
+        collapse_hidden(tree);
+    }
+}
+
+/// The clamps layout writes over, for every node that declares one: what
+/// a second run of the passes puts back first.
+fn all_declared_clamps(tree: &Tree) -> Vec<Declared> {
+    let mut out = Vec::new();
+    for (i, spec) in tree.specs.iter().enumerate() {
+        let l = &spec.layout;
+        if l.min_w.deferred() || l.min_h.deferred() || l.max_w < 0.0 || l.max_h < 0.0 {
+            out.push((i, l.min_w, l.max_w, l.min_h, l.max_h));
+        }
+    }
+    out
+}
+
+/// Whether a height entry's match moved in this run of the passes, each
+/// node's flag cleared, so the second run's moves wait for the next frame.
+fn height_moved(tree: &mut Tree) -> bool {
+    let mut moved = false;
+    for k in 0..tree.ruled.len() {
+        let i = tree.ruled[k] as usize;
+        if let Some(r) = tree.specs[i].rules.as_deref_mut() {
+            moved |= std::mem::take(&mut r.live.height_moved);
+        }
+    }
+    moved
+}
+
+/// A hidden node and everything in it: no size, at its parent's corner,
+/// so it paints nothing, is hit nowhere and is read as nothing.
+fn collapse_hidden(tree: &mut Tree) {
+    let mut i = 0;
+    while i < tree.len() {
+        if tree.is_hidden(i) {
+            let end = tree.subtree_end(i);
+            let p = tree.parent[i];
+            let at = if p == NIL {
+                Vec2::ZERO
+            } else {
+                tree.pos[p as usize]
+            };
+            for j in i..end {
+                tree.size[j] = Size::ZERO;
+                tree.pos[j] = at;
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+}
+
+/// The rule step at the top of node `i`'s distribution in `axis`, its
+/// size there final (ADR 0069): its own-size entries over that axis, then
+/// a `min_column` row's columns.
+#[inline(never)]
+fn rules_step(tree: &mut Tree, i: u32, axis: AxisSel) {
+    let width = axis == AxisSel::Width;
+    crate::rules::settle_axis(tree, i as usize, width);
+    if width && tree.specs[i as usize].rules_spec().min_column > 0.0 {
+        crate::rules::columns(tree, i as usize, is_float);
     }
 }
 
@@ -1276,6 +1360,9 @@ fn distribute_axis(
     axis: AxisSel,
     viewport: Size,
 ) {
+    if (tree.any_size_rule || tree.any_min_column) && tree.specs[i as usize].rules.is_some() {
+        rules_step(tree, i, axis);
+    }
     let spec = tree.specs[i as usize].layout;
     let (own, pad) = match axis {
         AxisSel::Width => (tree.size[i as usize].w, spec.padding.x()),
@@ -2274,13 +2361,15 @@ fn positions(
 
         // Out of flow first, so the in-flow walk is one shape whether or
         // not it goes line by line. A frame with no floats skips the walk.
-        let mut c = if tree.any_float {
+        let mut c = if tree.any_float || tree.any_hidden {
             tree.first_child[i]
         } else {
             NIL
         };
         while c != NIL {
-            if let Some(cfg) = tree.specs[c as usize].layout.float {
+            if tree.is_hidden(c as usize) {
+                tree.pos[c as usize] = origin;
+            } else if let Some(cfg) = tree.specs[c as usize].layout.float {
                 place_float(tree, cfg, c, Rect::from_pos_size(origin, size), viewport);
             }
             c = tree.next_sibling[c as usize];

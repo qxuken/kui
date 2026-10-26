@@ -3112,6 +3112,25 @@ macro_rules! core_methods {
 
             // -- Frame -----------------------------------------------------
 
+            /// Whether a `<Lazy>` branch's decision disagreed with the frame
+            /// just laid out (ADR 0069): the view runs once more and the
+            /// frame is built again — at once on a headless `Ctx`, on the
+            /// next turn on a window. `createApp`'s loop does it itself; a
+            /// test driving `frame` by hand asks.
+            #[napi]
+            pub fn rerun_owed(&mut self) -> bool {
+                self.$core().rerun_owed()
+            }
+
+            /// What the last layout decided for each `<Lazy>` of the last
+            /// view, in the order the view held them: `true` builds
+            /// `render`, `false` `fallback`, `null` neither yet. The encoder
+            /// reads the next view's choices from it by position.
+            #[napi]
+            pub fn lazy_choices(&mut self) -> Vec<Option<bool>> {
+                self.$core().hosted_lazy_choices().to_vec()
+            }
+
             /// True when the last frame left a transition mid-flight. A window
             /// schedules its own redraws for that; this is for tests and
             /// drivers that want to know when motion has settled.

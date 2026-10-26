@@ -673,6 +673,13 @@ impl Core {
                 self.scale,
             );
         }
+        // What each node's `when` entries matched, kept for the next
+        // frame, and its `query` where that moved (ADR 0069).
+        if !self.tree.ruled.is_empty() {
+            self.settle_rules();
+        } else {
+            self.lazy_hosted_choices.clear();
+        }
         self.scroll_caret_into_view();
         // An explicit `reveal` after the caret nudge: the app asked for
         // this one, so it wins the offset if both want to move it.

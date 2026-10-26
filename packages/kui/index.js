@@ -198,7 +198,8 @@ Ctx.prototype.frame = function frame(width, height, scale, tree) {
   // The declared devtools tab on show, read once before the encode so a
   // `<devtoolsTab>`'s function child is called only for it (ADR 0032).
   const shownTab = this.devtoolsShownTab();
-  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS], { shownTab });
+  const lazy = this.lazyChoices();
+  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS], { shownTab, lazy });
   this.frameBinary(width, height, scale, stream, strings);
   this[SIZE] = null;
   reportUnknown(this, unknown, unknownTokens);
@@ -223,7 +224,8 @@ KuiWindow.prototype.setView = function setView(tree, window) {
   // The tab's content lives in the main window's tree (ADR 0032,
   // decision 6): another window's tree calls no function child.
   const shownTab = window == null || window === 'main' ? this.devtoolsShownTab() : null;
-  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS], { shownTab });
+  const lazy = this.lazyChoices();
+  const { stream, strings, unknown, unknownTokens } = encoder.encode(tree, this[TOKENS], { shownTab, lazy });
   this.setViewBinary(stream, strings, window);
   reportUnknown(this, unknown, unknownTokens);
 };
@@ -289,6 +291,19 @@ KuiWindow.prototype.span = span;
  *  (`setDevtoolsDock('window')`): what `windows()` lists it as, and what
  *  the loop never asks the app to draw. */
 export const DEVTOOLS_WINDOW = 'kui-devtools';
+
+/** A branch built only when it can be shown (ADR 0069): `render()` when
+ *  the parent offers the room `needs` names (`{ w, h }`, either or both) —
+ *  laid out at exactly that size — or while `query` holds over the
+ *  parent's size, the window's or the environment's; `fallback()` (if
+ *  any) otherwise, and neither before the first layout. The decision
+ *  comes from the last layout and the frame is built again when this
+ *  one's disagrees. `onQuery` is the message the decision's changes
+ *  arrive as. */
+export function Lazy(props) {
+  const { key, ...rest } = props ?? {};
+  return { type: 'lazy', key: key != null ? String(key) : undefined, props: rest, children: [] };
+}
 
 const formatWarning = (w) => `kui: warning [${w.code}] node ${w.key}: ${w.message}`;
 const diagnosticsByDefault = () => process.env.NODE_ENV !== 'production';
@@ -547,6 +562,12 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // aimed at the window being drawn first (`useWindow`, backlog AR12), so
   // `editText`, `focus` and the rest answer for that window's tree and
   // not the main one's, and aimed back at main once every view has run.
+  // A headless surface lays its frame out as the view is handed over, so a
+  // `<Lazy>` whose decision the layout overturned is drawn again at once;
+  // a window lays out on its own schedule, and its next turn redraws
+  // (ADR 0069, decision 15).
+  const lowersAtOnce = surface instanceof Ctx;
+  let redrawing = false;
   function draw() {
     dirty = false;
     stamp?.(at() / 1000);
@@ -562,6 +583,15 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
       show(name === 'main' ? withWindows(tree, declared) : tree, name);
     }
     surface.useWindow?.();
+    if (lowersAtOnce && !redrawing && surface.rerunOwed?.()) {
+      redrawing = true;
+      try {
+        draw();
+      } finally {
+        redrawing = false;
+      }
+      return;
+    }
     drainWarnings();
     flushEffects();
   }
@@ -721,6 +751,9 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
       let drew = false;
       try {
         drainWarnings();
+        // A window's `<Lazy>` whose decision its last layout overturned
+        // owes the view again.
+        if (!lowersAtOnce && surface.rerunOwed?.()) dirty = true;
         used = drainEvents() || dirty;
         drew = used;
         if (ticksTo(at(), false)) drew = true;

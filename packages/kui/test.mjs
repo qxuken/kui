@@ -71,6 +71,7 @@ const SAMPLE = {
   ],
   enter: { dx: -40, dy: 8, width: { grow: 0 }, bg: '#11223300', radius: 0, opacity: 0 },
   gradient: { to: 'bottom right', stops: ['#112233', ['#ffffff', 0.5], '#000000'] },
+  rules: [{ dark: true, gap: 6 }, { width: { below: 100 }, dir: 'column' }],
 };
 
 /** Per-prop overrides, where the shared sample for a kind would not survive
@@ -5832,6 +5833,34 @@ SCENE_TREES.virtual = () =>
     ),
   ]);
 
+// `conformance::build_rules` (ADR 0069): a row ruled by its own width and
+// the palette, with `onQuery`; a `minColumn` row; a `hidden` box.
+SCENE_TREES.rules = () =>
+  root({}, [
+    box({}, [
+      box(
+        {
+          dir: 'row', width: 300, gap: 10, onQuery: { kind: 'q' },
+          when: [
+            { width: { below: 400, band: 16 }, dir: 'column', gap: 4, hidden: ['extra'] },
+            { dark: true, bg: '#202020' },
+          ],
+        },
+        [
+          box({ dir: 'row', width: 50, height: 20, bg: '#c04040', onClick: 'go', label: 'go' }, [], 'a'),
+          box({ dir: 'row', width: 50, height: 20, bg: '#4040c0', onClick: 'more', label: 'more' }, [], 'extra'),
+        ],
+        'row',
+      ),
+      box(
+        { dir: 'row', width: 300, gap: 10, minColumn: 100 },
+        ['c0', 'c1', 'c2'].map((k) => box({ dir: 'row', width: 10, height: 10, bg: '#40c040' }, [], k)),
+        'grid',
+      ),
+      box({ dir: 'row', width: 40, height: 40, bg: '#ffffff', label: 'gone', role: 'button', hidden: true }, [], 'gone'),
+    ]),
+  ]);
+
 // `conformance::build_layers`: two floats over a scroller's bar (ADR 0023).
 // The toast is later in the tree than the popover, so it is over it in
 // phase 0; the popover closes in phase 1 and reopens in phase 2, which puts
@@ -10488,4 +10517,79 @@ test('createApp wraps update in a handler span while recording (ADR 0058)', () =
   app.advance(16);
   app.ctx.setPerfRecording(false);
   assert.ok(app.ctx.perfTrace().includes('handler'), 'the update was a handler span');
+});
+
+// Props by condition (ADR 0069): a `when` list the core resolves — a row
+// that turns into a column under 400 px of its own width, in the frame it
+// does — and a `<Lazy>` branch built from the room its row offers, the
+// view run again when a layout overturns the choice.
+test('a when list lays a row out by its own width, and <Lazy> builds what fits (ADR 0069)', () => {
+  const { Lazy } = pkg;
+  const view = (width) =>
+    box({}, [
+      box({ dir: 'row', width, gap: 10, onQuery: { kind: 'q' },
+        when: [{ width: { below: 400, band: 20 }, dir: 'column', gap: 4 }] }, [
+        box({ width: 100, height: 20 }, [], 'a'),
+        Lazy({
+          needs: { w: 150 },
+          onQuery: { kind: 'lazy' },
+          render: () => box({ width: 10, height: 10 }, [], 'wide'),
+          fallback: () => box({ width: 5, height: 5 }, [], 'narrow'),
+        }),
+      ], 'row'),
+    ]);
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  let builds = 0;
+  const frame = (width) => {
+    builds = 0;
+    do {
+      builds++;
+      ctx.frame(600, 300, 1, view(width));
+    } while (ctx.rerunOwed() && builds < 3);
+  };
+  const labels = () => ctx.nodes().map((n) => n.label).filter(Boolean);
+  frame(500);
+  assert.equal(builds, 2, 'the first frame lays out before it builds the branch');
+  assert.ok(labels().includes('wide'), labels().join(','));
+  const row = ctx.nodes().find((n) => n.label === 'row');
+  assert.equal(row.dir, 'row');
+  frame(500);
+  assert.equal(builds, 1, 'steady: one build');
+  ctx.pollEvents();
+  frame(380);
+  const col = ctx.nodes().find((n) => n.label === 'row');
+  assert.equal(col.dir, 'column', 'in the frame the width crossed');
+  assert.equal(col.gap, 4);
+  const q = ctx.pollEvents().filter((e) => e.event === 'query');
+  assert.ok(q.some((e) => e.payload.kind === 'q' && e.payload.query.matched[0] === 0), JSON.stringify(q));
+  assert.deepEqual(ctx.warnings(), []);
+});
+
+test('createApp draws a crossed <Lazy> again before the frame is read (ADR 0069)', () => {
+  const { Lazy } = pkg;
+  const app = createApp(
+    {
+      init: () => ({ w: 400 }),
+      update: (m, msg) => ({ w: msg.w }),
+      view: (m) =>
+        box({}, [
+          box({ dir: 'row', width: m.w }, [
+            Lazy({
+              needs: { w: 200 },
+              render: () => box({ width: 10, height: 10 }, [], 'big'),
+              fallback: () => box({ width: 5, height: 5 }, [], 'small'),
+            }),
+          ]),
+        ]),
+    },
+    { width: 600, height: 300 },
+  );
+  app.ctx.setInspect(true);
+  app.render();
+  assert.ok(app.ctx.nodes().some((n) => n.label === 'big'), 'built on the first render');
+  app.dispatch({ w: 150 });
+  app.step();
+  assert.ok(app.ctx.nodes().some((n) => n.label === 'small'), 'and the fallback once it no longer fits');
+  assert.equal(app.ctx.rerunOwed(), false);
 });

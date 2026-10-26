@@ -72,7 +72,8 @@ pub struct NodeInfo {
     /// The declarations that make it interactive or special, by name:
     /// `click`, `drag`, `key`, `hover`, `hoverable`, `context-menu`,
     /// `modal`, `selectable`, `focusable`, `disabled`, `scroll`, `clip`,
-    /// `transition`.
+    /// `transition`, and ADR 0069's `rules` (a `when` list), `lazy` and
+    /// `hidden`.
     pub flags: Vec<&'static str>,
     /// The paint layer it is in: 0 in flow, else the rank of
     /// its float layer from the bottom, 1 being the first layer over the
@@ -425,6 +426,43 @@ fn spec_rows(
         it.rules.is_some(),
     );
     row("paint", "pixel snap", yes(st.pixel_snap), st.pixel_snap);
+    // The `when` list (ADR 0069): each entry as a person reads it, marked
+    // by whether this frame matched it.
+    let rules = spec.rules_spec();
+    for (k, rule) in rules.entries().iter().enumerate() {
+        let on = rules.matched() & (1 << k) != 0;
+        row(
+            "rules",
+            "when",
+            format!(
+                "{} {k}: {}",
+                if on { "● matched" } else { "○" },
+                rule.describe()
+            ),
+            true,
+        );
+    }
+    if rules.min_column > 0.0 {
+        row("rules", "min column", format!("{}", rules.min_column), true);
+    }
+    if let Some(l) = rules.lazy() {
+        let ask = match (&l.needs, &l.query) {
+            (Some((w, h)), _) => format!(
+                "needs {} × {}",
+                w.map_or("—".into(), |w| w.to_string()),
+                h.map_or("—".into(), |h| h.to_string())
+            ),
+            (None, Some(q)) => format!("query {}", q.describe()),
+            (None, None) => "—".into(),
+        };
+        let built = match l.built {
+            Some(true) => "render",
+            Some(false) => "fallback",
+            None => "none yet",
+        };
+        row("rules", "lazy", format!("{ask} → {built}"), true);
+    }
+    row("rules", "hidden", yes(spec.hidden), spec.hidden);
     if let Some((color, len)) = text {
         row("text", "colour", hex(color), true);
         row("text", "length", format!("{len} bytes"), true);
@@ -645,6 +683,17 @@ impl Core {
             }
             if spec.transition.is_some() {
                 flags.push("transition");
+            }
+            if let Some(r) = spec.rules.as_deref() {
+                if !r.entries().is_empty() {
+                    flags.push("rules");
+                }
+                if r.lazy().is_some() {
+                    flags.push("lazy");
+                }
+            }
+            if tree.is_hidden(i) {
+                flags.push("hidden");
             }
             let mut events = Vec::new();
             for (name, v) in [

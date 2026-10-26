@@ -119,7 +119,7 @@ impl Core {
                 open.pop();
             }
             let role = self.tree.specs[i].access().role;
-            if role == Some(Role::None) {
+            if role == Some(Role::None) || self.tree.is_hidden(i) {
                 i = self.tree.subtree_end(i);
                 continue;
             }

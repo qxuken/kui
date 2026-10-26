@@ -208,6 +208,21 @@ pub(crate) const SHAPES: &[(&str, Fields)] = &[
         "kui.RangeEnd",
         &[("index", false, "integer"), ("byte", true, "integer")],
     ),
+    (
+        "kui.Needs",
+        &[("w", false, "number"), ("h", false, "number")],
+    ),
+    (
+        "kui.Lazy",
+        &[
+            ("needs", false, "kui.Needs"),
+            ("query", false, "table"),
+            ("render", true, "fun(): kui.Node"),
+            ("fallback", false, "fun(): kui.Node"),
+            ("on_query", false, "any"),
+            ("key", false, "string"),
+        ],
+    ),
 ];
 
 /// One event's data (ADR 0047, decision 10): the class it is, the field
@@ -397,6 +412,16 @@ pub(crate) const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
         "range",
         "kui.WithRange",
         &[("first", true, "integer"), ("last", true, "integer")],
+    ),
+    (
+        "kui.QueryEvent",
+        "query",
+        "kui.WithQuery",
+        &[
+            ("matched", true, "integer[]"),
+            ("width", true, "number"),
+            ("height", true, "number"),
+        ],
     ),
     (
         "kui.LayoutEvent",
@@ -737,6 +762,7 @@ pub(crate) fn signature(
             let (optional, ty) = match p.as_str() {
                 "opts" if f.name == "uniform_list" => (false, "kui.UniformList".into()),
                 "opts" if f.name == "list" => (false, "kui.List".into()),
+                "t" if f.name == "lazy" => (false, "kui.Lazy".into()),
                 "measure" => (false, "fun(i: integer, width: number): number".into()),
                 "t" | "opts" => (
                     tolerates_nil(&f.body, p),
@@ -969,7 +995,7 @@ fn type_of(kind: &Kind) -> String {
         // The stock three, for an editor to offer, or any installed name.
         Kind::Family => "\"sans\"|\"serif\"|\"mono\"|string".into(),
         Kind::Resource => "integer".into(),
-        Kind::Keyframes | Kind::Enter | Kind::Gradient => "table".into(),
+        Kind::Keyframes | Kind::Enter | Kind::Gradient | Kind::Rules => "table".into(),
     }
 }
 

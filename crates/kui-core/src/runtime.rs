@@ -79,6 +79,7 @@ mod resources_api;
 mod scrolling;
 mod select_api;
 mod svg_node;
+mod when;
 mod windows;
 
 /// Wheel line-delta to logical px, at the standard feel.
@@ -699,6 +700,22 @@ pub struct Core {
     /// The data rows each `on_range` node last reported, and in which
     /// frame (ADR 0065).
     ranges: FxHashMap<Key, ((u64, u64), u64)>,
+    /// What each node with `when` entries matched, and each range's last
+    /// answer, by key (ADR 0069): what the band and `query` read.
+    rule_memo: FxHashMap<Key, when::RuleMemo>,
+    /// Each lazy branch's last decision and the room it was taken from.
+    lazy_memo: FxHashMap<Key, when::LazyMemo>,
+    /// A lazy branch's decision disagreed with this frame's layout: the
+    /// runner builds the frame again before it draws it (ADR 0069,
+    /// decision 15), and `Core::rerun_owed` says so.
+    rerun_owed: bool,
+    /// This build is that second one, so a second disagreement waits for
+    /// the next frame and warns.
+    in_rerun: bool,
+    /// The branches this build opened through `lazy_open_as`, in order,
+    /// and what the last finished layout decided for each such branch.
+    lazy_hosted: Vec<Key>,
+    lazy_hosted_choices: Vec<Option<bool>>,
     /// One-off announcements queued since the last drain (see
     /// [`Self::announce`]). The fourth of
     /// the four drained channels, and the same shape as the other three:
@@ -1459,6 +1476,12 @@ impl Core {
             frame_no: 0,
             layouts: FxHashMap::default(),
             ranges: FxHashMap::default(),
+            rule_memo: FxHashMap::default(),
+            lazy_memo: FxHashMap::default(),
+            rerun_owed: false,
+            in_rerun: false,
+            lazy_hosted: Vec::new(),
+            lazy_hosted_choices: Vec::new(),
             announcements: Vec::new(),
             last_announcement: None,
             events_answered: 0,
@@ -2167,6 +2190,10 @@ impl Core {
         self.framed = true;
         self.frame_no += 1;
         self.replay_begin_frame();
+        // A build owed by a lazy branch's crossing is this one; a second
+        // crossing in it waits for the next frame (ADR 0069).
+        self.in_rerun = std::mem::take(&mut self.rerun_owed);
+        self.lazy_hosted.clear();
         // The layout rects a node reported, swept on the one cadence
         // every by-last-use store sweeps on (`retain::sweep_cutoff`, AR45).
         if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {

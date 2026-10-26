@@ -373,6 +373,15 @@ export interface RangeEvent {
   first: number;
   last: number;
 }
+/** A node's matched `when` entries over its own size and the window's
+ *  (ADR 0069): the 0-based indices of every entry that matches, and the
+ *  node's size; on a `<Lazy>`, its decision — `[0]` while `render` is
+ *  built — and the room its parent offers. */
+export interface QueryEvent {
+  matched: number[];
+  width: number;
+  height: number;
+}
 /** The rect layout gave an `onLayout` node — logical px, viewport
  *  coordinates, after scrolling and position easing — on its first frame
  *  and whenever it changes, never on a frame that left it alone (a
@@ -591,6 +600,10 @@ export interface WithLayout {
 export interface WithRange {
   range: RangeEvent;
 }
+/** The `query` field, on an `onQuery` message. */
+export interface WithQuery {
+  query: QueryEvent;
+}
 /** The `change` field of an editor's `onChange` message. */
 export interface WithEditChange {
   change: EditChangeEvent;
@@ -686,6 +699,8 @@ export type FilesMsg<T = {}> = T & WithFiles;
 export type LayoutMsg<T = {}> = T & WithLayout;
 /** The app's message `T` as an `onRange` node's rows in view arrive. */
 export type RangeMsg<T = {}> = T & WithRange;
+/** The app's message `T` as an `onQuery` node's matched entries arrive. */
+export type QueryMsg<T = {}> = T & WithQuery;
 /** The app's message `T` as an editor's `onChange` arrives. */
 export type EditChangeMsg<T = {}> = T & WithEditChange;
 /** The app's message `T` as a slider's `onChange` arrives. */
@@ -831,7 +846,7 @@ export type EventName =
   | 'scroll' | 'focus' | 'hover' | 'drop' | 'files' | 'open' | 'layout'
   | 'resize' | 'window' | 'system' | 'fonts' | 'modifiers' | 'change'
   | 'submit' | 'cancel' | 'boundary' | 'sound' | 'capture' | 'dismiss'
-  | 'component' | 'range';
+  | 'component' | 'range' | 'query';
 // -- end generated --
 
 /** A position in an editor's text: one of its `runs` and a character
@@ -1485,7 +1500,31 @@ export type WarningCode =
    *  divider; the options are drawn as declared. A `current` the view computes
    *  from a list it also filters is how this happens; the index is into the
    *  options as passed, separators counted. Raised once per field. */
-  | 'select-current-ignored';
+  | 'select-current-ignored'
+  /** A `when` entry names a prop it may not set (ADR 0069, decision 7): an
+   *  entry over the node's own size sets the layout of its children only —
+   *  direction, gaps, padding, wrap, alignment, `minColumn` and which children
+   *  are `hidden` — and no entry sets a handler, an access prop, a key or its
+   *  children. The prop is left out and the rest of the entry applies. Also
+   *  raised for an entry past the sixty-fourth, which is dropped. */
+  | 'rule-prop-refused'
+  /** A node reads its own size in an axis whose size comes from its content — a
+   *  `fit` width under a `when` entry over `width`, or the parent of a lazy
+   *  branch that needs width — which would loop (ADR 0069, decision 8). The
+   *  `fit` is refused: the node takes the room its parent offers in that axis,
+   *  as a `grow` would, and the condition reads that. */
+  | 'query-on-fit'
+  /** A lazy branch's `query` names a state condition (`hovered`, `pressed`,
+   *  `focused`, ...): a hover must not build or drop a subtree. The state
+   *  conditions are left out of the query; a `when` entry is how a node looks
+   *  different while hovered. */
+  | 'query-state'
+  /** A lazy branch's decision disagreed with the layout twice in one frame: the
+   *  view was run again once on the first disagreement, as the core does, and
+   *  the branch it built still did not fit what that layout gave it — a branch
+   *  whose room depends on itself. The frame is drawn as it was laid out and
+   *  the next frame decides again. */
+  | 'query-unsettled';
 // -- end generated --
 
 /** A silent misconfiguration the core noticed while finishing a frame —
@@ -2051,6 +2090,11 @@ export interface SystemEnv {
    *  leaving, so once risen it stays for the window's life; only AT-SPI
    *  reports deactivation. Arrives as a `SystemMsg` when it changes. */
   assistive: 'unknown' | 'none' | 'listening';
+  /** Whether the user asked for more contrast (ADR 0069): `'more'` under
+   *  macOS's Increase Contrast or a Windows high contrast theme,
+   *  `'normal'` when the OS says not, `'unknown'` where nobody asked. What
+   *  a `when` entry's `contrast: 'more'` reads. */
+  contrast: 'unknown' | 'normal' | 'more';
 }
 
 /** The window chrome facts on `Env`. A view that draws its own titlebar
@@ -3233,6 +3277,21 @@ export declare class Ctx {
    * or one message type when only that is being watched.
    */
   pollEvents<A = AppMsg>(): UiEvent<A>[]
+  /**
+   * Whether a `<Lazy>` branch's decision disagreed with the frame
+   * just laid out (ADR 0069): the view runs once more and the
+   * frame is built again — at once on a headless `Ctx`, on the
+   * next turn on a window. `createApp`'s loop does it itself; a
+   * test driving `frame` by hand asks.
+   */
+  rerunOwed(): boolean
+  /**
+   * What the last layout decided for each `<Lazy>` of the last
+   * view, in the order the view held them: `true` builds
+   * `render`, `false` `fallback`, `null` neither yet. The encoder
+   * reads the next view's choices from it by position.
+   */
+  lazyChoices(): Array<boolean | undefined | null>
   /**
    * True when the last frame left a transition mid-flight. A window
    * schedules its own redraws for that; this is for tests and
@@ -4884,6 +4943,21 @@ export declare class KuiWindow {
    */
   pollEvents<A = AppMsg>(): UiEvent<A>[]
   /**
+   * Whether a `<Lazy>` branch's decision disagreed with the frame
+   * just laid out (ADR 0069): the view runs once more and the
+   * frame is built again — at once on a headless `Ctx`, on the
+   * next turn on a window. `createApp`'s loop does it itself; a
+   * test driving `frame` by hand asks.
+   */
+  rerunOwed(): boolean
+  /**
+   * What the last layout decided for each `<Lazy>` of the last
+   * view, in the order the view held them: `true` builds
+   * `render`, `false` `fallback`, `null` neither yet. The encoder
+   * reads the next view's choices from it by position.
+   */
+  lazyChoices(): Array<boolean | undefined | null>
+  /**
    * True when the last frame left a transition mid-flight. A window
    * schedules its own redraws for that; this is for tests and
    * drivers that want to know when motion has settled.
@@ -6436,6 +6510,13 @@ export interface UniformListProps extends Omit<BoxProps, 'children' | 'scrollY' 
  * reach a row that is not built, since `reveal` of an unbuilt row finds
  * nothing.
  */
+/** A branch built only when it can be shown (ADR 0069): `render()` when
+ *  the parent offers the room `needs` names — laid out at exactly that
+ *  size — or while `query` holds; `fallback()` otherwise, and neither
+ *  before the first layout. The frame is built again when this one's
+ *  layout disagrees with the choice. */
+export declare function Lazy(props: import('./jsx-runtime.js').LazyProps): import('./jsx-runtime.js').KuiElement;
+
 export declare function uniformList(
   ctx: Pick<Ctx, 'scrollGeometry' | 'env'>,
   opts: UniformListProps,

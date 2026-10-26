@@ -2711,6 +2711,13 @@ impl DynShell<'_> {
 
         let t_layout = std::time::Instant::now();
         ui.finish();
+        // A lazy branch whose decision this layout overturned: the frame
+        // is built once more before it is drawn (ADR 0069, decision 15).
+        if pane.core.rerun_owed() {
+            let mut ui = pane.core.frame_with(viewport, scale, extensions);
+            app.view(&mut ui);
+            ui.finish();
+        }
         let layout_ms = t_layout.elapsed().as_secs_f32() * 1e3;
 
         // Silent misconfigurations the core noticed (a grow weight with

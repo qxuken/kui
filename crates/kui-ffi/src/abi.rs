@@ -223,7 +223,8 @@
 ///   `kui_instance_slot`, and `from` appended to `KuiEvent` (80 bytes on
 ///   64-bit, from 64): the provider that raised a component event. And
 ///   `focus_ring` appended to `KuiSpec` (816 bytes on 64-bit, from 808),
-///   the core focus ring's colour (backlog C93), with
+///   the core focus ring's colour (backlog C93), then `min_column`,
+///   `hidden`, `on_query` and `when` (840 bytes; ADR 0069), with
 ///   `kui_tab_moves_focus` (backlog C99), `kui_is_group_hovered` and
 ///   `kui_is_group_pressed` (backlog C92), new functions.
 pub const KUI_ABI_VERSION: u32 = 39;

@@ -548,6 +548,32 @@ warnings! {
     /// this happens; the index is into the options as passed, separators
     /// counted. Raised once per field.
     pub const SELECT_CURRENT_IGNORED: &str = "select-current-ignored";
+    /// A `when` entry names a prop it may not set (ADR 0069, decision 7):
+    /// an entry over the node's own size sets the layout of its children
+    /// only — direction, gaps, padding, wrap, alignment, `minColumn` and
+    /// which children are `hidden` — and no entry sets a handler, an access
+    /// prop, a key or its children. The prop is left out and the rest of
+    /// the entry applies. Also raised for an entry past the sixty-fourth,
+    /// which is dropped.
+    pub const RULE_PROP_REFUSED: &str = "rule-prop-refused";
+    /// A node reads its own size in an axis whose size comes from its
+    /// content — a `fit` width under a `when` entry over `width`, or the
+    /// parent of a lazy branch that needs width — which would loop (ADR
+    /// 0069, decision 8). The `fit` is refused: the node takes the room
+    /// its parent offers in that axis, as a `grow` would, and the
+    /// condition reads that.
+    pub const QUERY_ON_FIT: &str = "query-on-fit";
+    /// A lazy branch's `query` names a state condition (`hovered`,
+    /// `pressed`, `focused`, ...): a hover must not build or drop a
+    /// subtree. The state conditions are left out of the query; a `when`
+    /// entry is how a node looks different while hovered.
+    pub const QUERY_STATE: &str = "query-state";
+    /// A lazy branch's decision disagreed with the layout twice in one
+    /// frame: the view was run again once on the first disagreement, as
+    /// the core does, and the branch it built still did not fit what that
+    /// layout gave it — a branch whose room depends on itself. The frame
+    /// is drawn as it was laid out and the next frame decides again.
+    pub const QUERY_UNSETTLED: &str = "query-unsettled";
 }
 
 /// The [`DUPLICATE_TAB`] warning for one name. Keyed by the name, the way
@@ -1264,6 +1290,19 @@ impl Diagnostics {
         }
         self.log.push(w.clone());
         self.pending.push(w);
+    }
+
+    /// [`Self::raise`] for a warning raised per node per frame: the
+    /// message is made only the first time the (code, key) pair is seen.
+    pub(crate) fn raise_once(
+        &mut self,
+        code: &'static str,
+        key: Key,
+        message: impl FnOnce() -> String,
+    ) {
+        if self.enabled {
+            self.warn(code, key, message);
+        }
     }
 
     fn warn(&mut self, code: &'static str, key: Key, message: impl FnOnce() -> String) {

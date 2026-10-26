@@ -2857,7 +2857,17 @@ fn script_relative(src: &str) -> String {
 /// whole match was 64 KB of stack a level in a debug build, and 32
 /// nested columns overflowed a test thread.
 fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
-    let ty: mlua::LuaString = t.get("type")?;
+    // The lazy form as a bare child table (ADR 0069): no constructor set
+    // its `type`, and its `render` says what it is.
+    let ty: Option<mlua::LuaString> = t.get("type")?;
+    let Some(ty) = ty else {
+        if matches!(t.get::<mlua::Value>("render")?, mlua::Value::Function(_)) {
+            return build_lazy(ui, t);
+        }
+        return Err(bad(
+            "a child table with no `type`: build it with a constructor (row { }, text(...))",
+        ));
+    };
     let ty = ty.to_str()?;
     let ty: &str = &ty;
     match ty {
@@ -2889,6 +2899,7 @@ fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             ui.slot(&name, &props);
             Ok(())
         }
+        "lazy" => build_lazy(ui, t),
         // Where a component's fill puts its host's children (ADR 0060).
         "children" => {
             let group = t.get::<Option<String>>("group")?.unwrap_or_default();
@@ -2897,6 +2908,76 @@ fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         }
         _ => build_widget(ui, t, ty),
     }
+}
+
+/// A lazy branch (ADR 0069): `needs = { w =, h = }` or `query = { … }`,
+/// `render` and `fallback` (functions returning a node, or a list of
+/// them), `on_query` and `key`. The core decides from the last layout's
+/// room, and the function it picks is called while the branch's node is
+/// open; neither is called before any layout.
+#[inline(never)]
+fn build_lazy(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
+    let mut spec = match t.get::<mlua::Value>("query")? {
+        mlua::Value::Nil => {
+            let needs: Option<Table> = t.get("needs")?;
+            let needs = needs.ok_or_else(|| bad("a lazy branch needs `needs` or `query`"))?;
+            let axis = |k: &str| -> mlua::Result<Option<f32>> {
+                Ok(needs
+                    .get::<Option<f64>>(k)?
+                    .map(|v| v as f32)
+                    .filter(|v| *v > 0.0))
+            };
+            kui_core::LazySpec::needs(kui_core::Needs {
+                w: axis("w")?,
+                h: axis("h")?,
+            })
+        }
+        q => {
+            let tokens = ui.core().token_lookup();
+            let mut refs = kui_core::NameRefs::new(tokens);
+            let cond = kui_core::rules::parse_cond(&lua_to_value(&q)?, Some(&mut refs))
+                .map_err(|e| bad(format!("lazy query: {e}")))?;
+            kui_core::LazySpec::query(cond)
+        }
+    };
+    if let v @ (mlua::Value::Table(_) | mlua::Value::String(_) | mlua::Value::Integer(_)) =
+        t.get::<mlua::Value>("on_query")?
+    {
+        spec = spec.on_query(lua_to_value(&v)?);
+    }
+    let built = match t.get::<Option<String>>("key")? {
+        Some(k) => ui.core().lazy_open_keyed(&k, spec),
+        None => ui.core().lazy_open(spec),
+    };
+    let pick = match built {
+        Some(true) => t.get::<Option<mlua::Function>>("render")?,
+        Some(false) => t.get::<Option<mlua::Function>>("fallback")?,
+        None => None,
+    };
+    let result = (|| {
+        let Some(f) = pick else {
+            return Ok(());
+        };
+        match f.call::<mlua::Value>(())? {
+            mlua::Value::Nil => Ok(()),
+            mlua::Value::Table(node) => {
+                if matches!(node.get::<mlua::Value>("type")?, mlua::Value::Nil)
+                    && !matches!(node.get::<mlua::Value>("render")?, mlua::Value::Function(_))
+                {
+                    // A list of nodes.
+                    each_child(&node, |n| build_node(ui, &n))
+                } else {
+                    build_node(ui, &node)
+                }
+            }
+            other => Err(bad(format!(
+                "a lazy branch's function returned a {}, not a node",
+                other.type_name()
+            ))),
+        }
+    })();
+    ui.core().lazy_close();
+    result
 }
 
 #[inline(never)]
@@ -4728,6 +4809,11 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
         Kind::Gradient => Parsed::Gradient(
             kui_core::gradient::parse_with(&lua_to_value(v)?, Some(refs)).map_err(bad)?,
         ),
+        // The entries' conditions and props read in the core, the way a
+        // keyframe's stops do; a `$name` resolves through the same refs.
+        Kind::Rules => {
+            Parsed::Rules(kui_core::rules::parse_with(&lua_to_value(v)?, Some(refs)).map_err(bad)?)
+        }
     }))
 }
 

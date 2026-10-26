@@ -193,6 +193,10 @@ pub const P_REVEAL_ON_HOVER: u32 = 141;
 pub const P_FLOATS_IN_ORDER: u32 = 142;
 pub const P_ON_RANGE: u32 = 143;
 pub const P_FOCUS_RING: u32 = 144;
+pub const P_WHEN: u32 = 145;
+pub const P_MIN_COLUMN: u32 = 146;
+pub const P_HIDDEN: u32 = 147;
+pub const P_ON_QUERY: u32 = 148;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -461,6 +465,10 @@ pub enum Kind {
     /// Carried like a `Msg` and parsed in the core; C fills a
     /// `KuiGradient`.
     Gradient,
+    /// A `when` list (`crate::rules::parse_with` reads the plain-data
+    /// form, ADR 0069). Carried like a `Msg` and parsed in the core; C
+    /// passes it as a `KuiValue` list.
+    Rules,
 }
 
 /// Where a parsed value lands. `PropDef::target` derives from this.
@@ -476,6 +484,7 @@ pub enum Apply {
     SpecKeyframes(fn(NodeSpec, Vec<Keyframe>) -> NodeSpec),
     SpecEnter(fn(NodeSpec, Enter) -> NodeSpec),
     SpecGradient(fn(NodeSpec, crate::gradient::Gradient) -> NodeSpec),
+    SpecRules(fn(NodeSpec, Vec<crate::rules::Rule>) -> NodeSpec),
     SpecResource(fn(NodeSpec, u64) -> NodeSpec),
     StyleF32(fn(TextStyle, f32) -> TextStyle),
     StyleColor(fn(TextStyle, Color) -> TextStyle),
@@ -973,6 +982,39 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.focus_ring(c)),
         doc: "The colour of the ring the core draws around a keyboard-visibly focused node — a control, a `focusable` box, an `onKey` sink — for this node and everything under it that declares none (backlog C93): the nearest declaration on the focused node or above it wins, else the theme's `focusRing`. A colour with no alpha draws no ring, turning it off without touching the background as `focusBg` would (in C, whose 0 is unset, any colour with no alpha but 0: `0xffffff00`). What an add-on that paints in its own palette sets once at the root of what it draws, `focusRing=\"$kitFocus\"`.",
+    },
+    PropDef {
+        name: "when",
+        id: P_WHEN,
+        kind: Kind::Rules,
+        apply: Apply::SpecRules(|mut s, rules| {
+            for r in rules {
+                s.rules_mut().push(r);
+            }
+            s
+        }),
+        doc: "Props by condition (ADR 0069): a list of entries, each the conditions it tests and the props it sets while every one holds — `{ width: { below: 700, band: 16 }, dark: true, gap: 8 }`. Every entry that matches applies, in list order, over the node's own props, so a later entry wins a prop an earlier one set; `hoverBg`, `pressedBg` and `focusBg` are entries ahead of the list. The conditions: the node's own `width` / `height` (`{ below, above, band }`, each a length or a `$length` token; `below` holds under it, `above` at or over it, and a range that holds keeps holding `band` past its threshold, so a size resting on one does not flicker); `window: { width, height }`, the same against the window's content size; `dark`, `light`, `reducedMotion` (`reduced_motion`), `contrast: \"more\"`, `platform` (`\"macos\"`, `\"windows\"`, `\"linux\"` or a list), `scale: { above }`; and the node's state, `hovered`, `pressed`, `focused`, `focusVisible`, `disabled`, `selected`, each true or false — hovered as `hoverBg` reads it, over the node or anything inside it or its hover group. The core resolves them, so a view declares a responsive, themed, interactive box once and is not re-run for a resize, a theme switch or a hover: window, environment and state entries as the node opens, before its `transition` eases what they set (layout props jump unless `slide`; under reduced motion everything jumps); own-size entries inside layout, a width entry once the node's width is final and before its children are laid across it, a height entry with one more layout pass on the frame its match changes — no frame is drawn with a stale match. An entry over the node's own size sets the layout of its children only — `dir`, `gap`, `crossGap`, padding, `wrapChildren`, `mainAlign`, `crossAlign`, `minColumn`, and `hidden` as the list of the keyed children it hides (`hidden: [\"chooser\"]`) — and makes the node a container in that axis: a `fit` size there is refused (`query-on-fit`) and the node takes the room its parent offers. Other entries set any box prop but handlers, access props, keys and children. What an entry may not set is left out with `rule-prop-refused`, the rest of it standing. `onQuery` tells the view when its own-size and window matches change.",
+    },
+    PropDef {
+        name: "minColumn",
+        id: P_MIN_COLUMN,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.min_column(v)),
+        doc: "On a row: wraps it into equal columns, as many as fit at this width or more — `max(1, floor((w + gap) / (n + gap)))` — every child as wide as a column, the last line's children too, which do not stretch (ADR 0069, decision 17). CSS's `repeat(auto-fill, minmax(n, 1fr))`: a gallery's cards, a settings grid. The lines are `crossGap` apart. An own-size `when` entry may set it, and on a column it does nothing.",
+    },
+    PropDef {
+        name: "hidden",
+        id: P_HIDDEN,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.hidden(true)),
+        doc: "Not laid out and not drawn (ADR 0069): the node and everything in it take no room in its parent — no gap either — paint nothing, take no input and are out of the access tree and the Tab ring, while their keys, focus history and retained state (scroll offsets, editor text) are kept as any declared node's are. What a `when` entry sets to drop a node at a setting or a window size; an entry over the node's own size names the children it hides instead (`hidden: [\"key\"]`).",
+    },
+    PropDef {
+        name: "onQuery",
+        id: P_ON_QUERY,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_query(v)),
+        doc: "Query handler (ADR 0069): when the set of this node's `when` entries over its own size and the window's that match changes — and after the frame that first lays it out — this message arrives with `query: {matched, width, height}` in it, `matched` the 0-based indices of every matching entry. On a lazy branch's node, its decision: `matched` is `[0]` while `render` is built. State and environment changes do not raise it. Nothing needs it to lay out; it is for a view that keeps the fact in its model.",
     },
     PropDef {
         name: "modal",
@@ -1887,13 +1929,61 @@ pub fn c_field(def: &PropDef) -> String {
 }
 
 /// The Odin spelling of a schema row: the `Spec` or `Text_Style` field of
-/// its snake_case name, which is what the Odin generator names every field.
+/// its snake_case name, which is what the Odin generator names every field
+/// — with a `_` after a name Odin keeps for itself (`when_`), as the
+/// generator's `ident` writes it.
 pub fn odin_field(def: &PropDef) -> String {
+    const ODIN_KEYWORDS: &[&str] = &[
+        "asm",
+        "auto_cast",
+        "bit_set",
+        "break",
+        "case",
+        "cast",
+        "context",
+        "continue",
+        "defer",
+        "distinct",
+        "do",
+        "dynamic",
+        "else",
+        "enum",
+        "fallthrough",
+        "for",
+        "foreign",
+        "if",
+        "import",
+        "in",
+        "map",
+        "matrix",
+        "not_in",
+        "or_else",
+        "or_return",
+        "or_break",
+        "or_continue",
+        "package",
+        "proc",
+        "return",
+        "struct",
+        "switch",
+        "transmute",
+        "typeid",
+        "union",
+        "using",
+        "when",
+        "where",
+    ];
     let record = match def.target() {
         Target::Spec => "Spec",
         Target::Style => "Text_Style",
     };
-    format!("`{record}.{}`", def.snake_name())
+    let name = def.snake_name();
+    let tail = if ODIN_KEYWORDS.contains(&name) {
+        "_"
+    } else {
+        ""
+    };
+    format!("`{record}.{name}{tail}`")
 }
 
 /// A C cell in Odin's words, for the rows where Odin's door is C's: the
@@ -2665,6 +2755,13 @@ pub const EVENTS: &[EventDef] = &[
         field: Some("range"),
         payload: "`range: { first, last }` in the `onRange` message",
         doc: "The data rows in an `onRange` node's view (ADR 0065): the least and greatest data index among its children inside its box, after the frame that first lays it out and whenever either changes — never on a frame that left them alone, so a view that pages by it does not loop.",
+    },
+    EventDef {
+        kind: "query",
+        handler: "onQuery",
+        field: Some("query"),
+        payload: "`query: { matched, width, height }` in the `onQuery` message",
+        doc: "A node's matched `when` entries over its own size and the window's (ADR 0069): `matched` the 0-based indices into its `when` list of every entry that matches, `width` and `height` its size — after the frame that first lays it out and whenever that set moves; on a lazy branch's node, its decision (`matched` is `[0]` while `render` is built). State and environment changes have events of their own and do not raise it. Nothing needs it to lay out: the core applies the entries itself, so this is for a view that keeps the fact in its model.",
     },
 ];
 
@@ -3547,6 +3644,7 @@ pub fn suggest(element: &str, name: &str, spelling: Spelling) -> Option<&'static
 }
 
 /// A parsed prop value, transport-independent.
+#[derive(Clone)]
 pub enum Parsed {
     F32(f32),
     Color(Color),
@@ -3561,6 +3659,8 @@ pub enum Parsed {
     Keyframes(Vec<Keyframe>),
     Enter(Enter),
     Gradient(crate::gradient::Gradient),
+    /// A `when` list, already parsed (`crate::rules::parse_with`).
+    Rules(Vec<crate::rules::Rule>),
     /// A family, already resolved by the parser (`NameRefs::family`).
     Family(FontFamily),
 }
@@ -3717,6 +3817,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecKeyframes(f), Parsed::Keyframes(v)) => out.spec = f(spec, v),
         (Apply::SpecEnter(f), Parsed::Enter(v)) => out.spec = f(spec, v),
         (Apply::SpecGradient(f), Parsed::Gradient(v)) => out.spec = f(spec, v),
+        (Apply::SpecRules(f), Parsed::Rules(v)) => out.spec = f(spec, v),
         (Apply::SpecResource(f), Parsed::Resource(v)) => out.spec = f(spec, v),
         (Apply::StyleF32(f), Parsed::F32(v)) => {
             out.spec = spec;
@@ -4472,6 +4573,10 @@ mod tests {
                     crate::gradient::Side::Right,
                     [Color::hex(0x11223344), Color::WHITE],
                 )),
+                Kind::Rules => Parsed::Rules(vec![crate::rules::Rule::new(
+                    crate::rules::Cond::Dark,
+                    &|s| s.gap(7.0),
+                )]),
             };
             let mut out = PropsOut::new();
             apply(def, sample, &mut out).unwrap();

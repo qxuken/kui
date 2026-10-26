@@ -3419,6 +3419,44 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "rules",
+        doc: "Props by condition (ADR 0069): a 300 px row whose `when` list \
+              turns it into a column under 400 px of its own width — gap 4, \
+              the child keyed `extra` hidden — and paints it on a dark \
+              palette, which this host does not have; its `onQuery` reports \
+              the first entry matching, `query q`. Beside it a 300 px row \
+              with `minColumn` 100 lays its three children out as three \
+              equal columns, and a box declared `hidden` draws nothing and \
+              is read as nothing. Every binding hands the core the same \
+              list as its own plain data.",
+        custom: &["key", "dir"],
+        elements: &["box"],
+        build: build_rules,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||", "1 button go||"],
+            events: &["query q"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
         name: "selection-range",
         doc: "A copy past a virtual list's built rows (ADR 0017, tier 3; ADR \
               0047's `onSelectionRange` row). The `virtual` scene's list, \
@@ -4229,6 +4267,65 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui.leaf_keyed("tail", virtual_spacer(100.0));
         },
     );
+}
+
+/// The rules scene (ADR 0069): a row ruled by its own width and the
+/// palette, a `minColumn` row, and a hidden box.
+fn build_rules(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    use crate::rules::Cond;
+    // One column around the three, as a binding's view returns them.
+    ui.with(NodeSpec::column(), |ui| {
+        ui.with_keyed(
+            "row",
+            NodeSpec::row()
+                .width(300.0)
+                .gap(10.0)
+                .when(Cond::width_below(400.0).band(16.0), |p| {
+                    p.dir(crate::spec::Dir::Column).gap(4.0).hide("extra")
+                })
+                .when(Cond::Dark, |p| p.bg(Color::hex(0x202020ff)))
+                .on_query(Value::map([("kind", Value::str("q"))])),
+            |ui| {
+                ui.leaf_keyed(
+                    "a",
+                    NodeSpec::row()
+                        .size(50.0, 20.0)
+                        .bg(Color::hex(0xc04040ff))
+                        .on_click("go")
+                        .label("go"),
+                );
+                ui.leaf_keyed(
+                    "extra",
+                    NodeSpec::row()
+                        .size(50.0, 20.0)
+                        .bg(Color::hex(0x4040c0ff))
+                        .on_click("more")
+                        .label("more"),
+                );
+            },
+        );
+        ui.with_keyed(
+            "grid",
+            NodeSpec::row().width(300.0).gap(10.0).min_column(100.0),
+            |ui| {
+                for k in ["c0", "c1", "c2"] {
+                    ui.leaf_keyed(
+                        k,
+                        NodeSpec::row().size(10.0, 10.0).bg(Color::hex(0x40c040ff)),
+                    );
+                }
+            },
+        );
+        ui.leaf_keyed(
+            "gone",
+            NodeSpec::row()
+                .size(40.0, 40.0)
+                .bg(Color::hex(0xffffffff))
+                .label("gone")
+                .role(Role::Button)
+                .hidden(true),
+        );
+    });
 }
 
 /// The selection-range scene: the `virtual` scene's list, `selectable`,
@@ -7408,7 +7505,11 @@ impl crate::runtime::Extension for ConfKit {
     fn view(&mut self, _slot: &crate::slot::Instance<'_>, _ui: &mut Ui<'_>) -> Result<(), String> {
         Ok(())
     }
-    fn component(&mut self, inst: &crate::slot::Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn component(
+        &mut self,
+        inst: &crate::slot::Instance<'_>,
+        ui: &mut Ui<'_>,
+    ) -> Result<(), String> {
         let title = inst.params.get_str("title").unwrap_or("card").to_string();
         ui.with(
             NodeSpec::column()

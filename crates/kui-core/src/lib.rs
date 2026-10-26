@@ -142,6 +142,7 @@ pub mod path;
 mod raster;
 pub mod resources;
 pub(crate) mod retain;
+pub mod rules;
 pub mod runtime;
 pub mod schema;
 pub mod scroll;
@@ -230,6 +231,7 @@ pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
 pub use runtime::perf::{LoopNote, SpanId};
+pub use rules::{Cond, LazySpec, Needs, Platform, Range, Rule, RulesSpec};
 pub use runtime::{Content, Core, Extension, FillAnswer, Owed, SvgOpts, SvgSource};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry, WheelFeel};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};
@@ -253,7 +255,7 @@ pub use tokens::{
     TokenRef, Tokens, Unresolved,
 };
 pub use tree::OriginId;
-pub use ui::Ui;
+pub use ui::{Lazy, Ui};
 pub use value::{Handles, Value};
 pub use window::{
     Backdrop, DismissReason, WindowButton, WindowCommand, WindowConfig, WindowEnv, WindowEvents,

@@ -73,6 +73,10 @@
 ---@field pressed_bg? kui.Color Background while pressed (or while its hoverGroup is); implies hover tracking.
 ---@field focus_bg? kui.Color Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`.
 ---@field focus_ring? kui.Color The colour of the ring the core draws around a keyboard-visibly focused node — a control, a `focusable` box, an `onKey` sink — for this node and everything under it that declares none (backlog C93): the nearest declaration on the focused node or above it wins, else the theme's `focusRing`. A colour with no alpha draws no ring, turning it off without touching the background as `focusBg` would (in C, whose 0 is unset, any colour with no alpha but 0: `0xffffff00`). What an add-on that paints in its own palette sets once at the root of what it draws, `focusRing="$kitFocus"`.
+---@field when? table Props by condition (ADR 0069): a list of entries, each the conditions it tests and the props it sets while every one holds — `{ width: { below: 700, band: 16 }, dark: true, gap: 8 }`. Every entry that matches applies, in list order, over the node's own props, so a later entry wins a prop an earlier one set; `hoverBg`, `pressedBg` and `focusBg` are entries ahead of the list. The conditions: the node's own `width` / `height` (`{ below, above, band }`, each a length or a `$length` token; `below` holds under it, `above` at or over it, and a range that holds keeps holding `band` past its threshold, so a size resting on one does not flicker); `window: { width, height }`, the same against the window's content size; `dark`, `light`, `reducedMotion` (`reduced_motion`), `contrast: "more"`, `platform` (`"macos"`, `"windows"`, `"linux"` or a list), `scale: { above }`; and the node's state, `hovered`, `pressed`, `focused`, `focusVisible`, `disabled`, `selected`, each true or false — hovered as `hoverBg` reads it, over the node or anything inside it or its hover group. The core resolves them, so a view declares a responsive, themed, interactive box once and is not re-run for a resize, a theme switch or a hover: window, environment and state entries as the node opens, before its `transition` eases what they set (layout props jump unless `slide`; under reduced motion everything jumps); own-size entries inside layout, a width entry once the node's width is final and before its children are laid across it, a height entry with one more layout pass on the frame its match changes — no frame is drawn with a stale match. An entry over the node's own size sets the layout of its children only — `dir`, `gap`, `crossGap`, padding, `wrapChildren`, `mainAlign`, `crossAlign`, `minColumn`, and `hidden` as the list of the keyed children it hides (`hidden: ["chooser"]`) — and makes the node a container in that axis: a `fit` size there is refused (`query-on-fit`) and the node takes the room its parent offers. Other entries set any box prop but handlers, access props, keys and children. What an entry may not set is left out with `rule-prop-refused`, the rest of it standing. `onQuery` tells the view when its own-size and window matches change.
+---@field min_column? kui.Length On a row: wraps it into equal columns, as many as fit at this width or more — `max(1, floor((w + gap) / (n + gap)))` — every child as wide as a column, the last line's children too, which do not stretch (ADR 0069, decision 17). CSS's `repeat(auto-fill, minmax(n, 1fr))`: a gallery's cards, a settings grid. The lines are `crossGap` apart. An own-size `when` entry may set it, and on a column it does nothing.
+---@field hidden? boolean Not laid out and not drawn (ADR 0069): the node and everything in it take no room in its parent — no gap either — paint nothing, take no input and are out of the access tree and the Tab ring, while their keys, focus history and retained state (scroll offsets, editor text) are kept as any declared node's are. What a `when` entry sets to drop a node at a setting or a window size; an entry over the node's own size names the children it hides instead (`hidden: ["key"]`).
+---@field on_query? any Query handler (ADR 0069): when the set of this node's `when` entries over its own size and the window's that match changes — and after the frame that first lays it out — this message arrives with `query: {matched, width, height}` in it, `matched` the 0-based indices of every matching entry. On a lazy branch's node, its decision: `matched` is `[0]` while `render` is built. State and environment changes do not raise it. Nothing needs it to lay out; it is for a view that keeps the fact in its model.
 ---@field modal? any Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside arrives on it as this message with `dismiss: {reason: "escape" | "outside"}` in it (ADR 0047) — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on.
 ---@field initial_focus? boolean Where focus lands when the enclosing `modal` scope is entered: the first node in the modal's Tab ring declaring it, so a destructive confirm opens on its Cancel rather than on whichever control is declared first. Read on entry only — a Tab press afterwards stands, and the scope re-entered (a nested confirm closing) leaves focus where it was. Declared on nothing, or only on nodes the ring skips (disabled, `role="none"`, not focusable), entry stays the ring's first node.
 ---@field hover_group? string Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape).
@@ -164,7 +168,7 @@
 ---@field option_as_alt? "none"|"left"|"right"|"both" Declares which Option keys act as Alt in this window on macOS (backlog F113). On a Mac, Option composes: ⌥m types `µ`, and ⌥u, ⌥e, ⌥i, ⌥n and ⌥` are dead keys that start an accent and wait for the next key, so the press never reaches the app as a key and a keymap binding `<A-u>` never hears it. An Option key named here is Alt instead: it composes nothing and types nothing, and a key under it arrives as a chord of the key the layout prints unmodified — a terminal's "Option as Meta", an editor's Alt bindings. `"left"` or `"right"` leaves the other side composing, so a user keeps `ü` on one Option; `"both"` takes both; `"none"`, the default, is the Mac's own behaviour. Frame state the way `alwaysOnTop` is: declare it on every frame, and the frame that stops gives the Option keys back to the layout; the runner applies it to the window on change, never per frame. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. Nothing on Windows or Linux, whose Alt composes nothing. A C host with its own loop reads the ask with `kui_option_as_alt_get` and applies it itself.
 ---@field ime_off? boolean Declares that this window takes the keyboard as keys, with the platform's input method off (backlog F125): no composition and no candidate window, and on a Mac no dead key waiting for the next and no press-and-hold — an input method too, so a held letter repeats instead of opening the accent picker, whatever the user's `ApplePressAndHoldEnabled` says. A `key` event's `text` is still the layout's character; what goes is everything the OS would have composed from it. What a modal editor's normal mode wants — `jjjj` is how one moves, and an IME left on eats the keymap — while its insert mode stops declaring it and gets accents, dead keys and the IME back. Frame state the way `alwaysOnTop` is, default false: declare it on every frame the mode wants it, and the frame that stops gives the input method back; the runner applies it to the window on change, never per frame, and a composition in progress when it turns off ends without a commit, as an empty `preedit`. The window's, not a node's: a stock editor focused under it composes nothing either. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. On Windows and Linux the window's IME is disabled the same way, and only that: their dead keys are the layout's, and still compose. A focused `secure` editor asks for it too, as a password field takes keys and not compositions (backlog F167), and the read-back says so. A C host with its own loop reads the ask with `kui_ime_off_get` and applies it itself.
 ---@field windows? (string|kui.WindowEntry)[] Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the entry's `onWindow` message hears both edges as `window: {phase: "opened" | "closed", id}` (ADR 0048) — read on every declaration, unlike the config, and for a window that closed the last one declared. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: "popup"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape arrives as the entry's `onDismiss` message with `dismiss: {reason, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface.
----@field window_events? kui.WindowEvents The messages the window's own events arrive as (ADR 0048), one boxed group on the root rather than six rows on every node: `onResize` hears `resize: {width, height, scale}`, `onFocus` this window gaining or losing the keyboard as `window: {phase: "focused" | "blurred"}`, `onSystemSettingsChange` `system: {appearance, accent, motion, locale, assistive}`, `onFonts` the system's fonts changing (the message as declared), `onModifiers` `modifiers: {shift, ctrl, alt, super}`, and `onOpen` the OS's documents as `open: {paths}` — read on the main window's root alone, since the OS opens documents to the app. Each arrives as its message with the data in the field named for the event, as a node's handler does. A root that declares no group, or a group that leaves a key out, hears none of those events; `env` reads every fact they report either way. Read from the last frame the window finished, so a resize the next frame begins with arrives as the message the frame before declared. A window's opening and closing are its `windows` entry's (`onWindow`), and the menu bar's choice is the `menuBar` element's (`onMenu`). Declared on any node but the root it is ignored, and `window-events-off-root` says so.
+---@field window_events? kui.WindowEvents The messages the window's own events arrive as (ADR 0048), one boxed group on the root rather than six rows on every node: `onResize` hears `resize: {width, height, scale}`, `onFocus` this window gaining or losing the keyboard as `window: {phase: "focused" | "blurred"}`, `onSystemSettingsChange` `system: {appearance, accent, motion, locale, assistive, contrast}`, `onFonts` the system's fonts changing (the message as declared), `onModifiers` `modifiers: {shift, ctrl, alt, super}`, and `onOpen` the OS's documents as `open: {paths}` — read on the main window's root alone, since the OS opens documents to the app. Each arrives as its message with the data in the field named for the event, as a node's handler does. A root that declares no group, or a group that leaves a key out, hears none of those events; `env` reads every fact they report either way. Read from the last frame the window finished, so a resize the next frame begins with arrives as the message the frame before declared. A window's opening and closing are its `windows` entry's (`onWindow`), and the menu bar's choice is the `menuBar` element's (`onMenu`). Declared on any node but the root it is ignored, and `window-events-off-root` says so.
 ---@field tooltip? string Floats a hint below the node while the pointer is over it or over anything inside it — a child button, a field, a row with a `hoverBg` included, as a browser's `title` shows over a descendant; with tooltips nested, the innermost one under the pointer is the one shown (backlog F179). A descendant floated against the viewport or another node — a dialog, a toast — is placed somewhere else, and the hint does not show over it; one floated against its parent, a badge, still counts as inside (backlog RG160). All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip`, so no frontend can implement two of them; a Rust view has all three in `NodeSpec::tooltip` (`NodeSpec::apply_tooltip` is the spec half, for a caller that floats the hint itself). The `description` row is that middle effect on its own, for a hint that is spoken and never drawn. On a box or a `fragment` the float is the node's last child; a leaf holds no children — a `line`, `polygon`, `path`, `cells` grid, `image` or `edit` — and its hint floats beside it instead, anchored to it, and lands below its box the same way, out of every clip and flipping above near the window's bottom (backlog RG113; `PropsOut::for_leaf`). A leaf draws its description, which is the hint unless a `description` applied after it overwrote the slot. A `line`, `polygon` or `path` is hovered by its shape, so its hint shows while the pointer is on the stroke or inside the outline, not anywhere in its box. The hint is drawn at the opacity the node's parent has, not the node's own: a box or a leaf at `opacity: 0.4` has a hint that is not, and a panel fading around it takes the hint with it (backlog F178). A box at `opacity: 0` floats none, and neither does one leaving with an `exit` (backlog RG160).
 ---@field [integer] kui.Node|string
 
@@ -336,7 +340,7 @@ function channel(columns) end
 ---field named for the event (`drag`, `change`, …), and the envelope beside them.
 ---An app's message names its field by inheriting it: `---@class Pan: kui.Event, kui.WithDrag`.
 ---@class kui.Event
----@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range" What happened: the event kind, beside the message rather than in it.
+---@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range"|"query" What happened: the event kind, beside the message rather than in it.
 ---@field node_key integer The emitting node's key, what `env.edit_text` and the rest take.
 ---@field window integer|kui.WindowEvent The window it came from, as `env.window.id` reads; a `window` event's data, which has the name.
 ---@field instance? integer The key of the component instance the node was drawn in.
@@ -349,7 +353,7 @@ function channel(columns) end
 ---`on_event`'s second argument: the envelope alone, whatever fields the message has.
 ---The first argument's envelope fields give way to the message's own; these never do.
 ---@class kui.Envelope
----@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range"
+---@field event "click"|"drag"|"key"|"text"|"preedit"|"select"|"selectionrange"|"contextmenu"|"menu"|"forceclick"|"button"|"scroll"|"focus"|"hover"|"drop"|"files"|"open"|"layout"|"resize"|"window"|"system"|"fonts"|"modifiers"|"change"|"submit"|"cancel"|"boundary"|"sound"|"capture"|"dismiss"|"component"|"range"|"query"
 ---@field node_key integer
 ---@field window integer The window it came from, as `env.window.id` reads.
 ---@field instance? integer
@@ -373,6 +377,18 @@ function channel(columns) end
 ---@class kui.RangeEnd
 ---@field index? integer
 ---@field byte integer
+
+---@class kui.Needs
+---@field w? number
+---@field h? number
+
+---@class kui.Lazy
+---@field needs? kui.Needs
+---@field query? table
+---@field render fun(): kui.Node
+---@field fallback? fun(): kui.Node
+---@field on_query? any
+---@field key? string
 
 ---A `click` event's data.
 ---@class kui.ClickEvent
@@ -563,6 +579,16 @@ function channel(columns) end
 ---@class kui.WithRange
 ---@field range kui.RangeEvent
 
+---A `query` event's data.
+---@class kui.QueryEvent
+---@field matched integer[]
+---@field width number
+---@field height number
+
+---A message that carries a `query` event: its `query` field alone.
+---@class kui.WithQuery
+---@field query kui.QueryEvent
+
 ---A `layout` event's data.
 ---@class kui.LayoutEvent
 ---@field x number
@@ -663,6 +689,7 @@ function channel(columns) end
 ---@field motion "unknown"|"full"|"reduced"
 ---@field locale? string
 ---@field assistive "unknown"|"none"|"listening"
+---@field contrast "unknown"|"normal"|"more"
 
 ---A message that carries a `system` event: its `system` field alone.
 ---@class kui.WithSystem
@@ -894,6 +921,18 @@ function component(name, props, kids) end
 ---@param props any
 ---@return kui.Node
 function slot(name, props) end
+
+---lazy { needs = { w = 320 }, render = function() return chart() end,
+---fallback = function() return text("too narrow") end }: a branch built
+---only when it can be shown (docs/adr/0069) -- `render` when the parent
+---offers the room `needs` names (`w`, `h` or both), laid out at exactly
+---that size, or while `query` (`{ width = { below = 700 } }`, the
+---parent's size, the window's or the environment's) holds; `fallback`
+---otherwise, and neither before the first layout. A bare child table with
+---a `render` function is the same thing; this names it for Teal.
+---@param t kui.Lazy
+---@return kui.Node
+function lazy(t) end
 
 ---In a component's function (`components.card = function(env, props,
 ---inst) … end`): where the host's children of `group` go, the unnamed group

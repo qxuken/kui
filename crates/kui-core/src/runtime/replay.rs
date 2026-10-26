@@ -255,6 +255,9 @@ pub(crate) enum Read {
     Tokens(u64),
     /// Whether anyone chose the accent (`Core::has_accent`).
     Accent(bool),
+    /// A lazy branch's decision (ADR 0069): the branch kept is the one
+    /// built, so a decision that moved runs the fill again.
+    Lazy(Key, Box<crate::rules::LazySpec>, Option<bool>),
     /// Something the core does not compare (the selection's text): a
     /// fill that read it is run every frame.
     Opaque,
@@ -553,6 +556,7 @@ impl Core {
             Read::Metrics(g) => *g == self.metrics_gen,
             Read::Tokens(rev) => *rev == self.tokens_rev,
             Read::Accent(a) => self.has_accent_raw() == *a,
+            Read::Lazy(k, spec, built) => self.lazy_decision(*k, spec) == *built,
             Read::Opaque => false,
         }
     }

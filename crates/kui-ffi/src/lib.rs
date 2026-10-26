@@ -396,12 +396,12 @@ pub extern "C" fn kui_env_set_system(
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_env_set_contrast(ptr: *mut KuiCtx, contrast: u32) {
     guard((), || {
-        if let Some(c) = unsafe { ctx(ptr) } {
-            if let Some(contrast) = ContrastPref::from_code(contrast) {
-                let mut sys = c.core().env.system;
-                sys.contrast = contrast;
-                c.core().set_system(sys);
-            }
+        if let Some(c) = unsafe { ctx(ptr) }
+            && let Some(contrast) = ContrastPref::from_code(contrast)
+        {
+            let mut sys = c.core().env.system;
+            sys.contrast = contrast;
+            c.core().set_system(sys);
         }
     });
 }

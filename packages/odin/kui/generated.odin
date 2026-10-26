@@ -364,6 +364,12 @@ Assistive :: enum u32 {
 	Listening = 2, // KUI_ASSISTIVE_LISTENING
 }
 
+Contrast :: enum u32 {
+	Unknown = 0, // KUI_CONTRAST_UNKNOWN
+	Normal = 1, // KUI_CONTRAST_NORMAL
+	More = 2, // KUI_CONTRAST_MORE
+}
+
 Audio_Device :: enum u32 {
 	Closed = 0, // KUI_AUDIO_DEVICE_CLOSED
 	Opening = 1, // KUI_AUDIO_DEVICE_OPENING
@@ -809,6 +815,27 @@ Spec :: struct {
 	// declaration on the focused node or above it wins, else the theme's
 	// `focusRing`.
 	focus_ring: Color,
+	// Props by condition (ADR 0069): a list of entries, each the conditions it
+	// tests and the props it sets while every one holds — `{ width: { below:
+	// 700, band: 16 }, dark: true, gap: 8 }`.
+	when_: any,
+	// On a row: wraps it into equal columns, as many as fit at this width or more
+	// — `max(1, floor((w + gap) / (n + gap)))` — every child as wide as a
+	// column, the last line's children too, which do not stretch (ADR 0069,
+	// decision 17).
+	min_column: f32,
+	// Not laid out and not drawn (ADR 0069): the node and everything in it take
+	// no room in its parent — no gap either — paint nothing, take no input
+	// and are out of the access tree and the Tab ring, while their keys, focus
+	// history and retained state (scroll offsets, editor text) are kept as any
+	// declared node's are.
+	hidden: bool,
+	// Query handler (ADR 0069): when the set of this node's `when` entries over
+	// its own size and the window's that match changes — and after the frame
+	// that first lays it out — this message arrives with `query: {matched,
+	// width, height}` in it, `matched` the 0-based indices of every matching
+	// entry.
+	on_query: any,
 	// Modal surface: the Tab ring becomes this node's subtree, everything outside
 	// it is inert to the pointer, the wheel and assistive technology, and Escape
 	// or a press outside arrives on it as this message with `dismiss: {reason:
@@ -1101,6 +1128,10 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.pressed_bg = s.pressed_bg
 	out.focus_bg = s.focus_bg
 	out.focus_ring = s.focus_ring
+	out.when_ = borrow(scratch, s.when_)
+	out.min_column = s.min_column
+	out.hidden = 1 if s.hidden else 0
+	out.on_query = borrow(scratch, s.on_query)
 	out.modal = borrow(scratch, s.modal)
 	out.initial_focus = 1 if s.initial_focus else 0
 	out.hover_group = s.hover_group
@@ -2381,6 +2412,11 @@ env_set_system :: proc(ui: ^Ui, appearance: Appearance, accent: Color, motion: M
 	c.env_set_system(ui, u32(appearance), accent, u32(motion), locale)
 }
 
+// kui_env_set_contrast (kui.h).
+env_set_contrast :: proc(ui: ^Ui, contrast: Contrast) {
+	c.env_set_contrast(ui, u32(contrast))
+}
+
 // kui_env_set_assistive (kui.h).
 env_set_assistive :: proc(ui: ^Ui, assistive: Assistive) {
 	c.env_set_assistive(ui, u32(assistive))
@@ -3328,6 +3364,14 @@ path_d :: proc(ui: ^Ui, label: string, d: string, fill_rule: Fill_Rule, width: f
 	spec_c: c.Spec
 	spec_to_c(spec, &spec_c, &scratch)
 	c.path_d(ui, label, d, u32(fill_rule), width, color, rotate, raw_data(pivot_v[:]) if pivot_ok else nil, raw_data(dash_v[:]) if dash_ok else nil, &spec_c, to_value(on_click), to_value(on_drag), to_value(on_hover))
+}
+
+// Whether a lazy branch's decision disagreed with the frame just laid out
+// (ADR 0069): a host driving its own loop builds the frame once more before
+// drawing it.
+// Rust: Core::rerun_owed.
+rerun_owed :: proc(ui: ^Ui) -> bool {
+	return c.rerun_owed(ui)
 }
 
 // kui_cells (kui.h).

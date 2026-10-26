@@ -1166,6 +1166,73 @@ impl<'a> Ui<'a> {
         key
     }
 
+    /// A branch built only when it can be shown (ADR 0069, decision 13):
+    /// `render` runs when the parent offers it `needs` — the parent's
+    /// content box less its other in-flow children and gaps, in each
+    /// axis `needs` names — and the branch is laid out at exactly that
+    /// size; [`Lazy::fallback`] runs otherwise. The decision is taken
+    /// from the last layout's room, and a frame whose layout says
+    /// otherwise is built again before it is drawn
+    /// ([`Core::rerun_owed`]).
+    ///
+    /// ```rust
+    /// use kui_core::{Core, Needs, NodeSpec, Size, TextStyle};
+    ///
+    /// let mut core = Core::new();
+    /// let view = |ui: &mut kui_core::Ui<'_>| {
+    ///     ui.with(NodeSpec::row().grow_width(), |ui| {
+    ///         ui.lazy(Needs::w(320.0), |ui| {
+    ///             ui.text("the chart", TextStyle::new(14.0));
+    ///         })
+    ///         .fallback(|ui| {
+    ///             ui.text("too narrow", TextStyle::new(14.0));
+    ///         });
+    ///     });
+    /// };
+    /// // The first frame lays out before it builds the branch.
+    /// let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    /// view(&mut ui);
+    /// ui.finish();
+    /// assert!(core.rerun_owed());
+    /// let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    /// view(&mut ui);
+    /// ui.finish();
+    /// assert!(!core.rerun_owed());
+    /// ```
+    pub fn lazy<'u>(
+        &'u mut self,
+        needs: crate::rules::Needs,
+        render: impl FnOnce(&mut Ui<'_>),
+    ) -> Lazy<'u, 'a> {
+        self.lazy_with(crate::rules::LazySpec::needs(needs), render)
+    }
+
+    /// A branch chosen by a query (ADR 0069, decision 14): `render` runs
+    /// while `query` holds over the parent's size (`width`, `height`), the
+    /// window's or the environment's. A state condition in it is refused
+    /// (`query-state`): a hover must not rebuild a subtree.
+    pub fn lazy_query<'u>(
+        &'u mut self,
+        query: crate::rules::Cond,
+        render: impl FnOnce(&mut Ui<'_>),
+    ) -> Lazy<'u, 'a> {
+        self.lazy_with(crate::rules::LazySpec::query(query), render)
+    }
+
+    /// [`Self::lazy`] or [`Self::lazy_query`] from a whole ask, with its
+    /// `onQuery` message.
+    pub fn lazy_with<'u>(
+        &'u mut self,
+        spec: crate::rules::LazySpec,
+        render: impl FnOnce(&mut Ui<'_>),
+    ) -> Lazy<'u, 'a> {
+        let built = self.core.lazy_open(spec);
+        if built == Some(true) {
+            render(self);
+        }
+        Lazy { ui: self, built }
+    }
+
     /// Scoped [`Self::open_keyed`].
     pub fn with_keyed(&mut self, label: &str, spec: NodeSpec, f: impl FnOnce(&mut Ui<'_>)) -> Key {
         let key = self.open_keyed(label, spec);
@@ -1843,6 +1910,35 @@ impl<'a> Ui<'a> {
         }
         Core::build_menu(&mut Ui::new(core));
         core.finish_frame();
+    }
+}
+
+/// A lazy branch's node, open until this is dropped (`Ui::lazy`): what
+/// [`Lazy::fallback`] builds into when `render` was not chosen.
+pub struct Lazy<'u, 'a> {
+    ui: &'u mut Ui<'a>,
+    built: Option<bool>,
+}
+
+impl Lazy<'_, '_> {
+    /// Builds `fallback` when the branch was not chosen — and not on the
+    /// first frame, before any layout, when neither is.
+    pub fn fallback(self, fallback: impl FnOnce(&mut Ui<'_>)) {
+        if self.built == Some(false) {
+            fallback(self.ui);
+        }
+    }
+
+    /// Which branch was built: `Some(true)` for `render`, `Some(false)`
+    /// for `fallback`, `None` before any layout.
+    pub fn built(&self) -> Option<bool> {
+        self.built
+    }
+}
+
+impl Drop for Lazy<'_, '_> {
+    fn drop(&mut self) {
+        self.ui.core.lazy_close();
     }
 }
 

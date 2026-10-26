@@ -577,6 +577,14 @@ impl DynHeadless<'_> {
         let view_ms = t_view.elapsed().as_secs_f32() * 1e3;
         let t_layout = Instant::now();
         ui.finish();
+        // Built once more when a lazy branch's decision crossed (ADR 0069).
+        if self.core.rerun_owed() {
+            let mut ui = self
+                .core
+                .frame_with(self.viewport, self.scale, &mut self.extensions);
+            self.app.view(&mut ui);
+            ui.finish();
+        }
         let layout_ms = t_layout.elapsed().as_secs_f32() * 1e3;
         for w in self.core.take_warnings() {
             eprintln!(

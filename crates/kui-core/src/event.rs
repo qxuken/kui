@@ -179,6 +179,30 @@ pub struct RowRange {
     pub last: u64,
 }
 
+/// A `query`: which of a node's `when` entries match, as a bit set over
+/// the list, and the node's size (ADR 0069).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct QueryChange {
+    pub matched: u64,
+    pub width: f32,
+    pub height: f32,
+}
+
+fn read_query(p: &Value) -> Option<QueryChange> {
+    let mut matched = 0u64;
+    for i in p.get("matched")?.as_list()? {
+        let i = i.as_int()?;
+        if (0..64).contains(&i) {
+            matched |= 1 << i;
+        }
+    }
+    Some(QueryChange {
+        matched,
+        width: p.get_f32("width")?,
+        height: p.get_f32("height")?,
+    })
+}
+
 fn read_range(p: &Value) -> Option<RowRange> {
     Some(RowRange {
         first: p.get("first")?.as_int()? as u64,
@@ -846,6 +870,7 @@ pub enum Event {
     Capture(Captured),
     Dismiss(Dismiss),
     Range(RowRange),
+    Query(QueryChange),
     /// A component instance's event (ADR 0060): the host's own message
     /// for the event prop is [`UiEvent::message`]'s to decode.
     Component,
@@ -941,6 +966,7 @@ impl UiEvent {
             EventKind::Dismiss => Event::Dismiss(read_dismiss(p)?),
             EventKind::Component => Event::Component,
             EventKind::Range => Event::Range(read_range(p)?),
+            EventKind::Query => Event::Query(read_query(p)?),
         })
     }
 }

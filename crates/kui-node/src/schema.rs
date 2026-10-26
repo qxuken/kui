@@ -50,6 +50,7 @@ pub fn protocol_props() -> Json {
             Kind::Keyframes => ("keyframes", None),
             Kind::Enter => ("enter", None),
             Kind::Gradient => ("gradient", None),
+            Kind::Rules => ("rules", None),
         };
         p.insert("kind".into(), Json::String(kind.into()));
         if let Some(names) = values {

@@ -63,6 +63,7 @@ const TS_BY_KIND = {
   keyframes: 'KeyframeProp[]',
   enter: 'EnterProp',
   gradient: 'GradientProp',
+  rules: 'WhenEntry[]',
 };
 
 // The field type each event's data rides under in the handler's message
@@ -91,6 +92,7 @@ const WITH = {
   files: 'WithFiles',
   layout: 'WithLayout',
   range: 'WithRange',
+  query: 'WithQuery',
   // On a box the row serves both roles it applies to; `<edit>` and
   // `<slider>` narrow it to their own (jsx-runtime.d.ts).
   change: ['WithEditChange', 'WithSliderChange'],
@@ -239,6 +241,7 @@ const TYPE_DOC = {
   keyframes: 'keyframe list (`[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`)',
   enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }`)',
   gradient: 'gradient (`{ to? \\| angle? \\| radial?, at?, stops: [color \\| [color, at], …] }`)',
+  rules: 'entry list (`[{ width?: { below?, above?, band? }, window?, dark?, hovered?, …, …props }, …]`)',
 };
 
 const cell = (s) => String(s).replace(/\|/g, '\\|');
