@@ -1104,6 +1104,10 @@ export interface SparklineProps {
   width?: number;
   /** In px; 18 when left out. */
   height?: number;
+  /** After the value under the pointer: `ms`, `%`. */
+  unit?: string;
+  /** The value under the pointer, as a hint and a dot on its sample; on when left out. */
+  readout?: boolean;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -1130,6 +1134,10 @@ export interface LineChartProps {
   xUnit?: string;
   /** After each y tick's number: `ms`, `%`. */
   yUnit?: string;
+  /** Under the pointer, a crosshair on the nearest sample, a dot on each series there and a readout of the x and every series' value in its colour, following the pointer and gone when it leaves; on when left out. An idle chart pays one hover layer for it. */
+  readout?: boolean;
+  /** A Tab stop: Left and Right move the readout a sample, Home and End to the ends, and the readout is a live region a screen reader announces. */
+  focusable?: boolean;
   /** The message hover arrives as: yours, with `hover: LineChartHover` in it. The pointer moved over a row. */
   onHover?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */

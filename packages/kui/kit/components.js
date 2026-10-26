@@ -602,6 +602,8 @@ function make(namespace) {
       if (props.color !== undefined) wire.color = props.color;
       if (props.width !== undefined) wire.width = props.width;
       if (props.height !== undefined) wire.height = props.height;
+      if (props.unit !== undefined) wire.unit = props.unit;
+      if (props.readout !== undefined) wire.readout = props.readout;
       const groups = undefined;
       return {
         type: 'component',
@@ -621,6 +623,8 @@ function make(namespace) {
       if (props.xFormat !== undefined) wire.x_format = props.xFormat;
       if (props.xUnit !== undefined) wire.x_unit = props.xUnit;
       if (props.yUnit !== undefined) wire.y_unit = props.yUnit;
+      if (props.readout !== undefined) wire.readout = props.readout;
+      if (props.focusable !== undefined) wire.focusable = props.focusable;
       if (props.onHover !== undefined) wire.on_hover = props.onHover;
       const groups = undefined;
       return {

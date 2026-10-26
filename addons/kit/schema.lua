@@ -515,6 +515,8 @@ return {
         { "color", "color?", doc = "The accent when left out." },
         { "width", "number?", doc = "In px; 80 when left out." },
         { "height", "number?", doc = "In px; 18 when left out." },
+        { "unit", "string?", doc = "After the value under the pointer: `ms`, `%`." },
+        { "readout", "boolean?", doc = "The value under the pointer, as a hint and a dot on its sample; on when left out." },
       } },
     { "line_chart",
       doc = "Lines over time with axes and a legend; `live` keeps the newest window in view.",
@@ -528,6 +530,8 @@ return {
         { "x_format", "XFormat?", doc = "How the x ticks read; the number when left out." },
         { "x_unit", "string?", doc = "After each x tick's number: `min`, `s`." },
         { "y_unit", "string?", doc = "After each y tick's number: `ms`, `%`." },
+        { "readout", "boolean?", doc = "Under the pointer, a crosshair on the nearest sample, a dot on each series there and a readout of the x and every series' value in its colour, following the pointer and gone when it leaves; on when left out. An idle chart pays one hover layer for it." },
+        { "focusable", "boolean?", doc = "A Tab stop: Left and Right move the readout a sample, Home and End to the ends, and the readout is a live region a screen reader announces." },
       },
       events = {
         { "hover", doc = "The pointer moved over a row.", fields = { { "row", "integer", doc = "The row under it." } } },

@@ -602,6 +602,8 @@
 ---@field color? integer|string The accent when left out.
 ---@field width? number In px; 80 when left out.
 ---@field height? number In px; 18 when left out.
+---@field unit? string After the value under the pointer: `ms`, `%`.
+---@field readout? boolean The value under the pointer, as a hint and a dot on its sample; on when left out.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -616,6 +618,8 @@
 ---@field x_format? kit.XFormat How the x ticks read; the number when left out.
 ---@field x_unit? string After each x tick's number: `min`, `s`.
 ---@field y_unit? string After each y tick's number: `ms`, `%`.
+---@field readout? boolean Under the pointer, a crosshair on the nearest sample, a dot on each series there and a readout of the x and every series' value in its colour, following the pointer and gone when it leaves; on when left out. An idle chart pays one hover layer for it.
+---@field focusable? boolean A Tab stop: Left and Right move the readout a sample, Home and End to the ends, and the readout is a live region a screen reader announces.
 ---@field on_hover? any The message it arrives as: yours, with `hover = {…}` in it (kit.LineChartHover). The pointer moved over a row.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.

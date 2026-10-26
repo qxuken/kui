@@ -319,6 +319,22 @@ local function range_of(ys, from, to)
    return lo, hi
 end
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function M.sparkline(c, p)
    local w, h = (p.width or 80), (p.height or 18)
    local ys = col(p.data, p.field)
@@ -328,11 +344,38 @@ function M.sparkline(c, p)
       local lo, hi = range_of(ys, 1, n)
       local idx = {}
       for i = 1, n do idx[i] = i end
+      local color = (p.color) or ref(c, "accent")
       box[#box + 1] = line({
          points = points(idx, ys, 1, n, 1, n, lo, hi, w, h - 2),
          width = 1.5,
-         color = (p.color) or ref(c, "accent"),
+         color = color,
       })
+
+
+
+      if p.readout ~= false then
+         local st = ctx.state(c, function() return {} end)
+         local layer = { key = "over", width = w, height = h, hoverable = true,
+float = { anchor = "parent", clip = true }, on_hover = act(c, "sparkline.over"), }
+         if st.over then
+            local bands = math.min(n, math.max(1, math.floor(w / 2)))
+            local bw = w / bands
+            for b = 0, bands - 1 do
+               local i = 1 + math.floor((b + 0.5) / bands * n)
+               layer[#layer + 1] = column({ key = "b" .. b, width = bw, height = h, hoverable = true,
+tooltip = with_unit(string.format("%.4g", ys[i]), str(p.unit)),
+on_hover = act(c, "sparkline.hover", { row = i }), })
+            end
+            local i = st.row
+            if i and ys[i] then
+               local px = (i - 1) / math.max(n - 1, 1) * w
+               local py = (h - 2) - (ys[i] - lo) / math.max(hi - lo, 1e-12) * (h - 2)
+               box[#box + 1] = column({ float = { anchor = "parent", dx = px - 3, dy = py - 3, clip = true },
+width = 6, height = 6, radius = 3, bg = color, border = { w = 1, color = ref(c, "panel") }, })
+            end
+         end
+         box[#box + 1] = row(layer)
+      end
    end
    return column(box)
 end
@@ -444,16 +487,6 @@ local function reduced_runs(ch, segs, field, x0, x1,
    if n >= 2 then runs[#runs + 1] = run end
    return runs
 end
-
-
-
-
-
-
-
-
-
-
 
 
 local GLIDE_S = 0.24
@@ -629,21 +662,81 @@ column({ width = 10, height = 2, bg = color }),
 ctx.muted(c, (s.name or s.field)), })
    end
 
-   if p.on_hover and to > from then
-      local bands = math.min(to - from, 64)
-      local bw = w / bands
-      local hover = { width = "grow", height = h, float = { anchor = "parent", clip = true } }
-      for b = 0, bands - 1 do
-         local mid = from + math.floor((b + 0.5) / bands * (to - from))
-         hover[#hover + 1] = column({ key = "b" .. b, width = bw, height = h, hoverable = true,
-on_hover = act(c, "line_chart.hover", { row = mid }), })
+
+
+
+
+   local st = ctx.state(c, function() return {} end)
+   local readout = p.readout ~= false
+   local focusable = p.focusable == true
+   if st.hand then
+      if st.hand == "prev" then env.focus_prev() else env.focus_next() end
+      st.hand = nil
+   end
+   if (readout or p.on_hover) and to > from then
+      local layer = { key = "over", width = "grow", height = h, hoverable = true,
+float = { anchor = "parent", clip = true }, on_hover = act(c, "line_chart.over"), }
+      if st.over then
+         local bands = math.min(to - from, math.max(1, math.floor(w / 3)))
+         local bw = w / bands
+         for b = 0, bands - 1 do
+            local mid = from + math.floor((b + 0.5) / bands * (to - from))
+            layer[#layer + 1] = column({ key = "b" .. b, width = bw, height = h, hoverable = true,
+on_hover = act(c, "line_chart.hover", { row = mid, tell = p.on_hover ~= nil }), })
+         end
       end
-      plot[#plot + 1] = row(hover)
+      plot[#plot + 1] = row(layer)
+   end
+   if focusable and to > from then
+      plot.focusable = true
+      plot.label = "line chart"
+      plot.on_key = act(c, "line_chart.key", { from = from, to = to })
+      plot.on_focus = act(c, "line_chart.focus")
+   end
+   local at_row = (st.over and st.row) or st.key_row
+   if readout and at_row and at_row >= from and at_row < to then
+      local xv = num(ch:get(at_row, xf)) or x0
+      local px = (xv - x0) / (x1 - x0) * w
+      plot[#plot + 1] = line({ from = { px, 0 }, to = { px, h }, width = 1, color = faint })
+      local title
+      if fmt == "clock" then
+         title = os.date("%H:%M:%S", math.floor(xv + 0.5))
+      elseif fmt == "ago" then
+         title = math.abs(xv) < 1e-9 and "now" or (with_unit(string.format("%.4g", math.abs(xv)), str(p.x_unit)) .. " ago")
+      else
+         title = with_unit(string.format("%.4g", xv), str(p.x_unit))
+      end
+      local box = { key = "readout", gap = 2, pad = { x = 8, y = 6 }, radius = "$kitRadius",
+bg = ref(c, "raised"), border = { w = "$kitHair", color = ref(c, "ink") },
+live = "polite", min_width = "fit",
+float = { anchor = "parent", at = { "start", "start" }, self = { px > w / 2 and "end" or "start", "start" },
+dx = px > w / 2 and px - 8 or px + 8, dy = 4, clip = true, },
+ctx.data(c, title, { size = "$kitSizeLabel", color = ref(c, "muted"), max_lines = 1 }), }
+      local said = { title }
+      for k, s in ipairs(series) do
+         local v = num(ch:get(at_row, s.field))
+         local color = (s.color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
+         if v and v == v then
+            local py = h - (v - lo) / (hi - lo) * h
+            plot[#plot + 1] = column({ float = { anchor = "parent", dx = px - 3.5, dy = py - 3.5, clip = true },
+width = 7, height = 7, radius = 3.5, bg = color, border = { w = 1, color = ref(c, "panel") }, })
+            local value = with_unit(string.format("%.4g", v), y_unit)
+            local name = (s.name or s.field)
+            said[#said + 1] = name .. " " .. value
+            box[#box + 1] = row({ gap = 6, cross_align = "center",
+column({ width = 8, height = 3, bg = color }),
+ctx.text(c, name, { size = "$kitSizeLabel", max_lines = 1 }),
+ctx.grow(),
+ctx.data(c, value, { size = "$kitSizeLabel", bold = true, max_lines = 1 }), })
+         end
+      end
+      box.label = table.concat(said, ", ")
+      plot[#plot + 1] = column(box)
    end
    return column({
       width = "grow",
       gap = 4,
-      role = "image",
+      role = focusable and "group" or "image",
       label = "line chart",
       row(legend),
       row({ width = "grow", gap = 6, column(labels), column(plot) }),
@@ -837,9 +930,40 @@ ctx.data(c, short(b.hi), { size = 10, color = ref(c, "faint") }), }),
 end
 
 function M.event(m, kit)
-   if kit == "line_chart.hover" then
+   local st = ctx.peek(m.inst)
+   if kit == "line_chart.over" or kit == "sparkline.over" then
       local hv = m.hover
-      if hv and hv.phase == "enter" then return emit("on_hover", { row = m.row }) end
+      if st and hv then
+         st.over = hv.phase == "enter"
+         if not st.over then st.row = nil end
+      end
+   elseif kit == "line_chart.hover" or kit == "sparkline.hover" then
+
+
+
+      local hv = m.hover
+      if hv and st then st.over = hv.phase == "enter" end
+      if hv and hv.phase == "enter" then
+         if st then st.row = m.row end
+         if m.tell == true then return emit("on_hover", { row = m.row }) end
+      end
+   elseif kit == "line_chart.focus" then
+      local f = m.focus
+      if st and f and f.phase == "out" then st.key_row = nil end
+   elseif kit == "line_chart.key" then
+      local k = m.key
+      if not st or not k or k.phase ~= "down" then return nil end
+      local from, to = m.from, m.to
+      local code = k.code
+      local row = st.key_row or (to - 1)
+      if code == "tab" then
+
+         st.hand = k.shift == true and "prev" or "next"
+      elseif code == "left" then st.key_row = st.key_row and math.max(from, row - 1) or row
+      elseif code == "right" then st.key_row = math.min(to - 1, st.key_row and row + 1 or row)
+      elseif code == "home" then st.key_row = from
+      elseif code == "end" then st.key_row = to - 1
+      end
    elseif kit == "bar_chart.select" then
       return emit("on_select", { row = m.row })
    end

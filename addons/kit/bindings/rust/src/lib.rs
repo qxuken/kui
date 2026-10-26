@@ -5574,6 +5574,11 @@ pub struct Sparkline {
     pub width: Option<f64>,
     /// In px; 18 when left out.
     pub height: Option<f64>,
+    /// After the value under the pointer: `ms`, `%`.
+    pub unit: Option<String>,
+    /// The value under the pointer, as a hint and a dot on its sample; on when
+    /// left out.
+    pub readout: Option<bool>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -5589,6 +5594,8 @@ impl Sparkline {
             color: None,
             width: None,
             height: None,
+            unit: None,
+            readout: None,
             key: None,
             fresh: false,
         }
@@ -5609,6 +5616,19 @@ impl Sparkline {
     /// In px; 18 when left out.
     pub fn height(mut self, v: f64) -> Self {
         self.height = Some(v);
+        self
+    }
+
+    /// After the value under the pointer: `ms`, `%`.
+    pub fn unit(mut self, v: impl Into<String>) -> Self {
+        self.unit = Some(v.into());
+        self
+    }
+
+    /// The value under the pointer, as a hint and a dot on its sample; on when
+    /// left out.
+    pub fn readout(mut self, v: bool) -> Self {
+        self.readout = Some(v);
         self
     }
 
@@ -5637,6 +5657,12 @@ impl Sparkline {
         }
         if let Some(v) = &self.height {
             m.push(("height".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.unit {
+            m.push(("unit".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.readout {
+            m.push(("readout".into(), Value::Bool(*v)));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -5680,6 +5706,14 @@ pub struct LineChart {
     pub x_unit: Option<String>,
     /// After each y tick's number: `ms`, `%`.
     pub y_unit: Option<String>,
+    /// Under the pointer, a crosshair on the nearest sample, a dot on each
+    /// series there and a readout of the x and every series' value in its
+    /// colour, following the pointer and gone when it leaves; on when left out.
+    /// An idle chart pays one hover layer for it.
+    pub readout: Option<bool>,
+    /// A Tab stop: Left and Right move the readout a sample, Home and End to
+    /// the ends, and the readout is a live region a screen reader announces.
+    pub focusable: Option<bool>,
     /// The message `hover` arrives as, with `hover: LineChartHover` in it. The
     /// pointer moved over a row.
     pub on_hover: Option<Value>,
@@ -5702,6 +5736,8 @@ impl LineChart {
             x_format: None,
             x_unit: None,
             y_unit: None,
+            readout: None,
+            focusable: None,
             on_hover: None,
             key: None,
             fresh: false,
@@ -5741,6 +5777,22 @@ impl LineChart {
     /// After each y tick's number: `ms`, `%`.
     pub fn y_unit(mut self, v: impl Into<String>) -> Self {
         self.y_unit = Some(v.into());
+        self
+    }
+
+    /// Under the pointer, a crosshair on the nearest sample, a dot on each
+    /// series there and a readout of the x and every series' value in its
+    /// colour, following the pointer and gone when it leaves; on when left out.
+    /// An idle chart pays one hover layer for it.
+    pub fn readout(mut self, v: bool) -> Self {
+        self.readout = Some(v);
+        self
+    }
+
+    /// A Tab stop: Left and Right move the readout a sample, Home and End to
+    /// the ends, and the readout is a live region a screen reader announces.
+    pub fn focusable(mut self, v: bool) -> Self {
+        self.focusable = Some(v);
         self
     }
 
@@ -5785,6 +5837,12 @@ impl LineChart {
         }
         if let Some(v) = &self.y_unit {
             m.push(("y_unit".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.readout {
+            m.push(("readout".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.focusable {
+            m.push(("focusable".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_hover {
             m.push(("on_hover".into(), v.clone()));

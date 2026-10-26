@@ -2796,6 +2796,16 @@ typedef struct KitSparkline {
      */
     double height;
     bool height_set;
+    /*
+     * After the value under the pointer: `ms`, `%`.
+     */
+    KuiStr unit;
+    /*
+     * The value under the pointer, as a hint and a dot on its sample; on when
+     * left out.
+     */
+    bool readout;
+    bool readout_set;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -2809,6 +2819,8 @@ static inline KuiValue *kit_sparkline_props(const KitSparkline *p) {
     if (p->color != 0) kui_value_map_set(m, KUI_STR("color"), kui_value_int((int64_t)p->color));
     if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
     if (p->height_set) kui_value_map_set(m, KUI_STR("height"), kui_value_float(p->height));
+    if (p->unit.len > 0) kui_value_map_set(m, KUI_STR("unit"), kui_value_str(p->unit));
+    if (p->readout_set) kui_value_map_set(m, KUI_STR("readout"), kui_value_bool(p->readout));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -2868,6 +2880,20 @@ typedef struct KitLineChart {
      */
     KuiStr y_unit;
     /*
+     * Under the pointer, a crosshair on the nearest sample, a dot on each
+     * series there and a readout of the x and every series' value in its
+     * colour, following the pointer and gone when it leaves; on when left out.
+     * An idle chart pays one hover layer for it.
+     */
+    bool readout;
+    bool readout_set;
+    /*
+     * A Tab stop: Left and Right move the readout a sample, Home and End to the
+     * ends, and the readout is a live region a screen reader announces.
+     */
+    bool focusable;
+    bool focusable_set;
+    /*
      * The message `hover` arrives as, consumed; NULL for none. The pointer
      * moved over a row.
      */
@@ -2893,6 +2919,8 @@ static inline KuiValue *kit_line_chart_props(const KitLineChart *p) {
     if (p->x_format != 0) kui_value_map_set(m, KUI_STR("x_format"), kui_value_str(kit_x_format_name(p->x_format)));
     if (p->x_unit.len > 0) kui_value_map_set(m, KUI_STR("x_unit"), kui_value_str(p->x_unit));
     if (p->y_unit.len > 0) kui_value_map_set(m, KUI_STR("y_unit"), kui_value_str(p->y_unit));
+    if (p->readout_set) kui_value_map_set(m, KUI_STR("readout"), kui_value_bool(p->readout));
+    if (p->focusable_set) kui_value_map_set(m, KUI_STR("focusable"), kui_value_bool(p->focusable));
     if (p->on_hover != NULL) kui_value_map_set(m, KUI_STR("on_hover"), p->on_hover);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));

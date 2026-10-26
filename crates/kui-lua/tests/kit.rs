@@ -3143,3 +3143,113 @@ fn a_checklist_is_one_tab_stop_its_arrows_walk_and_space_ticks() {
     assert!(!bread_on, "a click unticks");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
+
+/// A line chart of ten rows (x 0..9, A = 10x, B = 100 - x), focusable.
+fn readout_rig() -> LuaRig {
+    LuaRig::new(
+        r#"
+        local t, a, b = {}, {}, {}
+        for i = 0, 9 do t[#t + 1] = i; a[#a + 1] = i * 10; b[#b + 1] = 100 - i end
+        local ch = channel({ t = t, a = a, b = b })
+        function view(env)
+          return column { width = 640, height = "grow", pad = 20, gap = 8,
+            component("kit/button", { label = "Before" }),
+            component("kit/line_chart", { data = ch, x = "t", height = 160, focusable = true,
+              series = { { field = "a", name = "A" }, { field = "b", name = "B" } } }) }
+        end
+        "#,
+    )
+}
+
+fn readout(r: &mut LuaRig) -> Option<String> {
+    r.core.access_tree().nodes.iter().find(|n| n.live != kui_core::Live::Off && n.name.as_deref().is_some_and(|s| s.contains(", A "))).and_then(|n| n.name.clone())
+}
+
+#[test]
+fn a_line_chart_reads_out_the_sample_under_the_pointer_and_hides_on_leave() {
+    let mut r = readout_rig();
+    r.frames(3);
+    assert!(readout(&mut r).is_none(), "nothing until the pointer comes");
+    let plot = r.node(|n| n.label.as_deref() == Some("plot")).expect("the plot").rect;
+    use kui_core::{InputEvent, Vec2};
+    // Over row 5 (x 5 of 0..9 is 5/9 of the way across).
+    let at = |r: &mut LuaRig, f: f32| {
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(plot.x + plot.w * f, plot.y + plot.h / 2.0)));
+        r.route(e);
+        r.frames(3);
+    };
+    at(&mut r, 5.0 / 9.0);
+    assert_eq!(readout(&mut r).as_deref(), Some("5, A 50, B 95"), "x and each series' value");
+    at(&mut r, 2.0 / 9.0);
+    assert_eq!(readout(&mut r).as_deref(), Some("2, A 20, B 98"), "it follows the pointer");
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(plot.x + plot.w / 2.0, plot.y + plot.h + 200.0)));
+    r.route(e);
+    r.frames(3);
+    assert!(readout(&mut r).is_none(), "gone when the pointer leaves");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn a_focusable_line_chart_steps_its_readout_with_the_keyboard() {
+    let mut r = readout_rig();
+    r.frames(2);
+    let tab = |r: &mut LuaRig| {
+        let e = r.core.handle_input(kui_core::testing::key_press(kui_core::KeyCode::Tab));
+        r.route(e);
+        let e = kui_core::testing::tab(&mut r.core, false);
+        r.route(e);
+        r.frames(1);
+    };
+    let key = |r: &mut LuaRig, code: kui_core::KeyCode| {
+        let e = r.core.press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
+        r.route(e);
+        r.frames(2);
+    };
+    tab(&mut r);
+    tab(&mut r);
+    let focused = r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    assert_eq!(focused.as_deref(), Some("line chart"), "the plot is a Tab stop");
+    key(&mut r, kui_core::KeyCode::Left);
+    assert_eq!(readout(&mut r).as_deref(), Some("9, A 90, B 91"), "the first arrow shows the newest sample");
+    key(&mut r, kui_core::KeyCode::Left);
+    assert_eq!(readout(&mut r).as_deref(), Some("8, A 80, B 92"), "Left steps back");
+    key(&mut r, kui_core::KeyCode::Home);
+    assert_eq!(readout(&mut r).as_deref(), Some("0, A 0, B 100"), "Home to the first");
+    key(&mut r, kui_core::KeyCode::Right);
+    assert_eq!(readout(&mut r).as_deref(), Some("1, A 10, B 99"), "Right steps on");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn a_bar_and_a_sparkline_show_the_value_under_the_pointer() {
+    let mut r = LuaRig::new(
+        r#"
+        local bars = channel({ name = { "a", "b", "c" }, n = { 10, 20, 30 } })
+        local trend = channel({ v = { 1, 2, 3, 4, 5, 6, 7, 8 } })
+        function view(env)
+          return column { width = 600, height = "grow", pad = 20, gap = 20,
+            row { key = "bars", label = "bars", width = "grow",
+              component("kit/bar_chart", { data = bars, label = "name", value = "n", height = 120, values = false }) },
+            row { key = "spark", label = "spark", width = 160,
+              component("kit/sparkline", { data = trend, field = "v", width = 160, height = 24, unit = "ms" }) } }
+        end
+        "#,
+    );
+    r.frames(2);
+    use kui_core::{InputEvent, Vec2};
+    let move_to = |r: &mut LuaRig, x: f32, y: f32| {
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        r.route(e);
+        r.frames(3);
+    };
+    let b = r.node(|n| n.label.as_deref() == Some("b2")).expect("the second bar").rect;
+    move_to(&mut r, b.x + b.w / 2.0, b.y + b.h - 4.0);
+    assert!(r.text("b: 20").is_some(), "the bar under the pointer says its value");
+    let spark = r.node(|n| n.label.as_deref() == Some("spark")).unwrap().rect;
+    move_to(&mut r, spark.x + spark.w - 2.0, spark.y + spark.h / 2.0);
+    move_to(&mut r, spark.x + spark.w - 3.0, spark.y + spark.h / 2.0);
+    assert!(r.text("8 ms").is_some(), "the sparkline says the sample under the pointer");
+    move_to(&mut r, 5.0, 5.0);
+    assert!(r.text("8 ms").is_none(), "and nothing once the pointer leaves");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}

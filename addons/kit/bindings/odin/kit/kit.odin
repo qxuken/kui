@@ -2557,6 +2557,11 @@ Sparkline :: struct {
 	width: Maybe(f64),
 	// In px; 18 when left out.
 	height: Maybe(f64),
+	// After the value under the pointer: `ms`, `%`.
+	unit: string,
+	// The value under the pointer, as a hint and a dot on its sample; on when left
+	// out.
+	readout: Maybe(bool),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -2570,6 +2575,8 @@ sparkline_props :: proc(p: Sparkline) -> ^c.Value {
 	if x, ok := p.color.?; ok do c.value_map_set(m, "color", c.value_int(i64(x)))
 	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
 	if x, ok := p.height.?; ok do c.value_map_set(m, "height", c.value_float(x))
+	if p.unit != "" do c.value_map_set(m, "unit", c.value_str(p.unit))
+	if x, ok := p.readout.?; ok do c.value_map_set(m, "readout", c.value_bool(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -2607,6 +2614,14 @@ LineChart :: struct {
 	x_unit: string,
 	// After each y tick's number: `ms`, `%`.
 	y_unit: string,
+	// Under the pointer, a crosshair on the nearest sample, a dot on each series
+	// there and a readout of the x and every series' value in its colour,
+	// following the pointer and gone when it leaves; on when left out. An idle
+	// chart pays one hover layer for it.
+	readout: Maybe(bool),
+	// A Tab stop: Left and Right move the readout a sample, Home and End to the
+	// ends, and the readout is a live region a screen reader announces.
+	focusable: Maybe(bool),
 	// The message `hover` arrives as. The pointer moved over a row.
 	on_hover: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -2637,6 +2652,8 @@ line_chart_props :: proc(p: LineChart) -> ^c.Value {
 	if x, ok := p.x_format.?; ok do c.value_map_set(m, "x_format", c.value_str(X_FORMAT_NAMES[x]))
 	if p.x_unit != "" do c.value_map_set(m, "x_unit", c.value_str(p.x_unit))
 	if p.y_unit != "" do c.value_map_set(m, "y_unit", c.value_str(p.y_unit))
+	if x, ok := p.readout.?; ok do c.value_map_set(m, "readout", c.value_bool(x))
+	if x, ok := p.focusable.?; ok do c.value_map_set(m, "focusable", c.value_bool(x))
 	if p.on_hover != nil do c.value_map_set(m, "on_hover", (^c.Value)(kui.encode(p.on_hover)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
