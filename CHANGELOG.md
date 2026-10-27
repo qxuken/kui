@@ -87,6 +87,17 @@ already generated for each event.
 
 ### Added
 
+- **A host's way of starting children, for kui's** (backlog F222,
+  from kawoosh): `kui_native::set_spawner(spawn)` starts the tools
+  `show_in_folder` and `open_external` run — and so the devtools' "open
+  folder" — where they called `Command::spawn`. A host that serializes
+  its spawns under one lock against macOS's pipes, which are not born
+  close-on-exec, hands kui that lock. Rust's: a C, Odin or Node host's
+  processes are its own.
+
+  *What you can delete:* an opener and a "show in folder" of the app's
+  own, kept only so their children started under its spawn lock.
+
 - **A `try_` form for every runner call that can fail on its input or on
   the world** — a file, text read in, the network, a process, a
   database, a worker's script: `local ok, tasks =
@@ -192,6 +203,13 @@ already generated for each event.
   the live view go; it lets it go first now. The hidden panel was right
   already, and is tested beside it.
 
+- **`show_in_folder` selects on Linux, and `open_external` shows a
+  folder on macOS** (backlog F222, from kawoosh): a Linux desktop's file
+  manager is asked over D-Bus (`FileManager1.ShowItems`) to select the
+  file, `xdg-open` on its folder where none answers; and a folder opened
+  on macOS is opened in Finder, so a bundle (`X.app`) is shown as the
+  folder it is where `open` ran it.
+
 **What you can delete.**
 
 - A `pcall` around a runner call, and the `tostring(err)`, the
@@ -208,6 +226,8 @@ already generated for each event.
   did not cover the point it was opened at.
 - A long menu cut into "More…" submenus, kept only so it stayed a
   reasonable height: `max_size` scrolls it at the height you choose.
+- A Linux file manager asked over D-Bus by hand to select a file, and
+  `open -a Finder` on macOS to show a folder rather than run it.
 
 ## 0.1.0-alpha.68 (2026-10-27)
 

@@ -4001,10 +4001,12 @@ Tab stop inside a sink, the ring on a focused sink — and then put its
 Perf and Frames tabs, its frame ledger and its two logs on ADR 0058's
 recording, deleting about 2,300 lines of its own (its
 `docs/design/lua-boundary.md` Decision 10's amendment, its `perf.rs`).
-What it met on the way, checked against the tree at `e2bd83fa`. Nine
-entries, F211–F219: F211, a defect, **built 2026-10-27**, the day it
-was filed, and in the archive; F212–F219, doors kawoosh worked around
-or went without, filed and **not built**.
+What it met on the way, checked against the tree at `e2bd83fa`. Ten
+entries, F211–F219 and F222 (F220 and F221 were Carnet's by then): F211,
+a defect, and F222, kawoosh's own opener and file manager moved into
+F203's doors, **built 2026-10-27**, the day they were filed, and in the
+archive; F212–F219, doors kawoosh worked around or went without, filed
+and **not built**.
 
 ### `.` F212 — A component's refusal says its kind, not what moved
 
@@ -6075,9 +6077,10 @@ move.
 
 - `.` **F210** — [A menu taller than the window cannot be used](backlog/closed-2026-09.md#-f210--a-menu-taller-than-the-window-cannot-be-used--done-2026-10-27) — done (2026-10-27) — every core menu panel scrolls, cut by layout to the window less `MENU_EDGE` and placed as high as that goes; the keyboard keeps its row in view; kui-native shows one that does not fit as a popup window (ADR 0004 amended), not on Wayland; `Menu::max_size` and `Menu::in_window` in every binding
 
-**From kawoosh's alpha.68 port (2026-10-27)** — F211, filed and built the same day
+**From kawoosh's alpha.68 port (2026-10-27)** — F211 and F222, filed and built the same day
 
 - `!` **F211** — [Closing the panel on its Perf tab leaves the recording on](backlog/closed-2026-09.md#-f211--closing-the-panel-on-its-perf-tab-leaves-the-recording-on--done-2026-10-27) — done (2026-10-27) — a panel off lets the Perf tab's live view go (`perf_set_live(false)`) before `devtools_begin_frame` returns, where only `perf_begin_frame`, which a panel off never reached, did
+- `.` **F222** — [F203's doors start their tools outside a host's spawn lock, select nothing on Linux, and run a bundle](backlog/closed-2026-09.md#-f222--f203s-doors-start-their-tools-outside-a-hosts-spawn-lock-select-nothing-on-linux-and-run-a-bundle--done-2026-10-27) — done (2026-10-27) — `set_spawner` for a host's way of starting children; `show_in_folder` asks a Linux desktop's `FileManager1.ShowItems` before `xdg-open` on the folder; `open_external` on a folder opens it in Finder on macOS
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 
