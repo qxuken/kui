@@ -23,8 +23,12 @@ mlua.workspace = true
 
 [dev-dependencies]
 # The C loader, for the examples and tests whose script loads a C plugin
-# (`kui_ffi::register_native_loader`). A dev-dependency may close the cycle.
-kui-ffi.workspace = true
+# (`kui_ffi::register_native_loader`). A dev-dependency may close the cycle,
+# by path alone: `cargo package` drops a dev-dependency with no version, and
+# keeps one with a version, which a publish of the crates together cannot
+# meet — kui-lua goes up before kui-ffi, which depends on it. alpha.68's
+# first publish stopped there, before uploading anything.
+kui-ffi = { path = "../kui-ffi", default-features = false }
 divan.workspace = true
 kui-native.workspace = true
 # The examples' devtools (docs/adr/0021), for the Rust host of the panel.

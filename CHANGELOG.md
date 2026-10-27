@@ -2219,7 +2219,11 @@ release's first executable built at the glibc 2.28 floor: lld refused
 the runner image's libasound.so, which asks for a newer glibc than zig's
 stubs; it links with `--allow-shlib-undefined` now (a user's libasound
 is their distribution's). A by-hand run of the release workflow on main
-then went through every job but `publish` before the tag moved again. Through those rounds the workspace suite ran at each merge, and the
+then went through every job but `publish` before the tag moved again.
+The next run's `publish` stopped before uploading anything: kui-lua's
+new dev-dependency on kui-ffi carried a version, which `cargo package`
+keeps and a publish of the crates together cannot meet (kui-ffi depends
+on kui-lua and goes up after it); it is path-only now, and dropped. Through those rounds the workspace suite ran at each merge, and the
 Kit gallery's paint audit (`KUI_PAINT_AUDIT=1`, ADR 0074) over every
 page.
 
