@@ -101,20 +101,14 @@ thing to read; the round on the release machines — the windowed smoke
 round with a display, the accessibility audit, below — is what CI cannot
 do. Then
 commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag:
-`git push origin main v0.1.0-alpha.2`. `origin` is
-Forgejo, and its push mirror carries both refs to GitHub — but do not
-count on the mirror to start GitHub's pipeline. Push the tag there by
-name as well: `git push github main v0.1.0-alpha.2`. The one time a tag
-reached GitHub by the mirror alone (kui-node-template's v0.14.0, the
-same day as alpha.35) the tag was there and no workflow ran for it,
-while the next tag, pushed by name, started its run within seconds; and
-the mirror syncs on its own schedule in any case. Forgejo is the source:
-a ref `origin` does not hold is the mirror's to overwrite, so push the
-same commit and tag to both and nothing else to `github`. The next release's
-`## <version> (unreleased)` heading is opened by hand; the script only dates
-the open one, and a tag whose top heading is missing, stale or still says
-unreleased fails the release. The tag starts the release pipeline;
-Forgejo is a mirror since alpha.68 and runs nothing:
+`git push <github> main v0.1.0-alpha.2`, both refs named in the one push,
+to the GitHub remote, the only one since alpha.68 (until then the
+repository lived on a Forgejo whose push mirror carried refs to GitHub,
+and a tag that arrived by the mirror alone started no workflow). The next
+release's `## <version> (unreleased)` heading is opened by hand; the
+script only dates the open one, and a tag whose top heading is missing,
+stale or still says unreleased fails the release. The tag starts the
+release pipeline:
 
 - [release.yml](../.github/workflows/release.yml): `check` (ci.yml,
   called: the whole check a push to main gets), then one build per platform on

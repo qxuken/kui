@@ -5,7 +5,7 @@
 # Until alpha.68 this was Forgejo's (.forgejo/workflows/ci.yml, in the
 # history), on one self-hosted docker runner whose queue had made it a
 # by-hand job; GitHub's hosted runners are free for a public repository, so
-# it runs unasked again. Forgejo is a mirror now and runs no workflow.
+# it runs unasked again. The repository lives on GitHub alone now.
 #
 # The other workflows: release.yml (a `v*` tag: the builds, the packs, the
 # publish), smoke.yml (macOS and Windows natively, on main, non-blocking),

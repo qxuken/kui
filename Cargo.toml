@@ -28,7 +28,7 @@ version = "0.1.0-alpha.67"
 edition = "2024"
 license = "MIT"
 # `homepage` is the book (docs/book), which is what a reader arriving from
-# crates.io wants first; `repository` is the public GitHub mirror.
+# crates.io wants first; `repository` is GitHub, where the repository lives.
 repository = "https://github.com/qxuken/kui"
 homepage = "https://kui-book.qxuken.dev"
 keywords = ["gui", "ui", "layout", "wgpu"]

@@ -121,6 +121,5 @@ what is left, in order:
   write CHANGELOG.md's ### Native verification for ($version)
   git commit -am '($version): ...'
   git tag ($tag)
-  git push origin main ($tag)
-  git push ($github) main ($tag)    the mirror does not start GitHub's pipeline"
+  git push ($github) main ($tag)    both refs by name: lightweight tags do not ride --follow-tags"
 }

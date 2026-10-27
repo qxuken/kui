@@ -39,8 +39,8 @@
 # binding, the Node parity tests, the scene corpus, the book, the headless
 # round), so nothing reaches crates.io or npmjs from a commit that fails
 # any of it. Until alpha.68 this was fmt, clippy and the tests alone, and
-# the full check was Forgejo's, started by hand; Forgejo is a mirror now,
-# and its registries take no new versions.
+# the full check was Forgejo's, started by hand; the repository lives on
+# GitHub alone now, and Forgejo's registries take no new versions.
 #
 # Each prebuild is built on the platform it targets, so no cross SDK is
 # involved: GitHub's macOS runners carry Xcode, Windows runners MSVC, and

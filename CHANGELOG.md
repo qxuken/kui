@@ -1652,10 +1652,10 @@ for lua-language-server, and a new runner beside the window's.
   the tests. `smoke.yml` runs the tests, the windowed round and the C
   round natively on macOS and Windows on every push to main, non-blocking;
   `audit.yml` checks yanked crates again; `fuzz.yml` is by hand as before.
-  The book is on GitHub Pages at the same address. Forgejo is a mirror and
-  runs nothing: its cargo and npm registries keep every version up to
-  0.1.0-alpha.67 and take no new ones (`scripts/release-local.nu`, which
-  published to them, is gone).
+  The book is on GitHub Pages at the same address. The repository lives on
+  GitHub alone; the Forgejo it grew up on is retired, and its cargo and npm
+  registries keep every version up to 0.1.0-alpha.67 and take no new ones
+  (`scripts/release-local.nu`, which published to them, is gone).
 
 - **The `kui` runner allocates with mimalloc** (backlog C150), the Lua
   heaps too — mlua allocates through Rust's allocator — and gives freed
