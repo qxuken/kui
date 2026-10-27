@@ -7,7 +7,13 @@
 //! setter each the rest, and `place` puts it in a view under the namespace
 //! `kit` (`place_in` under another, for kit loaded twice).
 
-#![allow(clippy::new_without_default, clippy::too_many_arguments)]
+#![allow(
+    clippy::new_without_default,
+    clippy::too_many_arguments,
+    clippy::needless_borrow,
+    clippy::deref_addrof,
+    clippy::vec_init_then_push
+)]
 
 use kui_core::channel::Channel;
 use kui_core::{FillAnswer, Ui, Value};
@@ -711,7 +717,7 @@ impl Check {
     pub fn new(label: impl Into<String>, checked: bool) -> Self {
         Self {
             label: label.into(),
-            checked: checked,
+            checked,
             disabled: None,
         }
     }
@@ -786,10 +792,7 @@ pub struct RowRange {
 impl RowRange {
     /// What it needs; the rest by their setters.
     pub fn new(first: i64, last: i64) -> Self {
-        Self {
-            first: first,
-            last: last,
-        }
+        Self { first, last }
     }
 
     /// As the extension reads it.
@@ -982,13 +985,13 @@ impl Settings {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(v) = &self.skin {
@@ -1016,10 +1019,16 @@ impl Settings {
             m.push(("rule".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.font_ui {
-            m.push(("font_ui".into(), Value::List(v.iter().map(|x| Value::str(x.as_str())).collect())));
+            m.push((
+                "font_ui".into(),
+                Value::List(v.iter().map(|x| Value::str(x.as_str())).collect()),
+            ));
         }
         if let Some(v) = &self.font_data {
-            m.push(("font_data".into(), Value::List(v.iter().map(|x| Value::str(x.as_str())).collect())));
+            m.push((
+                "font_data".into(),
+                Value::List(v.iter().map(|x| Value::str(x.as_str())).collect()),
+            ));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -1113,13 +1122,13 @@ impl Panel {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(v) = &self.title {
@@ -1157,7 +1166,11 @@ impl Panel {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"actions"`, `"footer"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/panel", &self.props(), children)
     }
 }
@@ -1187,13 +1200,13 @@ impl Toolbar {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(k) = &self.key {
@@ -1216,7 +1229,11 @@ impl Toolbar {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"trailing"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/toolbar", &self.props(), children)
     }
 }
@@ -1245,13 +1262,13 @@ impl Statusbar {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(k) = &self.key {
@@ -1274,7 +1291,11 @@ impl Statusbar {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"trailing"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/statusbar", &self.props(), children)
     }
 }
@@ -1303,7 +1324,7 @@ impl Split {
     pub fn new(fraction: f64) -> Self {
         Self {
             axis: None,
-            fraction: fraction,
+            fraction,
             min: None,
             on_resize: None,
             key: None,
@@ -1336,13 +1357,13 @@ impl Split {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(v) = &self.axis {
@@ -1375,7 +1396,11 @@ impl Split {
     }
 
     /// Places it with your children: `children(group, ui)` builds `"first"`, `"second"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/split", &self.props(), children)
     }
 }
@@ -1392,7 +1417,10 @@ impl SplitResize {
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("resize")?;
         Some(Self {
-            fraction: _d.get("fraction").and_then(Value::as_float).unwrap_or_default(),
+            fraction: _d
+                .get("fraction")
+                .and_then(Value::as_float)
+                .unwrap_or_default(),
         })
     }
 }
@@ -1417,7 +1445,7 @@ impl Tabs {
     /// What it needs; the rest by their setters.
     pub fn new(tabs: Vec<Tab>, value: impl Into<String>) -> Self {
         Self {
-            tabs: tabs,
+            tabs,
             value: value.into(),
             on_change: None,
             key: None,
@@ -1437,16 +1465,19 @@ impl Tabs {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
-        m.push(("tabs".into(), Value::List((&self.tabs).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "tabs".into(),
+            Value::List((&self.tabs).iter().map(|x| x.to_value()).collect()),
+        ));
         m.push(("value".into(), Value::str((&self.value).as_str())));
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));
@@ -1471,7 +1502,11 @@ impl Tabs {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"trailing"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/tabs", &self.props(), children)
     }
 }
@@ -1559,13 +1594,13 @@ impl Section {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("title".into(), Value::str((&self.title).as_str())));
@@ -1601,7 +1636,11 @@ impl Section {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"leading"`, `"actions"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/section", &self.props(), children)
     }
 }
@@ -1618,7 +1657,10 @@ impl SectionToggle {
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("toggle")?;
         Some(Self {
-            collapsed: _d.get("collapsed").and_then(Value::as_bool).unwrap_or_default(),
+            collapsed: _d
+                .get("collapsed")
+                .and_then(Value::as_bool)
+                .unwrap_or_default(),
         })
     }
 }
@@ -1647,13 +1689,13 @@ impl Divider {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(k) = &self.key {
@@ -1778,13 +1820,13 @@ impl Button {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("label".into(), Value::str((&self.label).as_str())));
@@ -1834,15 +1876,13 @@ impl Button {
 
 /// What `on_press`'s message carries under `press`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct ButtonPress {
-}
+pub struct ButtonPress {}
 
 impl ButtonPress {
     /// Read off an event's payload: the fields under `press`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("press")?;
-        Some(Self {
-        })
+        Some(Self {})
     }
 }
 
@@ -1922,13 +1962,13 @@ impl IconButton {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("icon".into(), Value::str((&self.icon).as_str())));
@@ -1970,15 +2010,13 @@ impl IconButton {
 
 /// What `on_press`'s message carries under `press`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct IconButtonPress {
-}
+pub struct IconButtonPress {}
 
 impl IconButtonPress {
     /// Read off an event's payload: the fields under `press`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("press")?;
-        Some(Self {
-        })
+        Some(Self {})
     }
 }
 
@@ -2150,13 +2188,13 @@ impl TextField {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("value".into(), Value::str((&self.value).as_str())));
@@ -2416,13 +2454,13 @@ impl TextArea {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("value".into(), Value::str((&self.value).as_str())));
@@ -2602,13 +2640,13 @@ impl Search {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("value".into(), Value::str((&self.value).as_str())));
@@ -2713,7 +2751,7 @@ impl Select {
     /// What it needs; the rest by their setters.
     pub fn new(options: Vec<Choice>) -> Self {
         Self {
-            options: options,
+            options,
             value: None,
             placeholder: None,
             label: None,
@@ -2760,16 +2798,19 @@ impl Select {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
-        m.push(("options".into(), Value::List((&self.options).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "options".into(),
+            Value::List((&self.options).iter().map(|x| x.to_value()).collect()),
+        ));
         if let Some(v) = &self.value {
             m.push(("value".into(), Value::str(v.as_str())));
         }
@@ -2853,7 +2894,7 @@ impl Checkbox {
     pub fn new(label: impl Into<String>, checked: bool) -> Self {
         Self {
             label: label.into(),
-            checked: checked,
+            checked,
             mixed: None,
             disabled: None,
             hide_label: None,
@@ -2902,13 +2943,13 @@ impl Checkbox {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("label".into(), Value::str((&self.label).as_str())));
@@ -2948,7 +2989,11 @@ impl Checkbox {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/checkbox", &self.props(), children)
     }
 }
@@ -2965,7 +3010,10 @@ impl CheckboxToggle {
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("toggle")?;
         Some(Self {
-            checked: _d.get("checked").and_then(Value::as_bool).unwrap_or_default(),
+            checked: _d
+                .get("checked")
+                .and_then(Value::as_bool)
+                .unwrap_or_default(),
         })
     }
 }
@@ -2997,7 +3045,7 @@ impl Checklist {
     /// What it needs; the rest by their setters.
     pub fn new(items: Vec<Check>) -> Self {
         Self {
-            items: items,
+            items,
             label: None,
             removable: None,
             on_toggle: None,
@@ -3038,16 +3086,19 @@ impl Checklist {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
-        m.push(("items".into(), Value::List((&self.items).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "items".into(),
+            Value::List((&self.items).iter().map(|x| x.to_value()).collect()),
+        ));
         if let Some(v) = &self.label {
             m.push(("label".into(), Value::str(v.as_str())));
         }
@@ -3095,7 +3146,10 @@ impl ChecklistToggle {
         let _d = payload.get("toggle")?;
         Some(Self {
             index: _d.get("index").and_then(Value::as_int).unwrap_or_default(),
-            checked: _d.get("checked").and_then(Value::as_bool).unwrap_or_default(),
+            checked: _d
+                .get("checked")
+                .and_then(Value::as_bool)
+                .unwrap_or_default(),
         })
     }
 }
@@ -3140,7 +3194,7 @@ impl Switch {
     pub fn new(label: impl Into<String>, on: bool) -> Self {
         Self {
             label: label.into(),
-            on: on,
+            on,
             disabled: None,
             on_toggle: None,
             key: None,
@@ -3166,13 +3220,13 @@ impl Switch {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("label".into(), Value::str((&self.label).as_str())));
@@ -3244,7 +3298,7 @@ impl RadioGroup {
     /// What it needs; the rest by their setters.
     pub fn new(options: Vec<Choice>) -> Self {
         Self {
-            options: options,
+            options,
             value: None,
             label: None,
             hide_label: None,
@@ -3284,16 +3338,19 @@ impl RadioGroup {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
-        m.push(("options".into(), Value::List((&self.options).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "options".into(),
+            Value::List((&self.options).iter().map(|x| x.to_value()).collect()),
+        ));
         if let Some(v) = &self.value {
             m.push(("value".into(), Value::str(v.as_str())));
         }
@@ -3365,7 +3422,7 @@ impl Segmented {
     /// What it needs; the rest by their setters.
     pub fn new(options: Vec<Choice>, value: impl Into<String>) -> Self {
         Self {
-            options: options,
+            options,
             value: value.into(),
             label: None,
             on_change: None,
@@ -3392,16 +3449,19 @@ impl Segmented {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
-        m.push(("options".into(), Value::List((&self.options).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "options".into(),
+            Value::List((&self.options).iter().map(|x| x.to_value()).collect()),
+        ));
         m.push(("value".into(), Value::str((&self.value).as_str())));
         if let Some(v) = &self.label {
             m.push(("label".into(), Value::str(v.as_str())));
@@ -3475,9 +3535,9 @@ impl Slider {
     /// What it needs; the rest by their setters.
     pub fn new(value: f64, min: f64, max: f64) -> Self {
         Self {
-            value: value,
-            min: min,
-            max: max,
+            value,
+            min,
+            max,
             step: None,
             label: None,
             value_label: None,
@@ -3518,13 +3578,13 @@ impl Slider {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("value".into(), Value::Float(*(&self.value))));
@@ -3574,7 +3634,10 @@ impl SliderChange {
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("change")?;
         Some(Self {
-            value: _d.get("value").and_then(Value::as_float).unwrap_or_default(),
+            value: _d
+                .get("value")
+                .and_then(Value::as_float)
+                .unwrap_or_default(),
         })
     }
 }
@@ -3646,8 +3709,8 @@ impl Table {
     /// What it needs; the rest by their setters.
     pub fn new(columns: Vec<Column>, rows: Channel) -> Self {
         Self {
-            columns: columns,
-            rows: rows,
+            columns,
+            rows,
             selected: None,
             selection: None,
             selected_ranges: None,
@@ -3779,16 +3842,19 @@ impl Table {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
-        m.push(("columns".into(), Value::List((&self.columns).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "columns".into(),
+            Value::List((&self.columns).iter().map(|x| x.to_value()).collect()),
+        ));
         m.push(("rows".into(), (&self.rows).handle()));
         if let Some(v) = &self.selected {
             m.push(("selected".into(), Value::Int(*v)));
@@ -3797,7 +3863,10 @@ impl Table {
             m.push(("selection".into(), v.to_value()));
         }
         if let Some(v) = &self.selected_ranges {
-            m.push(("selected_ranges".into(), Value::List(v.iter().map(|x| x.to_value()).collect())));
+            m.push((
+                "selected_ranges".into(),
+                Value::List(v.iter().map(|x| x.to_value()).collect()),
+            ));
         }
         if let Some(v) = &self.select_on_focus {
             m.push(("select_on_focus".into(), Value::Bool(*v)));
@@ -4012,7 +4081,7 @@ impl List {
     /// What it needs; the rest by their setters.
     pub fn new(rows: Channel, title: impl Into<String>) -> Self {
         Self {
-            rows: rows,
+            rows,
             title: title.into(),
             detail: None,
             badge: None,
@@ -4127,13 +4196,13 @@ impl List {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("rows".into(), (&self.rows).handle()));
@@ -4160,7 +4229,10 @@ impl List {
             m.push(("selection".into(), v.to_value()));
         }
         if let Some(v) = &self.selected_ranges {
-            m.push(("selected_ranges".into(), Value::List(v.iter().map(|x| x.to_value()).collect())));
+            m.push((
+                "selected_ranges".into(),
+                Value::List(v.iter().map(|x| x.to_value()).collect()),
+            ));
         }
         if let Some(v) = &self.select_on_focus {
             m.push(("select_on_focus".into(), Value::Bool(*v)));
@@ -4277,7 +4349,7 @@ impl Inspector {
     /// What it needs; the rest by their setters.
     pub fn new(entries: Vec<Entry>) -> Self {
         Self {
-            entries: entries,
+            entries,
             key_width: None,
             key: None,
             fresh: false,
@@ -4296,16 +4368,19 @@ impl Inspector {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
-        m.push(("entries".into(), Value::List((&self.entries).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "entries".into(),
+            Value::List((&self.entries).iter().map(|x| x.to_value()).collect()),
+        ));
         if let Some(v) = &self.key_width {
             m.push(("key_width".into(), Value::Float(*v)));
         }
@@ -4357,7 +4432,7 @@ impl Log {
     /// What it needs; the rest by their setters.
     pub fn new(rows: Channel) -> Self {
         Self {
-            rows: rows,
+            rows,
             follow: None,
             grow: None,
             wrap: None,
@@ -4404,13 +4479,13 @@ impl Log {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("rows".into(), (&self.rows).handle()));
@@ -4531,13 +4606,13 @@ impl Badge {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("label".into(), Value::str((&self.label).as_str())));
@@ -4621,13 +4696,13 @@ impl Stat {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("label".into(), Value::str((&self.label).as_str())));
@@ -4736,13 +4811,13 @@ impl Code {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("text".into(), Value::str((&self.text).as_str())));
@@ -4812,13 +4887,13 @@ impl Markdown {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("text".into(), Value::str((&self.text).as_str())));
@@ -4888,13 +4963,13 @@ impl Notice {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("message".into(), Value::str((&self.message).as_str())));
@@ -4924,7 +4999,11 @@ impl Notice {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/notice", &self.props(), children)
     }
 }
@@ -4965,13 +5044,13 @@ impl Empty {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("title".into(), Value::str((&self.title).as_str())));
@@ -4998,7 +5077,11 @@ impl Empty {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/empty", &self.props(), children)
     }
 }
@@ -5045,13 +5128,13 @@ impl Progress {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(v) = &self.value {
@@ -5155,13 +5238,13 @@ impl Skeleton {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(v) = &self.shape {
@@ -5330,13 +5413,13 @@ impl Shader {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(v) = &self.preset {
@@ -5349,7 +5432,10 @@ impl Shader {
             m.push(("id".into(), Value::Int(*v)));
         }
         if let Some(v) = &self.params {
-            m.push(("params".into(), Value::List(v.iter().map(|x| Value::Float(*x)).collect())));
+            m.push((
+                "params".into(),
+                Value::List(v.iter().map(|x| Value::Float(*x)).collect()),
+            ));
         }
         if let Some(v) = &self.image {
             m.push(("image".into(), Value::Int(*v)));
@@ -5436,13 +5522,13 @@ impl Dialog {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("title".into(), Value::str((&self.title).as_str())));
@@ -5472,22 +5558,24 @@ impl Dialog {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"actions"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/dialog", &self.props(), children)
     }
 }
 
 /// What `on_dismiss`'s message carries under `dismiss`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct DialogDismiss {
-}
+pub struct DialogDismiss {}
 
 impl DialogDismiss {
     /// Read off an event's payload: the fields under `dismiss`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("dismiss")?;
-        Some(Self {
-        })
+        Some(Self {})
     }
 }
 
@@ -5546,13 +5634,13 @@ impl Popover {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(v) = &self.label {
@@ -5584,22 +5672,24 @@ impl Popover {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/popover", &self.props(), children)
     }
 }
 
 /// What `on_dismiss`'s message carries under `dismiss`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct PopoverDismiss {
-}
+pub struct PopoverDismiss {}
 
 impl PopoverDismiss {
     /// Read off an event's payload: the fields under `dismiss`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("dismiss")?;
-        Some(Self {
-        })
+        Some(Self {})
     }
 }
 
@@ -5624,7 +5714,7 @@ impl Menu {
     /// What it needs; the rest by their setters.
     pub fn new(items: Vec<Item>) -> Self {
         Self {
-            items: items,
+            items,
             on_choose: None,
             on_dismiss: None,
             key: None,
@@ -5650,16 +5740,19 @@ impl Menu {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
-        m.push(("items".into(), Value::List((&self.items).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "items".into(),
+            Value::List((&self.items).iter().map(|x| x.to_value()).collect()),
+        ));
         if let Some(v) = &self.on_choose {
             m.push(("on_choose".into(), v.clone()));
         }
@@ -5705,15 +5798,13 @@ impl MenuChoose {
 
 /// What `on_dismiss`'s message carries under `dismiss`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct MenuDismiss {
-}
+pub struct MenuDismiss {}
 
 impl MenuDismiss {
     /// Read off an event's payload: the fields under `dismiss`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("dismiss")?;
-        Some(Self {
-        })
+        Some(Self {})
     }
 }
 
@@ -5821,13 +5912,13 @@ impl Toast {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("message".into(), Value::str((&self.message).as_str())));
@@ -5874,29 +5965,25 @@ impl Toast {
 
 /// What `on_dismiss`'s message carries under `dismiss`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct ToastDismiss {
-}
+pub struct ToastDismiss {}
 
 impl ToastDismiss {
     /// Read off an event's payload: the fields under `dismiss`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("dismiss")?;
-        Some(Self {
-        })
+        Some(Self {})
     }
 }
 
 /// What `on_action`'s message carries under `action`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct ToastAction {
-}
+pub struct ToastAction {}
 
 impl ToastAction {
     /// Read off an event's payload: the fields under `action`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("action")?;
-        Some(Self {
-        })
+        Some(Self {})
     }
 }
 
@@ -5925,13 +6012,13 @@ impl Toaster {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(k) = &self.key {
@@ -5954,7 +6041,11 @@ impl Toaster {
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         ui.component_with("kit/toaster", &self.props(), children)
     }
 }
@@ -5987,7 +6078,7 @@ impl Sparkline {
     /// What it needs; the rest by their setters.
     pub fn new(data: Channel, field: impl Into<String>) -> Self {
         Self {
-            data: data,
+            data,
             field: field.into(),
             color: None,
             width: None,
@@ -6036,13 +6127,13 @@ impl Sparkline {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("data".into(), (&self.data).handle()));
@@ -6134,9 +6225,9 @@ impl LineChart {
     /// What it needs; the rest by their setters.
     pub fn new(data: Channel, x: impl Into<String>, series: Vec<Series>) -> Self {
         Self {
-            data: data,
+            data,
             x: x.into(),
-            series: series,
+            series,
             height: None,
             area: None,
             window: None,
@@ -6224,18 +6315,21 @@ impl LineChart {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("data".into(), (&self.data).handle()));
         m.push(("x".into(), Value::str((&self.x).as_str())));
-        m.push(("series".into(), Value::List((&self.series).iter().map(|x| x.to_value()).collect())));
+        m.push((
+            "series".into(),
+            Value::List((&self.series).iter().map(|x| x.to_value()).collect()),
+        ));
         if let Some(v) = &self.height {
             m.push(("height".into(), Value::Float(*v)));
         }
@@ -6333,7 +6427,7 @@ impl BarChart {
     /// What it needs; the rest by their setters.
     pub fn new(data: Channel, label: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
-            data: data,
+            data,
             label: label.into(),
             value: value.into(),
             height: None,
@@ -6390,13 +6484,13 @@ impl BarChart {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("data".into(), (&self.data).handle()));
@@ -6478,7 +6572,7 @@ impl Histogram {
     /// What it needs; the rest by their setters.
     pub fn new(data: Channel, field: impl Into<String>) -> Self {
         Self {
-            data: data,
+            data,
             field: field.into(),
             bins: None,
             height: None,
@@ -6505,13 +6599,13 @@ impl Histogram {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("data".into(), (&self.data).handle()));
@@ -6575,7 +6669,7 @@ impl Waterfall {
     /// What it needs; the rest by their setters.
     pub fn new(bars: Channel) -> Self {
         Self {
-            bars: bars,
+            bars,
             marks: None,
             start: None,
             length: None,
@@ -6637,13 +6731,13 @@ impl Waterfall {
         self
     }
 
-/// Asks the extension every frame.
+    /// Asks the extension every frame.
     pub fn fresh(mut self) -> Self {
         self.fresh = true;
         self
     }
 
-/// The props as the extension reads them.
+    /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("bars".into(), (&self.bars).handle()));
@@ -6719,9 +6813,14 @@ impl WaterfallZoom {
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("zoom")?;
         Some(Self {
-            start: _d.get("start").and_then(Value::as_float).unwrap_or_default(),
-            length: _d.get("length").and_then(Value::as_float).unwrap_or_default(),
+            start: _d
+                .get("start")
+                .and_then(Value::as_float)
+                .unwrap_or_default(),
+            length: _d
+                .get("length")
+                .and_then(Value::as_float)
+                .unwrap_or_default(),
         })
     }
 }
-

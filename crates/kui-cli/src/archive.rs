@@ -529,14 +529,6 @@ impl ZipReader {
         self.entries.iter().map(|m| m.name.as_str())
     }
 
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
     /// The member named exactly `name` (folders end in `/`).
     pub fn get(&self, name: &str) -> Option<Entry<'_>> {
         self.index.get(name).map(|&i| Entry {
@@ -576,11 +568,6 @@ impl Entry<'_> {
 
     pub fn is_dir(&self) -> bool {
         self.meta.dir
-    }
-
-    /// The uncompressed size the directory claims.
-    pub fn size(&self) -> u64 {
-        self.meta.size
     }
 
     /// The member's bytes, inflated and checked against its CRC.

@@ -695,6 +695,44 @@ impl Replay {
     }
 }
 
+/// The clip node `root` of `tree` was held by: every box above it that
+/// clips or scrolls, its corners rounded as the live walk rounds them, up
+/// to a float that leaves its parent's clip (ADR 0074). Walked once per
+/// departure, from the frame the node left — the live walk's per-node
+/// clips are that frame's too, but cleared before the departures are
+/// cut. [`Clip::NONE`] under a turn: a ghost is drawn in its own space.
+fn held_by(tree: &Tree, root: usize) -> Clip {
+    let mut boxes: Vec<usize> = Vec::new();
+    let mut x = root;
+    loop {
+        if tree.specs[x]
+            .layout
+            .float
+            .is_some_and(|f| !f.clipped_by_parent())
+        {
+            break;
+        }
+        let p = tree.parent[x];
+        if p == NIL {
+            break;
+        }
+        let p = p as usize;
+        if tree.specs[p].transform_spec().is_some_and(|t| t.active()) {
+            return Clip::NONE;
+        }
+        if tree.specs[p].layout.clips() {
+            boxes.push(p);
+        }
+        x = p;
+    }
+    boxes.iter().rev().fold(Clip::NONE, |clip, &p| {
+        clip.intersect(
+            Rect::from_pos_size(tree.pos[p], tree.size[p]),
+            tree.specs[p].style.radius,
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1036,42 +1074,4 @@ mod tests {
             assert!(p.size.is_none(), "an exit that names no size resizes none");
         });
     }
-}
-
-/// The clip node `root` of `tree` was held by: every box above it that
-/// clips or scrolls, its corners rounded as the live walk rounds them, up
-/// to a float that leaves its parent's clip (ADR 0074). Walked once per
-/// departure, from the frame the node left — the live walk's per-node
-/// clips are that frame's too, but cleared before the departures are
-/// cut. [`Clip::NONE`] under a turn: a ghost is drawn in its own space.
-fn held_by(tree: &Tree, root: usize) -> Clip {
-    let mut boxes: Vec<usize> = Vec::new();
-    let mut x = root;
-    loop {
-        if tree.specs[x]
-            .layout
-            .float
-            .is_some_and(|f| !f.clipped_by_parent())
-        {
-            break;
-        }
-        let p = tree.parent[x];
-        if p == NIL {
-            break;
-        }
-        let p = p as usize;
-        if tree.specs[p].transform_spec().is_some_and(|t| t.active()) {
-            return Clip::NONE;
-        }
-        if tree.specs[p].layout.clips() {
-            boxes.push(p);
-        }
-        x = p;
-    }
-    boxes.iter().rev().fold(Clip::NONE, |clip, &p| {
-        clip.intersect(
-            Rect::from_pos_size(tree.pos[p], tree.size[p]),
-            tree.specs[p].style.radius,
-        )
-    })
 }

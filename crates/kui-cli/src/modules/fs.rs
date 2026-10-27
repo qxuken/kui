@@ -219,7 +219,7 @@ fn walk(
 ) -> std::io::Result<()> {
     for e in std::fs::read_dir(dir)?.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
-        if skip.iter().any(|s| *s == name) {
+        if skip.contains(&name) {
             continue;
         }
         let path = e.path();

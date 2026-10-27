@@ -353,7 +353,7 @@ pub fn search(query: &str) -> Vec<Hit> {
         .filter(|(m, h)| h.score >= 150 || *m == best)
         .map(|(_, h)| h)
         .collect();
-    hits.sort_by(|a, b| b.score.cmp(&a.score));
+    hits.sort_by_key(|h| std::cmp::Reverse(h.score));
     hits
 }
 

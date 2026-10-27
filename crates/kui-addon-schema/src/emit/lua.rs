@@ -120,9 +120,8 @@ fn lua_module(schema: &Schema) -> String {
         for e in &c.events {
             let _ = writeln!(
                 s,
-                "---@field on_{}? any The message {}: yours, with `{} = {{…}}` in it ({a}.{p}{}). {}",
+                "---@field on_{}? any The message it arrives as: yours, with `{} = {{…}}` in it ({a}.{p}{}). {}",
                 e.name,
-                "it arrives as",
                 e.name,
                 crate::pascal(&e.name),
                 e.doc

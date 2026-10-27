@@ -309,6 +309,10 @@ fn glide_step(at: Vec2, g: Glide, to: Vec2, now: f64, omega: f64) -> (Vec2, Vec2
 /// about 64 bytes, so a full budget is about 64 KB.
 pub const MAX_UNDECLARED_SCROLLS: usize = 1024;
 
+/// One geometry read during a build: the key, and the box size and clamped
+/// offset it was handed, `None` before the key has a layout.
+type GeometryRead = (Key, Option<(Size, Vec2)>);
+
 /// The retained scroll state of one window, owned by `Core`. Reach it
 /// through `Core::scroll_offset`, `Core::set_scroll` and
 /// `Core::scroll_geometry` rather than directly.
@@ -332,7 +336,7 @@ pub struct ScrollStore {
     /// ([`Self::resliced`]). `None` for a read that found no layout of
     /// the key yet — a scroller this frame declares for the first time,
     /// sliced by a guess. Interior mutability because a read is a read.
-    reads: std::cell::RefCell<Vec<(Key, Option<(Size, Vec2)>)>>,
+    reads: std::cell::RefCell<Vec<GeometryRead>>,
     /// How a wheel's notch goes ([`WheelFeel`]), clamped.
     feel: WheelFeel,
 }

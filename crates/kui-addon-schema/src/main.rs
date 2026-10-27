@@ -1,9 +1,39 @@
 //! `kui-addon-schema gen <schema.lua> <out>`: writes an add-on's typed
 //! wrappers for every binding (ADR 0066); `--check` writes nothing and
 //! fails when a file is missing or stale.
+//!
+//! The Rust wrappers go through `rustfmt` before they are compared or
+//! written: they are a workspace crate, so `cargo fmt --all --check` reads
+//! them, and the emitter's long lines and continued strings are not what
+//! rustfmt would write. Formatting here keeps the two checks agreeing.
 
+use std::io::Write;
 use std::path::Path;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
+
+/// `text` as rustfmt (edition 2024, the workspace's) writes it.
+fn rustfmt(text: &str) -> Result<String, String> {
+    let mut child = Command::new("rustfmt")
+        .args(["--edition", "2024", "--emit", "stdout", "--quiet"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("rustfmt: {e}"))?;
+    child
+        .stdin
+        .take()
+        .expect("piped stdin")
+        .write_all(text.as_bytes())
+        .map_err(|e| format!("rustfmt: {e}"))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("rustfmt: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("rustfmt: {}", String::from_utf8_lossy(&out.stderr)));
+    }
+    String::from_utf8(out.stdout).map_err(|e| format!("rustfmt: {e}"))
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -26,7 +56,16 @@ fn main() -> ExitCode {
     };
     let out = Path::new(out.as_str());
     let mut stale = Vec::new();
-    for f in kui_addon_schema::generate(&schema) {
+    for mut f in kui_addon_schema::generate(&schema) {
+        if f.path.ends_with(".rs") {
+            f.text = match rustfmt(&f.text) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("kui-addon-schema: {}: {e}", f.path);
+                    return ExitCode::FAILURE;
+                }
+            };
+        }
         let path = out.join(&f.path);
         let current = std::fs::read_to_string(&path).unwrap_or_default();
         if current == f.text {

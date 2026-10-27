@@ -368,6 +368,9 @@ mod teal;
 pub use meta::luals_meta;
 pub use teal::teal_decls;
 
+/// What a host runs over a fresh `Lua` before the script loads.
+type SetupFn<'a> = &'a mut dyn FnMut(&Lua) -> mlua::Result<()>;
+
 const PRELUDE: &str = include_str!("prelude.lua");
 
 /// What `env.add_extension` opens a path that is not Lua with: a C
@@ -532,7 +535,7 @@ impl LuaExtension {
         chunk: &str,
         source: &str,
         dir: Option<&std::path::Path>,
-        setup: Option<&mut dyn FnMut(&Lua) -> mlua::Result<()>>,
+        setup: Option<SetupFn<'_>>,
     ) -> mlua::Result<Self> {
         let lua = Lua::new();
         rows::register(&lua)?;
@@ -644,10 +647,7 @@ impl LuaExtension {
         Self::file(path.as_ref(), Some(&mut setup))
     }
 
-    fn file(
-        path: &std::path::Path,
-        setup: Option<&mut dyn FnMut(&Lua) -> mlua::Result<()>>,
-    ) -> mlua::Result<Self> {
+    fn file(path: &std::path::Path, setup: Option<SetupFn<'_>>) -> mlua::Result<Self> {
         let source = std::fs::read_to_string(path)
             .map_err(|e| mlua::Error::runtime(format!("{}: {e}", path.display())))?;
         let name = path

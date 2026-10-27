@@ -114,7 +114,7 @@ fn lib(schema: &Schema) -> String {
         "//!\n//! Each component is a props struct: `new` takes the props it needs, a\n\
          //! setter each the rest, and `place` puts it in a view under the namespace\n\
          //! `{a}` (`place_in` under another, for {a} loaded twice).\n\n\
-         #![allow(clippy::new_without_default, clippy::too_many_arguments)]\n\n\
+         #![allow(\n    clippy::new_without_default,\n    clippy::too_many_arguments,\n    clippy::needless_borrow,\n    clippy::deref_addrof,\n    clippy::vec_init_then_push\n)]\n\n\
          use kui_core::channel::Channel;\nuse kui_core::{{FillAnswer, Ui, Value}};\n\n\
          /// The namespace the components are placed under unless told otherwise.\n\
          pub const NAMESPACE: &str = \"{a}\";\n"
@@ -210,7 +210,13 @@ fn new_field(s: &mut String, f: &crate::Field) {
     } else {
         "None".to_string()
     };
-    let _ = writeln!(s, "            {}: {v},", ident(&f.name));
+    let name = ident(&f.name);
+    // `x: x` is clippy's redundant_field_names; the shorthand says the same.
+    if v == name {
+        let _ = writeln!(s, "            {name},");
+    } else {
+        let _ = writeln!(s, "            {name}: {v},");
+    }
 }
 
 /// A builder setter for each optional field.
@@ -297,8 +303,8 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
         );
     }
     s.push_str(
-        "    /// Keys the instance.\n    pub fn key(mut self, key: impl Into<String>) -> Self {\n        self.key = Some(key.into());\n        self\n    }\n\n\
-         /// Asks the extension every frame.\n    pub fn fresh(mut self) -> Self {\n        self.fresh = true;\n        self\n    }\n\n\
+        "    /// Keys the instance.\n    pub fn key(mut self, key: impl Into<String>) -> Self {\n        self.key = Some(key.into());\n        self\n    }\n\n    \
+         /// Asks the extension every frame.\n    pub fn fresh(mut self) -> Self {\n        self.fresh = true;\n        self\n    }\n\n    \
          /// The props as the extension reads them.\n    pub fn props(&self) -> Value {\n        let mut m: Vec<(String, Value)> = Vec::new();\n",
     );
     for f in &c.props {

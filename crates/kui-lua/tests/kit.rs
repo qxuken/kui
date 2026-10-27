@@ -1544,7 +1544,7 @@ fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
     // tick. Polygons of eight points each cost a quad apiece, and together
     // they cover the plot's width; a single path, linear since C96, still
     // rasterizes the plot-wide mask each tick and benched slower.
-    let (mut core, w) = lua_app(
+    let (core, w) = lua_app(
         r#"
         local cols = { t = {}, a = {} }
         for i = 1, 300 do cols.t[i], cols.a[i] = i, 50 + 30 * math.sin(i / 9) end
@@ -1603,7 +1603,7 @@ fn a_line_charts_area_chunks_meet_on_whole_device_pixels_at_a_fractional_scale()
     // At 1.5 a whole logical pixel is half a device one every other time,
     // so the seams the cuts hide stayed, fainter. Kit reads the display
     // scale (`env.scale`, C127) and cuts on whole device pixels.
-    let (mut core, w) = lua_app_at(
+    let (core, w) = lua_app_at(
         r#"
         local cols = { t = {}, a = {} }
         for i = 1, 300 do cols.t[i], cols.a[i] = i, 50 + 30 * math.sin(i / 9) end
@@ -2476,7 +2476,7 @@ fn a_slider_lands_on_the_step_nearest_the_pointer_and_its_handle_on_the_value() 
     );
     let y = track.y + track.h / 2.0;
     use kui_core::{InputEvent, Vec2};
-    let mut drag_to = |r: &mut LuaRig, at: f32| -> f64 {
+    let drag_to = |r: &mut LuaRig, at: f32| -> f64 {
         let e = r
             .core
             .handle_input(InputEvent::CursorMoved(Vec2::new(centre, y)));
@@ -4058,7 +4058,7 @@ fn fill_and_glyphs(
     let fill = dl
         .quads
         .iter()
-        .filter(|q| {
+        .rfind(|q| {
             q.kind == kui_core::QuadKind::Solid
                 && q.color.a > 0.0
                 && (q.rect.w - rect.w).abs() < 1.5
@@ -4068,7 +4068,6 @@ fn fill_and_glyphs(
                 && cy >= q.rect.y
                 && cy <= q.rect.y + q.rect.h
         })
-        .last()
         .map_or(ground, |q| over(ground, q.color));
     let glyphs = dl
         .quads
@@ -5396,12 +5395,11 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
                             .core
                             .nodes()
                             .into_iter()
-                            .filter(|n| {
+                            .rfind(|n| {
                                 n.text
                                     .as_deref()
                                     .is_some_and(|t| t.eq_ignore_ascii_case(name))
                             })
-                            .last()
                             .map(|n| n.rect)
                         else {
                             failures.push(format!("{case}: no {name}"));

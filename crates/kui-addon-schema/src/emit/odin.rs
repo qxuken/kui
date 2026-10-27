@@ -11,7 +11,7 @@ use crate::{Component, File, Schema, Type, pascal, wrap};
 /// `addons/<addon>/bindings/odin/<addon>/`.
 const KUI: &str = "../../../../../packages/odin/kui";
 
-fn ty(schema: &Schema, t: &Type) -> String {
+fn ty(t: &Type) -> String {
     match t {
         Type::String => "string".into(),
         Type::Number => "f64".into(),
@@ -22,11 +22,11 @@ fn ty(schema: &Schema, t: &Type) -> String {
         Type::Channel => "^c.Channel".into(),
         Type::Any => "any".into(),
         Type::Named(n) => n.clone(),
-        Type::List(t) => format!("[]{}", ty(schema, t)),
+        Type::List(t) => format!("[]{}", ty(t)),
         Type::Optional(t) => match t.as_ref() {
             // A pointer, a string, an any and a slice have a nil of their own.
-            Type::String | Type::Channel | Type::Any | Type::List(_) => ty(schema, t),
-            inner => format!("Maybe({})", ty(schema, inner)),
+            Type::String | Type::Channel | Type::Any | Type::List(_) => ty(t),
+            inner => format!("Maybe({})", ty(inner)),
         },
     }
 }
@@ -106,7 +106,7 @@ fn value(schema: &Schema, t: &Type, v: &str) -> String {
         }
         Type::List(inner) => format!(
             "{a}_list({v}, proc(x: {}) -> ^c.Value {{ return {} }})",
-            ty(schema, inner),
+            ty(inner),
             value(schema, inner, "x")
         ),
         Type::Optional(t) => value(schema, t, v),
@@ -196,7 +196,7 @@ fn package(schema: &Schema) -> String {
         let _ = writeln!(s, "{} :: struct {{", r.name);
         for f in &r.fields {
             s.push_str(&odin_doc(&f.doc, "\t"));
-            let _ = writeln!(s, "\t{}: {},", ident(&f.name), ty(schema, &f.ty));
+            let _ = writeln!(s, "\t{}: {},", ident(&f.name), ty(&f.ty));
         }
         let _ = writeln!(
             s,
@@ -221,7 +221,7 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
     let _ = writeln!(s, "{p} :: struct {{");
     for f in &c.props {
         s.push_str(&odin_doc(&f.doc, "\t"));
-        let _ = writeln!(s, "\t{}: {},", ident(&f.name), ty(schema, &f.ty));
+        let _ = writeln!(s, "\t{}: {},", ident(&f.name), ty(&f.ty));
     }
     for e in &c.events {
         s.push_str(&odin_doc(
@@ -246,7 +246,7 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
             s.push_str(&odin_doc(&f.doc, "\t"));
             let t = match f.ty.required().0 {
                 Type::Any => "kui.Value".to_string(),
-                other => ty(schema, other),
+                other => ty(other),
             };
             let _ = writeln!(s, "\t{}: {t},", ident(&f.name));
         }
