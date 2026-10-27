@@ -51,6 +51,7 @@ mod file;
 mod model;
 mod record;
 mod stream;
+pub mod synth;
 
 pub use codec::{Encoder, Error, MAGIC, Reader, VERSION, Writer, header};
 pub use file::{FileTransport, Watch};

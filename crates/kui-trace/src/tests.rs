@@ -473,3 +473,56 @@ fn a_watch_says_when_the_file_moved() {
     drop(watch);
     let _ = std::fs::remove_file(&path);
 }
+
+/// A made-up session is the same for a seed, and has what a real one has:
+/// frames a span count apart, children inside their parents, burns,
+/// slow frames, components drawn fresh, a gap the loop slept through
+/// (backlog F247).
+#[test]
+fn a_made_up_session_has_a_sessions_shape() {
+    use crate::synth::Synth;
+    let s = Synth {
+        frames: 3000,
+        ..Default::default()
+    };
+    let t = s.trace();
+    assert_eq!(t.to_bytes(), s.trace().to_bytes(), "the same seed");
+    assert_ne!(
+        t.to_bytes(),
+        Synth { seed: 2, ..s }.trace().to_bytes(),
+        "another seed"
+    );
+    let mut streamed = Vec::new();
+    s.write(&mut streamed).unwrap();
+    assert_eq!(Trace::from_bytes(&streamed).unwrap().records, t.records);
+
+    let tl = t.timeline();
+    assert_eq!(tl.frames.len(), 3000);
+    let per = tl.spans.len() as f64 / 3000.0;
+    assert!((10.0..20.0).contains(&per), "{per} spans a frame");
+    let by_id: std::collections::HashMap<u32, &Span> = tl.spans.iter().map(|s| (s.id, s)).collect();
+    for sp in &tl.spans {
+        if let Some(p) = by_id.get(&sp.parent) {
+            assert!(
+                sp.start >= p.start && sp.end() <= p.end(),
+                "{sp:?} in {p:?}"
+            );
+        }
+    }
+    assert!(!analysis::burns(&tl, &t).is_empty(), "burns");
+    let budget = (1e6 / 120.0) as u64;
+    let verdicts: Vec<Verdict> = (0..tl.frames.len())
+        .map(|i| analysis::verdict(&tl, i, budget, &[], &t))
+        .collect();
+    assert!(
+        verdicts.iter().any(|v| matches!(v, Verdict::Slow { .. })),
+        "slow frames"
+    );
+    assert!(
+        verdicts.iter().any(|v| matches!(v, Verdict::Fine { .. })),
+        "fine ones"
+    );
+    let placed = analysis::placements(&tl, &t);
+    assert!(placed.iter().any(|p| p.replayed > 0 && p.drawn() > 0));
+    assert!(tl.loops.len() > 3000 && tl.inputs.len() > 500 && !tl.gauges.is_empty());
+}
