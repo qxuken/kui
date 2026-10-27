@@ -1456,6 +1456,9 @@ pub const MENU_KEY: &str = "kui.menu";
 /// because a context menu belongs at the pointer and not under whatever
 /// node happens to enclose it; `fit` is what keeps it in the window, which
 /// for a menu near the bottom edge means flipping above the point.
+/// A menu taller than the window less [`MENU_EDGE`] above and below is
+/// placed at the top of that room, cut to it, and scrolls; its submenus
+/// likewise (`layout::fit_menu_panel`).
 ///
 /// It declares `modal`, so a press outside it or Escape emits a `dismiss`
 /// event on it rather than through a dismissal rule of its own; the caller
@@ -1596,6 +1599,19 @@ fn menu_level(
     // Which of the core's menus this is, by the origin its nodes open
     // under: only those have submenu state to open and close.
     let surface = crate::runtime::MenuSurface::of(ui.origin());
+    // A core menu's panel scrolls its rows, the usual bar and all: layout
+    // cuts one that does not fit to the window less `MENU_EDGE` above and
+    // below (`layout::fit_menu_panel`), and the rows past the cut are
+    // reached by the wheel, the bar, or the keyboard — a row focus lands
+    // on is scrolled into view, as Tab's is. One that fits never moves.
+    // Its scroll is its own: the wheel over a short submenu does not
+    // scroll the menu it hangs off, which would carry the row it hangs
+    // from away under it.
+    let spec = if surface.is_some() {
+        spec.scroll_y().overscroll(crate::spec::Overscroll::Contain)
+    } else {
+        spec
+    };
     let group = |i: usize| format!("{root}/{path:?}/{i}");
     // Where the pointer rests opens or closes a submenu, resolved before
     // anything is built — the frame that notices the hover draws what it
@@ -1816,7 +1832,8 @@ fn menu_level(
 /// by so its first row sits level with the row that opened it.
 const MENU_PANEL_PAD: f32 = 4.0;
 
-/// How far a menu at its widest stays from each side of the window.
+/// How far a menu at its widest stays from each side of the window, and
+/// one at its tallest from its top and bottom.
 pub const MENU_EDGE: f32 = 8.0;
 
 /// The least a row's label keeps when its accelerator would take the rest:

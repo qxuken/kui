@@ -725,6 +725,7 @@ impl Core {
         self.counters.truncate(1);
 
         self.tree.host_area = self.dt_area;
+        self.tree.menu_edge = crate::widgets::MENU_EDGE;
         if !self.pending_scroll_labels.is_empty() {
             self.resolve_scroll_labels();
         }

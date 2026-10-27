@@ -21,6 +21,40 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- A context menu, submenu or drawn menu bar's menu the core draws that
+  is taller than the window is cut to it and scrolls, where it was
+  pinned to the window's top with its last rows past the bottom; its
+  panel is a scroll container (`scroll_y`, `overscroll: contain`) at
+  every size, so the wheel over a menu that fits scrolls nothing behind
+  it (backlog F207).
+
+### Fixed
+
+- **A menu taller than the window can be used** (backlog F207, from
+  Carnet's page menu in a short window). The core's context menu was a
+  viewport float with `fit` and no height limit: taller than the window,
+  `fit` pinned it to the top and its last rows were past the bottom,
+  where neither the pointer nor the keyboard reached them; its submenus
+  and the drawn bar's menus were the same. Each panel now scrolls, and
+  layout cuts one that does not fit to the window less `MENU_EDGE`
+  (8 px) above and below: a context menu or submenu is placed as high as
+  that room goes — where Windows puts a menu taller than the screen, and
+  where macOS's ends up once scrolled to its end — so it covers the point
+  it opened at and the row it hangs off; a bar's menu keeps its top under
+  its title and is cut at the room's bottom. A menu that fits is placed
+  exactly where it was. Up, Down, Home, End and type-ahead keep the row
+  they land on in view, as Tab does; the wheel and a trackpad scroll the
+  panel under the pointer, and a submenu's scroll is its own.
+
+**What you can delete.**
+
+- A context menu split into submenus, or a shorter menu offered in a
+  small window, kept only so its last rows could be reached.
+
 ## 0.1.0-alpha.68 (2026-10-27)
 
 **What breaks.**

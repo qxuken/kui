@@ -2078,7 +2078,82 @@ fn place_float(
     // cursor-anchored float to the opposite side of the window,
     // so viewport floats only clamp.
     let mirrors = cfg.anchor == FloatAnchor::Parent;
-    tree.pos[c as usize] = attach_fitted(&cfg, anchor, cs, vp, mirrors);
+    let mut at = attach_fitted(&cfg, anchor, cs, vp, mirrors);
+    if cfg.fit && tree.specs[c as usize].layout.scroll_y && is_menu_panel(tree, c) {
+        fit_menu_panel(tree, &cfg, c, anchor, vp, &mut at);
+    }
+    tree.pos[c as usize] = at;
+}
+
+/// Whether `c` is a panel of one of the core's own menus — the context
+/// menu, a submenu, the drawn bar's dropped menu — by the origin its nodes
+/// open under.
+fn is_menu_panel(tree: &Tree, c: u32) -> bool {
+    use crate::tree::OriginId;
+    matches!(
+        tree.origins[c as usize],
+        OriginId::MENU | OriginId::MENU_BAR
+    )
+}
+
+/// A menu panel `fit` cannot keep in the window, kept in it anyway: one
+/// taller than the room is cut to the room and scrolls, rather than being
+/// clamped against the window's top with its last rows past the bottom,
+/// where nothing reaches them. The room is the viewport less
+/// [`Tree::menu_edge`] above and below.
+///
+/// A panel that fits — shorter than the room, or hanging below its
+/// anchor with its bottom inside the window — is placed exactly as `fit`
+/// places it. One that does not goes where Windows puts a menu taller
+/// than the screen, and where macOS's ends up once scrolled: as high as
+/// it can go, filling the room from its top edge — which covers the point
+/// a context menu opened at, and the row a submenu hangs off, wherever
+/// they were. A panel dropped *below* its anchor (the menu bar's) never
+/// covers it: it keeps its top and is cut at the room's bottom, or, where
+/// there is more room above the anchor than below it, is placed above and
+/// cut at the room's top.
+///
+/// Shortened here rather than by a ceiling the widget declares, because
+/// whether it fits is a fact of where it lands, which is layout's. Its
+/// rows keep their sizes; the panel scrolls them (`scroll_y`, which every
+/// core menu panel declares). Run again by `reposition`, it lands where it
+/// did: a panel already cut to the room reads as not fitting it.
+fn fit_menu_panel(
+    tree: &mut Tree,
+    cfg: &crate::spec::FloatConfig,
+    c: u32,
+    anchor: Rect,
+    vp: Rect,
+    at: &mut Vec2,
+) {
+    let edge = tree.menu_edge;
+    let (top, bottom) = (vp.y + edge, vp.y + vp.h - edge);
+    let h = tree.size[c as usize].h;
+    let below = cfg.anchor == FloatAnchor::Parent
+        && cfg.anchor_point.1 == Align::End
+        && cfg.self_point.1 == Align::Start;
+    if below {
+        let y = anchor.y + anchor.h + cfg.offset.y;
+        if y + h <= vp.y + vp.h {
+            return;
+        }
+        let over = anchor.y - cfg.offset.y;
+        if bottom - y >= over - top {
+            at.y = y;
+            tree.size[c as usize].h = (bottom - y).max(0.0);
+        } else {
+            let fit = h.min((over - top).max(0.0));
+            at.y = over - fit;
+            tree.size[c as usize].h = fit;
+        }
+        return;
+    }
+    let room = (bottom - top).max(0.0);
+    if h < room {
+        return;
+    }
+    at.y = top;
+    tree.size[c as usize].h = room;
 }
 
 /// Where a float of size `cs` sits against `anchor` by its config's
