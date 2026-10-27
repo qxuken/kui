@@ -2727,7 +2727,7 @@ export declare class Channel {
    * The channel a handle names, if someone still holds it: what an
    * event's payload or a worker's message carries.
    */
-  static resolve(handle: Json): Channel
+  static resolve(handle: any): Channel
   /** How many rows. */
   get length(): number
   /** Its revision: 1, and one more for each `publish`. */
@@ -2738,9 +2738,9 @@ export declare class Channel {
    * Row `row`'s value of column `col` (a name, or a 0-based index);
    * `null` past the end.
    */
-  get(row: number, col: string | number): Json
+  get(row: number, col: string | number): any
   /** One column whole: a `Float64Array` for numbers, an array otherwise. */
-  column(col: string | number): Float64Array | Array<Json>
+  column(col: string | number): Float64Array | Array<any>
   /**
    * Column `col` over rows `from` up to `to` in `buckets` buckets of
    * near one size — one a row when the range has fewer — each one's
@@ -2760,12 +2760,12 @@ export declare class Channel {
    * The handle: `{ $channel, rev }`, a value that rides in props, in
    * messages and to a worker.
    */
-  handle(): Json
+  handle(): any
   /**
    * What `JSON.stringify` writes: the handle, so a channel in a
    * component's props crosses as one.
    */
-  toJSON(): Json
+  toJSON(): any
 }
 
 /**

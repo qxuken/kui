@@ -8,7 +8,10 @@
 use kui_core::channel::{self, Cell, Column};
 use napi::bindgen_prelude::{Either, Float64Array, Object, Uint32Array};
 use napi_derive::napi;
-use serde_json::Value as Json;
+// `serde_json::Value` spelled out, never aliased: napi-rs writes the name it
+// sees into index.d.ts, and an alias there is a type TypeScript has never
+// heard of (`Json`) where `Value` reads as `any`.
+use serde_json::Value;
 
 use crate::{Result, err};
 
@@ -22,7 +25,7 @@ pub struct Channel {
 fn columns_of(columns: &Object) -> Result<Vec<(String, Column)>> {
     let mut out = Vec::new();
     for name in Object::keys(columns)? {
-        let v: Option<Either<Float64Array, Vec<Json>>> = columns.get(&name)?;
+        let v: Option<Either<Float64Array, Vec<Value>>> = columns.get(&name)?;
         let column = match v {
             None => return Err(err(format!("channel column `{name}` is missing"))),
             Some(Either::A(f)) => Column::F64(f.to_vec()),
@@ -37,13 +40,13 @@ fn columns_of(columns: &Object) -> Result<Vec<(String, Column)>> {
     Ok(out)
 }
 
-fn cell_json(c: Cell<'_>) -> Json {
+fn cell_json(c: Cell<'_>) -> Value {
     match c {
-        Cell::Null => Json::Null,
-        Cell::F64(x) => serde_json::Number::from_f64(x).map_or(Json::Null, Json::Number),
-        Cell::I64(x) => Json::from(x),
-        Cell::Bool(x) => Json::Bool(x),
-        Cell::Str(s) => Json::String(s.to_string()),
+        Cell::Null => Value::Null,
+        Cell::F64(x) => serde_json::Number::from_f64(x).map_or(Value::Null, Value::Number),
+        Cell::I64(x) => Value::from(x),
+        Cell::Bool(x) => Value::Bool(x),
+        Cell::Str(s) => Value::String(s.to_string()),
     }
 }
 
@@ -90,7 +93,7 @@ impl Channel {
     /// The channel a handle names, if someone still holds it: what an
     /// event's payload or a worker's message carries.
     #[napi(factory)]
-    pub fn resolve(handle: Json) -> Result<Self> {
+    pub fn resolve(handle: Value) -> Result<Self> {
         let v = crate::value_of(&handle);
         channel::Channel::resolve(&v)
             .map(|inner| Channel { inner })
@@ -118,14 +121,14 @@ impl Channel {
     /// Row `row`'s value of column `col` (a name, or a 0-based index);
     /// `null` past the end.
     #[napi]
-    pub fn get(&self, row: u32, col: Either<String, u32>) -> Result<Json> {
+    pub fn get(&self, row: u32, col: Either<String, u32>) -> Result<Value> {
         let c = self.col(col)?;
         Ok(cell_json(self.inner.get(row as usize, c)))
     }
 
     /// One column whole: a `Float64Array` for numbers, an array otherwise.
     #[napi]
-    pub fn column(&self, col: Either<String, u32>) -> Result<Either<Float64Array, Vec<Json>>> {
+    pub fn column(&self, col: Either<String, u32>) -> Result<Either<Float64Array, Vec<Value>>> {
         let c = self.col(col)?;
         let column = self
             .inner
@@ -188,14 +191,14 @@ impl Channel {
     /// The handle: `{ $channel, rev }`, a value that rides in props, in
     /// messages and to a worker.
     #[napi]
-    pub fn handle(&self) -> Json {
+    pub fn handle(&self) -> Value {
         serde_json::json!({ "$channel": self.inner.id(), "rev": self.inner.rev() })
     }
 
     /// What `JSON.stringify` writes: the handle, so a channel in a
     /// component's props crosses as one.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> Json {
+    pub fn to_json(&self) -> Value {
         self.handle()
     }
 }
