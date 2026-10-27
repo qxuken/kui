@@ -3926,6 +3926,10 @@ mod borrows {
         assert!(x + w <= d.atlas_size && y + h <= d.atlas_size);
         assert!(w * h < d.atlas_size * d.atlas_size, "a rect, not the page");
         let epoch = d.atlas_epoch;
+        // Never 0, or a host whose "epoch I uploaded" starts zeroed takes
+        // the first page for one it has and skips its new-page branch -
+        // where it makes the texture and uploads it whole (backlog F245).
+        assert_ne!(epoch, 0);
 
         frame("Hi");
         assert!(kui_draw_data(ctx, &mut d));
