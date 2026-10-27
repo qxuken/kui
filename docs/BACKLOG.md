@@ -3994,6 +3994,15 @@ body, the howto, the guide, props.md's section headings and the glossary,
 which gains it beside **Component**. No symbol changes unless the word
 does (`widgets::` in Rust is already the module).
 
+## From PR #7's CI (2026-10-27)
+
+The Linux CI of F223's pull request failed one `kui-cli` test, a
+worker's channel read by a Teal app, at its `kui check`: `unknown
+variable: kui`. Not F223's: every `kui check` rewrites one declarations
+folder a version, and a check read it while another wrote it. One entry,
+F224 — the declarations written whole — **built 2026-10-27**, the day it
+was filed, and in the archive.
+
 ## From the kui runner's spawns (2026-10-27)
 
 Asked after F222 gave a host's spawn lock to kui's tools: does the `kui`
@@ -6092,6 +6101,10 @@ move.
 **From the kui runner's spawns (2026-10-27)** — F223, filed and built the same day
 
 - `!` **F223** — [kui starts processes from several threads with no lock, and on macOS a child keeps another's pipe](backlog/closed-2026-09.md#-f223--kui-starts-processes-from-several-threads-with-no-lock-and-on-macos-a-child-keeps-anothers-pipe--done-2026-10-27) — done (2026-10-27) — `kui_native::spawn` (`spawn`, `output`, `status`) starts every child kui starts under one process-wide lock, or the host's spawner (F222, `set_spawner` now in it); the runner's `kui.process` on it
+
+**From PR #7's CI (2026-10-27)** — F224, filed and built the same day
+
+- `!` **F224** — [Two `kui check`s at once see a declaration file part written](backlog/closed-2026-09.md#-f224--two-kui-checks-at-once-see-a-declaration-file-part-written--done-2026-10-27) — done (2026-10-27) — `teal::write_types` writes each file beside itself and renames it over, and writes nothing a file holds already
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 

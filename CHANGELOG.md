@@ -219,6 +219,12 @@ already generated for each event.
   the live view go; it lets it go first now. The hidden panel was right
   already, and is tested beside it.
 
+- **Two `kui check`s at once agree** (backlog F224, from PR #7's CI):
+  every check writes kui's declarations into one folder a version before
+  it reads them, truncating each file first, so a check that read
+  `kui.d.tl` while another wrote it reported every `kui.` name unknown.
+  Each file is written beside itself and renamed over now, and not at all
+  when it holds the text already.
 - **A `kui.process.run` in a worker no longer hangs on a child another
   thread started** (backlog F223): on macOS a `kui.process.spawn` from
   the app's thread could take the write end of a worker's `run`'s pipe,
