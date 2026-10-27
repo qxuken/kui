@@ -79,12 +79,19 @@ impl DynShell<'_> {
     /// the two kinds are treated differently: the press that
     /// dismisses a **non-activating** popup is consumed, while an
     /// activating one (a tear-off panel) keeps the pass-through it has.
+    ///
+    /// A press in a context menu's popup is outside none of that menu's
+    /// popups (`mod menu_popup`): one on another row of a menu whose
+    /// submenu is up is that row's press, and the submenu closes because
+    /// the menu says so, as it does in the window.
     pub(super) fn popups_outside(&self, i: usize) -> Vec<(WindowId, bool)> {
         let keep = self.ancestors(i);
+        let menu = self.panes[i].menu_pane.as_ref().map(|m| m.host);
         self.panes
             .iter()
             .enumerate()
             .filter(|(j, p)| *j != i && !keep.contains(j) && p.kind == WindowKind::Popup)
+            .filter(|(_, p)| menu.is_none() || p.menu_pane.as_ref().map(|m| m.host) != menu)
             .map(|(_, p)| (p.id, p.activates))
             .collect()
     }
@@ -243,10 +250,19 @@ impl DynShell<'_> {
     /// redraws for it can leave that frame to the host under
     /// [`Launcher::deferred_events`] — an item chosen in a menu closes the
     /// menu *and* does what it says, and both belong in one frame.
+    ///
+    /// A context menu's popup is the core's, not the app's (`mod
+    /// menu_popup`): asked to go away, the menu closes, every popup of it
+    /// with it, as the in-window menu's `dismiss` closes it — and nothing
+    /// reaches the app.
     pub(super) fn dismiss(&mut self, id: WindowId, reason: DismissReason) -> bool {
         let Some(i) = self.pane_of(id) else {
             return false;
         };
+        if let Some(host) = self.panes[i].menu_pane.as_ref().map(|m| m.host) {
+            self.dismiss_menu_popups(host);
+            return false;
+        }
         self.panes[i].core.dismiss_window(id, reason);
         let events = self.panes[i].core.take_pending_events();
         self.route_events(events)

@@ -1557,8 +1557,10 @@ fn menu_level(
     // than that — a recent file's whole path — ellipsizes its label
     // instead of running the panel, and its accelerator, off the edge
     // (backlog RG150). A ceiling the caller declared that is narrower
-    // stands.
-    let ceiling = (ui.viewport().w - 2.0 * MENU_EDGE).max(m.menu_width);
+    // stands. In a menu's popup window the room is the display's, since
+    // the window is only as wide as the panel (`Core::open_menu_popup`).
+    let room = ui.core().menu_popup_room().unwrap_or(ui.viewport());
+    let ceiling = (room.w - 2.0 * MENU_EDGE).max(m.menu_width);
     let spec = if spec.layout.max_w >= 0.0 && spec.layout.max_w > ceiling {
         spec.max_width(ceiling)
     } else {
@@ -1631,6 +1633,9 @@ fn menu_level(
         }
     }
     let open_here = surface.and_then(|s| ui.core().submenu_open_at(s, path));
+    // A menu's popup window draws the row open and not its submenu, which
+    // is a popup of its own beside it (`Core::menu_popup_submenu`).
+    let draws_submenus = !ui.core().is_menu_popup();
     let mut first_key = None;
     let root_key = ui.with_keyed(label, spec, |ui| {
         let mut first = path.is_empty();
@@ -1772,7 +1777,7 @@ fn menu_level(
                         .min_width(crate::spec::Bound::Fit),
                     |ui| {
                         key = ui.with_keyed(MENU_ROW_KEY, spec, row);
-                        if is_open && item.enabled {
+                        if is_open && item.enabled && draws_submenus {
                             let sub: Vec<usize> = path.iter().copied().chain([i]).collect();
                             menu_level(
                                 ui,
@@ -1829,8 +1834,9 @@ fn menu_level(
 }
 
 /// The padding inside a menu's panel, logical px: what a submenu is offset
-/// by so its first row sits level with the row that opened it.
-const MENU_PANEL_PAD: f32 = 4.0;
+/// by so its first row sits level with the row that opened it — beside its
+/// row in the window, and beside it on the display in a popup.
+pub const MENU_PANEL_PAD: f32 = 4.0;
 
 /// How far a menu at its widest stays from each side of the window, and
 /// one at its tallest from its top and bottom.

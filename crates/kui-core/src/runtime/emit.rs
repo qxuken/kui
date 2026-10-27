@@ -725,7 +725,14 @@ impl Core {
         self.counters.truncate(1);
 
         self.tree.host_area = self.dt_area;
-        self.tree.menu_edge = crate::widgets::MENU_EDGE;
+        // A menu's popup window is the menu: its edges are the panel's
+        // own, and the display's margin was kept when the window was
+        // sized (`open_menu_popup`).
+        self.tree.menu_edge = if self.menu_popup.is_some() {
+            0.0
+        } else {
+            crate::widgets::MENU_EDGE
+        };
         if !self.pending_scroll_labels.is_empty() {
             self.resolve_scroll_labels();
         }

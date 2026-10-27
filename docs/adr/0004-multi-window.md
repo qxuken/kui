@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-04
-amended: 2026-09-06
+amended: 2026-10-27
 ---
 
 # Multi-window: a `Core` per window, and a window set the app declares
@@ -58,6 +58,14 @@ slotmap per kind, recording the owning `SessionId`; a session's registry is
 secondary to it), so a handle used in the wrong session is a miss that
 behaves as a removed handle and raises `foreign-resource`. No ABI change:
 the `u64` form is untouched.
+
+**Amended 2026-10-27** (backlog F207): the core's own context menu takes
+the popup kind where decision 11 said a float should give way to one —
+when it provably does not fit. `kui-native` shows a menu that would be
+moved or cut in the window as a popup window of its own, on Windows,
+macOS and X11, and keeps every menu that fits a float; Wayland keeps
+them all in the window. What that takes, and why only then, is the last
+entry under Consequences.
 
 ## Context
 
@@ -617,6 +625,67 @@ the `u64` form is untouched.
     9 actually states; what is *not* true is that the popup never becomes
     key, and a platform that cannot be talked out of it would need an
     `NSPanel` with the non-activating mask, which winit 0.30 cannot make.
+- **Amended 2026-10-27: the core's context menu in a popup, when it does
+  not fit** (backlog F207). Carnet's page menu, taller than a short
+  window, ran past its bottom; the float now scrolls and is cut to the
+  window (`layout::fit_menu_panel`), which every host gets. Where the
+  runner can place a window, it does better:
+  - **Only a menu that does not fit.** One that shows whole at its point
+    — `fit` would not move it, layout would not cut it — stays a float;
+    one that would be moved or cut opens as a popup at its point on the
+    display, held to the monitor's work area less `MENU_EDGE`, flipped
+    left or up where the room runs out (Windows' placement of a context
+    menu) and, taller than the work area, cut to it and scrolling at its
+    top. Not always: decision 11's costs stand — a window, a swapchain, a
+    core and an access adapter for every right-click, and a window the OS
+    takes a moment to show where a float is up the frame it opens — and a
+    menu that fits looks the same either way. Not by a flag on the app:
+    which it is is a fact of the menu and the window, so the runner
+    decides it per menu.
+  - **Decided before it is drawn.** A runner that places menus says so
+    (`Core::set_menu_popups`); a menu then opens drawn nowhere until the
+    runner has measured it — a core of the popup's own, laid out once at
+    the work area's size — and answered `set_menu_in_popup`. Most apps
+    open a menu from their view, so without this the frame that opened
+    it drew it in the window, and the popup replaced it a frame later.
+  - **Two cores, one menu.** The menu stays the window's core's state,
+    drawn by none of it, as under `set_native_menus`. The popup's core
+    (`Core::open_menu_popup`) builds no view: its frame is the same
+    `widgets::context_menu`, so its rows, keyboard, scrolling and access
+    tree are the in-window menu's; what it does not do is perform a row.
+    A row, Escape and the Left arrow are said back
+    (`take_menu_popup_answer`), and the runner hands a row to the
+    window's core through `activate_menu_path`, which posts the event the
+    in-window menu posts — as it does a macOS menu's row.
+  - **A submenu is a further popup** beside its row, owned by the popup it
+    hangs off, rather than room made in the same window: a window the
+    size of a menu and its open submenu would be resized on every hover,
+    and would take presses in the empty corner beside the shorter of the
+    two. The popup draws the row open and not its panel, and says where
+    the row is (`menu_popup_submenu`).
+  - **The rules decision 9 made for a popup hold**, with the window's
+    core's `dismiss` in place of the app's: Escape in the menu's popup, a
+    press in the window or anywhere outside the menu's popups, and the
+    app losing the keyboard close the menu; a press in one of the menu's
+    own popups is outside none of them. The keyboard is lent down the
+    chain (`key_target`). The accessibility focus is moved to the popup
+    while it is up — told to each window's adapter as a focus change,
+    since a screen reader follows the focused window and the popup takes
+    no OS focus — and back when it closes; not verified with a screen
+    reader. The palette and sizes are the window's, carried over while it
+    is up. A popup appears at once: Windows' fade-in for a new window read
+    as the menu being slow to open, so it is turned off for every popup
+    (`DWMWA_TRANSITIONS_FORCEDISABLED`).
+  - **Per platform.** Windows: as above, on the monitor under the point,
+    its work area from `GetMonitorInfoW`. macOS: the default context menu
+    is still the platform's `NSMenu`, which places itself; the popup is
+    for a menu the core draws there (an app's `set_native_menus(false)`,
+    the devtools' switch), held to the screen's visible frame. X11: as
+    Windows, held to the monitor (X11 says nothing of panels). Wayland: a
+    client cannot place a top-level window and winit 0.30 makes no
+    `xdg_popup`, so the menu stays in the window, cut and scrolling. The
+    headless runner, `Drive` and every host that opens no windows never
+    say they place menus, so they draw every menu in the window.
 - Not decided here, and each wanting its own answer when something needs
   it: window position as a declared or reported fact (the app cannot
   currently restore a window where the user left it), multi-monitor and

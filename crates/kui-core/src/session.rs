@@ -355,6 +355,14 @@ impl WindowRegistry {
     /// declaration that disagrees marks the open as a conflict. A closed
     /// name still in the union stays closed (decision 6's edge); one that
     /// left it is forgotten, so declaring it again opens it anew.
+    /// The next id, taken for a window nothing declared
+    /// (`Session::host_window_id`).
+    pub(crate) fn reserve_id(&mut self) -> WindowId {
+        let id = WindowId(self.next_id);
+        self.next_id += 1;
+        id
+    }
+
     pub(crate) fn diff(&mut self, out: &mut Vec<WindowChange>) {
         loop {
             let union = self.union();
@@ -477,6 +485,15 @@ impl Session {
 
     pub(crate) fn state(&self) -> RefMut<'_, SessionState> {
         self.0.borrow_mut()
+    }
+
+    /// A window id no declaration is given, for a window a host opens on
+    /// its own account — `kui-native`'s popup for a context menu that does
+    /// not fit its window (backlog F207). Drawn from the ids the declared
+    /// set hands out, so the two never meet; the set itself never lists
+    /// it, and no `window` event is raised for it.
+    pub fn host_window_id(&self) -> crate::window::WindowId {
+        self.state().windows.reserve_id()
     }
 
     /// [`Self::state`] for a `Drop`, which must not panic: `None` while

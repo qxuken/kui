@@ -197,6 +197,8 @@ mod macos_open;
 /// The palette's and dictation's inserts, which winit's view drops.
 #[cfg(target_os = "macos")]
 mod macos_text_input;
+/// A context menu that does not fit its window, in a popup of its own.
+mod menu_popup;
 mod menus;
 mod pacer;
 mod pane;
@@ -2523,13 +2525,19 @@ impl DynShell<'_> {
         let completes = input_completes(&ev);
         let here = self.panes[i].id;
         self.stamp_clock();
-        let events = self.panes[i].core.handle_input(ev);
+        let mut events = self.panes[i].core.handle_input(ev);
+        // A menu's popup has no view to hear its core: what its rows said
+        // is its answer (`pump_menu_popups`), and nothing else is the app's.
+        if self.panes[i].menu_pane.is_some() {
+            events.clear();
+        }
         let reached_app = self.route_events(events);
         self.owe_for(reached_app && completes);
         self.apply_menu_actions(event_loop, i);
         self.apply_window_commands(event_loop);
         self.apply_audio();
         self.pump_native_menu(event_loop);
+        self.pump_menu_popups(event_loop);
         let i = self.pane_of(here)?;
         let pane = &mut self.panes[i];
         pane.apply_cursor();
@@ -2757,7 +2765,13 @@ impl DynShell<'_> {
         // and its extensions say nothing they read has moved, is built from
         // the last frame's tree, with no view (backlog C138).
         let state = app.view_state();
-        let (view_ms, layout_ms) = if state.is_some()
+        let (view_ms, layout_ms) = if pane.menu_pane.is_some() {
+            // A menu's popup: its frame is the menu its core holds, drawn
+            // by `Ui::finish`, and nothing of the app's (`mod menu_popup`).
+            let ui = pane.core.frame(viewport, scale);
+            ui.finish();
+            (0.0, t_view.elapsed().as_secs_f32() * 1e3)
+        } else if state.is_some()
             && state == pane.view_state
             && extensions.roots_unchanged()
             && pane.core.reframe(viewport, scale)
@@ -3005,8 +3019,7 @@ impl DynShell<'_> {
             Some(Err(kui_wgpu::RenderError::DeviceLost)) | None => reopen = true,
         }
         pane.awaits_device |= reopen;
-        let render_ms = (t_render.elapsed().as_secs_f32() * 1e3 - wait_ms).max(0.0);
-        // What the app asked to keep of the window (ADR 0055): the frame
+        let render_ms = (t_render.elapsed().as_secs_f32() * 1e3 - wait_ms).max(0.0); // What the app asked to keep of the window (ADR 0055): the frame
         // just finished, drawn again on the process's capture device, so
         // it does not matter whether this one reached the screen. Its
         // `capture` events go out with the frame's others (`after_frame`).
@@ -3058,12 +3071,18 @@ impl DynShell<'_> {
         // again for what they change — unseen, in a window that cannot
         // draw (`Pane::run_for`).
         let pending = self.panes[i].core.take_pending_events();
-        if !pending.is_empty() {
+        // A menu's popup's frame posts nothing that is anybody's.
+        if !pending.is_empty() && self.panes[i].menu_pane.is_none() {
             self.route_events(pending);
             if let Some(p) = self.panes.get_mut(i) {
                 p.run_for(FrameCause::AFTER_FRAME);
             }
         }
+        // A view can open a menu, and a hover a popup's frame resolved can
+        // open a submenu, which is a popup of its own: either may open or
+        // close windows, and move this one.
+        self.pump_menu_popups(event_loop);
+        let Some(i) = self.pane_of(here) else { return };
         // Windows moves and resizes a window inside its own modal
         // loop, where `about_to_wait` — the pacing that asks for
         // the next frame of an animation — does not run, so a
@@ -3932,6 +3951,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         // this is where its answer is collected. The menu bar is handed
         // over and read back from the same place, for the same reason.
         self.pump_native_menu(event_loop);
+        self.pump_menu_popups(event_loop);
         self.pump_menu_bar(event_loop);
         self.pump_text_input(event_loop);
         self.pump_file_drag(event_loop);

@@ -31,6 +31,39 @@ was the first bare bump to break an app in five releases).
   panel is a scroll container (`scroll_y`, `overscroll: contain`) at
   every size, so the wheel over a menu that fits scrolls nothing behind
   it (backlog F207).
+- In a `kui-native` window on Windows, X11, and macOS where the core
+  draws its menus, a context menu that would be moved or cut in the
+  window opens in a popup window of its own: the window's core keeps it
+  as state and draws none of it, so its rows are not in that window's
+  frame or access tree while it is up (`Core::menu_in_popup`). A menu
+  opened there is drawn nowhere until the runner has placed it, within
+  the same turn (`Core::menu_awaits_host`). Every other host draws every
+  menu in the window as before (backlog F207, ADR 0004 amended
+  2026-10-27).
+- A declared popup window (`WindowKind::Popup`) appears at once on
+  Windows, where the OS faded it in.
+
+### Added
+
+- **A context menu that does not fit its window opens past its edge**
+  (backlog F207, [ADR 0004 amended
+  2026-10-27](docs/adr/0004-multi-window.md)). Where the runner can place
+  a window — Windows, macOS, X11 — a menu the core draws that would be
+  pushed in over its point, or cut and scrolled, opens as a borderless,
+  non-activating popup at its point on the display, flipped left or up
+  where the room runs out, held to the monitor's work area, and cut to it
+  and scrolling when taller. A submenu opens as a further popup beside
+  its row. The keyboard, Escape, a press outside, type-ahead and the
+  accessibility tree are the in-window menu's, and a chosen row posts the
+  same `menu` event. A menu that fits stays a float, and Wayland keeps
+  every menu in the window. For a Rust host that opens its own windows:
+  `Core::set_menu_popups`, `set_menu_in_popup`, `menu_awaits_host` on the
+  window's core; `open_menu_popup`, `take_menu_popup_answer`
+  (`MenuPopupAnswer`), `menu_popup_size`, `menu_popup_submenu`
+  (`MenuPopupSubmenu`), `close_menu_popup_submenu` and
+  `menu_popup_by_keyboard` on the popup's; `Session::host_window_id`;
+  `widgets::MENU_PANEL_PAD` public. C, Odin and Node hosts get it through
+  `kui_run` and `runWindowed`, whose runner is kui-native's.
 
 ### Fixed
 
@@ -54,6 +87,8 @@ was the first bare bump to break an app in five releases).
 
 - A context menu split into submenus, or a shorter menu offered in a
   small window, kept only so its last rows could be reached.
+- A menu's point moved in from the window's edge, kept only so the menu
+  did not cover the point it was opened at.
 
 ## 0.1.0-alpha.68 (2026-10-27)
 

@@ -319,7 +319,8 @@ pub struct Tree {
     /// How far a panel of the core's own menus that does not fit stays
     /// from the window's top and bottom edges, logical px: layout cuts
     /// it to what is left and it scrolls (`layout::fit_menu_panel`).
-    /// [`crate::widgets::MENU_EDGE`], set per frame.
+    /// [`crate::widgets::MENU_EDGE`], set per frame; 0 in a window that is
+    /// the menu (`Core::open_menu_popup`), whose edges are the panel's.
     pub menu_edge: f32,
     /// The nodes that carry rules (ADR 0069: a `when` list, `min_column`
     /// or a lazy ask), by index, in tree order. A side list: a frame with
