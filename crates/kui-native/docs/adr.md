@@ -82,3 +82,4 @@ reference and the task index this crate carries (ADR 0071).
 - [0072 A test runner for kui apps](https://github.com/qxuken/kui/blob/main/docs/adr/0072-a-test-runner-for-kui-apps.md)
 - [0073 The runner carries a playground](https://github.com/qxuken/kui/blob/main/docs/adr/0073-the-runner-carries-a-playground.md)
 - [0074 Paint stays in the box it is in](https://github.com/qxuken/kui/blob/main/docs/adr/0074-paint-stays-in-the-box-it-is-in.md)
+- [0075 kui-perf reads a recording in Kit, over columns Rust keeps](https://github.com/qxuken/kui/blob/main/docs/adr/0075-kui-perf-reads-a-recording-in-kit.md)

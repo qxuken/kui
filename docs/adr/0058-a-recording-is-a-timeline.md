@@ -7,7 +7,9 @@ date: 2026-10-25
 
 > **Accepted and built (2026-10-25), all but `kui-perf`; backlog F199,
 > and F200 for the inspector, which waits on the kui tools design
-> system (decision 13).** From the user,
+> system (decision 13). Decision 13 is replaced by
+> [ADR 0075](0075-kui-perf-reads-a-recording-in-kit.md) (proposed
+> 2026-10-27), all but its last paragraph: the Perf tab stays.** From the user,
 > after the devtools' Perf tab (F198), over one conversation: a bar of
 > the timeline should open into *why that frame lagged*; an app should
 > put its own measurements beside kui's — "instruments for
@@ -228,7 +230,9 @@ Lua is a guest that wakes nothing.
     Instruments (`tracing-oslog`, os_signposts) and to Perfetto live.
 
 13. **`kui-perf`, the inspector, is a tool built on the kui tools
-    design system.** It opens a `.kuitrace`: the whole timeline, zoomed
+    design system.** *(Replaced by ADR 0075, 2026-10-27, which says
+    what it is and how it is built; this paragraph's last one, the Perf
+    tab's, stands.)* It opens a `.kuitrace`: the whole timeline, zoomed
     and panned across frames and gaps, its tracks, the flame chart, the
     grouped tables, the burns, and two recordings side by side
     (`kui-perf a.kuitrace b.kuitrace`, the diff of decision 12 drawn).
