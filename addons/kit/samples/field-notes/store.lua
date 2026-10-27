@@ -27,14 +27,20 @@ local SCHEMA = {
 local db = nil
 
 -- Opens the file (made with its folder when new), creating the tables;
--- seeds it from `seed` when it holds no notes. Returns every note, each
--- with its `items`, most recently updated first.
+-- seeds it from `seed` when it holds no notes. `true` and every note, each
+-- with its `items`, most recently updated first; `false` and why when the
+-- file cannot be opened.
 function M.open(path, seed)
   if path ~= ":memory:" then
     local dir = path:match("^(.*)/[^/]+$")
-    if dir and not kui.fs.exists(dir) then kui.fs.mkdir(dir) end
+    if dir and not kui.fs.exists(dir) then
+      local made, err = kui.fs.try_mkdir(dir)
+      if not made then return false, err end
+    end
   end
-  db = kui.sqlite.open(path)
+  local opened, d = kui.sqlite.try_open(path)
+  if not opened then return false, d end
+  db = d
   for _, sql in ipairs(SCHEMA) do db:exec(sql) end
   local n = db:first("SELECT count(*) AS n FROM notes").n
   if n == 0 and seed then
@@ -49,7 +55,7 @@ function M.open(path, seed)
       end
     end)
   end
-  return M.all()
+  return true, M.all()
 end
 
 function M.all()

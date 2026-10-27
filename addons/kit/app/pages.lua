@@ -66,7 +66,7 @@ local files = {}
 local function source(path)
   local text = files[path]
   if text == nil then
-    local ok, t = pcall(kui.fs.read, path)
+    local ok, t = kui.fs.try_read(path)
     if not ok then
       text = false
     elseif t:sub(1, 4) == "\27Lua" then

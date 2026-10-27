@@ -21,6 +21,54 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.69 (unreleased)
+
+**What breaks.**
+
+- A runner call that fails raises its message at the line that called
+  it — `main.lua:12: json: 1:3: expected a key in double quotes` — where
+  it raised `runtime error: json: …` with a stack traceback after it.
+  Code that read the old text — `gsub("^runtime error: ", "")`, the
+  first line of `tostring(err)` — now sees the caller's position at the
+  front; reach for the call's `try_` form instead, whose message is the
+  error's alone.
+
+The failure is the world's — a missing file, a refused connection, a
+file that is not JSON — not a bug in the line that asked, so a traceback
+through the runner's own frames said nothing an app could use. An error
+the app does not catch still says where it happened.
+
+### Added
+
+- **A `try_` form for every runner call that can fail on its input or on
+  the world** — a file, text read in, the network, a process, a
+  database, a worker's script: `local ok, tasks =
+  kui.json.try_decode(text)` returns `true` and what the call returns, or
+  `false` and the error's message. The `try_` form is the call; the plain
+  one is made from it and raises the message. Wrong input is a failure
+  too (`kui.http.try_get("")` is `false, "http: no url"`); only an
+  argument of the wrong type raises, as an assertion would. The forms
+  wait as their calls do; a decoded `null` is `true, nil`; an HTTP 404 is
+  a response, a refused connection `false`; `try_transaction` rolls back
+  and answers `false` when its function raises. `try_` is the runner's
+  convention from here on: the forms of `kui.json`, `kui.toml`, `kui.yaml` (`decode`, `encode`),
+  `kui.fs` (`read`, `write`, `append`, `create`, `list`, `lines`, `walk`,
+  `mkdir`, `remove`, `rename`), `kui.process` (`run`, `spawn`, and a
+  process's `read_line`, `write`, `wait`), `kui.http` (each request and
+  `serve`), `kui.sqlite` (`open`, and a database's `query`, `first`,
+  `exec`, `transaction`) and `kui.worker` (and a worker's `dispatch`),
+  declared for Teal (`if got is kui.Response`) and lua-language-server.
+  The book's task list opens a broken `tasks.json` and says why, where it
+  stopped; Kit's relay, preferences and field-notes samples and its
+  gallery use the `try_` forms, and the preferences sample no longer
+  stops on a settings file it cannot read.
+
+**What you can delete.**
+
+- A `pcall` around a runner call, and the `tostring(err)`, the
+  `"runtime error: "` strip and the first-line cut that made its message
+  readable.
+
 ## 0.1.0-alpha.68 (2026-10-27)
 
 **What breaks.**

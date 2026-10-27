@@ -1,6 +1,11 @@
   -- The kui runner's standard library (ADR 0064), spliced into the
   -- `kui` record by `kui check`. A call marked "waits" yields inside a
-  -- task (`kui.spawn`) and blocks anywhere else.
+  -- task (`kui.spawn`) and blocks anywhere else. A call that can fail on
+  -- its input or on the world (a file, text read in, the network, a
+  -- process, a database) has a `try_` form that returns `true` and what
+  -- the call returns, or `false` and the error's message: `local ok, text
+  -- = kui.fs.try_read(path)`. The plain call raises the message at its
+  -- caller's line.
 
   -- Runs `fn` as a task: its waiting calls yield to the frame.
   spawn: function(fn: function(...: any), ...: any): thread
@@ -148,16 +153,22 @@
   record json
     decode: function(text: string): any
     encode: function(value: any, opts?: {string:boolean}): string
+    try_decode: function(text: string): boolean, any
+    try_encode: function(value: any, opts?: {string:boolean}): boolean, string
     -- `t` (or a new table) marked a list: empty, it encodes as `[]`.
     array: function<T>(t?: {T}): {T}
   end
   record toml
     decode: function(text: string): {string:any}
     encode: function(value: {string:any}): string
+    try_decode: function(text: string): boolean, {string:any} | string
+    try_encode: function(value: {string:any}): boolean, string
   end
   record yaml
     decode: function(text: string): any
     encode: function(value: any): string
+    try_decode: function(text: string): boolean, any
+    try_encode: function(value: any): boolean, string
   end
 
   record WalkOpts
@@ -190,6 +201,16 @@
     mkdir: function(path: string)
     remove: function(path: string)
     rename: function(from: string, to: string)
+    try_read: function(path: string): boolean, string
+    try_write: function(path: string, data: string): boolean, string
+    try_append: function(path: string, data: string): boolean, string
+    try_list: function(path?: string): boolean, {string} | string
+    try_lines: function(path: string): boolean, {string} | string
+    try_create: function(path: string, data: string): boolean, boolean | string
+    try_walk: function(dir?: string, opts?: WalkOpts): boolean, {string} | string
+    try_mkdir: function(path: string): boolean, string
+    try_remove: function(path: string): boolean, string
+    try_rename: function(from: string, to: string): boolean, string
   end
 
   record ProcessOpts
@@ -219,6 +240,9 @@
     -- Ends it, or sends `sig` ("term", "int", "hup", "kill"); its group's
     -- whole when spawned `group`. False when it had already exited.
     kill: function(self: Process, sig?: string): boolean
+    try_read_line: function(self: Process, stream?: string): boolean, string
+    try_write: function(self: Process, data: string): boolean, string
+    try_wait: function(self: Process): boolean, integer | string
   end
   record process
     -- Runs a command to its end (waits).
@@ -231,6 +255,8 @@
     pid: integer
     -- The command `pid` was started with (waits), nil when none.
     command_line: function(pid: integer): string
+    try_run: function(cmd: string, args?: {string}, opts?: ProcessOpts): boolean, ProcessResult | string
+    try_spawn: function(cmd: string, args?: {string}, opts?: ProcessOpts): boolean, Process | string
   end
 
   record RequestOpts
@@ -284,6 +310,15 @@
     delete: function(url: string, opts?: RequestOpts): Response
     head: function(url: string, opts?: RequestOpts): Response
     serve: function(opts?: ServeOpts): Server
+    -- A refused connection or a timeout is `false`; a 404 is a Response.
+    try_request: function(target: string | RequestOpts, opts?: RequestOpts): boolean, Response | string
+    try_get: function(url: string, opts?: RequestOpts): boolean, Response | string
+    try_post: function(url: string, opts?: RequestOpts): boolean, Response | string
+    try_put: function(url: string, opts?: RequestOpts): boolean, Response | string
+    try_patch: function(url: string, opts?: RequestOpts): boolean, Response | string
+    try_delete: function(url: string, opts?: RequestOpts): boolean, Response | string
+    try_head: function(url: string, opts?: RequestOpts): boolean, Response | string
+    try_serve: function(opts?: ServeOpts): boolean, Server | string
   end
 
   record ExecResult
@@ -296,9 +331,14 @@
     first: function(self: Db, sql: string, params?: any): {string:any}
     exec: function(self: Db, sql: string, params?: any): ExecResult
     transaction: function(self: Db, fn: function(db: Db))
+    try_query: function(self: Db, sql: string, params?: any): boolean, {{string:any}} | string
+    try_first: function(self: Db, sql: string, params?: any): boolean, {string:any} | string
+    try_exec: function(self: Db, sql: string, params?: any): boolean, ExecResult | string
+    try_transaction: function(self: Db, fn: function(db: Db)): boolean, string
   end
   record sqlite
     open: function(path?: string): Db
+    try_open: function(path?: string): boolean, Db | string
   end
 
   record Worker
@@ -307,5 +347,7 @@
     running: boolean
     dispatch: function(self: Worker, msg: any)
     stop: function(self: Worker)
+    try_dispatch: function(self: Worker, msg: any): boolean, string
   end
   worker: function(path: string, handler?: function(msg: any, w: Worker)): Worker
+  try_worker: function(path: string, handler?: function(msg: any, w: Worker)): boolean, Worker | string

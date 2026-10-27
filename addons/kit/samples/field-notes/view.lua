@@ -141,7 +141,7 @@ local function editor(m)
   if m.error then
     return column { key = "editor", width = "grow", height = "grow", pad = 16, gap = 12,
       kit.notice({ tone = "danger", title = "Could not open the notes file",
-        message = (m.error:match("^[^\n]*"):gsub("^runtime error: ", "")) .. ". Pick another file with --db, or try again." },
+        message = m.error .. ". Pick another file with --db, or try again." },
         { kit.button({ label = "Try again", icon = "refresh", on_press = { kind = "retry" } }) }),
       kit.inspector({ key_width = 90, entries = { { key = "File", value = boot.db, mono = true } } }),
     }

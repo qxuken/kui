@@ -110,7 +110,7 @@ kui.spawn(function()
   check(wait(function() return store.count() == 12 end), "12 on disk again")
 
   -- the file again, as the next run would read it
-  local again = store.open(path)
+  local _, again = store.open(path)
   local ok = false
   for _, n in ipairs(again) do ok = ok or (n.title == "Postmortem: INC-2291 inventory sync" and n.pinned and n.notebook == "reading") end
   if not ok then for _, n in ipairs(again) do print("  ", n.title, n.pinned, n.notebook) end end

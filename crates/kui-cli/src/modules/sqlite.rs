@@ -11,7 +11,7 @@ use mlua::{Lua, Table, UserData, UserDataMethods};
 
 use crate::ops::Ops;
 
-use super::{fail, shared};
+use super::{fail, shared, tried, try_fn};
 
 type Job = Box<dyn FnOnce(&mut rusqlite::Connection) + Send>;
 
@@ -115,27 +115,30 @@ fn exec(conn: &mut rusqlite::Connection, sql: &str, params: &Value) -> Result<Va
 
 impl UserData for Db {
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
-        for (name, write) in [("__query", false), ("__exec", true)] {
+        for (name, write) in [("__try_query", false), ("__try_exec", true)] {
             m.add_method(
                 name,
-                move |_, this, (sql, params): (String, Option<mlua::Value>)| {
-                    let params = match params {
-                        Some(p) => kui_lua::lua_to_value(&p)?,
-                        None => Value::Null,
+                move |lua, this, (sql, params): (String, Option<mlua::Value>)| {
+                    let start = || {
+                        let params = match params {
+                            Some(p) => kui_lua::lua_to_value(&p)?,
+                            None => Value::Null,
+                        };
+                        let id = this.ops.id();
+                        let ops = this.ops.clone();
+                        this.jobs
+                            .send(Box::new(move |conn| {
+                                let a = if write {
+                                    exec(conn, &sql, &params)
+                                } else {
+                                    query(conn, &sql, &params)
+                                };
+                                ops.answer(id, a.map_err(|e| format!("{e} (in: {sql})")));
+                            }))
+                            .map_err(|_| fail("the database is closed".into()))?;
+                        Ok(id)
                     };
-                    let id = this.ops.id();
-                    let ops = this.ops.clone();
-                    this.jobs
-                        .send(Box::new(move |conn| {
-                            let a = if write {
-                                exec(conn, &sql, &params)
-                            } else {
-                                query(conn, &sql, &params)
-                            };
-                            ops.answer(id, a.map_err(|e| format!("{e} (in: {sql})")));
-                        }))
-                        .map_err(|_| fail("the database is closed".into()))?;
-                    Ok(id)
+                    tried(lua, start())
                 },
             );
         }
@@ -145,8 +148,8 @@ impl UserData for Db {
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let sqlite = lua.create_table()?;
     sqlite.set(
-        "open",
-        lua.create_function(|lua, path: Option<String>| {
+        "try_open",
+        try_fn(lua, |lua, path: Option<String>| {
             let s = shared(lua);
             let target = path.as_deref().unwrap_or(":memory:");
             let conn = if target == ":memory:" {

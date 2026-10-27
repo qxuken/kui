@@ -85,6 +85,22 @@ A call marked *waits* yields inside a task (`kui.spawn`) and blocks
 anywhere else, so a script's top level reads its config the plain way and
 a task never stops a frame.
 
+A call that can fail on its input or on the world — a file, text read
+in, the network, a process, a database, a worker's script — has a `try_`
+form that returns `true` and what the call returns, or `false` and the
+error's message: `local ok, text = kui.fs.try_read(path)`,
+`db:try_query(sql)`. The plain call is made from it and raises the
+message at the line that called it, with no traceback. Only an argument
+of the wrong type raises from a `try_` form. A `try_` form waits as its
+call does; a decoded `null` is `true, nil`, not a failure; an HTTP 404
+is a response, a refused connection is `false`. The `try_` forms:
+`decode`/`encode` of `kui.json`, `kui.toml` and `kui.yaml`; `kui.fs`'s
+`read`, `write`, `append`, `create`, `list`, `lines`, `walk`, `mkdir`,
+`remove`, `rename`; `kui.process.run` and `spawn`, and a process's
+`read_line`, `write`, `wait`; every `kui.http` request and `serve`;
+`kui.sqlite.open` and a database's `query`, `first`, `exec`,
+`transaction`; `kui.worker` and a worker's `dispatch`.
+
 | | |
 | --- | --- |
 | `kui.spawn(fn, ...)` | Runs `fn` as a task. |

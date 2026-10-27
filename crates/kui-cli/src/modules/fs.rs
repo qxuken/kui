@@ -3,7 +3,7 @@
 
 use mlua::{Lua, Table};
 
-use super::{fail, shared};
+use super::{fail, shared, try_fn};
 
 fn io(path: &std::path::Path, e: std::io::Error) -> mlua::Error {
     fail(format!("{}: {e}", path.display()))
@@ -29,16 +29,16 @@ fn writable(lua: &Lua, path: &str) -> mlua::Result<std::path::PathBuf> {
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let fs = lua.create_table()?;
     fs.set(
-        "read",
-        lua.create_function(|lua, path: String| {
+        "try_read",
+        try_fn(lua, |lua, path: String| {
             let p = shared(lua).path(&path);
             let bytes = std::fs::read(&p).map_err(|e| io(&p, e))?;
             lua.create_string(bytes)
         })?,
     )?;
     fs.set(
-        "write",
-        lua.create_function(|lua, (path, data): (String, mlua::LuaString)| {
+        "try_write",
+        try_fn(lua, |lua, (path, data): (String, mlua::LuaString)| {
             let p = writable(lua, &path)?;
             if let Some(dir) = p.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
@@ -49,8 +49,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     // Writes a file that does not exist yet: false, and nothing written,
     // when it does — a lock two runs started at once cannot share.
     fs.set(
-        "create",
-        lua.create_function(|lua, (path, data): (String, mlua::LuaString)| {
+        "try_create",
+        try_fn(lua, |lua, (path, data): (String, mlua::LuaString)| {
             use std::io::Write;
             let p = writable(lua, &path)?;
             if let Some(dir) = p.parent() {
@@ -71,8 +71,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         })?,
     )?;
     fs.set(
-        "append",
-        lua.create_function(|lua, (path, data): (String, mlua::LuaString)| {
+        "try_append",
+        try_fn(lua, |lua, (path, data): (String, mlua::LuaString)| {
             use std::io::Write;
             let p = writable(lua, &path)?;
             let mut f = std::fs::OpenOptions::new()
@@ -88,8 +88,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         lua.create_function(|lua, path: String| Ok(shared(lua).path(&path).exists()))?,
     )?;
     fs.set(
-        "list",
-        lua.create_function(|lua, path: Option<String>| {
+        "try_list",
+        try_fn(lua, |lua, path: Option<String>| {
             let p = shared(lua).path(path.as_deref().unwrap_or("."));
             let mut names: Vec<String> = std::fs::read_dir(&p)
                 .map_err(|e| io(&p, e))?
@@ -120,15 +120,15 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         })?,
     )?;
     fs.set(
-        "mkdir",
-        lua.create_function(|lua, path: String| {
+        "try_mkdir",
+        try_fn(lua, |lua, path: String| {
             let p = writable(lua, &path)?;
             std::fs::create_dir_all(&p).map_err(|e| io(&p, e))
         })?,
     )?;
     fs.set(
-        "remove",
-        lua.create_function(|lua, path: String| {
+        "try_remove",
+        try_fn(lua, |lua, path: String| {
             let p = writable(lua, &path)?;
             if p.is_dir() {
                 std::fs::remove_dir_all(&p).map_err(|e| io(&p, e))
@@ -138,15 +138,15 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         })?,
     )?;
     fs.set(
-        "rename",
-        lua.create_function(|lua, (from, to): (String, String)| {
+        "try_rename",
+        try_fn(lua, |lua, (from, to): (String, String)| {
             let (a, b) = (writable(lua, &from)?, writable(lua, &to)?);
             std::fs::rename(&a, &b).map_err(|e| io(&a, e))
         })?,
     )?;
     fs.set(
-        "lines",
-        lua.create_function(|lua, path: String| {
+        "try_lines",
+        try_fn(lua, |lua, path: String| {
             let p = shared(lua).path(&path);
             let text = std::fs::read_to_string(&p).map_err(|e| io(&p, e))?;
             lua.create_sequence_from(text.lines().map(str::to_string).collect::<Vec<_>>())
@@ -156,8 +156,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     // one hop each, where a task reading hundreds of files one `read` at a
     // time held the frame between them.
     fs.set(
-        "__walk",
-        lua.create_function(|lua, (dir, opts): (Option<String>, Option<Table>)| {
+        "__try_walk",
+        try_fn(lua, |lua, (dir, opts): (Option<String>, Option<Table>)| {
             let s = shared(lua);
             let root = s.path(dir.as_deref().unwrap_or("."));
             let mut skip: Vec<String> = vec![".git".into(), "node_modules".into()];

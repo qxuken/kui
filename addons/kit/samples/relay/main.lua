@@ -160,10 +160,10 @@ local function perform(m)
   end
   local entry = { method = m.method, url = m.url, params = m.params, headers = m.headers, body = m.body, env = m.env, at = kui.now() }
   local t0 = kui.now()
-  local ok, r = pcall(kui.http.request, req)
+  local ok, r = kui.http.try_request(req)
   local t1 = kui.now()
   if not ok then
-    entry.error = { message = (tostring(r):gsub("^.-:%d+: ", "")), ms = t1 - t0, url = req.url }
+    entry.error = { message = (r:gsub("^.-:%d+: ", "")), ms = t1 - t0, url = req.url }
     return entry
   end
   local spans, total = timing(t0, t1, r.headers)
@@ -262,8 +262,8 @@ function update(msg)
     m.body = msg.change.text
     -- Said under the body as it is typed: the API reads JSON only.
     local ok, err = true, nil
-    if m.body:match("%S") then ok, err = pcall(kui.json.decode, m.body) end
-    m.body_error = not ok and ("Not JSON yet: " .. tostring(err):match("[^\n]*"):gsub("^.-: ", "")) or nil
+    if m.body:match("%S") then ok, err = kui.json.try_decode(m.body) end
+    m.body_error = not ok and ("Not JSON yet: " .. err:gsub("^json: ", "")) or nil
   elseif k == "side" then m.side = msg.resize.fraction
   elseif k == "vsplit" then m.vsplit = msg.resize.fraction
   elseif k == "skin" then m.skin = msg.change.value

@@ -96,6 +96,13 @@ waits, at the top level, which is fine before the window opens:
 {{#include ../../../examples/lua/tutorial/tasks/main.lua:init}}
 ```
 
+`kui.fs.read` raises an error when the file cannot be read, and
+`kui.json.decode` when it is not JSON. Each has a `try_` form, as every
+runner call that can fail on its input or on the world does: `true` and
+what the call returns, or `false` and the error's message. `init`
+puts the message where Kit draws a mistake, so a broken file opens the
+app and says why, where the plain calls would have stopped it.
+
 Where the file is comes from the command line. `kui.parse_args` reads
 the app's own arguments — what follows `--` — against a spec, and
 writes `--help` from it:
