@@ -2185,7 +2185,16 @@ the 2026-10-26/27 rounds had left 51 files unformatted, the Kit Rust
 wrappers came out of their generator as rustfmt would not write them
 (it formats them now) and with lints clippy refuses, and a dozen more
 lints had landed in kui-core, kui-lua and kui-cli; all fixed before the
-tag. Through those rounds the workspace suite ran at each merge, and the
+tag. The tag's first `check` then failed on Linux alone, twice over, and
+the tag was moved to the fixes before anything was published: the
+toast-exit test matched each quad to the nearest one of its shape at
+rest, and two of DejaVu Sans's glyphs in "Saved 2." share a box (it
+measures each against the face's offset now, and passes with DejaVu on
+the Mac too); and kui-cli's process test spawned `sh -c "sleep …"`,
+which dash keeps as the sleep's parent where macOS's sh execs, so the
+sleep outlived the app it was not a child of (`exec sleep` now).
+`ci.yml` runs the tests `--no-fail-fast` since, so one red suite no
+longer hides the rest. Through those rounds the workspace suite ran at each merge, and the
 Kit gallery's paint audit (`KUI_PAINT_AUDIT=1`, ADR 0074) over every
 page.
 
