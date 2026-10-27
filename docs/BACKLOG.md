@@ -3529,7 +3529,7 @@ paints the traffic lights onto the captured pixels and wraps its app to
 set `native_controls` each frame (`src/shots.rs` on its
 `claude/vpn-md-features-1c783a` branch). Two entries, open.
 
-### `.` F211 — A headless run cannot be pinned to another platform's look
+### `.` F220 — A headless run cannot be pinned to another platform's look
 
 **Found** 2026-10-27, making Carnet's README screenshots on Windows. A
 picture is meant to be the same whichever machine takes it (ADR 0057),
@@ -3548,12 +3548,12 @@ not read it.
 `Core::set_platform`; and the core's per-platform choices read
 `Core::platform()` rather than the build: accelerator labels, the
 primary modifier, the platform titlebar height and the window-control
-inset (F212). A windowed runner keeps the build's, since the OS draws
+inset (F221). A windowed runner keeps the build's, since the OS draws
 its chrome.
 
-### `.` F212 — The headless runner sets `env.window` afresh every frame
+### `.` F221 — The headless runner sets `env.window` afresh every frame
 
-**Found** 2026-10-27, with F211: `HeadlessRunner::frame` writes
+**Found** 2026-10-27, with F220: `HeadlessRunner::frame` writes
 `core.env.window = WindowEnv { id, custom_chrome, ..default }` before
 each view, so `native_controls` is always `None`. An app drawn as a Mac
 window (`Chrome::Custom` with the traffic lights) is told it has no OS
@@ -3565,7 +3565,7 @@ titlebar leaves no room for the lights. Carnet's wrapper sets
 **Do.** Keep what the launcher pinned: a `WindowEnv` a launcher can
 give a headless run (or the fields of it a window would have — controls,
 maximized, fullscreen), written once and not reset per frame; with
-F211's pinned platform, the platform's own default (macOS's lights and
+F220's pinned platform, the platform's own default (macOS's lights and
 inset under `Chrome::Custom`).
 
 ## From the alpha.67 fuzz half hour (2026-10-24)
@@ -5948,10 +5948,10 @@ move.
 - `~` **F208** — [Kit's handler props take any message in Node](backlog/closed-2026-09.md#-f208--kits-handler-props-take-any-message-in-node--done-2026-10-27) — done (2026-10-27) — `kui-addon-schema` types an `on*` prop as `HandlerMsg<{ <event>: … }>`, as the core's are
 - `.` **F209** — [`keyNamed`'s doc example calls a `ctx.click` Node does not have](backlog/closed-2026-09.md#-f209--keynameds-doc-example-calls-a-ctxclick-node-does-not-have--done-2026-10-27) — done (2026-10-27) — `ctx.access(ctx.keyNamed('Like')!, 'click')`; no `click(key)` added
 
-**From Carnet's README screenshots (2026-10-27)** — F211 and F212, open
+**From Carnet's README screenshots (2026-10-27)** — F220 and F221, open
 
-- `.` **F211** — [A headless run cannot be pinned to another platform's look](#-f211--a-headless-run-cannot-be-pinned-to-another-platforms-look) — open — a pinned platform the headless runner hands to `set_platform`, read by accelerator labels, the primary modifier and the titlebar
-- `.` **F212** — [The headless runner sets `env.window` afresh every frame](#-f212--the-headless-runner-sets-envwindow-afresh-every-frame) — open — keep a launcher-pinned `WindowEnv` (native controls), or the pinned platform's default
+- `.` **F220** — [A headless run cannot be pinned to another platform's look](#-f220--a-headless-run-cannot-be-pinned-to-another-platforms-look) — open — a pinned platform the headless runner hands to `set_platform`, read by accelerator labels, the primary modifier and the titlebar
+- `.` **F221** — [The headless runner sets `env.window` afresh every frame](#-f221--the-headless-runner-sets-envwindow-afresh-every-frame) — open — keep a launcher-pinned `WindowEnv` (native controls), or the pinned platform's default
 
 **From Carnet's page menu in a short window (2026-10-27)** — F210, filed and built the same day
 
