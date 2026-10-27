@@ -4278,10 +4278,20 @@ tests, each making its own instance on a test thread, failed one test in
 3 runs of 20 with "No suitable graphics adapter found; … vulkan
 drivers/libraries could not be loaded"; 0 of 10 on one thread, 0 of 20
 on dx12. An app makes one instance, so no app is known to meet it; a
-host making a `KuiCtx` per thread could. **Do.** Find whether it is the
-loader's or the driver's (another machine's Vulkan, a loader log with
-`VK_LOADER_DEBUG=all`), then either make instances under one lock in
-kui-wgpu or leave it the platform's, said in `docs/`.
+host making a `KuiCtx` per thread could, and only with `WGPU_BACKEND`
+naming Vulkan (Windows is D3D12 alone otherwise). **Tried** the same
+night: `VK_LOADER_DEBUG=error,warn` showed "loader_add_instance_extensions:
+Error getting Instance extensions from … amdvlk64.dll" (an AMD driver for
+the CPU's integrated GPU, installed beside NVIDIA's) at each failure; a
+process-wide lock around `wgpu::Instance::new` changed nothing (5 in 40),
+nor did hiding that driver (`VK_LOADER_DRIVERS_DISABLE=*amdvlk*`, 9 in
+40) — so the race is with other threads' Vulkan work (devices, adapters),
+not instance creation alone, and no lock on one call in kui-wgpu covers
+it. **Do.** A loader log one test at a time with others busy
+(`--test-threads` and a second process) to name the call, on this
+machine and another Windows one with Vulkan; then the platform's,
+said in `docs/`, or a lock around every Vulkan entry kui-wgpu makes, if
+that is what it takes and is worth it.
 
 ## From the core impurities audit (2026-10-25)
 
