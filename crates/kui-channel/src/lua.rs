@@ -5,14 +5,18 @@
 //! `ch:reduce(col, from, to, n)` buckets a range for a chart in Rust
 //! (backlog C95). Row indices are 0-based, as a list's `index` and an
 //! `on_range` event's are.
+//!
+//! [`from_lua`] and [`to_lua`] are `kui_value::lua`'s conversions with a
+//! channel crossing as its handle, both ways.
 
-use kui_core::Value as KValue;
-use kui_core::channel::{self, Cell, Channel, Column};
+use kui_value::Value as KValue;
+
+use crate::{self as channel, Cell, Channel, Column};
 use mlua::{Lua, MetaMethod, Table, UserData, UserDataFields, UserDataMethods, Value};
 
 /// The userdata: one revision of a channel, held.
 #[derive(Clone)]
-pub(crate) struct LuaChannel(pub(crate) Channel);
+pub struct LuaChannel(pub Channel);
 
 fn cell_to_lua(lua: &Lua, c: Cell<'_>) -> mlua::Result<Value> {
     Ok(match c {
@@ -227,7 +231,7 @@ fn column_from(list: &Table) -> mlua::Result<Result<Column, channel::ChannelErro
 }
 
 /// Registers `channel(spec)` in a script's globals.
-pub(crate) fn register(lua: &Lua) -> mlua::Result<()> {
+pub fn register(lua: &Lua) -> mlua::Result<()> {
     let make = lua.create_function(|_, spec: Table| {
         Channel::table(columns_of(&spec)?)
             .map(LuaChannel)
@@ -238,7 +242,7 @@ pub(crate) fn register(lua: &Lua) -> mlua::Result<()> {
 
 /// A handle as the script sees it: the channel when someone holds it,
 /// nil when nobody does.
-pub(crate) fn handle_to_lua(lua: &Lua, v: &KValue) -> Option<mlua::Result<Value>> {
+pub fn handle_to_lua(lua: &Lua, v: &KValue) -> Option<mlua::Result<Value>> {
     if !channel::is_handle(v) {
         return None;
     }
@@ -246,4 +250,22 @@ pub(crate) fn handle_to_lua(lua: &Lua, v: &KValue) -> Option<mlua::Result<Value>
         Some(ch) => lua.create_userdata(LuaChannel(ch)).map(Value::UserData),
         None => Ok(Value::Nil),
     })
+}
+
+/// A userdata as a value, when it is a channel: its handle.
+pub fn userdata_value(ud: &mlua::AnyUserData) -> Option<mlua::Result<KValue>> {
+    ud.is::<LuaChannel>()
+        .then(|| ud.borrow::<LuaChannel>().map(|c| c.0.handle()))
+}
+
+/// A Lua value as a [`KValue`], a channel as its handle
+/// ([`kui_value::lua::from_lua`] with [`userdata_value`]).
+pub fn from_lua(v: &Value) -> mlua::Result<KValue> {
+    kui_value::lua::from_lua_with(v, &userdata_value)
+}
+
+/// A [`KValue`] as a Lua value, a channel's handle as the channel
+/// ([`kui_value::lua::to_lua`] with [`handle_to_lua`]).
+pub fn to_lua(lua: &Lua, v: &KValue) -> mlua::Result<Value> {
+    kui_value::lua::to_lua_with(lua, v, &handle_to_lua)
 }

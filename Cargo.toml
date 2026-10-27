@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/kui-value",
+    "crates/kui-channel",
     "crates/kui-core",
     "crates/kui-derive",
     "crates/kui-trace",
@@ -38,6 +40,8 @@ categories = ["gui"]
 # No `registry` key: the kui crates resolve from crates.io, which is where
 # they publish (scripts/publish-crates.nu), and crates.io refuses a
 # dependency from any other registry.
+kui-value = { path = "crates/kui-value", version = "0.1.0-alpha.69" }
+kui-channel = { path = "crates/kui-channel", version = "0.1.0-alpha.69" }
 kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.69" }
 kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.69" }
 kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.69" }

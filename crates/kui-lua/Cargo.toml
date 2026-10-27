@@ -16,6 +16,8 @@ exclude = ["tests/tl"]
 
 [dependencies]
 kui-core.workspace = true
+kui-value = { workspace = true, features = ["lua"] }
+kui-channel = { workspace = true, features = ["lua"] }
 mlua.workspace = true
 # No kui-ffi: kui-ffi depends on this crate so that every host loads `.lua`
 # extensions (ADR 0059), and a script's `env.add_extension` opens a C plugin

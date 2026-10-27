@@ -361,7 +361,7 @@ use kui_core::{
 };
 use mlua::{Lua, Table};
 
-mod channel;
+use kui_channel::lua as channel;
 mod meta;
 mod rows;
 mod teal;
@@ -5262,14 +5262,15 @@ fn parse_float(v: &mlua::Value) -> mlua::Result<FloatConfig> {
 /// How deep a Lua value may nest before [`lua_to_value`] refuses it. A
 /// table holding itself, or one nested deeper than this, is an error rather
 /// than a stack overflow.
-pub const MAX_VALUE_DEPTH: usize = 64;
+pub const MAX_VALUE_DEPTH: usize = kui_value::lua::MAX_DEPTH;
 
 /// Converts a Lua value to a [`kui_core::Value`], the shape event payloads
-/// and replies travel in.
+/// and replies travel in: `kui_value::lua`'s conversion, a channel
+/// crossing as its handle (ADR 0065).
 ///
 /// A table with sequence entries becomes a [`Value::List`], any other table
 /// a [`Value::Map`] with string keys; nil, booleans, integers, floats and
-/// strings map one to one. Functions and userdata are refused.
+/// strings map one to one. Functions and other userdata are refused.
 ///
 /// ```
 /// use kui_core::Value;
@@ -5282,117 +5283,14 @@ pub const MAX_VALUE_DEPTH: usize = 64;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn lua_to_value(v: &mlua::Value) -> mlua::Result<Value> {
-    to_value(
-        v,
-        &mut ValuePath {
-            depth: 0,
-            seen: Vec::new(),
-        },
-    )
+    channel::from_lua(v)
 }
-
-/// Tables nested this deep before [`ValuePath`] records which they are.
-/// No payload a view means is this deep, and a table that holds itself
-/// passes it and is caught a lap of its cycle later: asking each table
-/// its identity costs a size table per row per frame 57 ns, +2.7% on
-/// kui-lua's `lua_1000_rows/table per frame`.
-const VALUE_TRACKED_PAST: usize = 8;
-
-/// How deep [`to_value`] is, and past [`VALUE_TRACKED_PAST`] the tables
-/// it is inside.
-struct ValuePath {
-    depth: usize,
-    seen: Vec<*const std::ffi::c_void>,
-}
-
-/// [`lua_to_value`] with where it is: a table met again on its own path
-/// holds itself. A table met twice off the path (the same list under two
-/// keys) is copied twice, as before.
-fn to_value(v: &mlua::Value, path: &mut ValuePath) -> mlua::Result<Value> {
-    Ok(match v {
-        mlua::Value::Nil => Value::Null,
-        mlua::Value::Boolean(b) => Value::Bool(*b),
-        mlua::Value::Integer(i) => Value::Int(*i),
-        mlua::Value::Number(n) => Value::Float(*n),
-        mlua::Value::String(s) => Value::Str(s.to_str()?.to_string()),
-        mlua::Value::Table(t) => {
-            let tracked = path.depth >= VALUE_TRACKED_PAST;
-            if tracked {
-                let at = t.to_pointer();
-                if path.seen.contains(&at) {
-                    return Err(bad("a table that holds itself cannot be a value"));
-                }
-                path.seen.push(at);
-            }
-            if path.depth >= MAX_VALUE_DEPTH {
-                return Err(bad(format!("a value nested past {MAX_VALUE_DEPTH} tables")));
-            }
-            path.depth += 1;
-            let len = t.raw_len();
-            let value = if len > 0 {
-                let mut list = Vec::with_capacity(len);
-                for item in t.sequence_values::<mlua::Value>() {
-                    list.push(to_value(&item?, path)?);
-                }
-                Value::List(list)
-            } else {
-                let mut map = Vec::new();
-                for pair in t.pairs::<String, mlua::Value>() {
-                    let (k, v) = pair?;
-                    map.push((k, to_value(&v, path)?));
-                }
-                // An empty table is a map unless it was marked a list
-                // ([`mark_array`]): what decides `[]` against `{}`.
-                if map.is_empty() && is_marked_array(t) {
-                    Value::List(Vec::new())
-                } else {
-                    Value::Map(map)
-                }
-            };
-            path.depth -= 1;
-            if tracked {
-                path.seen.pop();
-            }
-            value
-        }
-        // A channel crosses as its handle (ADR 0065).
-        mlua::Value::UserData(ud) if ud.is::<channel::LuaChannel>() => {
-            ud.borrow::<channel::LuaChannel>()?.0.handle()
-        }
-        other => {
-            return Err(mlua::Error::runtime(format!(
-                "cannot convert {} to event payload",
-                other.type_name()
-            )));
-        }
-    })
-}
-
-/// The metatable that says an empty table is a list, one per state.
-const ARRAY_MARK: &str = "kui.array";
 
 /// Marks `t` a list, so that empty it converts to `[]` and not `{}`: the
 /// one thing a Lua table cannot say for itself. An empty list decoded
 /// from data comes back marked, so it round-trips.
 pub fn mark_array(lua: &Lua, t: &Table) -> mlua::Result<()> {
-    let mt = match lua.named_registry_value::<Option<Table>>(ARRAY_MARK)? {
-        Some(mt) => mt,
-        None => {
-            let mt = lua.create_table()?;
-            mt.raw_set("__kui_array", true)?;
-            lua.set_named_registry_value(ARRAY_MARK, &mt)?;
-            mt
-        }
-    };
-    if t.metatable().is_none() {
-        t.set_metatable(Some(mt))?;
-    }
-    Ok(())
-}
-
-fn is_marked_array(t: &Table) -> bool {
-    t.metatable()
-        .is_some_and(|mt| mt.raw_get::<bool>("__kui_array").unwrap_or(false))
+    kui_value::lua::mark_array(lua, t)
 }
 
 /// Installs the data half of the prelude — `channel {}` (ADR 0065) and
@@ -5405,37 +5303,10 @@ pub fn install_data(lua: &Lua) -> mlua::Result<()> {
 }
 
 /// Converts a [`kui_core::Value`] to a Lua value: the inverse of
-/// [`lua_to_value`], used to hand event payloads and slot params to a script.
+/// [`lua_to_value`], used to hand event payloads and slot params to a
+/// script, a channel's handle arriving as the channel.
 pub fn value_to_lua(lua: &Lua, v: &Value) -> mlua::Result<mlua::Value> {
-    Ok(match v {
-        Value::Null => mlua::Value::Nil,
-        Value::Bool(b) => mlua::Value::Boolean(*b),
-        Value::Int(i) => mlua::Value::Integer(*i),
-        Value::Float(f) => mlua::Value::Number(*f),
-        Value::Str(s) => mlua::Value::String(lua.create_string(s)?),
-        Value::List(items) => {
-            let t = lua.create_table_with_capacity(items.len(), 0)?;
-            for (i, item) in items.iter().enumerate() {
-                t.set(i + 1, value_to_lua(lua, item)?)?;
-            }
-            // An empty list stays one on its way back.
-            if items.is_empty() {
-                mark_array(lua, &t)?;
-            }
-            mlua::Value::Table(t)
-        }
-        Value::Map(entries) => {
-            // A channel's handle is the channel (ADR 0065).
-            if let Some(ch) = channel::handle_to_lua(lua, v) {
-                return ch;
-            }
-            let t = lua.create_table_with_capacity(0, entries.len())?;
-            for (k, v) in entries {
-                t.set(k.as_str(), value_to_lua(lua, v)?)?;
-            }
-            mlua::Value::Table(t)
-        }
-    })
+    channel::to_lua(lua, v)
 }
 
 #[cfg(test)]

@@ -3650,18 +3650,18 @@ slot that carries the host's children, cheap instances).
 **Now** [ADR 0075](adr/0075-kui-perf-reads-a-recording-in-kit.md),
 proposed 2026-10-27 after a grilling round once Kit was on main: a
 Lua/Teal app on the runner, built from Kit, over columns `kui-trace`
-keeps in Rust — if a spike (F245) meets its budgets. Its pieces are
-F241–F247 below; this entry is the app, `tools/kui-perf`, ADR 0075's
+keeps in Rust — if a spike (F249) meets its budgets. Its pieces are
+F245–F251 below; this entry is the app, `tools/kui-perf`, ADR 0075's
 building order step 4.
 
 ## From the kui-perf grilling (2026-10-27)
 
 What ADR 0075's building order needs beside the app (F200), filed the
-day it was written. Seven entries, F241–F247, none built; and four open
+day it was written. Seven entries, F245–F251, none built; and four open
 entries it builds on the way — C147 and C148 in step 1, C149 and C102 in
 step 4.
 
-### `.` F241 — `kui-trace` cannot make a channel
+### `.` F245 — `kui-trace` cannot make a channel
 
 **Found** in the grilling: `kui-core` depends on `kui-trace`, and the
 data channel (`kui_core::channel`, ADR 0065) and `Value` live in
@@ -3673,7 +3673,7 @@ the derives behind `derive`; `Handles` stays) and a `kui-channel` crate
 on it (a handle's Lua side behind `lua`), both re-exported from
 `kui-core` where they are, every binding's tests green.
 
-### `.` F242 — A recording is read only whole, from bytes in memory
+### `.` F246 — A recording is read only whole, from bytes in memory
 
 **Found** in the grilling: `Trace::from_bytes` takes a whole file, so a
 `KUI_PERF_TRACE` still being written is read once, and nothing reads
@@ -3684,7 +3684,7 @@ checks size and modification time every 250 ms on a thread and wakes
 its reader only when one moved, a file that shrank or whose head
 changed read again whole.
 
-### `.` F243 — Nothing writes a recording the size of a long session
+### `.` F247 — Nothing writes a recording the size of a long session
 
 **Found** in the grilling: the largest recordings at hand are the Perf
 tab's minute; ten minutes at 120 Hz is about 72,000 frames and up to a
@@ -3692,7 +3692,7 @@ million spans. **Do.** ADR 0075, decision 12: `kui-trace synth` by
 frames, spans a frame and a seed, with every record kind a session
 writes — the spike's recording, a bench's, the tests'.
 
-### `.` F244 — A Lua app cannot read a recording
+### `.` F248 — A Lua app cannot read a recording
 
 **Do.** ADR 0075, decisions 4 and 8: `kui-trace`'s `lua` feature, a
 module the runner registers — `trace.open(path)` and the transports —
@@ -3701,24 +3701,24 @@ counters, gauges), a frame's or a span's detail as a small table, and a
 filter value that publishes new revisions; no dependency without the
 feature.
 
-### `.` F245 — Nobody knows whether Lua draws a million spans in time
+### `.` F249 — Nobody knows whether Lua draws a million spans in time
 
 **Do.** ADR 0075, decision 11: a bare Lua app on the runner with Kit's
-waterfall and a frame table over F243's 72,000-frame recording, in a
+waterfall and a frame table over F247's 72,000-frame recording, in a
 release build: open ≤ 1 s, pan and zoom ≤ 4 ms a frame (zoomed fully
 out included), the table's scroll ≤ 1.5 ms, idle 0%, and a Lua
 predicate over every span ≤ 200 ms. The numbers go into ADR 0075, which
 is accepted or amended with them; a budget missed is a Kit or core
 primitive first.
 
-### `.` F246 — The Perf tab cannot hand a recording to the inspector
+### `.` F250 — The Perf tab cannot hand a recording to the inspector
 
 **Do.** ADR 0075, decision 10: *open in kui-perf* beside *save trace*,
 which saves the recording and starts the inspector on it.
 
-### `.` F247 — How kui-perf reaches a machine is not decided
+### `.` F251 — How kui-perf reaches a machine is not decided
 
-**Do.** ADR 0075, decision 1: once F245 reports — an app the runner
+**Do.** ADR 0075, decision 1: once F249 reports — an app the runner
 carries (`kui perf`, ADR 0068's packing) or a binary of its own —
 released with kui's tags beside `kui-trace`.
 
@@ -6316,16 +6316,6 @@ move.
 
 - `~` **F199** — [A frame's time is one number a phase, the time between frames is not recorded, and an app cannot add its own](backlog/closed-2026-09.md#-f199--a-frames-time-is-one-number-a-phase-the-time-between-frames-is-not-recorded-and-an-app-cannot-add-its-own--done-2026-10-25) — done (2026-10-25) — [ADR 0058](adr/0058-a-recording-is-a-timeline.md): `kui-trace` (format, timeline, analysis, Chrome/Perfetto/speedscope/Firefox adapters, `diff`, CLI), the core's recorder and the runners' loop records, the doors in five bindings with `KuiWaker` for C and Odin, the Perf tab on the timeline
 - `~` **F200** — [A recording made where the panel is not has nothing to read it in](#-f200--a-recording-made-where-the-panel-is-not-has-nothing-to-read-it-in) — open — `kui-perf`, ADR 0075 (proposed): a Lua/Teal app on the runner built from Kit, over columns `kui-trace` keeps in Rust
-
-**From the kui-perf grilling (2026-10-27)** — F241–F247, open
-
-- `.` **F241** — [`kui-trace` cannot make a channel](#-f241--kui-trace-cannot-make-a-channel) — open — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
-- `.` **F242** — [A recording is read only whole, from bytes in memory](#-f242--a-recording-is-read-only-whole-from-bytes-in-memory) — open — a stream decoder, a transport trait, a watched file transport
-- `.` **F243** — [Nothing writes a recording the size of a long session](#-f243--nothing-writes-a-recording-the-size-of-a-long-session) — open — `kui-trace synth`
-- `.` **F244** — [A Lua app cannot read a recording](#-f244--a-lua-app-cannot-read-a-recording) — open — `kui-trace`'s `lua` feature: channels of columns, detail on request, a filter value
-- `.` **F245** — [Nobody knows whether Lua draws a million spans in time](#-f245--nobody-knows-whether-lua-draws-a-million-spans-in-time) — open — the spike, four budgets and a predicate's measure
-- `.` **F246** — [The Perf tab cannot hand a recording to the inspector](#-f246--the-perf-tab-cannot-hand-a-recording-to-the-inspector) — open — *open in kui-perf*
-- `.` **F247** — [How kui-perf reaches a machine is not decided](#-f247--how-kui-perf-reaches-a-machine-is-not-decided) — open — decided with F245's numbers
 - `.` **F201** — [The tree's arrows only move a cursor, the inspector shows only the snapshot's columns, the live graph is not full width, and a recording reads only whole](backlog/closed-2026-09.md#-f201--the-trees-arrows-only-move-a-cursor-the-inspector-shows-only-the-snapshots-columns-the-live-graph-is-not-full-width-and-a-recording-reads-only-whole--done-2026-10-25) — done (2026-10-25) — arrows select, a row click focuses the list; the selection's whole spec with a changed-only switch; bars share the chart's width; a range by drag or shift-click
 
 **From the Perf tab on Windows (2026-10-25)** — F202, filed and built the same day
@@ -6404,6 +6394,16 @@ move.
 - `!` **FZ17** — [A composition begun over a selection and abandoned loses the selection without a `change`](backlog/closed-2026-09.md#-fz17--a-composition-begun-over-a-selection-and-abandoned-loses-the-selection-without-a-change--done-2026-10-28) — done (2026-10-28) — `set_preedit` answers whether the committed text changed and dispatch raises the `change`; found by `events` in the alpha.69 fuzz hour, present since alpha.67 at least
 - `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
 - `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
+
+**From the kui-perf grilling (2026-10-27)** — F245–F251, open
+
+- `.` **F245** — [`kui-trace` cannot make a channel](#-f245--kui-trace-cannot-make-a-channel) — open — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
+- `.` **F246** — [A recording is read only whole, from bytes in memory](#-f246--a-recording-is-read-only-whole-from-bytes-in-memory) — open — a stream decoder, a transport trait, a watched file transport
+- `.` **F247** — [Nothing writes a recording the size of a long session](#-f247--nothing-writes-a-recording-the-size-of-a-long-session) — open — `kui-trace synth`
+- `.` **F248** — [A Lua app cannot read a recording](#-f248--a-lua-app-cannot-read-a-recording) — open — `kui-trace`'s `lua` feature: channels of columns, detail on request, a filter value
+- `.` **F249** — [Nobody knows whether Lua draws a million spans in time](#-f249--nobody-knows-whether-lua-draws-a-million-spans-in-time) — open — the spike, four budgets and a predicate's measure
+- `.` **F250** — [The Perf tab cannot hand a recording to the inspector](#-f250--the-perf-tab-cannot-hand-a-recording-to-the-inspector) — open — *open in kui-perf*
+- `.` **F251** — [How kui-perf reaches a machine is not decided](#-f251--how-kui-perf-reaches-a-machine-is-not-decided) — open — decided with F249's numbers
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 

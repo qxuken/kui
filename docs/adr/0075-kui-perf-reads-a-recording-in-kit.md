@@ -5,7 +5,7 @@ date: 2026-10-27
 
 # kui-perf reads a recording in Kit, over columns Rust keeps
 
-> **Proposed (2026-10-27); backlog F200, F241–F247, and C147, C148,
+> **Proposed (2026-10-27); backlog F200, F245–F251, and C147, C148,
 > C149 and C102 built on the way.** Settled by a grilling round
 > with the user, after Kit landed on main. It replaces ADR 0058's
 > decision 13 with what `kui-perf`, the trace inspector, is and how it

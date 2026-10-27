@@ -2272,8 +2272,8 @@ mod tests {
 
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
     /// `Ui::` in `ui.rs` (or an `impl Ui` under `runtime/`), `Core::` under `runtime/`, `SharedResources::`
-    /// in `session.rs`, `Tokens::` in `tokens.rs`, `WheelFeel::` in
-    /// `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` and
+    /// in `session.rs`, `Tokens::` in `tokens.rs`, `Channel::` in the
+    /// `kui-channel` crate, `WheelFeel::` in `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` and
     /// `Waker::` in the
     /// `kui-native` crate, `perf::` (the recording's free functions) under
     /// `runtime/`, `kui_native::` and `Animation::` in its
@@ -2303,7 +2303,8 @@ mod tests {
         let scroll = read(root.join("scroll.rs"));
         let edge = read(root.join("edge_scroll.rs"));
         let slot = read(root.join("slot.rs"));
-        let channel = read(root.join("channel.rs"));
+        // The channel is a crate of its own (ADR 0075), re-exported.
+        let channel = read(root.join("../../kui-channel/src/lib.rs"));
         let menu = read(root.join("menu.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))

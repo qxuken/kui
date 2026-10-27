@@ -1,0 +1,24 @@
+[package]
+name = "kui-value"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "kui's plain-data payload: Value, a strict JSON reader, typed messages over it, and its Lua conversions (docs/adr/0075)"
+readme = "README.md"
+publish = ["crates-io"]
+
+# No kui crate under it: the data channel and the recording's reader speak
+# values without the core (ADR 0075, decision 3).
+[dependencies]
+mlua = { workspace = true, optional = true }
+kui-derive = { workspace = true, optional = true }
+
+[features]
+# `kui_value::lua`: a Value to and from an mlua value.
+lua = ["dep:mlua"]
+# `#[derive(Message)]` from kui-derive.
+derive = ["dep:kui-derive"]

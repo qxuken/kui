@@ -1,0 +1,24 @@
+[package]
+name = "kui-channel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "kui's data channel: bulk typed columns a handle names, immutable per revision, read by index from any thread (docs/adr/0065, docs/adr/0075)"
+readme = "README.md"
+publish = ["crates-io"]
+
+# On kui-value alone, so the recording's reader makes channels without the
+# core (ADR 0075, decision 3).
+[dependencies]
+kui-value.workspace = true
+rustc-hash.workspace = true
+mlua = { workspace = true, optional = true }
+
+[features]
+# `kui_channel::lua`: a channel as a script holds it, and the value
+# conversions that carry one as its handle.
+lua = ["dep:mlua", "kui-value/lua"]
