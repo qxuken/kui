@@ -3951,8 +3951,8 @@ Tab stop inside a sink, the ring on a focused sink — and then put its
 Perf and Frames tabs, its frame ledger and its two logs on ADR 0058's
 recording, deleting about 2,300 lines of its own (its
 `docs/design/lua-boundary.md` Decision 10's amendment, its `perf.rs`).
-What it met on the way, checked against the tree at `e2bd83fa`. Eight
-entries, F211–F218, filed and **not built**; F211 is a defect, the rest
+What it met on the way, checked against the tree at `e2bd83fa`. Nine
+entries, F211–F219, filed and **not built**; F211 is a defect, the rest
 doors kawoosh worked around or went without.
 
 ### `!` F211 — Closing the panel on its Perf tab leaves the recording on
@@ -4037,18 +4037,22 @@ instead (`pane ran: WHY`, `pane read: NATIVE`). **Do.** `perf_note(text)`
 in every binding, kept per frame and shown in the opened frame's detail;
 bounded per frame as spans are.
 
-### `.` F217 — A handle over a shared Lua state contributes nothing
+### `.` F217 — One Lua state is several extensions only through `reentry`
 
-**Found** designing kawoosh's plugins as extensions (its
-`docs/design/plugin-extensions.md`, proposed): 29 plugins share one Lua
-state and each other's tables, so each would be loaded as a handle over
-that state under its own namespace — what `LuaExtension::reentry` makes,
-whose contributions are empty (`contributions: Vec::new()`), and which a
-host cannot make itself. **Do.** `LuaExtension::share(&self, contributes:
-&Table or Vec<Contribution>)` — a handle over the same state with its own
-components and contributions, its events back to the state's
-`on_event` with its namespace as `from` — so one interpreter can be
-several extensions.
+**Found** building kawoosh's plugins as extensions (its
+`docs/design/plugin-extensions.md`): 29 plugins share one Lua state and
+each other's tables, so each is loaded as a handle over that state under
+its own namespace. The only door to such a handle is
+`LuaExtension::reentry` — meant for a spare while an extension draws,
+whose contributions are empty (`contributions: Vec::new()`) and whose
+components are its parent's — so kawoosh wraps each in an `Extension` of
+its own that answers the plugin's namespace, components and
+contributions and hands drawing and events on (`fields::PluginHost`).
+It works; it leans on `reentry` for what it was not made for. **Do.**
+`LuaExtension::share(&self, components, contributions)` — a handle over
+the same state with its own lists, its events back to the state's
+`on_event` with its namespace as `from` — documented as how one
+interpreter is several extensions, in every binding that loads a script.
 
 ### `.` F218 — Contributions are read once, at load
 
@@ -4059,6 +4063,19 @@ at load only. **Do.** A door to replace an extension's contributions
 after load (`Extensions::set_contributions(namespace, list)`, the slot's
 instances re-keyed by provider and component as now), or contributions
 read again when an extension says they moved.
+
+### `.` F219 — A host cannot ask whether a slot has contributions
+
+**Found** with F217: kawoosh draws a slot in a row of its own, keyed so
+the width it took last frame counts where its chrome fits text to the
+room, and draws no row for an empty slot, which would otherwise add a
+gap between its neighbours. `Ui::slot` answers how many it placed only
+once it has placed them, and `Fill::contributions` is private, so kawoosh
+keeps its own list of which slots its plugins contribute to — blind to a
+C extension's (`kui_ext_contributions`). **Do.** `Ui::slot_contributors
+(name) -> usize`, or a slot whose wrapper the host names
+(`slot_in(name, props, spec)`, drawn only when it has contributions), in
+every binding.
 
 ## From the core impurities audit (2026-10-25)
 
