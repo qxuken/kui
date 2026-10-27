@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.68 (unreleased)
+## 0.1.0-alpha.68 (2026-10-27)
 
 **What breaks.**
 
@@ -2169,6 +2169,30 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an area chart cut into polygon chunks, or
   thinned before it reached a `path`, to dodge the raster.
+
+### Native verification
+
+No pre-tag pass on the release machines this time: the first release
+whose check is GitHub's `ci.yml` in full, run on main and again as the
+tag's `check` (Linux, lavapipe), with `smoke.yml` on macOS and Windows
+beside it, non-blocking.
+
+On the Mac (M3 Pro, macOS 27) before the tag: `release-prep.nu` (every
+generated file current), fmt, clippy with `-D warnings` and the
+workspace tests — **2926 tests over 234 suites**, no failure. Main's
+first `ci` run went red on fmt, which nothing had checked since alpha.66:
+the 2026-10-26/27 rounds had left 51 files unformatted, the Kit Rust
+wrappers came out of their generator as rustfmt would not write them
+(it formats them now) and with lints clippy refuses, and a dozen more
+lints had landed in kui-core, kui-lua and kui-cli; all fixed before the
+tag. Through those rounds the workspace suite ran at each merge, and the
+Kit gallery's paint audit (`KUI_PAINT_AUDIT=1`, ADR 0074) over every
+page.
+
+Not verified natively this release: the windowed round, the
+accessibility audit and the C round on a workstation, anything on
+Windows or Linux by hand, fuzzing, and the npm half of the release
+workflow, which only the tag's own run exercises.
 
 ## 0.1.0-alpha.67 (2026-10-24)
 

@@ -24,7 +24,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.67"
+version = "0.1.0-alpha.68"
 edition = "2024"
 license = "MIT"
 # `homepage` is the book (docs/book), which is what a reader arriving from
@@ -38,15 +38,15 @@ categories = ["gui"]
 # No `registry` key: the kui crates resolve from crates.io, which is where
 # they publish (scripts/publish-crates.nu), and crates.io refuses a
 # dependency from any other registry.
-kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.67" }
-kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.67" }
-kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.67" }
-kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.67" }
-kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.67" }
+kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.68" }
+kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.68" }
+kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.68" }
+kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.68" }
+kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.68" }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
-kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.67", default-features = false }
-kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.67" }
+kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.68", default-features = false }
+kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.68" }
 kui-devtools = { path = "examples/devtools" }
 # Kit's generated Rust wrappers and the generator itself (ADR 0066); never
 # published yet.

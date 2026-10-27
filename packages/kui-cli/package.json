@@ -1,6 +1,6 @@
 {
   "name": "@qxuken/kui-cli",
-  "version": "0.1.0-alpha.67",
+  "version": "0.1.0-alpha.68",
   "description": "The kui runner: run a Lua or Teal app with Kit, from npm (ADR 0064, ADR 0068)",
   "license": "MIT",
   "repository": {

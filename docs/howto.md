@@ -2826,7 +2826,7 @@ idle, it parks. For a test on a stepped clock, `testing::Drive` is still
 the tool: a headless run's timings are the machine's.
 
 [ADR 0057](adr/0057-an-app-runs-with-no-window.md) ·
-[alpha.68 `### Added`](../CHANGELOG.md#010-alpha68-unreleased)
+[alpha.68 `### Added`](../CHANGELOG.md#010-alpha68-2026-10-27)
 
 ### How do I trade smoothness for latency, or the other way?
 
@@ -3031,7 +3031,7 @@ end
 what a view reads from it is cast too (`props.title as string`). The file is checked against
 Teal 0.24.8; copy it again after an upgrade.
 
-[alpha.68 `### Added`](../CHANGELOG.md#010-alpha68-unreleased)
+[alpha.68 `### Added`](../CHANGELOG.md#010-alpha68-2026-10-27)
 
 ### How do I give my windows the app's icon?
 
