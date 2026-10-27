@@ -3944,6 +3944,122 @@ body, the howto, the guide, props.md's section headings and the glossary,
 which gains it beside **Component**. No symbol changes unless the word
 does (`widgets::` in Rust is already the module).
 
+## From kawoosh's alpha.68 port (2026-10-27)
+
+kawoosh moved to alpha.68 — slots folded into components, a press on a
+Tab stop inside a sink, the ring on a focused sink — and then put its
+Perf and Frames tabs, its frame ledger and its two logs on ADR 0058's
+recording, deleting about 2,300 lines of its own (its
+`docs/design/lua-boundary.md` Decision 10's amendment, its `perf.rs`).
+What it met on the way, checked against the tree at `e2bd83fa`. Eight
+entries, F211–F218, filed and **not built**; F211 is a defect, the rest
+doors kawoosh worked around or went without.
+
+### `!` F211 — Closing the panel on its Perf tab leaves the recording on
+
+**Found** porting kawoosh's `:perf`: open the panel on the Perf tab,
+then close it (`set_devtools(false)`) — `perf_measuring()` stays true for
+the rest of the session, so every span, gauge and count an app gates on
+it is recorded, and kawoosh reads its process's memory every half second,
+with nobody looking. `devtools_begin_frame` returns early while the panel
+is off (`if !on { … return; }`, `runtime/devtools/mod.rs`), before
+`perf_begin_frame`, the one caller of `perf_set_live`, so `why::LIVE` is
+never cleared. The same holds for a panel hidden by its close button only
+if the hide does not reach `perf_begin_frame`'s `dock.docked()` — not
+checked. **Do.** `perf_set_live(false)` on the way out of the `!on`
+branch, and a test: Perf tab shown, panel off, `perf_measuring()` false
+on the next frame. kawoosh's
+`editor_pane::nothing_is_measured_unless_kui_is` asserts it once fixed.
+
+### `.` F212 — A component's refusal says its kind, not what moved
+
+**Found** porting kawoosh's replay notes: `slot_fill_why` named the fact
+that moved — a hover on a key, the theme, the clock — and kawoosh's perf
+log put it beside the host's own reason, so a pane that would not replay
+said why. ADR 0067 decision 6 folded it into the placement's
+`FillAnswer`, which says `Reads` and not which; `take_replayable_instance`
+computes the fact (`first_moved`) and drops it (`Err((fill, _why))` in
+`Ui::place_at`). **Do.** The reason beside the answer —
+`Ui::component_why` or a `FillAnswer` that carries it — or a recording
+record a refused instance leaves (its key and the fact), so the Perf tab
+says it where the devtools are the place ADR 0067 sends it.
+
+### `.` F213 — A declared tab is listed only after a frame with the panel on
+
+**Found** with kawoosh's `:perf` before its own tab went: `set_devtools_tab
+("perf")` on the frame that turns the panel on showed kui's Perf, not the
+app's tab of that name (F198's rule), because `DevtoolsState::tabs` is
+filled from `dt_tabs` only in `devtools_after_frame`, and only while the
+panel is on: on the first frame it lists nothing, or the tabs of the last
+frame it was on. kawoosh held its ask a frame. **Do.** Resolve
+`set_devtools_tab`'s name against this frame's declarations too (or the
+session's last list kept while the panel is off), so the frame that opens
+the panel can open it on an app's tab.
+
+### `.` F214 — A sink cannot keep the keyboard through a press inside it and still select
+
+**Found** with C135 (a press on a Tab stop inside a sink focuses the stop):
+kawoosh's panes are sinks whose keys are all its own — Space its leader,
+Tab and Enter its keymap's — over rows and chips that are Tab stops by
+having a click. `keepFocus` on the pane gives the old rule back but also
+stops a drag-select in a selection scope under it and leaves the
+selection uncleared (`dispatch.rs`, the `Some(_) if keep` arm), so a
+terminal grid, which selects, cannot have it; kawoosh put `keepFocus` on
+its memory and undo panes, on a Lua pane only while it is focused (so a
+press on an unfocused one still reaches the sink's `on_focus`), and on a
+terminal grid only while ⌘ is held. **Do.** A sink-level opt —
+`keysStay` or `keepKeyboard` — under which a press anywhere inside
+focuses the sink, as before C135, and does everything else a press does:
+selects, clears, starts a drag-select.
+
+### `.` F215 — No span can be recorded where the core is out of reach
+
+**Found** porting kawoosh's spans: its Lua profiler times each call into
+a plugin (`kawoosh_lua`'s `prof.rs`) from inside the Lua runtime, which
+holds no `Core`; so did a terminal's foreground read (`tcgetpgrp`) under
+the status line. `span_begin` is a `Core` method, and `perf_measure`
+lands a span on a track named for it at the time it is reported, not
+where it ran, so kawoosh reports each plugin's time summed at the end of
+the frame on 29 tracks of its own. **Do.** A span door that needs no
+core at hand — a thread-local "current recorder" the runner sets around
+`view` and `on_event` (`kui_core::perf::span(name)` returning a guard),
+or `perf_span_at(name, start, end, cpu)` on the main track for a span
+timed by the app's own clock — so code deep in a stack records where it
+ran, nested under the span it ran in.
+
+### `.` F216 — The recording has notes and no door writes one
+
+**Found** porting kawoosh's perf log, which put a line a frame beside
+the numbers — a Lua pane's "editor moved, kui: reads, opaque fs.stat".
+`kui_trace::Timeline::notes` and ADR 0058's record table have `note`
+("a line"), but no `Core` door writes one, so kawoosh counts names
+instead (`pane ran: WHY`, `pane read: NATIVE`). **Do.** `perf_note(text)`
+in every binding, kept per frame and shown in the opened frame's detail;
+bounded per frame as spans are.
+
+### `.` F217 — A handle over a shared Lua state contributes nothing
+
+**Found** designing kawoosh's plugins as extensions (its
+`docs/design/plugin-extensions.md`, proposed): 29 plugins share one Lua
+state and each other's tables, so each would be loaded as a handle over
+that state under its own namespace — what `LuaExtension::reentry` makes,
+whose contributions are empty (`contributions: Vec::new()`), and which a
+host cannot make itself. **Do.** `LuaExtension::share(&self, contributes:
+&Table or Vec<Contribution>)` — a handle over the same state with its own
+components and contributions, its events back to the state's
+`on_event` with its namespace as `from` — so one interpreter can be
+several extensions.
+
+### `.` F218 — Contributions are read once, at load
+
+**Found** with F217: a plugin's contributions come from its top level,
+and a user's `init.lua` adds to a bundled plugin's after it loaded, or a
+plugin reloaded on save changes its own; ADR 0067 decision 10 reads them
+at load only. **Do.** A door to replace an extension's contributions
+after load (`Extensions::set_contributions(namespace, list)`, the slot's
+instances re-keyed by provider and component as now), or contributions
+read again when an extension says they moved.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go
