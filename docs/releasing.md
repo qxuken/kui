@@ -183,7 +183,10 @@ it fails:
   publishes a `0.0.0-bootstrap.0` placeholder of every name npmjs lacks
   and gives each `release.yml` as its trusted publisher (`npm trust
   github`; npm opens the browser for 2FA and npmjs offers to skip it for
-  five minutes). Then tag, within two days. The tag's run publishes the
+  five minutes). `npm trust` cannot grant dist-tags, so then tick "Allow
+  npm dist-tag" on each new package's settings page by hand — alpha.68
+  went out without it and stopped at the first `latest` it moved. Then
+  tag, within two days. The tag's run publishes the
   real versions with provenance and moves `latest` off the placeholders;
   after it, `nu scripts/npm-bootstrap.nu --deprecate` from a login on
   npmjs deprecates them and drops their `bootstrap` tag (by hand: it

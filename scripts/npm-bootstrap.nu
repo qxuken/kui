@@ -27,9 +27,12 @@
 # configuration: a name that has one already makes `npm trust github`
 # fail, which this reports and goes on past. docs/releasing.md says a new
 # trusted publisher expires unless it publishes within two days: run this
-# close to the tag. Check each package's settings on npmjs.com once
-# afterwards — the workflow also moves dist-tags, which the website's form
-# calls "Allow npm dist-tag".
+# close to the tag. Then tick "Allow npm dist-tag" on each package's
+# settings page on npmjs.com, by hand: `npm trust` (11.19) has no flag for
+# it, and the workflow moves `latest` after every publish. alpha.68 was
+# published without it: the first platform package went up and its
+# `latest` was refused (E403, "This trusted publisher cannot manage
+# dist-tags"), after crates.io already held the version.
 #
 # Every call that needs the account runs with the terminal, because npm's
 # 2FA is a browser prompt it opens (npmjs then offers to skip it for five
@@ -195,6 +198,6 @@ def main [
         print $"\nnpm refused these — most likely they have a trusted publisher already \(see its message above; `npm trust list <name>` shows it\): ($kept | str join ', ')"
     }
     if not $dry_run {
-        print "\ncheck each on npmjs.com (Settings → Trusted publishing, \"Allow npm dist-tag\"), then tag within two days"
+        print "\nREQUIRED before the tag: on npmjs.com, each package's Settings → Trusted publishing → tick \"Allow npm dist-tag\" (npm trust cannot set it); then tag within two days"
     }
 }

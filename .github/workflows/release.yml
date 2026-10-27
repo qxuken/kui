@@ -670,12 +670,25 @@ jobs:
               echo "$name: latest left alone: $highest sorts above $ver (latest is ${latest:-unset})"
               return 0
             fi
-            npm dist-tag add "$name@$ver" latest --registry "$NPMJS_REGISTRY"
+            # A refused tag does not stop the rest: the versions go up, and
+            # the step fails at the end naming what is left. alpha.68's
+            # stopped at the first platform package, whose trusted publisher
+            # had no "Allow npm dist-tag", with nine packages unpublished.
+            if ! npm dist-tag add "$name@$ver" latest --registry "$NPMJS_REGISTRY"; then
+              echo "::warning::$name@$ver is live but its latest tag was refused; tick \"Allow npm dist-tag\" on its trusted publisher (npmjs.com), then: npm dist-tag add $name@$ver latest"
+              untagged="$untagged $name"
+              return 0
+            fi
             npm dist-tag ls "$name" --registry "$NPMJS_REGISTRY"
           }
+          untagged=
           for p in linux-x64 linux-arm64 darwin-arm64 win32-x64; do
             publish_one "@qxuken/kui-$p" "dist/npm/qxuken-kui-$p-$ver.tgz"
             publish_one "@qxuken/kui-cli-$p" "dist/npm/qxuken-kui-cli-$p-$ver.tgz"
           done
           publish_one "@qxuken/kui" "dist/npm/qxuken-kui-$ver.tgz"
           publish_one "@qxuken/kui-cli" "dist/npm/qxuken-kui-cli-$ver.tgz"
+          if [ -n "$untagged" ]; then
+            echo "::error::published, but latest still names an older version on:$untagged"
+            exit 1
+          fi
