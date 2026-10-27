@@ -19,7 +19,7 @@
 //! The closure runs only while the tab is on show — `built` counts the
 //! runs, and the page prints it — so a tab nobody looks at costs the
 //! declaration and nothing else. Walk to it with Ctrl+Shift+N (facts →
-//! events → tree → Inspector), or click it in the strip.
+//! events → tree → perf → Inspector), or click it in the strip.
 //!
 //! Run: cargo run -p kui-native --example devtools_tab [-- --headless]
 
@@ -484,6 +484,7 @@ impl Example for Page {
             d.key(app, "n", kui_native::KeyMods::NONE.with_ctrl().with_shift());
         };
         chord(&mut d, self); // tree
+        chord(&mut d, self); // perf
         chord(&mut d, self); // Inspector
         d.frame(self);
         d.check(self.built == 1, "on show, the closure ran once")?;

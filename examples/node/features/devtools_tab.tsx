@@ -322,6 +322,7 @@ await run<Model, AppMsg>({
     check(!!node('kui-devtools/tab-custom:inspector'), 'and the strip lists it');
     const chord = () => ctx.keyDown('n', { ctrl: true, shift: true });
     chord(); // tree
+    chord(); // perf
     chord(); // Inspector
     app.render();
     check(built === 1, 'on show, the function child ran once');
