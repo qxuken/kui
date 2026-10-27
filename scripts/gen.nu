@@ -93,7 +93,10 @@ def rustdoc-page [text: string]: nothing -> string {
 def crate-docs []: nothing -> list<record<path: string, text: string>> {
     let adrs = ls docs/adr/*.md | get name | sort | each {|f|
         let title = open --raw $f | lines | where {|l| $l | str starts-with "# " } | first | str substring 2..
-        $"- [($f | path basename | str substring 0..3) ($title)]\(($GITHUB)/($f))"
+        # A URL's path: `ls` names it `docs\adr\…` on Windows, which wrote
+        # every link with backslashes there (the alpha.69 release-prep).
+        let url = $f | str replace --all '\' '/'
+        $"- [($f | path basename | str substring 0..3) ($title)]\(($GITHUB)/($url))"
     }
     let index = [
         "# kui's design records"
