@@ -2253,6 +2253,7 @@ Draw_Data :: struct {
 	time: f32,
 	clips: []Clip,
 	textures: []Texture_Draw,
+	atlas_dirty_rect: [4]u32,
 }
 
 draw_data_to_c :: proc(v: Draw_Data, scratch: ^Scratch) -> (out: c.DrawData) {
@@ -2269,6 +2270,7 @@ draw_data_to_c :: proc(v: Draw_Data, scratch: ^Scratch) -> (out: c.DrawData) {
 	out.time = v.time
 	out.clips, out.clip_count = ([^]c.Clip)(raw_data(v.clips)), uint(len(v.clips))
 	{ tmp := make([]c.TextureDraw, len(v.textures), context.temp_allocator); for x, k in v.textures do tmp[k] = texture_draw_to_c(x, scratch); out.textures, out.texture_count = raw_data(tmp), uint(len(tmp)) }
+	out.atlas_dirty_rect = v.atlas_dirty_rect
 	return
 }
 
@@ -2285,6 +2287,7 @@ draw_data_from_c :: proc(v: c.DrawData) -> (out: Draw_Data) {
 	out.time = v.time
 	out.clips = ([^]Clip)(v.clips)[:v.clip_count]
 	{ tmp := make([]Texture_Draw, v.texture_count, context.temp_allocator); for &x, k in tmp do x = texture_draw_from_c(v.textures[k]); out.textures = tmp }
+	out.atlas_dirty_rect = v.atlas_dirty_rect
 	return
 }
 
@@ -3368,7 +3371,7 @@ fragment :: proc(ui: ^Ui, id: Fragment, params: []f32, spec: Spec = {}) {
 
 // kui_fragment_open (kui.h).
 // Opens a node: `if` it, and the block's end closes it.
-@(deferred_in = close_fragment_open)
+@(deferred_in = close_fragment_open, require_results)
 fragment_open :: proc(ui: ^Ui, label: string, id: Fragment, params: []f32, spec: Spec = {}) -> (result: bool) {
 	scratch: Scratch
 	defer scratch_free(&scratch)
@@ -3395,7 +3398,7 @@ fragment_with :: proc(ui: ^Ui, label: string, id: Fragment, image: Image, params
 
 // kui_fragment_open_with (kui.h).
 // Opens a node: `if` it, and the block's end closes it.
-@(deferred_in = close_fragment_open_with)
+@(deferred_in = close_fragment_open_with, require_results)
 fragment_open_with :: proc(ui: ^Ui, label: string, id: Fragment, image: Image, params: []f32, spec: Spec = {}) -> (result: bool) {
 	scratch: Scratch
 	defer scratch_free(&scratch)

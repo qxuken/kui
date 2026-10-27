@@ -1,5 +1,6 @@
 //! CPU-side glyph atlas: a single RGBA page with shelf packing. Renderers
-//! mirror it to a texture; `dirty`/`epoch` tell them when to re-upload.
+//! mirror it to a texture; `dirty`/`epoch` tell them when to re-upload,
+//! and `dirty_rect` which part.
 
 use cosmic_text::CacheKey;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -122,6 +123,12 @@ pub struct GlyphAtlas {
     pub pixels: Vec<u8>,
     /// Set when pixels changed since the renderer last consumed them.
     pub dirty: bool,
+    /// The texels written since `dirty` was last clear, `[x, y, w, h]`:
+    /// the union of every write, the whole page after a reset or a growth
+    /// (backlog F228). A write onto a clean page starts it afresh, so a
+    /// renderer that clears `dirty` by hand needs nothing else. Read
+    /// through [`GlyphAtlas::dirty_rect`].
+    dirty_rect: [u32; 4],
     /// Bumped with every change to `pixels`, as `dirty` is set: what a
     /// renderer that is not the core's own — a capture, which must leave
     /// `dirty` to the window's renderer — compares to tell whether its
@@ -223,6 +230,7 @@ impl GlyphAtlas {
             size,
             pixels: vec![0; (size * size * 4) as usize],
             dirty: false,
+            dirty_rect: [0; 4],
             rev: 0,
             id: {
                 static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -426,6 +434,7 @@ impl GlyphAtlas {
         self.epoch += 1;
         self.stamp += 1;
         self.dirty = true;
+        self.dirty_rect = [0, 0, size, size];
         self.rev += 1;
         self.frames_since_reset = 0;
         self.turned = false;
@@ -450,6 +459,7 @@ impl GlyphAtlas {
         self.epoch += 1;
         self.stamp += 1;
         self.dirty = true;
+        self.dirty_rect = [0, 0, size, size];
         self.rev += 1;
     }
 
@@ -539,8 +549,38 @@ impl GlyphAtlas {
             self.pixels[dst..dst + (w as usize) * 4]
                 .copy_from_slice(&data[src..src + (w as usize) * 4]);
         }
-        self.dirty = true;
+        self.grow_dirty(x, y, w, h);
         self.rev += 1;
+    }
+
+    /// Adds `[x, y, w, h]` to what changed since the last upload.
+    fn grow_dirty(&mut self, x: u32, y: u32, w: u32, h: u32) {
+        let [dx, dy, dw, dh] = self.dirty_rect;
+        self.dirty_rect = if !self.dirty || dw == 0 || dh == 0 {
+            [x, y, w, h]
+        } else {
+            let (x0, y0) = (dx.min(x), dy.min(y));
+            let (x1, y1) = ((dx + dw).max(x + w), (dy + dh).max(y + h));
+            [x0, y0, x1 - x0, y1 - y0]
+        };
+        self.dirty = true;
+    }
+
+    /// What changed since the last upload, `[x, y, w, h]` in texels:
+    /// `None` when `dirty` is clear. The whole page after a reset or a
+    /// growth, which also moves `epoch`; otherwise the union of the
+    /// glyphs, images and masks written, so a renderer uploads that rect
+    /// alone (backlog F228).
+    pub fn dirty_rect(&self) -> Option<[u32; 4]> {
+        let [_, _, w, h] = self.dirty_rect;
+        (self.dirty && w > 0 && h > 0).then_some(self.dirty_rect)
+    }
+
+    /// Clears `dirty` and the rect behind [`GlyphAtlas::dirty_rect`]: what
+    /// the core's own renderer calls once it has uploaded the change.
+    pub fn mark_uploaded(&mut self) {
+        self.dirty = false;
+        self.dirty_rect = [0; 4];
     }
 
     /// A glyph the page held before `begin_frame` emptied it, its texels
@@ -1425,6 +1465,63 @@ mod tests {
         atlas.clear();
         draw(&mut atlas, 7, 16);
         assert_eq!(calls.get(), 3, "a reset drops the shape with the glyphs");
+    }
+
+    #[test]
+    fn the_dirty_rect_covers_what_was_written_since_the_upload() {
+        let mut atlas = GlyphAtlas::with_size(128);
+        assert_eq!(atlas.dirty_rect(), None, "a new page has nothing to upload");
+        let a = atlas
+            .get_or_insert(fake_key(1), || Some(raster(10, 12)))
+            .expect("fits");
+        assert_eq!(atlas.dirty_rect(), Some([a.x, a.y, 10, 12]));
+        let b = atlas
+            .get_or_insert(fake_key(2), || Some(raster(6, 20)))
+            .expect("fits");
+        let (x0, y0) = (a.x.min(b.x), a.y.min(b.y));
+        let (x1, y1) = ((a.x + 10).max(b.x + 6), (a.y + 12).max(b.y + 20));
+        assert_eq!(
+            atlas.dirty_rect(),
+            Some([x0, y0, x1 - x0, y1 - y0]),
+            "the union of both"
+        );
+        atlas.mark_uploaded();
+        assert!(!atlas.dirty);
+        assert_eq!(atlas.dirty_rect(), None);
+        atlas.get_or_insert(fake_key(1), || unreachable!("cached"));
+        assert_eq!(atlas.dirty_rect(), None, "a hit writes nothing");
+        let c = atlas
+            .get_or_insert(fake_key(3), || Some(raster(4, 4)))
+            .expect("fits");
+        assert_eq!(
+            atlas.dirty_rect(),
+            Some([c.x, c.y, 4, 4]),
+            "starts afresh after the upload"
+        );
+        // Cleared by hand, as a renderer written before the rect does.
+        atlas.dirty = false;
+        let d = atlas
+            .get_or_insert(fake_key(4), || Some(raster(3, 5)))
+            .expect("fits");
+        assert_eq!(atlas.dirty_rect(), Some([d.x, d.y, 3, 5]));
+        atlas.clear();
+        assert_eq!(
+            atlas.dirty_rect(),
+            Some([0, 0, 128, 128]),
+            "a reset is the whole page"
+        );
+    }
+
+    #[test]
+    fn a_grown_page_is_dirty_whole() {
+        let mut atlas = GlyphAtlas::with_size(64);
+        atlas.mark_uploaded();
+        atlas
+            .get_or_insert(fake_key(5), || Some(raster(100, 100)))
+            .expect("grows");
+        let n = atlas.size;
+        assert!(n > 64);
+        assert_eq!(atlas.dirty_rect(), Some([0, 0, n, n]));
     }
 
     #[test]

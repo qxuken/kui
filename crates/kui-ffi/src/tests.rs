@@ -3903,6 +3903,43 @@ mod borrows {
         kui_ctx_free(ctx);
     }
 
+    /// The atlas's dirty rect crosses with the draw data (backlog F228):
+    /// the first frame's glyphs are a rect inside the page, the same frame
+    /// again has nothing to upload, and a new word is a rect of its own.
+    #[test]
+    fn draw_data_says_which_part_of_the_atlas_changed() {
+        let ctx = kui_ctx_new();
+        let frame = |word: &str| {
+            kui_frame_begin(ctx, 200.0, 60.0, 1.0);
+            kui_root(ctx, &zspec());
+            let mut style: KuiTextStyle = unsafe { std::mem::zeroed() };
+            style.size = 14.0;
+            kui_text(ctx, ks(word), &style);
+            kui_frame_finish(ctx);
+        };
+        let mut d = KuiDrawData::default();
+        frame("Hi");
+        assert!(kui_draw_data(ctx, &mut d));
+        assert!(d.atlas_dirty);
+        let [x, y, w, h] = d.atlas_dirty_rect;
+        assert!(w > 0 && h > 0, "the glyphs: {:?}", d.atlas_dirty_rect);
+        assert!(x + w <= d.atlas_size && y + h <= d.atlas_size);
+        assert!(w * h < d.atlas_size * d.atlas_size, "a rect, not the page");
+        let epoch = d.atlas_epoch;
+
+        frame("Hi");
+        assert!(kui_draw_data(ctx, &mut d));
+        assert!(!d.atlas_dirty, "nothing new");
+        assert_eq!(d.atlas_dirty_rect, [0; 4]);
+
+        frame("Hi WX");
+        assert!(kui_draw_data(ctx, &mut d));
+        assert!(d.atlas_dirty && d.atlas_epoch == epoch);
+        let [_, _, w, h] = d.atlas_dirty_rect;
+        assert!(w > 0 && h > 0 && w * h < d.atlas_size * d.atlas_size);
+        kui_ctx_free(ctx);
+    }
+
     /// A `kui_draw_data` while the frame builds reads the list
     /// `kui_frame_begin` emptied; the one after `kui_frame_finish` reads
     /// what the frame drew, its fragment draws with it, where it handed

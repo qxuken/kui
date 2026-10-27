@@ -21,6 +21,8 @@ cargo build -p kui-ffi --release --no-default-features  # without the windowed r
 
 The `runner` feature (on by default) provides `kui_run` and `kui_run_with`; a host that owns its own window and renderer turns it off and ships less than half the library.
 
+A program that links another Rust static library too (wgpu-native's `libwgpu_native.a`, say) links the shared `libkui_ffi`, not the archive: each Rust archive carries its own standard library, so two in one link collide at `rust_eh_personality`, and the runner's winit adds `RawWindowMetalLayer` on macOS. Turning the runner off drops the second, not the first.
+
 ## Example
 
 A C host's frame loop without `kui_run` (the complete programs are under `examples/c/` in the repository):
@@ -42,11 +44,15 @@ for (;;) {
     kui_text(ctx, KUI_STR("Hello from C"), &big);
     kui_frame_finish(ctx);
 
+    while (kui_poll_event(ctx, &ev)) { /* what the frame raised: resize, layout */ }
+
     KuiDrawData dd = KUI_DRAW_DATA_INIT;                   /* draw it */
     if (kui_draw_data(ctx, &dd)) draw_quads(dd.quads, dd.quad_count, dd.clips);
 }
 kui_ctx_free(ctx);
 ```
+
+The two drains, which events only the second one sees, when to build again and when the draw can be skipped are kui.h's "The host loop" section.
 
 A Rust app loading a C plugin:
 

@@ -1244,6 +1244,15 @@ static int surface(void) {
         kui_frame_begin(ui, 800, 600, 2.0f);
         surface_view(&k, ui);
         kui_frame_finish(ui);
+        {
+            /* The sink asked above declares no on_layout: the frame that
+             * finishes after the question says why it was false (backlog
+             * F231). */
+            KuiWarning why[4];
+            size_t n = kui_take_warnings(ui, why, sizeof why / sizeof why[0]);
+            check(n == 1 && has(why[0].code, "layout-of-without-handler") && why[0].key == k.sink,
+                  "kui_layout_of on a node without on_layout: layout-of-without-handler");
+        }
         float sx = -1, sy = -1;
         kui_scroll_offset(ui, k.card, &sx, &sy);
         check(sx == 0 && sy >= 0, "kui_scroll_offset reads the clamped offset back");

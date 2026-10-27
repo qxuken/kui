@@ -467,6 +467,10 @@ extern "C" {
  * spans travel as an array, so the stride moved): how far a span's
  * background reaches past its first and last glyphs (backlog F227).
  * Recompile; zeroed, a background is flush with its glyphs, as it was.
+ * The same ABI appends atlas_dirty_rect to KuiDrawData (136 bytes on
+ * 64-bit, from 120): the part of the atlas to upload (backlog F228). An
+ * [out] struct, so a host that reserved the shorter one is written no
+ * further than its size and uploads the page whole, as it did.
  * New with it, moving no struct: kui_perf_note (backlog F216), and
  * kui_thread_span_begin and kui_thread_span_end (backlog F215).
  */
@@ -2466,7 +2470,8 @@ typedef struct KuiDrawData {
     const uint8_t *atlas_pixels;  /* RGBA, atlas_size^2 * 4 bytes */
     uint32_t atlas_size;          /* either way between frames: size the
                                    * texture to it, not to the largest seen */
-    bool atlas_dirty;             /* re-upload when set or epoch changed */
+    bool atlas_dirty;             /* re-upload when set or epoch changed;
+                                   * atlas_dirty_rect says which part */
     uint64_t atlas_epoch;
     /* One per KUI_QUAD_FRAGMENT quad, indexed by its uv[0]; NULL and 0 on a
      * frame that draws none. Added in ABI 9. */
@@ -2482,8 +2487,64 @@ typedef struct KuiDrawData {
      * frame that draws none. Added in ABI 14. */
     const KuiTextureDraw *textures;
     size_t texture_count;
+    /* What of the atlas changed since the last kui_draw_data, x, y, w, h in
+     * texels. With atlas_dirty set and atlas_epoch what you uploaded last,
+     * upload this rect alone: the rows are atlas_pixels' own, so the source
+     * starts at (y * atlas_size + x) * 4 with a stride of atlas_size * 4. A
+     * new glyph is its own few texels, not the 4 MB page. When the epoch
+     * moved it is the whole page; zero with atlas_dirty clear. Added in
+     * ABI 40 (backlog F228). */
+    uint32_t atlas_dirty_rect[4];
 } KuiDrawData;
 #define KUI_DRAW_DATA_INIT ((KuiDrawData){ .size = sizeof(KuiDrawData) })
+
+/* -- The host loop --------------------------------------------------------
+ *
+ * A host with its own window (no kui_run) runs one turn per frame, in this
+ * order - what kui_run itself does (backlog F229):
+ *
+ *     1. input   kui_input_* for what the window delivered, in logical px.
+ *                Hit-tested against the last finished frame, so a click's
+ *                on_click is queued here, before anything is built.
+ *     2. drain   while (kui_poll_event(ctx, &ev)) update your model.
+ *     3. build   kui_frame_begin, your view, kui_frame_finish.
+ *     4. drain   again: what the frame itself raised (below).
+ *     5. draw    kui_draw_data, upload the atlas (atlas_dirty_rect), draw.
+ *
+ * The second drain is for events no input caused, which only a finished
+ * frame can raise:
+ *  - the root's on_resize, from a kui_frame_begin at a new size;
+ *  - on_hover enter / leave, when the new layout put another node under a
+ *    pointer that did not move;
+ *  - on_layout, a node's rect when it changed (kui_layout_of reads the
+ *    same rect back during the next build);
+ *  - on_query, a `when` rule's answer (ADR 0069), and on_range, the rows a
+ *    list or table now shows;
+ *  - on_scroll, where a held drag's autoscroll moves a handler's content;
+ *  - answers to what was asked between frames: a capture, a declared
+ *    window's on_window, a selection's on_selection_range.
+ * They also ride with the next input's events, so a host that skips the
+ * second drain hears them a turn late, not never. When the second drain
+ * changed your model, build once more before drawing (step 3 again): that
+ * frame's cause is KUI_FRAME_CAUSE_AFTER_FRAME, and kui_run does the same.
+ * A view that declares none of the handlers above has nothing to drain
+ * there.
+ *
+ * When to run a turn at all: on input, while kui_owed(ctx) is non-zero
+ * (a transition, an autoscroll), and when your model changed. Between
+ * those the window can sleep.
+ *
+ * Skipping the draw: with kui_set_frame_trace(ctx, true), a frame after
+ * which kui_frame_unchanged(ctx) is 1 and the draw data's atlas_dirty is
+ * clear drew exactly what the one before it drew, so a host that keeps
+ * last frame's target (an overlay texture, say) skips its render pass and
+ * composites what it has. The trace keeps a digest of every frame, a cost
+ * only a host that skips draws needs.
+ *
+ * Text on a renderer without dual-source blending: subpixel glyphs
+ * (KUI_QUAD_GLYPH_SUBPIXEL) need per-channel blending, and are off unless
+ * kui_set_subpixel_text(ctx, true) turned them on; leave them off there.
+ */
 
 /* -- Context ------------------------------------------------------------- */
 KuiCtx *kui_ctx_new(void);
@@ -3739,8 +3800,10 @@ typedef struct KuiLayoutRect {
 /* The rect the last frame laid `key` out at, for a node that declared
  * on_layout - the same numbers its `layout` event carries, read back during
  * the next build with no event. False for any other key, a bad context, a
- * NULL out or a short reservation. Read during a build it describes the
- * previous frame, like kui_scroll_geometry. */
+ * NULL out or a short reservation; with diagnostics on, a key whose node
+ * declares no on_layout raises `layout-of-without-handler` (kui_nodes after
+ * kui_set_inspect has every node's rect). Read during a build it describes
+ * the previous frame, like kui_scroll_geometry. */
 bool kui_layout_of(KuiCtx *ctx, uint64_t key, KuiLayoutRect *out);
 /* Where the pointer is over `key`, as of the last frame (backlog C119): x, y
  * its place from the node's top-left (through any turn the node is drawn

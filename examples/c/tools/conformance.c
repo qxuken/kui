@@ -1628,7 +1628,8 @@ static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
     uint64_t go_key = kui_open_keyed(ui, KUI_STR("go"), &go, go_tag);
     kui_close(ui);
     kui_set_key_focus(ui, go_key);
-    kui_close(ui);
+    kui_close(ui); /* the shell */
+    kui_close(ui); /* the outer box, left open until `unclosed-node` said so */
 }
 
 /* A floated modal over an app with window chrome (see
