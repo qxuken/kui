@@ -92,15 +92,34 @@ const RUNNER_META: &str = include_str!("lua/runner_meta.lua");
 
 /// Writes every declaration an editor reads into `dir`: Teal's `kui.d.tl`
 /// (with the runner's API) and `kit/ui.d.tl`, and lua-language-server's
-/// `kui.lua`, `kui_runner.lua` and Kit's `kit/ui.lua`.
+/// `kui.lua`, `kui_runner.lua` and Kit's `kit/ui.lua` — each whole or not
+/// at all, so a check reading the folder while another writes it never
+/// reads one part written.
 pub fn write_types(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir.join("kit"))?;
-    std::fs::write(dir.join("kui.d.tl"), kui_decls())?;
-    std::fs::write(dir.join("kit").join("ui.d.tl"), KIT_DECLS)?;
-    std::fs::write(dir.join("kui.lua"), KUI_META)?;
-    std::fs::write(dir.join("kui_runner.lua"), RUNNER_META)?;
-    std::fs::write(dir.join("kit").join("ui.lua"), KIT_META)?;
+    write_whole(&dir.join("kui.d.tl"), &kui_decls())?;
+    write_whole(&dir.join("kit").join("ui.d.tl"), KIT_DECLS)?;
+    write_whole(&dir.join("kui.lua"), KUI_META)?;
+    write_whole(&dir.join("kui_runner.lua"), RUNNER_META)?;
+    write_whole(&dir.join("kit").join("ui.lua"), KIT_META)?;
     Ok(())
+}
+
+/// `text` at `path`, written beside it under a name of this process's and
+/// renamed over it: a reader sees the file before or the file after.
+/// Nothing written when it holds the text already, as a second check of
+/// one version finds it.
+fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
+    if std::fs::read(path).is_ok_and(|b| b == text.as_bytes()) {
+        return Ok(());
+    }
+    let mut part = path.as_os_str().to_owned();
+    part.push(format!(".{}.part", std::process::id()));
+    let part = PathBuf::from(part);
+    std::fs::write(&part, text)?;
+    std::fs::rename(&part, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&part);
+    })
 }
 
 /// Writes the declarations `kui check` reads into a cache folder of this
@@ -164,4 +183,42 @@ pub fn check(dir: &Path, files: &[PathBuf]) -> Result<Vec<Problem>, String> {
         Ok(out)
     };
     run().map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod decls_tests {
+    /// `kui check` runs read the declarations folder another run is
+    /// writing — the tests run eight at once, an editor's check beside the
+    /// command line's — and a reader never sees a file part written:
+    /// read mid-write, `kui.d.tl` was empty and every name in it unknown
+    /// (`unknown variable: kui`, PR #7's CI). The writer writes a stale
+    /// folder each time, as a check of another version would.
+    #[test]
+    fn a_reader_never_sees_a_declaration_part_written() {
+        let whole = super::kui_decls();
+        let dir = super::decls_dir().unwrap();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let writer = {
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    super::write_whole(&dir.join("kui.d.tl"), "stale").unwrap();
+                    super::decls_dir().unwrap();
+                }
+            })
+        };
+        let file = super::decls_dir().unwrap().join("kui.d.tl");
+        let mut torn = 0;
+        for _ in 0..20_000 {
+            if let Ok(read) = std::fs::read_to_string(&file)
+                && read != whole
+                && read != "stale"
+            {
+                torn += 1;
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        writer.join().unwrap();
+        assert_eq!(torn, 0, "reads of a part-written kui.d.tl");
+    }
 }

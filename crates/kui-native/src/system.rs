@@ -9,40 +9,13 @@
 //! over D-Bus first, to select) — with the path as an argument and no
 //! shell in between, and returns once it has started: what the tool then
 //! does is the system's. A thread waits on it, so no exited child is left
-//! behind. A host that starts its processes one way of its own — under a
-//! lock against macOS's pipes, which are not born close-on-exec — hands
-//! kui that way ([`set_spawner`], backlog F222).
+//! behind. Each tool starts as every child kui starts does
+//! ([`crate::spawn`]): under kui's lock against macOS's pipes, which are
+//! not born close-on-exec, or the host's way where it has one (backlog
+//! F222, F223).
 
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, RwLock};
-
-/// How a tool is started: the host's ([`set_spawner`]), else
-/// `Command::spawn`.
-type Spawner = Arc<dyn Fn(&mut Command) -> std::io::Result<Child> + Send + Sync>;
-
-static SPAWNER: RwLock<Option<Spawner>> = RwLock::new(None);
-
-/// Starts the tools [`show_in_folder`] and [`open_external`] run — and
-/// so the devtools' "open folder" — with `spawn`, where they called
-/// `Command::spawn` (backlog F222). For a host that starts every child
-/// one way: on macOS a pipe is made and marked close-on-exec in two
-/// calls (no `pipe2`), and a child started by another thread between
-/// them keeps its ends, so a host serializes its spawns under one lock
-/// (as Go's `syscall.ForkLock`) and kui's must take it too. Rust's: a C,
-/// Odin or Node host's processes are its own, and kui's are started by
-/// std in their process.
-pub fn set_spawner(spawn: impl Fn(&mut Command) -> std::io::Result<Child> + Send + Sync + 'static) {
-    *SPAWNER.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(spawn));
-}
-
-fn start(c: &mut Command) -> std::io::Result<Child> {
-    let spawner = SPAWNER.read().unwrap_or_else(|e| e.into_inner()).clone();
-    match spawner {
-        Some(spawn) => spawn(c),
-        None => c.spawn(),
-    }
-}
 
 /// Shows `path` in the system's file manager, selected: in Finder, in
 /// Explorer, and on a Linux desktop in the file manager that answers
@@ -259,7 +232,7 @@ fn start_first(
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        match start(&mut step.command) {
+        match crate::spawn::spawn(&mut step.command) {
             Ok(child) => return Ok((step.checked, child)),
             Err(e) => why = format!("{program}: {e}"),
         }
@@ -368,6 +341,11 @@ mod tests {
     /// (backlog F222): a host's spawn lock covers kui's children too.
     #[test]
     fn a_host_s_spawner_starts_the_tools() {
+        use crate::spawn::set_spawner;
+        use std::sync::Arc;
+        let _one = crate::spawn::TEST_SPAWNER
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let file = std::env::temp_dir().join("kui-f220-spawner.txt");
         std::fs::write(&file, "x").unwrap();
         let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
@@ -389,7 +367,7 @@ mod tests {
         });
         show_in_folder(&file.to_string_lossy()).unwrap();
         open_external("https://example.com/").unwrap();
-        *SPAWNER.write().unwrap() = None;
+        crate::spawn::reset_spawner();
         let seen = seen.lock().unwrap().clone();
         let first = if cfg!(target_os = "macos") {
             "open"
