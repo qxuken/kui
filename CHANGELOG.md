@@ -2194,7 +2194,12 @@ the Mac too); and kui-cli's process test spawned `sh -c "sleep …"`,
 which dash keeps as the sleep's parent where macOS's sh execs, so the
 sleep outlived the app it was not a child of (`exec sleep` now).
 `ci.yml` runs the tests `--no-fail-fast` since, so one red suite no
-longer hides the rest. Through those rounds the workspace suite ran at each merge, and the
+longer hides the rest. The steps after the tests had not run since
+alpha.66 either, and two more were red: `index.d.ts` named a `Json` type
+nobody declares (kui-node's channel aliased `serde_json::Value`, and
+napi-rs writes the name it sees; `any` now), and both `devtools_tab`
+examples walked to their tab in two Ctrl+Shift+N presses, from before
+the Perf tab made it three. Through those rounds the workspace suite ran at each merge, and the
 Kit gallery's paint audit (`KUI_PAINT_AUDIT=1`, ADR 0074) over every
 page.
 
