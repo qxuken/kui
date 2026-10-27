@@ -43,7 +43,9 @@ fn stamp_now(dir: &Path) -> Result<(), String> {
 
 /// The version that wrote `.kui/`, if one did.
 pub fn stamp(dir: &Path) -> Option<String> {
-    std::fs::read_to_string(dir.join(".kui").join(STAMP)).ok().map(|s| s.trim().to_string())
+    std::fs::read_to_string(dir.join(".kui").join(STAMP))
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 /// `kui run` and `kui check`: when `.kui/` was written by another runner,
@@ -71,14 +73,22 @@ pub fn refresh(p: &project::Project) {
         }
         if p.tooling.agents {
             let file = write_agent_block(dir)?;
-            done.push(format!("the agent block in {}", file.file_name().unwrap_or_default().to_string_lossy()));
+            done.push(format!(
+                "the agent block in {}",
+                file.file_name().unwrap_or_default().to_string_lossy()
+            ));
         }
         Ok(())
     };
     let result = run();
-    let from = was.map(|v| format!("kui {v}")).unwrap_or_else(|| "an earlier kui".into());
+    let from = was
+        .map(|v| format!("kui {v}"))
+        .unwrap_or_else(|| "an earlier kui".into());
     match result {
-        Ok(()) => eprintln!("kui: rewrote {} for kui {VERSION} (written by {from})", join(&done)),
+        Ok(()) => eprintln!(
+            "kui: rewrote {} for kui {VERSION} (written by {from})",
+            join(&done)
+        ),
         Err(e) => eprintln!("kui: refreshing .kui for kui {VERSION}: {e}"),
     }
 }
@@ -109,8 +119,11 @@ pub fn remember(dir: &Path, want: Tooling) -> Result<Option<PathBuf>, String> {
     }
     let Some(path) = project::manifest(dir) else {
         let path = dir.join("kui.config.lua");
-        std::fs::write(&path, format!("return {{\n  tooling = {},\n}}\n", merged.lua()))
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+        std::fs::write(
+            &path,
+            format!("return {{\n  tooling = {},\n}}\n", merged.lua()),
+        )
+        .map_err(|e| format!("{}: {e}", path.display()))?;
         return Ok(Some(path));
     };
     let before = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -172,13 +185,28 @@ fn with_tooling(text: &str, t: Tooling) -> Option<String> {
     match line_end {
         // `return {` ends its line: a line of its own, indented as the next.
         Some(nl) if text[body..nl].trim().is_empty() => {
-            let next = text[nl + 1..].lines().find(|l| !l.trim().is_empty()).unwrap_or("  ");
+            let next = text[nl + 1..]
+                .lines()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("  ");
             let indent: String = next.chars().take_while(|c| c.is_whitespace()).collect();
-            let indent = if indent.is_empty() { "  ".to_string() } else { indent };
-            Some(format!("{}\n{indent}tooling = {table},{}", &text[..nl], &text[nl..]))
+            let indent = if indent.is_empty() {
+                "  ".to_string()
+            } else {
+                indent
+            };
+            Some(format!(
+                "{}\n{indent}tooling = {table},{}",
+                &text[..nl],
+                &text[nl..]
+            ))
         }
         // `return { name = "x" }` on one line.
-        _ => Some(format!("{} tooling = {table},{}", &text[..body], &text[body..])),
+        _ => Some(format!(
+            "{} tooling = {table},{}",
+            &text[..body],
+            &text[body..]
+        )),
     }
 }
 
@@ -274,8 +302,14 @@ pub fn write_agent_block(dir: &Path) -> Result<PathBuf, String> {
 mod tests {
     use super::*;
 
-    const BOTH: Tooling = Tooling { docs: true, agents: true };
-    const DOCS: Tooling = Tooling { docs: true, agents: false };
+    const BOTH: Tooling = Tooling {
+        docs: true,
+        agents: true,
+    };
+    const DOCS: Tooling = Tooling {
+        docs: true,
+        agents: false,
+    };
 
     #[test]
     fn tooling_opens_the_returned_table_indented_as_its_first_line() {
@@ -284,7 +318,10 @@ mod tests {
             with_tooling(text, DOCS).unwrap(),
             "-- my app\nreturn {\n    tooling = { docs = true },\n    name = \"x\",\n}\n"
         );
-        assert_eq!(with_tooling("return { name = \"x\" }\n", DOCS).unwrap(), "return { tooling = { docs = true }, name = \"x\" }\n");
+        assert_eq!(
+            with_tooling("return { name = \"x\" }\n", DOCS).unwrap(),
+            "return { tooling = { docs = true }, name = \"x\" }\n"
+        );
     }
 
     #[test]
@@ -298,8 +335,17 @@ mod tests {
 
     #[test]
     fn a_word_in_a_comment_or_inside_a_name_is_not_the_key() {
-        assert_eq!(find_word("-- return tooling\nlocal my_tooling = 1\nreturn {}", "tooling"), None);
+        assert_eq!(
+            find_word(
+                "-- return tooling\nlocal my_tooling = 1\nreturn {}",
+                "tooling"
+            ),
+            None
+        );
         assert_eq!(find_word("-- return\nreturn {}", "return"), Some(10));
-        assert!(with_tooling("local t = {}\nreturn t\n", DOCS).is_none(), "no table after return: by hand");
+        assert!(
+            with_tooling("local t = {}\nreturn t\n", DOCS).is_none(),
+            "no table after return: by hand"
+        );
     }
 }

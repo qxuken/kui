@@ -20,7 +20,10 @@ struct Store {
     rev: u64,
 }
 
-static STORE: Mutex<Store> = Mutex::new(Store { lines: std::collections::VecDeque::new(), rev: 0 });
+static STORE: Mutex<Store> = Mutex::new(Store {
+    lines: std::collections::VecDeque::new(),
+    rev: 0,
+});
 
 fn clock() -> String {
     let secs = std::time::SystemTime::now()
@@ -55,7 +58,10 @@ pub fn to_file(path: &std::path::Path) -> std::io::Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     let numbered = |n: usize| {
-        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
         path.with_file_name(format!("{stem}.{n}.log"))
     };
     let _ = std::fs::remove_file(numbered(RUNS));
@@ -64,7 +70,11 @@ pub fn to_file(path: &std::path::Path) -> std::io::Result<()> {
     }
     let _ = std::fs::rename(path, numbered(1));
     let file = std::fs::File::create(path)?;
-    *SINK.lock().unwrap() = Some(Sink { file, written: 0, capped: false });
+    *SINK.lock().unwrap() = Some(Sink {
+        file,
+        written: 0,
+        capped: false,
+    });
     Ok(())
 }
 
@@ -77,7 +87,11 @@ fn to_sink(time: &str, level: &str, text: &str) {
     }
     let line = format!("{time} {level:<5} {text}\n");
     if s.written + line.len() as u64 > CAP {
-        let _ = writeln!(s.file, "{time} warn  the log reached {} MB; the rest of this run is not written", CAP >> 20);
+        let _ = writeln!(
+            s.file,
+            "{time} warn  the log reached {} MB; the rest of this run is not written",
+            CAP >> 20
+        );
         s.capped = true;
         return;
     }

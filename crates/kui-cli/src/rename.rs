@@ -8,20 +8,41 @@
 #[cfg(target_os = "macos")]
 pub fn relaunch_as(name: &str) {
     use std::os::unix::process::CommandExt;
-    let Ok(exe) = std::env::current_exe() else { return };
-    let safe: String = name.chars().map(|c| if c == '/' || c == ':' || c.is_control() { '-' } else { c }).collect();
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let safe: String = name
+        .chars()
+        .map(|c| {
+            if c == '/' || c == ':' || c.is_control() {
+                '-'
+            } else {
+                c
+            }
+        })
+        .collect();
     if safe.is_empty() || exe.file_name().is_some_and(|f| f.to_string_lossy() == safe) {
         return;
     }
-    let Some(home) = std::env::var_os("HOME") else { return };
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
     // One folder per binary and build, so a rebuilt runner is a new clone.
-    let Ok(meta) = std::fs::metadata(&exe) else { return };
-    let stamp = meta.modified().ok().and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+    let Ok(meta) = std::fs::metadata(&exe) else {
+        return;
+    };
+    let stamp = meta
+        .modified()
+        .ok()
+        .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos());
     let mut h: u64 = 0xcbf29ce484222325;
     for b in format!("{}:{stamp}", exe.display()).bytes() {
         h = (h ^ b as u64).wrapping_mul(0x100000001b3);
     }
-    let dir = std::path::Path::new(&home).join("Library/Caches/kui/apps").join(format!("{h:016x}"));
+    let dir = std::path::Path::new(&home)
+        .join("Library/Caches/kui/apps")
+        .join(format!("{h:016x}"));
     let clone = dir.join(&safe);
     if !clone.exists() {
         // Built aside and renamed into place: two apps started at once never

@@ -30,11 +30,12 @@ pub fn current_platform() -> Option<&'static str> {
 
 /// Whether `t` is a platform the release builds; the error names them.
 pub fn check_platform(t: &str) -> Result<&'static str, String> {
-    PLATFORMS
-        .iter()
-        .find(|p| **p == t)
-        .copied()
-        .ok_or_else(|| format!("no runner for `{t}`: the release builds {}", PLATFORMS.join(", ")))
+    PLATFORMS.iter().find(|p| **p == t).copied().ok_or_else(|| {
+        format!(
+            "no runner for `{t}`: the release builds {}",
+            PLATFORMS.join(", ")
+        )
+    })
 }
 
 /// The runner's asset for `version` on `platform`.
@@ -48,7 +49,11 @@ pub fn asset_name(version: &str, platform: &str) -> String {
 
 /// The runner binary's name inside its asset.
 pub fn binary_name(platform: &str) -> &'static str {
-    if platform.starts_with("win32") { "kui.exe" } else { "kui" }
+    if platform.starts_with("win32") {
+        "kui.exe"
+    } else {
+        "kui"
+    }
 }
 
 /// Where a version's assets are: the mirror's, else the GitHub release's.
@@ -75,7 +80,10 @@ pub fn download(url: &str) -> Result<Vec<u8>, String> {
         .user_agent(format!("kui/{}", crate::compat::VERSION))
         .build()
         .into();
-    let mut res = agent.get(url).call().map_err(|e| format!("GET {url}: {e}"))?;
+    let mut res = agent
+        .get(url)
+        .call()
+        .map_err(|e| format!("GET {url}: {e}"))?;
     res.body_mut()
         .with_config()
         .limit(512 << 20)
@@ -124,7 +132,10 @@ pub fn parse_sums(text: &str) -> HashMap<String, String> {
     text.lines()
         .filter_map(|l| {
             let (sum, name) = l.split_once(char::is_whitespace)?;
-            Some((name.trim().trim_start_matches('*').to_string(), sum.trim().to_lowercase()))
+            Some((
+                name.trim().trim_start_matches('*').to_string(),
+                sum.trim().to_lowercase(),
+            ))
         })
         .collect()
 }
@@ -132,14 +143,20 @@ pub fn parse_sums(text: &str) -> HashMap<String, String> {
 pub use crate::archive::sha256_hex;
 
 /// An asset, downloaded and checked against the release's sums.
-pub fn fetch_verified(base: &str, asset: &str, sums: &HashMap<String, String>) -> Result<Vec<u8>, String> {
+pub fn fetch_verified(
+    base: &str,
+    asset: &str,
+    sums: &HashMap<String, String>,
+) -> Result<Vec<u8>, String> {
     let want = sums
         .get(asset)
         .ok_or_else(|| format!("{base}/SHA256SUMS lists no {asset}"))?;
     let bytes = download(&format!("{base}/{asset}"))?;
     let got = sha256_hex(&bytes);
     if &got != want {
-        return Err(format!("{asset}: checksum {got} is not the release's {want}; not using it"));
+        return Err(format!(
+            "{asset}: checksum {got} is not the release's {want}; not using it"
+        ));
     }
     Ok(bytes)
 }
@@ -150,10 +167,13 @@ pub fn binary_from_asset(asset: &[u8], platform: &str) -> Result<Vec<u8>, String
     if platform.starts_with("win32") {
         let zip = crate::archive::ZipReader::open(asset.to_vec().into())
             .map_err(|e| format!("the runner's zip: {e}"))?;
-        let entry = zip.get(name).ok_or_else(|| format!("the runner's zip holds no {name}"))?;
+        let entry = zip
+            .get(name)
+            .ok_or_else(|| format!("the runner's zip holds no {name}"))?;
         entry.read().map_err(|e| format!("the runner's zip: {e}"))
     } else {
-        let files = crate::archive::read_tar_gz(asset).map_err(|e| format!("the runner's tarball: {e}"))?;
+        let files =
+            crate::archive::read_tar_gz(asset).map_err(|e| format!("the runner's tarball: {e}"))?;
         files
             .into_iter()
             .find(|(n, _, _)| n.trim_start_matches("./") == name)
@@ -166,7 +186,12 @@ pub fn binary_from_asset(asset: &[u8], platform: &str) -> Result<Vec<u8>, String
 /// they are its own, else from the cache, else downloaded, checked and
 /// cached (`<kui cache>/runners/<version>/<platform>/kui[.exe]`). `local`
 /// is `--runner <file>`, used as given.
-pub fn runner(version: &str, platform: &str, mirror: Option<&str>, local: Option<&Path>) -> Result<Vec<u8>, String> {
+pub fn runner(
+    version: &str,
+    platform: &str,
+    mirror: Option<&str>,
+    local: Option<&Path>,
+) -> Result<Vec<u8>, String> {
     if let Some(file) = local {
         return std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()));
     }
@@ -223,7 +248,8 @@ pub fn fetch_all(version: &str, to: &Path, mirror: Option<&str>) -> Result<(), S
     }
     std::fs::write(dir.join("SHA256SUMS"), &sums_text).map_err(|e| e.to_string())?;
     if version == "latest" {
-        std::fs::write(to.join("latest.txt"), format!("{resolved}\n")).map_err(|e| e.to_string())?;
+        std::fs::write(to.join("latest.txt"), format!("{resolved}\n"))
+            .map_err(|e| e.to_string())?;
     }
     println!("wrote {} (sync it to the mirror as is)", dir.display());
     Ok(())
@@ -235,11 +261,21 @@ mod tests {
 
     #[test]
     fn names_and_urls_follow_the_release() {
-        assert_eq!(asset_name("0.1.0", "darwin-arm64"), "kui-0.1.0-darwin-arm64.tar.gz");
+        assert_eq!(
+            asset_name("0.1.0", "darwin-arm64"),
+            "kui-0.1.0-darwin-arm64.tar.gz"
+        );
         assert_eq!(asset_name("0.1.0", "win32-x64"), "kui-0.1.0-win32-x64.zip");
-        assert_eq!(base_url(Some("https://s3.example/kui/"), "0.1.0"), "https://s3.example/kui/v0.1.0");
+        assert_eq!(
+            base_url(Some("https://s3.example/kui/"), "0.1.0"),
+            "https://s3.example/kui/v0.1.0"
+        );
         assert!(base_url(None, "0.1.0").ends_with("/releases/download/v0.1.0"));
-        assert!(check_platform("darwin-x64").unwrap_err().contains("linux-x64"));
+        assert!(
+            check_platform("darwin-x64")
+                .unwrap_err()
+                .contains("linux-x64")
+        );
     }
 
     #[test]

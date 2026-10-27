@@ -320,8 +320,19 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)
         kit::Progress::new().value(0.4).label("Loading").place(ui),
     );
     put("skeleton", kit::Skeleton::new().lines(3).place(ui));
-    put("checklist", kit::Checklist::new(vec![kit::Check::new("Milk", true), kit::Check::new("Eggs", false)]).removable(true).place(ui));
-    put("shader", kit::Shader::new().height(40.0).label("Noise").place(ui));
+    put(
+        "checklist",
+        kit::Checklist::new(vec![
+            kit::Check::new("Milk", true),
+            kit::Check::new("Eggs", false),
+        ])
+        .removable(true)
+        .place(ui),
+    );
+    put(
+        "shader",
+        kit::Shader::new().height(40.0).label("Noise").place(ui),
+    );
     put(
         "notice",
         kit::Notice::new("The port is busy.")
@@ -694,7 +705,13 @@ impl LuaRig {
         exts.push_as("app", Box::new(app_ext)).unwrap();
         let mut core = Core::new();
         core.set_inspect(true);
-        LuaRig { core, exts, warnings: Vec::new(), host: Vec::new(), app }
+        LuaRig {
+            core,
+            exts,
+            warnings: Vec::new(),
+            host: Vec::new(),
+            app,
+        }
     }
 
     fn frames(&mut self, n: usize) {
@@ -705,8 +722,12 @@ impl LuaRig {
             let events = self.core.take_pending_events();
             let host = &mut self.host;
             self.exts.route(events, |ev| host.push(ev));
-            self.warnings
-                .extend(self.core.take_warnings().into_iter().map(|w| format!("{w:?}")));
+            self.warnings.extend(
+                self.core
+                    .take_warnings()
+                    .into_iter()
+                    .map(|w| format!("{w:?}")),
+            );
         }
     }
 
@@ -724,7 +745,9 @@ impl LuaRig {
     /// press, then the release, a frame drawn between each.
     fn slow_click(&mut self, x: f32, y: f32) {
         use kui_core::{InputEvent, Vec2};
-        let e = self.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        let e = self
+            .core
+            .handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
         self.route(e);
         self.frames(1);
         let e = self.core.handle_input(InputEvent::mouse_down(1));
@@ -785,7 +808,10 @@ fn a_select_opens_on_a_click_in_its_middle_and_closes_on_one_outside() {
     let field = r.named("Skin: Ledger");
     r.slow_click(field.x + field.w / 2.0, field.y + field.h / 2.0);
     r.frames(2);
-    assert!(r.text("Neutral").is_some(), "open after a click in the middle");
+    assert!(
+        r.text("Neutral").is_some(),
+        "open after a click in the middle"
+    );
     let away = r.named("Elsewhere");
     r.slow_click(away.x + away.w / 2.0, away.y + away.h / 2.0);
     r.frames(2);
@@ -794,7 +820,10 @@ fn a_select_opens_on_a_click_in_its_middle_and_closes_on_one_outside() {
     // the next reaches the window.
     r.slow_click(away.x + away.w / 2.0, away.y + away.h / 2.0);
     r.frames(1);
-    assert!(r.text("clicks 1").is_some(), "the window is not blocked once it closed");
+    assert!(
+        r.text("clicks 1").is_some(),
+        "the window is not blocked once it closed"
+    );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
@@ -817,8 +846,12 @@ fn log_app(wrap: bool) -> String {
 }
 
 fn shows(r: &mut LuaRig, text: &str) -> bool {
-    let bx = r.node(|n| n.label.as_deref() == Some("box")).expect("the box").rect;
-    r.text(text).is_some_and(|t| t.y >= bx.y - 0.5 && t.y + t.h <= bx.y + bx.h + 0.5)
+    let bx = r
+        .node(|n| n.label.as_deref() == Some("box"))
+        .expect("the box")
+        .rect;
+    r.text(text)
+        .is_some_and(|t| t.y >= bx.y - 0.5 && t.y + t.h <= bx.y + bx.h + 0.5)
 }
 
 #[test]
@@ -832,17 +865,31 @@ fn a_log_scrolled_up_stays_where_the_reader_put_it() {
         let bx = r.node(|n| n.label.as_deref() == Some("box")).unwrap().rect;
         let (x, y) = (bx.x + bx.w / 2.0, bx.y + bx.h / 2.0);
         use kui_core::{InputEvent, Vec2};
-        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        let e = r
+            .core
+            .handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
         r.route(e);
         // A short move, as a glide's first frame is: it was within a row of the
         // end, which the old test still counted as the end.
-        let e = r.core.handle_input(InputEvent::ScrollGesture { delta: Vec2::new(0.0, 10.0), begins: true });
+        let e = r.core.handle_input(InputEvent::ScrollGesture {
+            delta: Vec2::new(0.0, 10.0),
+            begins: true,
+        });
         r.route(e);
         r.frames(4);
-        assert!(!shows(&mut r, "line 60"), "the reader's scroll up stands (wrap {wrap})");
-        assert!(r.text("LATEST").is_some(), "the jump back shows while it is away (wrap {wrap})");
+        assert!(
+            !shows(&mut r, "line 60"),
+            "the reader's scroll up stands (wrap {wrap})"
+        );
+        assert!(
+            r.text("LATEST").is_some(),
+            "the jump back shows while it is away (wrap {wrap})"
+        );
         // Back down to the end: following again, no jump.
-        let e = r.core.handle_input(InputEvent::ScrollGesture { delta: Vec2::new(0.0, -2000.0), begins: false });
+        let e = r.core.handle_input(InputEvent::ScrollGesture {
+            delta: Vec2::new(0.0, -2000.0),
+            begins: false,
+        });
         r.route(e);
         r.frames(4);
         assert!(shows(&mut r, "line 60"), "back at the end (wrap {wrap})");
@@ -868,7 +915,12 @@ fn a_text_area_takes_a_click_anywhere_in_its_well() {
     let well = r.node(|n| n.label.as_deref() == Some("note")).unwrap().rect;
     r.slow_click(well.x + well.w / 2.0, well.y + well.h - 12.0);
     r.frames(1);
-    let focused = r.core.access_tree().nodes.iter().any(|n| n.name.as_deref() == Some("Note") && n.focused);
+    let focused = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .any(|n| n.name.as_deref() == Some("Note") && n.focused);
     assert!(focused, "the editor took the press in its well");
 }
 
@@ -889,7 +941,9 @@ fn a_switch_moves_its_knob_and_keeps_its_colour() {
     let knob = |on: bool| {
         let mut r = LuaRig::new(&src(on));
         r.frames(2);
-        let k = r.node(|n| n.label.as_deref() == Some("knob")).expect("the knob");
+        let k = r
+            .node(|n| n.label.as_deref() == Some("knob"))
+            .expect("the knob");
         (k.rect.x, k.bg)
     };
     let (off_x, off_bg) = knob(false);
@@ -949,13 +1003,19 @@ fn every_button_shades_under_the_pointer_and_the_press_and_stays_opaque() {
                 nodes
                     .iter()
                     .find(|n| n.label.as_deref() == Some("face"))
-                    .or_else(|| nodes.iter().find(|n| n.rect.x == rest.x && n.rect.y == rest.y && n.rect.w == rest.w))
+                    .or_else(|| {
+                        nodes.iter().find(|n| {
+                            n.rect.x == rest.x && n.rect.y == rest.y && n.rect.w == rest.w
+                        })
+                    })
                     .map(|n| n.bg)
                     .expect("the button")
             };
             let rest_bg = bg(&mut r);
             use kui_core::{InputEvent, Vec2};
-            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+            let e = r
+                .core
+                .handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
             r.route(e);
             r.frames(3);
             let hover_bg = bg(&mut r);
@@ -965,8 +1025,14 @@ fn every_button_shades_under_the_pointer_and_the_press_and_stays_opaque() {
             let press_bg = bg(&mut r);
             assert_ne!(rest_bg, hover_bg, "{skin} {variant}: a hover shows");
             assert_ne!(hover_bg, press_bg, "{skin} {variant}: a press shows");
-            assert_eq!(press_bg.a, 1.0, "{skin} {variant}: the press is opaque: {press_bg:?}");
-            assert_eq!(hover_bg.a, 1.0, "{skin} {variant}: the hover is opaque: {hover_bg:?}");
+            assert_eq!(
+                press_bg.a, 1.0,
+                "{skin} {variant}: the press is opaque: {press_bg:?}"
+            );
+            assert_eq!(
+                hover_bg.a, 1.0,
+                "{skin} {variant}: the hover is opaque: {hover_bg:?}"
+            );
         }
     }
 }
@@ -1008,7 +1074,10 @@ fn a_switch_knob_slides_across_and_settles_without_a_flash() {
     }
     let (first, last) = (xs[0], xs[xs.len() - 1]);
     assert!(last > first + 10.0, "it went across: {xs:?}");
-    let between = xs.iter().filter(|x| **x > first + 1.0 && **x < last - 1.0).count();
+    let between = xs
+        .iter()
+        .filter(|x| **x > first + 1.0 && **x < last - 1.0)
+        .count();
     assert!(between >= 3, "it slid, frames in between: {xs:?}");
 }
 
@@ -1028,11 +1097,17 @@ fn tab_leaves_a_list_and_its_focus_shows() {
     );
     r.frames(2);
     let focused = |r: &mut LuaRig| -> Option<String> {
-        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone()).or(Some("?".into()))
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
+            .or(Some("?".into()))
     };
     let press_tab = |r: &mut LuaRig| {
-        use kui_core::testing::{key_press, tab};
         use kui_core::KeyCode;
+        use kui_core::testing::{key_press, tab};
         let e = r.core.handle_input(key_press(KeyCode::Tab));
         r.route(e);
         let e = tab(&mut r.core, false);
@@ -1044,7 +1119,10 @@ fn tab_leaves_a_list_and_its_focus_shows() {
         press_tab(&mut r);
         seen.push(focused(&mut r));
     }
-    assert!(seen.iter().any(|f| f.as_deref() == Some("After")), "Tab got past the list: {seen:?}");
+    assert!(
+        seen.iter().any(|f| f.as_deref() == Some("After")),
+        "Tab got past the list: {seen:?}"
+    );
 }
 
 #[test]
@@ -1063,9 +1141,14 @@ fn ledger_primary_face_lifts_on_hover_and_sinks_on_press_over_a_still_shadow() {
     r.core.set_time(1.0);
     r.frames(2);
     let face_and_shadow = |r: &mut LuaRig| {
-        let face = r.node(|n| n.label.as_deref() == Some("face")).expect("the face").rect;
+        let face = r
+            .node(|n| n.label.as_deref() == Some("face"))
+            .expect("the face")
+            .rect;
         let quads = kui_core::testing::quads_of(&mut r.core, kui_core::QuadKind::Shadow);
-        let shadow = quads.first().map(|q| (q.rect.x + q.rect.w, q.rect.y + q.rect.h));
+        let shadow = quads
+            .first()
+            .map(|q| (q.rect.x + q.rect.w, q.rect.y + q.rect.h));
         // The face as drawn: its solid quad (the keyframe offset is paint).
         let drawn = kui_core::testing::solids(&mut r.core)
             .into_iter()
@@ -1077,7 +1160,10 @@ fn ledger_primary_face_lifts_on_hover_and_sinks_on_press_over_a_still_shadow() {
     let (rest, rest_shadow) = face_and_shadow(&mut r);
     let hit = r.named("Go");
     use kui_core::{InputEvent, Vec2};
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(hit.x + hit.w / 2.0, hit.y + hit.h / 2.0)));
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        hit.x + hit.w / 2.0,
+        hit.y + hit.h / 2.0,
+    )));
     r.route(e);
     r.frames(2);
     let (hover, hover_shadow) = face_and_shadow(&mut r);
@@ -1089,10 +1175,22 @@ fn ledger_primary_face_lifts_on_hover_and_sinks_on_press_over_a_still_shadow() {
     r.core.set_time(1.3);
     r.frames(2);
     let (press, press_shadow) = face_and_shadow(&mut r);
-    assert!(hover.0 < rest.0 && hover.1 < rest.1, "lifted: {rest:?} → {hover:?}");
-    assert!(press.0 > rest.0 && press.1 > rest.1, "pushed in: {rest:?} → {press:?}");
-    assert_eq!(rest_shadow, hover_shadow, "the shadow's far edge stays put under hover");
-    assert!(press_shadow.is_none() || press_shadow == rest_shadow, "pressed, the shadow is under the face: {press_shadow:?}");
+    assert!(
+        hover.0 < rest.0 && hover.1 < rest.1,
+        "lifted: {rest:?} → {hover:?}"
+    );
+    assert!(
+        press.0 > rest.0 && press.1 > rest.1,
+        "pushed in: {rest:?} → {press:?}"
+    );
+    assert_eq!(
+        rest_shadow, hover_shadow,
+        "the shadow's far edge stays put under hover"
+    );
+    assert!(
+        press_shadow.is_none() || press_shadow == rest_shadow,
+        "pressed, the shadow is under the face: {press_shadow:?}"
+    );
 }
 
 #[test]
@@ -1106,11 +1204,17 @@ fn a_slider_handle_stays_lit_while_held() {
         "#,
     );
     r.frames(2);
-    let handle = |r: &mut LuaRig| r.node(|n| n.label.as_deref() == Some("handle")).expect("the handle");
+    let handle = |r: &mut LuaRig| {
+        r.node(|n| n.label.as_deref() == Some("handle"))
+            .expect("the handle")
+    };
     let rest = handle(&mut r).bg;
     let track = r.named("Zoom");
     use kui_core::{InputEvent, Vec2};
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(track.x + track.w * 0.25, track.y + track.h / 2.0)));
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        track.x + track.w * 0.25,
+        track.y + track.h / 2.0,
+    )));
     r.route(e);
     r.frames(1);
     let over = handle(&mut r).bg;
@@ -1155,7 +1259,10 @@ fn a_panel_title_rule_stays_inside_its_frame() {
         "#,
     );
     r.frames(2);
-    let outer = r.node(|n| n.label.as_deref() == Some("outer")).unwrap().rect;
+    let outer = r
+        .node(|n| n.label.as_deref() == Some("outer"))
+        .unwrap()
+        .rect;
     // Every one-px-tall solid (the hairline under the title) starts past
     // the 2 px frame and ends before it.
     let lines: Vec<_> = kui_core::testing::solids(&mut r.core)
@@ -1164,7 +1271,11 @@ fn a_panel_title_rule_stays_inside_its_frame() {
         .collect();
     assert!(!lines.is_empty(), "the title's rule");
     for q in lines {
-        assert!(q.rect.x >= outer.x + 1.5 && q.rect.x + q.rect.w <= outer.x + outer.w - 1.5, "inside the frame: {:?} in {outer:?}", q.rect);
+        assert!(
+            q.rect.x >= outer.x + 1.5 && q.rect.x + q.rect.w <= outer.x + outer.w - 1.5,
+            "inside the frame: {:?} in {outer:?}",
+            q.rect
+        );
     }
 }
 
@@ -1201,9 +1312,15 @@ fn a_log_republished_with_the_same_rows_keeps_its_place_and_one_that_drops_its_o
     r.frames(6);
     let bx = r.node(|n| n.label.as_deref() == Some("box")).unwrap().rect;
     use kui_core::{InputEvent, Vec2};
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(bx.x + 100.0, bx.y + 100.0)));
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        bx.x + 100.0,
+        bx.y + 100.0,
+    )));
     r.route(e);
-    let e = r.core.handle_input(InputEvent::ScrollGesture { delta: Vec2::new(0.0, 400.0), begins: true });
+    let e = r.core.handle_input(InputEvent::ScrollGesture {
+        delta: Vec2::new(0.0, 400.0),
+        begins: true,
+    });
     r.route(e);
     r.frames(4);
     let first_seen = |r: &mut LuaRig| {
@@ -1212,7 +1329,11 @@ fn a_log_republished_with_the_same_rows_keeps_its_place_and_one_that_drops_its_o
             .core
             .nodes()
             .into_iter()
-            .filter_map(|n| n.text.filter(|t| t.starts_with("line ")).map(|t| (n.rect.y, t)))
+            .filter_map(|n| {
+                n.text
+                    .filter(|t| t.starts_with("line "))
+                    .map(|t| (n.rect.y, t))
+            })
             .filter(|(y, _)| *y >= bx.y)
             .collect();
         seen.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
@@ -1220,11 +1341,19 @@ fn a_log_republished_with_the_same_rows_keeps_its_place_and_one_that_drops_its_o
     };
     let before = first_seen(&mut r);
     for drop in [false, true, true] {
-        r.app.globals().get::<mlua::Function>("tick").unwrap().call::<()>(drop).unwrap();
+        r.app
+            .globals()
+            .get::<mlua::Function>("tick")
+            .unwrap()
+            .call::<()>(drop)
+            .unwrap();
         r.frames(3);
         let now = first_seen(&mut r);
         assert_eq!(now.1, before.1, "the same row at the top (drop {drop})");
-        assert!((now.0 - before.0).abs() < 1.0, "in the same place (drop {drop}): {before:?} → {now:?}");
+        assert!(
+            (now.0 - before.0).abs() < 1.0,
+            "in the same place (drop {drop}): {before:?} → {now:?}"
+        );
     }
 }
 
@@ -1430,9 +1559,19 @@ fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
     );
     assert!(w.is_empty(), "{w:#?}");
     let nodes = core.nodes();
-    assert!(nodes.iter().all(|n| n.kind != kui_core::NodeKind::Path), "no path");
-    let polys: Vec<_> = nodes.iter().filter(|n| n.kind == kui_core::NodeKind::Polygon).collect();
-    assert!(polys.len() > 10, "the area is cut into polygons: {}", polys.len());
+    assert!(
+        nodes.iter().all(|n| n.kind != kui_core::NodeKind::Path),
+        "no path"
+    );
+    let polys: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == kui_core::NodeKind::Polygon)
+        .collect();
+    assert!(
+        polys.len() > 10,
+        "the area is cut into polygons: {}",
+        polys.len()
+    );
     let line = nodes
         .iter()
         .filter(|n| n.kind == kui_core::NodeKind::Line)
@@ -1440,7 +1579,10 @@ fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
         .expect("the series' line")
         .rect;
     let left = polys.iter().map(|p| p.rect.x).fold(f32::MAX, f32::min);
-    let right = polys.iter().map(|p| p.rect.x + p.rect.w).fold(f32::MIN, f32::max);
+    let right = polys
+        .iter()
+        .map(|p| p.rect.x + p.rect.w)
+        .fold(f32::MIN, f32::max);
     assert!(
         (left - line.x).abs() <= 2.0 && (right - (line.x + line.w)).abs() <= 2.0,
         "the area spans the line: {left}..{right} vs {line:?}"
@@ -1448,7 +1590,11 @@ fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
     // Two polygons each ramp the edge they share, so a pixel on it is
     // covered three quarters and the fill shows a seam there: every chunk
     // but the first starts on a whole pixel (its box is a pixel out).
-    let off: Vec<f32> = polys.iter().map(|p| p.rect.x + 1.0).filter(|x| *x > left + 1.5 && (x - x.round()).abs() > 1e-3).collect();
+    let off: Vec<f32> = polys
+        .iter()
+        .map(|p| p.rect.x + 1.0)
+        .filter(|x| *x > left + 1.5 && (x - x.round()).abs() > 1e-3)
+        .collect();
     assert!(off.is_empty(), "chunks start between pixels: {off:?}");
 }
 
@@ -1473,17 +1619,41 @@ fn a_line_charts_area_chunks_meet_on_whole_device_pixels_at_a_fractional_scale()
     );
     assert!(w.is_empty(), "{w:#?}");
     let nodes = core.nodes();
-    let polys: Vec<_> = nodes.iter().filter(|n| n.kind == kui_core::NodeKind::Polygon).collect();
-    assert!(polys.len() > 10, "the area is cut into polygons: {}", polys.len());
+    let polys: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == kui_core::NodeKind::Polygon)
+        .collect();
+    assert!(
+        polys.len() > 10,
+        "the area is cut into polygons: {}",
+        polys.len()
+    );
     let left = polys.iter().map(|p| p.rect.x).fold(f32::MAX, f32::min);
     // Each chunk but the first starts where the one before ended: its box
     // is a logical pixel out, and that start lands on a whole device pixel.
-    let starts: Vec<f32> = polys.iter().map(|p| p.rect.x + 1.0).filter(|x| *x > left + 1.5).collect();
+    let starts: Vec<f32> = polys
+        .iter()
+        .map(|p| p.rect.x + 1.0)
+        .filter(|x| *x > left + 1.5)
+        .collect();
     assert!(starts.len() > 10);
-    let off: Vec<f32> = starts.iter().map(|x| x * 1.5).filter(|d| (d - d.round()).abs() > 2e-3).collect();
-    assert!(off.is_empty(), "chunks start between device pixels: {off:?}");
-    let logical_only = starts.iter().filter(|x| (*x - x.round()).abs() > 1e-3).count();
-    assert!(logical_only > 0, "some cuts are on half logical pixels, as whole device ones at 1.5 are");
+    let off: Vec<f32> = starts
+        .iter()
+        .map(|x| x * 1.5)
+        .filter(|d| (d - d.round()).abs() > 2e-3)
+        .collect();
+    assert!(
+        off.is_empty(),
+        "chunks start between device pixels: {off:?}"
+    );
+    let logical_only = starts
+        .iter()
+        .filter(|x| (*x - x.round()).abs() > 1e-3)
+        .count();
+    assert!(
+        logical_only > 0,
+        "some cuts are on half logical pixels, as whole device ones at 1.5 are"
+    );
 }
 
 #[test]
@@ -1515,12 +1685,21 @@ fn a_charts_floats_are_cut_at_the_scroller_it_sits_in() {
     let top = r.node(|n| n.label.as_deref() == Some("top")).unwrap().rect;
     // Every x label above the scroller's top edge would be drawn on the bar.
     use kui_core::{InputEvent, Vec2};
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(top.x + top.w / 2.0, top.y + top.h - 10.0)));
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        top.x + top.w / 2.0,
+        top.y + top.h - 10.0,
+    )));
     r.route(e);
     r.frames(2);
     let over_bar: i64 = r.app.globals().get("hovers").unwrap();
-    assert_eq!(over_bar, 0, "a band past the scroller's edge takes no pointer");
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(top.x + top.w / 2.0, top.y + top.h + 30.0)));
+    assert_eq!(
+        over_bar, 0,
+        "a band past the scroller's edge takes no pointer"
+    );
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        top.x + top.w / 2.0,
+        top.y + top.h + 30.0,
+    )));
     r.route(e);
     r.frames(2);
     let inside: i64 = r.app.globals().get("hovers").unwrap();
@@ -1529,17 +1708,26 @@ fn a_charts_floats_are_cut_at_the_scroller_it_sits_in() {
 
 /// Every focus-ring colour a skin draws, light and dark, as quads carry it.
 fn focus_colours() -> Vec<kui_core::Color> {
-    [0x2f6fedffu32, 0x7fa8ffff, 0x5b8cffff, 0x0f7a35ff, 0x39ff6aff]
-        .iter()
-        .map(|&c| kui_core::Color::hex(c))
-        .collect()
+    [
+        0x2f6fedffu32,
+        0x7fa8ffff,
+        0x5b8cffff,
+        0x0f7a35ff,
+        0x39ff6aff,
+    ]
+    .iter()
+    .map(|&c| kui_core::Color::hex(c))
+    .collect()
 }
 
 fn focus_quads(core: &mut Core) -> usize {
     let ring = focus_colours();
     kui_core::testing::solids(core)
         .iter()
-        .filter(|q| ring.iter().any(|c| q.color == *c || (q.border_w > 0.0 && q.border_color == *c)))
+        .filter(|q| {
+            ring.iter()
+                .any(|c| q.color == *c || (q.border_w > 0.0 && q.border_color == *c))
+        })
         .count()
 }
 
@@ -1582,8 +1770,14 @@ fn focusing_a_field_moves_nothing() {
                 .min_by(|a, b| a.0.total_cmp(&b.0))
                 .expect("a glyph of its text");
             (
-                r.node(|n| n.label.as_deref() == Some("after_field")).unwrap().rect.y,
-                r.node(|n| n.label.as_deref() == Some("after_area")).unwrap().rect.y,
+                r.node(|n| n.label.as_deref() == Some("after_field"))
+                    .unwrap()
+                    .rect
+                    .y,
+                r.node(|n| n.label.as_deref() == Some("after_area"))
+                    .unwrap()
+                    .rect
+                    .y,
                 first,
             )
         };
@@ -1619,12 +1813,23 @@ fn a_fields_error_takes_no_room_of_its_own() {
         "#,
     );
     r.frames(3);
-    let below = r.node(|n| n.label.as_deref() == Some("below")).unwrap().rect.y;
+    let below = r
+        .node(|n| n.label.as_deref() == Some("below"))
+        .unwrap()
+        .rect
+        .y;
     let add = r.named("Add");
     r.app.globals().set("err", "Name the task first").unwrap();
     r.frames(3);
     assert!(r.text("Name the task first").is_some(), "the message shows");
-    assert_eq!(r.node(|n| n.label.as_deref() == Some("below")).unwrap().rect.y, below, "the toolbar keeps its height");
+    assert_eq!(
+        r.node(|n| n.label.as_deref() == Some("below"))
+            .unwrap()
+            .rect
+            .y,
+        below,
+        "the toolbar keeps its height"
+    );
     assert_eq!(r.named("Add").y, add.y, "the button keeps its line");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
@@ -1648,7 +1853,11 @@ fn a_checkbox_ring_hugs_its_box_and_shows_only_from_the_keyboard() {
     let row = r.named("Pinned");
     r.slow_click(row.x + row.w / 2.0, row.y + row.h / 2.0);
     r.frames(2);
-    assert_eq!(focus_quads(&mut r.core), 0, "a click focuses without a ring");
+    assert_eq!(
+        focus_quads(&mut r.core),
+        0,
+        "a click focuses without a ring"
+    );
     kui_core::testing::tab(&mut r.core, true);
     kui_core::testing::tab(&mut r.core, false);
     r.frames(2);
@@ -1657,10 +1866,17 @@ fn a_checkbox_ring_hugs_its_box_and_shows_only_from_the_keyboard() {
         .expect("the ring round the box")
         .rect;
     let bx = r
-        .node(|n| (n.rect.w - 14.0).abs() < 0.5 && (n.rect.h - 14.0).abs() < 0.5 && n.rect.x >= row.x - 0.5)
+        .node(|n| {
+            (n.rect.w - 14.0).abs() < 0.5
+                && (n.rect.h - 14.0).abs() < 0.5
+                && n.rect.x >= row.x - 0.5
+        })
         .expect("the box")
         .rect;
-    assert!((bx.x - ring.x - 4.0).abs() < 0.5 && (bx.y - ring.y - 4.0).abs() < 0.5, "2 px out: {ring:?} round {bx:?}");
+    assert!(
+        (bx.x - ring.x - 4.0).abs() < 0.5 && (bx.y - ring.y - 4.0).abs() < 0.5,
+        "2 px out: {ring:?} round {bx:?}"
+    );
     assert!(focus_quads(&mut r.core) > 0, "the keyboard shows it");
 }
 
@@ -1683,7 +1899,11 @@ fn a_click_on_a_list_row_draws_no_ring_and_the_keyboard_does() {
     let two = r.text("two").unwrap();
     r.slow_click(two.x + 2.0, two.y + two.h / 2.0);
     r.frames(2);
-    assert_eq!(focus_quads(&mut r.core), 0, "no ring round the list after a click");
+    assert_eq!(
+        focus_quads(&mut r.core),
+        0,
+        "no ring round the list after a click"
+    );
     // From nothing, Tab to the button and Tab again into the list.
     r.core.set_focus(None);
     kui_core::testing::tab(&mut r.core, false);
@@ -1716,18 +1936,34 @@ fn a_slider_handle_is_grabbed_and_drags() {
         .rect;
     let (x, y) = (handle.x + 6.0, handle.y + 6.0);
     use kui_core::{InputEvent, Vec2, cursor::CursorShape};
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
     r.route(e);
     r.frames(2);
-    assert_eq!(r.core.cursor_shape(), CursorShape::Grab, "an open hand over the handle");
+    assert_eq!(
+        r.core.cursor_shape(),
+        CursorShape::Grab,
+        "an open hand over the handle"
+    );
     let e = r.core.handle_input(InputEvent::mouse_down(1));
     r.route(e);
     r.frames(2);
-    assert_eq!(r.core.cursor_shape(), CursorShape::Grabbing, "a closed one while it is held");
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x + 60.0, y)));
+    assert_eq!(
+        r.core.cursor_shape(),
+        CursorShape::Grabbing,
+        "a closed one while it is held"
+    );
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(x + 60.0, y)));
     r.route(e);
     r.frames(2);
-    assert_eq!(r.core.cursor_shape(), CursorShape::Grabbing, "still closed off the handle");
+    assert_eq!(
+        r.core.cursor_shape(),
+        CursorShape::Grabbing,
+        "still closed off the handle"
+    );
     let e = r.core.handle_input(InputEvent::mouse_up());
     r.route(e);
     r.frames(2);
@@ -1763,7 +1999,9 @@ fn a_toast_with_no_tone_is_info_and_the_last_one_slides_out() {
         "the edge is the skin's info blue: {:?}",
         edge.bg
     );
-    let glyphs = |r: &mut LuaRig| kui_core::testing::quads_of(&mut r.core, kui_core::QuadKind::GlyphMask).len();
+    let glyphs = |r: &mut LuaRig| {
+        kui_core::testing::quads_of(&mut r.core, kui_core::QuadKind::GlyphMask).len()
+    };
     let with = glyphs(&mut r);
     r.app.globals().set("shown", false).unwrap();
     r.frames(1);
@@ -1799,12 +2037,25 @@ fn a_new_notes_title_takes_the_keyboard_and_tab_goes_on_to_its_body() {
     r.slow_click(b.x + b.w / 2.0, b.y + b.h / 2.0);
     r.frames(3);
     let focused = |r: &mut LuaRig| -> Option<String> {
-        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
     };
-    assert_eq!(focused(&mut r).as_deref(), Some("Title"), "the title has the keyboard");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Title"),
+        "the title has the keyboard"
+    );
     kui_core::testing::tab(&mut r.core, false);
     r.frames(2);
-    assert_eq!(focused(&mut r).as_deref(), Some("Note"), "Tab goes on to the body");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Note"),
+        "Tab goes on to the body"
+    );
 }
 
 /// A raw key press as a window sends one: the key down, then its editing
@@ -1843,7 +2094,12 @@ fn a_tables_rows_are_one_stop_the_arrows_walk() {
         ));
         r.frames(2);
         let focused = |r: &mut LuaRig| -> Option<String> {
-            r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+            r.core
+                .access_tree()
+                .nodes
+                .iter()
+                .find(|n| n.focused)
+                .and_then(|n| n.name.clone())
         };
         r.core.set_focus(None);
         let mut stops = Vec::new();
@@ -1855,13 +2111,24 @@ fn a_tables_rows_are_one_stop_the_arrows_walk() {
         // The rows are a list composite (ADR 0070): one stop, entered on
         // the first row, the selection following the keyboard.
         let rows = ["one", "two", "three", "four"];
-        let into = stops.iter().position(|s| s.as_deref().is_some_and(|s| rows.contains(&s)));
+        let into = stops
+            .iter()
+            .position(|s| s.as_deref().is_some_and(|s| rows.contains(&s)));
         if !selectable {
-            assert!(into.is_none(), "a table nobody selects in is no stop: {stops:?}");
+            assert!(
+                into.is_none(),
+                "a table nobody selects in is no stop: {stops:?}"
+            );
             continue;
         }
-        assert_eq!(stops.iter().filter(|s| s.as_deref().is_some_and(|s| rows.contains(&s))).count(), 1,
-            "the rows are one stop: {stops:?}");
+        assert_eq!(
+            stops
+                .iter()
+                .filter(|s| s.as_deref().is_some_and(|s| rows.contains(&s)))
+                .count(),
+            1,
+            "the rows are one stop: {stops:?}"
+        );
         r.core.set_focus(None);
         r.app.globals().set("sel", mlua::Value::Nil).unwrap();
         r.frames(1);
@@ -1914,7 +2181,12 @@ fn a_bar_charts_bars_are_one_stop_the_arrows_walk_and_look_hovered() {
     let mut r = LuaRig::new(&src(true));
     r.frames(2);
     let focused = |r: &mut LuaRig| -> Option<String> {
-        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
     };
     let mut stops = Vec::new();
     for _ in 0..3 {
@@ -1922,26 +2194,50 @@ fn a_bar_charts_bars_are_one_stop_the_arrows_walk_and_look_hovered() {
         r.frames(1);
         stops.push(focused(&mut r));
     }
-    assert_eq!(stops[1].as_deref(), Some("a: 5%"), "the bars are one stop, the first bar: {stops:?}");
-    assert_eq!(stops[2].as_deref(), Some("After"), "and the next stop is past them: {stops:?}");
+    assert_eq!(
+        stops[1].as_deref(),
+        Some("a: 5%"),
+        "the bars are one stop, the first bar: {stops:?}"
+    );
+    assert_eq!(
+        stops[2].as_deref(),
+        Some("After"),
+        "and the next stop is past them: {stops:?}"
+    );
     kui_core::testing::tab(&mut r.core, true);
     r.frames(1);
     use kui_core::{EditKey, InputEvent, Mods};
-    r.core.handle_input(InputEvent::Key(EditKey::Right, Mods::NONE));
+    r.core
+        .handle_input(InputEvent::Key(EditKey::Right, Mods::NONE));
     r.frames(2);
-    assert_eq!(focused(&mut r).as_deref(), Some("b: 2.9%"), "Right walks to the next bar");
-    let items: Vec<_> = r.core.nodes().into_iter().filter(|n| n.role == Some(kui_core::Role::ListItem)).collect();
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("b: 2.9%"),
+        "Right walks to the next bar"
+    );
+    let items: Vec<_> = r
+        .core
+        .nodes()
+        .into_iter()
+        .filter(|n| n.role == Some(kui_core::Role::ListItem))
+        .collect();
     let (a, bar) = (items[0].clone(), items[1].clone());
     assert_ne!(bar.bg, a.bg, "the bar the keyboard is on looks hovered");
     assert!(r.text("b: 2.9%").is_some(), "its tooltip shows");
-    let e = r.core.handle_input(InputEvent::Key(EditKey::Enter, Mods::NONE));
+    let e = r
+        .core
+        .handle_input(InputEvent::Key(EditKey::Enter, Mods::NONE));
     r.route(e);
     r.frames(1);
     let picked: Option<i64> = r.app.globals().get("picked").unwrap();
     assert_eq!(picked, Some(1), "Enter picks it");
     // The value column hugs its widest label.
     let six = r.text("6%").expect("the top value label");
-    assert!(a.rect.x - (six.x + six.w) <= 10.0, "the first bar sits by the labels: {six:?} {:?}", a.rect);
+    assert!(
+        a.rect.x - (six.x + six.w) <= 10.0,
+        "the first bar sits by the labels: {six:?} {:?}",
+        a.rect
+    );
 
     let mut r = LuaRig::new(&src(false));
     r.frames(2);
@@ -1949,7 +2245,11 @@ fn a_bar_charts_bars_are_one_stop_the_arrows_walk_and_look_hovered() {
     r.frames(1);
     kui_core::testing::tab(&mut r.core, false);
     r.frames(1);
-    assert_eq!(focused(&mut r).as_deref(), Some("After"), "bars nobody picks are no stop");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("After"),
+        "bars nobody picks are no stop"
+    );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
@@ -1973,7 +2273,12 @@ fn a_waterfalls_spans_are_one_stop_or_none() {
         )
     };
     let focused = |r: &mut LuaRig| -> Option<String> {
-        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
     };
     for picks in [true, false] {
         let mut r = LuaRig::new(&src(picks));
@@ -1984,11 +2289,17 @@ fn a_waterfalls_spans_are_one_stop_or_none() {
             r.frames(1);
             stops.push(focused(&mut r));
         }
-        let spans = stops.iter().filter(|s| matches!(s.as_deref(), Some("load" | "parse" | "paint"))).count();
+        let spans = stops
+            .iter()
+            .filter(|s| matches!(s.as_deref(), Some("load" | "parse" | "paint")))
+            .count();
         if picks {
             // The three tools, the spans once, After, round to the first.
             assert_eq!(spans, 1, "the spans are one stop: {stops:?}");
-            let at = stops.iter().position(|s| matches!(s.as_deref(), Some("load" | "parse" | "paint"))).unwrap();
+            let at = stops
+                .iter()
+                .position(|s| matches!(s.as_deref(), Some("load" | "parse" | "paint")))
+                .unwrap();
             r.core.set_focus(None);
             for _ in 0..=at {
                 kui_core::testing::tab(&mut r.core, false);
@@ -1996,10 +2307,13 @@ fn a_waterfalls_spans_are_one_stop_or_none() {
             }
             let first = focused(&mut r);
             use kui_core::{EditKey, InputEvent, Mods};
-            r.core.handle_input(InputEvent::Key(EditKey::Down, Mods::NONE));
+            r.core
+                .handle_input(InputEvent::Key(EditKey::Down, Mods::NONE));
             r.frames(1);
             assert_ne!(focused(&mut r), first, "an arrow walks to the next span");
-            let e = r.core.handle_input(InputEvent::Key(EditKey::Enter, Mods::NONE));
+            let e = r
+                .core
+                .handle_input(InputEvent::Key(EditKey::Enter, Mods::NONE));
             r.route(e);
             r.frames(1);
             let picked: Option<i64> = r.app.globals().get("picked").unwrap();
@@ -2035,11 +2349,20 @@ fn a_tables_ring_and_selection_are_one_cursor() {
     r.slow_click(two.x + 2.0, two.y + two.h / 2.0);
     r.frames(1);
     let focused = |r: &mut LuaRig| -> Option<String> {
-        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
     };
     // A row is the list composite's item (ADR 0070): the click focuses it,
     // and the arrows move that focus, the selection with it.
-    assert_eq!(focused(&mut r).as_deref(), Some("two"), "the click focuses the row");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("two"),
+        "the click focuses the row"
+    );
     press_key(&mut r, kui_core::KeyCode::Down);
     press_key(&mut r, kui_core::KeyCode::Down);
     r.frames(1);
@@ -2053,14 +2376,20 @@ fn a_tables_ring_and_selection_are_one_cursor() {
     let four = r.text("four").unwrap();
     assert_eq!(rings.len(), 1, "one ring: {rings:?}");
     let q = rings[0].rect;
-    assert!(q.y <= four.y && q.y + q.h >= four.y + four.h, "on the selected row: {q:?} vs {four:?}");
+    assert!(
+        q.y <= four.y && q.y + q.h >= four.y + four.h,
+        "on the selected row: {q:?} vs {four:?}"
+    );
 }
 
 #[test]
 fn rings_are_in_the_skins_focus_colour() {
     // The core's ring is the theme's blue in every skin; Kit's controls
     // draw their own in the skin's focus colour, the core's turned off.
-    for (skin, colours) in [("phosphor", [0x0f7a35ffu32, 0x39ff6aff]), ("neutral", [0x2f6fedff, 0x5b8cffff])] {
+    for (skin, colours) in [
+        ("phosphor", [0x0f7a35ffu32, 0x39ff6aff]),
+        ("neutral", [0x2f6fedff, 0x5b8cffff]),
+    ] {
         let mut r = LuaRig::new(&format!(
             r#"
             function view(env)
@@ -2076,17 +2405,39 @@ fn rings_are_in_the_skins_focus_colour() {
             "#
         ));
         r.frames(2);
-        let skin_ring: Vec<kui_core::Color> = colours.iter().map(|&c| kui_core::Color::hex(c)).collect();
-        let theme_ring = [kui_core::Theme::light().focus_ring, kui_core::Theme::dark().focus_ring];
+        let skin_ring: Vec<kui_core::Color> =
+            colours.iter().map(|&c| kui_core::Color::hex(c)).collect();
+        let theme_ring = [
+            kui_core::Theme::light().focus_ring,
+            kui_core::Theme::dark().focus_ring,
+        ];
         for stop in 0..5 {
             kui_core::testing::tab(&mut r.core, false);
             r.frames(2);
             let quads = kui_core::testing::solids(&mut r.core);
-            let ours = quads.iter().filter(|q| q.border_w > 0.0 && skin_ring.contains(&q.border_color)).count();
-            let theirs = quads.iter().filter(|q| q.border_w > 0.0 && theme_ring.contains(&q.border_color)).count();
-            let who = r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
-            assert!(ours >= 1, "{skin}, stop {stop} ({who:?}): a ring in the skin's colour");
-            assert_eq!(theirs, 0, "{skin}, stop {stop} ({who:?}): no ring in the theme's");
+            let ours = quads
+                .iter()
+                .filter(|q| q.border_w > 0.0 && skin_ring.contains(&q.border_color))
+                .count();
+            let theirs = quads
+                .iter()
+                .filter(|q| q.border_w > 0.0 && theme_ring.contains(&q.border_color))
+                .count();
+            let who = r
+                .core
+                .access_tree()
+                .nodes
+                .iter()
+                .find(|n| n.focused)
+                .and_then(|n| n.name.clone());
+            assert!(
+                ours >= 1,
+                "{skin}, stop {stop} ({who:?}): a ring in the skin's colour"
+            );
+            assert_eq!(
+                theirs, 0,
+                "{skin}, stop {stop} ({who:?}): no ring in the theme's"
+            );
         }
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }
@@ -2108,24 +2459,36 @@ fn a_slider_lands_on_the_step_nearest_the_pointer_and_its_handle_on_the_value() 
         "#,
     );
     r.frames(3);
-    let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).expect("the track").rect;
+    let track = r
+        .node(|n| n.role == Some(kui_core::Role::Slider))
+        .expect("the track")
+        .rect;
     let (start, len) = (track.x + 6.0, track.w - 12.0);
     let handle = r
         .node(|n| (n.rect.w - 12.0).abs() < 0.5 && (n.rect.h - 12.0).abs() < 0.5)
         .expect("the handle")
         .rect;
     let centre = handle.x + 6.0;
-    assert!((centre - (start + 0.5 * len)).abs() <= 1.0, "the handle sits on 5: {centre} vs {}", start + 0.5 * len);
+    assert!(
+        (centre - (start + 0.5 * len)).abs() <= 1.0,
+        "the handle sits on 5: {centre} vs {}",
+        start + 0.5 * len
+    );
     let y = track.y + track.h / 2.0;
     use kui_core::{InputEvent, Vec2};
     let mut drag_to = |r: &mut LuaRig, at: f32| -> f64 {
-        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(centre, y)));
+        let e = r
+            .core
+            .handle_input(InputEvent::CursorMoved(Vec2::new(centre, y)));
         r.route(e);
         r.frames(1);
         let e = r.core.handle_input(InputEvent::mouse_down(1));
         r.route(e);
         r.frames(1);
-        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(start + at / 10.0 * len, y)));
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+            start + at / 10.0 * len,
+            y,
+        )));
         r.route(e);
         r.frames(1);
         let e = r.core.handle_input(InputEvent::mouse_up());
@@ -2164,23 +2527,57 @@ fn a_narrow_table_hides_columns_by_priority_then_scrolls_sideways() {
         r.frames(3);
         let mut out = Vec::new();
         for (i, name) in ["Id", "Name", "Time", "Size"].into_iter().enumerate() {
-            let h = r.node(|n| n.label.as_deref() == Some(&format!("h{}", i + 1)) && n.rect.w > 0.0).map(|n| n.rect);
-            let c = r.node(|n| n.label.as_deref() == Some(&format!("c{}", i + 1)) && n.rect.w > 0.0).map(|n| n.rect);
-            assert_eq!(h.is_some(), c.is_some(), "at {w}: {name}'s header and cells show together");
+            let h = r
+                .node(|n| n.label.as_deref() == Some(&format!("h{}", i + 1)) && n.rect.w > 0.0)
+                .map(|n| n.rect);
+            let c = r
+                .node(|n| n.label.as_deref() == Some(&format!("c{}", i + 1)) && n.rect.w > 0.0)
+                .map(|n| n.rect);
+            assert_eq!(
+                h.is_some(),
+                c.is_some(),
+                "at {w}: {name}'s header and cells show together"
+            );
             if let (Some(h), Some(c)) = (h, c) {
-                assert!((h.x - c.x).abs() < 0.5 && (h.w - c.w).abs() < 0.5, "at {w}: {name}'s header {h:?} over its cells {c:?}");
+                assert!(
+                    (h.x - c.x).abs() < 0.5 && (h.w - c.w).abs() < 0.5,
+                    "at {w}: {name}'s header {h:?} over its cells {c:?}"
+                );
                 out.push(name);
             }
         }
         out
     };
-    assert_eq!(shown(&mut r, 700.0), ["Id", "Name", "Time", "Size"], "wide: every column");
-    assert_eq!(shown(&mut r, 360.0), ["Id", "Name", "Time"], "Size goes first");
+    assert_eq!(
+        shown(&mut r, 700.0),
+        ["Id", "Name", "Time", "Size"],
+        "wide: every column"
+    );
+    assert_eq!(
+        shown(&mut r, 360.0),
+        ["Id", "Name", "Time"],
+        "Size goes first"
+    );
     assert_eq!(shown(&mut r, 280.0), ["Name", "Time"], "then the id");
     assert_eq!(shown(&mut r, 150.0), ["Name"], "then Time, and Name never");
-    let g = r.core.nodes().into_iter().find(|n| n.label.as_deref() == Some("sheet")).expect("the sheet").rect;
-    let wide = r.core.nodes().into_iter().find(|n| n.label.as_deref() == Some("wide")).expect("the scroller").rect;
-    assert!(g.w > wide.w + 1.0, "what does not fit scrolls sideways: the sheet {g:?} in {wide:?}");
+    let g = r
+        .core
+        .nodes()
+        .into_iter()
+        .find(|n| n.label.as_deref() == Some("sheet"))
+        .expect("the sheet")
+        .rect;
+    let wide = r
+        .core
+        .nodes()
+        .into_iter()
+        .find(|n| n.label.as_deref() == Some("wide"))
+        .expect("the scroller")
+        .rect;
+    assert!(
+        g.w > wide.w + 1.0,
+        "what does not fit scrolls sideways: the sheet {g:?} in {wide:?}"
+    );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
@@ -2209,15 +2606,29 @@ fn a_slider_springs_to_a_new_value_but_not_on_a_resize_or_a_drag() {
         r.frames(3);
         // The handle's centre, and where on the track the value puts it.
         let at = |r: &mut LuaRig| -> (f32, f32, f32) {
-            let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).expect("the track").rect;
+            let track = r
+                .node(|n| n.role == Some(kui_core::Role::Slider))
+                .expect("the track")
+                .rect;
             let (start, len) = (track.x + 6.0, track.w - 12.0);
-            let handle = r.node(|n| (n.rect.w - 12.0).abs() < 0.5 && (n.rect.h - 12.0).abs() < 0.5).expect("the handle").rect;
+            let handle = r
+                .node(|n| (n.rect.w - 12.0).abs() < 0.5 && (n.rect.h - 12.0).abs() < 0.5)
+                .expect("the handle")
+                .rect;
             let v: f64 = r.app.globals().get("v").unwrap();
             (handle.x + 6.0, start + v as f32 / 10.0 * len, start)
         };
         let fill_end = |r: &mut LuaRig| -> f32 {
-            let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).unwrap().rect;
-            let fill = r.node(|n| n.parent.is_some() && n.rect.h == 4.0 && (n.rect.x - track.x - 6.0).abs() < 0.5).expect("the fill").rect;
+            let track = r
+                .node(|n| n.role == Some(kui_core::Role::Slider))
+                .unwrap()
+                .rect;
+            let fill = r
+                .node(|n| {
+                    n.parent.is_some() && n.rect.h == 4.0 && (n.rect.x - track.x - 6.0).abs() < 0.5
+                })
+                .expect("the fill")
+                .rect;
             fill.x + fill.w
         };
         let (c0, want0, _) = at(&mut r);
@@ -2233,32 +2644,52 @@ fn a_slider_springs_to_a_new_value_but_not_on_a_resize_or_a_drag() {
         let (mid, want, _) = at(&mut r);
         let end = fill_end(&mut r);
         if reduced {
-            assert!((mid - want).abs() <= 1.0, "under reduced motion it jumps: {mid} vs {want}");
+            assert!(
+                (mid - want).abs() <= 1.0,
+                "under reduced motion it jumps: {mid} vs {want}"
+            );
         } else {
-            assert!(mid > c0 + 2.0 && mid < want - 2.0, "on its way: {c0} .. {mid} .. {want}");
-            assert!((mid - end).abs() <= 1.0, "the handle rides the fill's end: {mid} vs {end}");
+            assert!(
+                mid > c0 + 2.0 && mid < want - 2.0,
+                "on its way: {c0} .. {mid} .. {want}"
+            );
+            assert!(
+                (mid - end).abs() <= 1.0,
+                "the handle rides the fill's end: {mid} vs {end}"
+            );
         }
         for k in 1..=30 {
             r.core.set_time(1.1 + k as f64 / 60.0);
             r.frames(1);
         }
         let (there, want, _) = at(&mut r);
-        assert!((there - want).abs() <= 1.0, "there in the end: {there} vs {want}");
+        assert!(
+            (there - want).abs() <= 1.0,
+            "there in the end: {there} vs {want}"
+        );
 
         // A resize moves it at once.
         r.app.globals().set("w", 600).unwrap();
         r.core.set_time(3.0);
         r.frames(1);
         let (wide, want, _) = at(&mut r);
-        assert!((wide - want).abs() <= 1.0, "a resize does not ease it: {wide} vs {want}");
+        assert!(
+            (wide - want).abs() <= 1.0,
+            "a resize does not ease it: {wide} vs {want}"
+        );
 
         // A drag follows the pointer: each value it proposes is drawn there.
-        let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).unwrap().rect;
+        let track = r
+            .node(|n| n.role == Some(kui_core::Role::Slider))
+            .unwrap()
+            .rect;
         let (_, _, start) = at(&mut r);
         let len = track.w - 12.0;
         let y = track.y + track.h / 2.0;
         use kui_core::{InputEvent, Vec2};
-        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(wide, y)));
+        let e = r
+            .core
+            .handle_input(InputEvent::CursorMoved(Vec2::new(wide, y)));
         r.route(e);
         r.core.set_time(3.1);
         r.frames(1);
@@ -2267,13 +2698,19 @@ fn a_slider_springs_to_a_new_value_but_not_on_a_resize_or_a_drag() {
         r.core.set_time(3.2);
         r.frames(1);
         for (k, to) in [6.0f32, 4.0, 3.0].into_iter().enumerate() {
-            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(start + to / 10.0 * len, y)));
+            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+                start + to / 10.0 * len,
+                y,
+            )));
             r.route(e);
             r.core.set_time(3.25 + k as f64 * 0.02);
             r.frames(1);
             let (now, want, _) = at(&mut r);
             if k > 0 {
-                assert!((now - want).abs() <= 1.0, "a drag is followed directly (to {to}): {now} vs {want}");
+                assert!(
+                    (now - want).abs() <= 1.0,
+                    "a drag is followed directly (to {to}): {now} vs {want}"
+                );
             }
         }
         let e = r.core.handle_input(InputEvent::mouse_up());
@@ -2297,7 +2734,10 @@ fn an_under_way_bar_crosses_its_whole_track() {
     );
     r.core.set_time(1.0);
     r.frames(3);
-    let track = r.node(|n| n.role == Some(kui_core::Role::Slider)).expect("the track").rect;
+    let track = r
+        .node(|n| n.role == Some(kui_core::Role::Slider))
+        .expect("the track")
+        .rect;
     let mut right = f32::MIN;
     let mut left = f32::MAX;
     for k in 0..60 {
@@ -2311,8 +2751,16 @@ fn an_under_way_bar_crosses_its_whole_track() {
             }
         }
     }
-    assert!(right >= track.x + track.w - 2.0, "it reaches the track's end: {right} vs {:?}", track);
-    assert!(left <= track.x + 2.0, "and starts from its start: {left} vs {:?}", track);
+    assert!(
+        right >= track.x + track.w - 2.0,
+        "it reaches the track's end: {right} vs {:?}",
+        track
+    );
+    assert!(
+        left <= track.x + 2.0,
+        "and starts from its start: {left} vs {:?}",
+        track
+    );
 }
 
 #[test]
@@ -2336,13 +2784,21 @@ fn a_fields_choose_button_asks_for_a_folder_and_fills_the_field() {
     let asks = r.core.take_file_requests();
     assert_eq!(asks.len(), 1, "one dialog asked for");
     assert_eq!(asks[0].mode, kui_core::FileDialogMode::Folder);
-    assert_eq!(asks[0].directory.as_deref(), Some("/Users/me/Tidewater"),
-        "it starts in the field's folder");
-    let e = r.core.handle_input(kui_core::InputEvent::Files(vec!["/Volumes/Data/Sync".into()]));
+    assert_eq!(
+        asks[0].directory.as_deref(),
+        Some("/Users/me/Tidewater"),
+        "it starts in the field's folder"
+    );
+    let e = r.core.handle_input(kui_core::InputEvent::Files(vec![
+        "/Volumes/Data/Sync".into(),
+    ]));
     r.route(e);
     r.frames(2);
     let folder: String = r.app.globals().get("folder").unwrap();
-    assert_eq!(folder, "/Volumes/Data/Sync", "the path picked is the field's");
+    assert_eq!(
+        folder, "/Volumes/Data/Sync",
+        "the path picked is the field's"
+    );
     // Cancelled: nothing changes.
     r.slow_click(b.x + b.w / 2.0, b.y + b.h / 2.0);
     r.frames(2);
@@ -2376,19 +2832,34 @@ fn a_narrow_row_shrinks_its_field_and_keeps_its_button_inside_the_panel() {
             "#
         ));
         r.frames(3);
-        let panel = r.node(|n| n.role == Some(kui_core::Role::Group) && n.label.as_deref() == Some("Folder"))
+        let panel = r
+            .node(|n| n.role == Some(kui_core::Role::Group) && n.label.as_deref() == Some("Folder"))
             .map(|n| n.rect)
             .unwrap_or_else(|| r.named("Folder"));
         let choose = r.named("Choose… sync folder");
         let mode = r.named("Mode: A rather long choice");
-        let inside = |b: kui_core::Rect| b.x >= panel.x - 0.5 && b.x + b.w <= panel.x + panel.w - 1.5;
-        assert!(inside(choose), "at {w}: the button inside the panel: {choose:?} in {panel:?}");
-        assert!(inside(mode), "at {w}: the select inside the panel: {mode:?} in {panel:?}");
+        let inside =
+            |b: kui_core::Rect| b.x >= panel.x - 0.5 && b.x + b.w <= panel.x + panel.w - 1.5;
+        assert!(
+            inside(choose),
+            "at {w}: the button inside the panel: {choose:?} in {panel:?}"
+        );
+        assert!(
+            inside(mode),
+            "at {w}: the select inside the panel: {mode:?} in {panel:?}"
+        );
         let label = r
-            .node(|n| n.text.as_deref().is_some_and(|t| t.to_lowercase().starts_with("choose")))
+            .node(|n| {
+                n.text
+                    .as_deref()
+                    .is_some_and(|t| t.to_lowercase().starts_with("choose"))
+            })
             .expect("the button's label")
             .rect;
-        assert!(label.x + label.w <= choose.x + choose.w, "at {w}: its whole label");
+        assert!(
+            label.x + label.w <= choose.x + choose.w,
+            "at {w}: its whole label"
+        );
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }
 }
@@ -2425,7 +2896,9 @@ fn a_long_list_steps_past_its_window_and_types_ahead() {
     let sel: Option<i64> = r.app.globals().get("sel").unwrap();
     assert_eq!(sel, Some(999), "End reaches the last row, past the window");
     // A search among the rows the window built is the core's own.
-    let e = r.core.handle_input(kui_core::InputEvent::Text("item 0995".into()));
+    let e = r
+        .core
+        .handle_input(kui_core::InputEvent::Text("item 0995".into()));
     r.route(e);
     r.frames(2);
     let sel: Option<i64> = r.app.globals().get("sel").unwrap();
@@ -2460,22 +2933,47 @@ fn a_table_of_cells_walks_its_cells() {
     );
     r.frames(2);
     let tree = r.core.access_tree();
-    assert!(tree.nodes.iter().any(|n| n.role == kui_core::Role::Table), "a table");
-    assert!(tree.nodes.iter().any(|n| n.role == kui_core::Role::ColumnHeader), "with column headers");
+    assert!(
+        tree.nodes.iter().any(|n| n.role == kui_core::Role::Table),
+        "a table"
+    );
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.role == kui_core::Role::ColumnHeader),
+        "with column headers"
+    );
     let focused = |r: &mut LuaRig| -> Option<String> {
-        r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone())
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
     };
     let auth = r.text("auth").unwrap();
     r.slow_click(auth.x + 2.0, auth.y + auth.h / 2.0);
     r.frames(1);
     assert_eq!(focused(&mut r).as_deref(), Some("auth"));
     let sel: Option<i64> = r.app.globals().get("sel").unwrap();
-    assert_eq!(sel, Some(0), "a click on a cell selects its row, as arrowing onto it does");
+    assert_eq!(
+        sel,
+        Some(0),
+        "a click on a cell selects its row, as arrowing onto it does"
+    );
     press_key(&mut r, kui_core::KeyCode::Right);
-    assert_eq!(focused(&mut r).as_deref(), Some("up"), "Right along the row");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("up"),
+        "Right along the row"
+    );
     press_key(&mut r, kui_core::KeyCode::Down);
     r.frames(1);
-    assert_eq!(focused(&mut r).as_deref(), Some("down"), "Down keeps the column");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("down"),
+        "Down keeps the column"
+    );
     let sel: Option<i64> = r.app.globals().get("sel").unwrap();
     assert_eq!(sel, Some(1), "and selects the row it lands on");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
@@ -2503,7 +3001,13 @@ fn a_text_area_types_tab_unless_it_moves_focus() {
         r.route(e);
         r.frames(2);
         let body: String = r.app.globals().get("body").unwrap();
-        let on = r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+        let on = r
+            .core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone());
         if moves {
             assert_eq!(on.as_deref(), Some("After"), "Tab moved on");
             assert_eq!(body, "");
@@ -2546,7 +3050,10 @@ fn under_reduced_motion_a_switch_knob_jumps() {
     }
     let last = xs[xs.len() - 1];
     assert!(last > before + 10.0, "it went across: {xs:?}");
-    assert!(xs.iter().all(|x| (*x - last).abs() < 0.5), "in one frame, no steps between: {xs:?}");
+    assert!(
+        xs.iter().all(|x| (*x - last).abs() < 0.5),
+        "in one frame, no steps between: {xs:?}"
+    );
 }
 
 #[test]
@@ -2576,7 +3083,10 @@ fn a_line_chart_breaks_its_line_at_a_gap_and_keeps_its_window() {
         .collect();
     assert_eq!(runs.len(), 2, "two runs either side of the gap: {runs:?}");
     let (a, b) = (runs[0], runs[1]);
-    assert!(a.x + a.w <= b.x + 1.0 || b.x + b.w <= a.x + 1.0, "side by side, not overlapping: {runs:?}");
+    assert!(
+        a.x + a.w <= b.x + 1.0 || b.x + b.w <= a.x + 1.0,
+        "side by side, not overlapping: {runs:?}"
+    );
 }
 
 /// The x labels of a line chart `width` px wide over x 0..=100: each text
@@ -2614,8 +3124,14 @@ fn a_line_charts_x_labels_are_spaced_by_their_measured_widths() {
     // ticks come as close as two neighbours' half widths and a gap.
     let wide = x_labels(1100);
     let texts: Vec<&str> = wide.iter().map(|(_, t)| t.as_str()).collect();
-    assert!(wide.len() > 11, "more ticks than one every 90 px: {texts:?}");
-    assert!(texts.iter().all(|t| !t.contains('.')), "whole steps read whole: {texts:?}");
+    assert!(
+        wide.len() > 11,
+        "more ticks than one every 90 px: {texts:?}"
+    );
+    assert!(
+        texts.iter().all(|t| !t.contains('.')),
+        "whole steps read whole: {texts:?}"
+    );
     for pair in wide.windows(2) {
         let (a, b) = (&pair[0], &pair[1]);
         assert!(a.0.x + a.0.w + 4.0 <= b.0.x, "{a:?} and {b:?} do not touch");
@@ -2636,7 +3152,11 @@ fn y_labels(core: &Core) -> Vec<(kui_core::Rect, f64)> {
         .into_iter()
         .filter_map(|n| {
             let t = n.text?;
-            let v: f64 = t.trim_end_matches(" ms").trim_end_matches('k').parse().ok()?;
+            let v: f64 = t
+                .trim_end_matches(" ms")
+                .trim_end_matches('k')
+                .parse()
+                .ok()?;
             Some((n.rect, v))
         })
         .collect()
@@ -2662,12 +3182,21 @@ fn a_line_charts_gutter_is_as_wide_as_its_widest_label() {
             4,
         );
         assert!(w.is_empty(), "{w:#?}");
-        let ys: Vec<_> = y_labels(&core).into_iter().filter(|(r, _)| r.x < 100.0).collect();
+        let ys: Vec<_> = y_labels(&core)
+            .into_iter()
+            .filter(|(r, _)| r.x < 100.0)
+            .collect();
         assert!(ys.len() >= 3, "{ys:?}");
         let right = ys.iter().map(|(r, _)| r.x + r.w).fold(f32::MIN, f32::max);
         let widest = ys.iter().map(|(r, _)| r.w).fold(f32::MIN, f32::max);
-        assert!(right - widest <= 4.0, "the gutter hugs its widest label ({top}): {right} vs {widest}");
-        assert!(right < old, "narrower than the old fixed gutter ({top}): {right}");
+        assert!(
+            right - widest <= 4.0,
+            "the gutter hugs its widest label ({top}): {right} vs {widest}"
+        );
+        assert!(
+            right < old,
+            "narrower than the old fixed gutter ({top}): {right}"
+        );
         for (r, _) in &ys {
             assert!((r.x + r.w - right).abs() < 1.0, "right-aligned: {ys:?}");
         }
@@ -2701,9 +3230,19 @@ fn a_line_chart_glides_to_a_new_range_and_jumps_under_reduced_motion() {
         }
         r.core.set_time(1.0);
         r.frames(3);
-        let top = |r: &mut LuaRig| y_labels(&r.core).iter().map(|(_, v)| *v).fold(f64::MIN, f64::max);
+        let top = |r: &mut LuaRig| {
+            y_labels(&r.core)
+                .iter()
+                .map(|(_, v)| *v)
+                .fold(f64::MIN, f64::max)
+        };
         assert_eq!(top(&mut r), 10.0);
-        r.app.globals().get::<mlua::Function>("grow").unwrap().call::<()>(()).unwrap();
+        r.app
+            .globals()
+            .get::<mlua::Function>("grow")
+            .unwrap()
+            .call::<()>(())
+            .unwrap();
         r.core.set_time(1.05);
         r.frames(1);
         r.core.set_time(1.1);
@@ -2735,10 +3274,20 @@ fn reduce_motion(core: &mut Core) {
 #[test]
 fn kit_carries_its_shaders_as_the_files_say() {
     // build.lua embeds shaders/*.wgsl into the Lua every host loads.
-    let data = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../addons/kit/lua/data.lua")).unwrap();
+    let data = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../addons/kit/lua/data.lua"
+    ))
+    .unwrap();
     for (name, src) in [("shimmer", SHIMMER), ("noise", NOISE)] {
-        assert!(data.contains(src), "lua/data.lua carries shaders/{name}.wgsl as it is");
-        assert!(Core::new().add_fragment(src).is_some(), "shaders/{name}.wgsl compiles");
+        assert!(
+            data.contains(src),
+            "lua/data.lua carries shaders/{name}.wgsl as it is"
+        );
+        assert!(
+            Core::new().add_fragment(src).is_some(),
+            "shaders/{name}.wgsl compiles"
+        );
     }
 }
 
@@ -2774,9 +3323,19 @@ fn a_skeleton_sweeps_kits_own_shimmer_and_holds_still_under_reduced_motion() {
         assert_eq!(frags.len(), 5, "{frags:?}");
         let lines: Vec<&kui_core::Rect> = frags.iter().filter(|b| b.h == 10.0).collect();
         assert_eq!(lines.len(), 3, "{frags:?}");
-        assert!((lines[2].w - lines[0].w * 0.6).abs() < 1.0, "the last line is shorter: {lines:?}");
-        assert!(frags.iter().any(|b| b.w == 40.0 && b.h == 40.0), "a circle 40 across");
-        assert_eq!(r.core.animating(), !reduced, "it sweeps unless motion is reduced");
+        assert!(
+            (lines[2].w - lines[0].w * 0.6).abs() < 1.0,
+            "the last line is shorter: {lines:?}"
+        );
+        assert!(
+            frags.iter().any(|b| b.w == 40.0 && b.h == 40.0),
+            "a circle 40 across"
+        );
+        assert_eq!(
+            r.core.animating(),
+            !reduced,
+            "it sweeps unless motion is reduced"
+        );
     }
 }
 
@@ -2791,15 +3350,28 @@ fn a_shader_box_draws_a_preset_a_source_or_the_hosts_fragment_and_is_a_well_with
             for _ in 0..2 {
                 r.frame(|ui| {
                     kit::Settings::new().skin(kit::Skin::Neutral).place(ui);
-                    kit::Shader::new().preset(preset).height(50.0).label("A preset").place(ui);
+                    kit::Shader::new()
+                        .preset(preset)
+                        .height(50.0)
+                        .label("A preset")
+                        .place(ui);
                 });
             }
             let w = r.core.take_warnings();
             assert!(w.is_empty(), "{w:#?}");
-            let frag = r.core.nodes().into_iter().find(|n| n.kind == kui_core::NodeKind::Fragment).expect("the fragment");
+            let frag = r
+                .core
+                .nodes()
+                .into_iter()
+                .find(|n| n.kind == kui_core::NodeKind::Fragment)
+                .expect("the fragment");
             assert_eq!(frag.rect.h, 50.0);
             r.centre("A preset");
-            assert_eq!(r.core.animating(), !reduced, "a preset moves unless motion is reduced ({preset:?})");
+            assert_eq!(
+                r.core.animating(),
+                !reduced,
+                "a preset moves unless motion is reduced ({preset:?})"
+            );
         }
     }
     // WGSL handed over is registered by Kit; the host's own handle is drawn.
@@ -2807,22 +3379,47 @@ fn a_shader_box_draws_a_preset_a_source_or_the_hosts_fragment_and_is_a_well_with
     let id = r.core.add_fragment(NOISE).unwrap();
     r.frame(|ui| {
         kit::Shader::new().source(SHIMMER).height(20.0).place(ui);
-        kit::Shader::new().id(id.to_ffi() as i64).params(vec![0.0; 12]).height(21.0).place(ui);
+        kit::Shader::new()
+            .id(id.to_ffi() as i64)
+            .params(vec![0.0; 12])
+            .height(21.0)
+            .place(ui);
     });
     assert!(r.core.take_warnings().is_empty());
-    let frags = r.core.nodes().into_iter().filter(|n| n.kind == kui_core::NodeKind::Fragment).count();
+    let frags = r
+        .core
+        .nodes()
+        .into_iter()
+        .filter(|n| n.kind == kui_core::NodeKind::Fragment)
+        .count();
     assert_eq!(frags, 2);
-    assert!(!r.core.animating(), "a caller's shader moves only when it says animate");
+    assert!(
+        !r.core.animating(),
+        "a caller's shader moves only when it says animate"
+    );
     // Source that does not compile is said, and the box is the well.
     let mut r = rig();
     r.frame(|ui| {
-        kit::Shader::new().source("fn fragment(").height(30.0).place(ui);
+        kit::Shader::new()
+            .source("fn fragment(")
+            .height(30.0)
+            .place(ui);
         kit::Shader::new().height(31.0).place(ui);
     });
     let w = r.core.take_warnings();
     assert!(w.iter().any(|w| w.code == "fragment-rejected"), "{w:#?}");
-    assert!(r.core.nodes().iter().all(|n| n.kind != kui_core::NodeKind::Fragment), "no shader, no fragment");
-    assert!(r.core.nodes().iter().any(|n| n.rect.h == 30.0) && r.core.nodes().iter().any(|n| n.rect.h == 31.0), "the wells keep their place");
+    assert!(
+        r.core
+            .nodes()
+            .iter()
+            .all(|n| n.kind != kui_core::NodeKind::Fragment),
+        "no shader, no fragment"
+    );
+    assert!(
+        r.core.nodes().iter().any(|n| n.rect.h == 30.0)
+            && r.core.nodes().iter().any(|n| n.rect.h == 31.0),
+        "the wells keep their place"
+    );
 }
 
 #[test]
@@ -2844,16 +3441,24 @@ fn a_select_opens_on_the_press_with_its_option_over_the_field_and_a_drag_picks()
     let field = r.named("Mode: Two");
     use kui_core::{InputEvent, Vec2};
     let (fx, fy) = (field.x + field.w / 2.0, field.y + field.h / 2.0);
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(fx, fy)));
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(fx, fy)));
     r.route(e);
     let e = r.core.handle_input(InputEvent::mouse_down(1));
     r.route(e);
     r.frames(2);
     let two = r.named("Two");
     let mid = two.y + two.h / 2.0;
-    assert!(mid > field.y && mid < field.y + field.h, "the current option sits over the field: {two:?} vs {field:?}");
+    assert!(
+        mid > field.y && mid < field.y + field.h,
+        "the current option sits over the field: {two:?} vs {field:?}"
+    );
     let three = r.named("Three");
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(fx, three.y + three.h / 2.0)));
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        fx,
+        three.y + three.h / 2.0,
+    )));
     r.route(e);
     r.frames(1);
     let e = r.core.handle_input(InputEvent::mouse_up());
@@ -2870,13 +3475,16 @@ fn a_select_opens_on_the_press_with_its_option_over_the_field_and_a_drag_picks()
     let mode: String = r.app.globals().get("mode").unwrap();
     assert_eq!(mode, "three", "and nothing picked");
     // C109: an accelerator closes it and goes on to the window.
-    let e = kui_core::testing::key_down(&mut r.core, kui_core::KeyCode::Char('c'), kui_core::KeyMods::NONE.with_primary());
+    let e = kui_core::testing::key_down(
+        &mut r.core,
+        kui_core::KeyCode::Char('c'),
+        kui_core::KeyMods::NONE.with_primary(),
+    );
     r.route(e);
     r.frames(2);
     assert!(r.text("One").is_none(), "⌘C closed the menu");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
-
 
 #[test]
 fn a_code_blocks_copy_puts_its_text_on_the_clipboard_and_says_so() {
@@ -2891,7 +3499,10 @@ fn a_code_blocks_copy_puts_its_text_on_the_clipboard_and_says_so() {
     );
     r.core.set_time(1.0);
     r.frames(2);
-    assert!(r.text("1\n2\n3").is_some(), "the lines' numbers in their gutter");
+    assert!(
+        r.text("1\n2\n3").is_some(),
+        "the lines' numbers in their gutter"
+    );
     r.named("sum.lua");
     let b = r.named("Copy the code");
     r.click(b.x + b.w / 2.0, b.y + b.h / 2.0);
@@ -2905,7 +3516,10 @@ fn a_code_blocks_copy_puts_its_text_on_the_clipboard_and_says_so() {
             _ => None,
         })
         .collect();
-    assert_eq!(copied, vec!["local a = 1\nlocal b = 2\nreturn a + b".to_string()]);
+    assert_eq!(
+        copied,
+        vec!["local a = 1\nlocal b = 2\nreturn a + b".to_string()]
+    );
     r.named("Copied");
     r.core.set_time(3.0);
     r.frames(2);
@@ -2922,14 +3536,27 @@ fn an_accent_brings_what_the_skin_paints_in_its_accent_and_an_appearance_holds()
     for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
         r.frame(|ui| {
             let roles = Value::map([("accent", Value::Int(0x1d4ed8ff))]);
-            kit::Settings::new().appearance(appearance).roles(roles).place(ui);
+            kit::Settings::new()
+                .appearance(appearance)
+                .roles(roles)
+                .place(ui);
             let t = |ui: &mut Ui<'_>, n: &str| ui.token_color(n).expect(n);
-            seen.push((t(ui, "kitAccent"), t(ui, "kitSel"), t(ui, "kitOnAccent"), t(ui, "kitSelFg"), t(ui, "kitBg"), t(ui, "kitFg")));
+            seen.push((
+                t(ui, "kitAccent"),
+                t(ui, "kitSel"),
+                t(ui, "kitOnAccent"),
+                t(ui, "kitSelFg"),
+                t(ui, "kitBg"),
+                t(ui, "kitFg"),
+            ));
         });
     }
     let (accent, sel, on, sel_fg, bg, _) = seen[0];
     assert_eq!(sel, accent, "the selection follows the accent");
-    assert!(on.r > 0.9 && on.g > 0.9, "light on the dark blue, not the ink: {on:?}");
+    assert!(
+        on.r > 0.9 && on.g > 0.9,
+        "light on the dark blue, not the ink: {on:?}"
+    );
     assert_eq!(sel_fg, on, "and on the selection");
     let (_, _, _, _, dark_bg, dark_fg) = seen[1];
     assert_ne!(dark_bg, bg, "dark held: the dark half's page");
@@ -2939,7 +3566,13 @@ fn an_accent_brings_what_the_skin_paints_in_its_accent_and_an_appearance_holds()
 /// WCAG's contrast between two opaque colours.
 fn contrast(a: kui_core::Color, b: kui_core::Color) -> f32 {
     let lum = |c: kui_core::Color| {
-        let lin = |v: f32| if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
+        let lin = |v: f32| {
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
         0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
     };
     let (x, y) = (lum(a), lum(b));
@@ -2950,7 +3583,12 @@ fn contrast(a: kui_core::Color, b: kui_core::Color) -> f32 {
 /// `top`, with its alpha, laid over the opaque `under`.
 fn over(under: kui_core::Color, top: kui_core::Color) -> kui_core::Color {
     let m = |u: f32, t: f32| u + (t - u) * top.a;
-    kui_core::Color { r: m(under.r, top.r), g: m(under.g, top.g), b: m(under.b, top.b), a: 1.0 }
+    kui_core::Color {
+        r: m(under.r, top.r),
+        g: m(under.g, top.g),
+        b: m(under.b, top.b),
+        a: 1.0,
+    }
 }
 
 #[test]
@@ -2965,7 +3603,10 @@ fn an_accent_derives_a_palette_whose_text_reads_everywhere() {
             let mut plain = std::collections::HashMap::new();
             let mut r = rig();
             r.frame(|ui| {
-                kit::Settings::new().skin(skin).appearance(appearance).place(ui);
+                kit::Settings::new()
+                    .skin(skin)
+                    .appearance(appearance)
+                    .place(ui);
             });
             r.frame(|ui| {
                 for n in ["kitBg", "kitPanel", "kitFg", "kitChosen", "kitAccent"] {
@@ -2975,13 +3616,36 @@ fn an_accent_derives_a_palette_whose_text_reads_everywhere() {
             for accent in accents {
                 let mut got = std::collections::HashMap::new();
                 let names = [
-                    "kitAccent", "kitOnAccent", "kitSel", "kitSelFg", "kitBg", "kitSide", "kitPanel", "kitSunken",
-                    "kitRaised", "kitFg", "kitMuted", "kitFaint", "kitFocus", "kitOk", "kitWarn", "kitDanger",
-                    "kitAccentText", "kitChosen", "kitChosenFg", "kitGroup1", "kitGroupFg1", "kitSeries1",
+                    "kitAccent",
+                    "kitOnAccent",
+                    "kitSel",
+                    "kitSelFg",
+                    "kitBg",
+                    "kitSide",
+                    "kitPanel",
+                    "kitSunken",
+                    "kitRaised",
+                    "kitFg",
+                    "kitMuted",
+                    "kitFaint",
+                    "kitFocus",
+                    "kitOk",
+                    "kitWarn",
+                    "kitDanger",
+                    "kitAccentText",
+                    "kitChosen",
+                    "kitChosenFg",
+                    "kitGroup1",
+                    "kitGroupFg1",
+                    "kitSeries1",
                 ];
                 r.frame(|ui| {
                     let roles = Value::map([("accent", Value::Int(accent))]);
-                    kit::Settings::new().skin(skin).appearance(appearance).roles(roles).place(ui);
+                    kit::Settings::new()
+                        .skin(skin)
+                        .appearance(appearance)
+                        .roles(roles)
+                        .place(ui);
                 });
                 r.frame(|ui| {
                     for n in names {
@@ -3003,7 +3667,11 @@ fn an_accent_derives_a_palette_whose_text_reads_everywhere() {
                         assert!(k >= 4.49, "{case}: {text} on {g} reads at {k:.2}");
                     }
                 }
-                let pairs = [("kitOnAccent", "kitAccent"), ("kitChosenFg", "kitChosen"), ("kitGroupFg1", "kitGroup1")];
+                let pairs = [
+                    ("kitOnAccent", "kitAccent"),
+                    ("kitChosenFg", "kitChosen"),
+                    ("kitGroupFg1", "kitGroup1"),
+                ];
                 for (text, fill) in pairs {
                     let k = contrast(at(text), at(fill));
                     assert!(k >= 4.49, "{case}: {text} on {fill} reads at {k:.2}");
@@ -3018,7 +3686,11 @@ fn an_accent_derives_a_palette_whose_text_reads_everywhere() {
                 if at("kitAccent") != plain["kitAccent"] {
                     assert_ne!(at("kitBg"), plain["kitBg"], "{case}: the ground is tinted");
                 }
-                assert_eq!(at("kitChosen"), at("kitAccent"), "{case}: a view switch's chosen segment");
+                assert_eq!(
+                    at("kitChosen"),
+                    at("kitAccent"),
+                    "{case}: a view switch's chosen segment"
+                );
             }
         }
     }
@@ -3051,14 +3723,23 @@ fn the_keyboard_opens_a_select_on_its_current_option() {
         r.core.set_platform(platform);
         r.app.globals().set("value", value).unwrap();
         r.frames(2);
-        let e = r.core.handle_input(kui_core::testing::key_press(KeyCode::Tab));
+        let e = r
+            .core
+            .handle_input(kui_core::testing::key_press(KeyCode::Tab));
         r.route(e);
         let e = kui_core::testing::tab(&mut r.core, false);
         r.route(e);
         r.frames(1);
         r
     };
-    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    let focused = |r: &mut LuaRig| {
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
+    };
     // As a window delivers it: the press, and the space's text.
     let press = |r: &mut LuaRig, code: KeyCode, mods: KeyMods| {
         let e = r.core.press(kui_core::KeyPress::new(code, mods));
@@ -3085,13 +3766,28 @@ fn the_keyboard_opens_a_select_on_its_current_option() {
         (KeyCode::Space, KeyMods::NONE),
         (KeyCode::Enter, KeyMods::NONE),
     ];
-    for (platform, opening) in [(Platform::MacOs, mac), (Platform::Windows, others), (Platform::Linux, others)] {
+    for (platform, opening) in [
+        (Platform::MacOs, mac),
+        (Platform::Windows, others),
+        (Platform::Linux, others),
+    ] {
         for &(code, mods) in opening {
             let mut r = rig(platform, "two");
-            assert_eq!(focused(&mut r).as_deref(), Some("Mode: Two"), "Tab reached the field");
+            assert_eq!(
+                focused(&mut r).as_deref(),
+                Some("Mode: Two"),
+                "Tab reached the field"
+            );
             press(&mut r, code, mods);
-            assert!(r.text("Three").is_some(), "{platform:?} {code:?} {mods:?} opened the menu");
-            assert_eq!(focused(&mut r).as_deref(), Some("Two"), "{platform:?} {code:?}: focus on the current option");
+            assert!(
+                r.text("Three").is_some(),
+                "{platform:?} {code:?} {mods:?} opened the menu"
+            );
+            assert_eq!(
+                focused(&mut r).as_deref(),
+                Some("Two"),
+                "{platform:?} {code:?}: focus on the current option"
+            );
             press_key(&mut r, KeyCode::Escape);
             r.frames(2);
             assert!(r.text("Three").is_none(), "Escape closed it");
@@ -3112,10 +3808,17 @@ fn the_keyboard_opens_a_select_on_its_current_option() {
             press(&mut r, code, KeyMods::NONE);
             let changed: Option<String> = r.app.globals().get("changed").unwrap();
             assert_eq!(changed.as_deref(), to, "{platform:?}: {code:?} from {from}");
-            assert!(r.text("Skip").is_none(), "{platform:?}: {code:?} from {from} left it closed");
+            assert!(
+                r.text("Skip").is_none(),
+                "{platform:?}: {code:?} from {from} left it closed"
+            );
             if let Some(to) = to {
                 let label = format!("Mode: {}{}", to[..1].to_uppercase(), &to[1..]);
-                assert_eq!(focused(&mut r).as_deref(), Some(label.as_str()), "the field shows the step, focused");
+                assert_eq!(
+                    focused(&mut r).as_deref(),
+                    Some(label.as_str()),
+                    "the field shows the step, focused"
+                );
             }
             assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
         }
@@ -3144,11 +3847,23 @@ fn tab_and_shift_tab_leave_a_select() {
         "#,
     );
     r.frames(2);
-    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    let focused = |r: &mut LuaRig| {
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
+    };
     let tab = |r: &mut LuaRig, back: bool| {
         use kui_core::testing::tab;
-        let mods = if back { kui_core::KeyMods::NONE.with_shift() } else { kui_core::KeyMods::NONE };
-        let kp = kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(kui_core::KeyCode::Tab, mods));
+        let mods = if back {
+            kui_core::KeyMods::NONE.with_shift()
+        } else {
+            kui_core::KeyMods::NONE
+        };
+        let kp =
+            kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(kui_core::KeyCode::Tab, mods));
         let e = r.core.handle_input(kp);
         r.route(e);
         let e = tab(&mut r.core, back);
@@ -3157,13 +3872,25 @@ fn tab_and_shift_tab_leave_a_select() {
     };
     tab(&mut r, false);
     tab(&mut r, false);
-    assert_eq!(focused(&mut r).as_deref(), Some("Mode: Two"), "on the select");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Mode: Two"),
+        "on the select"
+    );
     tab(&mut r, false);
-    assert_eq!(focused(&mut r).as_deref(), Some("After"), "Tab leaves it forward");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("After"),
+        "Tab leaves it forward"
+    );
     tab(&mut r, true);
     assert_eq!(focused(&mut r).as_deref(), Some("Mode: Two"), "back on it");
     tab(&mut r, true);
-    assert_eq!(focused(&mut r).as_deref(), Some("Before"), "Shift-Tab leaves it back");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Before"),
+        "Shift-Tab leaves it back"
+    );
     assert!(r.text("One").is_none(), "and the menu never opened");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
@@ -3192,7 +3919,10 @@ fn a_sliders_handle_is_cut_at_the_scroller_it_sits_in() {
     let (dl, _) = r.core.output();
     for q in &handle {
         let clip = dl.clips[q.clip as usize].rect;
-        assert!(clip.y >= pane.y - 0.5, "the handle is cut at the pane's top: clip {clip:?}, pane {pane:?}");
+        assert!(
+            clip.y >= pane.y - 0.5,
+            "the handle is cut at the pane's top: clip {clip:?}, pane {pane:?}"
+        );
     }
 }
 
@@ -3202,8 +3932,21 @@ fn every_notice_and_toast_reads_on_its_own_ground() {
     // well. Drawn, not looked up: each notice's text at 4.5:1 on its well
     // and its frame at 3:1; each toast's text on its surface at 4.5:1 and
     // its tone's bar at 3:1 — every tone, skin and half, accent or none.
-    let tones = [kit::Tone::Info, kit::Tone::Neutral, kit::Tone::Accent, kit::Tone::Ok, kit::Tone::Warn, kit::Tone::Danger];
-    let accents: [Option<i64>; 5] = [None, Some(0xffd400ff), Some(0x7fe9ffff), Some(0x1e2a5aff), Some(0xdc2626ff)];
+    let tones = [
+        kit::Tone::Info,
+        kit::Tone::Neutral,
+        kit::Tone::Accent,
+        kit::Tone::Ok,
+        kit::Tone::Warn,
+        kit::Tone::Danger,
+    ];
+    let accents: [Option<i64>; 5] = [
+        None,
+        Some(0xffd400ff),
+        Some(0x7fe9ffff),
+        Some(0x1e2a5aff),
+        Some(0xdc2626ff),
+    ];
     for skin in [kit::Skin::Ledger, kit::Skin::Neutral, kit::Skin::Phosphor] {
         for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
             for accent in accents {
@@ -3217,10 +3960,16 @@ fn every_notice_and_toast_reads_on_its_own_ground() {
                         }
                         s.place(ui);
                         for t in tones {
-                            kit::Notice::new("Saved drafts are kept for 30 days.").tone(t).place(ui);
+                            kit::Notice::new("Saved drafts are kept for 30 days.")
+                                .tone(t)
+                                .place(ui);
                         }
                         for t in tones {
-                            kit::Toast::new("The upstream is slow.").tone(t).inline(true).duration(0.0).place(ui);
+                            kit::Toast::new("The upstream is slow.")
+                                .tone(t)
+                                .inline(true)
+                                .duration(0.0)
+                                .place(ui);
                         }
                         sunken = ui.token_color("kitSunken");
                         raised = ui.token_color("kitRaised");
@@ -3232,18 +3981,38 @@ fn every_notice_and_toast_reads_on_its_own_ground() {
                 let glyphs: Vec<&kui_core::Quad> = dl
                     .quads
                     .iter()
-                    .filter(|q| matches!(q.kind, kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel))
+                    .filter(|q| {
+                        matches!(
+                            q.kind,
+                            kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel
+                        )
+                    })
                     .collect();
                 let inside = |q: &kui_core::Quad, f: kui_core::Rect| {
                     let (x, y) = (q.rect.x + q.rect.w / 2.0, q.rect.y + q.rect.h / 2.0);
                     x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.h
                 };
-                let frames: Vec<&kui_core::Quad> =
-                    dl.quads.iter().filter(|q| q.kind == kui_core::QuadKind::Solid && q.border_w > 0.0).collect();
-                let notices: Vec<&&kui_core::Quad> = frames.iter().filter(|q| q.color == sunken).collect();
-                let toasts: Vec<&&kui_core::Quad> = frames.iter().filter(|q| q.color == raised && q.rect.w >= 300.0).collect();
-                assert!(notices.len() >= tones.len(), "{case}: every notice drawn ({})", notices.len());
-                assert!(toasts.len() >= tones.len(), "{case}: every toast drawn ({})", toasts.len());
+                let frames: Vec<&kui_core::Quad> = dl
+                    .quads
+                    .iter()
+                    .filter(|q| q.kind == kui_core::QuadKind::Solid && q.border_w > 0.0)
+                    .collect();
+                let notices: Vec<&&kui_core::Quad> =
+                    frames.iter().filter(|q| q.color == sunken).collect();
+                let toasts: Vec<&&kui_core::Quad> = frames
+                    .iter()
+                    .filter(|q| q.color == raised && q.rect.w >= 300.0)
+                    .collect();
+                assert!(
+                    notices.len() >= tones.len(),
+                    "{case}: every notice drawn ({})",
+                    notices.len()
+                );
+                assert!(
+                    toasts.len() >= tones.len(),
+                    "{case}: every toast drawn ({})",
+                    toasts.len()
+                );
                 for n in &notices {
                     let k = contrast(n.border_color, sunken);
                     assert!(k >= 2.99, "{case}: a notice's frame reads at {k:.2}");
@@ -3258,7 +4027,9 @@ fn every_notice_and_toast_reads_on_its_own_ground() {
                         assert!(k >= 4.49, "{case}: a toast's text reads at {k:.2}");
                     }
                     let bars = dl.quads.iter().filter(|q| {
-                        q.kind == kui_core::QuadKind::Solid && (q.rect.w - 4.0).abs() < 0.6 && inside(q, t.rect)
+                        q.kind == kui_core::QuadKind::Solid
+                            && (q.rect.w - 4.0).abs() < 0.6
+                            && inside(q, t.rect)
                     });
                     for b in bars {
                         let k = contrast(b.color, raised);
@@ -3273,7 +4044,11 @@ fn every_notice_and_toast_reads_on_its_own_ground() {
 /// The fill under the centre of `rect` that the frame draws for it — the
 /// last solid quad the size of `rect` there, laid over `ground` where it
 /// is a wash — and the visible glyphs inside it.
-fn fill_and_glyphs(core: &mut Core, rect: kui_core::Rect, ground: kui_core::Color) -> (kui_core::Color, Vec<kui_core::Color>) {
+fn fill_and_glyphs(
+    core: &mut Core,
+    rect: kui_core::Rect,
+    ground: kui_core::Color,
+) -> (kui_core::Color, Vec<kui_core::Color>) {
     let (dl, _) = core.output();
     let (cx, cy) = (rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
     let inside = |q: &kui_core::Quad| {
@@ -3298,7 +4073,12 @@ fn fill_and_glyphs(core: &mut Core, rect: kui_core::Rect, ground: kui_core::Colo
     let glyphs = dl
         .quads
         .iter()
-        .filter(|q| matches!(q.kind, kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel))
+        .filter(|q| {
+            matches!(
+                q.kind,
+                kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel
+            )
+        })
         .filter(|q| q.color.a > 0.01 && inside(q))
         .map(|q| q.color)
         .collect();
@@ -3313,7 +4093,13 @@ fn a_hovered_or_pressed_menu_item_button_or_toast_action_reads_on_its_fill() {
     // hovered and pressed, and a toast's action hovered and pressed — each
     // label at 4.5:1 on the fill under it, in every skin and half, accent
     // or none.
-    let accents: [Option<i64>; 5] = [None, Some(0xffd400ff), Some(0x7fe9ffff), Some(0x1e2a5aff), Some(0xdc2626ff)];
+    let accents: [Option<i64>; 5] = [
+        None,
+        Some(0xffd400ff),
+        Some(0x7fe9ffff),
+        Some(0x1e2a5aff),
+        Some(0xdc2626ff),
+    ];
     for skin in [kit::Skin::Ledger, kit::Skin::Neutral, kit::Skin::Phosphor] {
         for appearance in [kit::Appearance::Light, kit::Appearance::Dark] {
             for accent in accents {
@@ -3336,13 +4122,21 @@ fn a_hovered_or_pressed_menu_item_button_or_toast_action_reads_on_its_fill() {
                                 ui.with_keyed("opener", NodeSpec::row().size(120.0, 24.0), |ui| {
                                     kit::Menu::new(vec![
                                         kit::Item::new("open", "Open file").shortcut("⌘O"),
-                                        kit::Item::new("rm", "Delete forever").shortcut("⌘⌫").danger(true),
+                                        kit::Item::new("rm", "Delete forever")
+                                            .shortcut("⌘⌫")
+                                            .danger(true),
                                     ])
                                     .place(ui);
                                 });
                             } else {
-                                kit::Button::new("Erase all").variant(kit::Variant::Danger).place(ui);
-                                kit::Toast::new("Moved to the bin.").action("Undo").inline(true).duration(0.0).place(ui);
+                                kit::Button::new("Erase all")
+                                    .variant(kit::Variant::Danger)
+                                    .place(ui);
+                                kit::Toast::new("Moved to the bin.")
+                                    .action("Undo")
+                                    .inline(true)
+                                    .duration(0.0)
+                                    .place(ui);
                             }
                             raised.set(ui.token_color("kitRaised"));
                             bg.set(ui.token_color("kitBg"));
@@ -3350,7 +4144,11 @@ fn a_hovered_or_pressed_menu_item_button_or_toast_action_reads_on_its_fill() {
                     };
                     view(&mut r);
                     view(&mut r);
-                    let targets: &[&str] = if menu { &["Open file", "Delete forever"] } else { &["Erase all", "Undo"] };
+                    let targets: &[&str] = if menu {
+                        &["Open file", "Delete forever"]
+                    } else {
+                        &["Erase all", "Undo"]
+                    };
                     for &name in targets {
                         let node = r
                             .core
@@ -3360,7 +4158,10 @@ fn a_hovered_or_pressed_menu_item_button_or_toast_action_reads_on_its_fill() {
                             .find(|n| n.name.as_deref() == Some(name))
                             .cloned()
                             .unwrap_or_else(|| panic!("{case}: no {name}"));
-                        let at = kui_core::Vec2::new(node.rect.x + node.rect.w / 2.0, node.rect.y + node.rect.h / 2.0);
+                        let at = kui_core::Vec2::new(
+                            node.rect.x + node.rect.w / 2.0,
+                            node.rect.y + node.rect.h / 2.0,
+                        );
                         for pressed in [false, true] {
                             kui_core::testing::hover(&mut r.core, at);
                             if pressed {
@@ -3368,16 +4169,27 @@ fn a_hovered_or_pressed_menu_item_button_or_toast_action_reads_on_its_fill() {
                             }
                             view(&mut r);
                             view(&mut r);
-                            let g = if menu || name == "Undo" { raised.get() } else { bg.get() };
-                            let (fill, glyphs) = fill_and_glyphs(&mut r.core, node.rect, g.unwrap());
+                            let g = if menu || name == "Undo" {
+                                raised.get()
+                            } else {
+                                bg.get()
+                            };
+                            let (fill, glyphs) =
+                                fill_and_glyphs(&mut r.core, node.rect, g.unwrap());
                             let state = if pressed { "pressed" } else { "hovered" };
                             assert!(!glyphs.is_empty(), "{case}: {name} {state} draws its label");
                             for c in glyphs {
                                 let k = contrast(c, fill);
-                                assert!(k >= 4.49, "{case}: {name} {state}: {c:?} on {fill:?} reads at {k:.2}");
+                                assert!(
+                                    k >= 4.49,
+                                    "{case}: {name} {state}: {c:?} on {fill:?} reads at {k:.2}"
+                                );
                             }
                             if pressed {
-                                kui_core::testing::hover(&mut r.core, kui_core::Vec2::new(2.0, 2.0));
+                                kui_core::testing::hover(
+                                    &mut r.core,
+                                    kui_core::Vec2::new(2.0, 2.0),
+                                );
                                 kui_core::testing::release(&mut r.core);
                                 view(&mut r);
                             }
@@ -3409,17 +4221,35 @@ fn a_checklist_is_one_tab_stop_its_arrows_walk_and_space_ticks() {
         "#,
     );
     r.frames(2);
-    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
+    let focused = |r: &mut LuaRig| {
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
+    };
     let tab = |r: &mut LuaRig, back: bool| {
-        let mods = if back { kui_core::KeyMods::NONE.with_shift() } else { kui_core::KeyMods::NONE };
-        let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(kui_core::KeyCode::Tab, mods)));
+        let mods = if back {
+            kui_core::KeyMods::NONE.with_shift()
+        } else {
+            kui_core::KeyMods::NONE
+        };
+        let e = r
+            .core
+            .handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(
+                kui_core::KeyCode::Tab,
+                mods,
+            )));
         r.route(e);
         let e = kui_core::testing::tab(&mut r.core, back);
         r.route(e);
         r.frames(1);
     };
     let key = |r: &mut LuaRig, code: kui_core::KeyCode| {
-        let e = r.core.press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
+        let e = r
+            .core
+            .press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
         r.route(e);
         if code == kui_core::KeyCode::Space {
             let e = r.core.handle_input(kui_core::InputEvent::Text(" ".into()));
@@ -3429,18 +4259,41 @@ fn a_checklist_is_one_tab_stop_its_arrows_walk_and_space_ticks() {
     };
     tab(&mut r, false);
     tab(&mut r, false);
-    assert_eq!(focused(&mut r).as_deref(), Some("Milk"), "Tab enters on the first item");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Milk"),
+        "Tab enters on the first item"
+    );
     key(&mut r, kui_core::KeyCode::Down);
     assert_eq!(focused(&mut r).as_deref(), Some("Eggs"), "Down walks");
     key(&mut r, kui_core::KeyCode::Space);
     let eggs: bool = r.app.load("return items[2].checked").eval().unwrap();
     assert!(eggs, "Space ticks the focused item");
-    let node = r.core.access_tree().nodes.iter().find(|n| n.name.as_deref() == Some("Eggs")).cloned().unwrap();
-    assert_eq!(node.description.as_deref(), Some("done"), "and it reads ticked");
+    let node = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Eggs"))
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        node.description.as_deref(),
+        Some("done"),
+        "and it reads ticked"
+    );
     tab(&mut r, false);
-    assert_eq!(focused(&mut r).as_deref(), Some("After"), "one stop: Tab leaves");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("After"),
+        "one stop: Tab leaves"
+    );
     tab(&mut r, true);
-    assert_eq!(focused(&mut r).as_deref(), Some("Eggs"), "Shift-Tab comes back to the item it left");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Eggs"),
+        "Shift-Tab comes back to the item it left"
+    );
     // The pointer on Eggs' ×: a press there removes it.
     let eggs = r.named("Eggs");
     r.slow_click(eggs.x + eggs.w - 12.0, eggs.y + eggs.h / 2.0);
@@ -3476,17 +4329,33 @@ fn a_checklist_removes_its_focused_item_with_delete_and_backspace() {
         "#,
     );
     r.frames(2);
-    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
-    let labels = |r: &mut LuaRig| -> String { r.app.load("local t = {} for i, it in ipairs(items) do t[i] = it.label end return table.concat(t, ' ')").eval().unwrap() };
+    let focused = |r: &mut LuaRig| {
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
+    };
+    let labels = |r: &mut LuaRig| -> String {
+        r.app.load("local t = {} for i, it in ipairs(items) do t[i] = it.label end return table.concat(t, ' ')").eval().unwrap()
+    };
     let tab = |r: &mut LuaRig| {
-        let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(KeyCode::Tab, kui_core::KeyMods::NONE)));
+        let e = r
+            .core
+            .handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(
+                KeyCode::Tab,
+                kui_core::KeyMods::NONE,
+            )));
         r.route(e);
         let e = kui_core::testing::tab(&mut r.core, false);
         r.route(e);
         r.frames(1);
     };
     let key = |r: &mut LuaRig, code: KeyCode| {
-        let e = r.core.press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
+        let e = r
+            .core
+            .press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
         r.route(e);
         r.frames(2);
     };
@@ -3495,19 +4364,35 @@ fn a_checklist_removes_its_focused_item_with_delete_and_backspace() {
     key(&mut r, KeyCode::Down);
     assert_eq!(focused(&mut r).as_deref(), Some("Eggs"));
     key(&mut r, KeyCode::Delete);
-    assert_eq!(labels(&mut r), "Milk Bread Tea", "Delete removes the focused item");
-    assert_eq!(focused(&mut r).as_deref(), Some("Bread"), "focus stays on its row, now the next item");
+    assert_eq!(
+        labels(&mut r),
+        "Milk Bread Tea",
+        "Delete removes the focused item"
+    );
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Bread"),
+        "focus stays on its row, now the next item"
+    );
     key(&mut r, KeyCode::Backspace);
     assert_eq!(labels(&mut r), "Milk Tea", "Backspace too");
     assert_eq!(focused(&mut r).as_deref(), Some("Tea"));
     key(&mut r, KeyCode::Delete);
     r.frames(3);
     assert_eq!(labels(&mut r), "Milk", "the last item");
-    assert_eq!(focused(&mut r).as_deref(), Some("Milk"), "focus goes back one from the last row");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Milk"),
+        "focus goes back one from the last row"
+    );
     key(&mut r, KeyCode::Down);
     assert_eq!(labels(&mut r), "Milk", "the arrows are still the list's");
     tab(&mut r);
-    assert_eq!(focused(&mut r).as_deref(), Some("After"), "still one Tab stop");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("After"),
+        "still one Tab stop"
+    );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
@@ -3533,18 +4418,38 @@ fn a_checklist_tab_straight_onto_the_last_row_then_delete_lands_on_the_row_befor
         "#,
     );
     r.frames(2);
-    let focused = |r: &mut LuaRig| r.core.access_tree().nodes.iter().find(|n| n.focused).and_then(|n| n.name.clone());
-    let labels = |r: &mut LuaRig| -> String { r.app.load("local t = {} for i, it in ipairs(items) do t[i] = it.label end return table.concat(t, ' ')").eval().unwrap() };
+    let focused = |r: &mut LuaRig| {
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.clone())
+    };
+    let labels = |r: &mut LuaRig| -> String {
+        r.app.load("local t = {} for i, it in ipairs(items) do t[i] = it.label end return table.concat(t, ' ')").eval().unwrap()
+    };
     // A Tab with no frame after it: focus moves, nothing draws.
     let tab = |r: &mut LuaRig, back: bool| {
-        let mods = if back { kui_core::KeyMods::NONE.with_shift() } else { kui_core::KeyMods::NONE };
-        let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(KeyCode::Tab, mods)));
+        let mods = if back {
+            kui_core::KeyMods::NONE.with_shift()
+        } else {
+            kui_core::KeyMods::NONE
+        };
+        let e = r
+            .core
+            .handle_input(kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(
+                KeyCode::Tab,
+                mods,
+            )));
         r.route(e);
         let e = kui_core::testing::tab(&mut r.core, back);
         r.route(e);
     };
     let key = |r: &mut LuaRig, code: KeyCode| {
-        let e = r.core.press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
+        let e = r
+            .core
+            .press(kui_core::KeyPress::new(code, kui_core::KeyMods::NONE));
         r.route(e);
     };
     // Onto Bread, the last row, and out to After.
@@ -3562,7 +4467,11 @@ fn a_checklist_tab_straight_onto_the_last_row_then_delete_lands_on_the_row_befor
     key(&mut r, KeyCode::Delete);
     r.frames(2);
     assert_eq!(labels(&mut r), "Milk Eggs", "Delete removed the last row");
-    assert_eq!(focused(&mut r).as_deref(), Some("Eggs"), "and focus went to the row before");
+    assert_eq!(
+        focused(&mut r).as_deref(),
+        Some("Eggs"),
+        "and focus went to the row before"
+    );
     // Again from the far side: Before, Tab into the list (entered on Eggs,
     // now its last row), Delete at once.
     tab(&mut r, true);
@@ -3594,7 +4503,14 @@ fn readout_rig() -> LuaRig {
 }
 
 fn readout(r: &mut LuaRig) -> Option<String> {
-    r.core.access_tree().nodes.iter().find(|n| n.live != kui_core::Live::Off && n.name.as_deref().is_some_and(|s| s.contains(", A "))).and_then(|n| n.name.clone())
+    r.core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| {
+            n.live != kui_core::Live::Off && n.name.as_deref().is_some_and(|s| s.contains(", A "))
+        })
+        .and_then(|n| n.name.clone())
 }
 
 #[test]
@@ -3602,19 +4518,36 @@ fn a_line_chart_reads_out_the_sample_under_the_pointer_and_hides_on_leave() {
     let mut r = readout_rig();
     r.frames(3);
     assert!(readout(&mut r).is_none(), "nothing until the pointer comes");
-    let plot = r.node(|n| n.label.as_deref() == Some("plot")).expect("the plot").rect;
+    let plot = r
+        .node(|n| n.label.as_deref() == Some("plot"))
+        .expect("the plot")
+        .rect;
     use kui_core::{InputEvent, Vec2};
     // Over row 5 (x 5 of 0..9 is 5/9 of the way across).
     let at = |r: &mut LuaRig, f: f32| {
-        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(plot.x + plot.w * f, plot.y + plot.h / 2.0)));
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+            plot.x + plot.w * f,
+            plot.y + plot.h / 2.0,
+        )));
         r.route(e);
         r.frames(3);
     };
     at(&mut r, 5.0 / 9.0);
-    assert_eq!(readout(&mut r).as_deref(), Some("5, A 50, B 95"), "x and each series' value");
+    assert_eq!(
+        readout(&mut r).as_deref(),
+        Some("5, A 50, B 95"),
+        "x and each series' value"
+    );
     at(&mut r, 2.0 / 9.0);
-    assert_eq!(readout(&mut r).as_deref(), Some("2, A 20, B 98"), "it follows the pointer");
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(plot.x + plot.w / 2.0, plot.y + plot.h + 200.0)));
+    assert_eq!(
+        readout(&mut r).as_deref(),
+        Some("2, A 20, B 98"),
+        "it follows the pointer"
+    );
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        plot.x + plot.w / 2.0,
+        plot.y + plot.h + 200.0,
+    )));
     r.route(e);
     r.frames(3);
     assert!(readout(&mut r).is_none(), "gone when the pointer leaves");
@@ -3630,9 +4563,25 @@ fn a_line_chart_reads_out_the_sample_under_the_pointer_and_hides_on_leave() {
 fn a_line_chart_reads_out_the_nearest_sample_in_a_partly_filled_window() {
     for (window, cases) in [
         // 40% filled: the empty span reads the first sample, then the data.
-        (Some(22.5), vec![(0.02, "0, A 0, B 100"), (0.6, "0, A 0, B 100"), (0.6 + 0.4 * 5.0 / 9.0, "5, A 50, B 95"), (0.995, "9, A 90, B 91")]),
+        (
+            Some(22.5),
+            vec![
+                (0.02, "0, A 0, B 100"),
+                (0.6, "0, A 0, B 100"),
+                (0.6 + 0.4 * 5.0 / 9.0, "5, A 50, B 95"),
+                (0.995, "9, A 90, B 91"),
+            ],
+        ),
         // Full: the edges.
-        (None, vec![(0.01, "0, A 0, B 100"), (0.5 / 9.0 + 0.01, "1, A 10, B 99"), (7.0 / 9.0, "7, A 70, B 93"), (0.995, "9, A 90, B 91")]),
+        (
+            None,
+            vec![
+                (0.01, "0, A 0, B 100"),
+                (0.5 / 9.0 + 0.01, "1, A 10, B 99"),
+                (7.0 / 9.0, "7, A 70, B 93"),
+                (0.995, "9, A 90, B 91"),
+            ],
+        ),
     ] {
         let mut r = LuaRig::new(&format!(
             r#"
@@ -3650,22 +4599,50 @@ fn a_line_chart_reads_out_the_nearest_sample_in_a_partly_filled_window() {
         r.frames(6);
         use kui_core::{InputEvent, Vec2};
         for (f, want) in cases {
-            let plot = r.node(|n| n.label.as_deref() == Some("plot")).expect("the plot").rect;
-            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(plot.x + plot.w * f, plot.y + plot.h / 2.0)));
+            let plot = r
+                .node(|n| n.label.as_deref() == Some("plot"))
+                .expect("the plot")
+                .rect;
+            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+                plot.x + plot.w * f,
+                plot.y + plot.h / 2.0,
+            )));
             r.route(e);
             r.frames(3);
-            assert_eq!(readout(&mut r).as_deref(), Some(want), "window {window:?}, {:.0}% across", f * 100.0);
+            assert_eq!(
+                readout(&mut r).as_deref(),
+                Some(want),
+                "window {window:?}, {:.0}% across",
+                f * 100.0
+            );
             // The box keeps clear of both samples' heights, not only their dots.
-            let bx = r.node(|n| n.label.as_deref() == Some("readout")).map(|n| n.rect);
+            let bx = r
+                .node(|n| n.label.as_deref() == Some("readout"))
+                .map(|n| n.rect);
             assert!(bx.is_some(), "the readout box");
-            let dots: Vec<_> = r.core.nodes().into_iter().filter(|n| n.rect.w == 7.0 && n.rect.h == 7.0).map(|n| n.rect).collect();
+            let dots: Vec<_> = r
+                .core
+                .nodes()
+                .into_iter()
+                .filter(|n| n.rect.w == 7.0 && n.rect.h == 7.0)
+                .map(|n| n.rect)
+                .collect();
             assert_eq!(dots.len(), 2, "a dot per series");
             if let Some(bx) = bx {
                 for d in dots {
                     let (cx, cy) = (d.x + 3.5, d.y + 3.5);
-                    assert!(!(cy >= bx.y && cy <= bx.y + bx.h), "the box {bx:?} is level with a sample at y {cy}");
-                    assert!(!(cx >= bx.x && cx <= bx.x + bx.w), "the box {bx:?} is over the crosshair at x {cx}");
-                    assert!(bx.x >= plot.x && bx.x + bx.w <= plot.x + plot.w, "the box {bx:?} flips to stay in the plot");
+                    assert!(
+                        !(cy >= bx.y && cy <= bx.y + bx.h),
+                        "the box {bx:?} is level with a sample at y {cy}"
+                    );
+                    assert!(
+                        !(cx >= bx.x && cx <= bx.x + bx.w),
+                        "the box {bx:?} is over the crosshair at x {cx}"
+                    );
+                    assert!(
+                        bx.x >= plot.x && bx.x + bx.w <= plot.x + plot.w,
+                        "the box {bx:?} flips to stay in the plot"
+                    );
                 }
             }
         }
@@ -3779,24 +4756,48 @@ fn a_bar_and_a_sparkline_show_the_value_under_the_pointer() {
     r.frames(2);
     use kui_core::{InputEvent, Vec2};
     let move_to = |r: &mut LuaRig, x: f32, y: f32| {
-        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        let e = r
+            .core
+            .handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
         r.route(e);
         r.frames(3);
     };
-    let b = r.node(|n| n.label.as_deref() == Some("b2")).expect("the second bar").rect;
+    let b = r
+        .node(|n| n.label.as_deref() == Some("b2"))
+        .expect("the second bar")
+        .rect;
     move_to(&mut r, b.x + b.w / 2.0, b.y + b.h - 4.0);
-    assert!(r.text("b: 20").is_some(), "the bar under the pointer says its value");
-    let spark = r.node(|n| n.label.as_deref() == Some("spark")).unwrap().rect;
+    assert!(
+        r.text("b: 20").is_some(),
+        "the bar under the pointer says its value"
+    );
+    let spark = r
+        .node(|n| n.label.as_deref() == Some("spark"))
+        .unwrap()
+        .rect;
     move_to(&mut r, spark.x + spark.w - 2.0, spark.y + spark.h / 2.0);
     move_to(&mut r, spark.x + spark.w - 3.0, spark.y + spark.h / 2.0);
-    assert!(r.text("8 ms").is_some(), "the sparkline says the sample under the pointer");
+    assert!(
+        r.text("8 ms").is_some(),
+        "the sparkline says the sample under the pointer"
+    );
     // Sample i is drawn at (i - 1) / 7 of the width: 77% across is nearest
     // the sixth (71%), though it is in the seventh eighth of the samples.
-    move_to(&mut r, spark.x + spark.w * 0.77 + 1.0, spark.y + spark.h / 2.0);
+    move_to(
+        &mut r,
+        spark.x + spark.w * 0.77 + 1.0,
+        spark.y + spark.h / 2.0,
+    );
     move_to(&mut r, spark.x + spark.w * 0.77, spark.y + spark.h / 2.0);
-    assert!(r.text("6 ms").is_some(), "the sample nearest the pointer, where the line draws it");
+    assert!(
+        r.text("6 ms").is_some(),
+        "the sample nearest the pointer, where the line draws it"
+    );
     move_to(&mut r, 5.0, 5.0);
-    assert!(r.text("8 ms").is_none(), "and nothing once the pointer leaves");
+    assert!(
+        r.text("8 ms").is_none(),
+        "and nothing once the pointer leaves"
+    );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
@@ -4117,11 +5118,16 @@ fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
     let faint = std::cell::Cell::new(None);
     let view = |r: &mut Rig| {
         r.frame(|ui| {
-            kit::Settings::new().skin(kit::Skin::Ledger).appearance(kit::Appearance::Light).place(ui);
+            kit::Settings::new()
+                .skin(kit::Skin::Ledger)
+                .appearance(kit::Appearance::Light)
+                .place(ui);
             ui.with_keyed("opener", NodeSpec::row().size(120.0, 24.0), |ui| {
                 kit::Menu::new(vec![
                     kit::Item::new("open", "Open file").shortcut("⌘O"),
-                    kit::Item::new("rm", "Delete forever").shortcut("⌘⌫").danger(true),
+                    kit::Item::new("rm", "Delete forever")
+                        .shortcut("⌘⌫")
+                        .danger(true),
                 ])
                 .place(ui);
             });
@@ -4134,7 +5140,11 @@ fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
     view(&mut r);
     let texts = r.texts();
     for t in ["Delete forever", "⌘⌫", "Open file", "⌘O"] {
-        assert_eq!(texts.iter().filter(|s| *s == t).count(), 1, "{t} drawn once: {texts:?}");
+        assert_eq!(
+            texts.iter().filter(|s| *s == t).count(),
+            1,
+            "{t} drawn once: {texts:?}"
+        );
     }
     let row = r
         .core
@@ -4150,7 +5160,10 @@ fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
         for q in &dl.quads {
             let inside = q.rect.y >= row.rect.y && q.rect.y + q.rect.h <= row.rect.y + row.rect.h;
             if inside
-                && matches!(q.kind, kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel)
+                && matches!(
+                    q.kind,
+                    kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel
+                )
                 && !out.contains(&q.color)
             {
                 out.push(q.color);
@@ -4167,14 +5180,22 @@ fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
     kui_core::testing::hover(&mut r.core, at);
     view(&mut r);
     view(&mut r);
-    assert_eq!(glyphs(&mut r.core), vec![on_danger.get().unwrap()], "hovered, on its fill");
+    assert_eq!(
+        glyphs(&mut r.core),
+        vec![on_danger.get().unwrap()],
+        "hovered, on its fill"
+    );
     assert!(r.core.take_warnings().is_empty());
 }
 
 /// What is drawn under point `p`: every solid quad over it laid in order on
 /// `ground`, and the rect of the topmost (the row's wash, when one is
 /// drawn there) — skipping a quad smaller than a glyph, a mark or a rule.
-fn wash_at(core: &mut Core, p: kui_core::Vec2, ground: kui_core::Color) -> (kui_core::Color, kui_core::Rect) {
+fn wash_at(
+    core: &mut Core,
+    p: kui_core::Vec2,
+    ground: kui_core::Color,
+) -> (kui_core::Color, kui_core::Rect) {
     let (dl, _) = core.output();
     let mut fill = ground;
     let mut top = kui_core::Rect::new(0.0, 0.0, 0.0, 0.0);
@@ -4200,13 +5221,19 @@ fn wash_at(core: &mut Core, p: kui_core::Vec2, ground: kui_core::Color) -> (kui_
 /// the solid quads painted before it there, laid in order on `ground` — a
 /// checkbox's tick on its box, a badge's text on its pill, the rest on the
 /// row's wash.
-fn glyphs_on(core: &mut Core, rect: kui_core::Rect, ground: kui_core::Color) -> Vec<(kui_core::Color, kui_core::Color)> {
+fn glyphs_on(
+    core: &mut Core,
+    rect: kui_core::Rect,
+    ground: kui_core::Color,
+) -> Vec<(kui_core::Color, kui_core::Color)> {
     let (dl, _) = core.output();
     let mut out: Vec<(kui_core::Color, kui_core::Color)> = Vec::new();
     for (i, q) in dl.quads.iter().enumerate() {
         let (x, y) = (q.rect.x + q.rect.w / 2.0, q.rect.y + q.rect.h / 2.0);
-        if !(matches!(q.kind, kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel)
-            && q.color.a > 0.01
+        if !(matches!(
+            q.kind,
+            kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel
+        ) && q.color.a > 0.01
             && x >= rect.x
             && x <= rect.x + rect.w
             && y >= rect.y
@@ -4246,7 +5273,13 @@ fn glyphs_on(core: &mut Core, rect: kui_core::Rect, ground: kui_core::Color) -> 
 #[test]
 fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
     use kui_core::{InputEvent, Vec2};
-    let accents: [Option<i64>; 5] = [None, Some(0xffd400ff), Some(0x7fe9ffff), Some(0x1e2a5aff), Some(0xdc2626ff)];
+    let accents: [Option<i64>; 5] = [
+        None,
+        Some(0xffd400ff),
+        Some(0x7fe9ffff),
+        Some(0x1e2a5aff),
+        Some(0xdc2626ff),
+    ];
     let choices = || {
         vec![
             kit::Choice::new("a", "Alpha").count(4),
@@ -4273,7 +5306,10 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
                             s.place(ui);
                             match scene {
                                 0 => {
-                                    kit::List::new(rows(), "name").detail("ms").on_select(msg("l")).place(ui);
+                                    kit::List::new(rows(), "name")
+                                        .detail("ms")
+                                        .on_select(msg("l"))
+                                        .place(ui);
                                     kit::Table::new(
                                         vec![
                                             kit::Column::new("name", "Name"),
@@ -4287,25 +5323,42 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
                                 }
                                 1 => {
                                     kit::Tabs::new(
-                                        vec![kit::Tab::new("a", "First").count(3), kit::Tab::new("b", "Second").count(9)],
+                                        vec![
+                                            kit::Tab::new("a", "First").count(3),
+                                            kit::Tab::new("b", "Second").count(9),
+                                        ],
                                         "a",
                                     )
                                     .place_with(ui, |_, _| {});
-                                    kit::Segmented::new(choices(), "a").label("Filter").place(ui);
-                                    kit::Checklist::new(vec![kit::Check::new("Milk", true), kit::Check::new("Eggs", false)])
+                                    kit::Segmented::new(choices(), "a")
+                                        .label("Filter")
                                         .place(ui);
+                                    kit::Checklist::new(vec![
+                                        kit::Check::new("Milk", true),
+                                        kit::Check::new("Eggs", false),
+                                    ])
+                                    .place(ui);
                                 }
                                 2 => {
-                                    ui.with_keyed("opener", NodeSpec::row().size(120.0, 24.0), |ui| {
-                                        kit::Menu::new(vec![
-                                            kit::Item::new("open", "Open file").shortcut("⌘O"),
-                                            kit::Item::new("rm", "Delete forever").shortcut("⌘⌫").danger(true),
-                                        ])
-                                        .place(ui);
-                                    });
+                                    ui.with_keyed(
+                                        "opener",
+                                        NodeSpec::row().size(120.0, 24.0),
+                                        |ui| {
+                                            kit::Menu::new(vec![
+                                                kit::Item::new("open", "Open file").shortcut("⌘O"),
+                                                kit::Item::new("rm", "Delete forever")
+                                                    .shortcut("⌘⌫")
+                                                    .danger(true),
+                                            ])
+                                            .place(ui);
+                                        },
+                                    );
                                 }
                                 _ => {
-                                    kit::Select::new(choices()).value("a").label("Mode").place(ui);
+                                    kit::Select::new(choices())
+                                        .value("a")
+                                        .label("Mode")
+                                        .place(ui);
                                 }
                             }
                             bg.set(ui.token_color("kitBg"));
@@ -4325,7 +5378,11 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
                             .core
                             .nodes()
                             .into_iter()
-                            .find(|n| n.text.as_deref().is_some_and(|t| t.eq_ignore_ascii_case("Alpha")))
+                            .find(|n| {
+                                n.text
+                                    .as_deref()
+                                    .is_some_and(|t| t.eq_ignore_ascii_case("Alpha"))
+                            })
                             .map(|n| n.rect)
                             .expect("the select's value");
                         let p = Vec2::new(field.x + 4.0, field.y + field.h / 2.0);
@@ -4339,7 +5396,11 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
                             .core
                             .nodes()
                             .into_iter()
-                            .filter(|n| n.text.as_deref().is_some_and(|t| t.eq_ignore_ascii_case(name)))
+                            .filter(|n| {
+                                n.text
+                                    .as_deref()
+                                    .is_some_and(|t| t.eq_ignore_ascii_case(name))
+                            })
                             .last()
                             .map(|n| n.rect)
                         else {
@@ -4359,7 +5420,9 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
                             for (c, fill) in glyphs_on(&mut r.core, wash, bg.get().unwrap()) {
                                 let k = contrast(c, fill);
                                 if k < 4.49 {
-                                    failures.push(format!("{case}: {name} {state}: {c:?} on {fill:?} reads at {k:.2}"));
+                                    failures.push(format!(
+                                        "{case}: {name} {state}: {c:?} on {fill:?} reads at {k:.2}"
+                                    ));
                                 }
                             }
                             if pressed {
@@ -4375,7 +5438,12 @@ fn faint_and_muted_text_reads_on_every_hovered_and_pressed_row() {
             }
         }
     }
-    assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} failures:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 /// A live line chart's readout box is opaque and over everything in the
@@ -4395,7 +5463,10 @@ fn a_live_charts_readout_is_opaque_and_over_its_lines_in_every_skin() {
             let frame = |r: &mut Rig, ch: &Channel, t: f64| {
                 r.core.set_time(t);
                 r.frame(|ui| {
-                    kit::Settings::new().skin(skin).appearance(appearance).place(ui);
+                    kit::Settings::new()
+                        .skin(skin)
+                        .appearance(appearance)
+                        .place(ui);
                     ui.with(NodeSpec::column().size(700.0, 300.0), |ui| {
                         kit::LineChart::new(ch.clone(), "t", vec![kit::Series::new("a", "A")])
                             .window(20.0)
@@ -4417,8 +5488,17 @@ fn a_live_charts_readout_is_opaque_and_over_its_lines_in_every_skin() {
                 n += 1;
                 ch = live_samples(Some(&ch), n);
             }
-            let plot = r.core.nodes().into_iter().find(|n| n.label.as_deref() == Some("plot")).unwrap().rect;
-            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(plot.x + plot.w * 0.3, plot.y + plot.h * 0.5)));
+            let plot = r
+                .core
+                .nodes()
+                .into_iter()
+                .find(|n| n.label.as_deref() == Some("plot"))
+                .unwrap()
+                .rect;
+            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+                plot.x + plot.w * 0.3,
+                plot.y + plot.h * 0.5,
+            )));
             r.exts.route(e, |_| {});
             // Samples land after the readout opened: each opens a slide.
             for _ in 0..3 {
@@ -4430,17 +5510,34 @@ fn a_live_charts_readout_is_opaque_and_over_its_lines_in_every_skin() {
             }
             frame(&mut r, &ch, t);
             frame(&mut r, &ch, t + 0.03);
-            let bx = r.core.nodes().into_iter().find(|n| n.label.as_deref() == Some("readout")).expect("a readout").rect;
+            let bx = r
+                .core
+                .nodes()
+                .into_iter()
+                .find(|n| n.label.as_deref() == Some("readout"))
+                .expect("a readout")
+                .rect;
             let (dl, _) = r.core.output();
             let fill_at = dl
                 .quads
                 .iter()
-                .rposition(|q| q.kind == QuadKind::Solid && (q.rect.w - bx.w).abs() < 1.5 && (q.rect.h - bx.h).abs() < 1.5 && (q.rect.x - bx.x).abs() < 1.5)
+                .rposition(|q| {
+                    q.kind == QuadKind::Solid
+                        && (q.rect.w - bx.w).abs() < 1.5
+                        && (q.rect.h - bx.h).abs() < 1.5
+                        && (q.rect.x - bx.x).abs() < 1.5
+                })
                 .unwrap_or_else(|| panic!("{case}: the readout's fill"));
             let fill = dl.quads[fill_at].color;
-            assert_eq!(fill.a, 1.0, "{case}: the readout's fill is opaque: {fill:?}");
+            assert_eq!(
+                fill.a, 1.0,
+                "{case}: the readout's fill is opaque: {fill:?}"
+            );
             let overlaps = |q: &kui_core::Quad| {
-                q.rect.x < bx.x + bx.w && q.rect.x + q.rect.w > bx.x && q.rect.y < bx.y + bx.h && q.rect.y + q.rect.h > bx.y
+                q.rect.x < bx.x + bx.w
+                    && q.rect.x + q.rect.w > bx.x
+                    && q.rect.y < bx.y + bx.h
+                    && q.rect.y + q.rect.h > bx.y
             };
             let late: Vec<usize> = dl
                 .quads
@@ -4449,7 +5546,10 @@ fn a_live_charts_readout_is_opaque_and_over_its_lines_in_every_skin() {
                 .filter(|(i, q)| *i > fill_at && q.kind == QuadKind::Segment && overlaps(q))
                 .map(|(i, _)| i)
                 .collect();
-            assert!(late.is_empty(), "{case}: segments drawn over the readout: {late:?}");
+            assert!(
+                late.is_empty(),
+                "{case}: segments drawn over the readout: {late:?}"
+            );
             let glyphs = glyphs_on(&mut r.core, bx, ground.get().unwrap());
             assert!(!glyphs.is_empty(), "{case}: the readout says something");
             for (c, under) in glyphs {
@@ -4467,7 +5567,10 @@ fn six_spans() -> Channel {
     let names = ["load", "parse", "style", "layout", "paint", "idle"];
     Channel::table(vec![
         ("name".into(), Column::strs(names)),
-        ("start".into(), Column::F64((0..6).map(|i| i as f64 * 100.0).collect())),
+        (
+            "start".into(),
+            Column::F64((0..6).map(|i| i as f64 * 100.0).collect()),
+        ),
         ("len".into(), Column::F64(vec![95.0; 6])),
         ("depth".into(), Column::I64(vec![0; 6])),
         ("group".into(), Column::I64((0..6).collect())),
@@ -4484,7 +5587,13 @@ fn six_spans() -> Channel {
 #[test]
 fn a_waterfalls_marks_read_in_every_skin_half_and_accent() {
     use kui_core::QuadKind;
-    let accents: [Option<i64>; 5] = [None, Some(0xffd400ff), Some(0x7fe9ffff), Some(0x1e2a5aff), Some(0xdc2626ff)];
+    let accents: [Option<i64>; 5] = [
+        None,
+        Some(0xffd400ff),
+        Some(0x7fe9ffff),
+        Some(0x1e2a5aff),
+        Some(0xdc2626ff),
+    ];
     let marks = Channel::table(vec![
         ("at".into(), Column::F64(vec![250.0])),
         ("label".into(), Column::strs(["paint"])),
@@ -4521,7 +5630,14 @@ fn a_waterfalls_marks_read_in_every_skin_half_and_accent() {
                 let quads = dl.quads.clone();
                 let mut fills = Vec::new();
                 for name in ["load", "parse", "style", "layout", "paint", "idle"] {
-                    let Some(node) = r.core.access_tree().nodes.iter().find(|n| n.name.as_deref() == Some(name)).cloned() else {
+                    let Some(node) = r
+                        .core
+                        .access_tree()
+                        .nodes
+                        .iter()
+                        .find(|n| n.name.as_deref() == Some(name))
+                        .cloned()
+                    else {
                         failures.push(format!("{case}: no {name}"));
                         continue;
                     };
@@ -4540,7 +5656,9 @@ fn a_waterfalls_marks_read_in_every_skin_half_and_accent() {
                     if selected {
                         let k = contrast(q.border_color, panel);
                         if k < 2.99 {
-                            failures.push(format!("{case}: the selected bar's edge on the panel at {k:.2}"));
+                            failures.push(format!(
+                                "{case}: the selected bar's edge on the panel at {k:.2}"
+                            ));
                         }
                     } else {
                         let k = contrast(q.color, panel);
@@ -4560,15 +5678,20 @@ fn a_waterfalls_marks_read_in_every_skin_half_and_accent() {
                 for w in fills.windows(2) {
                     let k = contrast(w[0], w[1]);
                     if k < 1.4 {
-                        failures.push(format!("{case}: neighbouring groups at {k:.2} apart in lightness"));
+                        failures.push(format!(
+                            "{case}: neighbouring groups at {k:.2} apart in lightness"
+                        ));
                     }
                 }
                 // The time mark: a one-px rule down the lanes.
-                let mark = quads.iter().find(|q| q.kind == QuadKind::Solid && (q.rect.w - 1.0).abs() < 0.1 && q.rect.h > 20.0);
+                let mark = quads.iter().find(|q| {
+                    q.kind == QuadKind::Solid && (q.rect.w - 1.0).abs() < 0.1 && q.rect.h > 20.0
+                });
                 match mark {
-                    Some(q) if contrast(q.color, panel) < 2.99 => {
-                        failures.push(format!("{case}: the time mark at {:.2}", contrast(q.color, panel)))
-                    }
+                    Some(q) if contrast(q.color, panel) < 2.99 => failures.push(format!(
+                        "{case}: the time mark at {:.2}",
+                        contrast(q.color, panel)
+                    )),
                     None => failures.push(format!("{case}: no time mark")),
                     _ => {}
                 }
@@ -4576,7 +5699,12 @@ fn a_waterfalls_marks_read_in_every_skin_half_and_accent() {
             }
         }
     }
-    assert!(failures.is_empty(), "{} failures:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} failures:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 /// A Lua host keeping a Kit list's (or table's) selection as Kit proposes
@@ -4622,8 +5750,14 @@ fn selection_rig(component: &str, selection: &str, on_focus: bool, n: usize) -> 
 /// The log since the last call.
 fn heard(r: &mut LuaRig) -> Vec<String> {
     let log: mlua::Table = r.app.globals().get("log").unwrap();
-    let out: Vec<String> = log.sequence_values::<String>().map(|v| v.unwrap()).collect();
-    r.app.globals().set("log", r.app.create_table().unwrap()).unwrap();
+    let out: Vec<String> = log
+        .sequence_values::<String>()
+        .map(|v| v.unwrap())
+        .collect();
+    r.app
+        .globals()
+        .set("log", r.app.create_table().unwrap())
+        .unwrap();
     out
 }
 
@@ -4633,13 +5767,17 @@ fn key_with(r: &mut LuaRig, code: kui_core::KeyCode, mods: kui_core::KeyMods, te
         kp = kp.with_text(t);
     }
     let edit = kp.edit_event();
-    let e = r.core.handle_input(kui_core::InputEvent::KeyDown(kp.clone()));
+    let e = r
+        .core
+        .handle_input(kui_core::InputEvent::KeyDown(kp.clone()));
     r.route(e);
     if let Some(ev) = edit {
         let e = r.core.handle_input(ev);
         r.route(e);
     }
-    let e = r.core.handle_input(kui_core::InputEvent::KeyUp(kp.released()));
+    let e = r
+        .core
+        .handle_input(kui_core::InputEvent::KeyUp(kp.released()));
     r.route(e);
     r.frames(2);
 }
@@ -4697,19 +5835,45 @@ fn a_cursor_that_does_not_select_moves_alone_and_space_and_a_click_select() {
         heard(&mut r);
         key_with(&mut r, KeyCode::Down, KeyMods::default(), None);
         key_with(&mut r, KeyCode::Down, KeyMods::default(), None);
-        assert_eq!(heard(&mut r), ["cur 1", "cur 2"], "{component}: the cursor moves, nothing is selected");
+        assert_eq!(
+            heard(&mut r),
+            ["cur 1", "cur 2"],
+            "{component}: the cursor moves, nothing is selected"
+        );
         key_with(&mut r, KeyCode::Space, KeyMods::default(), Some(" "));
-        assert_eq!(heard(&mut r), ["sel 2"], "{component}: Space selects the cursor's row");
+        assert_eq!(
+            heard(&mut r),
+            ["sel 2"],
+            "{component}: Space selects the cursor's row"
+        );
         key_with(&mut r, KeyCode::Enter, KeyMods::default(), None);
         assert_eq!(heard(&mut r), ["act 2"], "{component}: Enter activates it");
         click_row(&mut r, "row 5", KeyMods::default(), 1);
-        assert_eq!(heard(&mut r), ["cur 5", "sel 5"], "{component}: a click moves the cursor and selects");
+        assert_eq!(
+            heard(&mut r),
+            ["cur 5", "sel 5"],
+            "{component}: a click moves the cursor and selects"
+        );
         click_row(&mut r, "row 5", KeyMods::default(), 2);
-        assert_eq!(heard(&mut r), ["act 5"], "{component}: the second click of a double click activates");
+        assert_eq!(
+            heard(&mut r),
+            ["act 5"],
+            "{component}: the second click of a double click activates"
+        );
         let selected: i64 = r.app.globals().get("selected").unwrap();
         assert_eq!(selected, 5);
-        let row = r.core.access_tree().nodes.iter().find(|n| n.name.as_deref() == Some("row 5")).cloned().unwrap();
-        assert!(row.selected == Some(true), "{component}: a screen reader hears the row selected");
+        let row = r
+            .core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("row 5"))
+            .cloned()
+            .unwrap();
+        assert!(
+            row.selected == Some(true),
+            "{component}: a screen reader hears the row selected"
+        );
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }
 }
@@ -4739,25 +5903,69 @@ fn a_multiple_selection_toggles_extends_and_ranges() {
         let mut r = selection_rig(component, "multiple", false, 20);
         r.frames(2);
         click_row(&mut r, "row 1", KeyMods::default(), 1);
-        assert_eq!(heard(&mut r), ["cur 1", "sel 1 1-1 1 1"], "{component}: a click, the row alone");
+        assert_eq!(
+            heard(&mut r),
+            ["cur 1", "sel 1 1-1 1 1"],
+            "{component}: a click, the row alone"
+        );
         click_row(&mut r, "row 3", primary(), 1);
-        assert_eq!(heard(&mut r), ["cur 3", "sel 3 1-1,3-3 2 2"], "{component}: ⌘-click adds a row");
+        assert_eq!(
+            heard(&mut r),
+            ["cur 3", "sel 3 1-1,3-3 2 2"],
+            "{component}: ⌘-click adds a row"
+        );
         click_row(&mut r, "row 6", KeyMods::default().with_shift(), 1);
-        assert_eq!(heard(&mut r), ["cur 6", "sel 6 3-6 4 4"], "{component}: Shift-click, the range from the anchor");
+        assert_eq!(
+            heard(&mut r),
+            ["cur 6", "sel 6 3-6 4 4"],
+            "{component}: Shift-click, the range from the anchor"
+        );
         click_row(&mut r, "row 4", primary(), 1);
-        assert_eq!(heard(&mut r), ["cur 4", "sel 4 3-3,5-6 3 3"], "{component}: ⌘-click takes one out");
+        assert_eq!(
+            heard(&mut r),
+            ["cur 4", "sel 4 3-3,5-6 3 3"],
+            "{component}: ⌘-click takes one out"
+        );
         // The keyboard: Shift+Down extends from the anchor (row 4).
         key_with(&mut r, KeyCode::Down, KeyMods::default().with_shift(), None);
-        assert_eq!(heard(&mut r), ["cur 5", "sel 5 4-5 2 2"], "{component}: Shift+Down extends");
+        assert_eq!(
+            heard(&mut r),
+            ["cur 5", "sel 5 4-5 2 2"],
+            "{component}: Shift+Down extends"
+        );
         key_with(&mut r, KeyCode::Down, KeyMods::default(), None);
-        assert_eq!(heard(&mut r), ["cur 6"], "{component}: a plain arrow moves the cursor only");
+        assert_eq!(
+            heard(&mut r),
+            ["cur 6"],
+            "{component}: a plain arrow moves the cursor only"
+        );
         key_with(&mut r, KeyCode::Space, KeyMods::default(), Some(" "));
-        assert_eq!(heard(&mut r), ["sel 6 4-6 3 3"], "{component}: Space toggles the cursor's row in");
+        assert_eq!(
+            heard(&mut r),
+            ["sel 6 4-6 3 3"],
+            "{component}: Space toggles the cursor's row in"
+        );
         let ranges: mlua::Table = r.app.globals().get("ranges").unwrap();
         assert_eq!(ranges.raw_len(), 1);
-        for (name, sel) in [("row 3", false), ("row 4", true), ("row 6", true), ("row 7", false)] {
-            let n = r.core.access_tree().nodes.iter().find(|n| n.name.as_deref() == Some(name)).cloned().unwrap();
-            assert_eq!(n.selected == Some(true), sel, "{component}: {name} selected: {sel}");
+        for (name, sel) in [
+            ("row 3", false),
+            ("row 4", true),
+            ("row 6", true),
+            ("row 7", false),
+        ] {
+            let n = r
+                .core
+                .access_tree()
+                .nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some(name))
+                .cloned()
+                .unwrap();
+            assert_eq!(
+                n.selected == Some(true),
+                sel,
+                "{component}: {name} selected: {sel}"
+            );
         }
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }
@@ -4774,8 +5982,17 @@ fn select_all_on_a_windowed_list_is_one_range() {
     heard(&mut r);
     key_with(&mut r, KeyCode::Char('a'), primary(), None);
     assert_eq!(heard(&mut r), ["sel 0 0-99999 100000 -"]);
-    let built = r.core.access_tree().nodes.iter().filter(|n| n.selected == Some(true)).count();
-    assert!(built > 0 && built < 100, "the rows in view draw selected: {built}");
+    let built = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .filter(|n| n.selected == Some(true))
+        .count();
+    assert!(
+        built > 0 && built < 100,
+        "the rows in view draw selected: {built}"
+    );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
@@ -4929,7 +6146,10 @@ fn a_leaving_toasts_close_button_keeps_its_place_on_its_face() {
             t += 0.016;
             r.core.set_time(t);
         }
-        assert!(last > at + 100.0, "it slid out (by click {by_click}): {at} -> {last}");
+        assert!(
+            last > at + 100.0,
+            "it slid out (by click {by_click}): {at} -> {last}"
+        );
         assert!(
             seen.iter().all(|dx| (dx - rest).abs() < 0.01),
             "the × against the face, from rest through the exit (by click {by_click}): {seen:?}"
@@ -5000,9 +6220,18 @@ fn a_fields_error_is_laid_out_whole_at_any_width() {
                         cx >= msg.x && cx <= msg.x + msg.w && cy >= msg.y && cy <= msg.y + msg.h
                     })
                     .count();
-                assert_eq!(drawn, glyphs, "{at}: every glyph of the message, none cut short: {msg:?}");
-                let below = r.node(|n| n.label.as_deref() == Some("below")).unwrap().rect;
-                assert!(below.y >= msg.y + msg.h, "{at}: what follows is under the message: {below:?} {msg:?}");
+                assert_eq!(
+                    drawn, glyphs,
+                    "{at}: every glyph of the message, none cut short: {msg:?}"
+                );
+                let below = r
+                    .node(|n| n.label.as_deref() == Some("below"))
+                    .unwrap()
+                    .rect;
+                assert!(
+                    below.y >= msg.y + msg.h,
+                    "{at}: what follows is under the message: {below:?} {msg:?}"
+                );
                 let edit = r
                     .core
                     .nodes()
@@ -5012,8 +6241,12 @@ fn a_fields_error_is_laid_out_whole_at_any_width() {
                     .rect;
                 let beside = msg.y < edit.y + edit.h;
                 match (kind, w) {
-                    ("area", _) | (_, 150.0) => assert!(!beside, "{at}: under the field: {msg:?} {edit:?}"),
-                    ("field", 900.0) => assert!(beside, "{at}: beside the text, with room: {msg:?} {edit:?}"),
+                    ("area", _) | (_, 150.0) => {
+                        assert!(!beside, "{at}: under the field: {msg:?} {edit:?}")
+                    }
+                    ("field", 900.0) => {
+                        assert!(beside, "{at}: beside the text, with room: {msg:?} {edit:?}")
+                    }
                     _ => {}
                 }
                 assert!(r.warnings.is_empty(), "{at}: {:#?}", r.warnings);
@@ -5068,16 +6301,22 @@ fn a_live_line_charts_area_covers_what_its_line_covers_at_both_edges() {
             r.core.set_time(t);
             let mut ui = r.core.frame_with(VIEW, scale, &mut r.exts);
             ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(6.0));
-            ui.with(NodeSpec::column().size(700.0, 300.0).pad_xy(7.3, 0.0), |ui| {
-                kit::LineChart::new(
-                    ch.clone(),
-                    "t",
-                    vec![kit::Series::new("cpu", "CPU").color(0xff0000ffu32), kit::Series::new("mem", "Memory")],
-                )
-                .window(30.0)
-                .area(true)
-                .place(ui);
-            });
+            ui.with(
+                NodeSpec::column().size(700.0, 300.0).pad_xy(7.3, 0.0),
+                |ui| {
+                    kit::LineChart::new(
+                        ch.clone(),
+                        "t",
+                        vec![
+                            kit::Series::new("cpu", "CPU").color(0xff0000ffu32),
+                            kit::Series::new("mem", "Memory"),
+                        ],
+                    )
+                    .window(30.0)
+                    .area(true)
+                    .place(ui);
+                },
+            );
             ui.finish();
             let ev = r.core.take_pending_events();
             r.exts.route(ev, |_| {});
@@ -5107,10 +6346,22 @@ fn a_live_line_charts_area_covers_what_its_line_covers_at_both_edges() {
                     .iter()
                     .filter(|q| q.kind == kui_core::QuadKind::Segment && q.color == red)
                     .collect();
-                let area: Vec<_> = dl.quads.iter().filter(|q| q.kind == kui_core::QuadKind::Fragment).collect();
-                assert!(line.len() > 50 && area.len() > 10, "drawn: {} {}", line.len(), area.len());
+                let area: Vec<_> = dl
+                    .quads
+                    .iter()
+                    .filter(|q| q.kind == kui_core::QuadKind::Fragment)
+                    .collect();
+                assert!(
+                    line.len() > 50 && area.len() > 10,
+                    "drawn: {} {}",
+                    line.len(),
+                    area.len()
+                );
                 let clip = dl.clip_of(line[0]).rect;
-                assert!(area.iter().all(|q| dl.clip_of(q).rect == clip), "one clip, the plot's");
+                assert!(
+                    area.iter().all(|q| dl.clip_of(q).rect == clip),
+                    "one clip, the plot's"
+                );
                 // Where each paints, inside the clip: the line with its
                 // round caps, the area by its polygons' vertices.
                 let cut = |lo: f32, hi: f32| (lo.max(clip.x), hi.min(clip.x + clip.w));
@@ -5133,7 +6384,8 @@ fn a_live_line_charts_area_covers_what_its_line_covers_at_both_edges() {
                 let (line_seen, area_seen) = (cut(l_lo, l_hi), cut(a_lo, a_hi));
                 let at = format!("scale {scale}, at {now:.3}, frame {k}");
                 assert!(
-                    (line_seen.0 - area_seen.0).abs() < 0.01 && (line_seen.1 - area_seen.1).abs() < 0.01,
+                    (line_seen.0 - area_seen.0).abs() < 0.01
+                        && (line_seen.1 - area_seen.1).abs() < 0.01,
                     "{at}: the area covers what the line does: line {line_seen:?}, area {area_seen:?}"
                 );
                 assert!(
@@ -5148,7 +6400,10 @@ fn a_live_line_charts_area_covers_what_its_line_covers_at_both_edges() {
             ch = feed_samples(Some(&ch), n);
         }
         assert_eq!(frames, 48);
-        assert!(slid, "what is drawn reached past the left edge, the clip cutting it");
+        assert!(
+            slid,
+            "what is drawn reached past the left edge, the clip cutting it"
+        );
         assert!(r.core.take_warnings().is_empty());
     }
 }
@@ -5185,18 +6440,28 @@ fn a_chart_is_a_tab_stop_only_when_the_app_asks() {
     );
     r.frames(3);
     // The readout under the pointer, on the line chart that is no stop.
-    let quiet = r.node(|n| n.label.as_deref() == Some("quiet")).unwrap().rect;
+    let quiet = r
+        .node(|n| n.label.as_deref() == Some("quiet"))
+        .unwrap()
+        .rect;
     use kui_core::{InputEvent, Vec2};
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(quiet.x + quiet.w / 2.0, quiet.y + 50.0)));
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        quiet.x + quiet.w / 2.0,
+        quiet.y + 50.0,
+    )));
     r.route(e);
     r.frames(3);
     // (An image to a screen reader, its readout box is drawn, not read.)
-    let said = r.node(|n| n.label.as_deref() == Some("readout")).map(|n| n.rect);
+    let said = r
+        .node(|n| n.label.as_deref() == Some("readout"))
+        .map(|n| n.rect);
     assert!(
         said.is_some_and(|b| b.y >= quiet.y && b.y + b.h <= quiet.y + quiet.h),
         "the pointer's readout, on the chart that is no stop: {said:?} in {quiet:?}"
     );
-    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(5.0, 5.0)));
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(5.0, 5.0)));
     r.route(e);
     r.frames(2);
     let focused = |r: &mut LuaRig| {
@@ -5216,9 +6481,15 @@ fn a_chart_is_a_tab_stop_only_when_the_app_asks() {
     }
     let names: Vec<&str> = seen.iter().map(|s| s.0.as_str()).collect();
     assert_eq!(names[0], "Before", "{seen:?}");
-    assert_eq!(names[1], "line chart", "the line chart that asked: {seen:?}");
+    assert_eq!(
+        names[1], "line chart",
+        "the line chart that asked: {seen:?}"
+    );
     assert_eq!(seen[1].1, kui_core::Role::Slider, "{seen:?}");
-    assert!(names[2].starts_with("s0"), "the bars to pick, on their first: {seen:?}");
+    assert!(
+        names[2].starts_with("s0"),
+        "the bars to pick, on their first: {seen:?}"
+    );
     assert_eq!(names[3], "After", "every other chart passed over: {seen:?}");
     assert_eq!(&names[4..], &names[..2], "and round again: {seen:?}");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);

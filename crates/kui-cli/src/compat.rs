@@ -38,13 +38,23 @@ mod tests {
     fn the_running_version_is_compatible_with_itself_and_not_with_others() {
         assert!(runs(VERSION));
         assert!(warning(VERSION).is_none());
-        assert!(warning("0.0.0-nope").unwrap().contains("kui upgrade 0.0.0-nope"));
+        assert!(
+            warning("0.0.0-nope")
+                .unwrap()
+                .contains("kui upgrade 0.0.0-nope")
+        );
     }
 
     #[test]
     fn the_table_never_lists_this_version_and_has_no_duplicates() {
-        assert!(!RUNS.contains(&VERSION), "the table lists earlier runners only");
+        assert!(
+            !RUNS.contains(&VERSION),
+            "the table lists earlier runners only"
+        );
         let mut seen = std::collections::HashSet::new();
-        assert!(RUNS.iter().all(|v| seen.insert(v)), "a version listed twice");
+        assert!(
+            RUNS.iter().all(|v| seen.insert(v)),
+            "a version listed twice"
+        );
     }
 }

@@ -13,14 +13,19 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     json.set(
         "decode",
         lua.create_function(|lua, text: mlua::LuaString| {
-            let v = kui_core::json::parse(&text.to_str()?).map_err(|e| fail(format!("json: {e}")))?;
+            let v =
+                kui_core::json::parse(&text.to_str()?).map_err(|e| fail(format!("json: {e}")))?;
             kui_lua::value_to_lua(lua, &v)
         })?,
     )?;
     json.set(
         "encode",
         lua.create_function(|_, (v, opts): (mlua::Value, Option<Table>)| {
-            let pretty = opts.map(|o| o.get::<Option<bool>>("pretty")).transpose()?.flatten() == Some(true);
+            let pretty = opts
+                .map(|o| o.get::<Option<bool>>("pretty"))
+                .transpose()?
+                .flatten()
+                == Some(true);
             let mut out = String::new();
             write_json(&mut out, &kui_lua::lua_to_value(&v)?, pretty, 0);
             Ok(out)
@@ -51,7 +56,9 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     ] {
         hash.set(
             name,
-            lua.create_function(move |_, data: mlua::LuaString| Ok(hex(ring::digest::digest(alg, &data.as_bytes()).as_ref())))?,
+            lua.create_function(move |_, data: mlua::LuaString| {
+                Ok(hex(ring::digest::digest(alg, &data.as_bytes()).as_ref()))
+            })?,
         )?;
     }
     hash.set(
@@ -70,7 +77,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     toml.set(
         "decode",
         lua.create_function(|lua, text: mlua::LuaString| {
-            let v: toml::Table = toml::from_str(&text.to_str()?).map_err(|e| fail(format!("toml: {e}")))?;
+            let v: toml::Table =
+                toml::from_str(&text.to_str()?).map_err(|e| fail(format!("toml: {e}")))?;
             kui_lua::value_to_lua(lua, &from_toml(toml::Value::Table(v)))
         })?,
     )?;
@@ -202,7 +210,9 @@ fn from_toml(v: toml::Value) -> Value {
         toml::Value::Boolean(b) => Value::Bool(b),
         toml::Value::Datetime(d) => Value::Str(d.to_string()),
         toml::Value::Array(a) => Value::List(a.into_iter().map(from_toml).collect()),
-        toml::Value::Table(t) => Value::Map(t.into_iter().map(|(k, v)| (k, from_toml(v))).collect()),
+        toml::Value::Table(t) => {
+            Value::Map(t.into_iter().map(|(k, v)| (k, from_toml(v))).collect())
+        }
     }
 }
 
@@ -213,7 +223,9 @@ fn to_toml(v: &Value) -> mlua::Result<toml::Value> {
         Value::Int(i) => toml::Value::Integer(*i),
         Value::Float(f) => toml::Value::Float(*f),
         Value::Str(s) => toml::Value::String(s.clone()),
-        Value::List(items) => toml::Value::Array(items.iter().map(to_toml).collect::<mlua::Result<_>>()?),
+        Value::List(items) => {
+            toml::Value::Array(items.iter().map(to_toml).collect::<mlua::Result<_>>()?)
+        }
         Value::Map(entries) => {
             let mut t = toml::Table::new();
             for (k, v) in sorted(entries) {

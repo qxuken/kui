@@ -31,7 +31,10 @@ end)
 
 /// Makes `require("tl")` the compiler and adds the `.tl` searcher.
 pub fn install(lua: &Lua) -> mlua::Result<()> {
-    let preload: mlua::Table = lua.globals().get::<mlua::Table>("package")?.get("preload")?;
+    let preload: mlua::Table = lua
+        .globals()
+        .get::<mlua::Table>("package")?
+        .get("preload")?;
     preload.set(
         "tl",
         lua.create_function(|lua, ()| lua.load(TL).set_name("@tl.lua").call::<mlua::Value>(()))?,
@@ -143,7 +146,9 @@ pub fn check(dir: &Path, files: &[PathBuf]) -> Result<Vec<Problem>, String> {
             let name = file.to_string_lossy().into_owned();
             let result: mlua::Table = check_string.call((source, env, name))?;
             for key in ["syntax_errors", "type_errors"] {
-                let Ok(errs) = result.get::<mlua::Table>(key) else { continue };
+                let Ok(errs) = result.get::<mlua::Table>(key) else {
+                    continue;
+                };
                 for e in errs.sequence_values::<mlua::Table>() {
                     let e = e?;
                     let at: Option<String> = e.get("filename")?;

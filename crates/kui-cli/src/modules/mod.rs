@@ -65,7 +65,11 @@ impl Shared {
     /// A path the app named, against its folder when relative.
     pub fn path(&self, p: &str) -> PathBuf {
         let p = std::path::Path::new(p);
-        if p.is_absolute() { p.to_path_buf() } else { self.dir.join(p) }
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.dir.join(p)
+        }
     }
 
     pub fn error(&self, msg: String) {
@@ -139,24 +143,27 @@ pub fn app() -> Option<&'static AppInfo> {
 /// Installed before the `.tl` searcher, which goes in ahead of it.
 pub fn install_loader(lua: &Lua) -> mlua::Result<()> {
     let loadfile = lua.create_function(|lua, (path, env): (String, Option<Table>)| {
-            let bytes = match std::fs::read(&path) {
-                Ok(b) => b,
-                Err(e) => return Ok((None, Some(format!("cannot open {path}: {e}")))),
-            };
-            let packed = crate::packed::dir().is_some_and(|d| std::path::Path::new(&path).starts_with(d));
-            let mut chunk = lua.load(bytes).set_name(format!("@{path}"));
-            if !packed {
-                chunk = chunk.set_mode(mlua::chunk::ChunkMode::Text);
-            }
-            if let Some(env) = env {
-                chunk = chunk.set_environment(env);
-            }
-            match chunk.into_function() {
-                Ok(f) => Ok((Some(f), None)),
-                Err(e) => Ok((None, Some(e.to_string()))),
-            }
+        let bytes = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(e) => return Ok((None, Some(format!("cannot open {path}: {e}")))),
+        };
+        let packed =
+            crate::packed::dir().is_some_and(|d| std::path::Path::new(&path).starts_with(d));
+        let mut chunk = lua.load(bytes).set_name(format!("@{path}"));
+        if !packed {
+            chunk = chunk.set_mode(mlua::chunk::ChunkMode::Text);
+        }
+        if let Some(env) = env {
+            chunk = chunk.set_environment(env);
+        }
+        match chunk.into_function() {
+            Ok(f) => Ok((Some(f), None)),
+            Err(e) => Ok((None, Some(e.to_string()))),
+        }
     })?;
-    lua.load(LOADER_LUA).set_name("@kui:loader").call::<()>(loadfile)
+    lua.load(LOADER_LUA)
+        .set_name("@kui:loader")
+        .call::<()>(loadfile)
 }
 
 const LOADER_LUA: &str = r##"
@@ -226,24 +233,26 @@ pub fn on_interrupt(shared: Arc<Shared>) {
         unsafe { libc::signal(sig, handler as *const () as libc::sighandler_t) };
     }
     let read = fds[0];
-    let _ = std::thread::Builder::new().name("kui-signals".into()).spawn(move || {
-        let mut seen = false;
-        loop {
-            let mut b = 0u8;
-            // SAFETY: reads one byte into `b`.
-            let n = unsafe { libc::read(read, (&mut b as *mut u8).cast(), 1) };
-            if n <= 0 {
-                return;
+    let _ = std::thread::Builder::new()
+        .name("kui-signals".into())
+        .spawn(move || {
+            let mut seen = false;
+            loop {
+                let mut b = 0u8;
+                // SAFETY: reads one byte into `b`.
+                let n = unsafe { libc::read(read, (&mut b as *mut u8).cast(), 1) };
+                if n <= 0 {
+                    return;
+                }
+                if seen {
+                    shared.children.kill_all();
+                    std::process::exit(128 + b as i32);
+                }
+                seen = true;
+                shared.exit.lock().unwrap().get_or_insert(128 + b as i32);
+                shared.ops.poke();
             }
-            if seen {
-                shared.children.kill_all();
-                std::process::exit(128 + b as i32);
-            }
-            seen = true;
-            shared.exit.lock().unwrap().get_or_insert(128 + b as i32);
-            shared.ops.poke();
-        }
-    });
+        });
 }
 
 #[cfg(not(unix))]
@@ -338,7 +347,10 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
             kui.set("packed", t)?;
         }
     }
-    kui.set("cpus", std::thread::available_parallelism().map_or(1, |n| n.get()))?;
+    kui.set(
+        "cpus",
+        std::thread::available_parallelism().map_or(1, |n| n.get()),
+    )?;
     if shared.worker.is_some() {
         kui.set("__worker", true)?;
     }
@@ -384,7 +396,10 @@ pub fn answer_to_lua(lua: &Lua, a: crate::ops::Answer) -> (bool, mlua::Value) {
     match a {
         Ok(v) => match kui_lua::value_to_lua(lua, &v) {
             Ok(v) => (true, v),
-            Err(e) => (false, mlua::Value::String(lua.create_string(e.to_string()).unwrap())),
+            Err(e) => (
+                false,
+                mlua::Value::String(lua.create_string(e.to_string()).unwrap()),
+            ),
         },
         Err(e) => (false, mlua::Value::String(lua.create_string(e).unwrap())),
     }

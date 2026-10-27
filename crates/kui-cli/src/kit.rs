@@ -14,11 +14,23 @@ pub const MODULES: &[(&str, &str)] = &[
     ("inputs", include_str!("../../../addons/kit/lua/inputs.lua")),
     ("layout", include_str!("../../../addons/kit/lua/layout.lua")),
     ("ledger", include_str!("../../../addons/kit/lua/ledger.lua")),
-    ("neutral", include_str!("../../../addons/kit/lua/neutral.lua")),
-    ("overlays", include_str!("../../../addons/kit/lua/overlays.lua")),
-    ("phosphor", include_str!("../../../addons/kit/lua/phosphor.lua")),
+    (
+        "neutral",
+        include_str!("../../../addons/kit/lua/neutral.lua"),
+    ),
+    (
+        "overlays",
+        include_str!("../../../addons/kit/lua/overlays.lua"),
+    ),
+    (
+        "phosphor",
+        include_str!("../../../addons/kit/lua/phosphor.lua"),
+    ),
     ("skin", include_str!("../../../addons/kit/lua/skin.lua")),
-    ("waterfall", include_str!("../../../addons/kit/lua/waterfall.lua")),
+    (
+        "waterfall",
+        include_str!("../../../addons/kit/lua/waterfall.lua"),
+    ),
 ];
 const ENTRY: &str = include_str!("../../../addons/kit/lua/kit.lua");
 /// The host module the app places Kit through (generated, ADR 0066).
@@ -28,11 +40,18 @@ const UI: &str = include_str!("../../../addons/kit/bindings/lua/kit/ui.lua");
 pub const NAMESPACE: &str = "kit";
 
 fn preload(lua: &Lua, name: &str, source: &'static str) -> mlua::Result<()> {
-    let preload: mlua::Table = lua.globals().get::<mlua::Table>("package")?.get("preload")?;
+    let preload: mlua::Table = lua
+        .globals()
+        .get::<mlua::Table>("package")?
+        .get("preload")?;
     let chunk = format!("@kit/{name}.lua");
     preload.set(
         name,
-        lua.create_function(move |lua, ()| lua.load(source).set_name(chunk.as_str()).call::<mlua::Value>(()))?,
+        lua.create_function(move |lua, ()| {
+            lua.load(source)
+                .set_name(chunk.as_str())
+                .call::<mlua::Value>(())
+        })?,
     )
 }
 
@@ -59,7 +78,12 @@ mod tests {
         let mut on_disk: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter_map(|e| e.file_name().to_str()?.strip_suffix(".lua").map(str::to_string))
+            .filter_map(|e| {
+                e.file_name()
+                    .to_str()?
+                    .strip_suffix(".lua")
+                    .map(str::to_string)
+            })
             .filter(|n| n != "kit")
             .collect();
         on_disk.sort();

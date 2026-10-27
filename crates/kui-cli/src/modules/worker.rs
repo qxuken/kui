@@ -35,7 +35,10 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 return Err(fail(format!("kui.worker: no file {}", file.display())));
             }
             let id = app.ops.id();
-            let dir = file.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| app.dir.clone());
+            let dir = file
+                .parent()
+                .map(|d| d.to_path_buf())
+                .unwrap_or_else(|| app.dir.clone());
             let inner = Shared::new(dir, Some((id, app.ops.clone())));
             let stop = Arc::new(AtomicBool::new(false));
             app.workers.lock().unwrap().insert(
@@ -47,7 +50,10 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             );
             let to_app = app.ops.clone();
             std::thread::Builder::new()
-                .name(format!("kui-worker-{}", file.file_stem().unwrap_or_default().to_string_lossy()))
+                .name(format!(
+                    "kui-worker-{}",
+                    file.file_stem().unwrap_or_default().to_string_lossy()
+                ))
                 .spawn(move || {
                     let error = run(&file, inner, &stop).err();
                     to_app.send(Inbound::WorkerExit { id, error });
@@ -105,12 +111,19 @@ fn run(file: &std::path::Path, shared: Arc<Shared>, stop: &AtomicBool) -> Result
         super::install_loader(&lua)?;
         crate::teal::install(&lua)?;
         super::install(&lua, shared.clone())?;
-        let source = std::fs::read_to_string(file).map_err(|e| fail(format!("{}: {e}", file.display())))?;
+        let source =
+            std::fs::read_to_string(file).map_err(|e| fail(format!("{}: {e}", file.display())))?;
         let source = crate::teal::source_for(file, &source)?;
-        lua.load(&source).set_name(format!("@{}", file.display())).exec()
+        lua.load(&source)
+            .set_name(format!("@{}", file.display()))
+            .exec()
     };
     setup().map_err(|e| e.to_string())?;
-    let listens = lua.globals().get::<mlua::Value>("on_message").map(|v| !v.is_nil()).unwrap_or(false);
+    let listens = lua
+        .globals()
+        .get::<mlua::Value>("on_message")
+        .map(|v| !v.is_nil())
+        .unwrap_or(false);
     let pending = |lua: &Lua| -> usize {
         lua.globals()
             .get::<Table>("kui")

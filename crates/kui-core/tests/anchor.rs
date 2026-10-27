@@ -191,11 +191,15 @@ fn an_anchored_scroller_at_its_end_stays_there() {
         let mut ui = core.frame(Size::new(200.0, VIEW_H), 1.0);
         ui.configure_root(NodeSpec::column().fill());
         ui.leaf_keyed("above", NodeSpec::row().grow_width().height(above));
-        ui.with_keyed("list", NodeSpec::column().fill().scroll_y().anchor(), |ui| {
-            for (key, h) in rows {
-                ui.leaf_keyed(key, NodeSpec::row().grow_width().height(*h));
-            }
-        });
+        ui.with_keyed(
+            "list",
+            NodeSpec::column().fill().scroll_y().anchor(),
+            |ui| {
+                for (key, h) in rows {
+                    ui.leaf_keyed(key, NodeSpec::row().grow_width().height(*h));
+                }
+            },
+        );
         ui.finish();
     };
     let mut core = Core::new();
@@ -204,7 +208,11 @@ fn an_anchored_scroller_at_its_end_stays_there() {
     core.set_scroll(list(), Vec2::new(0.0, 100.0));
     boxed(&mut core, &ten(), 0.0);
     boxed(&mut core, &ten(), 40.0);
-    assert_eq!(core.scroll_offset(list()).y, 140.0, "the end of a 60-tall box");
+    assert_eq!(
+        core.scroll_offset(list()).y,
+        140.0,
+        "the end of a 60-tall box"
+    );
     boxed(&mut core, &ten(), 10.0);
     assert_eq!(core.scroll_offset(list()).y, 110.0, "and of a 90-tall one");
 

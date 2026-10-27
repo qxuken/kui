@@ -15,7 +15,7 @@
 //!
 //! Run: cargo bench -p kui-lua --bench walk
 
-use kui_core::{Core, Extension, OriginId, Size, Instance};
+use kui_core::{Core, Extension, Instance, OriginId, Size};
 use kui_lua::LuaExtension;
 
 const TREE: &str = r#"

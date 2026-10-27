@@ -50,7 +50,11 @@ impl Type {
             {
                 Type::Named(n.to_string())
             }
-            other => return Err(format!("`{other}` is no type (string, number, integer, boolean, color, length, channel, any, an enum or record, {{T}}, T?)")),
+            other => {
+                return Err(format!(
+                    "`{other}` is no type (string, number, integer, boolean, color, length, channel, any, an enum or record, {{T}}, T?)"
+                ));
+            }
         })
     }
 

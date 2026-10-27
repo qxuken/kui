@@ -14,7 +14,9 @@ fn home() -> PathBuf {
 }
 
 fn env_dir(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from)
+    std::env::var_os(name)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
 }
 
 /// The base every app's data folder sits in.
@@ -48,7 +50,11 @@ pub fn data_dir(id: &str) -> PathBuf {
 /// folder under the app's local one, which is where its data would go if
 /// it were not roaming.
 pub fn cache_dir(id: &str) -> PathBuf {
-    if cfg!(windows) { cache_base().join(id).join("cache") } else { cache_base().join(id) }
+    if cfg!(windows) {
+        cache_base().join(id).join("cache")
+    } else {
+        cache_base().join(id)
+    }
 }
 
 /// The runner's own cache: downloaded runners, extracted packed apps.

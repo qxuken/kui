@@ -67,13 +67,13 @@ mod dispatch;
 mod emit;
 mod fills;
 mod focus;
-mod reframe;
 pub mod follow;
 mod gesture;
 mod groups;
 pub mod inspect;
 mod menu_api;
 pub mod perf;
+mod reframe;
 /// A slot replayed by its host (ADR 0045).
 pub(crate) mod replay;
 pub(crate) use menu_api::MenuSurface;

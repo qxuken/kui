@@ -7,9 +7,9 @@
 //! one spawned `group` leads a process group of its own, and its `kill`
 //! reaches everything it started (`npx` and the tool under it).
 
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
-use std::collections::HashMap;
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
@@ -28,7 +28,12 @@ struct Opts {
     detach: bool,
 }
 
-fn command(lua: &Lua, cmd: &str, args: Option<Vec<String>>, opts: Option<Table>) -> mlua::Result<(Command, Opts)> {
+fn command(
+    lua: &Lua,
+    cmd: &str,
+    args: Option<Vec<String>>,
+    opts: Option<Table>,
+) -> mlua::Result<(Command, Opts)> {
     let s = shared(lua);
     let mut c = Command::new(cmd);
     c.args(args.unwrap_or_default());
@@ -125,7 +130,10 @@ impl Children {
 /// whether it is alive.
 #[cfg(unix)]
 fn signum(name: &str) -> Option<libc::c_int> {
-    let n = name.trim_start_matches("SIG").trim_start_matches("sig").to_ascii_lowercase();
+    let n = name
+        .trim_start_matches("SIG")
+        .trim_start_matches("sig")
+        .to_ascii_lowercase();
     Some(match n.as_str() {
         "0" => 0,
         "term" => libc::SIGTERM,
@@ -145,7 +153,11 @@ fn signum(name: &str) -> Option<libc::c_int> {
 #[cfg(unix)]
 fn signal(pid: u32, sig: &str, group: bool) -> Result<bool, String> {
     let n = signum(sig).ok_or_else(|| format!("unknown signal {sig:?}"))?;
-    let target = if group { -(pid as libc::pid_t) } else { pid as libc::pid_t };
+    let target = if group {
+        -(pid as libc::pid_t)
+    } else {
+        pid as libc::pid_t
+    };
     // SAFETY: kill(2) with a pid and a signal number.
     let r = unsafe { libc::kill(target, n) };
     Ok(r == 0 || (n == 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)))
@@ -163,13 +175,19 @@ fn signal(pid: u32, sig: &str, group: bool) -> Result<bool, String> {
             .creation_flags(0x0800_0000)
             .output()
             .map_err(|e| e.to_string())?;
-        return Ok(String::from_utf8_lossy(&out.stdout).split_whitespace().any(|w| w == pid_s));
+        return Ok(String::from_utf8_lossy(&out.stdout)
+            .split_whitespace()
+            .any(|w| w == pid_s));
     }
     let mut args = vec!["/pid", &pid_s, "/F"];
     if group {
         args.push("/T");
     }
-    let status = Command::new("taskkill").args(args).creation_flags(0x0800_0000).status().map_err(|e| e.to_string())?;
+    let status = Command::new("taskkill")
+        .args(args)
+        .creation_flags(0x0800_0000)
+        .status()
+        .map_err(|e| e.to_string())?;
     Ok(status.success())
 }
 
@@ -193,7 +211,10 @@ fn command_line(pid: u32) -> Option<String> {
             .ok()?
     };
     #[cfg(not(windows))]
-    let out = Command::new("ps").args(["-o", "command=", "-p", &pid.to_string()]).output().ok()?;
+    let out = Command::new("ps")
+        .args(["-o", "command=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
     let line = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (out.status.success() && !line.is_empty()).then_some(line)
 }
@@ -205,7 +226,12 @@ fn sig_name(v: Option<mlua::Value>) -> mlua::Result<String> {
         Some(mlua::Value::Integer(i)) => i.to_string(),
         Some(mlua::Value::Number(n)) => (n as i64).to_string(),
         Some(mlua::Value::String(s)) => s.to_str()?.to_string(),
-        Some(other) => return Err(fail(format!("a signal is a name, not a {}", other.type_name()))),
+        Some(other) => {
+            return Err(fail(format!(
+                "a signal is a name, not a {}",
+                other.type_name()
+            )));
+        }
     })
 }
 
@@ -232,7 +258,9 @@ fn reader(ops: Ops, state: Arc<Mutex<State>>, src: impl std::io::Read + Send + '
                 }
                 return;
             }
-            let line = String::from_utf8_lossy(&buf).trim_end_matches(['\n', '\r']).to_string();
+            let line = String::from_utf8_lossy(&buf)
+                .trim_end_matches(['\n', '\r'])
+                .to_string();
             match stream.waiting.pop_front() {
                 Some(id) => answer_line(&ops, id, Some(line)),
                 None => stream.lines.push_back(line),
@@ -252,7 +280,11 @@ impl UserData for Proc {
         m.add_method("__read", |_, this, stream: Option<String>| {
             let id = this.ops.id();
             let mut st = this.state.lock().unwrap();
-            let s = if stream.as_deref() == Some("stderr") { &mut st.err } else { &mut st.out };
+            let s = if stream.as_deref() == Some("stderr") {
+                &mut st.err
+            } else {
+                &mut st.out
+            };
             if let Some(line) = s.lines.pop_front() {
                 answer_line(&this.ops, id, Some(line));
             } else if s.eof {
@@ -266,7 +298,9 @@ impl UserData for Proc {
             let id = this.ops.id();
             let mut st = this.state.lock().unwrap();
             match st.code {
-                Some(code) => this.ops.answer(id, Ok(code.map_or(Value::Null, |c| Value::Int(c.into())))),
+                Some(code) => this
+                    .ops
+                    .answer(id, Ok(code.map_or(Value::Null, |c| Value::Int(c.into())))),
                 None => st.exit_waiting.push(id),
             }
             Ok(id)
@@ -274,7 +308,9 @@ impl UserData for Proc {
         m.add_method("write", |_, this, data: mlua::LuaString| {
             let mut stdin = this.stdin.lock().unwrap();
             match stdin.as_mut() {
-                Some(w) => w.write_all(&data.as_bytes()).map_err(|e| fail(format!("write: {e}"))),
+                Some(w) => w
+                    .write_all(&data.as_bytes())
+                    .map_err(|e| fail(format!("write: {e}"))),
                 None => Err(fail("the process's stdin is closed".into())),
             }
         });
@@ -302,70 +338,111 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let process = lua.create_table()?;
     process.set(
         "__run",
-        lua.create_function(|lua, (cmd, args, opts): (String, Option<Vec<String>>, Option<Table>)| {
-            let (mut c, o) = command(lua, &cmd, args, opts)?;
-            let s = shared(lua);
-            let id = s.ops.id();
-            ops::run(&s.ops, id, move || {
-                c.stdin(if o.stdin.is_some() { Stdio::piped() } else { Stdio::null() });
-                c.stdout(Stdio::piped()).stderr(Stdio::piped());
-                let mut child = c.spawn().map_err(|e| format!("{cmd}: {e}"))?;
-                if let Some(input) = o.stdin
-                    && let Some(mut w) = child.stdin.take()
-                {
-                    let _ = w.write_all(&input);
-                }
-                let out = child.wait_with_output().map_err(|e| format!("{cmd}: {e}"))?;
-                Ok(Value::map([
-                    ("code", out.status.code().map_or(Value::Null, |c| Value::Int(c.into()))),
-                    ("ok", Value::Bool(out.status.success())),
-                    ("stdout", Value::Str(String::from_utf8_lossy(&out.stdout).into_owned())),
-                    ("stderr", Value::Str(String::from_utf8_lossy(&out.stderr).into_owned())),
-                ]))
-            });
-            Ok(id)
-        })?,
+        lua.create_function(
+            |lua, (cmd, args, opts): (String, Option<Vec<String>>, Option<Table>)| {
+                let (mut c, o) = command(lua, &cmd, args, opts)?;
+                let s = shared(lua);
+                let id = s.ops.id();
+                ops::run(&s.ops, id, move || {
+                    c.stdin(if o.stdin.is_some() {
+                        Stdio::piped()
+                    } else {
+                        Stdio::null()
+                    });
+                    c.stdout(Stdio::piped()).stderr(Stdio::piped());
+                    let mut child = c.spawn().map_err(|e| format!("{cmd}: {e}"))?;
+                    if let Some(input) = o.stdin
+                        && let Some(mut w) = child.stdin.take()
+                    {
+                        let _ = w.write_all(&input);
+                    }
+                    let out = child
+                        .wait_with_output()
+                        .map_err(|e| format!("{cmd}: {e}"))?;
+                    Ok(Value::map([
+                        (
+                            "code",
+                            out.status
+                                .code()
+                                .map_or(Value::Null, |c| Value::Int(c.into())),
+                        ),
+                        ("ok", Value::Bool(out.status.success())),
+                        (
+                            "stdout",
+                            Value::Str(String::from_utf8_lossy(&out.stdout).into_owned()),
+                        ),
+                        (
+                            "stderr",
+                            Value::Str(String::from_utf8_lossy(&out.stderr).into_owned()),
+                        ),
+                    ]))
+                });
+                Ok(id)
+            },
+        )?,
     )?;
     process.set(
         "__spawn",
-        lua.create_function(|lua, (cmd, args, opts): (String, Option<Vec<String>>, Option<Table>)| {
-            let (mut c, o) = command(lua, &cmd, args, opts)?;
-            c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-            let mut child = c.spawn().map_err(|e| fail(format!("{cmd}: {e}")))?;
-            let s = shared(lua);
-            let state = Arc::new(Mutex::new(State::default()));
-            reader(s.ops.clone(), state.clone(), child.stdout.take().unwrap(), false);
-            reader(s.ops.clone(), state.clone(), child.stderr.take().unwrap(), true);
-            let stdin = Arc::new(Mutex::new(child.stdin.take()));
-            let pid = child.id();
-            if !o.detach {
-                s.children.add(pid, o.group);
-            }
-            {
-                // The exit: a thread that owns the child and waits on it,
-                // so nothing polls; `kill` goes by pid.
-                let (state, ops, shared) = (state.clone(), s.ops.clone(), s.clone());
-                std::thread::spawn(move || {
-                    let code = child.wait().ok().and_then(|st| st.code());
-                    shared.children.remove(pid);
-                    let mut st = state.lock().unwrap();
-                    st.code = Some(code);
-                    for id in st.exit_waiting.drain(..) {
-                        ops.answer(id, Ok(code.map_or(Value::Null, |c| Value::Int(c.into()))));
-                    }
-                });
-            }
-            Ok(Proc { pid, group: o.group, state, stdin, ops: s.ops.clone() })
-        })?,
+        lua.create_function(
+            |lua, (cmd, args, opts): (String, Option<Vec<String>>, Option<Table>)| {
+                let (mut c, o) = command(lua, &cmd, args, opts)?;
+                c.stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                let mut child = c.spawn().map_err(|e| fail(format!("{cmd}: {e}")))?;
+                let s = shared(lua);
+                let state = Arc::new(Mutex::new(State::default()));
+                reader(
+                    s.ops.clone(),
+                    state.clone(),
+                    child.stdout.take().unwrap(),
+                    false,
+                );
+                reader(
+                    s.ops.clone(),
+                    state.clone(),
+                    child.stderr.take().unwrap(),
+                    true,
+                );
+                let stdin = Arc::new(Mutex::new(child.stdin.take()));
+                let pid = child.id();
+                if !o.detach {
+                    s.children.add(pid, o.group);
+                }
+                {
+                    // The exit: a thread that owns the child and waits on it,
+                    // so nothing polls; `kill` goes by pid.
+                    let (state, ops, shared) = (state.clone(), s.ops.clone(), s.clone());
+                    std::thread::spawn(move || {
+                        let code = child.wait().ok().and_then(|st| st.code());
+                        shared.children.remove(pid);
+                        let mut st = state.lock().unwrap();
+                        st.code = Some(code);
+                        for id in st.exit_waiting.drain(..) {
+                            ops.answer(id, Ok(code.map_or(Value::Null, |c| Value::Int(c.into()))));
+                        }
+                    });
+                }
+                Ok(Proc {
+                    pid,
+                    group: o.group,
+                    state,
+                    stdin,
+                    ops: s.ops.clone(),
+                })
+            },
+        )?,
     )?;
     // `kui.process.kill(pid, sig, group)`: a signal to a process this app
     // did not spawn, or did in an earlier run — `0` asks whether it is
     // alive. Whether it arrived.
     process.set(
         "kill",
-        lua.create_function(|_, (pid, sig, group): (u32, Option<mlua::Value>, Option<bool>)| {
-            signal(pid, &sig_name(sig)?, group.unwrap_or(false)).map_err(fail)
-        })?,
+        lua.create_function(
+            |_, (pid, sig, group): (u32, Option<mlua::Value>, Option<bool>)| {
+                signal(pid, &sig_name(sig)?, group.unwrap_or(false)).map_err(fail)
+            },
+        )?,
     )?;
     process.set("pid", std::process::id())?;
     // `kui.process.command_line(pid)` (waits): the command a process was
@@ -376,7 +453,9 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         lua.create_function(|lua, pid: u32| {
             let s = shared(lua);
             let id = s.ops.id();
-            ops::run(&s.ops, id, move || Ok(command_line(pid).map_or(Value::Null, Value::Str)));
+            ops::run(&s.ops, id, move || {
+                Ok(command_line(pid).map_or(Value::Null, Value::Str))
+            });
             Ok(id)
         })?,
     )?;

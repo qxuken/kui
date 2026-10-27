@@ -9,7 +9,7 @@ use std::rc::Rc;
 use kui_core::slot::emit;
 use kui_core::testing::click_at;
 use kui_core::{
-    Color, Core, EventKind, Extension, Extensions, NodeSpec, OriginId, Size, Instance, FillAnswer,
+    Color, Core, EventKind, Extension, Extensions, FillAnswer, Instance, NodeSpec, OriginId, Size,
     TextStyle, Ui, UiEvent, Value,
 };
 
@@ -111,7 +111,6 @@ impl Extension for Kit {
         Vec::new()
     }
 }
-
 
 struct Rig {
     core: Core,
@@ -395,7 +394,10 @@ impl Extension for App {
         &NO_COMPONENTS
     }
     fn view(&mut self, _slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
-        ui.component("kit/button", &Value::map([("onClick", Value::str("saved"))]));
+        ui.component(
+            "kit/button",
+            &Value::map([("onClick", Value::str("saved"))]),
+        );
         Ok(())
     }
     fn component(&mut self, _inst: &Instance<'_>, _ui: &mut Ui<'_>) -> Result<(), String> {
@@ -448,13 +450,20 @@ fn an_instance_that_heard_its_own_event_is_asked_again() {
     let mut r = rig(Kit::default());
     let props = Value::map([("onClick", Value::str("saved"))]);
     let texts = |r: &mut Rig| -> Vec<String> {
-        r.core.nodes().iter().filter_map(|n| n.text.clone()).collect()
+        r.core
+            .nodes()
+            .iter()
+            .filter_map(|n| n.text.clone())
+            .collect()
     };
     let mut answers = Vec::new();
     for _ in 0..2 {
         r.frame(|ui| answers.push(ui.component("kit/button", &props)));
     }
-    assert_eq!(answers, [Some(FillAnswer::NotKept), Some(FillAnswer::Replayed)]);
+    assert_eq!(
+        answers,
+        [Some(FillAnswer::NotKept), Some(FillAnswer::Replayed)]
+    );
     assert_eq!(r.click(12.0, 12.0).len(), 1);
     answers.clear();
     for _ in 0..2 {
@@ -465,5 +474,9 @@ fn an_instance_that_heard_its_own_event_is_asked_again() {
         [Some(FillAnswer::Heard), Some(FillAnswer::Replayed)],
         "the click moved the extension's count, so the props alone do not vouch for it"
     );
-    assert!(texts(&mut r).contains(&"clicks 1".to_string()), "{:?}", texts(&mut r));
+    assert!(
+        texts(&mut r).contains(&"clicks 1".to_string()),
+        "{:?}",
+        texts(&mut r)
+    );
 }

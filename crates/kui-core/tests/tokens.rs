@@ -12,8 +12,8 @@ use kui_core::diag::{RESERVED_TOKEN, UNKNOWN_TOKEN};
 use kui_core::testing::codes;
 use kui_core::tokens::{COLOR_ROLES, LENGTH_ROLES};
 use kui_core::{
-    Appearance, Color, Core, Extension, Extensions, NodeSpec, Size, Instance, SystemEnv, TokenError,
-    TokenKind, TokenRef, Tokens, Ui, UiEvent, Value,
+    Appearance, Color, Core, Extension, Extensions, Instance, NodeSpec, Size, SystemEnv,
+    TokenError, TokenKind, TokenRef, Tokens, Ui, UiEvent, Value,
 };
 
 const PEACH: Color = Color {

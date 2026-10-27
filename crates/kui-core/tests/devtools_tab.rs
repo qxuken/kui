@@ -13,8 +13,8 @@ use std::rc::Rc;
 use kui_core::diag::DUPLICATE_TAB;
 use kui_core::testing::{click_at, codes};
 use kui_core::{
-    Core, DevtoolsDock, Extension, Extensions, InputEvent, Key, KeyCode, KeyMods, KeyPress,
-    NodeSpec, Instance, TextStyle, Ui, UiEvent, Value, widgets,
+    Core, DevtoolsDock, Extension, Extensions, InputEvent, Instance, Key, KeyCode, KeyMods,
+    KeyPress, NodeSpec, TextStyle, Ui, UiEvent, Value, widgets,
 };
 
 const VIEWPORT: kui_core::Size = kui_core::Size {

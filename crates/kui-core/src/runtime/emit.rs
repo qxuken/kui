@@ -856,7 +856,8 @@ impl Core {
         // The rows remembered for composites this frame no longer has.
         if !self.composite_rows.is_empty() {
             let tree = &self.tree;
-            self.composite_rows.retain(|k, _| tree.index_of(*k).is_some());
+            self.composite_rows
+                .retain(|k, _| tree.index_of(*k).is_some());
         }
         // A focus left on a node the frame no longer has, that nothing
         // above recovered, goes to the nearest sink it had (backlog C136).

@@ -101,7 +101,11 @@ fn lua_module(schema: &Schema) -> String {
     }
     for c in &schema.components {
         let p = crate::pascal(&c.name);
-        let _ = writeln!(s, "---The props of `{a}/{}`.\n---@class {a}.{p}Props", c.name);
+        let _ = writeln!(
+            s,
+            "---The props of `{a}/{}`.\n---@class {a}.{p}Props",
+            c.name
+        );
         for f in &c.props {
             let (_, req) = f.ty.required();
             let _ = writeln!(

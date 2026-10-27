@@ -223,14 +223,27 @@ fn chart_columns(from: usize, n: usize) -> Vec<(String, kui_core::channel::Colum
     use kui_core::channel::Column;
     let at = |i: usize| (from + i) as f64;
     vec![
-        ("t".into(), Column::F64((0..n).map(|i| at(i) * 0.1).collect())),
+        (
+            "t".into(),
+            Column::F64((0..n).map(|i| at(i) * 0.1).collect()),
+        ),
         (
             "a".into(),
-            Column::F64((0..n).map(|i| 40.0 + 25.0 * (at(i) * 0.09).sin() + (hash(at(i) as u64) % 12) as f64).collect()),
+            Column::F64(
+                (0..n)
+                    .map(|i| 40.0 + 25.0 * (at(i) * 0.09).sin() + (hash(at(i) as u64) % 12) as f64)
+                    .collect(),
+            ),
         ),
         (
             "b".into(),
-            Column::F64((0..n).map(|i| 55.0 + 10.0 * (at(i) * 0.021).sin() + (hash(at(i) as u64 + 7) % 4) as f64).collect()),
+            Column::F64(
+                (0..n)
+                    .map(|i| {
+                        55.0 + 10.0 * (at(i) * 0.021).sin() + (hash(at(i) as u64 + 7) % 4) as f64
+                    })
+                    .collect(),
+            ),
         ),
     ]
 }

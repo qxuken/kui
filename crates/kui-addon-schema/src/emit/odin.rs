@@ -34,13 +34,51 @@ fn ty(schema: &Schema, t: &Type) -> String {
 /// `name`, or `name_` where it is one of Odin's keywords (`switch`, `in`).
 fn ident(name: &str) -> String {
     const KEYWORDS: &[&str] = &[
-        "asm", "auto_cast", "bit_field", "bit_set", "break", "case", "cast", "context", "continue",
-        "defer", "distinct", "do", "dynamic", "else", "enum", "fallthrough", "for", "foreign",
-        "if", "import", "in", "map", "matrix", "not_in", "or_break", "or_continue", "or_else",
-        "or_return", "package", "proc", "return", "struct", "switch", "transmute", "typeid",
-        "union", "using", "when", "where",
+        "asm",
+        "auto_cast",
+        "bit_field",
+        "bit_set",
+        "break",
+        "case",
+        "cast",
+        "context",
+        "continue",
+        "defer",
+        "distinct",
+        "do",
+        "dynamic",
+        "else",
+        "enum",
+        "fallthrough",
+        "for",
+        "foreign",
+        "if",
+        "import",
+        "in",
+        "map",
+        "matrix",
+        "not_in",
+        "or_break",
+        "or_continue",
+        "or_else",
+        "or_return",
+        "package",
+        "proc",
+        "return",
+        "struct",
+        "switch",
+        "transmute",
+        "typeid",
+        "union",
+        "using",
+        "when",
+        "where",
     ];
-    if KEYWORDS.contains(&name) { format!("{name}_") } else { name.to_string() }
+    if KEYWORDS.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_string()
+    }
 }
 
 fn odin_doc(doc: &str, indent: &str) -> String {
@@ -84,15 +122,27 @@ fn put(schema: &Schema, s: &mut String, name: &str, t: &Type) {
     let (inner, req) = t.required();
     let v = format!("p.{}", ident(name));
     if req && !matches!(inner, Type::Channel | Type::Any) {
-        let _ = writeln!(s, "\tc.value_map_set(m, \"{name}\", {})", value(schema, inner, &v));
+        let _ = writeln!(
+            s,
+            "\tc.value_map_set(m, \"{name}\", {})",
+            value(schema, inner, &v)
+        );
         return;
     }
     match inner {
         Type::String => {
-            let _ = writeln!(s, "\tif {v} != \"\" do c.value_map_set(m, \"{name}\", {})", value(schema, inner, &v));
+            let _ = writeln!(
+                s,
+                "\tif {v} != \"\" do c.value_map_set(m, \"{name}\", {})",
+                value(schema, inner, &v)
+            );
         }
         Type::Channel | Type::Any | Type::List(_) => {
-            let _ = writeln!(s, "\tif {v} != nil do c.value_map_set(m, \"{name}\", {})", value(schema, inner, &v));
+            let _ = writeln!(
+                s,
+                "\tif {v} != nil do c.value_map_set(m, \"{name}\", {})",
+                value(schema, inner, &v)
+            );
         }
         _ => {
             let _ = writeln!(
@@ -130,7 +180,12 @@ fn package(schema: &Schema) -> String {
         s.push_str(&odin_doc(&e.doc, ""));
         let names: Vec<String> = e.values.iter().map(|v| pascal(v)).collect();
         let _ = writeln!(s, "{} :: enum {{\n\t{},\n}}\n", e.name, names.join(",\n\t"));
-        let _ = writeln!(s, "@(private)\n{}_NAMES := [{}]string {{", screaming(&e.name), e.name);
+        let _ = writeln!(
+            s,
+            "@(private)\n{}_NAMES := [{}]string {{",
+            screaming(&e.name),
+            e.name
+        );
         for v in &e.values {
             let _ = writeln!(s, "\t.{} = \"{v}\",", pascal(v));
         }
@@ -169,7 +224,10 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
         let _ = writeln!(s, "\t{}: {},", ident(&f.name), ty(schema, &f.ty));
     }
     for e in &c.events {
-        s.push_str(&odin_doc(&format!("The message `{}` arrives as. {}", e.name, e.doc), "\t"));
+        s.push_str(&odin_doc(
+            &format!("The message `{}` arrives as. {}", e.name, e.doc),
+            "\t",
+        ));
         let _ = writeln!(s, "\ton_{}: any,", e.name);
     }
     s.push_str(
@@ -179,7 +237,10 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
     // 0047's shape, as events.odin spells the core's own).
     for e in &c.events {
         let ev = format!("{p}_{}", pascal(&e.name));
-        s.push_str(&odin_doc(&format!("What `{}` carries: {}", e.name, e.doc), ""));
+        s.push_str(&odin_doc(
+            &format!("What `{}` carries: {}", e.name, e.doc),
+            "",
+        ));
         let _ = writeln!(s, "{ev} :: struct {{");
         for f in &e.fields {
             s.push_str(&odin_doc(&f.doc, "\t"));
@@ -195,7 +256,11 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
             e.name
         );
     }
-    let _ = writeln!(s, "@(private)\n{}_props :: proc(p: {p}) -> ^c.Value {{\n\tm := c.value_map()", c.name);
+    let _ = writeln!(
+        s,
+        "@(private)\n{}_props :: proc(p: {p}) -> ^c.Value {{\n\tm := c.value_map()",
+        c.name
+    );
     for f in &c.props {
         put(schema, s, &f.name, &f.ty);
     }

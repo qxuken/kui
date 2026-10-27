@@ -148,7 +148,11 @@ fn lib(schema: &Schema) -> String {
             }
             let _ = writeln!(s, "    {},", pascal(v));
         }
-        let _ = writeln!(s, "}}\n\nimpl {} {{\n    /// The value's name on the wire.\n    pub fn as_str(self) -> &'static str {{\n        match self {{", e.name);
+        let _ = writeln!(
+            s,
+            "}}\n\nimpl {} {{\n    /// The value's name on the wire.\n    pub fn as_str(self) -> &'static str {{\n        match self {{",
+            e.name
+        );
         for v in &e.values {
             let _ = writeln!(s, "            {}::{} => \"{v}\",", e.name, pascal(v));
         }
@@ -156,7 +160,11 @@ fn lib(schema: &Schema) -> String {
     }
     for r in &schema.records {
         s.push_str(&rust_doc(&r.doc, ""));
-        let _ = writeln!(s, "#[derive(Clone, Debug, PartialEq)]\npub struct {} {{", r.name);
+        let _ = writeln!(
+            s,
+            "#[derive(Clone, Debug, PartialEq)]\npub struct {} {{",
+            r.name
+        );
         for f in &r.fields {
             s.push_str(&rust_doc(&f.doc, "    "));
             let _ = writeln!(s, "    pub {}: {},", ident(&f.name), ty(&f.ty));
@@ -278,7 +286,10 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
     s.push_str("            key: None,\n            fresh: false,\n        }\n    }\n\n");
     setters(s, &c.props);
     for e in &c.events {
-        s.push_str(&rust_doc(&format!("The message `{}` arrives as. {}", e.name, e.doc), "    "));
+        s.push_str(&rust_doc(
+            &format!("The message `{}` arrives as. {}", e.name, e.doc),
+            "    ",
+        ));
         let _ = writeln!(
             s,
             "    pub fn on_{}(mut self, msg: impl Into<Value>) -> Self {{\n        self.on_{} = Some(msg.into());\n        self\n    }}\n",
@@ -361,7 +372,11 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
                 _ => "None".to_string(),
             };
             if f.ty.required().1 {
-                let _ = writeln!(s, "            {}: {read}.unwrap_or_default(),", ident(&f.name));
+                let _ = writeln!(
+                    s,
+                    "            {}: {read}.unwrap_or_default(),",
+                    ident(&f.name)
+                );
             } else {
                 let _ = writeln!(s, "            {}: {read},", ident(&f.name));
             }

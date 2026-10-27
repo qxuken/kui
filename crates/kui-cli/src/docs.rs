@@ -47,7 +47,11 @@ pub fn all() -> &'static [Doc] {
 }
 
 fn get(path: &str) -> &'static str {
-    all().iter().find(|d| d.path == path).map(|d| d.text.as_str()).unwrap_or("")
+    all()
+        .iter()
+        .find(|d| d.path == path)
+        .map(|d| d.text.as_str())
+        .unwrap_or("")
 }
 
 /// Writes every carried file under `dir` (`.kui/docs`), replacing what an
@@ -225,10 +229,16 @@ fn sections(text: &str, source: Source) -> Vec<Entry> {
             };
             open = entry.map(|title| Entry {
                 source,
-                section: if source == Source::Howto { part.clone() } else { String::new() },
+                section: if source == Source::Howto {
+                    part.clone()
+                } else {
+                    String::new()
+                },
                 // `kit.table` is found as `table` too.
                 names: match title.split_once('.') {
-                    Some((_, bare)) if source == Source::Kit => vec![title.clone(), bare.to_string()],
+                    Some((_, bare)) if source == Source::Kit => {
+                        vec![title.clone(), bare.to_string()]
+                    }
                     _ => vec![title.clone()],
                 },
                 title,
@@ -248,14 +258,18 @@ fn sections(text: &str, source: Source) -> Vec<Entry> {
 }
 
 const STOP: &[&str] = &[
-    "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from", "how", "i", "in", "is",
-    "it", "its", "me", "my", "of", "on", "or", "so", "that", "the", "to", "what", "when", "why", "with", "you",
+    "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from", "how",
+    "i", "in", "is", "it", "its", "me", "my", "of", "on", "or", "so", "that", "the", "to", "what",
+    "when", "why", "with", "you",
 ];
 
 /// Lowercased, with `_`, `-` and spaces dropped: `hover_bg`, `hoverBg`
 /// and `hover-bg` are one name.
 fn norm(s: &str) -> String {
-    s.chars().filter(|c| !matches!(c, '_' | '-' | ' ' | '`')).flat_map(char::to_lowercase).collect()
+    s.chars()
+        .filter(|c| !matches!(c, '_' | '-' | ' ' | '`'))
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 /// One entry and how well it matched.
@@ -269,9 +283,15 @@ pub struct Hit {
 /// entries with the most of them.
 pub fn search(query: &str) -> Vec<Hit> {
     let lower = query.to_lowercase();
-    let all_words: Vec<&str> =
-        lower.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-' || c == '$')).filter(|w| !w.is_empty()).collect();
-    let mut words: Vec<&str> = all_words.iter().copied().filter(|w| !STOP.contains(w)).collect();
+    let all_words: Vec<&str> = lower
+        .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-' || c == '$'))
+        .filter(|w| !w.is_empty())
+        .collect();
+    let mut words: Vec<&str> = all_words
+        .iter()
+        .copied()
+        .filter(|w| !STOP.contains(w))
+        .collect();
     if words.is_empty() {
         words = all_words;
     }
@@ -292,7 +312,11 @@ pub fn search(query: &str) -> Vec<Hit> {
             });
         }
         let title = e.title.to_lowercase();
-        let body = if e.cells.is_empty() { e.body.to_lowercase() } else { e.cells.join(" ").to_lowercase() };
+        let body = if e.cells.is_empty() {
+            e.body.to_lowercase()
+        } else {
+            e.cells.join(" ").to_lowercase()
+        };
         let mut matched = 0;
         let mut s = 0;
         for w in &words {
@@ -311,9 +335,19 @@ pub fn search(query: &str) -> Vec<Hit> {
         if name == 0 && matched == 0 {
             continue;
         }
-        scored.push((matched, Hit { entry: e, score: name + s }));
+        scored.push((
+            matched,
+            Hit {
+                entry: e,
+                score: name + s,
+            },
+        ));
     }
-    let best = scored.iter().map(|(m, h)| if h.score >= 1000 { words.len() } else { *m }).max().unwrap_or(0);
+    let best = scored
+        .iter()
+        .map(|(m, h)| if h.score >= 1000 { words.len() } else { *m })
+        .max()
+        .unwrap_or(0);
     let mut hits: Vec<Hit> = scored
         .into_iter()
         .filter(|(m, h)| h.score >= 150 || *m == best)
@@ -326,7 +360,10 @@ pub fn search(query: &str) -> Vec<Hit> {
 /// The ADRs whose title has every word of the query.
 pub fn adrs_matching(query: &str) -> Vec<(u32, String)> {
     let lower = query.to_lowercase();
-    let words: Vec<&str> = lower.split_whitespace().filter(|w| !STOP.contains(w)).collect();
+    let words: Vec<&str> = lower
+        .split_whitespace()
+        .filter(|w| !STOP.contains(w))
+        .collect();
     if words.is_empty() {
         return Vec::new();
     }
@@ -346,12 +383,19 @@ pub fn adrs_matching(query: &str) -> Vec<(u32, String)> {
 /// Markdown made readable in a terminal: links to their text, escaped
 /// pipes plain.
 fn clean(s: &str) -> String {
-    let s = s.replace("\\\\|", "|").replace("\\|", "|").replace("<br>", " ");
+    let s = s
+        .replace("\\\\|", "|")
+        .replace("\\|", "|")
+        .replace("<br>", " ");
     let mut out = String::with_capacity(s.len());
     let mut rest = s.as_str();
     while let Some(open) = rest.find('[') {
-        let Some(close) = rest[open..].find("](").map(|c| open + c) else { break };
-        let Some(end) = rest[close..].find(')').map(|e| close + e) else { break };
+        let Some(close) = rest[open..].find("](").map(|c| open + c) else {
+            break;
+        };
+        let Some(end) = rest[close..].find(')').map(|e| close + e) else {
+            break;
+        };
         if rest[open + 1..close].contains('[') {
             out.push_str(&rest[..open + 1]);
             rest = &rest[open + 1..];
@@ -370,7 +414,9 @@ fn wrap(text: &str, indent: &str, width: usize) -> String {
     let mut out = String::new();
     let mut line = String::new();
     for word in text.split_whitespace() {
-        if !line.is_empty() && indent.len() + line.chars().count() + 1 + word.chars().count() > width {
+        if !line.is_empty()
+            && indent.len() + line.chars().count() + 1 + word.chars().count() > width
+        {
             out.push_str(indent);
             out.push_str(&line);
             out.push('\n');
@@ -434,7 +480,11 @@ fn render_body(body: &str, width: usize) -> String {
             let cells: Vec<String> = split_row(t).iter().map(|c| clean(c)).collect();
             let last = cells.len().saturating_sub(1);
             let mut item = cells[0].clone();
-            let middle: Vec<&str> = cells[1..last.max(1)].iter().map(String::as_str).filter(|c| !c.is_empty() && *c != "—").collect();
+            let middle: Vec<&str> = cells[1..last.max(1)]
+                .iter()
+                .map(String::as_str)
+                .filter(|c| !c.is_empty() && *c != "—")
+                .collect();
             if !middle.is_empty() && cells[1] != cells[0] {
                 item.push_str(&format!(" ({})", middle.join(" · ")));
             } else if middle.len() > 1 {
@@ -472,8 +522,10 @@ pub fn render(hit: &Hit, width: usize) -> String {
         Source::Props => {
             out.push_str(&format!("{} — props.md › {}\n", e.title, e.section));
             let last = e.cells.len().saturating_sub(1);
-            let described =
-                matches!(e.header.last().map(String::as_str), Some("description" | "notes" | "when" | "meaning"));
+            let described = matches!(
+                e.header.last().map(String::as_str),
+                Some("description" | "notes" | "when" | "meaning")
+            );
             let upto = if described { last } else { e.cells.len() };
             let facts: Vec<String> = (1..upto)
                 .filter(|&i| !e.cells[i].is_empty())
@@ -507,13 +559,26 @@ mod tests {
 
     #[test]
     fn the_bundle_carries_every_document() {
-        for p in ["props.md", "howto.md", "kit.md", "book/runner.md", "adr/0071-docs-that-travel-with-kui.md"] {
+        for p in [
+            "props.md",
+            "howto.md",
+            "kit.md",
+            "book/runner.md",
+            "adr/0071-docs-that-travel-with-kui.md",
+        ] {
             assert!(!get(p).is_empty(), "{p} is not in the bundle");
         }
-        assert!(adrs().iter().any(|(n, t, _)| *n == 68 && t.contains("reaches a machine")));
+        assert!(
+            adrs()
+                .iter()
+                .any(|(n, t, _)| *n == 68 && t.contains("reaches a machine"))
+        );
         // The book's includes are expanded: the chapter reads whole.
         let runner = get("book/runner.md");
-        assert!(!runner.contains("{{#include") && runner.contains("function view"), "{runner}");
+        assert!(
+            !runner.contains("{{#include") && runner.contains("function view"),
+            "{runner}"
+        );
     }
 
     #[test]
@@ -531,9 +596,15 @@ mod tests {
     fn a_question_finds_its_howto_entry() {
         let hits = search("animate a removal");
         assert!(
-            hits.iter().take(5).any(|h| h.entry.source == Source::Howto && h.entry.title.contains("animate a removal")),
+            hits.iter()
+                .take(5)
+                .any(|h| h.entry.source == Source::Howto
+                    && h.entry.title.contains("animate a removal")),
             "{:?}",
-            hits.iter().take(5).map(|h| &h.entry.title).collect::<Vec<_>>()
+            hits.iter()
+                .take(5)
+                .map(|h| &h.entry.title)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -541,8 +612,18 @@ mod tests {
     fn a_table_row_prints_its_facts_and_description() {
         let hits = search("hoverBg");
         let text = render(&hits[0], 80);
-        assert!(text.starts_with("hoverBg — props.md › Container props\n"), "{text}");
-        assert!(text.contains("Lua hover_bg") && text.contains("Background while the pointer"), "{text}");
-        assert!(text.lines().all(|l| l.chars().count() <= 80 || !l.contains(' ')), "{text}");
+        assert!(
+            text.starts_with("hoverBg — props.md › Container props\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Lua hover_bg") && text.contains("Background while the pointer"),
+            "{text}"
+        );
+        assert!(
+            text.lines()
+                .all(|l| l.chars().count() <= 80 || !l.contains(' ')),
+            "{text}"
+        );
     }
 }

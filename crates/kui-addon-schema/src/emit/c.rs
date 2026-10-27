@@ -37,7 +37,11 @@ fn ident(name: &str) -> String {
         "register", "restrict", "return", "short", "signed", "sizeof", "static", "struct",
         "switch", "true", "typedef", "union", "unsigned", "void", "volatile", "while",
     ];
-    if KEYWORDS.contains(&name) { format!("{name}_") } else { name.to_string() }
+    if KEYWORDS.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_string()
+    }
 }
 
 /// The C fields a schema field becomes (its name, and its `_set` or
@@ -78,7 +82,12 @@ fn fields(schema: &Schema, field: &str, t: &Type) -> Vec<String> {
         }
         Type::Optional(_) => unreachable!(),
     }
-    if !req && matches!(inner, Type::Number | Type::Integer | Type::Boolean | Type::Length) {
+    if !req
+        && matches!(
+            inner,
+            Type::Number | Type::Integer | Type::Boolean | Type::Length
+        )
+    {
         out.push(format!("bool {field}_set;"));
     }
     out
@@ -104,7 +113,11 @@ fn put(schema: &Schema, s: &mut String, name: &str, t: &Type, indent: &str) {
             Type::Any => v.to_string(),
             Type::Named(n) => {
                 if schema.enum_named(n).is_some() {
-                    format!("kui_value_str({}_{}_name({v}))", a, crate::emit::c::snake(n))
+                    format!(
+                        "kui_value_str({}_{}_name({v}))",
+                        a,
+                        crate::emit::c::snake(n)
+                    )
                 } else {
                     format!("{}_{}_value({v})", a, snake(n))
                 }
@@ -192,7 +205,12 @@ fn header(schema: &Schema) -> String {
     );
     for e in &schema.enums {
         s.push_str(&c_doc(&e.doc, ""));
-        let _ = write!(s, "typedef enum {pa}{} {{\n    {ua}_{}_UNSET = 0,\n", e.name, up(&snake(&e.name)));
+        let _ = write!(
+            s,
+            "typedef enum {pa}{} {{\n    {ua}_{}_UNSET = 0,\n",
+            e.name,
+            up(&snake(&e.name))
+        );
         for v in &e.values {
             let _ = writeln!(s, "    {ua}_{}_{},", up(&snake(&e.name)), up(v));
         }

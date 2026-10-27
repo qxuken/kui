@@ -236,14 +236,31 @@ fn a_dialog_declared_inside_a_tooltip_box_is_not_inside_it() {
 fn a_tooltip_shows_while_the_keyboard_holds_focus() {
     let build = |core: &mut Core| {
         let mut ui = core.frame(VIEW, 1.0);
-        ui.with(NodeSpec::column().size(60.0, 20.0).on_click("a").label("first").tooltip("the first"), |_| {});
-        ui.with(NodeSpec::column().size(60.0, 20.0).on_click("b").label("second").tooltip("the second"), |_| {});
+        ui.with(
+            NodeSpec::column()
+                .size(60.0, 20.0)
+                .on_click("a")
+                .label("first")
+                .tooltip("the first"),
+            |_| {},
+        );
+        ui.with(
+            NodeSpec::column()
+                .size(60.0, 20.0)
+                .on_click("b")
+                .label("second")
+                .tooltip("the second"),
+            |_| {},
+        );
         ui.finish();
     };
     let mut core = Core::new();
     build(&mut core);
     build(&mut core);
-    assert!(hints(&mut core).is_empty(), "nothing hovered, nothing focused");
+    assert!(
+        hints(&mut core).is_empty(),
+        "nothing hovered, nothing focused"
+    );
     kui_core::testing::tab(&mut core, false);
     build(&mut core);
     build(&mut core);

@@ -18,7 +18,9 @@ fn writable(lua: &Lua, path: &str) -> mlua::Result<std::path::PathBuf> {
     {
         return Err(fail(format!(
             "{path}: a packed app's own files are read-only — write under kui.data_dir ({})",
-            crate::modules::app().map(|a| a.data_dir.display().to_string()).unwrap_or_default()
+            crate::modules::app()
+                .map(|a| a.data_dir.display().to_string())
+                .unwrap_or_default()
         )));
     }
     Ok(p)
@@ -54,8 +56,15 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             if let Some(dir) = p.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
             }
-            match std::fs::OpenOptions::new().write(true).create_new(true).open(&p) {
-                Ok(mut f) => f.write_all(&data.as_bytes()).map(|()| true).map_err(|e| io(&p, e)),
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&p)
+            {
+                Ok(mut f) => f
+                    .write_all(&data.as_bytes())
+                    .map(|()| true)
+                    .map_err(|e| io(&p, e)),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
                 Err(e) => Err(io(&p, e)),
             }
@@ -164,9 +173,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             let id = s.ops.id();
             crate::ops::run(&s.ops, id, move || {
                 let mut out = Vec::new();
-                walk(&root, &root, &skip, pattern.as_deref(), dirs, &mut out).map_err(|e| format!("{}: {e}", root.display()))?;
+                walk(&root, &root, &skip, pattern.as_deref(), dirs, &mut out)
+                    .map_err(|e| format!("{}: {e}", root.display()))?;
                 out.sort();
-                Ok(kui_core::Value::List(out.into_iter().map(kui_core::Value::Str).collect()))
+                Ok(kui_core::Value::List(
+                    out.into_iter().map(kui_core::Value::Str).collect(),
+                ))
             });
             Ok(id)
         })?,

@@ -15,17 +15,17 @@
 //! `KUI_FLAGS` (ADR 0068).
 
 mod archive;
-mod host;
-mod icons;
 mod compat;
 mod docs;
+mod host;
+mod icons;
 mod kit;
 mod modules;
 mod ops;
 mod pack;
 mod packed;
-mod pe;
 mod paths;
+mod pe;
 mod project;
 mod release;
 mod rename;
@@ -162,19 +162,31 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
             "--devtools" => a.devtools = true,
             "--no-rename" => a.no_rename = true,
             "--docs" => a.tooling.docs = true,
-            "--agents" => a.tooling = project::Tooling { docs: true, agents: true },
+            "--agents" => {
+                a.tooling = project::Tooling {
+                    docs: true,
+                    agents: true,
+                }
+            }
             "--headless" => a.headless = true,
             "--shot" => {
-                a.shot = Some(PathBuf::from(it.next().ok_or("--shot needs a file, as out.png")?));
+                a.shot = Some(PathBuf::from(
+                    it.next().ok_or("--shot needs a file, as out.png")?,
+                ));
                 a.headless = true;
             }
             "--record" => {
                 let v = it.next().ok_or("--record needs milliseconds")?;
-                a.record = Some(v.parse().map_err(|_| format!("--record: bad milliseconds {v}"))?);
+                a.record = Some(
+                    v.parse()
+                        .map_err(|_| format!("--record: bad milliseconds {v}"))?,
+                );
             }
             "--after" => {
                 let v = it.next().ok_or("--after needs milliseconds")?;
-                a.after = v.parse().map_err(|_| format!("--after: bad milliseconds {v}"))?;
+                a.after = v
+                    .parse()
+                    .map_err(|_| format!("--after: bad milliseconds {v}"))?;
             }
             "--appearance" => {
                 a.appearance = match it.next().as_deref() {
@@ -200,7 +212,9 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
                 ));
             }
             "-h" | "--help" => a.cmd = "help".into(),
-            other if other.starts_with("--") => return Err(format!("unknown option {other}\n\n{USAGE}")),
+            other if other.starts_with("--") => {
+                return Err(format!("unknown option {other}\n\n{USAGE}"));
+            }
             other => {
                 if path.replace(PathBuf::from(other)).is_some() {
                     return Err(format!("one path at a time\n\n{USAGE}"));
@@ -322,7 +336,8 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     // none beside stderr; a packed GUI app's under its data folder.
     match std::env::var("KUI_LOG").ok().filter(|v| !v.is_empty()) {
         Some(v) if v == "-" => {}
-        Some(v) => modules::log::to_file(std::path::Path::new(&v)).map_err(|e| format!("KUI_LOG {v}: {e}"))?,
+        Some(v) => modules::log::to_file(std::path::Path::new(&v))
+            .map_err(|e| format!("KUI_LOG {v}: {e}"))?,
         None if packed.is_some() && !args.headless => {
             let file = paths::data_dir(&project.id)
                 .join("logs")
@@ -352,15 +367,30 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     }
     let (ext, baseline, load_error) = loaded?;
     let lua = ext.lua().clone();
-    let kit = kit::extension().map_err(|e| format!("Kit failed to load (a bug in the runner): {e}"))?;
+    let kit =
+        kit::extension().map_err(|e| format!("Kit failed to load (a bug in the runner): {e}"))?;
     // Kit's relative paths (a skin's font file) are the app's folder's too.
     kui_lua::set_script_dir(kit.lua(), &project.dir).map_err(|e| e.to_string())?;
-    let watch = args.watch.then(|| host::Watch::start(&project, shared.clone()));
+    let watch = args
+        .watch
+        .then(|| host::Watch::start(&project, shared.clone()));
     let shot = args.shot.clone().map(|p| {
-        let p = if p.is_absolute() { p } else { std::env::current_dir().unwrap_or_default().join(p) };
+        let p = if p.is_absolute() {
+            p
+        } else {
+            std::env::current_dir().unwrap_or_default().join(p)
+        };
         host::Shot::new(p, args.after).recording(args.record)
     });
-    let runner = host::Runner::new(lua, shared.clone(), &project, baseline, watch, load_error, shot);
+    let runner = host::Runner::new(
+        lua,
+        shared.clone(),
+        &project,
+        baseline,
+        watch,
+        load_error,
+        shot,
+    );
     let (w, h) = args.size.unwrap_or(project.size);
     let mut launcher = kui_native::app(&project.name)
         .chrome(project.chrome)
@@ -368,7 +398,10 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
         .extension_as("app", ext)
         .extension_as(kit::NAMESPACE, kit);
     if args.appearance != kui_native::Appearance::Unknown {
-        launcher = launcher.system(kui_native::SystemEnv { appearance: args.appearance, ..Default::default() });
+        launcher = launcher.system(kui_native::SystemEnv {
+            appearance: args.appearance,
+            ..Default::default()
+        });
     }
     // The devtools are on in every runner app, hidden until F12 (or the
     // macOS View menu) brings them up at the Log tab (ADR 0068, decision
@@ -398,7 +431,9 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     }
     if let Some(icon) = &project.icon {
         let bytes = std::fs::read(icon).map_err(|e| format!("icon {}: {e}", icon.display()))?;
-        launcher = launcher.try_icon_bytes(&bytes).map_err(|e| format!("icon {}: {e}", icon.display()))?;
+        launcher = launcher
+            .try_icon_bytes(&bytes)
+            .map_err(|e| format!("icon {}: {e}", icon.display()))?;
     }
     modules::on_interrupt(shared.clone());
     if args.headless {
@@ -416,7 +451,10 @@ fn check(args: &Args) -> Result<i32, String> {
     tooling::refresh(&project);
     let files = project::teal_files(&project.dir);
     if files.is_empty() {
-        println!("no .tl files under {}; plain .lua needs no check", project.dir.display());
+        println!(
+            "no .tl files under {}; plain .lua needs no check",
+            project.dir.display()
+        );
         return Ok(0);
     }
     let problems = teal::check(&project.dir, &files)?;
@@ -481,16 +519,27 @@ fn new(args: &Args) -> Result<i32, String> {
     if main.exists() {
         return Err(format!("{} exists; not overwriting it", main.display()));
     }
-    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "app".into());
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "app".into());
     std::fs::write(&main, NEW_MAIN).map_err(|e| format!("{}: {e}", main.display()))?;
-    let tooling = if args.tooling.any() { format!("  tooling = {},\n", args.tooling.lua()) } else { String::new() };
+    let tooling = if args.tooling.any() {
+        format!("  tooling = {},\n", args.tooling.lua())
+    } else {
+        String::new()
+    };
     std::fs::write(
         dir.join("kui.config.lua"),
         format!("return {{\n  name = {name:?},\n  entry = \"main.lua\",\n  size = {{ w = 900, h = 600 }},\n{tooling}}}\n"),
     )
     .map_err(|e| e.to_string())?;
     types(dir, args.tooling)?;
-    println!("started {}: kui run --watch {}", dir.display(), dir.display());
+    println!(
+        "started {}: kui run --watch {}",
+        dir.display(),
+        dir.display()
+    );
     Ok(0)
 }
 
@@ -526,16 +575,27 @@ fn types(dir: &std::path::Path, want: project::Tooling) -> Result<(), String> {
     println!("wrote {} (LuaLS and Teal declarations)", types.display());
     // Without the flags a manifest that does not run is `kui run`'s to
     // report, as it was before the manifest had a say here.
-    let have = if want.any() { project::tooling_of(dir)? } else { project::tooling_of(dir).unwrap_or_default() };
+    let have = if want.any() {
+        project::tooling_of(dir)?
+    } else {
+        project::tooling_of(dir).unwrap_or_default()
+    };
     let opted = have.union(want);
     if want.any()
         && let Some(manifest) = tooling::remember(dir, want)?
     {
-        println!("wrote tooling = {} into {}", opted.lua(), manifest.display());
+        println!(
+            "wrote tooling = {} into {}",
+            opted.lua(),
+            manifest.display()
+        );
     }
     if opted.any() {
         let docs = tooling::write_docs(dir)?;
-        println!("wrote {} (this kui's docs: props.md, howto.md, kit.md, book/, adr/)", docs.display());
+        println!(
+            "wrote {} (this kui's docs: props.md, howto.md, kit.md, book/, adr/)",
+            docs.display()
+        );
     }
     if opted.agents {
         let file = tooling::write_agent_block(dir)?;
@@ -573,20 +633,32 @@ fn docs_cmd(argv: &[String]) -> Result<i32, String> {
                 Some(n) => adr = Some(n.clone()),
                 None => list = true,
             },
-            other if other.starts_with("--") => return Err(format!("unknown option {other}\n\n{DOCS_USAGE}")),
+            other if other.starts_with("--") => {
+                return Err(format!("unknown option {other}\n\n{DOCS_USAGE}"));
+            }
             w => words.push(w.to_string()),
         }
     }
     let adrs = docs::adrs();
     if list {
-        let lines: Vec<String> = adrs.iter().map(|(n, title, _)| format!("{n:04}  {title}\n")).collect();
+        let lines: Vec<String> = adrs
+            .iter()
+            .map(|(n, title, _)| format!("{n:04}  {title}\n"))
+            .collect();
         print_all(&lines.concat());
         return Ok(0);
     }
     if let Some(n) = adr {
-        let want: u32 = n.trim().parse().map_err(|_| format!("--adr takes a number, as 68 or 0068, not {n}"))?;
+        let want: u32 = n
+            .trim()
+            .parse()
+            .map_err(|_| format!("--adr takes a number, as 68 or 0068, not {n}"))?;
         let Some((_, _, text)) = adrs.iter().find(|(m, _, _)| *m == want) else {
-            return Err(format!("no ADR {want} in kui {}; kui docs --adr lists the {}", compat::VERSION, adrs.len()));
+            return Err(format!(
+                "no ADR {want} in kui {}; kui docs --adr lists the {}",
+                compat::VERSION,
+                adrs.len()
+            ));
         };
         print_all(text);
         return Ok(0);
@@ -595,7 +667,11 @@ fn docs_cmd(argv: &[String]) -> Result<i32, String> {
         return open_book(docs::BOOK);
     }
     let query = words.join(" ");
-    let width = std::env::var("COLUMNS").ok().and_then(|c| c.parse().ok()).unwrap_or(80usize).clamp(50, 120);
+    let width = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(80usize)
+        .clamp(50, 120);
     let hits = docs::search(&query);
     let cap = if all { hits.len() } else { 10 };
     let mut out = String::new();
@@ -605,12 +681,21 @@ fn docs_cmd(argv: &[String]) -> Result<i32, String> {
     }
     let more = hits.len().saturating_sub(cap);
     if more > 0 {
-        out.push_str(&format!("{more} more; kui docs --all {query} prints every match\n"));
+        out.push_str(&format!(
+            "{more} more; kui docs --all {query} prints every match\n"
+        ));
     }
     let records = docs::adrs_matching(&query);
     if !records.is_empty() {
-        let named: Vec<String> = records.iter().take(5).map(|(n, t)| format!("{n:04} {t}")).collect();
-        out.push_str(&format!("ADRs: {} (kui docs --adr <n>)\n", named.join("; ")));
+        let named: Vec<String> = records
+            .iter()
+            .take(5)
+            .map(|(n, t)| format!("{n:04} {t}"))
+            .collect();
+        out.push_str(&format!(
+            "ADRs: {} (kui docs --adr <n>)\n",
+            named.join("; ")
+        ));
     }
     let found = !(hits.is_empty() && records.is_empty());
     if !found {
@@ -640,7 +725,10 @@ fn open_book(url: &str) -> Result<i32, String> {
     );
     match std::env::var("KUI_BROWSER").ok().filter(|b| !b.is_empty()) {
         Some(cmd) => {
-            let status = std::process::Command::new(&cmd).arg(url).status().map_err(|e| format!("KUI_BROWSER {cmd}: {e}"))?;
+            let status = std::process::Command::new(&cmd)
+                .arg(url)
+                .status()
+                .map_err(|e| format!("KUI_BROWSER {cmd}: {e}"))?;
             if !status.success() {
                 return Err(format!("KUI_BROWSER {cmd} {url}: {status}"));
             }
@@ -670,7 +758,10 @@ else this one; runners for other versions or platforms come from the release.
 ";
 
 fn split_list(v: &str) -> Vec<String> {
-    v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    v.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 fn pack_cmd(argv: &[String]) -> Result<i32, String> {
@@ -688,7 +779,11 @@ fn pack_cmd(argv: &[String]) -> Result<i32, String> {
     let mut it = argv.iter();
     let mut path = None;
     while let Some(a) = it.next() {
-        let mut val = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value\n\n{PACK_USAGE}"));
+        let mut val = |name: &str| {
+            it.next()
+                .cloned()
+                .ok_or(format!("{name} needs a value\n\n{PACK_USAGE}"))
+        };
         match a.as_str() {
             "-h" | "--help" => {
                 print!("{PACK_USAGE}");
@@ -702,7 +797,9 @@ fn pack_cmd(argv: &[String]) -> Result<i32, String> {
             "--installer" => o.installer = Some(val("--installer")?),
             "--runner" => o.runner = Some(PathBuf::from(val("--runner")?)),
             "--runner-mirror" => o.mirror = Some(val("--runner-mirror")?),
-            other if other.starts_with("--") => return Err(format!("unknown option {other}\n\n{PACK_USAGE}")),
+            other if other.starts_with("--") => {
+                return Err(format!("unknown option {other}\n\n{PACK_USAGE}"));
+            }
             other => {
                 if path.replace(PathBuf::from(other)).is_some() {
                     return Err(format!("one path at a time\n\n{PACK_USAGE}"));
@@ -729,7 +826,9 @@ fn upgrade(argv: &[String]) -> Result<i32, String> {
         match a.as_str() {
             "--mirror" => mirror = it.next().cloned(),
             "-h" | "--help" => {
-                println!("kui upgrade [version] [--mirror URL]: replace this kui with the release's (default: the latest)");
+                println!(
+                    "kui upgrade [version] [--mirror URL]: replace this kui with the release's (default: the latest)"
+                );
                 return Ok(0);
             }
             v => version = v.to_string(),
@@ -740,15 +839,21 @@ fn upgrade(argv: &[String]) -> Result<i32, String> {
     let exe = exe.canonicalize().unwrap_or(exe);
     let shown = exe.to_string_lossy().replace('\\', "/");
     if shown.contains("/node_modules/") {
-        return Err(format!("this kui came with npm: npm i -g @qxuken/kui-cli@{version}"));
+        return Err(format!(
+            "this kui came with npm: npm i -g @qxuken/kui-cli@{version}"
+        ));
     }
     if shown.contains("/Cellar/") || shown.contains("/homebrew/") || shown.contains("/linuxbrew/") {
         return Err("this kui came with Homebrew: brew upgrade kui".into());
     }
     if shown.contains("/target/debug/") || shown.contains("/target/release/") {
-        return Err(format!("this kui is a build from source ({}); cargo build it again", exe.display()));
+        return Err(format!(
+            "this kui is a build from source ({}); cargo build it again",
+            exe.display()
+        ));
     }
-    let platform = release::current_platform().ok_or("the release has no runner for this machine")?;
+    let platform =
+        release::current_platform().ok_or("the release has no runner for this machine")?;
     let version = release::resolve(&version, mirror.as_deref())?;
     if version == compat::VERSION {
         println!("kui {version} already");
@@ -763,7 +868,8 @@ fn upgrade(argv: &[String]) -> Result<i32, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
     }
     // A running exe cannot be deleted on Windows, but it can be renamed.
     if cfg!(windows) {

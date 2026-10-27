@@ -111,16 +111,18 @@ fn a_radio_group_enters_on_its_checked_radio() {
     let mut radios = Vec::new();
     ui.with_keyed("set", NodeSpec::row().role(Role::RadioGroup), |ui| {
         for (i, name) in ["a", "b", "c"].iter().enumerate() {
-            radios.push(ui.text_in_keyed(
-                name,
-                NodeSpec::row()
-                    .role(Role::Radio)
-                    .focusable()
-                    .checked(i == 2)
-                    .on_click(Value::str(*name)),
-                name,
-                TextStyle::new(12.0),
-            ));
+            radios.push(
+                ui.text_in_keyed(
+                    name,
+                    NodeSpec::row()
+                        .role(Role::Radio)
+                        .focusable()
+                        .checked(i == 2)
+                        .on_click(Value::str(*name)),
+                    name,
+                    TextStyle::new(12.0),
+                ),
+            );
         }
     });
     ui.finish();

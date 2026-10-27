@@ -75,7 +75,10 @@ impl Tooling {
     }
 
     pub fn union(self, other: Tooling) -> Tooling {
-        Tooling { docs: self.any() || other.any(), agents: self.agents || other.agents }
+        Tooling {
+            docs: self.any() || other.any(),
+            agents: self.agents || other.agents,
+        }
     }
 
     /// As the manifest spells it: `{ docs = true, agents = true }`.
@@ -116,7 +119,11 @@ pub struct PackConfig {
 const ENTRIES: [&str; 3] = ["main.lua", "main.tl", "app.lua"];
 
 pub fn find(path: &Path) -> Result<Project, String> {
-    let path = if path.as_os_str().is_empty() { Path::new(".") } else { path };
+    let path = if path.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        path
+    };
     let path = path
         .canonicalize()
         .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -124,7 +131,9 @@ pub fn find(path: &Path) -> Result<Project, String> {
         (path.clone(), None)
     } else {
         (
-            path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from(".")),
+            path.parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from(".")),
             Some(path.clone()),
         )
     };
@@ -148,7 +157,10 @@ pub fn find(path: &Path) -> Result<Project, String> {
         id_given: false,
         version: None,
         pin: None,
-        pack: PackConfig { devtools: true, ..Default::default() },
+        pack: PackConfig {
+            devtools: true,
+            ..Default::default()
+        },
         devtools_reachable: true,
         devtools_key: DevtoolsKey::F12,
         tooling: Tooling::default(),
@@ -167,7 +179,11 @@ pub fn find(path: &Path) -> Result<Project, String> {
         })?,
     };
     if entry_name_from_file(&p) {
-        p.name = p.entry.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or(p.name);
+        p.name = p
+            .entry
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or(p.name);
     }
     if p.id.is_empty() {
         p.id = default_id(&p.name);
@@ -177,7 +193,10 @@ pub fn find(path: &Path) -> Result<Project, String> {
 
 /// The app's manifest in `dir`: `kui.config.lua`, else `kui.config.tl`.
 pub fn manifest(dir: &Path) -> Option<PathBuf> {
-    ["kui.config.lua", "kui.config.tl"].iter().map(|n| dir.join(n)).find(|c| c.exists())
+    ["kui.config.lua", "kui.config.tl"]
+        .iter()
+        .map(|n| dir.join(n))
+        .find(|c| c.exists())
 }
 
 /// The manifest's table, run.
@@ -194,16 +213,23 @@ fn eval_manifest(path: &Path) -> Result<(Lua, mlua::Table), String> {
 }
 
 fn tooling_in(t: &mlua::Table) -> mlua::Result<Tooling> {
-    let Some(tt) = t.get::<Option<mlua::Table>>("tooling")? else { return Ok(Tooling::default()) };
+    let Some(tt) = t.get::<Option<mlua::Table>>("tooling")? else {
+        return Ok(Tooling::default());
+    };
     let agents = tt.get::<Option<bool>>("agents")?.unwrap_or(false);
-    Ok(Tooling { docs: tt.get::<Option<bool>>("docs")?.unwrap_or(false) || agents, agents })
+    Ok(Tooling {
+        docs: tt.get::<Option<bool>>("docs")?.unwrap_or(false) || agents,
+        agents,
+    })
 }
 
 /// What the manifest in `dir` opted into; nothing without one. Read
 /// alone, so a folder that is not an app yet (`kui types` in it) has an
 /// answer.
 pub fn tooling_of(dir: &Path) -> Result<Tooling, String> {
-    let Some(path) = manifest(dir) else { return Ok(Tooling::default()) };
+    let Some(path) = manifest(dir) else {
+        return Ok(Tooling::default());
+    };
     let (_lua, t) = eval_manifest(&path)?;
     tooling_in(&t).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -213,7 +239,13 @@ pub fn tooling_of(dir: &Path) -> Result<Tooling, String> {
 pub fn default_id(name: &str) -> String {
     let id: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect();
     let id = id.trim_matches('-').to_string();
     if id.is_empty() { "kui-app".into() } else { id }
@@ -222,7 +254,9 @@ pub fn default_id(name: &str) -> String {
 /// A file given alone names the app after itself (`kui run tool.lua` is
 /// "tool"); a folder's app is named for the folder.
 fn entry_name_from_file(p: &Project) -> bool {
-    !ENTRIES.iter().any(|n| p.entry.file_name().is_some_and(|f| f == *n))
+    !ENTRIES
+        .iter()
+        .any(|n| p.entry.file_name().is_some_and(|f| f == *n))
 }
 
 fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Result<(), String> {
@@ -244,7 +278,11 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
                 "native" => kui_native::Chrome::Native,
                 "custom" => kui_native::Chrome::Custom,
                 "borderless" => kui_native::Chrome::Borderless,
-                _ => return Err(mlua::Error::runtime(format!("chrome = {c:?}: native, custom or borderless"))),
+                _ => {
+                    return Err(mlua::Error::runtime(format!(
+                        "chrome = {c:?}: native, custom or borderless"
+                    )));
+                }
             };
         }
         if let Some(b) = t.get::<Option<String>>("titlebar")? {
@@ -252,7 +290,11 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
                 "standard" => kui_native::Titlebar::Standard,
                 "medium" => kui_native::Titlebar::Medium,
                 "tall" => kui_native::Titlebar::Tall,
-                _ => return Err(mlua::Error::runtime(format!("titlebar = {b:?}: standard, medium or tall"))),
+                _ => {
+                    return Err(mlua::Error::runtime(format!(
+                        "titlebar = {b:?}: standard, medium or tall"
+                    )));
+                }
             };
         }
         p.devtools = t.get::<Option<bool>>("devtools")?.unwrap_or(false);
@@ -314,7 +356,9 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
 
 /// `{ w = 900, h = 600 }` or `{ 900, 600 }` under `name`.
 fn size(t: &mlua::Table, name: &str) -> mlua::Result<Option<(f64, f64)>> {
-    let Some(s) = t.get::<Option<mlua::Table>>(name)? else { return Ok(None) };
+    let Some(s) = t.get::<Option<mlua::Table>>(name)? else {
+        return Ok(None);
+    };
     let w = s.get::<Option<f64>>("w")?.or(s.get::<Option<f64>>(1)?);
     let h = s.get::<Option<f64>>("h")?.or(s.get::<Option<f64>>(2)?);
     Ok(w.zip(h))
@@ -333,7 +377,9 @@ pub fn load_dotenv(dir: &Path) {
                 continue;
             }
             let line = line.strip_prefix("export ").unwrap_or(line);
-            let Some((k, v)) = line.split_once('=') else { continue };
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
             let k = k.trim();
             let mut v = v.trim();
             if (v.starts_with('"') && v.ends_with('"') && v.len() >= 2)
@@ -377,7 +423,9 @@ pub fn teal_files(dir: &Path) -> Vec<PathBuf> {
 
 /// Calls `f` for every file under `dir`.
 pub fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         let name = e.file_name();
@@ -399,13 +447,17 @@ pub fn glob(pattern: &str, path: &str) -> bool {
         match p.first() {
             None => s.is_empty(),
             Some(b'*') if p.get(1) == Some(&b'*') => (0..=s.len()).any(|i| go(&p[2..], &s[i..])),
-            Some(b'*') => (0..=s.len()).take_while(|&i| i == 0 || s[i - 1] != b'/').any(|i| go(&p[1..], &s[i..])),
+            Some(b'*') => (0..=s.len())
+                .take_while(|&i| i == 0 || s[i - 1] != b'/')
+                .any(|i| go(&p[1..], &s[i..])),
             Some(c) => s.first() == Some(c) && go(&p[1..], &s[1..]),
         }
     }
     let p = pattern.as_bytes();
     let s = path.as_bytes();
-    (0..=s.len()).filter(|&i| i == 0 || s[i - 1] == b'/').any(|i| go(p, &s[i..]))
+    (0..=s.len())
+        .filter(|&i| i == 0 || s[i - 1] == b'/')
+        .any(|i| go(p, &s[i..]))
 }
 
 #[cfg(test)]
@@ -425,16 +477,29 @@ mod tests {
 
     #[test]
     fn devtools_key_is_f12_unless_the_app_leaves_it_or_names_another() {
-        assert_eq!(with_config("key-default", "return {}").unwrap().devtools_key, DevtoolsKey::F12);
         assert_eq!(
-            with_config("key-off", "return { devtools_key = false }").unwrap().devtools_key,
+            with_config("key-default", "return {}")
+                .unwrap()
+                .devtools_key,
+            DevtoolsKey::F12
+        );
+        assert_eq!(
+            with_config("key-off", "return { devtools_key = false }")
+                .unwrap()
+                .devtools_key,
             DevtoolsKey::Core
         );
         let chord = with_config("key-chord", r#"return { devtools_key = "mod+alt+i" }"#).unwrap();
-        assert_eq!(chord.devtools_key, DevtoolsKey::Chord(kui_core::Accel::parse("mod+alt+i").unwrap()));
+        assert_eq!(
+            chord.devtools_key,
+            DevtoolsKey::Chord(kui_core::Accel::parse("mod+alt+i").unwrap())
+        );
         let Err(bad) = with_config("key-bad", r#"return { devtools_key = "not a chord" }"#) else {
             panic!("a bad chord loaded");
         };
-        assert!(bad.contains("devtools_key") && bad.contains("false"), "{bad}");
+        assert!(
+            bad.contains("devtools_key") && bad.contains("false"),
+            "{bad}"
+        );
     }
 }

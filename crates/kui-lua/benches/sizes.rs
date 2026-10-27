@@ -8,7 +8,7 @@
 //!
 //! Run: cargo bench -p kui-lua --bench sizes
 
-use kui_core::{Core, Extension, OriginId, Size, Instance};
+use kui_core::{Core, Extension, Instance, OriginId, Size};
 use kui_lua::LuaExtension;
 
 fn view(width: &str) -> String {

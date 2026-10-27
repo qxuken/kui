@@ -58,7 +58,11 @@ fn bind(stmt: &mut rusqlite::Statement<'_>, params: &Value) -> rusqlite::Result<
         }
         Value::Map(entries) => {
             for (k, v) in entries {
-                let name = if k.starts_with([':', '@', '$']) { k.clone() } else { format!(":{k}") };
+                let name = if k.starts_with([':', '@', '$']) {
+                    k.clone()
+                } else {
+                    format!(":{k}")
+                };
                 if let Some(i) = stmt.parameter_index(&name)? {
                     stmt.raw_bind_parameter(i, to_sql(v))?;
                 }
@@ -73,13 +77,20 @@ fn bind(stmt: &mut rusqlite::Statement<'_>, params: &Value) -> rusqlite::Result<
 fn query(conn: &mut rusqlite::Connection, sql: &str, params: &Value) -> Result<Value, String> {
     let mut stmt = conn.prepare_cached(sql).map_err(|e| e.to_string())?;
     bind(&mut stmt, params).map_err(|e| e.to_string())?;
-    let names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
+    let names: Vec<String> = stmt
+        .column_names()
+        .into_iter()
+        .map(str::to_string)
+        .collect();
     let mut rows = stmt.raw_query();
     let mut out = Vec::new();
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
         let mut m = Vec::with_capacity(names.len());
         for (i, n) in names.iter().enumerate() {
-            m.push((n.clone(), from_sql(row.get_ref(i).map_err(|e| e.to_string())?)));
+            m.push((
+                n.clone(),
+                from_sql(row.get_ref(i).map_err(|e| e.to_string())?),
+            ));
         }
         out.push(Value::Map(m));
     }
@@ -105,21 +116,28 @@ fn exec(conn: &mut rusqlite::Connection, sql: &str, params: &Value) -> Result<Va
 impl UserData for Db {
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
         for (name, write) in [("__query", false), ("__exec", true)] {
-            m.add_method(name, move |_, this, (sql, params): (String, Option<mlua::Value>)| {
-                let params = match params {
-                    Some(p) => kui_lua::lua_to_value(&p)?,
-                    None => Value::Null,
-                };
-                let id = this.ops.id();
-                let ops = this.ops.clone();
-                this.jobs
-                    .send(Box::new(move |conn| {
-                        let a = if write { exec(conn, &sql, &params) } else { query(conn, &sql, &params) };
-                        ops.answer(id, a.map_err(|e| format!("{e} (in: {sql})")));
-                    }))
-                    .map_err(|_| fail("the database is closed".into()))?;
-                Ok(id)
-            });
+            m.add_method(
+                name,
+                move |_, this, (sql, params): (String, Option<mlua::Value>)| {
+                    let params = match params {
+                        Some(p) => kui_lua::lua_to_value(&p)?,
+                        None => Value::Null,
+                    };
+                    let id = this.ops.id();
+                    let ops = this.ops.clone();
+                    this.jobs
+                        .send(Box::new(move |conn| {
+                            let a = if write {
+                                exec(conn, &sql, &params)
+                            } else {
+                                query(conn, &sql, &params)
+                            };
+                            ops.answer(id, a.map_err(|e| format!("{e} (in: {sql})")));
+                        }))
+                        .map_err(|_| fail("the database is closed".into()))?;
+                    Ok(id)
+                },
+            );
         }
     }
 }
@@ -148,7 +166,10 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                     }
                 })
                 .map_err(|e| fail(format!("sqlite.open: {e}")))?;
-            Ok(Db { jobs: tx, ops: s.ops.clone() })
+            Ok(Db {
+                jobs: tx,
+                ops: s.ops.clone(),
+            })
         })?,
     )?;
     kui.set("sqlite", sqlite)?;

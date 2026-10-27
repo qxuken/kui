@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use kui_core::{Color, Core, Extension, NodeSpec, OriginId, Size, Instance, TextStyle};
+use kui_core::{Color, Core, Extension, Instance, NodeSpec, OriginId, Size, TextStyle};
 use kui_lua::LuaExtension;
 
 const ROWS: usize = 300;

@@ -54,7 +54,8 @@ fn request_opts(url_or_opts: mlua::Value, method: &str, extra: Option<Table>) ->
             let mut out = String::new();
             super::formats::write_json(&mut out, &kui_lua::lua_to_value(&j)?, false, 0);
             r.body = Some(out.into_bytes());
-            r.headers.push(("content-type".into(), "application/json".into()));
+            r.headers
+                .push(("content-type".into(), "application/json".into()));
         }
         if let Some(b) = t.get::<Option<mlua::LuaString>>("body")? {
             r.body = Some(b.as_bytes().to_vec());
@@ -65,7 +66,12 @@ fn request_opts(url_or_opts: mlua::Value, method: &str, extra: Option<Table>) ->
     match url_or_opts {
         mlua::Value::String(s) => r.url = s.to_str()?.to_string(),
         mlua::Value::Table(t) => read(&mut r, &t)?,
-        other => return Err(fail(format!("http: expected a URL or an options table, got {}", other.type_name()))),
+        other => {
+            return Err(fail(format!(
+                "http: expected a URL or an options table, got {}",
+                other.type_name()
+            )));
+        }
     }
     if let Some(t) = extra {
         read(&mut r, &t)?;
@@ -83,7 +89,9 @@ fn is_json(content_type: Option<&str>) -> bool {
 fn fetch(r: Req) -> Result<Value, String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
-        .timeout_global(Some(Duration::from_secs_f64(r.timeout.unwrap_or(30_000.0) / 1000.0)))
+        .timeout_global(Some(Duration::from_secs_f64(
+            r.timeout.unwrap_or(30_000.0) / 1000.0,
+        )))
         .build()
         .into();
     macro_rules! with_headers {
@@ -109,7 +117,10 @@ fn fetch(r: Req) -> Result<Value, String> {
     let status = res.status().as_u16();
     let mut headers = Vec::new();
     for (k, v) in res.headers() {
-        headers.push((k.as_str().to_string(), Value::Str(v.to_str().unwrap_or("").to_string())));
+        headers.push((
+            k.as_str().to_string(),
+            Value::Str(v.to_str().unwrap_or("").to_string()),
+        ));
     }
     let content_type = res
         .headers()
@@ -189,7 +200,8 @@ fn decode(s: &str) -> String {
         match b[i] {
             b'+' => out.push(b' '),
             b'%' if i + 2 < b.len() => {
-                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16) {
+                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16)
+                {
                     Ok(v) => {
                         out.push(v);
                         i += 2;
@@ -208,13 +220,15 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let http = lua.create_table()?;
     http.set(
         "__request",
-        lua.create_function(|lua, (target, method, extra): (mlua::Value, Option<String>, Option<Table>)| {
-            let r = request_opts(target, method.as_deref().unwrap_or("GET"), extra)?;
-            let s = shared(lua);
-            let id = s.ops.id();
-            ops::run(&s.ops, id, move || fetch(r));
-            Ok(id)
-        })?,
+        lua.create_function(
+            |lua, (target, method, extra): (mlua::Value, Option<String>, Option<Table>)| {
+                let r = request_opts(target, method.as_deref().unwrap_or("GET"), extra)?;
+                let s = shared(lua);
+                let id = s.ops.id();
+                ops::run(&s.ops, id, move || fetch(r));
+                Ok(id)
+            },
+        )?,
     )?;
     kui.set("http", http)?;
 
@@ -223,11 +237,17 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         lua.create_function(|lua, opts: Table| {
             let s = shared(lua);
             let port: u16 = opts.get::<Option<u16>>("port")?.unwrap_or(0);
-            let host: String = opts.get::<Option<String>>("host")?.unwrap_or_else(|| "127.0.0.1".into());
+            let host: String = opts
+                .get::<Option<String>>("host")?
+                .unwrap_or_else(|| "127.0.0.1".into());
             let root = opts.get::<Option<String>>("static")?.map(|d| s.path(&d));
             let inner = tiny_http::Server::http((host.as_str(), port))
                 .map_err(|e| fail(format!("http.serve on {host}:{port}: {e}")))?;
-            let bound = inner.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
+            let bound = inner
+                .server_addr()
+                .to_ip()
+                .map(|a| a.port())
+                .unwrap_or(port);
             let inner = Arc::new(inner);
             let pending: Arc<Mutex<HashMap<u64, tiny_http::Request>>> = Arc::default();
             let server_id = s.ops.id();
@@ -287,7 +307,10 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                     })
                     .map_err(|e| fail(format!("http.serve: {e}")))?;
             }
-            s.servers.lock().unwrap().insert(server_id, Server { inner, pending });
+            s.servers
+                .lock()
+                .unwrap()
+                .insert(server_id, Server { inner, pending });
             Ok((server_id, bound))
         })?,
     )?;
@@ -313,7 +336,10 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             let Some(req) = req else { return Ok(()) };
             let status: u16 = res.get::<Option<u16>>("status")?.unwrap_or(200);
             let mut content_type = "text/plain; charset=utf-8";
-            let body: Vec<u8> = if let Some(j) = res.get::<Option<mlua::Value>>("json")?.filter(|v| !v.is_nil()) {
+            let body: Vec<u8> = if let Some(j) = res
+                .get::<Option<mlua::Value>>("json")?
+                .filter(|v| !v.is_nil())
+            {
                 content_type = "application/json";
                 let mut out = String::new();
                 super::formats::write_json(&mut out, &kui_lua::lua_to_value(&j)?, false, 0);

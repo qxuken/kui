@@ -57,9 +57,10 @@ fn out(o: &Output) -> String {
 fn the_modules_answer_from_a_task() {
     let dir = app(
         "modules",
-        &[(
-            "main.lua",
-            r#"
+        &[
+            (
+                "main.lua",
+                r#"
             print("json", kui.json.encode({ b = 1, a = { 1, 2 } }))
             print("toml", kui.toml.decode("x = 1\n[t]\ny = 'z'").t.y)
             print("yaml", kui.yaml.decode("a: [1, 2]").a[2])
@@ -88,8 +89,9 @@ fn the_modules_answer_from_a_task() {
               kui.exit(3)
             end)
             "#,
-        ),
-        (".env", "FROM_DOTENV=yes\nKEPT=from-file\n")],
+            ),
+            (".env", "FROM_DOTENV=yes\nKEPT=from-file\n"),
+        ],
     );
     let o = Command::new(KUI)
         .args(["run", "--headless", "."])
@@ -184,7 +186,10 @@ fn a_worker_that_throws_arrives_as_a_message() {
     let dir = app(
         "worker-error",
         &[
-            ("boom.lua", "function on_message() error('kaboom') end\nerror('at load')\n"),
+            (
+                "boom.lua",
+                "function on_message() error('kaboom') end\nerror('at load')\n",
+            ),
             (
                 "main.lua",
                 r#"
@@ -247,7 +252,10 @@ fn watch_reloads_the_app_and_keeps_its_model() {
     );
     let o = kui(&dir, &["run", "--headless", "--watch"], 20);
     let s = out(&o);
-    assert!(s.contains("load\t2"), "the reload ran with the model kept:\n{s}");
+    assert!(
+        s.contains("load\t2"),
+        "the reload ran with the model kept:\n{s}"
+    );
     assert_eq!(o.status.code(), Some(0), "{s}");
 }
 
@@ -340,7 +348,9 @@ fn a_font_file_is_read_against_the_app_folder() {
     assert!(o.status.success(), "{s}");
     let missing = s.lines().find(|l| l.starts_with("missing")).unwrap_or("");
     assert!(
-        missing.starts_with("missing\tnil\t") && missing.contains(&name) && missing.contains("none.ttf"),
+        missing.starts_with("missing\tnil\t")
+            && missing.contains(&name)
+            && missing.contains("none.ttf"),
         "nil, and the path in the app's folder: {s}"
     );
     let garbage = s.lines().find(|l| l.starts_with("garbage")).unwrap_or("");
@@ -380,7 +390,10 @@ fn app_files(dir: &Path, rel: &Path, out: &mut Vec<PathBuf>) {
         let r = rel.join(e.file_name());
         if e.file_type().unwrap().is_dir() {
             app_files(dir, &r, out);
-        } else if r.extension().is_some_and(|x| x == "lua" || x == "md" || x == "json") {
+        } else if r
+            .extension()
+            .is_some_and(|x| x == "lua" || x == "md" || x == "json")
+        {
             out.push(r);
         }
     }
@@ -396,10 +409,16 @@ fn kit_app(name: &str, entry: &str) -> PathBuf {
     rels.retain(|r| r != Path::new("kui.config.lua"));
     let mut files: Vec<(String, String)> = Vec::new();
     for rel in rels {
-        files.push((rel.to_string_lossy().replace('\\', "/"), std::fs::read_to_string(src.join(&rel)).unwrap()));
+        files.push((
+            rel.to_string_lossy().replace('\\', "/"),
+            std::fs::read_to_string(src.join(&rel)).unwrap(),
+        ));
     }
     files.push(("walk.lua".into(), entry.into()));
-    let refs: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+    let refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
     app(name, &refs)
 }
 
@@ -460,15 +479,39 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     let s = out(&o);
     assert!(o.status.success(), "{s}");
     assert!(!s.contains("warning"), "{s}");
-    assert!(!s.contains("could not be read"), "every card's source was read:\n{s}");
-    assert!(s.contains("rows\t100000\tspans\t18000"), "the worker's channels arrived:\n{s}");
-    assert!(s.contains("profile\tloaded"), "the loading card loaded:\n{s}");
+    assert!(
+        !s.contains("could not be read"),
+        "every card's source was read:\n{s}"
+    );
+    assert!(
+        s.contains("rows\t100000\tspans\t18000"),
+        "the worker's channels arrived:\n{s}"
+    );
+    assert!(
+        s.contains("profile\tloaded"),
+        "the loading card loaded:\n{s}"
+    );
     // A chart card's Source shows where its data is made.
-    for (card, data) in [("charts/live_line", "demos/feeds.lua"), ("charts/bars", "jobs/generate.lua"), ("charts/histogram", "jobs/generate.lua"), ("data/log", "demos/feeds.lua")] {
-        let line = s.lines().find(|l| l.starts_with(&format!("source\t{card}\t"))).unwrap_or_else(|| panic!("no source line for {card}:\n{s}"));
+    for (card, data) in [
+        ("charts/live_line", "demos/feeds.lua"),
+        ("charts/bars", "jobs/generate.lua"),
+        ("charts/histogram", "jobs/generate.lua"),
+        ("data/log", "demos/feeds.lua"),
+    ] {
+        let line = s
+            .lines()
+            .find(|l| l.starts_with(&format!("source\t{card}\t")))
+            .unwrap_or_else(|| panic!("no source line for {card}:\n{s}"));
         assert!(line.contains(data), "{card}'s Source shows {data}: {line}");
     }
-    for line in ["appearance = \"dark\"", "radius = 6,", "accent = 0x16a34aff,", "panel = { dark = 0x202830ff },", "font_ui = { \"serif\" },", "font_data = { \""] {
+    for line in [
+        "appearance = \"dark\"",
+        "radius = 6,",
+        "accent = 0x16a34aff,",
+        "panel = { dark = 0x202830ff },",
+        "font_ui = { \"serif\" },",
+        "font_data = { \"",
+    ] {
         assert!(s.contains(line), "the theme as Lua has {line}:\n{s}");
     }
 }
@@ -600,15 +643,29 @@ fn kit_paint_audit(name: &str, scale: &str) {
     let s = std::fs::read_to_string(&log).unwrap();
     assert!(status.is_some_and(|s| s.success()), "{s}");
     let escapes: Vec<&str> = s.lines().filter(|l| l.contains("[paint-escape]")).collect();
-    assert!(escapes.is_empty(), "{} node(s) drew outside the box they are in:\n{}", escapes.len(), escapes.join("\n"));
-    assert!(s.contains("ringed\ttrue"), "Tab put the ring on the checkbox:\n{s}");
-    let line = s.lines().find(|l| l.starts_with("kui: paint audit: ")).unwrap_or_else(|| panic!("no audit line:\n{s}"));
+    assert!(
+        escapes.is_empty(),
+        "{} node(s) drew outside the box they are in:\n{}",
+        escapes.len(),
+        escapes.join("\n")
+    );
+    assert!(
+        s.contains("ringed\ttrue"),
+        "Tab put the ring on the checkbox:\n{s}"
+    );
+    let line = s
+        .lines()
+        .find(|l| l.starts_with("kui: paint audit: "))
+        .unwrap_or_else(|| panic!("no audit line:\n{s}"));
     let n: Vec<u64> = line
         .trim_start_matches("kui: paint audit: ")
         .split(", ")
         .map(|f| f.split(' ').next().unwrap().parse().unwrap())
         .collect();
-    assert!(n[0] > 400 && n[1] > 100_000, "the audit looked at enough: {line}");
+    assert!(
+        n[0] > 400 && n[1] > 100_000,
+        "the audit looked at enough: {line}"
+    );
     assert_eq!(n[2], 0, "{line}");
     assert!(!s.contains("warning"), "{s}");
 }
@@ -895,8 +952,19 @@ fn the_kit_app_tabs_past_every_chart_that_did_not_ask_to_be_a_stop() {
     assert!(!s.contains("warning"), "{s}");
     let lines = focus_lines(&s);
     let stops = |pass: &str| {
-        let mut v: Vec<String> = lines.iter().filter(|l| l.0 == pass).map(|l| l.2.clone()).collect();
-        assert!(v.len() == 40 && lines.iter().filter(|l| l.0 == pass).all(|l| l.1 == "charts"), "{pass}:\n{s}");
+        let mut v: Vec<String> = lines
+            .iter()
+            .filter(|l| l.0 == pass)
+            .map(|l| l.2.clone())
+            .collect();
+        assert!(
+            v.len() == 40
+                && lines
+                    .iter()
+                    .filter(|l| l.0 == pass)
+                    .all(|l| l.1 == "charts"),
+            "{pass}:\n{s}"
+        );
         v.sort();
         v.dedup();
         v
@@ -908,9 +976,11 @@ fn the_kit_app_tabs_past_every_chart_that_did_not_ask_to_be_a_stop() {
         ["b1", "plot"],
         "the charts' stops: the bars to pick and the live line chart that asked, no other:\n{s}"
     );
-    assert!(without.iter().all(|k| with.contains(k)), "the rest of the ring is the same:\n{s}");
+    assert!(
+        without.iter().all(|k| with.contains(k)),
+        "the rest of the ring is the same:\n{s}"
+    );
 }
-
 
 /// The Kit app describes its own design system (addons/kit/app/design):
 /// the Foundations page draws the brand book, the Colours page every colour
@@ -961,19 +1031,51 @@ fn the_kit_app_describes_its_design_system() {
     assert!(o.status.success(), "{s}");
     assert!(!s.contains("warning"), "{s}");
     let lines = focus_lines(&s);
-    let paged = lines.iter().find(|l| l.0 == "paged").expect("the paged probe");
-    assert_eq!(paged.1, "foundations", "⌥↓ from the last card page reaches the design system:\n{s}");
-    let design: Vec<Vec<&str>> = s.lines().filter_map(|l| l.strip_prefix("design\t")).map(|l| l.split('\t').collect()).collect();
-    let at = |name: &str| design.iter().find(|d| d[0] == name).unwrap_or_else(|| panic!("no {name}:\n{s}")).clone();
+    let paged = lines
+        .iter()
+        .find(|l| l.0 == "paged")
+        .expect("the paged probe");
+    assert_eq!(
+        paged.1, "foundations",
+        "⌥↓ from the last card page reaches the design system:\n{s}"
+    );
+    let design: Vec<Vec<&str>> = s
+        .lines()
+        .filter_map(|l| l.strip_prefix("design\t"))
+        .map(|l| l.split('\t').collect())
+        .collect();
+    let at = |name: &str| {
+        design
+            .iter()
+            .find(|d| d[0] == name)
+            .unwrap_or_else(|| panic!("no {name}:\n{s}"))
+            .clone()
+    };
     for name in ["foundations", "ledger", "phosphor", "type", "icons"] {
         let d = at(name);
-        assert!(d[2].parse::<usize>().unwrap() >= 60, "{name}: Kit's colour roles read live: {d:?}");
+        assert!(
+            d[2].parse::<usize>().unwrap() >= 60,
+            "{name}: Kit's colour roles read live: {d:?}"
+        );
         assert_eq!(d[4], "true", "{name}: design/tokens.json read: {d:?}");
-        assert_eq!(d[5], "40", "{name}: the icon set read from the brand book: {d:?}");
+        assert_eq!(
+            d[5], "40",
+            "{name}: the icon set read from the brand book: {d:?}"
+        );
     }
-    assert_ne!(at("ledger")[3], at("phosphor")[3], "the Colours page follows the skin:\n{s}");
-    let guides = s.lines().find_map(|l| l.strip_prefix("guides\t")).expect("the guides line");
-    assert!(guides.starts_with("Button IconButton") && guides.ends_with("true"), "the Buttons card's guides open: {guides}");
+    assert_ne!(
+        at("ledger")[3],
+        at("phosphor")[3],
+        "the Colours page follows the skin:\n{s}"
+    );
+    let guides = s
+        .lines()
+        .find_map(|l| l.strip_prefix("guides\t"))
+        .expect("the guides line");
+    assert!(
+        guides.starts_with("Button IconButton") && guides.ends_with("true"),
+        "the Buttons card's guides open: {guides}"
+    );
 }
 
 /// The Kit app's live feeds tick only while the page in view reads them:
@@ -1033,17 +1135,42 @@ fn the_kit_apps_feeds_tick_only_for_a_page_that_reads_them() {
             .collect()
     };
     let views = |name: &str| line(name)[0].parse::<u32>().unwrap();
-    let (inputs, charts, data, overview, paused) = (line("inputs"), line("charts"), line("data"), line("overview"), line("paused"));
+    let (inputs, charts, data, overview, paused) = (
+        line("inputs"),
+        line("charts"),
+        line("data"),
+        line("overview"),
+        line("paused"),
+    );
     // Over 1.5 s on Inputs the worker's rows may still land, and a cancelled
     // timer wakes once more to end: three views at most.
-    assert!(views("inputs") <= 3 && inputs[1] == "false" && inputs[2] == "false", "nothing ticks on Inputs: {inputs:?}\n{s}");
-    assert!(views("charts") >= 3 && charts[1] == "true" && charts[2] == "false", "the chart ticks on Charts, the log not: {charts:?}");
-    assert!(data[1] == "false" && data[2] == "true", "the log ticks on Data, the chart not: {data:?}");
+    assert!(
+        views("inputs") <= 3 && inputs[1] == "false" && inputs[2] == "false",
+        "nothing ticks on Inputs: {inputs:?}\n{s}"
+    );
+    assert!(
+        views("charts") >= 3 && charts[1] == "true" && charts[2] == "false",
+        "the chart ticks on Charts, the log not: {charts:?}"
+    );
+    assert!(
+        data[1] == "false" && data[2] == "true",
+        "the log ticks on Data, the chart not: {data:?}"
+    );
     let n: i64 = overview[3].parse().unwrap();
-    assert!(views("overview") <= 4 && overview[2] == "false" && n >= 10 && n % 10 == 0, "Overview counts ten samples a second: {overview:?}");
+    assert!(
+        views("overview") <= 4 && overview[2] == "false" && n >= 10 && n % 10 == 0,
+        "Overview counts ten samples a second: {overview:?}"
+    );
     // The cancelled timer wakes once more to end, as on Inputs.
-    assert!(views("paused") <= 2 && paused[1] == "false" && paused[3] == "0", "Live off on Overview, nothing ticks: {paused:?}");
-    assert_eq!(line("lines"), ["500", "500"], "the log keeps its last 500 lines");
+    assert!(
+        views("paused") <= 2 && paused[1] == "false" && paused[3] == "0",
+        "Live off on Overview, nothing ticks: {paused:?}"
+    );
+    assert_eq!(
+        line("lines"),
+        ["500", "500"],
+        "the log keeps its last 500 lines"
+    );
 }
 
 /// Kit's design system docs stay true to Kit: a guideline for every
@@ -1063,25 +1190,45 @@ fn kits_design_docs_match_kit() {
             n.split('_')
                 .map(|w| {
                     let mut c = w.chars();
-                    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+                    c.next()
+                        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                        .unwrap_or_default()
                 })
                 .collect::<String>()
         })
         .collect();
     let mut guides: Vec<String> = std::fs::read_dir(kit.join("app/design/components"))
         .unwrap()
-        .filter_map(|e| e.ok()?.file_name().to_str()?.strip_suffix(".md").map(str::to_string))
+        .filter_map(|e| {
+            e.ok()?
+                .file_name()
+                .to_str()?
+                .strip_suffix(".md")
+                .map(str::to_string)
+        })
         .collect();
     guides.sort();
     let mut want = components.clone();
     want.sort();
     let missing: Vec<&String> = want.iter().filter(|c| !guides.contains(c)).collect();
     let stray: Vec<&String> = guides.iter().filter(|g| !want.contains(g)).collect();
-    assert!(missing.is_empty(), "components with no guideline in app/design/components: {missing:?}");
-    assert!(stray.is_empty(), "guidelines for no component of the schema: {stray:?}");
+    assert!(
+        missing.is_empty(),
+        "components with no guideline in app/design/components: {missing:?}"
+    );
+    assert!(
+        stray.is_empty(),
+        "guidelines for no component of the schema: {stray:?}"
+    );
 
     let icons_src = std::fs::read_to_string(kit.join("src/icons.tl")).unwrap();
-    let body = icons_src.split("local BODY").nth(1).unwrap().split("\n}").next().unwrap();
+    let body = icons_src
+        .split("local BODY")
+        .nth(1)
+        .unwrap()
+        .split("\n}")
+        .next()
+        .unwrap();
     let mut icons: Vec<&str> = body
         .lines()
         .filter_map(|l| l.trim_start().split_once(" = "))
@@ -1090,14 +1237,24 @@ fn kits_design_docs_match_kit() {
         .collect();
     icons.sort();
     let book = std::fs::read_to_string(kit.join("app/design/README.md")).unwrap();
-    let line = book.lines().find(|l| l.starts_with("- The set: ")).expect("the brand book's icon set");
+    let line = book
+        .lines()
+        .find(|l| l.starts_with("- The set: "))
+        .expect("the brand book's icon set");
     let mut listed: Vec<&str> = line.split('`').skip(1).step_by(2).collect();
     listed.sort();
     assert_eq!(listed, icons, "the brand book lists Kit's icons");
 
-    let o = kui(&kit.join("app/design"), &["run", "--headless", "tokens.lua", "--", "--check"], 60);
+    let o = kui(
+        &kit.join("app/design"),
+        &["run", "--headless", "tokens.lua", "--", "--check"],
+        60,
+    );
     let s = out(&o);
-    assert!(o.status.success() && s.contains("tokens.json matches Kit"), "{s}");
+    assert!(
+        o.status.success() && s.contains("tokens.json matches Kit"),
+        "{s}"
+    );
 }
 
 /// The Kit app is Kit's gallery: every component its schema describes is
@@ -1120,20 +1277,34 @@ fn the_kit_app_places_every_component() {
         .filter_map(|l| l.split('"').next())
         .collect();
     assert!(names.len() >= 39, "the schema's components: {names:?}");
-    let missing: Vec<&&str> = names.iter().filter(|n| !app.contains(&format!("kit.{n}("))).collect();
-    assert!(missing.is_empty(), "components with no demo in the Kit app: {missing:?}");
+    let missing: Vec<&&str> = names
+        .iter()
+        .filter(|n| !app.contains(&format!("kit.{n}(")))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "components with no demo in the Kit app: {missing:?}"
+    );
     // And it runs as an app of its own: a name, an id, a window.
     let config = std::fs::read_to_string(kit.join("app/kui.config.lua")).unwrap();
-    assert!(config.contains("name = \"Kit\"") && config.contains("id = \"dev.kui.kit.gallery\""), "{config}");
+    assert!(
+        config.contains("name = \"Kit\"") && config.contains("id = \"dev.kui.kit.gallery\""),
+        "{config}"
+    );
 }
 
 /// Runs a Kit sample's own headless test (addons/kit/samples/<name>/test),
 /// in place: each writes only to the temp folder and serves on a free port.
 fn kit_sample(name: &str) {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit/samples").join(name);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../addons/kit/samples")
+        .join(name);
     let o = kui(&dir, &["run", "test", "--headless"], 60);
     let s = out(&o);
-    assert!(o.status.success() && s.contains("PASS: 0 failure(s)"), "{name}:\n{s}");
+    assert!(
+        o.status.success() && s.contains("PASS: 0 failure(s)"),
+        "{name}:\n{s}"
+    );
     assert!(!s.contains("warning"), "{name}:\n{s}");
 }
 
@@ -1144,7 +1315,10 @@ fn the_books_task_list_passes_its_own_test() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/lua/tutorial/tasks");
     let o = kui(&dir, &["run", "test", "--headless"], 60);
     let s = out(&o);
-    assert!(o.status.success() && s.contains("PASS: 0 failure(s)"), "{s}");
+    assert!(
+        o.status.success() && s.contains("PASS: 0 failure(s)"),
+        "{s}"
+    );
     assert!(!s.contains("warning"), "{s}");
 }
 
@@ -1181,11 +1355,22 @@ fn types_writes_what_editors_read() {
     let dir = app("types", &[("main.lua", "")]);
     let o = kui(&dir, &["types"], 20);
     assert!(o.status.success(), "{}", out(&o));
-    for f in [".kui/types/kui.d.tl", ".kui/types/kit/ui.d.tl", ".kui/types/kui.lua", ".kui/types/kui_runner.lua", ".kui/types/kit/ui.lua", ".luarc.json", "tlconfig.lua"] {
+    for f in [
+        ".kui/types/kui.d.tl",
+        ".kui/types/kit/ui.d.tl",
+        ".kui/types/kui.lua",
+        ".kui/types/kui_runner.lua",
+        ".kui/types/kit/ui.lua",
+        ".luarc.json",
+        "tlconfig.lua",
+    ] {
         assert!(dir.join(f).exists(), "{f}");
     }
     let decls = std::fs::read_to_string(dir.join(".kui/types/kui.d.tl")).unwrap();
-    assert!(decls.contains("serve: function(opts?: ServeOpts): Server"), "the runner's API is in the kui record");
+    assert!(
+        decls.contains("serve: function(opts?: ServeOpts): Server"),
+        "the runner's API is in the kui record"
+    );
 }
 
 #[test]
@@ -1203,12 +1388,19 @@ fn the_app_reads_its_arguments_folder_and_platform() {
             "#,
         )],
     );
-    let o = kui(&dir, &["run", "--headless", "--", "--port", "3001", "x y"], 20);
+    let o = kui(
+        &dir,
+        &["run", "--headless", "--", "--port", "3001", "x y"],
+        20,
+    );
     let s = out(&o);
     assert!(s.contains("args\t--port,3001,x y"), "{s}");
     assert!(s.contains("cwd\ttrue"), "{s}");
     assert!(s.contains("platform\ttrue\ttrue\ttrue"), "{s}");
-    assert!(s.contains("create\ttrue\tfalse\ta"), "a second create leaves the first's file:\n{s}");
+    assert!(
+        s.contains("create\ttrue\tfalse\ta"),
+        "a second create leaves the first's file:\n{s}"
+    );
 }
 
 #[cfg(unix)]
@@ -1253,10 +1445,19 @@ fn a_group_dies_whole_and_spawned_processes_end_with_the_app() {
     assert!(s.contains("alive\ttrue"), "{s}");
     assert!(s.contains("term\ttrue"), "{s}");
     assert!(s.contains("code\tnil"), "a signal's exit has no code:\n{s}");
-    assert!(s.contains("orphans\t0"), "the group's child died with it:\n{s}");
-    assert!(s.contains("after\tfalse"), "an exited process is not signalled again:\n{s}");
+    assert!(
+        s.contains("orphans\t0"),
+        "the group's child died with it:\n{s}"
+    );
+    assert!(
+        s.contains("after\tfalse"),
+        "an exited process is not signalled again:\n{s}"
+    );
     std::thread::sleep(Duration::from_millis(200));
-    let left = Command::new("pgrep").args(["-f", "sleep 31338"]).output().unwrap();
+    let left = Command::new("pgrep")
+        .args(["-f", "sleep 31338"])
+        .output()
+        .unwrap();
     assert!(left.stdout.is_empty(), "the app's process ended with it");
 }
 
@@ -1301,9 +1502,19 @@ fn a_manifest_sets_the_window() {
     );
     let o = kui(&dir, &["run", "--headless"], 20);
     assert!(o.status.success(), "{}", out(&o));
-    let bad = app("bad-manifest", &[("kui.config.lua", r#"return { chrome = "glass" }"#), ("main.lua", "")]);
+    let bad = app(
+        "bad-manifest",
+        &[
+            ("kui.config.lua", r#"return { chrome = "glass" }"#),
+            ("main.lua", ""),
+        ],
+    );
     let o = kui(&bad, &["run", "--headless"], 20);
-    assert!(out(&o).contains("native, custom or borderless"), "{}", out(&o));
+    assert!(
+        out(&o).contains("native, custom or borderless"),
+        "{}",
+        out(&o)
+    );
 }
 
 #[test]
@@ -1325,25 +1536,60 @@ fn parse_args_reads_the_line_and_says_what_went_wrong_before_any_window() {
         kui.exit(0)
     "#;
     let dir = app("parse-args", &[("main.lua", main)]);
-    let o = kui(&dir, &["run", "--", "-p", "8080", "--dry-run", "--tag", "a", "--tag=b", "--mode=slow", "x", "y"], 20);
+    let o = kui(
+        &dir,
+        &[
+            "run",
+            "--",
+            "-p",
+            "8080",
+            "--dry-run",
+            "--tag",
+            "a",
+            "--tag=b",
+            "--mode=slow",
+            "x",
+            "y",
+        ],
+        20,
+    );
     let s = out(&o);
-    assert!(s.contains(r#"got	8080	127.0.0.1	true	["a","b"]	slow	["x","y"]"#), "{s}");
+    assert!(
+        s.contains(r#"got	8080	127.0.0.1	true	["a","b"]	slow	["x","y"]"#),
+        "{s}"
+    );
     let o = kui(&dir, &["run"], 20);
-    assert!(out(&o).contains(r#"got	3000	127.0.0.1	false	[]	fast	[]"#), "{}", out(&o));
+    assert!(
+        out(&o).contains(r#"got	3000	127.0.0.1	false	[]	fast	[]"#),
+        "{}",
+        out(&o)
+    );
 
     // Help and mistakes end the app before its window, with no error of the runner's.
     let o = kui(&dir, &["run", "--", "--help"], 20);
     let s = out(&o);
     assert!(o.status.success(), "{s}");
-    assert!(s.contains("parse-args") && s.contains("a parser test") && s.contains("-p, --port <integer>"), "{s}");
+    assert!(
+        s.contains("parse-args")
+            && s.contains("a parser test")
+            && s.contains("-p, --port <integer>"),
+        "{s}"
+    );
     assert!(!s.contains("kui:") && !s.contains("got"), "{s}");
     let o = kui(&dir, &["run", "--", "--prot", "1"], 20);
     let s = out(&o);
     assert_eq!(o.status.code(), Some(2), "{s}");
-    assert!(s.contains("unknown option --prot (did you mean --port?)"), "{s}");
+    assert!(
+        s.contains("unknown option --prot (did you mean --port?)"),
+        "{s}"
+    );
     assert!(!s.contains("stack traceback"), "{s}");
     let o = kui(&dir, &["run", "--", "--mode", "medium"], 20);
-    assert!(out(&o).contains("expected one of fast, slow"), "{}", out(&o));
+    assert!(
+        out(&o).contains("expected one of fast, slow"),
+        "{}",
+        out(&o)
+    );
 }
 
 #[test]
@@ -1379,13 +1625,25 @@ fn hashes_arrays_walks_and_logs() {
     );
     let o = kui(&dir, &["run", "--headless"], 20);
     let s = out(&o);
-    assert!(s.contains("sha256\tba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "{s}");
-    assert!(s.contains("sha1\ta9993e364706816aba3e25717850c26c9cd0d89d"), "{s}");
+    assert!(
+        s.contains("sha256\tba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+        "{s}"
+    );
+    assert!(
+        s.contains("sha1\ta9993e364706816aba3e25717850c26c9cd0d89d"),
+        "{s}"
+    );
     assert!(s.contains("fnv\te71fa2190541574b"), "{s}");
     assert!(s.contains(r#"array	{"empty":[],"map":{}}"#), "{s}");
-    assert!(s.contains(r#"round	{"list":[],"obj":{}}"#), "an empty list decoded stays a list:\n{s}");
+    assert!(
+        s.contains(r#"round	{"list":[],"obj":{}}"#),
+        "an empty list decoded stays a list:\n{s}"
+    );
     assert!(s.contains("[warn] careful\t1"), "{s}");
-    assert!(s.contains("walk\tsrc/a.txt,src/deep/b.txt"), "node_modules is skipped:\n{s}");
+    assert!(
+        s.contains("walk\tsrc/a.txt,src/deep/b.txt"),
+        "node_modules is skipped:\n{s}"
+    );
     assert!(s.contains("read_all\talpha\tfalse\tbeta"), "{s}");
     assert!(s.contains("cmd\ttrue\ttrue"), "{s}");
 }
@@ -1405,7 +1663,11 @@ fn the_devtools_log_tab_shows_what_the_app_printed() {
         )],
     );
     let shot = dir.join("shot.png");
-    let o = kui(&dir, &["run", "--shot", shot.to_str().unwrap(), "--after", "300"], 30);
+    let o = kui(
+        &dir,
+        &["run", "--shot", shot.to_str().unwrap(), "--after", "300"],
+        30,
+    );
     assert!(o.status.success(), "{}", out(&o));
     assert!(shot.exists(), "{}", out(&o));
 }
@@ -1450,7 +1712,10 @@ fn packer(name: &str) -> PathBuf {
             ("data.txt", "an asset"),
             ("lib.lua", r#"return { said = "a module" }"#),
             ("test/skip.lua", "error('test/ is not packed')"),
-            (".kui/docs/props.md", "written for the editor, not packed (ADR 0071)"),
+            (
+                ".kui/docs/props.md",
+                "written for the editor, not packed (ADR 0071)",
+            ),
             (
                 "main.lua",
                 r#"
@@ -1475,11 +1740,30 @@ fn packer(name: &str) -> PathBuf {
 fn a_packed_archive_runs_from_itself_read_only_with_its_arguments() {
     let dir = packer("pack-kui");
     let cache = dir.join(".cache");
-    let o = kui_env(&dir, &["pack", "--format", "kui", "--out", "dist"], &[], &cache, 60);
+    let o = kui_env(
+        &dir,
+        &["pack", "--format", "kui", "--out", "dist"],
+        &[],
+        &cache,
+        60,
+    );
     assert!(o.status.success(), "{}", out(&o));
     let archive = dir.join("dist/packer-2.0.0.kui");
     assert!(archive.is_file(), "{}", out(&o));
-    let o = kui_env(&dir, &["run", archive.to_str().unwrap(), "--headless", "--", "a", "b"], &[], &cache, 60);
+    let o = kui_env(
+        &dir,
+        &[
+            "run",
+            archive.to_str().unwrap(),
+            "--headless",
+            "--",
+            "a",
+            "b",
+        ],
+        &[],
+        &cache,
+        60,
+    );
     let s = out(&o);
     assert!(o.status.success(), "{s}");
     assert!(s.contains("packed\ttrue\tfalse"), "{s}");
@@ -1488,20 +1772,41 @@ fn a_packed_archive_runs_from_itself_read_only_with_its_arguments() {
     assert!(s.contains("asset\tan asset"), "{s}");
     assert!(s.contains("module\ta module"), "{s}");
     assert!(s.contains("test dir\tfalse"), "{s}");
-    assert!(s.contains("kui dir\tfalse"), ".kui/ stays out of the archive:\n{s}");
-    assert!(s.contains("write\tfalse\ttrue"), "a packed app's own files are read-only:\n{s}");
+    assert!(
+        s.contains("kui dir\tfalse"),
+        ".kui/ stays out of the archive:\n{s}"
+    );
+    assert!(
+        s.contains("write\tfalse\ttrue"),
+        "a packed app's own files are read-only:\n{s}"
+    );
 }
 
 #[test]
 fn a_bytecode_archive_runs_and_bytecode_loads_nowhere_else() {
     let dir = packer("pack-bytecode");
     let cache = dir.join(".cache");
-    let o = kui_env(&dir, &["pack", "--format", "kui", "--bytecode", "--out", "dist"], &[], &cache, 60);
+    let o = kui_env(
+        &dir,
+        &["pack", "--format", "kui", "--bytecode", "--out", "dist"],
+        &[],
+        &cache,
+        60,
+    );
     assert!(o.status.success(), "{}", out(&o));
     let archive = dir.join("dist/packer-2.0.0.kui");
-    let o = kui_env(&dir, &["run", archive.to_str().unwrap(), "--headless"], &[], &cache, 60);
+    let o = kui_env(
+        &dir,
+        &["run", archive.to_str().unwrap(), "--headless"],
+        &[],
+        &cache,
+        60,
+    );
     let s = out(&o);
-    assert!(s.contains("packed\ttrue\ttrue") && s.contains("module\ta module"), "{s}");
+    assert!(
+        s.contains("packed\ttrue\ttrue") && s.contains("module\ta module"),
+        "{s}"
+    );
 
     let plain = app(
         "bytecode-refused",
@@ -1516,7 +1821,10 @@ fn a_bytecode_archive_runs_and_bytecode_loads_nowhere_else() {
     );
     let o = kui_env(&plain, &["run", "--headless"], &[], &cache, 60);
     let s = out(&o);
-    assert!(s.contains("load\ttrue") && s.contains("binary chunk"), "{s}");
+    assert!(
+        s.contains("load\ttrue") && s.contains("binary chunk"),
+        "{s}"
+    );
 }
 
 /// A runner with an archive appended runs it: every argument the app's,
@@ -1529,7 +1837,17 @@ fn a_fused_binary_runs_its_app_with_every_argument_the_apps() {
     let cache = dir.join(".cache");
     let o = kui_env(
         &dir,
-        &["pack", "--target", "linux-x64", "--format", "bin", "--runner", KUI, "--out", "dist"],
+        &[
+            "pack",
+            "--target",
+            "linux-x64",
+            "--format",
+            "bin",
+            "--runner",
+            KUI,
+            "--out",
+            "dist",
+        ],
         &[],
         &cache,
         60,
@@ -1565,13 +1883,20 @@ fn pack_asks_for_an_id_and_run_warns_on_a_pin_it_does_not_cover() {
     let dir = app(
         "pack-no-id",
         &[
-            ("kui.config.lua", r#"return { name = "NoId", kui = "0.0.1" }"#),
+            (
+                "kui.config.lua",
+                r#"return { name = "NoId", kui = "0.0.1" }"#,
+            ),
             ("main.lua", "print('ran') kui.exit(0)"),
         ],
     );
     let cache = dir.join(".cache");
     let o = kui_env(&dir, &["pack", "--format", "kui"], &[], &cache, 60);
-    assert!(!o.status.success() && out(&o).contains("needs an id"), "{}", out(&o));
+    assert!(
+        !o.status.success() && out(&o).contains("needs an id"),
+        "{}",
+        out(&o)
+    );
     let o = kui_env(&dir, &["run", "--headless"], &[], &cache, 60);
     let s = out(&o);
     assert!(s.contains("ran") && s.contains("pins kui 0.0.1"), "{s}");
@@ -1587,23 +1912,56 @@ fn docs_searches_what_the_runner_carries_and_prints_an_adr() {
     let o = kui(&dir, &["docs", "hover_bg"], 20);
     let s = out(&o);
     assert!(o.status.success(), "{s}");
-    assert!(s.starts_with("hoverBg — props.md › Container props"), "the exact prop first:\n{s}");
-    let o = kui(&dir, &["docs", "how", "do", "I", "animate", "a", "removal"], 20);
+    assert!(
+        s.starts_with("hoverBg — props.md › Container props"),
+        "the exact prop first:\n{s}"
+    );
+    let o = kui(
+        &dir,
+        &["docs", "how", "do", "I", "animate", "a", "removal"],
+        20,
+    );
     let s = out(&o);
-    assert!(s.starts_with("How do I animate a removal? — howto.md"), "{s}");
+    assert!(
+        s.starts_with("How do I animate a removal? — howto.md"),
+        "{s}"
+    );
     let o = kui(&dir, &["docs", "kit.button"], 20);
-    assert!(out(&o).starts_with("kit.button — Kit's component reference"), "{}", out(&o));
-    assert!(out(&o).contains("`on_press`"), "its props and events: {}", out(&o));
+    assert!(
+        out(&o).starts_with("kit.button — Kit's component reference"),
+        "{}",
+        out(&o)
+    );
+    assert!(
+        out(&o).contains("`on_press`"),
+        "its props and events: {}",
+        out(&o)
+    );
     let o = kui(&dir, &["docs", "--adr", "71"], 20);
     let s = out(&o);
-    assert!(o.status.success() && s.contains("# Docs that travel with kui"), "{s}");
+    assert!(
+        o.status.success() && s.contains("# Docs that travel with kui"),
+        "{s}"
+    );
     let o = kui(&dir, &["docs", "--adr", "9999"], 20);
-    assert!(!o.status.success() && out(&o).contains("no ADR 9999"), "{}", out(&o));
+    assert!(
+        !o.status.success() && out(&o).contains("no ADR 9999"),
+        "{}",
+        out(&o)
+    );
     let o = kui(&dir, &["docs", "nothing-is-called-this"], 20);
     assert_eq!(o.status.code(), Some(1), "{}", out(&o));
-    let o = Command::new(KUI).arg("docs").env("KUI_BROWSER", "echo").current_dir(&dir).output().unwrap();
+    let o = Command::new(KUI)
+        .arg("docs")
+        .env("KUI_BROWSER", "echo")
+        .current_dir(&dir)
+        .output()
+        .unwrap();
     let s = out(&o);
-    assert!(o.status.success() && s.matches("https://kui-book.qxuken.dev").count() == 2, "said and opened:\n{s}");
+    assert!(
+        o.status.success() && s.matches("https://kui-book.qxuken.dev").count() == 2,
+        "said and opened:\n{s}"
+    );
     let help = out(&kui(&dir, &["help"], 20));
     assert!(help.contains("kui docs [query]"), "{help}");
 }
@@ -1625,7 +1983,12 @@ fn new_without_flags_writes_no_docs_or_agent_files() {
     }
     let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
     assert!(!manifest.contains("tooling"), "{manifest}");
-    assert_eq!(std::fs::read_to_string(dir.join(".kui/version")).unwrap().trim(), VERSION);
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".kui/version"))
+            .unwrap()
+            .trim(),
+        VERSION
+    );
 }
 
 /// `--docs` writes `.kui/docs`, `--agents` the agent block too, and each
@@ -1638,40 +2001,91 @@ fn docs_and_agents_write_them_and_the_manifests_tooling() {
     let o = kui(&root, &["new", "docs", "--docs"], 20);
     assert!(o.status.success(), "{}", out(&o));
     let dir = root.join("docs");
-    for f in ["props.md", "howto.md", "kit.md", "book/runner.md", "adr/0071-docs-that-travel-with-kui.md"] {
+    for f in [
+        "props.md",
+        "howto.md",
+        "kit.md",
+        "book/runner.md",
+        "adr/0071-docs-that-travel-with-kui.md",
+    ] {
         assert!(dir.join(".kui/docs").join(f).exists(), "{f}");
     }
-    assert!(!dir.join("AGENTS.md").exists(), "--docs alone writes no agent block");
+    assert!(
+        !dir.join("AGENTS.md").exists(),
+        "--docs alone writes no agent block"
+    );
     let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
-    assert!(manifest.contains("tooling = { docs = true },"), "{manifest}");
+    assert!(
+        manifest.contains("tooling = { docs = true },"),
+        "{manifest}"
+    );
 
     let o = kui(&root, &["new", "agents", "--agents"], 20);
     assert!(o.status.success(), "{}", out(&o));
     let dir = root.join("agents");
-    assert!(dir.join(".kui/docs/props.md").exists(), "--agents implies --docs");
+    assert!(
+        dir.join(".kui/docs/props.md").exists(),
+        "--agents implies --docs"
+    );
     let block = std::fs::read_to_string(dir.join("AGENTS.md")).unwrap();
-    assert!(block.starts_with("<!-- kui:begin") && block.trim_end().ends_with("<!-- kui:end -->"), "{block}");
-    for want in [VERSION, ".kui/types", ".kui/docs", "kui run --watch", "kui check", "Lua 5.5", "kit.ui", "Events are data"] {
+    assert!(
+        block.starts_with("<!-- kui:begin") && block.trim_end().ends_with("<!-- kui:end -->"),
+        "{block}"
+    );
+    for want in [
+        VERSION,
+        ".kui/types",
+        ".kui/docs",
+        "kui run --watch",
+        "kui check",
+        "Lua 5.5",
+        "kit.ui",
+        "Events are data",
+    ] {
         assert!(block.contains(want), "{want} missing from:\n{block}");
     }
     let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
-    assert!(manifest.contains("tooling = { docs = true, agents = true },"), "{manifest}");
+    assert!(
+        manifest.contains("tooling = { docs = true, agents = true },"),
+        "{manifest}"
+    );
 
     // An app of its own: `kui types --docs` adds one line to its manifest.
     let mine = "-- my app\nreturn {\n    name = \"mine\", -- the name\n    size = { w = 300, h = 200 },\n}\n";
-    let dir = app("types-tooling", &[("main.lua", "kui.exit(0)\n"), ("kui.config.lua", mine)]);
+    let dir = app(
+        "types-tooling",
+        &[("main.lua", "kui.exit(0)\n"), ("kui.config.lua", mine)],
+    );
     let o = kui(&dir, &["types", "--docs"], 20);
     assert!(o.status.success(), "{}", out(&o));
     let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
-    assert_eq!(manifest, mine.replacen("return {\n", "return {\n    tooling = { docs = true },\n", 1));
+    assert_eq!(
+        manifest,
+        mine.replacen(
+            "return {\n",
+            "return {\n    tooling = { docs = true },\n",
+            1
+        )
+    );
     let o = kui(&dir, &["types", "--agents"], 20);
     assert!(o.status.success(), "{}", out(&o));
     let manifest = std::fs::read_to_string(dir.join("kui.config.lua")).unwrap();
-    assert_eq!(manifest, mine.replacen("return {\n", "return {\n    tooling = { docs = true, agents = true },\n", 1));
+    assert_eq!(
+        manifest,
+        mine.replacen(
+            "return {\n",
+            "return {\n    tooling = { docs = true, agents = true },\n",
+            1
+        )
+    );
     let o = kui(&dir, &["run", "--headless"], 20);
     assert!(o.status.success(), "the manifest still runs: {}", out(&o));
     let o = kui(&dir, &["run", "--docs"], 20);
-    assert!(!o.status.success() && out(&o).contains("kui new's and kui types'"), "{}", out(&o));
+    assert!(
+        !o.status.success() && out(&o).contains("kui new's and kui types'"),
+        "{}",
+        out(&o)
+    );
 }
 
 /// The agent block goes after what a `CLAUDE.md` the app already has
@@ -1679,18 +2093,31 @@ fn docs_and_agents_write_them_and_the_manifests_tooling() {
 #[test]
 fn the_agent_block_is_appended_to_claude_md_and_rewritten_in_place() {
     let mine = "# Mine\n\nKeep this.\n";
-    let dir = app("agents-claude", &[("main.lua", "kui.exit(0)\n"), ("CLAUDE.md", mine)]);
+    let dir = app(
+        "agents-claude",
+        &[("main.lua", "kui.exit(0)\n"), ("CLAUDE.md", mine)],
+    );
     let o = kui(&dir, &["types", "--agents"], 20);
     assert!(o.status.success(), "{}", out(&o));
-    assert!(!dir.join("AGENTS.md").exists(), "the block went into CLAUDE.md");
+    assert!(
+        !dir.join("AGENTS.md").exists(),
+        "the block went into CLAUDE.md"
+    );
     let text = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
-    assert!(text.starts_with("# Mine\n\nKeep this.\n\n<!-- kui:begin"), "{text}");
+    assert!(
+        text.starts_with("# Mine\n\nKeep this.\n\n<!-- kui:begin"),
+        "{text}"
+    );
     // Written by an older runner, with more of the app's own after it.
     let old = text.replace(VERSION, "0.0.1") + "\nAfter the block.\n";
     std::fs::write(dir.join("CLAUDE.md"), &old).unwrap();
     std::fs::write(dir.join(".kui/version"), "0.0.1\n").unwrap();
     let o = kui(&dir, &["check"], 20);
-    assert!(out(&o).contains("the agent block in CLAUDE.md"), "{}", out(&o));
+    assert!(
+        out(&o).contains("the agent block in CLAUDE.md"),
+        "{}",
+        out(&o)
+    );
     let now = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
     assert_eq!(now, text + "\nAfter the block.\n");
     assert_eq!(now.matches("<!-- kui:begin").count(), 1);
@@ -1708,36 +2135,67 @@ fn a_version_change_refreshes_kui_and_creates_nothing_unasked() {
     let o = kui(&dir, &["run", "--headless"], 20);
     let s = out(&o);
     assert!(o.status.success(), "{s}");
-    assert_eq!(s.matches("kui: rewrote .kui/types for kui").count(), 1, "{s}");
+    assert_eq!(
+        s.matches("kui: rewrote .kui/types for kui").count(),
+        1,
+        "{s}"
+    );
     assert!(s.contains("(written by kui 0.0.1)"), "{s}");
     assert!(dir.join(".kui/types/kui.lua").exists());
-    assert_eq!(std::fs::read_to_string(dir.join(".kui/version")).unwrap().trim(), VERSION);
-    assert!(!dir.join(".kui/docs").exists() && !dir.join("AGENTS.md").exists(), "not opted into");
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".kui/version"))
+            .unwrap()
+            .trim(),
+        VERSION
+    );
+    assert!(
+        !dir.join(".kui/docs").exists() && !dir.join("AGENTS.md").exists(),
+        "not opted into"
+    );
     let o = kui(&dir, &["run", "--headless"], 20);
     assert!(!out(&o).contains("rewrote"), "once: {}", out(&o));
 
     // Opted into docs, as a fresh clone is: no .kui/ yet.
     let dir = app(
         "refresh-docs",
-        &[("main.lua", "kui.exit(0)\n"), ("kui.config.lua", "return { tooling = { docs = true } }\n")],
+        &[
+            ("main.lua", "kui.exit(0)\n"),
+            ("kui.config.lua", "return { tooling = { docs = true } }\n"),
+        ],
     );
     let o = kui(&dir, &["check"], 20);
-    assert!(out(&o).contains("rewrote .kui/types and .kui/docs"), "{}", out(&o));
+    assert!(
+        out(&o).contains("rewrote .kui/types and .kui/docs"),
+        "{}",
+        out(&o)
+    );
     assert!(dir.join(".kui/docs/howto.md").exists() && dir.join(".kui/types/kui.d.tl").exists());
     assert!(!dir.join("AGENTS.md").exists());
     std::fs::write(dir.join(".kui/version"), "0.0.1\n").unwrap();
     std::fs::remove_file(dir.join(".kui/docs/howto.md")).unwrap();
     let o = kui(&dir, &["run", "--headless"], 20);
-    assert!(out(&o).contains("rewrote .kui/types and .kui/docs"), "{}", out(&o));
+    assert!(
+        out(&o).contains("rewrote .kui/types and .kui/docs"),
+        "{}",
+        out(&o)
+    );
     assert!(dir.join(".kui/docs/howto.md").exists());
 
     // Nothing opted into and no .kui/: nothing written.
     let dir = app("refresh-none", &[("main.lua", "kui.exit(0)\n")]);
     let o = kui(&dir, &["run", "--headless"], 20);
-    assert!(o.status.success() && !out(&o).contains("rewrote"), "{}", out(&o));
+    assert!(
+        o.status.success() && !out(&o).contains("rewrote"),
+        "{}",
+        out(&o)
+    );
     assert!(!dir.join(".kui").exists());
     let o = kui(&dir, &["check"], 20);
-    assert!(o.status.success() && !dir.join(".kui").exists(), "{}", out(&o));
+    assert!(
+        o.status.success() && !dir.join(".kui").exists(),
+        "{}",
+        out(&o)
+    );
 }
 
 /// A timer whose callback dispatches rings the loop once (backlog C141):

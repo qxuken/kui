@@ -11,7 +11,10 @@ fn main() {
     let mut files: Vec<(String, PathBuf)> = vec![
         ("props.md".into(), root.join("docs/props.md")),
         ("howto.md".into(), root.join("docs/howto.md")),
-        ("kit.md".into(), root.join("addons/kit/bindings/reference.md")),
+        (
+            "kit.md".into(),
+            root.join("addons/kit/bindings/reference.md"),
+        ),
     ];
     for (dir, under) in [("docs/book/src", "book"), ("docs/adr", "adr")] {
         let dir = root.join(dir);
@@ -37,7 +40,11 @@ fn main() {
         }
         // howto.md links the book's contents where the repository keeps
         // them; the bundle keeps the chapters under `book/`.
-        let text = if name == "howto.md" { text.replace("](book/src/", "](book/") } else { text };
+        let text = if name == "howto.md" {
+            text.replace("](book/src/", "](book/")
+        } else {
+            text
+        };
         for part in [name.as_bytes(), text.as_bytes()] {
             raw.extend_from_slice(&(part.len() as u32).to_le_bytes());
             raw.extend_from_slice(part);
@@ -58,7 +65,9 @@ fn expand_includes(text: &str, dir: &Path) -> String {
     let mut rest = text;
     while let Some(at) = rest.find("{{#") {
         out.push_str(&rest[..at]);
-        let Some(end) = rest[at..].find("}}") else { break };
+        let Some(end) = rest[at..].find("}}") else {
+            break;
+        };
         let directive = &rest[at + 3..at + end];
         rest = &rest[at + end + 2..];
         let Some(arg) = directive
@@ -90,7 +99,10 @@ fn expand_includes(text: &str, dir: &Path) -> String {
                     .collect()
             }
         };
-        let kept: Vec<&str> = lines.into_iter().filter(|l| !l.contains("ANCHOR")).collect();
+        let kept: Vec<&str> = lines
+            .into_iter()
+            .filter(|l| !l.contains("ANCHOR"))
+            .collect();
         out.push_str(&kept.join("\n"));
     }
     out.push_str(rest);

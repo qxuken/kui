@@ -9,8 +9,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use kui_core::{
-    Color, Core, Extension, Extensions, InputEvent, Key, NodeSpec, OriginId, Size, Instance, FillAnswer,
-    TextStyle, Ui, UiEvent, Value, Vec2,
+    Color, Core, Extension, Extensions, FillAnswer, InputEvent, Instance, Key, NodeSpec, OriginId,
+    Size, TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 /// A stand-in extension that counts its views and draws what the test
@@ -83,7 +83,10 @@ impl Extension for Ext {
             }
             if self.read_label {
                 let found = ui.key_of("row0").is_some();
-                ui.text(if found { "found row0" } else { "no row0 yet" }, TextStyle::new(12.0));
+                ui.text(
+                    if found { "found row0" } else { "no row0 yet" },
+                    TextStyle::new(12.0),
+                );
             }
             if self.read_scroller {
                 let h = ui
@@ -261,7 +264,9 @@ impl Rig {
         ui.configure_root(NodeSpec::column().fill());
         let fill = if inside {
             let mut fill = None;
-            ui.with_keyed("other", NodeSpec::column(), |ui| fill = ui.component("outer/pane", &p));
+            ui.with_keyed("other", NodeSpec::column(), |ui| {
+                fill = ui.component("outer/pane", &p)
+            });
             fill
         } else {
             ui.component("outer/pane", &p)
@@ -367,25 +372,46 @@ fn a_fresh_fill_says_why() {
     assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
 
     // Other props: filled fresh, and the new props are what is kept.
-    assert_eq!(r.frame_with(false, "another", false), Some(FillAnswer::Params));
+    assert_eq!(
+        r.frame_with(false, "another", false),
+        Some(FillAnswer::Params)
+    );
     assert_eq!(r.views.get(), 2);
     assert!(r.texts().iter().any(|t| t == "another"));
-    assert_eq!(r.frame_with(false, "another", false), Some(FillAnswer::Replayed));
+    assert_eq!(
+        r.frame_with(false, "another", false),
+        Some(FillAnswer::Replayed)
+    );
 
     // Placed under another parent: another key, so nothing kept there.
-    assert_eq!(r.frame_with(false, "another", true), Some(FillAnswer::NotKept));
+    assert_eq!(
+        r.frame_with(false, "another", true),
+        Some(FillAnswer::NotKept)
+    );
     assert_eq!(r.views.get(), 3);
-    assert_eq!(r.frame_with(false, "another", true), Some(FillAnswer::Replayed));
+    assert_eq!(
+        r.frame_with(false, "another", true),
+        Some(FillAnswer::Replayed)
+    );
 
     // A frame that places it fresh, or not at all, forgets the kept one.
-    assert_eq!(r.frame_with(true, "another", true), Some(FillAnswer::NotKept));
-    assert_eq!(r.frame_with(false, "another", true), Some(FillAnswer::NotKept));
+    assert_eq!(
+        r.frame_with(true, "another", true),
+        Some(FillAnswer::NotKept)
+    );
+    assert_eq!(
+        r.frame_with(false, "another", true),
+        Some(FillAnswer::NotKept)
+    );
     {
         let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
         ui.leaf(NodeSpec::row().size(40.0, 10.0));
         ui.finish();
     }
-    assert_eq!(r.frame_with(false, "another", true), Some(FillAnswer::NotKept));
+    assert_eq!(
+        r.frame_with(false, "another", true),
+        Some(FillAnswer::NotKept)
+    );
 }
 
 #[test]
@@ -490,7 +516,11 @@ fn a_nested_instance_is_placed_again_and_replayed_by_its_own_lights() {
         "the outer was spared; the inner it placed again ran, and kept"
     );
     assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
-    assert_eq!((r.views.get(), r.inner_views.get()), (1, 2), "both spared now");
+    assert_eq!(
+        (r.views.get(), r.inner_views.get()),
+        (1, 2),
+        "both spared now"
+    );
     assert_eq!(r.keys(), fresh);
     assert!(r.texts().iter().any(|t| t == "inner"));
     // The inner's nodes carry its origin, inside the outer's.

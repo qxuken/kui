@@ -16,8 +16,8 @@ use kui_core::diag::{
 };
 use kui_core::testing::codes;
 use kui_core::{
-    ANY_COMPONENT, Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Instance, Ui, UiEvent, Value,
-    Vec2, split_name,
+    ANY_COMPONENT, Core, Extension, Extensions, Instance, Key, NodeSpec, OriginId, Size, Ui,
+    UiEvent, Value, Vec2, split_name,
 };
 
 /// A stand-in extension: opens one keyed, focusable cell (so it is in the
@@ -85,8 +85,16 @@ fn ext(name: &'static str, components: &[&str]) -> Box<dyn Extension> {
 fn without_key(props: &Value) -> Value {
     match props {
         Value::Map(entries) => {
-            let rest: Vec<_> = entries.iter().filter(|(k, _)| k != "key").cloned().collect();
-            if rest.is_empty() { Value::Null } else { Value::Map(rest) }
+            let rest: Vec<_> = entries
+                .iter()
+                .filter(|(k, _)| k != "key")
+                .cloned()
+                .collect();
+            if rest.is_empty() {
+                Value::Null
+            } else {
+                Value::Map(rest)
+            }
         }
         other => other.clone(),
     }

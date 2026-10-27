@@ -1356,7 +1356,11 @@ impl Core {
             let Some(slot) = decl.slot.clone() else {
                 return;
             };
-            (decl.name.clone(), slot, merged(&decl.props, d.facts_params()))
+            (
+                decl.name.clone(),
+                slot,
+                merged(&decl.props, d.facts_params()),
+            )
         };
         let saved = self.origin;
         self.origin = OriginId::HOST;
@@ -1378,7 +1382,9 @@ impl Core {
 /// The host's props for a tab's component, then the panel's facts, which
 /// win a name both use.
 fn merged(props: &Value, facts: Value) -> Value {
-    let Value::Map(facts) = facts else { return props.clone() };
+    let Value::Map(facts) = facts else {
+        return props.clone();
+    };
     let mut out: Vec<(String, Value)> = match props {
         Value::Map(entries) => entries
             .iter()

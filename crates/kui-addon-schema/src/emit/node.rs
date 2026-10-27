@@ -48,7 +48,9 @@ pub fn files(schema: &Schema) -> Vec<File> {
 /// from its camelCase one, so its values need translating.
 fn record_needs_translation(schema: &Schema, name: &str) -> bool {
     schema.record_named(name).is_some_and(|r| {
-        r.fields.iter().any(|f| camel(&f.name) != f.name || type_needs(schema, &f.ty))
+        r.fields
+            .iter()
+            .any(|f| camel(&f.name) != f.name || type_needs(schema, &f.ty))
     })
 }
 
@@ -73,7 +75,11 @@ fn js(schema: &Schema) -> String {
         if !record_needs_translation(schema, &r.name) {
             continue;
         }
-        let _ = writeln!(s, "function wire{}(v) {{\n  if (v == null) return v;\n  return {{", r.name);
+        let _ = writeln!(
+            s,
+            "function wire{}(v) {{\n  if (v == null) return v;\n  return {{",
+            r.name
+        );
         for f in &r.fields {
             let conv = match f.ty.required().0 {
                 Type::Named(n) if record_needs_translation(schema, n) => {
@@ -191,7 +197,11 @@ fn dts(schema: &Schema) -> String {
     }
     for c in &schema.components {
         let p = pascal(&c.name);
-        let _ = writeln!(s, "/** The props of `{a}/{}`. */\nexport interface {p}Props {{", c.name);
+        let _ = writeln!(
+            s,
+            "/** The props of `{a}/{}`. */\nexport interface {p}Props {{",
+            c.name
+        );
         for f in &c.props {
             let (_, req) = f.ty.required();
             let _ = writeln!(

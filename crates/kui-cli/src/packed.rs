@@ -61,7 +61,9 @@ pub fn from_file(path: &Path) -> Result<Packed, String> {
     let pack = zip
         .get(PACK_FILE)
         .ok_or_else(|| format!("{}: not a kui archive (no {PACK_FILE})", path.display()))?;
-    let bytes = pack.read().map_err(|e| format!("{}: {e}", path.display()))?;
+    let bytes = pack
+        .read()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     open(&zip, &bytes)
 }
 
@@ -76,7 +78,11 @@ fn open(zip: &ZipReader, pack: &[u8]) -> Result<Packed, String> {
         .map_err(|e| format!("this app's {PACK_FILE}: {e}"))?;
     let get = |k: &str| t.get::<Option<String>>(k).ok().flatten();
     let runner = get("runner").unwrap_or_default();
-    let bytecode = t.get::<Option<bool>>("bytecode").ok().flatten().unwrap_or(false);
+    let bytecode = t
+        .get::<Option<bool>>("bytecode")
+        .ok()
+        .flatten()
+        .unwrap_or(false);
     let hash = get("hash").ok_or_else(|| format!("this app's {PACK_FILE} names no hash"))?;
     if bytecode && runner != crate::compat::VERSION {
         return Err(format!(
@@ -89,7 +95,13 @@ fn open(zip: &ZipReader, pack: &[u8]) -> Result<Packed, String> {
     // read-only and bytecode checks compare like with like.
     let dir = dir.canonicalize().unwrap_or(dir);
     let _ = DIR.set(dir.clone());
-    Ok(Packed { dir, runner, bytecode, hash, entry: get("entry") })
+    Ok(Packed {
+        dir,
+        runner,
+        bytecode,
+        hash,
+        entry: get("entry"),
+    })
 }
 
 /// `<kui cache>/apps/<hash>/`, written once: into a temporary folder that
@@ -106,7 +118,9 @@ fn extract(zip: &ZipReader, hash: &str) -> Result<PathBuf, String> {
     let _ = std::fs::remove_dir_all(&tmp);
     for entry in zip.entries() {
         let name = entry.name();
-        let Some(rel) = name.strip_prefix(APP_DIR) else { continue };
+        let Some(rel) = name.strip_prefix(APP_DIR) else {
+            continue;
+        };
         if rel.is_empty() || !crate::archive::is_safe_name(rel) {
             continue;
         }

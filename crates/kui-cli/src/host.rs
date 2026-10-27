@@ -63,7 +63,8 @@ pub fn load_app(
         Ok(ext) => ext,
         Err(e) if fallback => {
             let mut s = setup.clone();
-            let ext = LuaExtension::from_source_with("kui-app", "", &mut s).map_err(|e| e.to_string())?;
+            let ext =
+                LuaExtension::from_source_with("kui-app", "", &mut s).map_err(|e| e.to_string())?;
             return Ok((ext, baseline, Some(e.to_string())));
         }
         Err(e) => return Err(e.to_string()),
@@ -80,7 +81,9 @@ pub fn load_app(
 /// the app's `view` wrapped so `kui.next_frame` callbacks run first.
 fn init(lua: &Lua) -> mlua::Result<()> {
     let g = lua.globals();
-    g.get::<mlua::Table>("kui")?.get::<mlua::Function>("__wrap_view")?.call::<()>(())?;
+    g.get::<mlua::Table>("kui")?
+        .get::<mlua::Function>("__wrap_view")?
+        .call::<()>(())?;
     if g.get::<mlua::Value>("model")?.is_nil()
         && let Ok(f) = g.get::<mlua::Function>("init")
     {
@@ -132,7 +135,9 @@ fn watched(path: &Path, include: &[String], exclude: &[String]) -> bool {
     if exclude.iter().any(|g| crate::project::glob(g, &name)) {
         return false;
     }
-    name.ends_with(".lua") || name.ends_with(".tl") || include.iter().any(|g| crate::project::glob(g, &name))
+    name.ends_with(".lua")
+        || name.ends_with(".tl")
+        || include.iter().any(|g| crate::project::glob(g, &name))
 }
 
 fn snapshot(dir: &Path, include: &[String], exclude: &[String]) -> Vec<(PathBuf, SystemTime)> {
@@ -197,7 +202,14 @@ pub struct Shot {
 
 impl Shot {
     pub fn new(path: PathBuf, after_ms: f64) -> Self {
-        Shot { path, after: after_ms / 1000.0, at: None, since: 0, record: None, stop_at: None }
+        Shot {
+            path,
+            after: after_ms / 1000.0,
+            at: None,
+            since: 0,
+            record: None,
+            stop_at: None,
+        }
     }
 
     /// Records `ms` of frames instead of taking one.
@@ -230,7 +242,10 @@ impl Runner {
             log: None,
             log_rev: u64::MAX,
             devtools_tab: Some("kui:log".into()),
-            menu: DefaultMenu { devtools: project.devtools_reachable, ..Default::default() },
+            menu: DefaultMenu {
+                devtools: project.devtools_reachable,
+                ..Default::default()
+            },
         }
     }
 
@@ -274,7 +289,11 @@ impl Runner {
     /// kept. A load that fails keeps the code that ran before.
     fn reload(&mut self) {
         let result = (|| -> mlua::Result<()> {
-            let loaded: mlua::Table = self.lua.globals().get::<mlua::Table>("package")?.get("loaded")?;
+            let loaded: mlua::Table = self
+                .lua
+                .globals()
+                .get::<mlua::Table>("package")?
+                .get("loaded")?;
             let keep = self.baseline.borrow();
             let mut drop = Vec::new();
             for pair in loaded.pairs::<String, mlua::Value>() {
@@ -318,7 +337,11 @@ impl Runner {
             core.set_devtools(want.unwrap_or(!shown));
             if let Some(tab) = tab {
                 // The runner's own tab by its short name; the panel's by theirs.
-                let name = if tab == "log" { "kui:log".to_string() } else { tab };
+                let name = if tab == "log" {
+                    "kui:log".to_string()
+                } else {
+                    tab
+                };
                 self.devtools_tab = Some(name);
             }
         }
@@ -352,7 +375,9 @@ impl Runner {
         ui.devtools_tab_with("kui:log", "Log", |ui| {
             ui.with_keyed(
                 "kui:log",
-                NodeSpec::column().width(kui_core::Sizing::Grow(1.0)).height(kui_core::Sizing::Grow(1.0)),
+                NodeSpec::column()
+                    .width(kui_core::Sizing::Grow(1.0))
+                    .height(kui_core::Sizing::Grow(1.0)),
                 |ui| {
                     ui.component(
                         "kit/log",
@@ -372,17 +397,24 @@ impl Runner {
         let errors = self.shared.errors.lock().unwrap();
         let fresh = errors.len().saturating_sub(self.dismissed);
         let text = match (&self.load_error, fresh) {
-            (Some(e), _) => format!("The app failed to load; the last code that loaded is running.\n\n{e}"),
+            (Some(e), _) => {
+                format!("The app failed to load; the last code that loaded is running.\n\n{e}")
+            }
             (None, 0) => return,
             (None, n) => {
                 let last = errors.last().cloned().unwrap_or_default();
-                if n > 1 { format!("{last}\n\n(and {} more, printed to the terminal)", n - 1) } else { last }
+                if n > 1 {
+                    format!("{last}\n\n(and {} more, printed to the terminal)", n - 1)
+                } else {
+                    last
+                }
             }
         };
         drop(errors);
         let theme = ui.theme();
         // Along the window's foot, over the app.
-        let float = kui_core::FloatConfig::viewport().inside(kui_core::Align::Start, kui_core::Align::End);
+        let float =
+            kui_core::FloatConfig::viewport().inside(kui_core::Align::Start, kui_core::Align::End);
         ui.with_keyed(
             "kui:errors",
             NodeSpec::column()

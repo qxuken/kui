@@ -10,9 +10,9 @@
 //! data rides beside it (`select: {row}`), read with the wrapper's
 //! `from_payload`.
 
+use kui_core::channel::{Channel, Column};
 use kui_kit as kit;
 use kui_lua::LuaExtension;
-use kui_core::channel::{Channel, Column};
 use kui_native::{Message, NodeSpec, Ui, UiEvent, widgets};
 
 /// What Kit's components say to the app.
@@ -94,7 +94,11 @@ impl Scene {
             2 => ("Clear".into(), kit::Variant::Default, Msg::Clear),
             3 => ("Shadows".into(), kit::Variant::Default, Msg::Shadows),
             4 => ("Density".into(), kit::Variant::Default, Msg::Density),
-            n => (format!("Tool {n}"), kit::Variant::Ghost, Msg::Press { n: n as i64 }),
+            n => (
+                format!("Tool {n}"),
+                kit::Variant::Ghost,
+                Msg::Press { n: n as i64 },
+            ),
         };
         kit::Button::new(label).variant(variant).on_press(msg)
     }
@@ -191,10 +195,13 @@ impl Scene {
             }
             Msg::Pick => {
                 if let Some(s) = kit::WaterfallSelect::from_payload(&ev.payload) {
-                    self.picked = self
-                        .spans
-                        .col("target")
-                        .and_then(|c| self.spans.get(s.row as usize, c).to_value().as_str().map(str::to_string));
+                    self.picked = self.spans.col("target").and_then(|c| {
+                        self.spans
+                            .get(s.row as usize, c)
+                            .to_value()
+                            .as_str()
+                            .map(str::to_string)
+                    });
                 }
             }
         }
@@ -256,14 +263,25 @@ pub fn make_rows(n: usize) -> Vec<(String, Column)> {
                 }]
             })),
         ),
-        ("source".into(), Column::strs((0..n).map(|i| SOURCES[(h(i) >> 8) as usize % 5]))),
+        (
+            "source".into(),
+            Column::strs((0..n).map(|i| SOURCES[(h(i) >> 8) as usize % 5])),
+        ),
         (
             "size".into(),
-            Column::strs((0..n).map(|i| format!("{:.1} KB", ((h(i) >> 16) % 900) as f64 / 100.0 + 0.2))),
+            Column::strs(
+                (0..n).map(|i| format!("{:.1} KB", ((h(i) >> 16) % 900) as f64 / 100.0 + 0.2)),
+            ),
         ),
         (
             "message".into(),
-            Column::strs((0..n).map(|i| format!("{} #{}", WORDS[(h(i) >> 24) as usize % 8], (h(i) >> 32) % 10_000))),
+            Column::strs((0..n).map(|i| {
+                format!(
+                    "{} #{}",
+                    WORDS[(h(i) >> 24) as usize % 8],
+                    (h(i) >> 32) % 10_000
+                )
+            })),
         ),
     ]
 }
@@ -271,7 +289,8 @@ pub fn make_rows(n: usize) -> Vec<(String, Column)> {
 /// A recording of `frames` frames at 60 fps, six spans a frame: the frame,
 /// its view, layout and paint, and the walk and shaping under them.
 pub fn make_spans(frames: usize) -> Vec<(String, Column)> {
-    let (mut start, mut len, mut depth, mut group) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut start, mut len, mut depth, mut group) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut name, mut target) = (Vec::new(), Vec::new());
     let mut span = |s: f64, l: f64, d: i64, g: i64, n: &'static str, f: usize| {
         start.push(s);

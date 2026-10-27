@@ -45,7 +45,10 @@ fn a_schema_reads_into_its_parts() {
     let s = Schema::from_lua(SMALL).unwrap();
     assert_eq!(s.addon, "demo");
     assert_eq!(s.enums[0].values, ["small", "large"]);
-    assert_eq!(s.records[0].fields[1].ty, Type::Optional(Box::new(Type::String)));
+    assert_eq!(
+        s.records[0].fields[1].ty,
+        Type::Optional(Box::new(Type::String))
+    );
     let c = &s.components[0];
     assert_eq!(c.name, "chip");
     assert_eq!(c.props.len(), 4);
@@ -58,13 +61,16 @@ fn a_schema_reads_into_its_parts() {
 fn names_must_be_spelled_as_lua_spells_them() {
     assert!(refused(&with(r#"addon = "demo""#, r#"addon = "Demo""#)).contains("snake_case"));
     assert!(refused(&with(r#"{ "chip","#, r#"{ "Chip","#)).contains("snake_case"));
-    assert!(refused(&with(r#"{ "label", "string""#, r#"{ "Label", "string""#)).contains("snake_case"));
+    assert!(
+        refused(&with(r#"{ "label", "string""#, r#"{ "Label", "string""#)).contains("snake_case")
+    );
     assert!(refused(&with(r#"name = "Size""#, r#"name = "size""#)).contains("capital"));
 }
 
 #[test]
 fn a_type_that_would_shadow_a_bindings_own_is_refused() {
-    let e = refused(&with(r#"name = "Choice""#, r#"name = "Option""#).replace("{Choice}", "{Option}"));
+    let e =
+        refused(&with(r#"name = "Choice""#, r#"name = "Option""#).replace("{Choice}", "{Option}"));
     assert!(e.contains("shadow"), "{e}");
 }
 
@@ -79,14 +85,20 @@ fn an_undefined_or_twice_defined_type_is_refused() {
 #[test]
 fn key_fresh_and_on_props_belong_to_the_core_and_to_events() {
     for name in ["key", "fresh", "on_pick"] {
-        let e = refused(&with(r#"{ "label", "string""#, &format!(r#"{{ "{name}", "string""#)));
+        let e = refused(&with(
+            r#"{ "label", "string""#,
+            &format!(r#"{{ "{name}", "string""#),
+        ));
         assert!(e.contains("declare events"), "{name}: {e}");
     }
 }
 
 #[test]
 fn an_events_fields_are_what_every_binding_reads_off_a_payload() {
-    let e = refused(&with(r#"fields = { { "value", "string" } }"#, r#"fields = { { "value", "Choice" } }"#));
+    let e = refused(&with(
+        r#"fields = { { "value", "string" } }"#,
+        r#"fields = { { "value", "Choice" } }"#,
+    ));
     assert!(e.contains("an event's field"), "{e}");
     let e = refused(&with(r#"{ "pick", doc"#, r#"{ "Pick", doc"#));
     assert!(e.contains("snake_case"), "{e}");
@@ -128,15 +140,31 @@ fn it_writes_a_file_for_every_binding() {
 #[test]
 fn the_reference_has_a_section_a_component_with_its_props_events_and_children() {
     let s = Schema::from_lua(SMALL).unwrap();
-    let md = generate(&s).into_iter().find(|f| f.path == "reference.md").unwrap().text;
+    let md = generate(&s)
+        .into_iter()
+        .find(|f| f.path == "reference.md")
+        .unwrap()
+        .text;
     assert!(md.contains("## demo.chip\n\nA chip."), "{md}");
-    assert!(md.contains("| `label` | `label` | string | Its text. |"), "{md}");
+    assert!(
+        md.contains("| `label` | `label` | string | Its text. |"),
+        "{md}"
+    );
     assert!(md.contains("| `size` | `size` | [Size](#size)? |"), "{md}");
     assert!(md.contains("{[Choice](#choice)}?"), "{md}");
-    assert!(md.contains("| `on_pick` | `onPick` | `pick` = { `value`: string"), "{md}");
+    assert!(
+        md.contains("| `on_pick` | `onPick` | `pick` = { `value`: string"),
+        "{md}"
+    );
     assert!(md.contains("- `trailing` goes at the end."), "{md}");
-    assert!(md.contains("### Size\n\nHow big.") && md.contains("`\"small\"`"), "{md}");
-    assert!(md.contains("### Choice") && md.contains("| `hint` | `hint` | string? |"), "{md}");
+    assert!(
+        md.contains("### Size\n\nHow big.") && md.contains("`\"small\"`"),
+        "{md}"
+    );
+    assert!(
+        md.contains("### Choice") && md.contains("| `hint` | `hint` | string? |"),
+        "{md}"
+    );
 }
 
 #[test]
@@ -157,7 +185,10 @@ fn optional_props_are_left_out_unset_rather_than_sent_as_null() {
     let s = Schema::from_lua(SMALL).unwrap();
     let text = |p: &str| generate(&s).into_iter().find(|f| f.path == p).unwrap().text;
     let c = text("c/demo.h");
-    assert!(c.contains("if (p->size != 0)"), "an unset enum is zero in C");
+    assert!(
+        c.contains("if (p->size != 0)"),
+        "an unset enum is zero in C"
+    );
     assert!(c.contains("if (p->rows != NULL)"));
     let rust = text("rust/src/lib.rs");
     assert!(rust.contains("if let Some(v) = &self.size"));
@@ -169,6 +200,13 @@ fn optional_props_are_left_out_unset_rather_than_sent_as_null() {
 fn keywords_are_escaped_where_a_language_would_refuse_them() {
     let source = with(r#"{ "chip","#, r#"{ "switch","#);
     let s = Schema::from_lua(&source).unwrap();
-    let odin = generate(&s).into_iter().find(|f| f.path.ends_with(".odin")).unwrap().text;
-    assert!(odin.contains("switch_ :: proc"), "Odin's `switch` is a keyword");
+    let odin = generate(&s)
+        .into_iter()
+        .find(|f| f.path.ends_with(".odin"))
+        .unwrap()
+        .text;
+    assert!(
+        odin.contains("switch_ :: proc"),
+        "Odin's `switch` is a keyword"
+    );
 }

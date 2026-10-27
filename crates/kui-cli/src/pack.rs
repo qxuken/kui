@@ -50,7 +50,10 @@ pub fn run(opts: &Opts) -> Result<i32, String> {
         ));
     }
     let version = project.version.clone().unwrap_or_else(|| "0.0.0".into());
-    let runner_version = project.pin.clone().unwrap_or_else(|| crate::compat::VERSION.to_string());
+    let runner_version = project
+        .pin
+        .clone()
+        .unwrap_or_else(|| crate::compat::VERSION.to_string());
     if opts.bytecode && runner_version != crate::compat::VERSION {
         return Err(format!(
             "--bytecode compiles with this runner's Lua, and the app pins kui {runner_version}: pack with \
@@ -62,7 +65,11 @@ pub fn run(opts: &Opts) -> Result<i32, String> {
     let slug = slug(&project.name);
     let mut written: Vec<PathBuf> = Vec::new();
 
-    let formats: Vec<String> = if opts.formats.is_empty() { Vec::new() } else { opts.formats.clone() };
+    let formats: Vec<String> = if opts.formats.is_empty() {
+        Vec::new()
+    } else {
+        opts.formats.clone()
+    };
     if formats.iter().any(|f| f == "npm") {
         written.push(npm(&project, &files, &opts.out, &runner_version, &version)?);
     }
@@ -72,12 +79,17 @@ pub fn run(opts: &Opts) -> Result<i32, String> {
         std::fs::write(&path, archive).map_err(|e| format!("{}: {e}", path.display()))?;
         written.push(path);
     }
-    let platform_formats = formats.iter().any(|f| matches!(f.as_str(), "exe" | "app" | "bin")) || formats.is_empty();
+    let platform_formats = formats
+        .iter()
+        .any(|f| matches!(f.as_str(), "exe" | "app" | "bin"))
+        || formats.is_empty();
     if platform_formats {
         let targets = if opts.targets.is_empty() {
-            vec![release::current_platform()
-                .ok_or("this machine has no runner of its own to pack; name --target")?
-                .to_string()]
+            vec![
+                release::current_platform()
+                    .ok_or("this machine has no runner of its own to pack; name --target")?
+                    .to_string(),
+            ]
         } else if opts.targets.iter().any(|t| t == "all") {
             release::PLATFORMS.iter().map(|s| s.to_string()).collect()
         } else {
@@ -90,25 +102,65 @@ pub fn run(opts: &Opts) -> Result<i32, String> {
             if !formats.is_empty() && !formats.iter().any(|f| f == format) {
                 continue;
             }
-            eprintln!("kui: packing {} for {platform} (kui {runner_version})", project.name);
-            let runner = release::runner(&runner_version, platform, opts.mirror.as_deref(), opts.runner.as_deref())?;
+            eprintln!(
+                "kui: packing {} for {platform} (kui {runner_version})",
+                project.name
+            );
+            let runner = release::runner(
+                &runner_version,
+                platform,
+                opts.mirror.as_deref(),
+                opts.runner.as_deref(),
+            )?;
             let path = match format {
-                "exe" => exe(&project, &files, opts, runner, &runner_version, &version, &icon)?,
-                "app" => app(&project, &files, opts, runner, &runner_version, &version, &icon)?,
-                _ => bin(&project, &files, opts, runner, &runner_version, &version, platform, &icon)?,
+                "exe" => exe(
+                    &project,
+                    &files,
+                    opts,
+                    runner,
+                    &runner_version,
+                    &version,
+                    &icon,
+                )?,
+                "app" => app(
+                    &project,
+                    &files,
+                    opts,
+                    runner,
+                    &runner_version,
+                    &version,
+                    &icon,
+                )?,
+                _ => bin(
+                    &project,
+                    &files,
+                    opts,
+                    runner,
+                    &runner_version,
+                    &version,
+                    platform,
+                    &icon,
+                )?,
             };
             written.push(path);
         }
     }
     if written.is_empty() {
-        return Err(format!("nothing to pack: --format takes exe, app, bin, npm or kui (got {})", formats.join(", ")));
+        return Err(format!(
+            "nothing to pack: --format takes exe, app, bin, npm or kui (got {})",
+            formats.join(", ")
+        ));
     }
     let sums: String = written
         .iter()
         .filter(|p| p.is_file())
         .filter_map(|p| {
             let bytes = std::fs::read(p).ok()?;
-            Some(format!("{}  {}\n", release::sha256_hex(&bytes), p.file_name()?.to_string_lossy()))
+            Some(format!(
+                "{}  {}\n",
+                release::sha256_hex(&bytes),
+                p.file_name()?.to_string_lossy()
+            ))
         })
         .collect();
     std::fs::write(opts.out.join("SHA256SUMS"), &sums).map_err(|e| e.to_string())?;
@@ -144,7 +196,9 @@ fn collect(project: &Project) -> Result<Vec<File>, String> {
     let mut out = Vec::new();
     let mut err = None;
     project::walk(&project.dir, &mut |p| {
-        let Ok(rel) = p.strip_prefix(&project.dir) else { return };
+        let Ok(rel) = p.strip_prefix(&project.dir) else {
+            return;
+        };
         let name = rel.to_string_lossy().replace('\\', "/");
         if name == "test" || name.starts_with("test/") || name.starts_with("dist/") {
             return;
@@ -153,7 +207,11 @@ fn collect(project: &Project) -> Result<Vec<File>, String> {
             return;
         }
         match std::fs::read(p) {
-            Ok(data) => out.push(File { name, data, mode: mode_of(p) }),
+            Ok(data) => out.push(File {
+                name,
+                data,
+                mode: mode_of(p),
+            }),
             Err(e) => err = Some(format!("{}: {e}", p.display())),
         }
     });
@@ -167,7 +225,9 @@ fn collect(project: &Project) -> Result<Vec<File>, String> {
 #[cfg(unix)]
 fn mode_of(p: &Path) -> u32 {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p).map(|m| m.permissions().mode() & 0o777).unwrap_or(0o644)
+    std::fs::metadata(p)
+        .map(|m| m.permissions().mode() & 0o777)
+        .unwrap_or(0o644)
 }
 
 #[cfg(not(unix))]
@@ -178,38 +238,72 @@ fn mode_of(_: &Path) -> u32 {
 /// The app's files as they go into the archive: as written, or — with
 /// `--bytecode` — each `.lua` and `.tl` compiled (the manifest stays
 /// source), plus a source entry that requires the compiled one.
-fn prepared(project: &Project, files: &[File], opts: &Opts) -> Result<(Vec<File>, Option<String>), String> {
+fn prepared(
+    project: &Project,
+    files: &[File],
+    opts: &Opts,
+) -> Result<(Vec<File>, Option<String>), String> {
     if !opts.bytecode {
-        return Ok((files.iter().map(|f| File { name: f.name.clone(), data: f.data.clone(), mode: f.mode }).collect(), None));
+        return Ok((
+            files
+                .iter()
+                .map(|f| File {
+                    name: f.name.clone(),
+                    data: f.data.clone(),
+                    mode: f.mode,
+                })
+                .collect(),
+            None,
+        ));
     }
     let lua = mlua::Lua::new();
     let mut out = Vec::new();
     for f in files {
         let is_config = f.name == "kui.config.lua" || f.name == "kui.config.tl";
-        let code = f.name.ends_with(".lua") || (f.name.ends_with(".tl") && !f.name.ends_with(".d.tl"));
+        let code =
+            f.name.ends_with(".lua") || (f.name.ends_with(".tl") && !f.name.ends_with(".d.tl"));
         if is_config || !code {
-            out.push(File { name: f.name.clone(), data: f.data.clone(), mode: f.mode });
+            out.push(File {
+                name: f.name.clone(),
+                data: f.data.clone(),
+                mode: f.mode,
+            });
             continue;
         }
-        let text = String::from_utf8(f.data.clone()).map_err(|_| format!("{}: not UTF-8", f.name))?;
+        let text =
+            String::from_utf8(f.data.clone()).map_err(|_| format!("{}: not UTF-8", f.name))?;
         let path = project.dir.join(&f.name);
         let src = crate::teal::source_for(&path, &text).map_err(|e| format!("{}: {e}", f.name))?;
-        let name = f.name.strip_suffix(".tl").map(|n| format!("{n}.lua")).unwrap_or_else(|| f.name.clone());
+        let name = f
+            .name
+            .strip_suffix(".tl")
+            .map(|n| format!("{n}.lua"))
+            .unwrap_or_else(|| f.name.clone());
         let func = lua
             .load(&src)
             .set_name(format!("@{name}"))
             .into_function()
             .map_err(|e| format!("{}: {e}", f.name))?;
-        out.push(File { name, data: func.dump(opts.strip), mode: f.mode });
+        out.push(File {
+            name,
+            data: func.dump(opts.strip),
+            mode: f.mode,
+        });
     }
-    let entry = project.entry.strip_prefix(&project.dir).map_err(|_| "the entry is outside the app's folder")?;
+    let entry = project
+        .entry
+        .strip_prefix(&project.dir)
+        .map_err(|_| "the entry is outside the app's folder")?;
     let module = entry
         .with_extension("")
         .to_string_lossy()
         .replace(['/', '\\'], ".");
     out.push(File {
         name: BYTECODE_ENTRY.into(),
-        data: format!("-- written by kui pack --bytecode: the app's entry, compiled\nrequire({module:?})\n").into_bytes(),
+        data: format!(
+            "-- written by kui pack --bytecode: the app's entry, compiled\nrequire({module:?})\n"
+        )
+        .into_bytes(),
         mode: 0o644,
     });
     Ok((out, Some(BYTECODE_ENTRY.into())))
@@ -244,7 +338,8 @@ fn archive(
     }
     pack.push_str("}\n");
     let mut zip = ZipWriter::new();
-    zip.add_file(PACK_FILE, pack.as_bytes(), 0o644, true).map_err(|e| e.to_string())?;
+    zip.add_file(PACK_FILE, pack.as_bytes(), 0o644, true)
+        .map_err(|e| e.to_string())?;
     for f in &files {
         zip.add_file(&format!("{APP_DIR}{}", f.name), &f.data, f.mode, true)
             .map_err(|e| format!("{}: {e}", f.name))?;
@@ -258,7 +353,8 @@ fn icon(project: &Project) -> Result<crate::icons::Rgba, String> {
     match &project.icon {
         Some(p) => {
             let bytes = std::fs::read(p).map_err(|e| format!("icon {}: {e}", p.display()))?;
-            let loaded = crate::icons::load_png(&bytes).map_err(|e| format!("icon {}: {e}", p.display()))?;
+            let loaded =
+                crate::icons::load_png(&bytes).map_err(|e| format!("icon {}: {e}", p.display()))?;
             for w in &loaded.warnings {
                 eprintln!("kui: icon {}: {w}", p.display());
             }
@@ -280,9 +376,19 @@ fn exe(
     _icon: &crate::icons::Rgba,
 ) -> Result<PathBuf, String> {
     crate::pe::set_subsystem(&mut runner, !project.pack.console)?;
-    let zip = archive(project, files, opts, runner_version, version, runner.len() as u64)?;
+    let zip = archive(
+        project,
+        files,
+        opts,
+        runner_version,
+        version,
+        runner.len() as u64,
+    )?;
     runner.extend_from_slice(&zip);
-    let path = opts.out.join(format!("{}-{version}-win32-x64.exe", file_name(&project.name)));
+    let path = opts.out.join(format!(
+        "{}-{version}-win32-x64.exe",
+        file_name(&project.name)
+    ));
     std::fs::write(&path, runner).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
 }
@@ -300,12 +406,22 @@ fn bin(
     platform: &str,
     icon: &crate::icons::Rgba,
 ) -> Result<PathBuf, String> {
-    let zip = archive(project, files, opts, runner_version, version, runner.len() as u64)?;
+    let zip = archive(
+        project,
+        files,
+        opts,
+        runner_version,
+        version,
+        runner.len() as u64,
+    )?;
     runner.extend_from_slice(&zip);
     let slug = slug(&project.name);
     let png = crate::icons::png_of(icon, 512);
-    let tar = write_tar_gz(&[(slug.as_str(), &runner, 0o755), (&format!("{slug}.png"), &png, 0o644)])
-        .map_err(|e| e.to_string())?;
+    let tar = write_tar_gz(&[
+        (slug.as_str(), &runner, 0o755),
+        (&format!("{slug}.png"), &png, 0o644),
+    ])
+    .map_err(|e| e.to_string())?;
     let path = opts.out.join(format!("{slug}-{version}-{platform}.tar.gz"));
     std::fs::write(&path, tar).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
@@ -342,7 +458,11 @@ fn app(
         set_mode(&p, mode);
         Ok(())
     };
-    put("Info.plist", info_plist(project, &name, version).as_bytes(), 0o644)?;
+    put(
+        "Info.plist",
+        info_plist(project, &name, version).as_bytes(),
+        0o644,
+    )?;
     put("PkgInfo", b"APPL????", 0o644)?;
     put(&format!("MacOS/{name}"), &runner, 0o755)?;
     put("Resources/app.zip", &archive, 0o644)?;
@@ -354,7 +474,10 @@ fn app(
             .output();
         match signed {
             Ok(o) if o.status.success() => {}
-            Ok(o) => eprintln!("kui: codesign: {}", String::from_utf8_lossy(&o.stderr).trim()),
+            Ok(o) => eprintln!(
+                "kui: codesign: {}",
+                String::from_utf8_lossy(&o.stderr).trim()
+            ),
             Err(e) => eprintln!("kui: codesign not run ({e}); the .app is unsigned"),
         }
     }
@@ -362,16 +485,25 @@ fn app(
     zip_tree(&mut zip, &build, &bundle)?;
     let bytes = zip.finish(0, b"").map_err(|e| e.to_string())?;
     let _ = std::fs::remove_dir_all(&build);
-    let path = opts.out.join(format!("{name}-{version}-darwin-arm64.app.zip"));
+    let path = opts
+        .out
+        .join(format!("{name}-{version}-darwin-arm64.app.zip"));
     std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
 }
 
 /// Every folder and file under `dir`, named relative to `root`, modes kept.
 fn zip_tree(zip: &mut ZipWriter, root: &Path, dir: &Path) -> Result<(), String> {
-    let rel = |p: &Path| p.strip_prefix(root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+    let rel = |p: &Path| {
+        p.strip_prefix(root)
+            .map(|r| r.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default()
+    };
     zip.add_dir(&rel(dir)).map_err(|e| e.to_string())?;
-    let mut entries: Vec<_> = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?.flatten().collect();
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .flatten()
+        .collect();
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
         let p = e.path();
@@ -379,7 +511,8 @@ fn zip_tree(zip: &mut ZipWriter, root: &Path, dir: &Path) -> Result<(), String> 
             zip_tree(zip, root, &p)?;
         } else {
             let data = std::fs::read(&p).map_err(|e| format!("{}: {e}", p.display()))?;
-            zip.add_file(&rel(&p), &data, mode_of(&p), true).map_err(|e| e.to_string())?;
+            zip.add_file(&rel(&p), &data, mode_of(&p), true)
+                .map_err(|e| e.to_string())?;
         }
     }
     Ok(())
@@ -396,12 +529,21 @@ fn set_mode(_: &Path, _: u32) {}
 
 /// A name for a bundle or an exe: the app's, without path separators.
 fn file_name(name: &str) -> String {
-    let n: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | ':')).collect();
-    if n.trim().is_empty() { "App".into() } else { n.trim().to_string() }
+    let n: String = name
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | ':'))
+        .collect();
+    if n.trim().is_empty() {
+        "App".into()
+    } else {
+        n.trim().to_string()
+    }
 }
 
 fn xml(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn info_plist(project: &Project, exe: &str, version: &str) -> String {
@@ -434,8 +576,19 @@ fn info_plist(project: &Project, exe: &str, version: &str) -> String {
 /// npm: the app's sources (never bytecode), a `bin` shim, and an exact
 /// dependency on the runner it pins — a package a company publishes to its
 /// own registry.
-fn npm(project: &Project, files: &[File], out: &Path, runner_version: &str, version: &str) -> Result<PathBuf, String> {
-    let bin = project.id.rsplit('.').next().unwrap_or(&project.id).to_string();
+fn npm(
+    project: &Project,
+    files: &[File],
+    out: &Path,
+    runner_version: &str,
+    version: &str,
+) -> Result<PathBuf, String> {
+    let bin = project
+        .id
+        .rsplit('.')
+        .next()
+        .unwrap_or(&project.id)
+        .to_string();
     let name = project.pack.npm_name.clone().unwrap_or_else(|| bin.clone());
     let dir = out.join("npm").join(name.replace('/', "__"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -477,7 +630,13 @@ fn npm(project: &Project, files: &[File], out: &Path, runner_version: &str, vers
 /// `--installer <base-url>`: an `install.sh` and an `install.ps1` that
 /// fetch this app's build from where it is hosted, check its sum, and
 /// install it in the user's own folders.
-fn installer(project: &Project, base: &str, out: &Path, slug: &str, version: &str) -> Result<(), String> {
+fn installer(
+    project: &Project,
+    base: &str,
+    out: &Path,
+    slug: &str,
+    version: &str,
+) -> Result<(), String> {
     let base = base.trim_end_matches('/');
     let name = file_name(&project.name);
     let sh = format!(

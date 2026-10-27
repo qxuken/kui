@@ -271,11 +271,17 @@ mod tests {
             assert!(seen.insert(k.index(i)), "index {i}");
         }
         for i in 0..1024 {
-            assert!(seen.insert(k.str("").index(i)), "the empty group's child {i} is its own");
+            assert!(
+                seen.insert(k.str("").index(i)),
+                "the empty group's child {i} is its own"
+            );
         }
         for b in 0..=255u8 {
             let label = String::from_utf8_lossy(&[b]).into_owned();
-            assert!(seen.insert(k.str(&label)) || label == "\u{fffd}", "label {b}");
+            assert!(
+                seen.insert(k.str(&label)) || label == "\u{fffd}",
+                "label {b}"
+            );
         }
     }
 

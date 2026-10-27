@@ -131,7 +131,9 @@ fn positional(t: &mlua::Table, i: i64, key: &str) -> Result<Option<String>, Sche
 }
 
 fn doc_of(t: &mlua::Table) -> Result<String, SchemaError> {
-    Ok(t.get::<Option<String>>("doc").map_err(lua_err)?.unwrap_or_default())
+    Ok(t.get::<Option<String>>("doc")
+        .map_err(lua_err)?
+        .unwrap_or_default())
 }
 
 fn list(t: &mlua::Table, key: &str) -> Result<Vec<mlua::Table>, SchemaError> {
@@ -146,7 +148,8 @@ fn list(t: &mlua::Table, key: &str) -> Result<Vec<mlua::Table>, SchemaError> {
 
 fn is_snake(s: &str) -> bool {
     !s.is_empty()
-        && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
         && !s.starts_with(|c: char| c.is_ascii_digit())
 }
 
@@ -227,8 +230,8 @@ impl Schema {
         let components = list(&t, "components")?
             .iter()
             .map(|c| {
-                let name = positional(c, 1, "name")?
-                    .ok_or_else(|| err("a component has no name"))?;
+                let name =
+                    positional(c, 1, "name")?.ok_or_else(|| err("a component has no name"))?;
                 if !is_snake(&name) {
                     return Err(err(format!("component `{name}` must be snake_case")));
                 }
@@ -281,8 +284,8 @@ impl Schema {
 
     /// Reads a schema file.
     pub fn from_path(path: &std::path::Path) -> Result<Schema, SchemaError> {
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| err(format!("{}: {e}", path.display())))?;
+        let source =
+            std::fs::read_to_string(path).map_err(|e| err(format!("{}: {e}", path.display())))?;
         Self::from_lua(&source).map_err(|e| err(format!("{}: {e}", path.display())))
     }
 
