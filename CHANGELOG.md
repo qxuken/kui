@@ -80,6 +80,10 @@ was the first bare bump to break an app in five releases).
   Such a call left its node open to the end of the enclosing block, so
   everything after it was its child: write `if kui.box(ui, spec) { }`, or
   `kui.rect(ui, spec)` for a box with no children.
+- An editor's `change` arrives when an IME composition begins over a
+  selection, carrying the text without it (backlog FZ17), where the
+  first `change` came at the commit. An app that counts changes, or
+  takes one as the end of a composition, sees one more.
 - A view that returns with nodes still open raises `unclosed-node`, and a
   `layout_of` on a node that declares no `on_layout` raises
   `layout-of-without-handler`, where both said nothing (backlog F230,
@@ -361,6 +365,15 @@ already generated for each event.
   failed with "Access is denied"; it is tried again for a moment.
 - **`kill` on Windows says nothing of its own** (backlog F243): taskkill's
   "SUCCESS: The process with PID …" lines reached the app's output.
+- **A composition begun over a selection and then abandoned no longer
+  loses the selection behind the app's back** (backlog FZ17, found by
+  the `events` fuzz target; in every release since compositions replaced
+  a selection). Composing deletes the selection, a recorded edit, but the
+  app heard nothing until the commit — and a blur or an empty preedit
+  abandons a composition without one, so the field showed the text
+  without the selection while the app's model still held it, until the
+  next keystroke's `change` made the loss the app's too. The deletion is
+  a `change` now, as it happens.
 
 **What you can delete.**
 

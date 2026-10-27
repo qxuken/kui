@@ -491,3 +491,53 @@ fn a_readers_set_value_undoes_like_typing() {
     press(&mut core, EditKey::Undo);
     assert_eq!(text(&core, key), "", "the typing before it survived");
 }
+
+/// A composition begun over a selection deletes it, and the app hears
+/// that as a `change` when it happens: abandoned afterwards — a blur, an
+/// empty preedit — the composition never commits, and the field showed
+/// the text without the selection while the app still held it, until its
+/// next keystroke made the loss the app's too (backlog FZ17, from the
+/// `events` fuzz target).
+#[test]
+fn a_composition_over_a_selection_says_the_selection_went() {
+    let mut core = Core::new();
+    let o = opts();
+    let declare = |core: &mut Core, model: &str| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let spec = NodeSpec::column()
+            .grow_width()
+            .on_change(kui_core::Value::str("changed"));
+        let key = ui.text_edit_value("field", model, &o, spec);
+        ui.finish();
+        key
+    };
+    let changes = |events: Vec<kui_core::UiEvent>| -> Vec<String> {
+        events
+            .into_iter()
+            .filter_map(|ev| match ev.read() {
+                kui_core::Event::EditChange(c) => Some(c.text),
+                _ => None,
+            })
+            .collect()
+    };
+    let mut model = "hello world".to_string();
+    let key = declare(&mut core, &model);
+    core.edit.set_selection(key, (0, 6), (0, 11));
+    let heard = changes(core.handle_input(InputEvent::Preedit("か".into(), Some((3, 3)))));
+    assert_eq!(heard, ["hello "], "the selection's deletion, heard at once");
+    model = heard[0].clone();
+    declare(&mut core, &model);
+    assert_eq!(core.edit.preedit(key), Some("か"), "still composing");
+
+    // Abandoned: nothing commits, and the field and the app agree.
+    let heard = changes(core.handle_input(InputEvent::Preedit(String::new(), None)));
+    assert!(heard.is_empty(), "an abandoned composition commits nothing");
+    declare(&mut core, &model);
+    assert_eq!(text(&core, key), "hello ");
+    assert_eq!(text(&core, key), model);
+
+    // A composition with nothing selected changes no committed text.
+    let heard = changes(core.handle_input(InputEvent::Preedit("か".into(), None)));
+    assert!(heard.is_empty(), "{heard:?}");
+}

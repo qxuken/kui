@@ -102,7 +102,31 @@ fn first_difference(a: &Result<Vec<String>, String>, b: &Result<Vec<String>, Str
         (Ok(a), Ok(b)) => {
             let at = a.iter().zip(b).position(|(x, y)| x != y);
             match at {
-                Some(i) => format!("line {i}:\n  new:  {:.600}\n  kept: {:.600}", a[i], b[i]),
+                // Around the first character that differs: a line is a
+                // whole access tree, and its first 600 characters were
+                // the same on both sides (the alpha.69 fuzz hour).
+                Some(i) => {
+                    let (x, y) = (&a[i], &b[i]);
+                    let mut c = x
+                        .bytes()
+                        .zip(y.bytes())
+                        .position(|(p, q)| p != q)
+                        .unwrap_or(x.len().min(y.len()));
+                    while !x.is_char_boundary(c) || !y.is_char_boundary(c) {
+                        c -= 1;
+                    }
+                    let mut from = c.saturating_sub(200);
+                    while !x.is_char_boundary(from) {
+                        from -= 1;
+                    }
+                    format!(
+                        "line {i}, at byte {c} of {} / {}:\n  new:  …{:.400}\n  kept: …{:.400}",
+                        x.len(),
+                        y.len(),
+                        &x[from..],
+                        &y[from..]
+                    )
+                }
                 None => format!(
                     "{} lines on a new session, {} on a kept one",
                     a.len(),
