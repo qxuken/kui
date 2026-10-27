@@ -3898,6 +3898,23 @@ changes, the chart asks for a frame every frame for 240 ms, and each runs
 the view. **Do.** The glide as a transition on the plot's vertical scale
 and offset, gridlines and labels keyed by value, so a reframe carries it.
 
+### `.` C159 — A component cannot schedule a message to itself
+
+**Filed** by the user (2026-10-27), after C155: Kit's toast times out by
+placing a zero-size `expire` node whose first `on_layout` raises the
+dismiss — a node that exists only to deliver a message at a time, which
+took the row's gap and moved the × on the frame it appeared. A component
+fill has no way to say "send me this message at time T" (or "after the
+next frame", or "when this value settles"); it borrows layout events,
+`request_frame_at` plus a clock read, or a timer only the host may own.
+**Do.** A general mechanism for component effects, owned by the instance
+and dropped with it: at least `after(ms, msg)` / `at(time, msg)` and
+"next frame" delivery of the component's own message, cancellable, replayed
+instances keeping their schedule; consider a broader effects model
+(subscriptions to time, channel changes, window facts) so fills stay pure.
+Doors in every binding. Then Kit's toast `expire`, the "Copied" reset and
+similar timers move onto it.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
