@@ -2202,7 +2202,13 @@ examples walked to their tab in two Ctrl+Shift+N presses, from before
 the Perf tab made it three; and `edge_scroll`'s drive pressed the text's
 middle, which under DejaVu is the code block's sideways scrollbar (it
 presses in the first paragraph now; a press inside the code block hands
-the drag on as it should, checked with both fonts). Through those rounds the workspace suite ran at each merge, and the
+the drag on as it should, checked with both fonts). The moved tag's run
+then passed its check and failed linking the Linux runner binary, the
+release's first executable built at the glibc 2.28 floor: lld refused
+the runner image's libasound.so, which asks for a newer glibc than zig's
+stubs; it links with `--allow-shlib-undefined` now (a user's libasound
+is their distribution's). A by-hand run of the release workflow on main
+then went through every job but `publish` before the tag moved again. Through those rounds the workspace suite ran at each merge, and the
 Kit gallery's paint audit (`KUI_PAINT_AUDIT=1`, ADR 0074) over every
 page.
 
