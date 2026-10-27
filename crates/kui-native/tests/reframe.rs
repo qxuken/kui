@@ -64,9 +64,13 @@ fn run(state: Option<u64>) -> (u32, u64, kui_native::HeadlessRunner<Pulse>) {
         count: 0,
     };
     let mut r = kui_native::app("reframe").open_headless(app, 320.0, 200.0, 1.0);
-    let until = Instant::now() + Duration::from_millis(300);
-    while Instant::now() < until {
-        r.turn_until(until);
+    // Until a dozen frames are drawn, not for a fixed time: the cycle
+    // draws at the display's pace, and a hosted CI Mac drew 6 in the
+    // 300 ms this once waited. The deadline only stops a run that draws
+    // nothing.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while r.frames() < 12 && Instant::now() < deadline {
+        r.turn_until((Instant::now() + Duration::from_millis(20)).min(deadline));
     }
     (r.app_mut().views, r.frames(), r)
 }
@@ -75,8 +79,8 @@ fn run(state: Option<u64>) -> (u32, u64, kui_native::HeadlessRunner<Pulse>) {
 fn an_app_that_says_its_state_is_not_asked_for_its_view_while_only_the_cycle_animates() {
     let (views, frames, mut r) = run(Some(0));
     assert!(
-        frames > 8,
-        "the cycle drew at the display's pace: {frames} frames"
+        frames >= 12,
+        "the cycle drew at the display's pace: {frames} frames in 5 s"
     );
     assert!(views <= 3, "the view ran {views} times in {frames} frames");
     // A click moves the app's state: the next frame runs the view, and
@@ -92,9 +96,9 @@ fn an_app_that_says_its_state_is_not_asked_for_its_view_while_only_the_cycle_ani
         button: MouseButton::Primary,
     });
     let before = r.app_mut().views;
-    let until = Instant::now() + Duration::from_millis(100);
-    while Instant::now() < until {
-        r.turn_until(until);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while (r.app_mut().count == 0 || r.app_mut().views == before) && Instant::now() < deadline {
+        r.turn_until((Instant::now() + Duration::from_millis(20)).min(deadline));
     }
     assert_eq!(
         r.app_mut().count,
