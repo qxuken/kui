@@ -66,6 +66,11 @@ was the first bare bump to break an app in five releases).
   surface.
 - `Menu` gained `max_size` and `in_window` (backlog F210): a Rust struct
   literal names them or is built with `Menu::new`.
+- `Span` gained `bg_pad` (backlog F226): a Rust struct literal names it or
+  is built with `Span::new`.
+- C's ABI is 40: `KuiSpan` gained `bg_pad` (64 bytes on 64-bit, from 56;
+  spans travel as an array, so the stride moved). Recompile; zeroed, a
+  span's background is flush with its glyphs, as it was (backlog F226).
 
 The failure is the world's — a missing file, a refused connection, a
 file that is not JSON — not a bug in the line that asked, so a traceback
@@ -151,6 +156,18 @@ already generated for each event.
   maxHeight, inWindow})`; Lua: `open_menu(key, x, y, items, { max_width =,
   max_height =, in_window = })`. `widgets::context_menu_within` is the
   widget with a limit.
+- **Air around a span's background** (backlog F226, from Carnet's
+  selection): `bg_pad` widens the two ends of the rect a span's
+  background is drawn in, so a selection or an inline `code` no longer
+  sits flush on its first and last letters. Only the ends: spans of one
+  background merged into one rect are padded at its outer ends, each line
+  a wrapped span covers at its own, and nothing moves — not the glyphs,
+  the line breaks or where a press lands. Where the rect meets another
+  background on its line (a selection beside a highlight) the edge they
+  share stays, so neither paints over the other, and two closer than their
+  padding share the gap. `Span::bg_pad` in Rust, `bgPad` on a JSX
+  `<span>`, `bg_pad` in a Lua span table, `KuiSpan.bg_pad` in C and
+  `Span.bg_pad` in Odin; logical px.
 
 ### Fixed
 
@@ -209,6 +226,12 @@ already generated for each event.
   file, `xdg-open` on its folder where none answers; and a folder opened
   on macOS is opened in Finder, so a bundle (`X.app`) is shown as the
   folder it is where `open` ran it.
+- **`open_external` and `show_in_folder` take a path with `/` in it on
+  Windows** (backlog F225, from Carnet). `explorer` reads
+  `C:\Users\me\Notes/attachments/report.pdf` — an app's folder joined to
+  a Markdown link's path — as no path at all, and opened Documents. A
+  target that is not a URL has every `/` made `\` before the command is
+  built; a URL is left as it is.
 
 **What you can delete.**
 
@@ -228,6 +251,10 @@ already generated for each event.
   reasonable height: `max_size` scrolls it at the height you choose.
 - A Linux file manager asked over D-Bus by hand to select a file, and
   `open -a Finder` on macOS to show a folder rather than run it.
+- A path rebuilt from its components, kept only so `open_external` or
+  `show_in_folder` on Windows got one with `\` alone.
+- Spaces, or an inline box, around a highlighted run, kept only so its
+  background did not sit flush on its letters.
 
 ## 0.1.0-alpha.68 (2026-10-27)
 

@@ -3165,6 +3165,43 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `KuiSpan.bg_pad` crosses the boundary (backlog F226): the span's
+    /// background is wider by the padding at each end; zeroed, it is flush
+    /// with its glyphs.
+    #[test]
+    fn a_span_s_bg_pad_widens_its_background_across_the_boundary() {
+        let ctx = kui_ctx_new();
+        let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
+        mono.size = 14.0;
+        mono.family = 2;
+        mono.line_height = 20.0;
+        let draw = |pad: f32| -> (f32, f32) {
+            kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+            let mut spans = unsafe { std::mem::zeroed::<[KuiSpan; 3]>() };
+            spans[0].text = ks("a ");
+            spans[1].text = ks("word");
+            spans[1].bg = 0x3b5bd4ff;
+            spans[1].bg_pad = pad;
+            spans[2].text = ks(" z");
+            kui_rich_text(ctx, spans.as_ptr(), 3, &mono);
+            kui_frame_finish(ctx);
+            let mut draw = KuiDrawData::default();
+            kui_draw_data(ctx, &mut draw);
+            let quads = unsafe { std::slice::from_raw_parts(draw.quads, draw.quad_count) };
+            let solid = kui_core::QuadKind::Solid as u32;
+            let q = quads
+                .iter()
+                .find(|q| q.kind == solid)
+                .expect("the span's background");
+            (q.x, q.w)
+        };
+        let (x, w) = draw(0.0);
+        let (px, pw) = draw(5.0);
+        assert!((px - (x - 5.0)).abs() < 0.01, "{x} -> {px}");
+        assert!((pw - (w + 10.0)).abs() < 0.01, "{w} -> {pw}");
+        kui_ctx_free(ctx);
+    }
+
     /// A press through the C surface with Shift held (`kui_input_modifiers`)
     /// keeps the anchor, which `kui_selection_ends` reads back as the
     /// directed pair; an `on_scroll` grid hears

@@ -413,6 +413,9 @@ struct SpanDeco {
     /// The background's radius, logical px: above zero it is joined with
     /// the backgrounds it meets.
     bg_radius: f32,
+    /// How far the background reaches past its glyphs at each end of the
+    /// rect it ends up in, logical px (`Span::bg_pad`).
+    bg_pad: f32,
 }
 
 impl SpanDeco {
@@ -426,6 +429,7 @@ impl SpanDeco {
             strikethrough: style.strikethrough,
             bg: None,
             bg_radius: 0.0,
+            bg_pad: 0.0,
         }
     }
 
@@ -460,6 +464,18 @@ pub struct Span<'a> {
     /// reaches past its neighbour, concave where it falls short, round
     /// where nothing meets it. What a selection over lines looks like.
     pub bg_radius: f32,
+    /// How far the background reaches past the span's first and last
+    /// glyphs, logical px, at the two ends of the rect it is drawn in —
+    /// air around a selection or an inline `code` — and nowhere between:
+    /// spans of one background merged into one rect are padded at its
+    /// ends alone, and on each line a wrapped span covers. Paint only:
+    /// the text's layout, its line breaks and where a press lands do not
+    /// move. Where the rect meets another background on its line — a
+    /// selection beside a highlight — neither paints over the other: the
+    /// padding stops at the edge they share, and between two that are
+    /// apart by less than their padding, each takes its share of the gap
+    /// (backlog F226).
+    pub bg_pad: f32,
     /// The span's own face, in place of the paragraph's: inline `code` in
     /// `FontFamily::Mono` inside a sans line. `None` is the paragraph's.
     /// The span keeps the paragraph's weights for its family (bold is the
@@ -488,6 +504,7 @@ impl<'a> Span<'a> {
             strikethrough: false,
             bg: None,
             bg_radius: 0.0,
+            bg_pad: 0.0,
             family: None,
             size: None,
         }
@@ -568,6 +585,20 @@ impl<'a> Span<'a> {
         self
     }
 
+    /// Widens the background's two ends by `px` (see
+    /// [`Span::bg_pad`](Self#structfield.bg_pad)); a negative or `NaN`
+    /// pad is none.
+    ///
+    /// ```
+    /// # use kui_core::{Color, text::Span};
+    /// let sel = Span::new("picked").bg(Color::hex(0x3d5afeff)).bg_radius(4.0).bg_pad(3.0);
+    /// assert_eq!(sel.bg_pad, 3.0);
+    /// ```
+    pub fn bg_pad(mut self, px: f32) -> Self {
+        self.bg_pad = if px > 0.0 { px } else { 0.0 };
+        self
+    }
+
     /// The span without its text: what a long line keeps per span so a
     /// chunk can be rebuilt from the content and the ranges.
     fn attrs_only(&self) -> SpanAttrs {
@@ -581,6 +612,7 @@ impl<'a> Span<'a> {
             strikethrough: self.strikethrough,
             bg: self.bg,
             bg_radius: self.bg_radius,
+            bg_pad: self.bg_pad,
             family: self.family,
             size: self.size,
         }
@@ -637,6 +669,7 @@ struct SpanAttrs {
     strikethrough: bool,
     bg: Option<Color>,
     bg_radius: f32,
+    bg_pad: f32,
     family: Option<FontFamily>,
     size: Option<f32>,
 }
@@ -654,6 +687,7 @@ impl SpanAttrs {
             strikethrough: self.strikethrough,
             bg: self.bg,
             bg_radius: self.bg_radius,
+            bg_pad: self.bg_pad,
             family: self.family,
             size: self.size,
         }
@@ -2681,6 +2715,7 @@ impl TextSystem {
                 s.underline_color.is_some() as u8,
             ]);
             mix(&s.bg_radius.to_bits().to_le_bytes());
+            mix(&s.bg_pad.to_bits().to_le_bytes());
             // The span's own face and size: a different shaping, so a
             // different entry.
             let (tag, font) = match s.family {
@@ -2793,6 +2828,7 @@ impl TextSystem {
                     strikethrough: s.strikethrough || base.strikethrough,
                     bg: s.bg,
                     bg_radius: s.bg_radius,
+                    bg_pad: s.bg_pad,
                 })
                 .collect();
             let entry = CachedText::new(buffer, content, base, decos, fs, frame_no);
@@ -3974,6 +4010,10 @@ fn build_decorations(
     // The background rect the last group drew, which the next one of the
     // same colour starting where it ends extends.
     let mut last_bg: Option<usize> = None;
+    // Every background rect of this line, with the padding its first and
+    // its last span asked for (`Span::bg_pad`), widened once the line is
+    // whole.
+    let mut pads: Vec<(usize, f32, f32)> = Vec::new();
     let mut i = 0;
     while i < parts.len() {
         let span_no = parts[i].span;
@@ -3995,6 +4035,9 @@ fn build_decorations(
                         && (prev.x + prev.w - x0).abs() < 0.01 =>
                 {
                     prev.w = (x1 - prev.x).max(prev.w);
+                    if let Some(p) = pads.last_mut() {
+                        p.2 = deco.bg_pad;
+                    }
                 }
                 (Some(bg), _) => {
                     // A span shorter than its line (`Span::size`, a line
@@ -4016,6 +4059,7 @@ fn build_decorations(
                         _ => (run.line_top, run.line_height),
                     };
                     last_bg = Some(out.len());
+                    pads.push((out.len(), deco.bg_pad, deco.bg_pad));
                     out.push(DecoTemplate {
                         x: x0,
                         y,
@@ -4075,6 +4119,63 @@ fn build_decorations(
             last_bg = None;
         }
         i = j;
+    }
+    pad_backgrounds(out, &pads);
+}
+
+/// Widens each background rect of one line by the padding its ends asked
+/// for (`Span::bg_pad`), into the room beside it and no further: where it
+/// meets another background on the line — another colour, another
+/// radius, or a span of its own colour the merge did not join — the edge
+/// they share stays where it is, so neither paints over the other; where
+/// two are apart by less than they would grow into each other, each
+/// takes the share of the gap its padding asks for. Worked out from the
+/// rects as built, before any is widened, so the order they come in
+/// (right to left in a right-to-left run) decides nothing.
+fn pad_backgrounds(out: &mut [DecoTemplate], pads: &[(usize, f32, f32)]) {
+    if pads.iter().all(|&(_, l, r)| l <= 0.0 && r <= 0.0) {
+        return;
+    }
+    let span = |k: usize| (out[k].x, out[k].x + out[k].w);
+    let widened: Vec<(usize, f32, f32)> = pads
+        .iter()
+        .map(|&(k, want_l, want_r)| {
+            let (x0, x1) = span(k);
+            // The nearest background on either side, with the padding it
+            // would grow toward this one by.
+            let (mut room_l, mut room_r) = (want_l, want_r);
+            for &(n, n_l, n_r) in pads {
+                if n == k {
+                    continue;
+                }
+                let (nx0, nx1) = span(n);
+                if nx1 <= x0 + 0.01 {
+                    let gap = (x0 - nx1).max(0.0);
+                    room_l = room_l.min(share(gap, want_l, n_r));
+                } else if nx0 >= x1 - 0.01 {
+                    let gap = (nx0 - x1).max(0.0);
+                    room_r = room_r.min(share(gap, want_r, n_l));
+                }
+            }
+            (k, room_l, room_r)
+        })
+        .collect();
+    for (k, l, r) in widened {
+        out[k].x -= l;
+        out[k].w += l + r;
+    }
+}
+
+/// What of a `gap` a padding of `mine` may take when the background across
+/// it pads toward it by `theirs`: all it asks while the two fit, and its
+/// share of the gap when they would overlap.
+fn share(gap: f32, mine: f32, theirs: f32) -> f32 {
+    if mine <= 0.0 {
+        0.0
+    } else if mine + theirs <= gap {
+        mine
+    } else {
+        gap * mine / (mine + theirs)
     }
 }
 

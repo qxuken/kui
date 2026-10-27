@@ -142,7 +142,8 @@ use crate::{Result, err, value_of};
 /// packing where the name sits in the strings — -(1 + offset +
 /// len·2^32) — for a `$name` the encoder's map does not hold: the core
 /// resolves it, an extension's exported table among the ones it reads
-/// (backlog F207).
+/// (backlog F207). And, in the same unreleased version, a span carries its
+/// background's padding after its size (`bgPad`, backlog F226).
 pub const VERSION: u32 = 28;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
@@ -1075,7 +1076,8 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
 /// colour, 8 underline, 16 strikethrough, 32 has bg, 64 the colour is a
 /// token index, 128 the bg is, 256 has an underline colour, 512 it is a
 /// token index, 1024 the underline is wavy, 2048 dotted) with the three
-/// colours (v13), then the background's radius (v17).
+/// colours (v13), then the background's radius (v17), its face and size
+/// (v22) and its background's padding (v28).
 fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a>>> {
     let nspans = r.count()?;
     let mut spans = Vec::with_capacity(nspans);
@@ -1090,6 +1092,7 @@ fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a
         let family = r.str_ref()?;
         let font = r.str_ref()?;
         let size = r.f()?;
+        let pad = r.f()?;
         let mut s = Span::new(text);
         if let Some(handle) = font {
             s = s.family(kui_core::FontFamily::Custom(kui_core::FontId::from_ffi(
@@ -1150,6 +1153,9 @@ fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a
         }
         if radius > 0.0 {
             s = s.bg_radius(radius as f32);
+        }
+        if pad > 0.0 {
+            s = s.bg_pad(pad as f32);
         }
         spans.push(s);
     }

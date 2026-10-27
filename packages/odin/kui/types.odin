@@ -170,6 +170,9 @@ Span :: struct {
 	family:          Font_Family,
 	size:            f32,
 	font:            Font,
+	// How far bg reaches past the first and last glyphs, px, at the two
+	// ends of the rect it is drawn in; 0 none. Paint only (backlog F226).
+	bg_pad:          f32,
 }
 
 // One cell of a `cells` grid: a character and its colours.
@@ -376,6 +379,7 @@ lower_gradient :: proc(g: Gradient) -> ^c.Gradient {
 #assert(offset_of(Span, family) == offset_of(c.Span, family))
 #assert(offset_of(Span, size) == offset_of(c.Span, size))
 #assert(offset_of(Span, font) == offset_of(c.Span, font))
+#assert(offset_of(Span, bg_pad) == offset_of(c.Span, bg_pad))
 
 #assert(size_of(Cell) == size_of(c.Cell))
 #assert(offset_of(Cell, fg) == offset_of(c.Cell, fg))

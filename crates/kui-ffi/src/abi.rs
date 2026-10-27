@@ -238,7 +238,12 @@
 ///   `kui_tab_moves_focus` (backlog C99), `kui_is_group_hovered` and
 ///   `kui_is_group_pressed` (backlog C92), `kui_focus_item` (backlog
 ///   C125) and `kui_scale` (backlog C127), new functions.
-pub const KUI_ABI_VERSION: u32 = 39;
+/// - ABI 40: `bg_pad` appended to `KuiSpan` (64 bytes on 64-bit, from
+///   56; spans travel as an array, so the stride moved): a background's
+///   padding past its glyphs (backlog F226). And `kui_open_menu_with` with
+///   `KUI_MENU_IN_WINDOW` (backlog F210), a new function, which came
+///   after alpha.68 at 39.
+pub const KUI_ABI_VERSION: u32 = 40;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

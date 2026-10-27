@@ -462,8 +462,13 @@ extern "C" {
  * kui_scale (backlog C127) are new functions. After alpha.68, still at 39
  * since no struct moved: kui_open_menu_with, a context menu held to a
  * size or kept in the window (backlog F210).
+ *
+ * ABI 40 appends bg_pad to KuiSpan (its 64-bit size goes from 56 to 64;
+ * spans travel as an array, so the stride moved): how far a span's
+ * background reaches past its first and last glyphs (backlog F226).
+ * Recompile; zeroed, a background is flush with its glyphs, as it was.
  */
-#define KUI_ABI_VERSION 39u
+#define KUI_ABI_VERSION 40u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -2202,6 +2207,13 @@ typedef struct KuiSpan {
                         0 = the paragraph's. ABI 26. */
     uint64_t font;   /* a registered font handle (kui_font_add*), the span's face; non-zero
                         overrides family, as KuiTextStyle.font does. ABI 26. */
+    float bg_pad;    /* how far bg reaches past the span's first and last glyphs, logical
+                        px, at the two ends of the rect it is drawn in and on each line
+                        a wrapped span covers; never between spans of one bg, nor over
+                        another background it meets (the shared edge stays; two closer
+                        than their padding share the gap). Paint only: layout and hits
+                        do not move. 0 = none. ABI 40: spans travel as an array, so this
+                        append moved the stride (64 bytes on 64-bit, from 56). */
 } KuiSpan;
 
 /* The window an app starts in - the one kui_run opens - which is always

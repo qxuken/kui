@@ -834,6 +834,14 @@ export interface SpanProps extends Keyed {
    *  A selection over rows, or over a paragraph's wrapped lines, is one
    *  outline. Nested spans inherit; 0 (the default) is square. */
   bgRadius?: number;
+  /** How far the background reaches past the span's first and last
+   *  glyphs, logical px, at the two ends of the rect it is drawn in — air
+   *  around a selection or inline code — and on each line a wrapped span
+   *  covers; never between spans of one background, nor over another
+   *  background it meets (the shared edge stays; two closer than their
+   *  padding share the gap). Paint only: layout and hits do not move.
+   *  Nested spans inherit; 0 (the default) is none. */
+  bgPad?: number;
   /** The span's own face: `sans`, `serif`, `mono`, an installed family's
    *  name or a `$family` token, as the text's `family` takes — inline code
    *  in `mono` inside a sans paragraph. Carets, hits and selection are

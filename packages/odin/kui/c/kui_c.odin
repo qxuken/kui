@@ -46,7 +46,7 @@ Waker :: struct {}
 AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 39
+ABI_VERSION :: 40
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -937,6 +937,7 @@ Span :: struct {
 	family: u32,
 	size: f32,
 	font: u64,
+	bg_pad: f32,
 }
 
 WindowConfig :: struct {
