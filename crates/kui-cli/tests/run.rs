@@ -1406,6 +1406,9 @@ fn the_app_reads_its_arguments_folder_and_platform() {
 #[cfg(unix)]
 #[test]
 fn a_group_dies_whole_and_spawned_processes_end_with_the_app() {
+    // The last spawn is `exec sleep`: dash (Ubuntu's sh) keeps `sh -c` as
+    // the sleep's parent where macOS's sh execs, and a process outside a
+    // group ends with the app by its own pid alone.
     let dir = app(
         "groups",
         &[
@@ -1432,7 +1435,7 @@ fn a_group_dies_whole_and_spawned_processes_end_with_the_app() {
                   print("orphans", sleepers())
                   print("after", p:kill())
                   -- what is still running when the app ends goes with it
-                  kui.process.spawn("sh", { "-c", "sleep 31338" })
+                  kui.process.spawn("sh", { "-c", "exec sleep 31338" })
                   kui.exit(0)
                 end)
                 "#,
