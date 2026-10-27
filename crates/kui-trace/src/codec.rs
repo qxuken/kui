@@ -392,33 +392,68 @@ impl Cursor<'_> {
 pub struct Reader<'a> {
     b: &'a [u8],
     at: usize,
+    dec: Decoder,
+}
+
+/// What decoding needs to carry from one record to the next: the last
+/// time read, since times are written as deltas.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Decoder {
     prev_t: u64,
+}
+
+/// Where the record at `at` in `b` is: its tag, and its body's range; `None`
+/// while `b` holds less than the whole of it.
+pub(crate) fn framed(b: &[u8], at: usize) -> Option<(u8, std::ops::Range<usize>)> {
+    let tag = *b.get(at)?;
+    let mut c = Cursor { b, at: at + 1 };
+    let len = c.u()? as usize;
+    let end = c.at.checked_add(len)?;
+    (end <= b.len()).then_some((tag, c.at..end))
+}
+
+/// Checks the header at the front of `b`: the bytes it takes, or why they
+/// are not a recording; `Ok(None)` while fewer than a header's bytes came.
+pub(crate) fn check_header(b: &[u8]) -> Result<Option<usize>, Error> {
+    if b.len() < 10 {
+        return if MAGIC.starts_with(&b[..b.len().min(8)]) {
+            Ok(None)
+        } else {
+            Err(Error::NotATrace)
+        };
+    }
+    if &b[..8] != MAGIC {
+        return Err(Error::NotATrace);
+    }
+    let v = u16::from_le_bytes([b[8], b[9]]);
+    if v != VERSION {
+        return Err(Error::Version(v));
+    }
+    Ok(Some(10))
 }
 
 impl<'a> Reader<'a> {
     /// A reader past the header, or why the bytes are not a recording.
     pub fn new(b: &'a [u8]) -> Result<Self, Error> {
-        if b.len() < 10 || &b[..8] != MAGIC {
-            return Err(Error::NotATrace);
-        }
-        let v = u16::from_le_bytes([b[8], b[9]]);
-        if v != VERSION {
-            return Err(Error::Version(v));
-        }
+        let at = check_header(b)?.ok_or(Error::NotATrace)?;
         Ok(Reader {
             b,
-            at: 10,
-            prev_t: 0,
+            at,
+            dec: Decoder::default(),
         })
     }
+}
 
+impl Decoder {
     fn t(&mut self, c: &mut Cursor<'_>) -> Option<u64> {
         let d = c.i()?;
         self.prev_t = (self.prev_t as i64 + d).max(0) as u64;
         Some(self.prev_t)
     }
 
-    fn decode(&mut self, tag: u8, body: &[u8]) -> Option<Option<Record>> {
+    /// The record a tag and its body make; `Some(None)` for a tag from a
+    /// later version, skipped; `None` for a body shorter than its fields.
+    pub(crate) fn decode(&mut self, tag: u8, body: &[u8]) -> Option<Option<Record>> {
         let mut c = Cursor { b: body, at: 0 };
         let r = match tag {
             tag::SESSION => Record::Session(Session {
@@ -563,15 +598,9 @@ impl Iterator for Reader<'_> {
     /// mid-record stops.
     fn next(&mut self) -> Option<Record> {
         loop {
-            let tag = *self.b.get(self.at)?;
-            let mut c = Cursor {
-                b: self.b,
-                at: self.at + 1,
-            };
-            let len = c.u()? as usize;
-            let body = self.b.get(c.at..c.at + len)?;
-            self.at = c.at + len;
-            match self.decode(tag, body) {
+            let (tag, body) = framed(self.b, self.at)?;
+            self.at = body.end;
+            match self.dec.decode(tag, &self.b[body]) {
                 Some(Some(r)) => return Some(r),
                 // Unknown, or a body shorter than its fields: skipped.
                 Some(None) | None => continue,

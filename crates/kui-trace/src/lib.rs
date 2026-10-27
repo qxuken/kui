@@ -32,6 +32,11 @@
 //! assert_eq!(back.name(tl.spans[0].name), "build");
 //! ```
 //!
+//! A recording still being written is read as it grows: a [`Stream`]
+//! decodes what its [`Transport`] hands over — a [`FileTransport`], with a
+//! [`Watch`] that says when the file moved — and keeps the record cut
+//! between reads for the next (ADR 0075, decision 5).
+//!
 //! [`analysis`] reads a timeline the way the Perf tab does — phases, an
 //! input's path to the screen, a frame's verdict, burns, spans grouped by
 //! name and origin — and [`adapters`] write it out for Chrome's trace
@@ -42,14 +47,18 @@ pub mod analysis;
 mod codec;
 pub mod diff;
 pub mod dump;
+mod file;
 mod model;
 mod record;
+mod stream;
 
 pub use codec::{Encoder, Error, MAGIC, Reader, VERSION, Writer, header};
+pub use file::{FileTransport, Watch};
 pub use model::{
     Event, Frame, Gauge, Holder, Input, Mark, Names, Placement, Present, Request, Timeline, Trace,
 };
 pub use record::{LoopEvent, NameId, Origin, Record, Session, Span, Track};
+pub use stream::{PollError, Polled, Stream, Transport};
 
 #[cfg(test)]
 mod tests;
