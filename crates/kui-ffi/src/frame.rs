@@ -890,6 +890,9 @@ fn with_spans<R>(
             if s.bg_radius > 0.0 {
                 span = span.bg_radius(s.bg_radius);
             }
+            if s.bg_pad > 0.0 {
+                span = span.bg_pad(s.bg_pad);
+            }
             if s.font != 0 {
                 span = span.family(kui_core::FontFamily::Custom(kui_core::FontId::from_ffi(
                     s.font,

@@ -1615,6 +1615,10 @@ pub struct KuiSpan {
     /// A registered font handle, the span's face; non-zero overrides
     /// `family`. ABI 26.
     pub font: u64,
+    /// How far `bg` reaches past the span's first and last glyphs,
+    /// logical px, at the two ends of the rect it is drawn in; 0 is none.
+    /// Paint only (`Span::bg_pad`, backlog F227). ABI 40.
+    pub bg_pad: f32,
 }
 
 /// One colour token as `kui_tokens_set` reads it: a name and a value per

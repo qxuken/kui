@@ -840,7 +840,7 @@ export function createEncoder(P) {
         (st.ul?.ref ? 512 : 0) |
         (st.ulStyle === 'wavy' ? 1024 : 0) |
         (st.ulStyle === 'dotted' ? 2048 : 0);
-      out.push([String(node), flags, st.color?.v ?? 0, st.bg?.v ?? 0, st.ul?.v ?? 0, st.bgRadius ?? 0, st.family ?? null, st.font ?? null, st.size ?? 0]);
+      out.push([String(node), flags, st.color?.v ?? 0, st.bg?.v ?? 0, st.ul?.v ?? 0, st.bgRadius ?? 0, st.family ?? null, st.font ?? null, st.size ?? 0, st.bgPad ?? 0]);
       return;
     }
     if (Array.isArray(node)) {
@@ -854,6 +854,9 @@ export function createEncoder(P) {
     }
     if (p.bgRadius != null && !(typeof p.bgRadius === 'number' && p.bgRadius >= 0)) {
       throw new Error(`bad bgRadius ${JSON.stringify(p.bgRadius)} on <span> (a number of logical px, 0 or more)`);
+    }
+    if (p.bgPad != null && !(typeof p.bgPad === 'number' && p.bgPad >= 0)) {
+      throw new Error(`bad bgPad ${JSON.stringify(p.bgPad)} on <span> (a number of logical px, 0 or more)`);
     }
     if (p.family != null && typeof p.family !== 'string') {
       throw new Error(`bad family ${JSON.stringify(p.family)} on <span> (sans, serif, mono or an installed family's name)`);
@@ -873,6 +876,7 @@ export function createEncoder(P) {
         ul: spanColor(p.underlineColor, st.ul),
         ulStyle: p.underlineStyle ?? st.ulStyle,
         bgRadius: p.bgRadius ?? st.bgRadius,
+        bgPad: p.bgPad ?? st.bgPad,
         family: p.family ?? st.family,
         // A span naming a family drops the handle it inherited, which
         // would otherwise win over it.
@@ -973,9 +977,9 @@ export function createEncoder(P) {
           collectSpans(el.children, {}, spans);
           f[fi++] = OP.richText;
           props(p, null, false);
-          reserve(8 + spans.length * 14);
+          reserve(8 + spans.length * 15);
           f[fi++] = spans.length;
-          for (const [text, flags, c, bg, ul, radius, family, font, size] of spans) {
+          for (const [text, flags, c, bg, ul, radius, family, font, size, pad] of spans) {
             strRef(text);
             f[fi++] = flags;
             f[fi++] = c;
@@ -985,6 +989,7 @@ export function createEncoder(P) {
             strRef(family);
             strRef(font);
             f[fi++] = size;
+            f[fi++] = pad;
           }
         } else {
           f[fi++] = OP.text;

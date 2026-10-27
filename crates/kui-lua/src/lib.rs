@@ -4006,6 +4006,9 @@ struct SpanPart {
     /// `bg_radius`: the background rounded, one shape with the ones it
     /// meets.
     bg_radius: f32,
+    /// `bg_pad`: the background past its first and last glyphs, logical
+    /// px (backlog F227).
+    bg_pad: f32,
     /// `family` (a stock name or an installed family's) or `font` (a
     /// handle, which wins): the span's own face.
     family: Option<kui_core::FontFamily>,
@@ -4042,6 +4045,9 @@ fn span_of(p: &SpanPart) -> Span<'_> {
     if p.bg_radius > 0.0 {
         s = s.bg_radius(p.bg_radius);
     }
+    if p.bg_pad > 0.0 {
+        s = s.bg_pad(p.bg_pad);
+    }
     if let Some(f) = p.family {
         s = s.family(f);
     }
@@ -4067,6 +4073,7 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                 color: None,
                 bg: None,
                 bg_radius: 0.0,
+                bg_pad: 0.0,
                 family: None,
                 size: None,
             }),
@@ -4083,7 +4090,7 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
 }
 
 /// One span table: its text at `[1]` and its style keys, read in one
-/// `pairs` walk rather than a lookup for each of the twelve keys a span
+/// `pairs` walk rather than a lookup for each of the thirteen keys a span
 /// may carry and seldom does (backlog F143: a text of spans looked up
 /// thirteen keys a span, most of them absent). A key no span reads is
 /// passed over, as a lookup never asked for it. A value in a shape the
@@ -4093,7 +4100,7 @@ fn span_part(t: &Table, refs: &mut Refs<'_>) -> mlua::Result<SpanPart> {
     let mut text = None;
     let (mut color, mut bg, mut underline_color) = (None, None, None);
     let (mut underline_style, mut font, mut family) = (None, None, None);
-    let (mut size, mut bg_radius) = (None, None);
+    let (mut size, mut bg_radius, mut bg_pad) = (None, None, None);
     let (mut bold, mut italic, mut underline, mut strikethrough) = (false, false, false, false);
     // A boolean key as `get::<Option<bool>>` reads it: nil false, a
     // boolean itself, anything else true.
@@ -4110,6 +4117,7 @@ fn span_part(t: &Table, refs: &mut Refs<'_>) -> mlua::Result<SpanPart> {
                 b"family" => family = Some(v),
                 b"size" => size = Some(v),
                 b"bg_radius" => bg_radius = Some(v),
+                b"bg_pad" => bg_pad = Some(v),
                 b"bold" => bold = flag(&v),
                 b"italic" => italic = flag(&v),
                 b"underline" => underline = flag(&v),
@@ -4197,6 +4205,7 @@ fn span_part(t: &Table, refs: &mut Refs<'_>) -> mlua::Result<SpanPart> {
         color,
         bg,
         bg_radius: number(bg_radius, "bg_radius")?.unwrap_or(0.0).max(0.0),
+        bg_pad: number(bg_pad, "bg_pad")?.unwrap_or(0.0).max(0.0),
     })
 }
 
@@ -10296,6 +10305,43 @@ mod tests {
             .filter(|q| q.kind == kui_core::QuadKind::Solid)
             .count();
         assert_eq!(solids, 2, "a background and an underline");
+    }
+
+    /// A span's `bg_pad` reaches the core (backlog F227): its background
+    /// is wider by the padding at each end, and one without it is flush.
+    #[test]
+    fn a_span_s_bg_pad_widens_its_background() {
+        let bg = |pad: &str| -> kui_core::Rect {
+            let src = format!(
+                r#"
+                function view(env)
+                  return row {{ text({{ "let ", {{ "value", bg = 0x3b5bd4ff{pad} }},
+                                      " = 1;" }}, {{ size = 14, family = "mono" }}) }}
+                end
+            "#
+            );
+            let mut ext = LuaExtension::from_source("pad", &src).unwrap();
+            let mut core = Core::new();
+            let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Instance::root(), &mut ui).unwrap();
+            ui.finish();
+            let (dl, _) = core.output();
+            dl.quads
+                .iter()
+                .find(|q| q.kind == kui_core::QuadKind::Solid)
+                .expect("the background")
+                .rect
+        };
+        let (flush, padded) = (bg(""), bg(", bg_pad = 4"));
+        assert!(
+            (padded.x - (flush.x - 4.0)).abs() < 0.01,
+            "{flush:?} -> {padded:?}"
+        );
+        assert!(
+            (padded.w - (flush.w + 8.0)).abs() < 0.01,
+            "{flush:?} -> {padded:?}"
+        );
     }
 
     /// An underline's own colour and shape (backlog K4): `underline_color`

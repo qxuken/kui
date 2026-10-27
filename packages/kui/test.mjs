@@ -2352,6 +2352,28 @@ test('openMenu draws a menu whose chosen row posts on the target', () => {
   assert.deepEqual(bare.pollEvents(), [], 'no handler, no event');
 });
 
+// A span's background padding (backlog F227): `bgPad` widens the
+// background at each end and moves no glyph; a bad value is refused.
+test('a span\'s bgPad widens its background and nothing else', () => {
+  const bgRect = (pad) => {
+    const ctx = new Ctx();
+    const span = el('span', pad == null ? { bg: 0x3b5bd4ff } : { bg: 0x3b5bd4ff, bgPad: pad }, ['word']);
+    ctx.frame(400, 100, 1, box({}, [el('text', { size: 14, family: 'mono' }, ['a ', span, ' z'])]));
+    const quads = decodeQuads(ctx.quads()).filter((q) => q.kind === 0);
+    assert.equal(quads.length, 1, JSON.stringify(quads));
+    return quads[0];
+  };
+  const flush = bgRect(null);
+  const padded = bgRect(4);
+  assert.ok(Math.abs(padded.x - (flush.x - 4)) < 0.01, `${JSON.stringify(flush)} -> ${JSON.stringify(padded)}`);
+  assert.ok(Math.abs(padded.w - (flush.w + 8)) < 0.01, `${JSON.stringify(flush)} -> ${JSON.stringify(padded)}`);
+  const ctx = new Ctx();
+  assert.throws(
+    () => ctx.frame(400, 100, 1, el('text', {}, [el('span', { bg: 0x3b5bd4ff, bgPad: -1 }, ['x'])])),
+    /bad bgPad/,
+  );
+});
+
 // A menu held to a size (backlog F210): no taller than `maxHeight`, so
 // thirty rows scroll inside 120 px; no options is the room's, as before.
 test('openMenu holds the menu to maxWidth / maxHeight', () => {

@@ -3518,6 +3518,14 @@ height limit with scrolling for every menu the core draws, and the
 native runner's popup window for a context menu that does not fit —
 **built 2026-10-27**, the day it was filed, and in the archive.
 
+## From Carnet's selection and file links (2026-10-27)
+
+Carnet, testing on Windows, drew its selection as span backgrounds and
+found them flush on their letters, and found a link's file opening
+Documents when its path held a `/`. Two entries, F226 — `/` made `\`
+before `explorer` is asked — and F227 — `Span::bg_pad` — **built
+2026-10-27**, the day they were filed, and in the archive.
+
 ## From Carnet's README screenshots (2026-10-27)
 
 Carnet drew its README's pictures with `Launcher::open_headless` (ADR
@@ -6109,6 +6117,11 @@ move.
 
 - `!` **F224** — [Two `kui check`s at once see a declaration file part written](backlog/closed-2026-09.md#-f224--two-kui-checks-at-once-see-a-declaration-file-part-written--done-2026-10-27) — done (2026-10-27) — `teal::write_types` writes each file beside itself and renames it over, and writes nothing a file holds already
 - `!` **F225** — [A capture on one thread reads back nothing while another thread polls the device](backlog/closed-2026-09.md#-f225--a-capture-on-one-thread-reads-back-nothing-while-another-thread-polls-the-device--done-2026-10-27) — done (2026-10-27) — `PendingCapture::wait` polls until its own map callback has run, a lost device or ten seconds ending it
+
+**From Carnet's selection and file links (2026-10-27)** — F226 and F227, filed and built the same day
+
+- `.` **F226** — [`open_external` and `show_in_folder` on Windows take a `/` as no path at all](backlog/closed-2026-09.md#-f226--open_external-and-show_in_folder-on-windows-take-a--as-no-path-at-all--done-2026-10-27) — done (2026-10-27) — every `/` made `\` before `explorer` is asked, a URL left alone
+- `.` **F227** — [A span's background sits flush on its first and last letters](backlog/closed-2026-09.md#-f227--a-spans-background-sits-flush-on-its-first-and-last-letters--done-2026-10-27) — done (2026-10-27) — `Span::bg_pad` widens the rect's two ends, stopping at another background's edge and sharing a narrow gap; in every binding, C at ABI 40
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 

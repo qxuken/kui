@@ -63,6 +63,21 @@ fn is_url(target: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
+/// `path` in the platform's own separators: on Windows every `/` a `\`,
+/// since Explorer reads `C:\Users\me\Notes/report.pdf` — a folder joined
+/// to a Markdown link's path — as no path at all and opens Documents
+/// (backlog F226, from Carnet). A verbatim path (`\\?\…`), where `/` is a
+/// file name's character, is left as it is; elsewhere `/` is the
+/// separator already.
+fn native_separators(path: &Path) -> std::path::PathBuf {
+    let s = path.to_string_lossy();
+    if cfg!(windows) && s.contains('/') && !s.starts_with(r"\\?\") {
+        std::path::PathBuf::from(s.replace('/', "\\"))
+    } else {
+        path.to_path_buf()
+    }
+}
+
 /// A path the tool takes as a path, never as an option.
 fn not_an_option(path: &Path) -> std::path::PathBuf {
     if path.to_string_lossy().starts_with('-') {
@@ -95,8 +110,11 @@ fn show_steps(path: &Path) -> Result<Vec<Step>, String> {
         Ok(vec![plain(c)])
     } else if cfg!(target_os = "windows") {
         // `explorer` reads `/select,` and the path as one argument, quoted
-        // its own way: written raw, since a Windows path holds no `"`.
-        let path = std::path::absolute(path).map_err(|e| e.to_string())?;
+        // its own way: written raw, since a Windows path holds no `"`. Its
+        // separators made `\` first: `absolute` (GetFullPathNameW) does
+        // that too today, but the open path below has no `absolute` to
+        // lean on, and both go through the one rule (backlog F226).
+        let path = std::path::absolute(native_separators(path)).map_err(|e| e.to_string())?;
         let mut c = Command::new("explorer");
         raw_arg(&mut c, &format!("/select,\"{}\"", path.display()))?;
         Ok(vec![plain(c)])
@@ -150,7 +168,7 @@ fn open_command(target: &str) -> Result<Command, String> {
     let arg = if is_url(target) {
         std::path::PathBuf::from(target)
     } else {
-        not_an_option(Path::new(target))
+        not_an_option(&native_separators(Path::new(target)))
     };
     if cfg!(target_os = "macos") {
         let mut c = Command::new("open");
@@ -326,6 +344,29 @@ mod tests {
         assert_eq!(
             args(&steps[1].command),
             ("xdg-open".into(), vec!["/a b".into()])
+        );
+    }
+
+    /// A path with a `/` among its `\` reaches Explorer with `\` alone —
+    /// what an app gets joining its folder to a Markdown link (backlog
+    /// F226, from Carnet) — for opening and for showing it; a URL keeps
+    /// its own.
+    #[cfg(windows)]
+    #[test]
+    fn windows_paths_reach_explorer_with_backslashes() {
+        let mixed = r"C:\Users\me\Carnet/attachments/report.pdf";
+        let whole = r"C:\Users\me\Carnet\attachments\report.pdf";
+        let (p, a) = args(&open_command(mixed).unwrap());
+        assert_eq!((p.as_str(), a), ("explorer", vec![format!("\"{whole}\"")]));
+        let (p, a) = args(&show_steps(Path::new(mixed)).unwrap()[0].command);
+        assert_eq!(
+            (p.as_str(), a),
+            ("explorer", vec![format!("/select,\"{whole}\"")])
+        );
+        let url = "https://example.com/a/b";
+        assert_eq!(
+            args(&open_command(url).unwrap()).1,
+            vec![format!("\"{url}\"")]
         );
     }
 
