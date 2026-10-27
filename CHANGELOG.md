@@ -2199,7 +2199,10 @@ alpha.66 either, and two more were red: `index.d.ts` named a `Json` type
 nobody declares (kui-node's channel aliased `serde_json::Value`, and
 napi-rs writes the name it sees; `any` now), and both `devtools_tab`
 examples walked to their tab in two Ctrl+Shift+N presses, from before
-the Perf tab made it three. Through those rounds the workspace suite ran at each merge, and the
+the Perf tab made it three; and `edge_scroll`'s drive pressed the text's
+middle, which under DejaVu is the code block's sideways scrollbar (it
+presses in the first paragraph now; a press inside the code block hands
+the drag on as it should, checked with both fonts). Through those rounds the workspace suite ran at each merge, and the
 Kit gallery's paint audit (`KUI_PAINT_AUDIT=1`, ADR 0074) over every
 page.
 

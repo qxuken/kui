@@ -374,12 +374,17 @@ impl Example for EdgeScrollDemo {
         let text = d.key_of("text").ok_or("no text")?;
         let r = d.rect_of(text).ok_or("the text has no rect")?;
         let offset = |d: &Drive<'_>| d.core.scroll_geometry(text).map_or(-1.0, |g| g.offset.y);
-        // Press in the middle, drag to just inside the bottom edge, hold.
+        // Press in the first paragraph, drag to just inside the bottom
+        // edge, hold. Not the box's middle: where the code block lands
+        // there depends on the fonts, and under DejaVu (CI's) the middle
+        // is the code block's sideways scrollbar, a press that selects
+        // nothing.
         let mid = r.center();
-        d.move_to(self, mid.x, mid.y);
+        let at = (mid.x, r.y + 24.0);
+        d.move_to(self, at.0, at.1);
         d.input(self, InputEvent::mouse_down(1));
-        d.move_to(self, mid.x, mid.y + 20.0);
-        d.move_to(self, mid.x, r.y + r.h - 1.0);
+        d.move_to(self, at.0, at.1 + 20.0);
+        d.move_to(self, at.0, r.y + r.h - 1.0);
         let mut steps = Vec::new();
         for _ in 0..60 {
             let before = offset(&d);
