@@ -12,7 +12,7 @@ use mlua::{Lua, Table};
 
 use crate::ops::{self, Inbound};
 
-use super::{fail, shared};
+use super::{fail, shared, try_fn};
 
 /// One running server: what stops it and the requests waiting on a handler.
 pub struct Server {
@@ -219,8 +219,9 @@ fn decode(s: &str) -> String {
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let http = lua.create_table()?;
     http.set(
-        "__request",
-        lua.create_function(
+        "__try_request",
+        try_fn(
+            lua,
             |lua, (target, method, extra): (mlua::Value, Option<String>, Option<Table>)| {
                 let r = request_opts(target, method.as_deref().unwrap_or("GET"), extra)?;
                 let s = shared(lua);
@@ -233,8 +234,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     kui.set("http", http)?;
 
     kui.set(
-        "__serve",
-        lua.create_function(|lua, opts: Table| {
+        "__try_serve",
+        try_fn(lua, |lua, opts: Table| {
             let s = shared(lua);
             let port: u16 = opts.get::<Option<u16>>("port")?.unwrap_or(0);
             let host: String = opts

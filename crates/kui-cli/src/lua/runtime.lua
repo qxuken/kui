@@ -11,6 +11,22 @@ local waiting = {}
 -- yield from a coroutine of the app's own.
 local current = nil
 
+-- The runner's convention for a call that can fail on its input or on the
+-- world: its `try_` form answers `true` and the value, or `false` and the
+-- message, and the plain call is made from it, raising the message at its
+-- caller's line with no traceback. Each such call has one value.
+local function raising(try_f)
+  return function(...)
+    local ok, v = try_f(...)
+    if not ok then error(v, 2) end
+    return v
+  end
+end
+
+local function plain(t, names)
+  for _, name in ipairs(names) do t[name] = raising(t["try_" .. name]) end
+end
+
 local function step(co, ...)
   local outer = current
   current = co
@@ -38,17 +54,27 @@ function kui.spawn(fn, ...)
 end
 
 -- What every waiting call ends in: inside a task it yields the operation's
--- id; anywhere else it blocks until the answer is there.
-function kui.__await(id)
+-- id; anywhere else it blocks until the answer is there. `ok, value`.
+function kui.__try_await(id)
   local co = coroutine.running()
-  local ok, value
   if current ~= nil and co == current then
-    ok, value = coroutine.yield(id)
-  else
-    ok, value = kui.__block(id)
+    return coroutine.yield(id)
   end
+  return kui.__block(id)
+end
+
+function kui.__await(id)
+  local ok, value = kui.__try_await(id)
   if not ok then error(value, 0) end
   return value
+end
+
+-- A waiting call's `try_` form: `start(...)`, a Rust `try_` form that
+-- answers an operation's id, then the operation's answer.
+local function waits(start, ...)
+  local ok, id = start(...)
+  if not ok then return false, id end
+  return kui.__try_await(id)
 end
 
 function kui.__resume(id, ok, value)
@@ -207,13 +233,15 @@ end
 --- Runs `path` (a module beside the app) in a Lua state of its own on a
 --- thread of its own. `w:dispatch(msg)` reaches its `on_message`; what it
 --- dispatches reaches `handler(msg, w)`, or `update` without one.
-function kui.worker(path, handler)
-  local id = kui.__worker_start(path)
+function kui.try_worker(path, handler)
+  local ok, id = kui.__try_worker_start(path)
+  if not ok then return false, id end
   local w = { id = id, path = path, handler = handler, running = true }
-  function w:dispatch(msg) kui.__worker_send(self.id, msg) end
+  function w:try_dispatch(msg) return kui.__try_worker_send(self.id, msg) end
   function w:stop() kui.__worker_stop(self.id); self.running = false end
+  plain(w, { "dispatch" })
   workers[id] = w
-  return w
+  return true, w
 end
 
 -- The server's routes: method → list of { pattern, names, handler }.
@@ -240,9 +268,9 @@ end
 --- `s:get("/api/items/:id", function(req) ... end)`. Each request is a
 --- task; a handler returns a string, a table (sent as JSON), or `{ status,
 --- headers, body | json | html }`.
-function kui.http.serve(opts)
-  opts = opts or {}
-  local id, port = kui.__serve(opts)
+function kui.http.try_serve(opts)
+  local ok, id, port = kui.__try_serve(opts or {})
+  if not ok then return false, id end
   local s = { id = id, port = port, routes = {} }
   function s:get(p, f) return route(self, "GET", p, f) end
   function s:post(p, f) return route(self, "POST", p, f) end
@@ -252,7 +280,7 @@ function kui.http.serve(opts)
   function s:route(m, p, f) return route(self, m:upper(), p, f) end
   function s:stop() kui.__serve_stop(self.id) end
   servers[id] = s
-  return s
+  return true, s
 end
 
 local function respond(server, id, res)
@@ -298,20 +326,20 @@ end
 
 --- `kui.http.request{ url, method, headers, json | body, timeout (ms) }` or
 --- `kui.http.request(url, opts)`: `{ status, ok, headers, body, json? }`.
-function kui.http.request(target, opts)
-  return kui.__await(kui.http.__request(target, nil, opts))
+function kui.http.try_request(target, opts)
+  return waits(kui.http.__try_request, target, nil, opts)
 end
 for _, m in ipairs({ "get", "post", "put", "patch", "delete", "head" }) do
   local method = m:upper()
-  kui.http[m] = function(url, opts)
-    return kui.__await(kui.http.__request(url, method, opts))
+  kui.http["try_" .. m] = function(url, opts)
+    return waits(kui.http.__try_request, url, method, opts)
   end
 end
 
 --- The files under `dir` (waits): `{ skip = { ".git", "node_modules" },
 --- match = "**/src/*.ts", dirs = false }`, paths relative to `dir`.
-function kui.fs.walk(dir, opts)
-  return kui.__await(kui.fs.__walk(dir, opts))
+function kui.fs.try_walk(dir, opts)
+  return waits(kui.fs.__try_walk, dir, opts)
 end
 
 --- Reads `paths` (waits): their texts in order, false for one that could
@@ -326,44 +354,84 @@ function kui.process.command_line(pid)
 end
 
 --- Runs a command to its end: `{ code, ok, stdout, stderr }`.
-function kui.process.run(cmd, args, opts)
-  return kui.__await(kui.process.__run(cmd, args, opts))
+function kui.process.try_run(cmd, args, opts)
+  return waits(kui.process.__try_run, cmd, args, opts)
 end
 
 --- Starts a command: `p:read_line()` (nil at the end), `p:lines()`,
 --- `p:write(s)`, `p:close()`, `p:wait()` (the exit code), `p:kill(sig)`.
-function kui.process.spawn(cmd, args, opts)
-  local ud = kui.process.__spawn(cmd, args, opts)
+function kui.process.try_spawn(cmd, args, opts)
+  local ok, ud = kui.process.__try_spawn(cmd, args, opts)
+  if not ok then return false, ud end
   local p = { pid = ud.pid }
-  function p:read_line(stream) return kui.__await(ud:__read(stream)) end
-  function p:lines(stream) return function() return p:read_line(stream) end end
-  function p:wait() return kui.__await(ud:__wait()) end
-  function p:write(s) ud:write(s) end
+  function p:try_read_line(stream) return kui.__try_await(ud:__read(stream)) end
+  function p:lines(stream)
+    return function()
+      local read, line = p:try_read_line(stream)
+      if not read then error(line, 2) end
+      return line
+    end
+  end
+  function p:try_wait() return kui.__try_await(ud:__wait()) end
+  function p:try_write(s) return ud:try_write(s) end
   function p:close() ud:close() end
   function p:kill(sig) return ud:kill(sig) end
-  return p
+  plain(p, { "read_line", "wait", "write" })
+  return true, p
 end
 
-local open_db = kui.sqlite.open
+local open_db = kui.sqlite.try_open
 
 --- Opens a database (a path beside the app, or `:memory:`): `db:query(sql,
 --- params)` → rows, `db:first(...)` → a row or nil, `db:exec(sql, params)`
 --- → `{ changes, last_id }`, `db:transaction(fn)`.
-function kui.sqlite.open(path)
-  local ud = open_db(path)
+--- `db:transaction(fn)` runs `fn(db)` between BEGIN and COMMIT, and rolls
+--- back when it raises: the plain call raises `fn`'s error again, as it
+--- was; `try_transaction` answers `false` and its message.
+function kui.sqlite.try_open(path)
+  local ok, ud = open_db(path)
+  if not ok then return false, ud end
   local db = {}
-  function db:query(sql, params) return kui.__await(ud:__query(sql, params)) end
-  function db:first(sql, params) return self:query(sql, params)[1] end
-  function db:exec(sql, params) return kui.__await(ud:__exec(sql, params)) end
-  function db:transaction(fn)
-    self:exec("BEGIN")
-    local ok, err = pcall(fn, self)
-    if ok then
-      self:exec("COMMIT")
-    else
-      self:exec("ROLLBACK")
-      error(err, 0)
-    end
+  function db:try_query(sql, params) return waits(ud.__try_query, ud, sql, params) end
+  function db:try_first(sql, params)
+    local found, rows = self:try_query(sql, params)
+    if not found then return false, rows end
+    return true, rows[1]
   end
-  return db
+  function db:try_exec(sql, params) return waits(ud.__try_exec, ud, sql, params) end
+  local function run(self, fn)
+    local began, err = self:try_exec("BEGIN")
+    if not began then return false, err end
+    local ran, failure = pcall(fn, self)
+    if not ran then
+      self:try_exec("ROLLBACK")
+      return false, failure, true
+    end
+    local done, cerr = self:try_exec("COMMIT")
+    if not done then return false, cerr end
+    return true
+  end
+  function db:try_transaction(fn)
+    local done, err = run(self, fn)
+    if done then return true end
+    return false, kui.__message(err)
+  end
+  function db:transaction(fn)
+    local done, err, raised = run(self, fn)
+    if done then return end
+    if raised then error(err, 0) end
+    error(err, 2)
+  end
+  plain(db, { "query", "first", "exec" })
+  return true, db
 end
+
+-- The plain calls, each made from its `try_` form.
+plain(kui, { "worker" })
+plain(kui.json, { "decode", "encode" })
+plain(kui.toml, { "decode", "encode" })
+plain(kui.yaml, { "decode", "encode" })
+plain(kui.fs, { "read", "write", "append", "create", "list", "lines", "walk", "mkdir", "remove", "rename" })
+plain(kui.process, { "run", "spawn" })
+plain(kui.http, { "request", "get", "post", "put", "patch", "delete", "head", "serve" })
+plain(kui.sqlite, { "open" })

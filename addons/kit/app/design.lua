@@ -14,7 +14,7 @@ local read_cache = {}
 local function read(path)
   local t = read_cache[path]
   if t == nil then
-    local ok, s = pcall(kui.fs.read, path)
+    local ok, s = kui.fs.try_read(path)
     t = ok and s or false
     read_cache[path] = t
   end
@@ -35,7 +35,7 @@ local function tokens()
   local t = read_cache["design/tokens.json:decoded"]
   if t == nil then
     local s = read("design/tokens.json")
-    local ok, d = pcall(kui.json.decode, s or "")
+    local ok, d = kui.json.try_decode(s or "")
     t = ok and d or false
     read_cache["design/tokens.json:decoded"] = t
   end

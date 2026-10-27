@@ -117,8 +117,9 @@ end
 function M.load(path)
   local out = M.copy(M.DEFAULTS)
   if path and kui.fs.exists(path) then
-    local ok, t = pcall(kui.toml.decode, kui.fs.read(path))
-    if not ok then return out, "The settings file could not be read (" .. tostring(t):match("^[^\n]*") .. "); showing the defaults." end
+    local ok, t = kui.fs.try_read(path)
+    if ok then ok, t = kui.toml.try_decode(t) end
+    if not ok then return out, "The settings file could not be read (" .. t .. "); showing the defaults." end
     for k, v in pairs(t) do
       if M.DEFAULTS[k] ~= nil and type(v) == type(M.DEFAULTS[k]) then out[k] = v end
     end

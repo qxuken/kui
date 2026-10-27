@@ -2,7 +2,11 @@
 -- The kui runner's standard library (ADR 0064) for lua-language-server;
 -- `kui types` writes it beside kui's DSL and Kit's module. A function
 -- marked "waits" yields inside a task (`kui.spawn`) and blocks anywhere
--- else.
+-- else. A call that can fail on its input or on the world (a file, text
+-- read in, the network, a process, a database) has a `try_` form that
+-- returns `true` and what the call returns, or `false` and the error's
+-- message: `local ok, text = kui.fs.try_read(path)`. The plain call raises
+-- the message at its caller's line.
 
 ---@class kui.Response
 ---@field status integer
@@ -74,6 +78,15 @@ function Process:wait() end
 ---@param sig? string
 ---@return boolean
 function Process:kill(sig) end
+---@return boolean ok
+---@return string? line_or_err
+function Process:try_read_line(stream) end
+---@return boolean ok
+---@return string? err
+function Process:try_write(data) end
+---@return boolean ok
+---@return integer|string code_or_err
+function Process:try_wait() end
 
 ---@class kui.Db
 local Db = {}
@@ -86,6 +99,19 @@ function Db:first(sql, params) end
 function Db:exec(sql, params) end
 ---@param fn fun(db: kui.Db)
 function Db:transaction(fn) end
+---@return boolean ok
+---@return table<string, any>[]|string rows_or_err
+function Db:try_query(sql, params) end
+---@return boolean ok
+---@return table<string, any>|string|nil row_or_err
+function Db:try_first(sql, params) end
+---@return boolean ok
+---@return { changes: integer, last_id: integer }|string result_or_err
+function Db:try_exec(sql, params) end
+---@param fn fun(db: kui.Db)
+---@return boolean ok
+---@return string? err
+function Db:try_transaction(fn) end
 
 ---@class kui.Timer
 local Timer = {}
@@ -99,6 +125,9 @@ local Worker = {}
 ---Sends `msg` to the worker's `on_message`.
 function Worker:dispatch(msg) end
 function Worker:stop() end
+---@return boolean ok
+---@return string? err
+function Worker:try_dispatch(msg) end
 
 kui = {}
 
@@ -258,6 +287,11 @@ kui.version = ""
 ---@param handler? fun(msg: any, w: kui.Worker) What the worker dispatches; `update` without one.
 ---@return kui.Worker
 function kui.worker(path, handler) end
+---@param path string
+---@param handler? fun(msg: any, w: kui.Worker)
+---@return boolean ok
+---@return kui.Worker|string worker_or_err
+function kui.try_worker(path, handler) end
 
 kui.timer = {}
 ---@return kui.Timer
@@ -276,16 +310,35 @@ function kui.json.encode(value, opts) end
 ---@param t? T[]
 ---@return T[]
 function kui.json.array(t) end
+---@return boolean ok
+---@return any value_or_err
+function kui.json.try_decode(text) end
+---@param opts? { pretty?: boolean }
+---@return boolean ok
+---@return string text_or_err
+function kui.json.try_encode(value, opts) end
 kui.toml = {}
 ---@return table
 function kui.toml.decode(text) end
 ---@return string
 function kui.toml.encode(value) end
+---@return boolean ok
+---@return table|string value_or_err
+function kui.toml.try_decode(text) end
+---@return boolean ok
+---@return string text_or_err
+function kui.toml.try_encode(value) end
 kui.yaml = {}
 ---@return any
 function kui.yaml.decode(text) end
 ---@return string
 function kui.yaml.encode(value) end
+---@return boolean ok
+---@return any value_or_err
+function kui.yaml.try_decode(text) end
+---@return boolean ok
+---@return string text_or_err
+function kui.yaml.try_encode(value) end
 
 kui.fs = {}
 ---@return string
@@ -315,6 +368,38 @@ function kui.fs.read_all(paths) end
 function kui.fs.mkdir(path) end
 function kui.fs.remove(path) end
 function kui.fs.rename(from, to) end
+---@return boolean ok
+---@return string text_or_err
+function kui.fs.try_read(path) end
+---@return boolean ok
+---@return string? err
+function kui.fs.try_write(path, data) end
+---@return boolean ok
+---@return string? err
+function kui.fs.try_append(path, data) end
+---@return boolean ok
+---@return string[]|string names_or_err
+function kui.fs.try_list(path) end
+---@return boolean ok
+---@return string[]|string lines_or_err
+function kui.fs.try_lines(path) end
+---@return boolean ok
+---@return boolean|string created_or_err
+function kui.fs.try_create(path, data) end
+---@param dir? string
+---@param opts? { skip?: string[], match?: string, dirs?: boolean }
+---@return boolean ok
+---@return string[]|string files_or_err
+function kui.fs.try_walk(dir, opts) end
+---@return boolean ok
+---@return string? err
+function kui.fs.try_mkdir(path) end
+---@return boolean ok
+---@return string? err
+function kui.fs.try_remove(path) end
+---@return boolean ok
+---@return string? err
+function kui.fs.try_rename(from, to) end
 
 kui.process = {}
 ---Runs a command to its end (waits).
@@ -337,6 +422,15 @@ kui.process.pid = 0
 ---The command `pid` was started with (waits), nil when none.
 ---@return string?
 function kui.process.command_line(pid) end
+---@param args? string[]
+---@param opts? { cwd?: string, env?: table<string,string>, stdin?: string }
+---@return boolean ok
+---@return kui.ProcessResult|string result_or_err
+function kui.process.try_run(cmd, args, opts) end
+---@param opts? { cwd?: string, env?: table<string,string>, group?: boolean, detach?: boolean }
+---@return boolean ok
+---@return kui.Process|string process_or_err
+function kui.process.try_spawn(cmd, args, opts) end
 
 kui.http = {}
 ---Each waits.
@@ -362,12 +456,44 @@ function kui.http.head(url, opts) end
 ---@param opts? { port?: integer, host?: string, static?: string }
 ---@return kui.Server
 function kui.http.serve(opts) end
+---A refused connection or a timeout is `false`; a 404 is a response.
+---@param target string|kui.RequestOpts
+---@param opts? kui.RequestOpts
+---@return boolean ok
+---@return kui.Response|string response_or_err
+function kui.http.try_request(target, opts) end
+---@return boolean ok
+---@return kui.Response|string response_or_err
+function kui.http.try_get(url, opts) end
+---@return boolean ok
+---@return kui.Response|string response_or_err
+function kui.http.try_post(url, opts) end
+---@return boolean ok
+---@return kui.Response|string response_or_err
+function kui.http.try_put(url, opts) end
+---@return boolean ok
+---@return kui.Response|string response_or_err
+function kui.http.try_patch(url, opts) end
+---@return boolean ok
+---@return kui.Response|string response_or_err
+function kui.http.try_delete(url, opts) end
+---@return boolean ok
+---@return kui.Response|string response_or_err
+function kui.http.try_head(url, opts) end
+---@param opts? { port?: integer, host?: string, static?: string }
+---@return boolean ok
+---@return kui.Server|string server_or_err
+function kui.http.try_serve(opts) end
 
 kui.sqlite = {}
 ---A database beside the app, or `:memory:`.
 ---@param path? string
 ---@return kui.Db
 function kui.sqlite.open(path) end
+---@param path? string
+---@return boolean ok
+---@return kui.Db|string db_or_err
+function kui.sqlite.try_open(path) end
 
 ---@type any The app's state: `init()`'s result, kept across a --watch reload.
 model = nil
