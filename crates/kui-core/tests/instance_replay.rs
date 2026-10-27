@@ -443,6 +443,55 @@ fn a_fact_the_fill_read_that_moved_runs_it_again() {
     assert!(r.texts().iter().any(|t| t == "not hovered"));
 }
 
+/// A recording holds each placement and how it was filled, and a fill run
+/// again for a fact that moved names the fact — its kind and its node,
+/// never what it read (backlog F212).
+#[test]
+fn a_recording_says_which_fact_drew_a_placement_fresh() {
+    let mut r = rig(Ext {
+        rows: 2,
+        read_hover: true,
+        ..Default::default()
+    });
+    r.core.set_perf_recording(true);
+    r.frame(false);
+    r.frame(false);
+    let rect = r.rect_of("row0");
+    r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        rect.x + 1.0,
+        rect.y + 1.0,
+    )));
+    assert_eq!(r.frame(false), Some(FillAnswer::Reads));
+    r.core.set_perf_recording(false);
+    let trace = r.core.perf_trace_read();
+    let tl = trace.timeline();
+    let placed: Vec<(&str, &str, &str)> = tl
+        .placements
+        .iter()
+        .map(|p| {
+            (
+                trace.name(p.component),
+                trace.name(p.answer),
+                trace.name(p.why),
+            )
+        })
+        .collect();
+    assert_eq!(placed.len(), 3, "{placed:?}");
+    assert_eq!(placed[0], ("outer/pane", "not-kept", ""));
+    assert_eq!(placed[1], ("outer/pane", "replayed", ""));
+    assert_eq!(placed[2].1, "reads");
+    assert!(placed[2].2.starts_with("hover "), "{placed:?}");
+    assert_eq!(
+        placed[2].2.len(),
+        "hover ".len() + 16,
+        "a key, nothing read"
+    );
+    let pane = tl.placements[2].node;
+    assert_ne!(pane, 0);
+    let stats = kui_core::kui_trace::analysis::placements(&tl, &trace);
+    assert_eq!((stats[0].placed, stats[0].replayed), (3, 1));
+}
+
 #[test]
 fn a_label_asked_for_before_it_answered_runs_the_fill_again_once_it_does() {
     let mut r = rig(Ext {

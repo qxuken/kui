@@ -137,6 +137,13 @@ fn every_record_reads_back_as_written() {
             t: 3,
             text: "back in time".into(),
         },
+        Record::Placement {
+            t: 500,
+            node: 0xfeed,
+            component: a,
+            answer: b,
+            why: 0,
+        },
     ];
     t.records = recs.clone();
     let back = Trace::from_bytes(&t.to_bytes()).expect("reads");
@@ -295,4 +302,46 @@ fn the_dump_is_a_line_a_record() {
     assert_eq!(text.lines().count(), t.records.len());
     assert!(text.contains("frame+ #1 key"), "{text}");
     assert!(text.contains("span main [kui] build 1.000 ms"), "{text}");
+}
+
+/// Placements group by kind: how many replayed, and the rest by answer
+/// and reason, the kind drawn fresh most first.
+#[test]
+fn placements_group_by_kind_and_answer() {
+    let mut t = frames(1, 1000, "key");
+    let mut n = |s: &str| t.names.get(s).0;
+    let (row, chip, replayed, reads, hover, params) = (
+        n("ui:row"),
+        n("ui:chip"),
+        n(analysis::REPLAYED),
+        n("reads"),
+        n("hover 00000000000000ab"),
+        n("params"),
+    );
+    let placed = |t: u64, component, answer, why| Record::Placement {
+        t,
+        node: 7,
+        component,
+        answer,
+        why,
+    };
+    t.records.extend([
+        placed(20, row, replayed, 0),
+        placed(21, row, replayed, 0),
+        placed(22, row, reads, hover),
+        placed(23, chip, params, 0),
+        placed(24, chip, params, 0),
+        placed(25, chip, reads, hover),
+    ]);
+    let tl = t.timeline();
+    assert_eq!(tl.placements_in(0, 23).len(), 3);
+    let stats = analysis::placements(&tl, &t);
+    assert_eq!(stats.len(), 2);
+    assert_eq!((stats[0].component, stats[0].drawn()), (chip, 3));
+    assert_eq!(stats[0].fresh[0], (params, 0, 2));
+    assert_eq!(
+        (stats[1].placed, stats[1].replayed, stats[1].fresh.clone()),
+        (3, 2, vec![(reads, hover, 1)])
+    );
+    assert!(crate::dump::dump(&t).contains("placed ui:chip reads (hover 00000000000000ab) node"));
 }

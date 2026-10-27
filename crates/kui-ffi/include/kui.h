@@ -467,6 +467,8 @@ extern "C" {
  * spans travel as an array, so the stride moved): how far a span's
  * background reaches past its first and last glyphs (backlog F227).
  * Recompile; zeroed, a background is flush with its glyphs, as it was.
+ * New with it, moving no struct: kui_perf_note (backlog F216), and
+ * kui_thread_span_begin and kui_thread_span_end (backlog F215).
  */
 #define KUI_ABI_VERSION 40u
 uint32_t kui_abi_version(void);
@@ -4606,6 +4608,20 @@ void kui_perf_count(KuiCtx *ctx, KuiStr name, int64_t n);
 void kui_perf_gauge(KuiCtx *ctx, KuiStr name, double value);
 /* Puts an instant on the timeline: a file opened, a command run. */
 void kui_perf_mark(KuiCtx *ctx, KuiStr name);
+/* Puts a line on the timeline - what the numbers beside it cannot say,
+ * "editor moved, reads fs.stat" - shown in its frame's detail: at most 64
+ * a frame and its gap, of 512 bytes each. A recording goes into bug
+ * reports: the host's words, never what was typed. */
+void kui_perf_note(KuiCtx *ctx, KuiStr text);
+/* A span with no context at hand - inside a script runtime, a library deep
+ * in a stack: on the recording of the context whose span is open on this
+ * thread (its view's build, kui_run's callback, a span of the host's),
+ * nested in the span open now, so it sits where it ran. 0 while no span
+ * of a recording context is open on this thread. kui_thread_span_end ends
+ * it and any opened inside it and left open; one still open when the
+ * context's last span closes is closed there and marked cut. */
+uint32_t kui_thread_span_begin(KuiStr name);
+void kui_thread_span_end(uint32_t id);
 /* Asks for a frame after this one, as `animate` does, and names why: the
  * frame's causes read "request: why". */
 void kui_request_frame_for(KuiCtx *ctx, KuiStr why);

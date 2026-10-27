@@ -493,6 +493,15 @@ impl<'a> Ui<'a> {
             outer: self.children.as_deref_mut().map(shorter_children),
         };
         let mut answer = None;
+        // Why it was drawn fresh, for the recording: the fact that moved,
+        // what made it unreplayable, or what never lets it be kept.
+        let mut why_fresh: Option<std::borrow::Cow<'static, str>> = if keeping {
+            Some("inside a fill drawn fresh".into())
+        } else if fresh {
+            Some("drawn fresh every frame".into())
+        } else {
+            None
+        };
         let (namespace, short) = crate::slot::split_name(name);
         // The contribution slot this placement is for, if any: the fill
         // that draws it takes it again (`Extensions::fill_one`).
@@ -523,8 +532,11 @@ impl<'a> Ui<'a> {
                         self.core.keep_next_instance(key, props);
                         Some(FillAnswer::Heard)
                     }
-                    Err((fill, _)) => {
+                    Err((fill, why)) => {
                         self.core.keep_next_instance(key, props);
+                        if !heard {
+                            why_fresh = why.map(Into::into);
+                        }
                         Some(if heard { FillAnswer::Heard } else { fill })
                     }
                 }
@@ -552,7 +564,10 @@ impl<'a> Ui<'a> {
                     }
                     kept => {
                         let fill = match kept {
-                            Err((fill, _why)) if !heard => fill,
+                            Err((fill, why)) if !heard => {
+                                why_fresh = why.map(Into::into);
+                                fill
+                            }
                             _ => FillAnswer::Heard,
                         };
                         self.core.keep_next_instance(key, props);
@@ -575,8 +590,9 @@ impl<'a> Ui<'a> {
             self.core.resume_keeping();
         }
         self.core.set_placing_slot(None);
-        if answer.is_none() {
-            self.core.warn(crate::diag::unknown_component(name, key));
+        match answer {
+            Some(a) => self.core.perf_placement(key, name, a, why_fresh.as_deref()),
+            None => self.core.warn(crate::diag::unknown_component(name, key)),
         }
         if let Some(l) = label {
             self.core.note_label(key, l);

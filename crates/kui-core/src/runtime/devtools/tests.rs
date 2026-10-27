@@ -2537,6 +2537,102 @@ fn the_perf_recording_keeps_each_frame_s_cause_holders_and_cost() {
     assert!(core.frame_trace(), "the app's own trace is put back on");
 }
 
+/// A span begun where no core is at hand nests where it ran — under the
+/// app's span inside the build, under a handler between frames — and a
+/// core span begun inside it nests under it; outside every core span it
+/// is nothing, and one left open is cut with the core's last (backlog
+/// F215).
+#[test]
+fn a_thread_span_nests_where_it_ran() {
+    use crate::perf;
+    let mut core = Core::new();
+    assert_eq!(
+        perf::span_begin("x"),
+        crate::SpanId::NONE,
+        "nothing listens"
+    );
+    core.set_perf_recording(true);
+    assert!(!perf::measuring(), "no span of the core's is open");
+    assert_eq!(perf::span_begin("x"), crate::SpanId::NONE);
+    let deep = || {
+        let _g = perf::span("plugin");
+        perf::span("plugin read").id()
+    };
+    let mut ui = core.frame(VIEWPORT, 1.0);
+    ui.with_keyed("pane", NodeSpec::column(), |ui| {
+        ui.span("rows", |ui| {
+            assert!(perf::measuring());
+            assert_ne!(deep(), crate::SpanId::NONE);
+            let outer = perf::span_begin("lua call");
+            ui.span("env span", |ui| ui.text("hi", TextStyle::new(12.0)));
+            perf::span_end(outer);
+            // Left open: cut where the core's last span closes.
+            let _ = perf::span_begin("left open");
+        });
+    });
+    ui.finish();
+    // Between frames, inside the runner's handler span.
+    let h = core.span_begin(kui_trace::analysis::HANDLER);
+    drop(perf::span("on key"));
+    core.span_end(h);
+    assert!(!perf::measuring());
+    core.set_perf_recording(false);
+    let trace = core.perf_trace_read();
+    let tl = trace.timeline();
+    let by = |n: &str| {
+        tl.spans
+            .iter()
+            .find(|s| trace.name(s.name) == n)
+            .unwrap_or_else(|| panic!("no span {n}"))
+    };
+    let (rows, plugin, read) = (by("rows"), by("plugin"), by("plugin read"));
+    assert_eq!(plugin.parent, rows.id, "under the span it ran in");
+    assert_eq!(read.parent, plugin.id, "thread spans nest in each other");
+    assert_eq!(
+        plugin.node,
+        core.key_of("pane").unwrap().0,
+        "under the pane"
+    );
+    assert_eq!(plugin.origin, kui_trace::Origin::Host);
+    assert!(plugin.start >= rows.start && plugin.end() <= rows.end());
+    assert_eq!(
+        by("env span").parent,
+        by("lua call").id,
+        "a core span inside one"
+    );
+    assert!(by("left open").cut);
+    assert_eq!(by("on key").parent, by(kui_trace::analysis::HANDLER).id);
+    let ids: std::collections::HashSet<u32> = tl.spans.iter().map(|s| s.id).collect();
+    assert_eq!(ids.len(), tl.spans.len(), "every id once");
+}
+
+/// A note lands in its frame, cut to its length; past 64 a frame they
+/// are counted, not kept (backlog F216).
+#[test]
+fn a_note_is_kept_in_its_frame_and_bounded() {
+    let mut core = Core::new();
+    core.perf_note("nothing listens");
+    core.set_perf_recording(true);
+    let mut ui = core.frame(VIEWPORT, 1.0);
+    ui.core().perf_note("editor moved, reads fs.stat");
+    ui.core().perf_note(&"é".repeat(400));
+    for i in 0..70 {
+        ui.core().perf_note(&format!("{i}"));
+    }
+    ui.finish();
+    core.perf_note("in the next frame's gap");
+    let ui = core.frame(VIEWPORT, 1.0);
+    ui.finish();
+    core.set_perf_recording(false);
+    let tl = core.perf_trace_read().timeline();
+    assert_eq!(tl.notes.len(), 65);
+    assert_eq!(tl.notes[0].1, "editor moved, reads fs.stat");
+    assert_eq!(tl.notes[1].1.len(), 512, "cut at a char's edge");
+    let f1 = &tl.frames[1];
+    assert_eq!(tl.notes_in(f1.gap_from, f1.end_or_begin() + 1).len(), 1);
+    assert_eq!(core.perf.dropped, 8);
+}
+
 /// The doors an app records through: a span nests and carries the node
 /// the builder had open, a counter sums over its frame, a measure lands
 /// on its own track, a named request and a named wake read as causes —

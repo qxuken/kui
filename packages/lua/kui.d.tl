@@ -1655,6 +1655,8 @@ global type kui = record
     perf_gauge: function(name: string, value: number)
     -- Puts an instant on the timeline: a file opened, a command run.
     perf_mark: function(name: string)
+    -- Puts a line on the timeline — what the numbers beside it cannot say, "editor moved, reads fs.stat" — shown in its frame's detail; at most 64 a frame and its gap, of 512 bytes each.
+    perf_note: function(text: string)
     -- Whether anything is recorded — the Perf tab recording or on show, `KUI_PERF_TRACE`, a `tracing` subscriber — so an app skips reading clocks of its own for the recording's doors.
     perf_measuring: function(): boolean
     -- Asks for a frame and names why: `owed_by` lists it under the name, and a recording's causes read `request: why`.

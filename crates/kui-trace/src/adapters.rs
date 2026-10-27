@@ -21,7 +21,9 @@
 //!   `asleep` on `loop`, from its sleep to its waking. Slices on one lane
 //!   are made to nest: a child is cut to its parent's end, since no format
 //!   here draws two slices that cross on one row.
-//! - **instants**: inputs, events, wakes and requests on `main`; the
+//! - **instants**: inputs, events, wakes, requests and each component
+//!   drawn fresh (`<component> <answer>`, its reason and node as
+//!   arguments; a replayed one is not written) on `main`; the
 //!   loop's wakings and OS events on `loop`; marks on their track; notes
 //!   on `frames` (global in Chrome's).
 //! - **series**: each counter by name, a step over each frame it moved
@@ -539,9 +541,24 @@ impl Model {
                 global: false,
             });
         }
-        let mut notes = tl.notes.clone();
-        notes.sort_by_key(|n| n.0);
-        for (t, text) in notes {
+        for p in &tl.placements {
+            if trace.name(p.answer) == crate::analysis::REPLAYED {
+                continue;
+            }
+            let mut args = vec![("node", Val::Str(format!("{:016x}", p.node)))];
+            if !trace.name(p.why).is_empty() {
+                args.push(("why", Val::Str(trace.name(p.why).into())));
+            }
+            m.instants.push(Instant {
+                lane: MAIN,
+                t: p.t,
+                name: format!("{} {}", trace.name(p.component), trace.name(p.answer)),
+                cat: "placement",
+                args,
+                global: false,
+            });
+        }
+        for (t, text) in tl.notes.clone() {
             m.instants.push(Instant {
                 lane: FRAMES,
                 t,

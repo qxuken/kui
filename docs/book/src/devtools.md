@@ -58,10 +58,16 @@ shift-click another, and the summary and the tables read just those
 frames; hold the drag at the chart's edge and the bars scroll on under
 it. A plain click goes back to the whole recording. When your app won't go idle, this is
 the tab: the frames marked "drew nothing new" are the ones you can stop
-asking for, and the holders say who asked.
+asking for, and the holders say who asked. An opened frame also lists
+the components it drew fresh rather than replayed, and why — new props,
+or the fact the fill read that moved (`hover …`, `the clock`) — and the
+tables say how often each component replayed over the recording.
 
 Your own measurements land beside kui's: `ui.span("rows", |ui| …)`,
-`perf_count`, `perf_gauge`, `perf_mark`, `perf_measure` for work timed on
+`kui_core::perf::span("plugin")` where no core is at hand (a script
+runtime, a library deep in a stack — it nests under the span running
+on that thread), `perf_count`, `perf_gauge`, `perf_mark`, `perf_note`
+for a line beside the numbers, `perf_measure` for work timed on
 another thread, `request_frame_for("caret blink")` and
 `waker.named("parser")` to say why a frame was asked for. They cost
 nothing until something records. *save trace* writes the recording as a

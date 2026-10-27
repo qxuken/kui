@@ -4033,20 +4033,8 @@ entries, F211–F219 and F222 (F220 and F221 were Carnet's by then): F211,
 a defect, and F222, kawoosh's own opener and file manager moved into
 F203's doors, **built 2026-10-27**, the day they were filed, and in the
 archive; F212–F219, doors kawoosh worked around or went without, filed
-and **not built**.
-
-### `.` F212 — A component's refusal says its kind, not what moved
-
-**Found** porting kawoosh's replay notes: `slot_fill_why` named the fact
-that moved — a hover on a key, the theme, the clock — and kawoosh's perf
-log put it beside the host's own reason, so a pane that would not replay
-said why. ADR 0067 decision 6 folded it into the placement's
-`FillAnswer`, which says `Reads` and not which; `take_replayable_instance`
-computes the fact (`first_moved`) and drops it (`Err((fill, _why))` in
-`Ui::place_at`). **Do.** The reason beside the answer —
-`Ui::component_why` or a `FillAnswer` that carries it — or a recording
-record a refused instance leaves (its key and the fact), so the Perf tab
-says it where the devtools are the place ADR 0067 sends it.
+and **not built** — but F212, F215 and F216, the recording's three,
+**built 2026-10-27** the same day, and in the archive.
 
 ### `.` F213 — A declared tab is listed only after a frame with the panel on
 
@@ -4075,31 +4063,6 @@ terminal grid only while ⌘ is held. **Do.** A sink-level opt —
 `keysStay` or `keepKeyboard` — under which a press anywhere inside
 focuses the sink, as before C135, and does everything else a press does:
 selects, clears, starts a drag-select.
-
-### `.` F215 — No span can be recorded where the core is out of reach
-
-**Found** porting kawoosh's spans: its Lua profiler times each call into
-a plugin (`kawoosh_lua`'s `prof.rs`) from inside the Lua runtime, which
-holds no `Core`; so did a terminal's foreground read (`tcgetpgrp`) under
-the status line. `span_begin` is a `Core` method, and `perf_measure`
-lands a span on a track named for it at the time it is reported, not
-where it ran, so kawoosh reports each plugin's time summed at the end of
-the frame on 29 tracks of its own. **Do.** A span door that needs no
-core at hand — a thread-local "current recorder" the runner sets around
-`view` and `on_event` (`kui_core::perf::span(name)` returning a guard),
-or `perf_span_at(name, start, end, cpu)` on the main track for a span
-timed by the app's own clock — so code deep in a stack records where it
-ran, nested under the span it ran in.
-
-### `.` F216 — The recording has notes and no door writes one
-
-**Found** porting kawoosh's perf log, which put a line a frame beside
-the numbers — a Lua pane's "editor moved, kui: reads, opaque fs.stat".
-`kui_trace::Timeline::notes` and ADR 0058's record table have `note`
-("a line"), but no `Core` door writes one, so kawoosh counts names
-instead (`pane ran: WHY`, `pane read: NATIVE`). **Do.** `perf_note(text)`
-in every binding, kept per frame and shown in the opened frame's detail;
-bounded per frame as spans are.
 
 ### `.` F217 — One Lua state is several extensions only through `reentry`
 
@@ -6104,9 +6067,12 @@ move.
 
 - `.` **F210** — [A menu taller than the window cannot be used](backlog/closed-2026-09.md#-f210--a-menu-taller-than-the-window-cannot-be-used--done-2026-10-27) — done (2026-10-27) — every core menu panel scrolls, cut by layout to the window less `MENU_EDGE` and placed as high as that goes; the keyboard keeps its row in view; kui-native shows one that does not fit as a popup window (ADR 0004 amended), not on Wayland; `Menu::max_size` and `Menu::in_window` in every binding
 
-**From kawoosh's alpha.68 port (2026-10-27)** — F211 and F222, filed and built the same day
+**From kawoosh's alpha.68 port (2026-10-27)** — F211, F212, F215, F216 and F222, filed and built the same day
 
 - `!` **F211** — [Closing the panel on its Perf tab leaves the recording on](backlog/closed-2026-09.md#-f211--closing-the-panel-on-its-perf-tab-leaves-the-recording-on--done-2026-10-27) — done (2026-10-27) — a panel off lets the Perf tab's live view go (`perf_set_live(false)`) before `devtools_begin_frame` returns, where only `perf_begin_frame`, which a panel off never reached, did
+- `.` **F212** — [A component's refusal says its kind, not what moved](backlog/closed-2026-09.md#-f212--a-components-refusal-says-its-kind-not-what-moved--done-2026-10-27) — done (2026-10-27) — every placement is a `placement` record (component, node, answer, and the fact that moved as its kind and node, never what it read); the Perf tab lists a frame's components drawn fresh and why, and the recording's by how often each replayed
+- `.` **F215** — [No span can be recorded where the core is out of reach](backlog/closed-2026-09.md#-f215--no-span-can-be-recorded-where-the-core-is-out-of-reach--done-2026-10-27) — done (2026-10-27) — `kui_core::perf::span` / `span_begin` / `span_end`: a span on the recording of the core whose span is open on the thread, nested where it ran; C `kui_thread_span_begin` / `_end`, Odin, Node `threadSpanBegin` / `threadSpanEnd`
+- `.` **F216** — [The recording has notes and no door writes one](backlog/closed-2026-09.md#-f216--the-recording-has-notes-and-no-door-writes-one--done-2026-10-27) — done (2026-10-27) — `perf_note(text)` in every binding, 64 a frame and its gap of 512 bytes, shown in the opened frame's detail
 - `.` **F222** — [F203's doors start their tools outside a host's spawn lock, select nothing on Linux, and run a bundle](backlog/closed-2026-09.md#-f222--f203s-doors-start-their-tools-outside-a-hosts-spawn-lock-select-nothing-on-linux-and-run-a-bundle--done-2026-10-27) — done (2026-10-27) — `set_spawner` for a host's way of starting children; `show_in_folder` asks a Linux desktop's `FileManager1.ShowItems` before `xdg-open` on the folder; `open_external` on a folder opens it in Finder on macOS
 
 **From the kui runner's spawns (2026-10-27)** — F223, filed and built the same day

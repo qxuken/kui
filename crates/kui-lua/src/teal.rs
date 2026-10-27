@@ -93,6 +93,7 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("perf_count", "name: string, n: number", ""),
     ("perf_gauge", "name: string, value: number", ""),
     ("perf_mark", "name: string", ""),
+    ("perf_note", "text: string", ""),
     ("perf_measuring", "", "boolean"),
     ("exit_with", "key: KeyRef, exit: any", ""),
     ("set_focus", "key: KeyRef", ""),

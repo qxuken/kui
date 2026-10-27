@@ -1467,6 +1467,9 @@ foreign lib {
 	perf_count :: proc(ctx: ^Ctx, name: string, n: i64) ---
 	perf_gauge :: proc(ctx: ^Ctx, name: string, value: f64) ---
 	perf_mark :: proc(ctx: ^Ctx, name: string) ---
+	perf_note :: proc(ctx: ^Ctx, text: string) ---
+	thread_span_begin :: proc(name: string) -> u32 ---
+	thread_span_end :: proc(id: u32) ---
 	request_frame_for :: proc(ctx: ^Ctx, why: string) ---
 	note_wake :: proc(ctx: ^Ctx, name: string) ---
 	set_perf_recording :: proc(ctx: ^Ctx, on: bool) ---

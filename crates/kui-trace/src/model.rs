@@ -251,6 +251,16 @@ pub struct Mark {
     pub name: NameId,
 }
 
+/// A component placed, and how it was filled ([`Record::Placement`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub t: u64,
+    pub node: u64,
+    pub component: NameId,
+    pub answer: NameId,
+    pub why: NameId,
+}
+
 /// Every record of a recording, placed: frames in order, everything else
 /// sorted by time.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -266,6 +276,7 @@ pub struct Timeline {
     pub gauges: Vec<Gauge>,
     pub marks: Vec<Mark>,
     pub notes: Vec<(u64, String)>,
+    pub placements: Vec<Placement>,
     /// The first and the last time any record is placed at.
     pub start: u64,
     pub end: u64,
@@ -389,6 +400,19 @@ impl Timeline {
                     name: *name,
                 }),
                 Record::Note { t, text } => tl.notes.push((*t, text.clone())),
+                Record::Placement {
+                    t,
+                    node,
+                    component,
+                    answer,
+                    why,
+                } => tl.placements.push(Placement {
+                    t: *t,
+                    node: *node,
+                    component: *component,
+                    answer: *answer,
+                    why: *why,
+                }),
                 Record::Session(_) | Record::Name { .. } | Record::Track { .. } => {}
             }
         }
@@ -401,6 +425,8 @@ impl Timeline {
         tl.loops.sort_by_key(|l| l.0);
         tl.gauges.sort_by_key(|g| g.t);
         tl.marks.sort_by_key(|m| m.t);
+        tl.notes.sort_by_key(|n| n.0);
+        tl.placements.sort_by_key(|p| p.t);
         if first != u64::MAX {
             tl.start = first;
             tl.end = last;
@@ -448,6 +474,20 @@ impl Timeline {
         let a = self.marks.partition_point(|m| m.t < from);
         let b = self.marks.partition_point(|m| m.t < to);
         &self.marks[a..b]
+    }
+
+    /// The notes written in `[from, to)`.
+    pub fn notes_in(&self, from: u64, to: u64) -> &[(u64, String)] {
+        let a = self.notes.partition_point(|n| n.0 < from);
+        let b = self.notes.partition_point(|n| n.0 < to);
+        &self.notes[a..b]
+    }
+
+    /// The components placed in `[from, to)`.
+    pub fn placements_in(&self, from: u64, to: u64) -> &[Placement] {
+        let a = self.placements.partition_point(|p| p.t < from);
+        let b = self.placements.partition_point(|p| p.t < to);
+        &self.placements[a..b]
     }
 
     /// The requests in `[from, to)`.

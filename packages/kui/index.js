@@ -9,7 +9,7 @@ import { createEncoder } from './encoder.js';
 export const {
   Ctx, KuiWindow, RowHeights, Channel, quadStride, clipStride, protocol,
   decodeImage, decodeAnimation, animationAt, encodeImage, AnimationEncoder,
-  showInFolder, openExternal,
+  showInFolder, openExternal, threadSpanBegin, threadSpanEnd,
   loadTokens,
 } = native;
 export { createEncoder };

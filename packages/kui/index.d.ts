@@ -3462,6 +3462,12 @@ export declare class Ctx {
    */
   perfMark(name: string): void
   /**
+   * Puts a line on the timeline — what the numbers beside it
+   * cannot say — shown in its frame's detail: at most 64 a
+   * frame and its gap, of 512 bytes each.
+   */
+  perfNote(text: string): void
+  /**
    * Asks for a frame after this one and names why: `owedBy()`
    * lists it under `why`, and a recording's causes read
    * `request: why`.
@@ -4734,6 +4740,21 @@ export declare function showInFolder(path: string): void
 export declare function openExternal(target: string): void
 
 /**
+ * Begins a span named `name` where the window is not at hand — a
+ * library deep in a stack — on the recording of the window whose span is
+ * open now on this thread (an `update` the loop times, a span of the
+ * app's), nested in the span open now (backlog F215). 0 while none is,
+ * which `threadSpanEnd` ignores.
+ */
+export declare function threadSpanBegin(name: string): number
+
+/**
+ * Ends the span `threadSpanBegin` began, and any opened inside it and
+ * left open; 0, or an id with no begin, is nothing.
+ */
+export declare function threadSpanEnd(id: number): void
+
+/**
  * What an `AnimationEncoder` takes beside its size: `loops`, how many
  * times it plays (absent or 0: for ever).
  */
@@ -5174,6 +5195,12 @@ export declare class KuiWindow {
    * run.
    */
   perfMark(name: string): void
+  /**
+   * Puts a line on the timeline — what the numbers beside it
+   * cannot say — shown in its frame's detail: at most 64 a
+   * frame and its gap, of 512 bytes each.
+   */
+  perfNote(text: string): void
   /**
    * Asks for a frame after this one and names why: `owedBy()`
    * lists it under `why`, and a recording's causes read

@@ -550,14 +550,45 @@ impl Core {
     }
 
     /// The first fact the kept fill read that reads otherwise now, as
-    /// words for a ledger; `None` while every one holds.
+    /// words for the recording (backlog F212): its kind and the node it
+    /// is of, never what it read — an edit's text, the pointer's place
+    /// (ADR 0058, decision 2). `None` while every one holds.
     fn first_moved(&self, reads: &[Read]) -> Option<String> {
-        reads.iter().find(|r| !self.read_holds(r)).map(|r| match r {
-            // A palette's every field is no ledger line.
-            Read::Theme(_) => "Theme".to_owned(),
-            Read::Metrics(_) => "Metrics".to_owned(),
-            Read::Tokens(_) => "Tokens".to_owned(),
-            r => format!("{r:?}"),
+        let r = reads.iter().find(|r| !self.read_holds(r))?;
+        let (what, key) = match r {
+            Read::Hover(k, _) => ("hover", Some(*k)),
+            Read::Pressed(k, _) => ("pressed", Some(*k)),
+            Read::Drop(k, _) => ("drop target", Some(*k)),
+            Read::GroupHover(..) => ("group hover", None),
+            Read::GroupPressed(..) => ("group pressed", None),
+            Read::Focus(_) => ("focus", None),
+            Read::Focused(k, _) => ("focused", Some(*k)),
+            Read::FocusVisible(_) => ("focus ring", None),
+            Read::TabMovesFocus(_) => ("tab moves focus", None),
+            Read::Caret(_) => ("caret blink", None),
+            Read::Clock => ("the clock", None),
+            Read::Mods(_) => ("modifiers", None),
+            Read::Cursor(_) => ("the pointer", None),
+            Read::Scroll(k, _) => ("scroll", Some(*k)),
+            Read::ScrollGeom(k, _) => ("scroll size", Some(*k)),
+            Read::LabelMissing { .. } => ("a label answered", None),
+            Read::Layout(k, _) => ("layout", Some(*k)),
+            Read::PointerIn(k, _) => ("pointer in", Some(*k)),
+            Read::TextHit(k, ..) => ("text hit", Some(*k)),
+            Read::TextCut(k, _) => ("text cut", Some(*k)),
+            Read::EditText(k, _) => ("edit text", Some(*k)),
+            Read::Env(_) => ("env", None),
+            Read::Measure(_) => ("fonts", None),
+            Read::Theme(_) => ("theme", None),
+            Read::Metrics(_) => ("metrics", None),
+            Read::Tokens(_) => ("tokens", None),
+            Read::Accent(_) => ("accent", None),
+            Read::Lazy(k, ..) => ("lazy branch", Some(*k)),
+            Read::Opaque => ("a read kui does not compare", None),
+        };
+        Some(match key {
+            Some(k) => format!("{what} {:016x}", k.0),
+            None => what.to_owned(),
         })
     }
 

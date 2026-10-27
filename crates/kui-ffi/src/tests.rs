@@ -4782,8 +4782,12 @@ mod perf_headless {
         kui_root(ctx, &root);
         let outer = kui_span_begin(ctx, ks("outer"));
         let inner = kui_span_begin(ctx, ks("inner"));
+        // Deep in a stack with no context at hand.
+        let deep = kui_thread_span_begin(ks("deep"));
+        kui_thread_span_end(deep);
         kui_span_end(ctx, inner);
         kui_span_end(ctx, outer);
+        kui_perf_note(ctx, ks("a line"));
         kui_perf_count(ctx, ks("rows"), 3);
         kui_perf_count(ctx, ks("rows"), 4);
         kui_frame_finish(ctx);
@@ -4826,6 +4830,12 @@ mod perf_headless {
         };
         let (outer, inner) = (span("outer").unwrap(), span("inner").unwrap());
         assert_eq!(inner.parent, outer.id, "inner nests in outer");
+        assert_eq!(span("deep").unwrap().parent, inner.id, "where it ran");
+        assert!(
+            t.records
+                .iter()
+                .any(|r| matches!(r, Record::Note { text, .. } if text == "a line"))
+        );
         assert!(span("parse").is_some_and(|s| s.dur == 2500), "a measure");
         let rows: Vec<i64> = t
             .records
@@ -4878,6 +4888,9 @@ mod perf_headless {
         let null = std::ptr::null_mut();
         assert!(!kui_perf_measuring(null));
         assert_eq!(kui_span_begin(null, ks("x")), 0);
+        assert_eq!(kui_thread_span_begin(ks("x")), 0, "no context's span open");
+        kui_thread_span_end(0);
+        kui_perf_note(null, ks("x"));
         let mut len = 7usize;
         assert!(kui_perf_trace(null, &mut len).is_null());
         assert_eq!(len, 0);
