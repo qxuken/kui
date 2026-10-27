@@ -1774,6 +1774,16 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- **The `kui` runner spells an app's folder plainly on Windows.**
+  `kui.dir` was the verbatim path `canonicalize` answers
+  (`\\?\C:\app`), not the `C:\app` that `kui.cwd` and the user see, and
+  a verbatim path takes no `/` as a separator: `kui check` built Teal's
+  module path as `<dir>/?.lua`, so a project's own modules were "module
+  not found". A packed app's folder and the runner's own path were the
+  same. The prefix goes wherever the path has a plain spelling (a drive
+  or a share). Found by the first run of the workspace tests on a
+  Windows runner.
+
 - **Kit's live line chart stays in its plot** (backlog C153). Its
   sliding layer — the lines, their areas, the x ticks — was a float
   anchored to the plot without `clip`, so it escaped every clip: the

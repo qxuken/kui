@@ -5,7 +5,29 @@
 //! are read-only, has somewhere to write. And the runner's own cache, for
 //! the runners `kui pack` downloads.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// `path` made absolute with its links resolved, as the system spells it.
+/// On Windows `canonicalize` answers a verbatim path (`\\?\C:\app`), which
+/// is not what `current_dir` or a user writes, and which takes no `/` as a
+/// separator — so an app's folder joined with `/` (a module path, a file
+/// the app names) found nothing. The prefix goes when the path has a plain
+/// spelling: a drive (`C:\app`) or a share (`\\server\share`).
+pub fn canonical(path: &Path) -> std::io::Result<PathBuf> {
+    let p = path.canonicalize()?;
+    if cfg!(windows) {
+        let s = p.to_string_lossy();
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return Ok(PathBuf::from(format!(r"\\{rest}")));
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\")
+            && rest.as_bytes().get(1) == Some(&b':')
+        {
+            return Ok(PathBuf::from(rest));
+        }
+    }
+    Ok(p)
+}
 
 fn home() -> PathBuf {
     std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })

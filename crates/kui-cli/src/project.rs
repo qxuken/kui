@@ -124,9 +124,7 @@ pub fn find(path: &Path) -> Result<Project, String> {
     } else {
         path
     };
-    let path = path
-        .canonicalize()
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let path = crate::paths::canonical(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let (dir, mut entry) = if path.is_dir() {
         (path.clone(), None)
     } else {

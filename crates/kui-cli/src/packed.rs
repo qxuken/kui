@@ -93,7 +93,7 @@ fn open(zip: &ZipReader, pack: &[u8]) -> Result<Packed, String> {
     let dir = extract(zip, &hash)?;
     // Canonical, as the app's own paths are (`project::find`), so the
     // read-only and bytecode checks compare like with like.
-    let dir = dir.canonicalize().unwrap_or(dir);
+    let dir = crate::paths::canonical(&dir).unwrap_or(dir);
     let _ = DIR.set(dir.clone());
     Ok(Packed {
         dir,

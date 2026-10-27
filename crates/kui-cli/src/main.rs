@@ -836,7 +836,7 @@ fn upgrade(argv: &[String]) -> Result<i32, String> {
     }
     let mirror = release::mirror(mirror.as_deref());
     let exe = std::env::current_exe().map_err(|e| format!("this kui's path: {e}"))?;
-    let exe = exe.canonicalize().unwrap_or(exe);
+    let exe = crate::paths::canonical(&exe).unwrap_or(exe);
     let shown = exe.to_string_lossy().replace('\\', "/");
     if shown.contains("/node_modules/") {
         return Err(format!(

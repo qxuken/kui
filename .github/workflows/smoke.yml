@@ -80,8 +80,9 @@ jobs:
           key: smoke-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: smoke-registry-${{ runner.os }}-
 
+      # `--no-fail-fast`, as ci.yml's: one red suite would hide the rest.
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
 
       # The dev profile, the one the test step just built the examples in,
       # so this is a fingerprint check and not a second compile of the GUI
