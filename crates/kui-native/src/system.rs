@@ -5,31 +5,65 @@
 //! which the runner applies here; an app calls either directly.
 //!
 //! Each starts the platform's own tool — `open` on macOS, `explorer` on
-//! Windows, `xdg-open` elsewhere — with the path as an argument and no
+//! Windows, `xdg-open` elsewhere (a Linux desktop's file manager asked
+//! over D-Bus first, to select) — with the path as an argument and no
 //! shell in between, and returns once it has started: what the tool then
 //! does is the system's. A thread waits on it, so no exited child is left
-//! behind.
+//! behind. A host that starts its processes one way of its own — under a
+//! lock against macOS's pipes, which are not born close-on-exec — hands
+//! kui that way ([`set_spawner`], backlog F222).
 
 use std::path::Path;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, RwLock};
 
-/// Shows `path` in the system's file manager: selected in Finder or
-/// Explorer, its folder opened elsewhere (a Linux file manager is not
-/// asked to select). An error, naming why, when the path does not exist
-/// or the tool would not start.
+/// How a tool is started: the host's ([`set_spawner`]), else
+/// `Command::spawn`.
+type Spawner = Arc<dyn Fn(&mut Command) -> std::io::Result<Child> + Send + Sync>;
+
+static SPAWNER: RwLock<Option<Spawner>> = RwLock::new(None);
+
+/// Starts the tools [`show_in_folder`] and [`open_external`] run — and
+/// so the devtools' "open folder" — with `spawn`, where they called
+/// `Command::spawn` (backlog F222). For a host that starts every child
+/// one way: on macOS a pipe is made and marked close-on-exec in two
+/// calls (no `pipe2`), and a child started by another thread between
+/// them keeps its ends, so a host serializes its spawns under one lock
+/// (as Go's `syscall.ForkLock`) and kui's must take it too. Rust's: a C,
+/// Odin or Node host's processes are its own, and kui's are started by
+/// std in their process.
+pub fn set_spawner(spawn: impl Fn(&mut Command) -> std::io::Result<Child> + Send + Sync + 'static) {
+    *SPAWNER.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(spawn));
+}
+
+fn start(c: &mut Command) -> std::io::Result<Child> {
+    let spawner = SPAWNER.read().unwrap_or_else(|e| e.into_inner()).clone();
+    match spawner {
+        Some(spawn) => spawn(c),
+        None => c.spawn(),
+    }
+}
+
+/// Shows `path` in the system's file manager, selected: in Finder, in
+/// Explorer, and on a Linux desktop in the file manager that answers
+/// `org.freedesktop.FileManager1` (Nautilus, Dolphin, Thunar, Nemo) —
+/// its folder opened by `xdg-open`, nothing selected, where none does.
+/// An error, naming why, when the path does not exist or no tool would
+/// start.
 pub fn show_in_folder(path: &str) -> Result<(), String> {
     let p = Path::new(path);
     if !p.exists() {
         return Err(format!("{path}: no such file or folder"));
     }
-    spawn(show_command(p)?)
+    spawn_steps(show_steps(p)?)
 }
 
 /// Opens `target` with what the system opens it with: a file in its app,
-/// a folder in the file manager, a URL (`https:`, `mailto:`, …) in the
-/// browser or mail client. An error, naming why, for a path that does not
-/// exist, a target the tool could misread, or a tool that would not
-/// start.
+/// a folder in the file manager — on macOS in Finder, so a bundle
+/// (`X.app`) is shown as the folder it is rather than run — a URL
+/// (`https:`, `mailto:`, …) in the browser or mail client. An error,
+/// naming why, for a path that does not exist, a target the tool could
+/// misread, or a tool that would not start.
 pub fn open_external(target: &str) -> Result<(), String> {
     if target.is_empty() {
         return Err("nothing to open".to_string());
@@ -65,27 +99,78 @@ fn not_an_option(path: &Path) -> std::path::PathBuf {
     }
 }
 
-fn show_command(path: &Path) -> Result<Command, String> {
+/// One way of asking: the tool, and whether its exit says it worked —
+/// `dbus-send` fails when no file manager answers, and the next way is
+/// tried; `explorer` exits 1 having shown the folder.
+struct Step {
+    command: Command,
+    checked: bool,
+}
+
+fn plain(command: Command) -> Step {
+    Step {
+        command,
+        checked: false,
+    }
+}
+
+/// The ways to show `path` selected, in the order they are tried.
+fn show_steps(path: &Path) -> Result<Vec<Step>, String> {
     if cfg!(target_os = "macos") {
         let mut c = Command::new("open");
         c.arg("-R").arg(not_an_option(path));
-        Ok(c)
+        Ok(vec![plain(c)])
     } else if cfg!(target_os = "windows") {
         // `explorer` reads `/select,` and the path as one argument, quoted
         // its own way: written raw, since a Windows path holds no `"`.
         let path = std::path::absolute(path).map_err(|e| e.to_string())?;
         let mut c = Command::new("explorer");
         raw_arg(&mut c, &format!("/select,\"{}\"", path.display()))?;
-        Ok(c)
+        Ok(vec![plain(c)])
     } else {
+        // The desktop's file manager over D-Bus, which selects; a `,`
+        // would split the array, so the URI has it as `%2C`.
+        let absolute = std::path::absolute(path).map_err(|e| e.to_string())?;
+        let mut dbus = Command::new("dbus-send");
+        dbus.args([
+            "--session",
+            "--print-reply",
+            "--dest=org.freedesktop.FileManager1",
+            "--type=method_call",
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1.ShowItems",
+        ])
+        .arg(format!("array:string:{}", file_uri(&absolute)))
+        .arg("string:");
         let dir = path
             .parent()
             .filter(|d| !d.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
-        let mut c = Command::new("xdg-open");
-        c.arg(not_an_option(dir));
-        Ok(c)
+        let mut open = Command::new("xdg-open");
+        open.arg(not_an_option(dir));
+        Ok(vec![
+            Step {
+                command: dbus,
+                checked: true,
+            },
+            plain(open),
+        ])
     }
+}
+
+/// `file://` and the absolute path, every byte but the unreserved ones
+/// and `/` written `%XX`.
+fn file_uri(path: &Path) -> String {
+    let mut out = String::from("file://");
+    for b in path.to_string_lossy().bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 fn open_command(target: &str) -> Result<Command, String> {
@@ -96,6 +181,10 @@ fn open_command(target: &str) -> Result<Command, String> {
     };
     if cfg!(target_os = "macos") {
         let mut c = Command::new("open");
+        // A folder in Finder: `open` alone runs a bundle (`X.app`).
+        if !is_url(target) && Path::new(target).is_dir() {
+            c.args(["-a", "Finder"]);
+        }
         c.arg(arg);
         Ok(c)
     } else if cfg!(target_os = "windows") {
@@ -130,15 +219,52 @@ fn raw_arg(c: &mut Command, arg: &str) -> Result<(), String> {
 /// Starts it, and waits for it on a thread of its own. `explorer` exits
 /// with 1 whether or not it did what it was asked, so starting is what
 /// counts.
-fn spawn(mut c: Command) -> Result<(), String> {
-    let program = c.get_program().to_string_lossy().into_owned();
-    let mut child = c.spawn().map_err(|e| format!("{program}: {e}"))?;
+fn spawn(c: Command) -> Result<(), String> {
+    spawn_steps(vec![plain(c)])
+}
+
+/// The first of `steps` that starts, started; an error naming why the
+/// last could not when none does — `dbus-send` not installed is
+/// `xdg-open`'s turn. The wait, and the next way when a checked one
+/// says it failed, on a thread of its own.
+fn spawn_steps(steps: Vec<Step>) -> Result<(), String> {
+    let mut steps = steps.into_iter();
+    let first = start_first(&mut steps, "nothing to start".to_string())?;
     let _ = std::thread::Builder::new()
         .name("kui-system-open".into())
         .spawn(move || {
-            let _ = child.wait();
+            let mut tried = first;
+            loop {
+                let (checked, mut child) = tried;
+                let worked = child.wait().is_ok_and(|s| s.success());
+                if worked || !checked {
+                    return;
+                }
+                match start_first(&mut steps, String::new()) {
+                    Ok(next) => tried = next,
+                    Err(_) => return,
+                }
+            }
         });
     Ok(())
+}
+
+fn start_first(
+    steps: &mut impl Iterator<Item = Step>,
+    mut why: String,
+) -> Result<(bool, Child), String> {
+    for mut step in steps {
+        let program = step.command.get_program().to_string_lossy().into_owned();
+        step.command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        match start(&mut step.command) {
+            Ok(child) => return Ok((step.checked, child)),
+            Err(e) => why = format!("{program}: {e}"),
+        }
+    }
+    Err(why)
 }
 
 #[cfg(test)]
@@ -177,7 +303,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_asks_finder_to_select_it() {
-        let (p, a) = args(&show_command(Path::new("/tmp/kui shot.png")).unwrap());
+        let (p, a) = args(&show_steps(Path::new("/tmp/kui shot.png")).unwrap()[0].command);
         assert_eq!(
             (p.as_str(), a),
             ("open", vec!["-R".into(), "/tmp/kui shot.png".into()])
@@ -187,6 +313,94 @@ mod tests {
             (p.as_str(), a),
             ("open", vec!["https://example.com/?a=1&b=2".into()])
         );
+    }
+
+    /// A folder opens in Finder, a bundle as the folder it is (backlog
+    /// F222): `open` alone runs `X.app`.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_opens_a_folder_in_finder() {
+        let dir = std::env::temp_dir().join("kui F222 dir.app");
+        std::fs::create_dir_all(&dir).unwrap();
+        let d = dir.to_string_lossy().into_owned();
+        let (p, a) = args(&open_command(&d).unwrap());
+        assert_eq!(
+            (p.as_str(), a),
+            ("open", vec!["-a".into(), "Finder".into(), d])
+        );
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// A Linux desktop's file manager is asked to select it over D-Bus,
+    /// the path whole as a URI, and `xdg-open` on its folder is the way
+    /// when none answers (backlog F222).
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[test]
+    fn linux_asks_the_file_manager_to_select_it_then_opens_its_folder() {
+        let steps = show_steps(Path::new("/a b/c,d.png")).unwrap();
+        assert_eq!(steps.len(), 2);
+        assert!(steps[0].checked && !steps[1].checked);
+        let (p, a) = args(&steps[0].command);
+        assert_eq!(p, "dbus-send");
+        assert!(
+            a.iter().any(|a| a.ends_with("FileManager1.ShowItems")),
+            "{a:?}"
+        );
+        assert!(
+            a.contains(&"array:string:file:///a%20b/c%2Cd.png".to_string()),
+            "{a:?}"
+        );
+        assert_eq!(
+            args(&steps[1].command),
+            ("xdg-open".into(), vec!["/a b".into()])
+        );
+    }
+
+    #[test]
+    fn a_file_uri_keeps_the_path_whole() {
+        assert_eq!(
+            file_uri(Path::new("/a b/c,d&e;$(f)~_.x")),
+            "file:///a%20b/c%2Cd%26e%3B%24%28f%29~_.x"
+        );
+    }
+
+    /// The tools start through the host's spawner once it sets one
+    /// (backlog F222): a host's spawn lock covers kui's children too.
+    #[test]
+    fn a_host_s_spawner_starts_the_tools() {
+        let file = std::env::temp_dir().join("kui-f220-spawner.txt");
+        std::fs::write(&file, "x").unwrap();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let s = seen.clone();
+        set_spawner(move |c| {
+            s.lock()
+                .unwrap()
+                .push(c.get_program().to_string_lossy().into_owned());
+            // Something harmless in its place, so no window opens.
+            let harmless = if cfg!(windows) { "cmd" } else { "true" };
+            let mut t = Command::new(harmless);
+            if cfg!(windows) {
+                t.args(["/c", "exit", "0"]);
+            }
+            t.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            t.spawn()
+        });
+        show_in_folder(&file.to_string_lossy()).unwrap();
+        open_external("https://example.com/").unwrap();
+        *SPAWNER.write().unwrap() = None;
+        let seen = seen.lock().unwrap().clone();
+        let first = if cfg!(target_os = "macos") {
+            "open"
+        } else if cfg!(windows) {
+            "explorer"
+        } else {
+            "dbus-send"
+        };
+        assert_eq!(seen.first().map(String::as_str), Some(first), "{seen:?}");
+        assert!(seen.len() >= 2, "{seen:?}");
+        let _ = std::fs::remove_file(&file);
     }
 
     #[test]
