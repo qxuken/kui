@@ -140,9 +140,11 @@ release pipeline:
   from those files laid out as a mirror, and attaches everything to the
   tag's GitHub release, creating it (a prerelease for an alpha). A failed
   `packs` is re-run on its own; the release's assets are replaced.
-  `workflow_dispatch` runs the same without `publish` and without the
-  release, leaving the release's assets as the run's `release-packs`
-  artifact and the npm tarballs as its `npm-packages` artifact. It needs one
+  `workflow_dispatch` runs the same without `publish`, without the
+  release and without `npm-stage` (a dry run stages nothing it will not
+  publish; since alpha.69), leaving the release's assets as the run's
+  `release-packs` artifact; the npm tarballs come from a tag's run only,
+  or by hand from a run's build artifacts (below). It needs one
   repository secret, `CRATES_IO_TOKEN` (a crates.io API token with publish
   rights on the `kui-*` crates); npmjs takes no secret (below). The runner
   is not on crates.io: `kui-cli` stays `publish = false` (ADR 0068).
@@ -194,8 +196,9 @@ it fails:
   npmjs deprecates them and drops their `bootstrap` tag (by hand: it
   needs the account, not the workflow). Done 2026-10-25 for the
   nine names: placeholders published and trusted. Or by
-  hand: release.yml's `npm-packages` artifact from a `workflow_dispatch`
-  run, the nine new ones published from it platform packages first
+  hand: the ten tarballs packed from a `workflow_dispatch` run's build
+  artifacts (`nu scripts/npm-platform-packages.nu --pack`, as "To rebuild
+  the staged copies" below says), the nine new ones published from them platform packages first
   (`npm publish ./qxuken-kui-cli-linux-x64-<version>.tgz --tag alpha
   --access public`, …), then each given a trusted publisher as above; the
   tag's run finds those versions live and skips them, without provenance. What to check on npmjs the first time: that the

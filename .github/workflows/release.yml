@@ -30,10 +30,10 @@
 # <platform>, the runner) before the two that name them (@qxuken/kui,
 # @qxuken/kui-cli), esbuild's shape.
 #
-# `workflow_dispatch` runs everything but the publishing steps, so the
-# builds and the packs can be tried on a branch without a tag; the
-# release's assets are then the run's `release-packs` artifact and the npm
-# tarballs its `npm-packages` artifact.
+# `workflow_dispatch` runs everything but the publishing steps and
+# `npm-stage`, so the check, the smoke rounds, the builds and the packs can
+# be tried on a branch without a tag; the release's assets are then the
+# run's `release-packs` artifact. The npm tarballs are a tag's run's alone.
 #
 # `check` is ci.yml itself, called: the whole check every push to main gets
 # (fmt, clippy, the workspace tests on lavapipe, the C round, the Odin
@@ -441,8 +441,10 @@ jobs:
   # @qxuken/kui-cli-linux-x64. The other platforms' packages are not yet
   # on npmjs at this version; npm skips an optional dependency it cannot
   # fetch, which is what makes the install possible before the publish.
+  # A tag's run only: a manual run publishes nothing, so it stages nothing.
   npm-stage:
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
