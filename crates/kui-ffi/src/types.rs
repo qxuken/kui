@@ -2367,6 +2367,8 @@ pub struct KuiDrawData {
     pub atlas_size: u32,
     /// Re-upload the atlas texture when either of these changes/sets.
     pub atlas_dirty: bool,
+    /// Never 0, so a host's zeroed copy of the last epoch it uploaded
+    /// differs from the first page's (backlog F245).
     pub atlas_epoch: u64,
     /// One per `KUI_QUAD_FRAGMENT` quad, indexed by its `uv[0]`; null and
     /// zero on a frame that draws none. Added in ABI 9.

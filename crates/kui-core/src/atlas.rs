@@ -140,7 +140,10 @@ pub struct GlyphAtlas {
     id: u64,
     /// Bumped whenever the page is replaced — reset, or resized — so
     /// renderers re-upload it whole and caches that stamped it re-look
-    /// their slots up. A resize keeps every slot where it was.
+    /// their slots up. A resize keeps every slot where it was. Starts at
+    /// 1 and is never 0, so a renderer whose "epoch I uploaded" starts
+    /// zeroed — a C or Odin struct — uploads the first page whole rather
+    /// than taking it for one it already has (backlog F245).
     pub epoch: u64,
     /// What caches that keep slots across frames — text templates, cell
     /// tables — key them on: it moves with `epoch`, and on every frame
@@ -236,7 +239,7 @@ impl GlyphAtlas {
                 static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
                 NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             },
-            epoch: 0,
+            epoch: 1,
             stamp: 0,
             map: FxHashMap::default(),
             images: FxHashMap::default(),

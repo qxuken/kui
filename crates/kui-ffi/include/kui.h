@@ -2472,7 +2472,9 @@ typedef struct KuiDrawData {
                                    * texture to it, not to the largest seen */
     bool atlas_dirty;             /* re-upload when set or epoch changed;
                                    * atlas_dirty_rect says which part */
-    uint64_t atlas_epoch;
+    uint64_t atlas_epoch;         /* never 0: a zeroed "epoch I uploaded"
+                                   * differs from the first page's, so the
+                                   * first upload is whole */
     /* One per KUI_QUAD_FRAGMENT quad, indexed by its uv[0]; NULL and 0 on a
      * frame that draws none. Added in ABI 9. */
     const KuiFragmentDraw *fragments;
