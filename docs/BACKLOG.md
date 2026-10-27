@@ -3952,24 +3952,9 @@ Perf and Frames tabs, its frame ledger and its two logs on ADR 0058's
 recording, deleting about 2,300 lines of its own (its
 `docs/design/lua-boundary.md` Decision 10's amendment, its `perf.rs`).
 What it met on the way, checked against the tree at `e2bd83fa`. Nine
-entries, F211–F219, filed and **not built**; F211 is a defect, the rest
-doors kawoosh worked around or went without.
-
-### `!` F211 — Closing the panel on its Perf tab leaves the recording on
-
-**Found** porting kawoosh's `:perf`: open the panel on the Perf tab,
-then close it (`set_devtools(false)`) — `perf_measuring()` stays true for
-the rest of the session, so every span, gauge and count an app gates on
-it is recorded, and kawoosh reads its process's memory every half second,
-with nobody looking. `devtools_begin_frame` returns early while the panel
-is off (`if !on { … return; }`, `runtime/devtools/mod.rs`), before
-`perf_begin_frame`, the one caller of `perf_set_live`, so `why::LIVE` is
-never cleared. The same holds for a panel hidden by its close button only
-if the hide does not reach `perf_begin_frame`'s `dock.docked()` — not
-checked. **Do.** `perf_set_live(false)` on the way out of the `!on`
-branch, and a test: Perf tab shown, panel off, `perf_measuring()` false
-on the next frame. kawoosh's
-`editor_pane::nothing_is_measured_unless_kui_is` asserts it once fixed.
+entries, F211–F219: F211, a defect, **built 2026-10-27**, the day it
+was filed, and in the archive; F212–F219, doors kawoosh worked around
+or went without, filed and **not built**.
 
 ### `.` F212 — A component's refusal says its kind, not what moved
 
@@ -6034,6 +6019,10 @@ move.
 **From Carnet's page menu in a short window (2026-10-27)** — F210, filed and built the same day
 
 - `.` **F210** — [A menu taller than the window cannot be used](backlog/closed-2026-09.md#-f210--a-menu-taller-than-the-window-cannot-be-used--done-2026-10-27) — done (2026-10-27) — every core menu panel scrolls, cut by layout to the window less `MENU_EDGE` and placed as high as that goes; the keyboard keeps its row in view; kui-native shows one that does not fit as a popup window (ADR 0004 amended), not on Wayland; `Menu::max_size` and `Menu::in_window` in every binding
+
+**From kawoosh's alpha.68 port (2026-10-27)** — F211, filed and built the same day
+
+- `!` **F211** — [Closing the panel on its Perf tab leaves the recording on](backlog/closed-2026-09.md#-f211--closing-the-panel-on-its-perf-tab-leaves-the-recording-on--done-2026-10-27) — done (2026-10-27) — a panel off lets the Perf tab's live view go (`perf_set_live(false)`) before `devtools_begin_frame` returns, where only `perf_begin_frame`, which a panel off never reached, did
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 

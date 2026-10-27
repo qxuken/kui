@@ -1918,6 +1918,13 @@ impl Core {
             }
             self.restore_menus();
             self.dt_inspect = false;
+            // The Perf tab's live view goes with the panel: it was let go
+            // only in `perf_begin_frame`, which a panel off never reaches,
+            // so closing on the tab measured for the rest of the session
+            // (backlog F211). The main window's, which alone set it.
+            if main {
+                self.perf_set_live(false);
+            }
             return;
         }
         // The theme: the override while there is one, and the app's own

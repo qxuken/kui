@@ -182,6 +182,16 @@ already generated for each event.
   they land on in view, as Tab does; the wheel and a trackpad scroll the
   panel under the pointer, and a submenu's scroll is its own.
 
+- **The Perf tab stops measuring when the panel goes** (backlog F211,
+  from kawoosh's alpha.68 port): turned off with `set_devtools(false)`,
+  or hidden by its close button, while it showed its Perf tab, the panel
+  left the recording's live view on, so `perf_measuring()` stayed true
+  for the rest of the session — every span, gauge and count an app gates
+  on it recorded with nobody looking, and the frame trace held on. A
+  panel off returned from its frame's start before the step that lets
+  the live view go; it lets it go first now. The hidden panel was right
+  already, and is tested beside it.
+
 **What you can delete.**
 
 - A `pcall` around a runner call, and the `tostring(err)`, the
