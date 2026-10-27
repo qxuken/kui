@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.69 (unreleased)
+## 0.1.0-alpha.69 (2026-10-28)
 
 **What breaks.**
 
@@ -402,6 +402,59 @@ already generated for each event.
 - A probe that walked the access tree, or opened and closed boxes one by
   one, to find which node a missing close swallowed: `unclosed-node`
   names it.
+
+### The release itself
+
+- **A release waits for the macOS and Windows rounds.** release.yml calls
+  smoke.yml as its `smoke` job, beside `check`: the workspace tests,
+  every windowed example and the C round on macOS and Windows, which
+  `packs` and `publish` wait for. alpha.67 and alpha.68 went out with
+  those rounds run only on pushes to main, where they do not block.
+- **The GitHub release becomes the latest by itself, last.** `packs`
+  creates it as a pre-release; a new last job, `latest`, makes it a
+  release and GitHub's latest once the crates and npm packages are up
+  and the assets attached, when its version sorts highest (npm's rule).
+  `releases/latest/download/install.sh` names the newest version once
+  its run is done.
+- A manual run of release.yml stages no npm packages: it publishes
+  nothing.
+
+### Native verification
+
+A pre-tag pass on the release machines after two releases that had none:
+alpha.67's and alpha.68's macOS and Windows rounds had run only on
+GitHub's hosted runners (software adapters, no input).
+
+On Windows 11 (RTX 5080, 150%, en-US + ru-RU) and WSL Ubuntu 24.04:
+fmt, clippy with `-D warnings`, `test.nu --node` (3255 tests over 238
+suites and Node's on Windows), the C round, Odin's generator, check, tests
+and slots (WSL), the Node examples' typecheck, `cargo audit`,
+`release-prep.nu`, the headless round, and the windowed round with the
+Node windows — all 58 examples on both bases on the RTX, and under X11 in
+WSL. The wgpu capture and opacity tests on the RTX under D3D12 and Vulkan
+(`KUI_REQUIRE_GPU=NVIDIA`). By hand on Windows: F210's menu popup (a
+window of its own, held to the work area, the owner keeping the
+foreground, its rows in its own UIA tree and none in the owner's), F226's
+paths (`/`, spaces and Cyrillic reach Explorer with the file selected),
+`kui pack` to an `.exe` (GUI subsystem, runs from its archive), and a
+process group's kill (`cmd` → `ping`, the tree gone, nothing orphaned).
+Ten minutes and then an hour of all ten fuzz targets in WSL, and the
+corpus reuse check after.
+
+What it found is above: F241 (smoke.yml's macOS leg), FZ16 and FZ17 (the
+fuzzers), F242 and F243 (Windows), and two `kui-cli` tests that assumed
+an `echo` program. Open, in the backlog: FZ18 (cosmic-text's shape-run
+cache keys no direction; not a regression, alpha.68 the same) and F244
+(Vulkan instances made on several threads at once on a machine with an
+AMD driver beside NVIDIA's). A release dry run of release.yml with the
+blocking smoke legs passed on the branch before the merge.
+
+Not verified natively this release: the macOS accessibility audit and
+anything on a Mac by hand, real keyboard and pointer input on Windows
+(the menu bar's Edit actions, accelerators under ru-RU, Kit's select
+keys), the `latest` job, which only a tag's run exercises, and FZ17's
+fix under the WSL leg (Windows and the regression replay only; the tag's
+`check` runs it on Linux).
 
 ## 0.1.0-alpha.68 (2026-10-27)
 
