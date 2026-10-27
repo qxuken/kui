@@ -200,10 +200,12 @@ impl DynShell<'_> {
             }
         };
         self.icon.set_on(&window);
-        // A popup is a menu surface, and appears as one: at once.
-        if config.kind == WindowKind::Popup {
+        // A popup is a menu surface, and appears as one: at once, and not
+        // before its first frame is there to show.
+        let cloaked = config.kind == WindowKind::Popup && {
             crate::menu_popup::appear_at_once(&window);
-        }
+            crate::menu_popup::cloak(&window, true)
+        };
         // The Window menu lists windows the user would switch to, and a
         // popup is not one (ADR 0030).
         #[cfg(target_os = "macos")]
@@ -259,6 +261,9 @@ impl DynShell<'_> {
         self.push_pane(
             event_loop, id, config, owner, chrome, core, window, renderer, applied,
         );
+        if let Some(i) = self.pane_of(id) {
+            self.panes[i].cloaked = cloaked;
+        }
         // ADR 0009 decision 1: a non-activating popup that opens while the
         // primary button is down **joins that press**. Evaluated once, here,
         // with no geometry — and it is tight because of the press-outside
@@ -528,6 +533,7 @@ impl DynShell<'_> {
             unseen: Default::default(),
             view_state: None,
             menu_pane: None,
+            cloaked: false,
             access,
             #[cfg(target_os = "windows")]
             anim_timer,

@@ -41,7 +41,8 @@ was the first bare bump to break an app in five releases).
   menu in the window as before (backlog F207, ADR 0004 amended
   2026-10-27).
 - A declared popup window (`WindowKind::Popup`) appears at once on
-  Windows, where the OS faded it in.
+  Windows, with its first frame, where the OS faded it in over a white
+  surface.
 
 ### Added
 

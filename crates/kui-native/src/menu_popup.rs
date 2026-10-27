@@ -238,6 +238,44 @@ pub(crate) fn appear_at_once(window: &Window) {
     let _ = window;
 }
 
+/// Hides a window from the screen while it stays shown to everything else
+/// (DWM's cloak), or shows it again. A popup is cloaked from creation to
+/// its first frame presented (`Pane::cloaked`): shown at once, with no
+/// fade, Windows drew its empty surface white for the frames before kui's
+/// first one landed (the user, trying F207). Answers whether the platform
+/// cloaked it; nothing elsewhere.
+pub(crate) fn cloak(window: &Window, on: bool) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::Foundation::{BOOL, FALSE, HWND, TRUE};
+        use windows_sys::Win32::Graphics::Dwm::{DWMWA_CLOAK, DwmSetWindowAttribute};
+        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        let Ok(handle) = window.window_handle() else {
+            return false;
+        };
+        let RawWindowHandle::Win32(h) = handle.as_raw() else {
+            return false;
+        };
+        let value: BOOL = if on { TRUE } else { FALSE };
+        // SAFETY: a live window of this thread, and a BOOL the size the
+        // attribute takes.
+        let hr = unsafe {
+            DwmSetWindowAttribute(
+                h.hwnd.get() as HWND,
+                DWMWA_CLOAK as u32,
+                (&value as *const BOOL).cast(),
+                std::mem::size_of::<BOOL>() as u32,
+            )
+        };
+        hr == 0
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, on);
+        false
+    }
+}
+
 /// Lays a menu's popup core out once at `room` less the margin above and
 /// below — the room Part one's cut is against on the display — and answers
 /// the size its panel took: the window to open.
@@ -657,6 +695,7 @@ impl DynShell<'_> {
         };
         self.icon.set_on(&window);
         appear_at_once(&window);
+        let cloaked = cloak(&window, true);
         #[cfg(target_os = "macos")]
         macos_menu::exclude_from_windows_menu(&window);
         let Some(gpu) = self.gpu.clone() else {
@@ -700,6 +739,7 @@ impl DynShell<'_> {
         self.panes[i].core.set_menu_popups(false);
         self.panes[i].core.set_lookup_available(false);
         self.panes[i].menu_pane = Some(mp);
+        self.panes[i].cloaked = cloaked;
         // Opened under a held button — a select opened on its press — it
         // joins that press, as an app's popup does (ADR 0009 decision 1).
         if self.primary_down.is_some() {

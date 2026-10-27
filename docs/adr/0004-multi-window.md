@@ -675,7 +675,11 @@ entry under Consequences.
     reader. The palette and sizes are the window's, carried over while it
     is up. A popup appears at once: Windows' fade-in for a new window read
     as the menu being slow to open, so it is turned off for every popup
-    (`DWMWA_TRANSITIONS_FORCEDISABLED`).
+    (`DWMWA_TRANSITIONS_FORCEDISABLED`); and, shown at once, the OS drew
+    its empty surface white for the frames before kui's first, so a popup
+    is cloaked (`DWMWA_CLOAK`) from creation until its first frame is
+    presented — shown to everything but the screen, so nothing about
+    focus or activation changes.
   - **Per platform.** Windows: as above, on the monitor under the point,
     its work area from `GetMonitorInfoW`. macOS: the default context menu
     is still the platform's `NSMenu`, which places itself; the popup is

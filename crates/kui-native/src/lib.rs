@@ -2965,6 +2965,11 @@ impl DynShell<'_> {
                 pane.retry.presented();
                 pane.surface_tries = 0;
                 pane.awaits_device = false;
+                // A popup kept off the screen until there was a frame of
+                // kui's to show, rather than the OS's empty surface.
+                if std::mem::take(&mut pane.cloaked) {
+                    menu_popup::cloak(window, false);
+                }
             }
             Some(Err(kui_wgpu::RenderError::Reconfigure)) => {
                 if let Some(r) = pane.renderer.as_mut() {
@@ -3006,6 +3011,11 @@ impl DynShell<'_> {
             // bounded number of tries, and not while the platform says
             // the window is covered, so a hidden window does not spin.
             Some(Err(kui_wgpu::RenderError::Skip)) => {
+                // Nothing presented, but a popup is not kept hidden on the
+                // chance the next one is.
+                if std::mem::take(&mut pane.cloaked) {
+                    menu_popup::cloak(window, false);
+                }
                 let now = std::time::Instant::now();
                 pane.retry.skipped(now);
                 // A skipped frame paces the next as a presented one does:
