@@ -190,7 +190,9 @@ impl Core {
         // or, where the host places menus, nowhere until it has said where
         // (`set_menu_popups`).
         self.menu_sub = Submenus::default();
-        self.menu_where = if self.menu_popups {
+        // A menu that asked to stay in the window is placed here at once.
+        let in_window = self.menu.as_ref().is_some_and(|m| m.in_window);
+        self.menu_where = if self.menu_popups && !in_window {
             MenuWhere::Pending
         } else {
             MenuWhere::Window
@@ -288,7 +290,10 @@ impl Core {
         // becomes a host one. Its nodes are opened under `OriginId::MENU`,
         // which is how `consume_menu_events` knows them.
         let at = menu.at.minus(ui.core().dt_shift());
-        crate::widgets::context_menu(ui, at, &menu.items);
+        let max = menu
+            .max_size
+            .unwrap_or(Size::new(f32::INFINITY, f32::INFINITY));
+        crate::widgets::context_menu_within(ui, at, &menu.items, max);
     }
 
     /// The stock items for a right-click on `region`, or none when there
@@ -1246,19 +1251,29 @@ impl Core {
     /// else — a host builds its frames without a view. A menu taller than
     /// the window is cut to it and scrolls; `room` is the display's work
     /// area (logical px) a row's width is held to, since the window is
-    /// only as wide as the panel. `submenu` says it shows a submenu, whose
-    /// Escape and Left arrow go back rather than dismiss.
+    /// only as wide as the panel. `max_size` is the menu's own
+    /// ([`Menu::max_size`](crate::menu::Menu#structfield.max_size)), which a
+    /// submenu's popup carries too. `submenu` says it shows a submenu,
+    /// whose Escape and Left arrow go back rather than dismiss.
     ///
     /// Nothing chosen here is performed: see [`MenuPopupAnswer`]. A host
     /// measuring what window to open lays one frame out at the room's size
     /// and reads [`Self::menu_popup_size`].
-    pub fn open_menu_popup(&mut self, items: Vec<MenuItem>, room: Size, submenu: bool) {
+    pub fn open_menu_popup(
+        &mut self,
+        items: Vec<MenuItem>,
+        max_size: Option<Size>,
+        room: Size,
+        submenu: bool,
+    ) {
         self.menu_popup = Some(MenuPopup {
             room,
             submenu,
             answer: None,
         });
-        self.open_menu_raw(Menu::new(Key::ROOT, Vec2::ZERO, items));
+        let mut menu = Menu::new(Key::ROOT, Vec2::ZERO, items);
+        menu.max_size = max_size;
+        self.open_menu_raw(menu);
     }
 
     /// Whether this core is a menu's popup window (`open_menu_popup`).

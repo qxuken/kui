@@ -474,7 +474,7 @@ impl DynShell<'_> {
         let room = Size::new((work.w / unit) as f32, (work.h / unit) as f32);
         let scale = pane.size().1;
         let mut core = self.menu_core(i);
-        core.open_menu_popup(menu.items.clone(), room, false);
+        core.open_menu_popup(menu.items.clone(), menu.max_size, room, false);
         let Some(size) = measure(&mut core, room, scale) else {
             return false;
         };
@@ -540,10 +540,12 @@ impl DynShell<'_> {
             return;
         };
         let path: Vec<usize> = mp.path.iter().copied().chain([w.row]).collect();
-        let Some(items) = self.panes[h]
-            .core
-            .menu()
-            .and_then(|m| MenuItem::at_path(&m.items, &path))
+        let Some(menu) = self.panes[h].core.menu() else {
+            return;
+        };
+        // A submenu is held to what its menu is, as in the window.
+        let max_size = menu.max_size;
+        let Some(items) = MenuItem::at_path(&menu.items, &path)
             .filter(|item| item.enabled && item.has_submenu())
             .map(|item| item.submenu.clone())
         else {
@@ -568,7 +570,7 @@ impl DynShell<'_> {
         let scale = parent.size().1;
         let parent_id = parent.id;
         let mut core = self.menu_core(h);
-        core.open_menu_popup(items, room, true);
+        core.open_menu_popup(items, max_size, room, true);
         if w.keyboard {
             core.menu_popup_by_keyboard();
         }

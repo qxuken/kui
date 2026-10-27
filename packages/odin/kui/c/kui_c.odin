@@ -66,6 +66,8 @@ OPTION_AS_ALT_LEFT :: 1
 OPTION_AS_ALT_RIGHT :: 2
 OPTION_AS_ALT_BOTH :: 3
 
+MENU_IN_WINDOW :: 1
+
 FILL_NONE :: -1
 FILL_REPLAYED :: 0
 FILL_NOT_KEPT :: 1
@@ -1382,6 +1384,7 @@ foreign lib {
 	caret_in_rich_text :: proc(ctx: ^Ctx, spans: [^]Span, span_count: uint, base: ^TextStyle, max_w: f32, byte: uint, out: ^CaretRect) -> bool ---
 	text_hit :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, out: ^TextHit) -> bool ---
 	open_menu :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, items: [^]MenuItem, count: uint) -> bool ---
+	open_menu_with :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, items: [^]MenuItem, count: uint, max_w: f32, max_h: f32, flags: u32) -> bool ---
 	close_menu :: proc(ctx: ^Ctx) -> bool ---
 	menu_bar :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint) -> bool ---
 	menu_bar_with :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint, on_menu: ^Value) -> bool ---

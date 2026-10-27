@@ -459,7 +459,9 @@ extern "C" {
  * kui_is_group_hovered and kui_is_group_pressed (backlog C92),
  * kui_set_rules_appearance (backlog C113), kui_platform with its
  * KUI_PLATFORM_* codes (backlog C116), kui_focus_item (backlog C125) and
- * kui_scale (backlog C127) are new functions.
+ * kui_scale (backlog C127) are new functions. After alpha.68, still at 39
+ * since no struct moved: kui_open_menu_with, a context menu held to a
+ * size or kept in the window (backlog F207).
  */
 #define KUI_ABI_VERSION 39u
 uint32_t kui_abi_version(void);
@@ -4131,6 +4133,17 @@ bool kui_text_hit(KuiCtx *ctx, uint64_t key, float x, float y, KuiTextHit *out);
  * key of 0, no items, or an item whose role this build does not know. */
 bool kui_open_menu(KuiCtx *ctx, uint64_t key, float x, float y,
                    const KuiMenuItem *items, size_t count);
+/* kui_open_menu held to max_w by max_h logical px, the menu and each of
+ * its submenus: a row wider is ellipsized, a menu taller scrolls (backlog
+ * F207). Zero or less on an axis leaves it to the room the menu is drawn
+ * in - the window, or the display where the runner shows a menu that does
+ * not fit in a window of its own. `flags`: KUI_MENU_IN_WINDOW keeps this
+ * menu drawn in the window there, cut to it and scrolling; other bits are
+ * ignored. A new function of ABI 39. */
+#define KUI_MENU_IN_WINDOW 1u
+bool kui_open_menu_with(KuiCtx *ctx, uint64_t key, float x, float y,
+                        const KuiMenuItem *items, size_t count,
+                        float max_w, float max_h, uint32_t flags);
 /* Closes whatever menu is open; true when there was one. */
 bool kui_close_menu(KuiCtx *ctx);
 

@@ -118,6 +118,36 @@ pub extern "C" fn kui_open_menu(
     items: *const KuiMenuItem,
     count: usize,
 ) -> bool {
+    kui_open_menu_with(ptr, key, x, y, items, count, 0.0, 0.0, 0)
+}
+
+/// `kui_open_menu_with`'s flag keeping the menu in the window: where the
+/// runner shows a menu that does not fit in a popup window of its own,
+/// this one stays drawn in the window, cut to it and scrolling.
+pub const KUI_MENU_IN_WINDOW: u32 = 1;
+
+/// [`kui_open_menu`] held to `max_w` by `max_h` logical px, the menu and
+/// each of its submenus: a row wider is ellipsized, a menu taller scrolls
+/// (backlog F207). Zero or less on an axis leaves it to the room the menu
+/// is drawn in — the window, or the display where the runner shows it in
+/// a window of its own. `flags`: [`KUI_MENU_IN_WINDOW`]; other bits are
+/// ignored.
+#[unsafe(no_mangle)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "kui_open_menu's six, the two sides of the limit and the flags, as C spells a call"
+)]
+pub extern "C" fn kui_open_menu_with(
+    ptr: *mut KuiCtx,
+    key: u64,
+    x: f32,
+    y: f32,
+    items: *const KuiMenuItem,
+    count: usize,
+    max_w: f32,
+    max_h: f32,
+    flags: u32,
+) -> bool {
     guard(false, || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
@@ -133,11 +163,16 @@ pub extern "C" fn kui_open_menu(
                 None => return false,
             }
         }
-        c.core().open_menu(kui_core::Menu::new(
-            Key(key),
-            kui_core::Vec2::new(x, y),
-            parsed,
-        ));
+        let mut menu = kui_core::Menu::new(Key(key), kui_core::Vec2::new(x, y), parsed);
+        // `> 0.0` and not `>= 0.0`: a zeroed or NaN side is no limit.
+        let side = |v: f32| if v > 0.0 { v } else { f32::INFINITY };
+        if max_w > 0.0 || max_h > 0.0 {
+            menu = menu.max_size(side(max_w), side(max_h));
+        }
+        if flags & KUI_MENU_IN_WINDOW != 0 {
+            menu = menu.in_window();
+        }
+        c.core().open_menu(menu);
         true
     })
 }

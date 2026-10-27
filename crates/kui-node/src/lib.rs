@@ -4564,18 +4564,48 @@ macro_rules! core_methods {
             /// `onContextMenu` calls — and what the core calls itself for
             /// a right-click nobody claimed, so the two menus are one
             /// implementation.
-            #[napi(ts_args_type = "key: string, x: number, y: number, items: MenuItemInput[]")]
-            pub fn open_menu(&mut self, key: String, x: f64, y: f64, items: Json) -> Result<bool> {
+            ///
+            /// `options.maxWidth` / `options.maxHeight` hold the menu and
+            /// its submenus to a size, logical px: a row wider is
+            /// ellipsized, a menu taller scrolls (backlog F207). One left
+            /// out, or not above 0, is the room the menu is drawn in.
+            /// `options.inWindow` keeps the menu drawn in the window where
+            /// the runner would show one that does not fit in a popup
+            /// window of its own.
+            #[napi(
+                ts_args_type = "key: string, x: number, y: number, items: MenuItemInput[], options?: { maxWidth?: number; maxHeight?: number; inWindow?: boolean } | null"
+            )]
+            pub fn open_menu(
+                &mut self,
+                key: String,
+                x: f64,
+                y: f64,
+                items: Json,
+                options: Option<Json>,
+            ) -> Result<bool> {
                 let Some(target) = resolve_query(self.$core(), &key) else {
                     return Ok(false);
                 };
                 let (items, stray) = menu_items(&items)?;
                 warn_stray_menu_keys(self.$core(), stray);
-                self.$core().open_menu(kui_core::Menu::new(
-                    target,
-                    Vec2::new(x as f32, y as f32),
-                    items,
-                ));
+                let mut menu = kui_core::Menu::new(target, Vec2::new(x as f32, y as f32), items);
+                let side = |k: &str| {
+                    options
+                        .as_ref()
+                        .and_then(|o| o.get(k))
+                        .and_then(Json::as_f64)
+                        .filter(|v| *v > 0.0)
+                        .map(|v| v as f32)
+                };
+                let (w, h) = (side("maxWidth"), side("maxHeight"));
+                if w.is_some() || h.is_some() {
+                    menu = menu.max_size(w.unwrap_or(f32::INFINITY), h.unwrap_or(f32::INFINITY));
+                }
+                let in_window = options.as_ref().and_then(|o| o.get("inWindow"));
+                if in_window.and_then(Json::as_bool) == Some(true) {
+                    menu = menu.in_window();
+                }
+                self.$core().open_menu(menu);
                 self.$redraw();
                 Ok(true)
             }

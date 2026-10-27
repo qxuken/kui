@@ -3976,6 +3976,56 @@ mod borrows {
         kui_ctx_free(ctx);
     }
 
+    /// `kui_open_menu_with` holds the menu to its size, a side of zero or
+    /// less leaving that axis to the room, and keeps it in the window under
+    /// `KUI_MENU_IN_WINDOW`; `kui_open_menu` does neither (backlog F207).
+    #[test]
+    fn a_c_menu_is_held_to_the_size_it_was_opened_within() {
+        let ctx = kui_ctx_new();
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        kui_root(ctx, &zspec());
+        let key = kui_open_keyed(ctx, ks("t"), &zspec(), std::ptr::null_mut());
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+        let item = KuiMenuItem {
+            label: ks("Row"),
+            role: KUI_MENU_CUSTOM,
+            enabled: 1,
+            id: std::ptr::null(),
+            accel: none(),
+            checked: 0,
+            replay: 0,
+            submenu: std::ptr::null(),
+            submenu_count: 0,
+        };
+        let menu = |ctx: *mut KuiCtx| unsafe { (*ctx).core().menu().unwrap().clone() };
+        assert!(kui_open_menu(ctx, key, 10.0, 10.0, &item, 1));
+        assert_eq!(menu(ctx).max_size, None);
+        assert!(!menu(ctx).in_window);
+        assert!(kui_open_menu_with(
+            ctx, key, 10.0, 10.0, &item, 1, 0.0, 0.0, 0
+        ));
+        assert_eq!(menu(ctx).max_size, None, "zero on both sides is no limit");
+        assert!(kui_open_menu_with(
+            ctx,
+            key,
+            10.0,
+            10.0,
+            &item,
+            1,
+            0.0,
+            120.0,
+            KUI_MENU_IN_WINDOW
+        ));
+        assert_eq!(
+            menu(ctx).max_size,
+            Some(kui_core::Size::new(f32::INFINITY, 120.0)),
+            "a side of zero is the room's"
+        );
+        assert!(menu(ctx).in_window, "and the flag keeps it in the window");
+        kui_ctx_free(ctx);
+    }
+
     /// A C row's submenu reaches the core in all three menus — the context
     /// menu, the select and the bar — nested, and a row that is its own
     /// submenu is refused rather than read until the stack runs out

@@ -62,7 +62,7 @@ fn rows(n: usize) -> Vec<MenuItem> {
 /// window.
 fn popup(items: Vec<MenuItem>, submenu: bool) -> (Core, Size) {
     let mut core = Core::new();
-    core.open_menu_popup(items, ROOM, submenu);
+    core.open_menu_popup(items, None, ROOM, submenu);
     popup_frame(&mut core, Size::new(ROOM.w, ROOM.h - 2.0 * MENU_EDGE));
     let size = core.menu_popup_size().expect("the panel was laid out");
     popup_frame(&mut core, size);
@@ -142,6 +142,20 @@ fn a_menu_waits_for_a_host_that_places_menus() {
     // A host that stops placing menus draws the one that waited.
     core.set_menu_popups(false);
     assert!(!core.menu_awaits_host());
+    window_frame(&mut core);
+    assert_eq!(menus(&mut core), ["Menu"]);
+}
+
+/// A menu that asked to stay in the window (`Menu::in_window`) never
+/// waits for the host: it is drawn the frame it opens, where the host
+/// places menus too.
+#[test]
+fn a_menu_kept_in_the_window_does_not_wait_for_the_host() {
+    let mut core = Core::new();
+    core.set_menu_popups(true);
+    let card = window_frame(&mut core);
+    core.open_menu(Menu::new(card, Vec2::new(20.0, 20.0), items()).in_window());
+    assert!(!core.menu_awaits_host() && !core.menu_in_popup());
     window_frame(&mut core);
     assert_eq!(menus(&mut core), ["Menu"]);
 }
@@ -291,4 +305,14 @@ fn a_popups_rows_are_as_wide_as_the_room_lets_them_be() {
         .unwrap()
         .rect;
     assert_eq!(panel.w, size.w, "still the window's width");
+}
+
+/// A popup is held to the menu's own limit, as the window's menu is.
+#[test]
+fn a_popup_is_held_to_the_menus_max_size() {
+    let mut core = Core::new();
+    core.open_menu_popup(rows(60), Some(Size::new(f32::INFINITY, 200.0)), ROOM, false);
+    popup_frame(&mut core, Size::new(ROOM.w, ROOM.h - 2.0 * MENU_EDGE));
+    let size = core.menu_popup_size().unwrap();
+    assert!((size.h - 200.0).abs() < 0.5, "{size:?}");
 }

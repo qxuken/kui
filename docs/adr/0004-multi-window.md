@@ -641,7 +641,10 @@ entry under Consequences.
     takes a moment to show where a float is up the frame it opens — and a
     menu that fits looks the same either way. Not by a flag on the app:
     which it is is a fact of the menu and the window, so the runner
-    decides it per menu.
+    decides it per menu — but a menu may refuse the popup
+    (`Menu::in_window`), for one that must sit inside the app, and may be
+    held to a size the app chooses (`Menu::max_size`), in the window and
+    in the popup alike.
   - **Decided before it is drawn.** A runner that places menus says so
     (`Core::set_menu_popups`); a menu then opens drawn nowhere until the
     runner has measured it — a core of the popup's own, laid out once at

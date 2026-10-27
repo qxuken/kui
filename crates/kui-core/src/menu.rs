@@ -618,6 +618,18 @@ pub struct Menu {
     /// about. Carried onto the events the items post.
     pub origin: OriginId,
     pub items: Vec<MenuItem>,
+    /// The largest the app lets the menu's panel be, logical px, and each
+    /// of its submenus': a row wider is ellipsized, a menu taller scrolls
+    /// (backlog F207). `None` — and an axis that is infinite — is the room
+    /// the menu is drawn in, the window or the display less `MENU_EDGE`,
+    /// which holds whatever this says.
+    pub max_size: Option<crate::geom::Size>,
+    /// Drawn in the window whatever the host could do: where a runner
+    /// shows a menu that does not fit in a popup window of its own
+    /// (`Core::set_menu_popups`), this one stays a float, cut to the
+    /// window and scrolling (backlog F207). What a menu wants that must
+    /// sit inside the app — one a screenshot or a recording has to hold.
+    pub in_window: bool,
 }
 
 impl Menu {
@@ -627,11 +639,29 @@ impl Menu {
             at,
             origin: OriginId::HOST,
             items,
+            max_size: None,
+            in_window: false,
         }
+    }
+
+    /// Keeps the menu in the window (see
+    /// [`Menu::in_window`](Self#structfield.in_window)).
+    pub fn in_window(mut self) -> Self {
+        self.in_window = true;
+        self
     }
 
     pub fn origin(mut self, origin: OriginId) -> Self {
         self.origin = origin;
+        self
+    }
+
+    /// Holds the menu and its submenus to `w` by `h` logical px (see
+    /// [`Menu::max_size`](Self#structfield.max_size)); `f32::INFINITY` on
+    /// an axis leaves it to the room. A menu of thirty folders kept to
+    /// ten rows' height: `.max_size(f32::INFINITY, 320.0)`.
+    pub fn max_size(mut self, w: f32, h: f32) -> Self {
+        self.max_size = Some(crate::geom::Size::new(w, h));
         self
     }
 }

@@ -1019,6 +1019,22 @@ pub const DOORS: &[Door] = &[
         doc: "`activate_menu_item` for a row inside a submenu, by its path through the rows' submenus (backlog F128); a row that opens a submenu is refused.",
     },
     Door {
+        rust: "Menu::max_size",
+        c: Is("kui_open_menu_with"),
+        odin: Is("open_menu_with"),
+        node: As("`openMenu`'s fifth argument, `{maxWidth, maxHeight}`"),
+        lua: As("`open_menu`'s fifth argument, `{ max_width =, max_height = }`"),
+        doc: "Holds a context menu and its submenus to a size: a row wider is ellipsized, a menu taller scrolls; an axis left out is the room's (backlog F207).",
+    },
+    Door {
+        rust: "Menu::in_window",
+        c: As("`KUI_MENU_IN_WINDOW` in `kui_open_menu_with`'s flags"),
+        odin: As("`MENU_IN_WINDOW` in `open_menu_with`'s flags"),
+        node: As("`openMenu`'s fifth argument, `{inWindow: true}`"),
+        lua: As("`open_menu`'s fifth argument, `{ in_window = true }`"),
+        doc: "Keeps a context menu drawn in the window where the runner would show one that does not fit in a popup window of its own (backlog F207).",
+    },
+    Door {
         rust: "Core::set_menu_popups",
         c: No(MENU_POPUPS),
         odin: No(ODIN_IS_C),
@@ -2250,6 +2266,7 @@ mod tests {
         let edge = read(root.join("edge_scroll.rs"));
         let slot = read(root.join("slot.rs"));
         let channel = read(root.join("channel.rs"));
+        let menu = read(root.join("menu.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
@@ -2271,6 +2288,7 @@ mod tests {
                 "Theme" => &theme,
                 "slot" => &slot,
                 "Channel" => &channel,
+                "Menu" => &menu,
                 "WheelFeel" => &scroll,
                 "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,

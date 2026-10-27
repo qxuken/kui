@@ -596,6 +596,7 @@ package kui_c
 #assert(OPTION_AS_ALT_LEFT == 1)
 #assert(OPTION_AS_ALT_RIGHT == 2)
 #assert(OPTION_AS_ALT_BOTH == 3)
+#assert(MENU_IN_WINDOW == 1)
 #assert(FILL_NONE == -1)
 #assert(FILL_REPLAYED == 0)
 #assert(FILL_NOT_KEPT == 1)

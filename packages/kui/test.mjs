@@ -2352,6 +2352,22 @@ test('openMenu draws a menu whose chosen row posts on the target', () => {
   assert.deepEqual(bare.pollEvents(), [], 'no handler, no event');
 });
 
+// A menu held to a size (backlog F207): no taller than `maxHeight`, so
+// thirty rows scroll inside 120 px; no options is the room's, as before.
+test('openMenu holds the menu to maxWidth / maxHeight', () => {
+  const ctx = new Ctx();
+  const view = () => box({}, [box({ onMenu: { kind: 'card' } }, [text('one', { size: 14 })], 'card')]);
+  ctx.frame(400, 300, 1, view());
+  const rows = Array.from({ length: 30 }, (_, i) => ({ label: `Row ${i}` }));
+  const panel = () => ctx.accessTree().nodes.find((n) => n.role === 'menu').rect;
+  assert.equal(ctx.openMenu('card', 20, 20, rows, { maxHeight: 120 }), true);
+  ctx.frame(400, 300, 1, view());
+  assert.ok(Math.abs(panel().h - 120) < 0.5, JSON.stringify(panel()));
+  assert.equal(ctx.openMenu('card', 20, 20, rows.slice(0, 3), { maxWidth: 0, inWindow: true }), true);
+  ctx.frame(400, 300, 1, view());
+  assert.ok(panel().h < 120, 'three rows, no limit: ' + JSON.stringify(panel()));
+});
+
 // A row that is its chord plays it where the keyboard was and posts no
 // `menu` event: the shell around the field hears it (backlog F151).
 test('a replay row plays its chord to the sink instead of posting', () => {

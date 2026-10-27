@@ -43,6 +43,8 @@ was the first bare bump to break an app in five releases).
 - A declared popup window (`WindowKind::Popup`) appears at once on
   Windows, with its first frame, where the OS faded it in over a white
   surface.
+- `Menu` gained `max_size` and `in_window` (backlog F207): a Rust struct
+  literal names them or is built with `Menu::new`.
 
 ### Added
 
@@ -65,6 +67,18 @@ was the first bare bump to break an app in five releases).
   `menu_popup_by_keyboard` on the popup's; `Session::host_window_id`;
   `widgets::MENU_PANEL_PAD` public. C, Odin and Node hosts get it through
   `kui_run` and `runWindowed`, whose runner is kui-native's.
+- **A context menu held to a size, or kept in the window** (backlog
+  F207). `Menu::max_size(w, h)` holds the menu and each of its submenus
+  to `w` by `h` logical px — a row wider is ellipsized, a menu taller
+  scrolls, in the window or in a popup — with `f32::INFINITY` leaving an
+  axis to the room. `Menu::in_window()` keeps a menu drawn in the window
+  where the runner would put one that does not fit in a popup. C:
+  `kui_open_menu_with(ctx, key, x, y, items, count, max_w, max_h, flags)`
+  with `KUI_MENU_IN_WINDOW` (a side of 0 is the room's); Odin:
+  `open_menu_with`; Node: `openMenu(key, x, y, items, {maxWidth,
+  maxHeight, inWindow})`; Lua: `open_menu(key, x, y, items, { max_width =,
+  max_height =, in_window = })`. `widgets::context_menu_within` is the
+  widget with a limit.
 
 ### Fixed
 
@@ -90,6 +104,8 @@ was the first bare bump to break an app in five releases).
   small window, kept only so its last rows could be reached.
 - A menu's point moved in from the window's edge, kept only so the menu
   did not cover the point it was opened at.
+- A long menu cut into "More…" submenus, kept only so it stayed a
+  reasonable height: `max_size` scrolls it at the height you choose.
 
 ## 0.1.0-alpha.68 (2026-10-27)
 

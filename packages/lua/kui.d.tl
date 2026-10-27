@@ -1634,7 +1634,7 @@ global type kui = record
     -- Whether a file dialog asked for is still unanswered.
     awaiting_files: function(): boolean
     -- Opens a context menu on a node at a point.
-    open_menu: function(key: KeyRef, x: number, y: number, items: {any}): boolean
+    open_menu: function(key: KeyRef, x: number, y: number, items: {any}, opts?: {string: any}): boolean
     -- Closes it.
     close_menu: function(): boolean
     -- Asks the driver to resize a window.

@@ -209,7 +209,7 @@
 //! - Clipboard and dialogs: `set_clipboard(text, html)`,
 //!   `set_clipboard_secret(text)`, `request_copy()`, `request_paste()`,
 //!   `awaiting_paste()`, `request_files(opts)`, `awaiting_files()`.
-//! - Menus and windows: `open_menu(key, x, y, items)`, `close_menu()`,
+//! - Menus and windows: `open_menu(key, x, y, items, opts)`, `close_menu()`,
 //!   `set_window_size(window, w, h)`, `focus_window(window)`.
 //! - Declarations: `set_tokens(decl)` replaces the script's token table;
 //!   `add_extension(namespace, path)` loads a C plugin (see below).
@@ -1297,7 +1297,7 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// marked concealed and transient) /
 /// `select_all_in(key)` / `clear_selection()` (one selection
 /// per window, a `selectable` scope's or the focused editor's), the menu
-/// verbs `open_menu(key, x, y, items)` / `close_menu()` (whose chosen row
+/// verbs `open_menu(key, x, y, items, opts)` / `close_menu()` (whose chosen row
 /// comes back as a `menu` event on that node, in its `on_menu` message), the
 /// window requests `set_window_size(window,
 /// w, h)` / `focus_window(window)`, and the two calls of a script that
@@ -1857,21 +1857,43 @@ fn env_table(
     // are taken too). Choosing a row posts the node's `on_menu` message
     // with `menu = { role, item }` in it (nothing, on a node that declares
     // none) and closes the menu (docs/adr/0017-selection-as-a-scope.md).
+    // A fifth argument, `{ max_width =, max_height = }`, holds the menu and
+    // its submenus to a size: a row wider is ellipsized, a menu taller
+    // scrolls; a side left out, or not above 0, is the room's (backlog
+    // F207). `in_window = true` keeps it drawn in the window where the
+    // runner would show one that does not fit in a popup of its own.
     t.set(
         "open_menu",
         lua.create_function(
-            move |_, (key, x, y, items): (mlua::Value, f32, f32, mlua::Table)| {
+            move |_,
+                  (key, x, y, items, opts): (
+                mlua::Value,
+                f32,
+                f32,
+                mlua::Table,
+                Option<mlua::Table>,
+            )| {
                 let mut ui = ui.borrow_mut()?;
                 let Some(target) = key_query(&mut ui, key)? else {
                     return Ok(false);
                 };
                 let (items, stray) = menu_items(&items)?;
                 warn_stray_menu_keys(ui.core(), stray);
-                ui.open_menu(kui_core::Menu::new(
-                    target,
-                    kui_core::Vec2::new(x, y),
-                    items,
-                ));
+                let mut menu = kui_core::Menu::new(target, kui_core::Vec2::new(x, y), items);
+                if let Some(opts) = opts {
+                    let side = |k: &str| -> mlua::Result<Option<f32>> {
+                        Ok(opts.get::<Option<f32>>(k)?.filter(|v| *v > 0.0))
+                    };
+                    let (w, h) = (side("max_width")?, side("max_height")?);
+                    if w.is_some() || h.is_some() {
+                        menu =
+                            menu.max_size(w.unwrap_or(f32::INFINITY), h.unwrap_or(f32::INFINITY));
+                    }
+                    if opts.get::<Option<bool>>("in_window")? == Some(true) {
+                        menu = menu.in_window();
+                    }
+                }
+                ui.open_menu(menu);
                 Ok(true)
             },
         )?,
@@ -9292,6 +9314,46 @@ mod tests {
         assert_eq!(ws.len(), 1, "{ws:?}");
         assert_eq!(ws[0].code, kui_core::diag::AMBIGUOUS_KEY);
         assert!(ws[0].message.contains("\"item\""), "{}", ws[0].message);
+    }
+
+    /// `env.open_menu`'s fifth argument holds the menu to a size (backlog
+    /// F207): `max_height` alone leaves the width to the room, and a menu
+    /// opened without it has no limit.
+    #[test]
+    fn scripts_hold_a_menu_to_a_size() {
+        let mut ext = LuaExtension::from_source(
+            "menu",
+            r#"
+                frames = 0
+                function view(env)
+                  frames = frames + 1
+                  if frames == 2 then
+                    env.open_menu("card", 10, 10, { { label = "Row" } }, { max_height = 120, in_window = true })
+                  elseif frames == 3 then
+                    env.open_menu("card", 10, 10, { { label = "Row" } })
+                  end
+                  return column { column { key = "card", text("one", { size = 14 }) } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Instance::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        assert_eq!(
+            core.menu().expect("open").max_size,
+            Some(Size::new(f32::INFINITY, 120.0))
+        );
+        assert!(core.menu().expect("open").in_window);
+        frame(&mut core, &mut ext);
+        assert_eq!(core.menu().expect("open").max_size, None);
+        assert!(!core.menu().expect("open").in_window);
     }
 
     /// A script opens a context menu with `env.open_menu` and hears the

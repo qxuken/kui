@@ -260,3 +260,53 @@ fn a_tall_bar_menu_stays_under_its_title() {
     let g = core.scroll_geometry(k).unwrap();
     assert!(g.content.h > g.rect.h);
 }
+
+/// The app's own limit (`Menu::max_size`): a menu held to 120 px is that
+/// tall at its point, scrolls, and keeps the keyboard's row in view.
+#[test]
+fn a_menu_held_to_a_height_is_that_tall_at_its_point_and_scrolls() {
+    let mut core = Core::new();
+    let card = frame(&mut core);
+    core.open_menu(Menu::new(card, Vec2::new(40.0, 30.0), rows(40)).max_size(f32::INFINITY, 120.0));
+    frame(&mut core);
+    let (k, r) = panel(&mut core, "Menu");
+    assert_eq!((r.x, r.y), (40.0, 30.0), "it fits, so it is at the point");
+    assert!((r.h - 120.0).abs() < 0.5, "held to the app's height: {r:?}");
+    let g = core.scroll_geometry(k).unwrap();
+    assert!(g.content.h > g.rect.h, "and scrolls");
+    key(&mut core, EditKey::End);
+    let r = panel(&mut core, "Menu").1;
+    assert!(
+        inside(row_rect(&mut core, "Row 39"), r),
+        "End shows its row"
+    );
+}
+
+/// Held to a width, a long row is ellipsized inside it.
+#[test]
+fn a_menu_held_to_a_width_is_no_wider() {
+    let mut core = Core::new();
+    let card = frame(&mut core);
+    let long = MenuItem::new("A recent file with a long path, under a folder under another");
+    core.open_menu(
+        Menu::new(card, Vec2::new(10.0, 10.0), vec![long]).max_size(140.0, f32::INFINITY),
+    );
+    frame(&mut core);
+    let r = panel(&mut core, "Menu").1;
+    assert!(r.w <= 140.5, "held to the app's width: {r:?}");
+}
+
+/// A submenu is held to what its menu is.
+#[test]
+fn a_submenu_is_held_to_its_menus_size() {
+    let mut core = Core::new();
+    let card = frame(&mut core);
+    let items = vec![MenuItem::submenu("Move to", rows(40))];
+    core.open_menu(Menu::new(card, Vec2::new(40.0, 30.0), items).max_size(f32::INFINITY, 150.0));
+    frame(&mut core);
+    let at = row_rect(&mut core, "Move to");
+    hover(&mut core, Vec2::new(at.x + at.w / 2.0, at.y + at.h / 2.0));
+    frame(&mut core);
+    let r = panel(&mut core, "Move to").1;
+    assert!((r.h - 150.0).abs() < 0.5, "{r:?}");
+}
