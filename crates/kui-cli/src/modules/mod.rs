@@ -328,7 +328,11 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     if let Some(name) = NAME.get() {
         kui.set("name", name.as_str())?;
     }
+    // Spelled as `dir` is (`paths::canonical`), so the two compare: on
+    // Windows `current_dir` keeps a short name (`RUNNER~1`) the app's
+    // folder has expanded.
     if let Ok(cwd) = std::env::current_dir() {
+        let cwd = crate::paths::canonical(&cwd).unwrap_or(cwd);
         kui.set("cwd", cwd.to_string_lossy().as_ref())?;
     }
     kui.set("platform", PLATFORM)?;

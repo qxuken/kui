@@ -1781,8 +1781,9 @@ for lua-language-server, and a new runner beside the window's.
   module path as `<dir>/?.lua`, so a project's own modules were "module
   not found". A packed app's folder and the runner's own path were the
   same. The prefix goes wherever the path has a plain spelling (a drive
-  or a share). Found by the first run of the workspace tests on a
-  Windows runner.
+  or a share), and `kui.cwd` is spelled the same way, so a short name
+  (`RUNNER~1`) that `current_dir` keeps no longer makes the two differ.
+  Found by the first run of the workspace tests on a Windows runner.
 
 - **Kit's live line chart stays in its plot** (backlog C153). Its
   sliding layer — the lines, their areas, the x ticks — was a float

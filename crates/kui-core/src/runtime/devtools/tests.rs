@@ -2622,10 +2622,18 @@ fn the_panel_s_captures_answer_the_panel_and_an_app_s_the_app() {
     );
     let out = core.take_pending_events();
     assert!(out.iter().all(|e| !e.is(EventKind::Capture)), "{out:?}");
+    // By the file's name: the stream shows a value escaped, and a Windows
+    // path's backslashes come out doubled.
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap()
+        .to_string();
     assert!(
-        state(&core, |s| s.stream.iter().any(
-            |e| fmt_value(&e.payload).contains(&format!("screenshot saved: {path}"))
-        )),
+        state(&core, |s| s.stream.iter().any(|e| {
+            let shown = fmt_value(&e.payload);
+            shown.contains("screenshot saved: ") && shown.contains(&name)
+        })),
         "the path is in the stream"
     );
     // And under the Perf tab's toolbar: saved, a click on the path copies

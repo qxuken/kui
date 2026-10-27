@@ -88,8 +88,12 @@ jobs:
       # so this is a fingerprint check and not a second compile of the GUI
       # stack. One window at a time: the default of eight at once, cascaded,
       # was measured on a Mac with a display, not on a runner.
+      # Bounded: on windows-2025, with no GPU, the round took 52 minutes
+      # the first time it passed, and a hang would hold the runner for the
+      # job's six hours.
       - name: Smoke the examples in a window
         if: ${{ !cancelled() }}
+        timeout-minutes: 75
         run: cargo run -p kui-devtools --bin smoke -- --windowed --jobs 1
 
       # Needs a C compiler: Xcode's clang on macOS, Visual Studio's `cl` or

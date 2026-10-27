@@ -22,8 +22,21 @@ fn app(name: &str, files: &[(&str, &str)]) -> PathBuf {
     dir
 }
 
-/// Runs `kui <args>` in `dir`, killing it past `secs`.
+/// Runs `kui <args>` in `dir`, killing it past `secs` (times
+/// `KUI_TEST_TIMEOUT_SCALE`, for a slow machine) and saying so.
+///
+/// Its output is read while it runs, a thread per pipe: a pipe nobody
+/// reads holds about 4 KB on Windows (64 on the unixes), and a run that
+/// wrote more blocked on its own write until it was killed here, its
+/// output lost — three tests failed on the first Windows runner that way,
+/// reading as apps that said nothing.
 fn kui(dir: &Path, args: &[&str], secs: u64) -> Output {
+    use std::io::Read;
+    let scale: f64 = std::env::var("KUI_TEST_TIMEOUT_SCALE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1.0);
+    let secs = (secs as f64 * scale).ceil() as u64;
     let mut child = Command::new(KUI)
         .args(args)
         .current_dir(dir)
@@ -31,18 +44,36 @@ fn kui(dir: &Path, args: &[&str], secs: u64) -> Output {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("run kui");
+    fn drain(mut r: impl Read + Send + 'static) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = r.read_to_end(&mut buf);
+            buf
+        })
+    }
+    let stdout = drain(child.stdout.take().unwrap());
+    let stderr = drain(child.stderr.take().unwrap());
     let start = Instant::now();
-    loop {
-        if child.try_wait().unwrap().is_some() {
-            break;
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
         }
         if start.elapsed() > Duration::from_secs(secs) {
             let _ = child.kill();
-            break;
+            eprintln!(
+                "kui {} in {}: killed after {secs} s",
+                args.join(" "),
+                dir.display()
+            );
+            break child.wait().unwrap();
         }
         std::thread::sleep(Duration::from_millis(20));
+    };
+    Output {
+        status,
+        stdout: stdout.join().unwrap(),
+        stderr: stderr.join().unwrap(),
     }
-    child.wait_with_output().unwrap()
 }
 
 fn out(o: &Output) -> String {
