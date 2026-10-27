@@ -2352,7 +2352,7 @@ test('openMenu draws a menu whose chosen row posts on the target', () => {
   assert.deepEqual(bare.pollEvents(), [], 'no handler, no event');
 });
 
-// A span's background padding (backlog F226): `bgPad` widens the
+// A span's background padding (backlog F227): `bgPad` widens the
 // background at each end and moves no glyph; a bad value is refused.
 test('a span\'s bgPad widens its background and nothing else', () => {
   const bgRect = (pad) => {

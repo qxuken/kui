@@ -2874,11 +2874,26 @@ impl PendingCapture {
                 RenderError::Validation
             }
         };
-        if self.mapped.load(std::sync::atomic::Ordering::Acquire) == MAP_PENDING {
+        // Polled until this readback's own callback has run. The device
+        // is the process's, and a poll runs the callbacks it collected
+        // after letting go of the device: a capture on another thread may
+        // have collected this one's and not run it yet, while this
+        // thread's poll, finding nothing left to wait for, returns — read
+        // as a failed readback on Mesa's software Vulkan with tests
+        // capturing in parallel (backlog F225). A failed map, a lost
+        // device or the deadline ends it.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while self.mapped.load(std::sync::atomic::Ordering::Acquire) == MAP_PENDING
+            && !self.gpu.lost()
+            && std::time::Instant::now() < deadline
+        {
             let _ = device.poll(wgpu::PollType::Wait {
                 submission_index: None,
-                timeout: None,
+                timeout: Some(std::time::Duration::from_millis(100)),
             });
+            if self.mapped.load(std::sync::atomic::Ordering::Acquire) == MAP_PENDING {
+                std::thread::yield_now();
+            }
         }
         if self.mapped.load(std::sync::atomic::Ordering::Acquire) != MAP_DONE {
             return Err(failed(&self.gpu));

@@ -339,10 +339,10 @@ mod platform {
             return plasma_path();
         }
         let gsettings = |schema: &str, key: &str| -> Option<String> {
-            let out = std::process::Command::new("gsettings")
-                .args(["get", schema, key])
-                .output()
-                .ok()?;
+            let out = crate::spawn::output(
+                std::process::Command::new("gsettings").args(["get", schema, key]),
+            )
+            .ok()?;
             out.status
                 .success()
                 .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())

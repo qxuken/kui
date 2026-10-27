@@ -143,7 +143,7 @@ use crate::{Result, err, value_of};
 /// len·2^32) — for a `$name` the encoder's map does not hold: the core
 /// resolves it, an extension's exported table among the ones it reads
 /// (backlog F207). And, in the same unreleased version, a span carries its
-/// background's padding after its size (`bgPad`, backlog F226).
+/// background's padding after its size (`bgPad`, backlog F227).
 pub const VERSION: u32 = 28;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a

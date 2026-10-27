@@ -474,7 +474,7 @@ pub struct Span<'a> {
     /// selection beside a highlight — neither paints over the other: the
     /// padding stops at the edge they share, and between two that are
     /// apart by less than their padding, each takes its share of the gap
-    /// (backlog F226).
+    /// (backlog F227).
     pub bg_pad: f32,
     /// The span's own face, in place of the paragraph's: inline `code` in
     /// `FontFamily::Mono` inside a sans line. `None` is the paragraph's.

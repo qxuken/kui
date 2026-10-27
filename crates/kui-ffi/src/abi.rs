@@ -240,7 +240,7 @@
 ///   C125) and `kui_scale` (backlog C127), new functions.
 /// - ABI 40: `bg_pad` appended to `KuiSpan` (64 bytes on 64-bit, from
 ///   56; spans travel as an array, so the stride moved): a background's
-///   padding past its glyphs (backlog F226). And `kui_open_menu_with` with
+///   padding past its glyphs (backlog F227). And `kui_open_menu_with` with
 ///   `KUI_MENU_IN_WINDOW` (backlog F210), a new function, which came
 ///   after alpha.68 at 39.
 pub const KUI_ABI_VERSION: u32 = 40;

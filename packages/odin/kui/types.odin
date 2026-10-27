@@ -171,7 +171,7 @@ Span :: struct {
 	size:            f32,
 	font:            Font,
 	// How far bg reaches past the first and last glyphs, px, at the two
-	// ends of the rect it is drawn in; 0 none. Paint only (backlog F226).
+	// ends of the rect it is drawn in; 0 none. Paint only (backlog F227).
 	bg_pad:          f32,
 }
 

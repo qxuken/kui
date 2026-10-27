@@ -1,4 +1,4 @@
-//! A span background's padding (backlog F226, from Carnet's selection):
+//! A span background's padding (backlog F227, from Carnet's selection):
 //! `Span::bg_pad` widens the two ends of the rect a background is drawn
 //! in, and nothing else — not the glyphs, not the layout, not the rect's
 //! middle where spans of one colour merge — and stops where it meets

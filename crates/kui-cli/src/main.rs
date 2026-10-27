@@ -725,9 +725,7 @@ fn open_book(url: &str) -> Result<i32, String> {
     );
     match std::env::var("KUI_BROWSER").ok().filter(|b| !b.is_empty()) {
         Some(cmd) => {
-            let status = std::process::Command::new(&cmd)
-                .arg(url)
-                .status()
+            let status = kui_native::spawn::status(std::process::Command::new(&cmd).arg(url))
                 .map_err(|e| format!("KUI_BROWSER {cmd}: {e}"))?;
             if !status.success() {
                 return Err(format!("KUI_BROWSER {cmd} {url}: {status}"));

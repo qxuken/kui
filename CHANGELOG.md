@@ -66,11 +66,11 @@ was the first bare bump to break an app in five releases).
   surface.
 - `Menu` gained `max_size` and `in_window` (backlog F210): a Rust struct
   literal names them or is built with `Menu::new`.
-- `Span` gained `bg_pad` (backlog F226): a Rust struct literal names it or
+- `Span` gained `bg_pad` (backlog F227): a Rust struct literal names it or
   is built with `Span::new`.
 - C's ABI is 40: `KuiSpan` gained `bg_pad` (64 bytes on 64-bit, from 56;
   spans travel as an array, so the stride moved). Recompile; zeroed, a
-  span's background is flush with its glyphs, as it was (backlog F226).
+  span's background is flush with its glyphs, as it was (backlog F227).
 
 The failure is the world's — a missing file, a refused connection, a
 file that is not JSON — not a bug in the line that asked, so a traceback
@@ -91,6 +91,22 @@ is a line per message in the app's union, the `…Msg<T>` helper Kit
 already generated for each event.
 
 ### Added
+
+- **One child process started at a time, whichever thread asks**
+  (backlog F223): `kui_native::spawn` — `spawn`, `output`, `status` —
+  std's own with the start under one process-wide lock, or under the
+  host's spawner when it set one (`set_spawner`, F222, now in the same
+  module and still at the crate's root). Everything kui starts goes
+  through it: the runner's `kui.process`, from the app's thread and from
+  every worker's, the tools `show_in_folder` and `open_external` run,
+  the devtools' "open folder". An app's own spawns beside kui's take it
+  too. On macOS a pipe is made and marked close-on-exec in two calls,
+  and a child started between them keeps the other spawn's ends for its
+  life.
+
+  *What you can delete:* a lock of the app's own around its spawns,
+  kept only so they did not race each other — `kui_native::spawn::spawn`
+  is that lock.
 
 - **A host's way of starting children, for kui's** (backlog F222,
   from kawoosh): `kui_native::set_spawner(spawn)` starts the tools
@@ -156,7 +172,7 @@ already generated for each event.
   maxHeight, inWindow})`; Lua: `open_menu(key, x, y, items, { max_width =,
   max_height =, in_window = })`. `widgets::context_menu_within` is the
   widget with a limit.
-- **Air around a span's background** (backlog F226, from Carnet's
+- **Air around a span's background** (backlog F227, from Carnet's
   selection): `bg_pad` widens the two ends of the rect a span's
   background is drawn in, so a selection or an inline `code` no longer
   sits flush on its first and last letters. Only the ends: spans of one
@@ -220,6 +236,23 @@ already generated for each event.
   the live view go; it lets it go first now. The hidden panel was right
   already, and is tested beside it.
 
+- **A capture reads its frame back while another thread captures**
+  (backlog F225, from PR #7's CI): the capture device is the process's,
+  and a readback's wait polled it once — when another thread's poll had
+  collected its callback and not run it yet, the wait returned with the
+  frame unread, "the GPU could not read the frame back". It polls until
+  its own callback has run now, ten seconds at the most.
+- **Two `kui check`s at once agree** (backlog F224, from PR #7's CI):
+  every check writes kui's declarations into one folder a version before
+  it reads them, truncating each file first, so a check that read
+  `kui.d.tl` while another wrote it reported every `kui.` name unknown.
+  Each file is written beside itself and renamed over now, and not at all
+  when it holds the text already.
+- **A `kui.process.run` in a worker no longer hangs on a child another
+  thread started** (backlog F223): on macOS a `kui.process.spawn` from
+  the app's thread could take the write end of a worker's `run`'s pipe,
+  and the `run` waited for as long as that child lived. Every start is
+  under one lock now.
 - **`show_in_folder` selects on Linux, and `open_external` shows a
   folder on macOS** (backlog F222, from kawoosh): a Linux desktop's file
   manager is asked over D-Bus (`FileManager1.ShowItems`) to select the
@@ -227,7 +260,7 @@ already generated for each event.
   on macOS is opened in Finder, so a bundle (`X.app`) is shown as the
   folder it is where `open` ran it.
 - **`open_external` and `show_in_folder` take a path with `/` in it on
-  Windows** (backlog F225, from Carnet). `explorer` reads
+  Windows** (backlog F226, from Carnet). `explorer` reads
   `C:\Users\me\Notes/attachments/report.pdf` — an app's folder joined to
   a Markdown link's path — as no path at all, and opened Documents. A
   target that is not a URL has every `/` made `\` before the command is

@@ -465,7 +465,7 @@ extern "C" {
  *
  * ABI 40 appends bg_pad to KuiSpan (its 64-bit size goes from 56 to 64;
  * spans travel as an array, so the stride moved): how far a span's
- * background reaches past its first and last glyphs (backlog F226).
+ * background reaches past its first and last glyphs (backlog F227).
  * Recompile; zeroed, a background is flush with its glyphs, as it was.
  */
 #define KUI_ABI_VERSION 40u

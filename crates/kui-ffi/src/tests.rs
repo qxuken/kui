@@ -3165,7 +3165,7 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 
-    /// `KuiSpan.bg_pad` crosses the boundary (backlog F226): the span's
+    /// `KuiSpan.bg_pad` crosses the boundary (backlog F227): the span's
     /// background is wider by the padding at each end; zeroed, it is flush
     /// with its glyphs.
     #[test]

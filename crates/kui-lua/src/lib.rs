@@ -4007,7 +4007,7 @@ struct SpanPart {
     /// meets.
     bg_radius: f32,
     /// `bg_pad`: the background past its first and last glyphs, logical
-    /// px (backlog F226).
+    /// px (backlog F227).
     bg_pad: f32,
     /// `family` (a stock name or an installed family's) or `font` (a
     /// handle, which wins): the span's own face.
@@ -10307,7 +10307,7 @@ mod tests {
         assert_eq!(solids, 2, "a background and an underline");
     }
 
-    /// A span's `bg_pad` reaches the core (backlog F226): its background
+    /// A span's `bg_pad` reaches the core (backlog F227): its background
     /// is wider by the padding at each end, and one without it is flush.
     #[test]
     fn a_span_s_bg_pad_widens_its_background() {
