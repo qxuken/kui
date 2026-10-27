@@ -226,12 +226,13 @@ jobs:
       # which zig's 2.28 stubs do not have. The addon is a shared library
       # and never met it; alpha.68's first tag run did. On a user's machine
       # libasound comes from their distribution, built against their glibc.
-      # `rustc` passes the flag to the final link alone, so no dependency is
+      # `cargo-zigbuild rustc` (not `cargo zigbuild rustc`: `zigbuild` is its
+      # build verb) passes the flag to the final link alone, so no dependency is
       # rebuilt for it.
       - name: Build the runner (Linux, glibc 2.28 floor)
         if: runner.os == 'Linux'
         run: |
-          cargo zigbuild rustc -p kui-cli --bin kui --release --target "${{ matrix.target }}.2.28" \
+          cargo-zigbuild rustc -p kui-cli --bin kui --release --target "${{ matrix.target }}.2.28" \
             -- -C link-arg=-Wl,--allow-shlib-undefined
 
       - name: Build the runner
