@@ -1930,6 +1930,8 @@ impl<'a> Ui<'a> {
     pub fn finish(self) {
         let Ui { core, filler, .. } = self;
         core.perf_build_done();
+        core.check_unclosed();
+        core.check_layout_misses();
         // Not in the devtools' own window: nothing the host or an
         // extension declares there is built.
         if let Some(filler) = filler {

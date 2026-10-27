@@ -1259,6 +1259,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         clip_count: usize => "size_t",
         textures: *const KuiTextureDraw => "const KuiTextureDraw *",
         texture_count: usize => "size_t",
+        atlas_dirty_rect: [u32; 4] => "uint32_t *",
     });
     abi_out_struct!(o, KuiDrawData);
     abi_struct!(o, KuiFragmentDraw {

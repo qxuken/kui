@@ -71,6 +71,19 @@ was the first bare bump to break an app in five releases).
 - C's ABI is 40: `KuiSpan` gained `bg_pad` (64 bytes on 64-bit, from 56;
   spans travel as an array, so the stride moved). Recompile; zeroed, a
   span's background is flush with its glyphs, as it was (backlog F227).
+  The same ABI appends `atlas_dirty_rect` to `KuiDrawData` (136 bytes on
+  64-bit, from 120; backlog F228), an [out] struct written no further
+  than the size you reserved.
+- **Odin's openers are `@(require_results)`** (backlog F230): `box`,
+  `column`, `row`, `radio_group`, `devtools_tab_open`, `fragment_open` and
+  `fragment_open_with` called bare, as a statement, no longer compile.
+  Such a call left its node open to the end of the enclosing block, so
+  everything after it was its child: write `if kui.box(ui, spec) { }`, or
+  `kui.rect(ui, spec)` for a box with no children.
+- A view that returns with nodes still open raises `unclosed-node`, and a
+  `layout_of` on a node that declares no `on_layout` raises
+  `layout-of-without-handler`, where both said nothing (backlog F230,
+  F231). Diagnostics only: what is drawn is unchanged.
 
 The failure is the world's — a missing file, a refused connection, a
 file that is not JSON — not a bug in the line that asked, so a traceback
@@ -92,6 +105,31 @@ already generated for each event.
 
 ### Added
 
+- **The atlas uploads what changed** (backlog F228, from Replicator
+  Bloom's wishlist): a new glyph re-uploaded the whole page, 4 MB at
+  1024², in kui-wgpu and in every host drawing `kui_draw_data`.
+  `GlyphAtlas::dirty_rect()` is the union of what was written since the
+  last upload (the whole page when `epoch` moved) and `mark_uploaded()`
+  clears it; kui-wgpu uploads that rect alone, and C has it as
+  `KuiDrawData.atlas_dirty_rect`.
+- **The host loop, written down** (backlog F229): kui.h's "The host
+  loop" section gives a host without `kui_run` the order — input, drain,
+  build, drain, draw — what only the second drain hears (`on_resize`,
+  `on_hover` under a still pointer, `on_layout`, `on_query`, `on_range`,
+  and the answers to what was asked between frames), when to build once
+  more, and `kui_frame_unchanged` under `kui_set_frame_trace` as the sign
+  to skip a draw.
+- **`unclosed-node` and `layout-of-without-handler`** (backlog F230,
+  F231): the first names the innermost node a view left open, whose
+  missing close put every later node, the core's own menu and devtools
+  panel included, inside it; the second says why `layout_of` answered
+  nothing — the node declares no `on_layout`. In every binding, with
+  diagnostics on. **`kui.rect`** in Odin: a box with no children, opened
+  and closed in one call.
+- **Beside another Rust library, link the shared one** (backlog F232):
+  the C and Odin packs' READMEs, the Odin README and kui-ffi's README say
+  so, and why — every Rust archive carries its own standard library, so
+  two collide at `rust_eh_personality`.
 - **One child process started at a time, whichever thread asks**
   (backlog F223): `kui_native::spawn` — `spawn`, `output`, `status` —
   std's own with the start under one process-wide lock, or under the
@@ -187,6 +225,11 @@ already generated for each event.
 
 ### Fixed
 
+- **Two checks in one process no longer trip over each other's
+  declarations** (backlog F240): F224's part file was named for the
+  process, so two threads of one — two `kui check`s a host ran at once —
+  wrote the same part, and one failed with "No such file or directory".
+  Each write has a part of its own.
 - **Kit's tokens paint a Node view's own boxes** (backlog F207, from the
   kui-node-template field report): `<box bg="$kitPanel">` paints the
   skin's panel and follows a skin switch, where the encoder resolved a
@@ -288,6 +331,11 @@ already generated for each event.
   `show_in_folder` on Windows got one with `\` alone.
 - Spaces, or an inline box, around a highlighted run, kept only so its
   background did not sit flush on its letters.
+- A whole-page atlas upload on every `atlas_dirty`, or a shadow copy of
+  the page diffed to find the changed rows: upload `atlas_dirty_rect`.
+- A probe that walked the access tree, or opened and closed boxes one by
+  one, to find which node a missing close swallowed: `unclosed-node`
+  names it.
 
 ## 0.1.0-alpha.68 (2026-10-27)
 

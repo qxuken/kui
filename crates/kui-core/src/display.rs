@@ -17,10 +17,11 @@
 //! ui.finish();
 //!
 //! let (list, atlas) = core.output();
-//! if atlas.dirty {
-//!     // Upload `atlas.pixels` (RGBA, `atlas.size` square). When
-//!     // `atlas.epoch` moved, the page was replaced: re-create the texture.
-//!     atlas.dirty = false;
+//! if let Some([x, y, w, h]) = atlas.dirty_rect() {
+//!     // Upload that rect of `atlas.pixels` (RGBA, `atlas.size` square,
+//!     // rows of `atlas.size * 4` bytes). When `atlas.epoch` moved, the
+//!     // page was replaced: re-create the texture; the rect is all of it.
+//!     atlas.mark_uploaded();
 //! }
 //! for quad in &list.quads {
 //!     let clip = list.clip_of(quad); // physical px, like `quad.rect`

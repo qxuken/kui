@@ -302,3 +302,56 @@ fn a_shared_capture_renderer_follows_each_core_s_atlas() {
         "the shared renderer kept a stale page"
     );
 }
+
+/// A word in a 60x20 frame at scale 2, for the partial upload below.
+fn word(core: &mut Core, text: &str) {
+    let mut ui = core.frame(Size::new(60.0, 20.0), 2.0);
+    ui.configure_root(NodeSpec::column().fill().bg(Color::hex(0x000000ff)));
+    ui.text(text, TextStyle::new(10.0).color(Color::WHITE));
+    ui.finish();
+}
+
+/// The core's own renderer uploads only the atlas's dirty rect once it
+/// holds the page (backlog F228): a glyph added on the second frame lands
+/// in its texture exactly as a whole upload puts it in a fresh one.
+#[test]
+fn a_new_glyph_is_uploaded_as_its_rect_and_draws_as_a_whole_upload_does() {
+    let Some(gpu) = gpu() else { return };
+    let format = wgpu::TextureFormat::Rgba8Unorm;
+    let device = gpu.device();
+    let target = device.create_texture(&wgpu::TextureDescriptor {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        ..target_desc(120, 40)
+    });
+    let mut core = Core::new();
+    let mut own = Renderer::windowless(&gpu, format).expect("a renderer");
+    word(&mut core, "Hi");
+    let (dl, atlas) = core.output();
+    own.render_to(dl, atlas, &target).expect("drawn");
+    let epoch = atlas.epoch;
+
+    word(&mut core, "Hi WX");
+    let (dl, atlas) = core.output();
+    assert_eq!(atlas.epoch, epoch, "the same page, so a partial upload");
+    let [_, _, w, h] = atlas.dirty_rect().expect("two new glyphs");
+    assert!(
+        w < atlas.size || h < atlas.size,
+        "a rect, not the page: {w}x{h} of {}",
+        atlas.size
+    );
+    own.render_to(dl, atlas, &target).expect("drawn");
+    assert_eq!(atlas.dirty_rect(), None, "uploaded and cleared");
+
+    // The owner's texture, current by `rev`, is not uploaded again here.
+    let partial = own.capture(dl, atlas).expect("a capture");
+    let mut fresh = Renderer::windowless(&gpu, format).expect("a renderer");
+    let whole = fresh.capture(dl, atlas).expect("a capture");
+    assert!(
+        partial.rgba.iter().any(|&b| b != 0 && b != 255),
+        "the word drew something"
+    );
+    assert!(
+        partial.rgba == whole.rgba,
+        "the partial upload drew what a whole one does"
+    );
+}

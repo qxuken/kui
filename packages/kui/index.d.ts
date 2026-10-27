@@ -1514,6 +1514,17 @@ export type WarningCode =
    *  inside the extension's last open node. The extension has an `open` without
    *  its `close`. */
   | 'unbalanced-extension'
+  /** The view returned with nodes still open: an `open` without its `close` —
+   *  in Odin, a bare `kui.box(ui, spec)` where `if kui.box(ui, spec) { }` was
+   *  meant. Layout closes them, but every node declared after the forgotten
+   *  close, the core's own menu and devtools panel included, landed inside the
+   *  open one. Raised once per innermost open node. */
+  | 'unclosed-node'
+  /** `layout_of` was asked for a node that declares no `on_layout`, and
+   *  answered nothing: it keeps the rects of those nodes alone. Declare
+   *  `on_layout` on it, or read every node's rect from the inspection snapshot
+   *  (`set_inspect` and `nodes`). Raised once per key. */
+  | 'layout-of-without-handler'
   /** An extension's `view` returned an error. The message is drawn in red where
    *  the fill would have been, and reported here once per extension and
    *  component rather than once per frame. */

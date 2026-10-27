@@ -607,6 +607,18 @@ Platforms: ($platforms | str join ', ').
 
 ($use)
 
+## Beside another Rust library
+
+Every Rust static library carries its own copy of Rust's standard
+library, and this one also carries wgpu and winit for `kui_run`. Linked
+into one program with another \(wgpu-native's `libwgpu_native.a`, say), the
+linker stops at the symbols both define: `rust_eh_personality`, and on
+macOS `RawWindowMetalLayer`'s classes. Link the shared library instead;
+each keeps its copies to itself. A build without the runner \(`nu
+scripts/pack-ffi.nu --no-runner` in the repository) leaves wgpu and winit
+out, for a host that brings its own window, but not the standard library,
+so beside another Rust archive the shared kind is still the one.
+
 kui.h's `KUI_ABI_VERSION` is what this library answers from
 `kui_abi_version\(\)`; a program built against another header refuses it.
 "

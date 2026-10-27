@@ -1,7 +1,10 @@
 //! Diagnostics as data: the misconfigurations that fail silently become
 //! warnings a driver drains — each once — and the stock widgets raise none.
 
-use kui_core::diag::{DUPLICATE_KEY, GROW_WEIGHT_IGNORED, TRANSITION_AUTO_KEY};
+use kui_core::diag::{
+    DUPLICATE_KEY, GROW_WEIGHT_IGNORED, LAYOUT_OF_WITHOUT_HANDLER, TRANSITION_AUTO_KEY,
+    UNCLOSED_NODE,
+};
 use kui_core::testing::codes;
 use kui_core::{Core, Key, NodeSpec, Size, Sizing, Value, widgets};
 
@@ -173,4 +176,85 @@ fn two_titlebars_under_one_parent_are_a_real_duplicate() {
     widgets::titlebar(&mut ui, "two");
     ui.finish();
     assert!(codes(&core.take_warnings()).contains(&DUPLICATE_KEY));
+}
+
+/// A view that returns with a node open says so (backlog F230): the
+/// innermost open node is named, once, and a balanced view — with the
+/// devtools dock wrapping it too — says nothing.
+#[test]
+fn a_view_that_leaves_a_node_open_warns_once() {
+    let build = |core: &mut Core, close: bool| {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.open(NodeSpec::row());
+        let inner = ui.open(NodeSpec::column());
+        ui.leaf(NodeSpec::column().size(10.0, 10.0));
+        if close {
+            ui.close();
+            ui.close();
+        }
+        ui.finish();
+        inner
+    };
+    let mut core = Core::new();
+    build(&mut core, true);
+    assert!(core.take_warnings().is_empty());
+    let inner = build(&mut core, false);
+    let ws = core.take_warnings();
+    assert_eq!(codes(&ws), [UNCLOSED_NODE]);
+    assert_eq!(ws[0].key, inner.str(UNCLOSED_NODE));
+    assert!(
+        ws[0].message.contains("2 nodes still open"),
+        "{}",
+        ws[0].message
+    );
+    build(&mut core, false);
+    assert!(core.take_warnings().is_empty(), "once");
+
+    let mut docked = Core::new();
+    docked.set_devtools(true);
+    build(&mut docked, true);
+    build(&mut docked, true);
+    assert!(
+        !codes(&docked.take_warnings()).contains(&UNCLOSED_NODE),
+        "the dock's container is not the view's"
+    );
+    build(&mut docked, false);
+    assert!(codes(&docked.take_warnings()).contains(&UNCLOSED_NODE));
+}
+
+/// `layout_of` on a node with no `on_layout` says why it answered nothing
+/// (backlog F231); one that declared it and was not laid out yet — its
+/// first frame — is the documented `None` and says nothing.
+#[test]
+fn layout_of_a_node_without_on_layout_warns_once() {
+    let mut core = Core::new();
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        let plain = ui.leaf_keyed("plain", NodeSpec::column().size(10.0, 10.0));
+        let watched = ui.leaf_keyed(
+            "watched",
+            NodeSpec::column().size(20.0, 20.0).on_layout("laid"),
+        );
+        // Read during the build: on the first frame, before either is laid
+        // out.
+        ui.layout_of(watched);
+        ui.layout_of(plain);
+        ui.finish();
+        (plain, watched)
+    };
+    let (plain, watched) = build(&mut core);
+    let ws = core.take_warnings();
+    assert_eq!(
+        codes(&ws),
+        [LAYOUT_OF_WITHOUT_HANDLER],
+        "the plain node only"
+    );
+    assert_eq!(ws[0].key, plain);
+    assert!(core.layout_of(watched).is_some());
+    assert!(core.layout_of(plain).is_none());
+    build(&mut core);
+    assert!(
+        !codes(&core.take_warnings()).contains(&LAYOUT_OF_WITHOUT_HANDLER),
+        "once per key"
+    );
 }

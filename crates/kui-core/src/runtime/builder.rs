@@ -392,6 +392,39 @@ impl Core {
         v
     }
 
+    /// Raises `unclosed-node` when the view returned with nodes still open
+    /// (backlog F230): read before the core builds its own fills, panel
+    /// and menu, which would land inside them. The host's floor is the
+    /// root, or the devtools dock's app container when it wraps the view.
+    pub(crate) fn check_unclosed(&mut self) {
+        let floor = if self.dt_app.is_some() {
+            self.ns_depth
+        } else {
+            1
+        };
+        let open = self.stack.len().saturating_sub(floor);
+        if open > 0 && !self.dt_window {
+            let key = self.tree.keys[self.current() as usize];
+            self.diag.raise(crate::diag::unclosed_node(key, open));
+        }
+    }
+
+    /// Raises `layout-of-without-handler` for each key `layout_of` found
+    /// nothing for that this frame declares with no `on_layout` (backlog
+    /// F231): a node that declared one and was not laid out yet — its
+    /// first frame — is the documented `None`, and says nothing.
+    pub(crate) fn check_layout_misses(&mut self) {
+        let misses = std::mem::take(self.layout_misses.get_mut());
+        for key in misses {
+            let Some(i) = self.tree.keys.iter().position(|k| *k == key) else {
+                continue;
+            };
+            if self.tree.specs[i].events().on_layout().is_none() {
+                self.diag.raise(crate::diag::layout_of_without_handler(key));
+            }
+        }
+    }
+
     /// Events raised outside `handle_input`: the `resize` a changed
     /// viewport produced at `begin_frame`, and `on_hover` enter/leave
     /// caused by a finished frame changing what sits under a still cursor.

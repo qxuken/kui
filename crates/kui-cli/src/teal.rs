@@ -105,7 +105,7 @@ pub fn write_types(dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// `text` at `path`, written beside it under a name of this process's and
+/// `text` at `path`, written beside it under a name of this call's and
 /// renamed over it: a reader sees the file before or the file after.
 /// Nothing written when it holds the text already, as a second check of
 /// one version finds it.
@@ -113,8 +113,13 @@ fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
     if std::fs::read(path).is_ok_and(|b| b == text.as_bytes()) {
         return Ok(());
     }
+    // The process and a count: two threads of one process — two checks,
+    // or the tests — each write a part of their own, where one renamed
+    // the other's away.
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut part = path.as_os_str().to_owned();
-    part.push(format!(".{}.part", std::process::id()));
+    part.push(format!(".{}.{n}.part", std::process::id()));
     let part = PathBuf::from(part);
     std::fs::write(&part, text)?;
     std::fs::rename(&part, path).inspect_err(|_| {

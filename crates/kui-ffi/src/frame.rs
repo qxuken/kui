@@ -1502,9 +1502,10 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
             time: dl.time,
             textures: texture_draws,
             texture_count,
+            atlas_dirty_rect: atlas.dirty_rect().unwrap_or_default(),
             ..Default::default()
         };
-        atlas.dirty = false;
+        atlas.mark_uploaded();
         write_out(out, data)
     })
 }

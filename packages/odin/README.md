@@ -56,6 +56,29 @@ nu scripts/odin.nu gen --check              # fail if a rerun would change anyth
 nu scripts/odin.nu slots                    # the extension contract across Odin, C and Rust
 ```
 
+## Containers, and a layout that looks wrong
+
+A container is always `if kui.box(ui, spec) { ... }` (and `column`, `row`,
+`radio_group`, `fragment_open`): it closes at the end of the `if`'s block
+through `@(deferred_in)`. Two spellings compile and go wrong:
+
+- a bare `kui.box(ui, {bg = ...})` stays open to the end of the enclosing
+  block, and every sibling after it lands inside it. The openers are
+  `@(require_results)`, so this one no longer compiles; a box with no
+  children is `kui.rect(ui, spec)`, opened and closed in one call.
+- `if !kui.column(ui, spec) do return` closes the column at once, since
+  the `if` is its block, so its children land in the parent. An opener is
+  always true: there is nothing to return from.
+
+When the layout looks wrong, `kui.set_diagnostics(ui, true)` and
+`kui.take_warnings(ui)` say what the core noticed: `unclosed-node` for a
+view that returned with a node open, `layout-of-without-handler` for a
+`layout_of` on a node that declares no `on_layout` (it keeps no rect for
+those). `kui.find` reads the access tree, which holds the nodes assistive
+technology is told about, by name; every node's rect is in
+`kui.set_inspect(ui, true)` and then `kui.nodes(ui)` after a frame: each
+with its key, parent, depth, kind, label and rect.
+
 `odin` comes from PATH, or set `ODIN` (and `ODIN_ROOT` to its directory
 if your environment points it at another Odin). The binding is checked
 on Odin dev-2026-10, CI's pin, and builds on dev-2026-09; dev-2026-04
@@ -85,6 +108,16 @@ odin build app -collection:kui=$ODIN_PACK -define:KUI_SHARED=true \
 The static build is the default and takes the system libraries its
 `link.txt` lists (ALSA's `asound` on Linux, the frameworks on macOS); on a
 platform the pack does not carry, `KUI_LIB` applies as it does here.
+
+**Linking another Rust static library? Use the shared one.** Every Rust
+archive carries its own standard library, and kui's carries wgpu and
+winit for `run` as well, so a program that also links wgpu-native's
+`libwgpu_native.a` (`vendor:wgpu`) stops at the linker with
+`duplicate symbol '_rust_eh_personality'` and, on macOS,
+`RawWindowMetalLayer`'s classes. `-define:KUI_SHARED=true` with the rpath
+above keeps each library's copies to itself. Building kui without the
+runner (`nu scripts/pack-ffi.nu --no-runner`) drops wgpu and winit for a
+host with its own window, but not the standard library.
 
 The Linux and macOS packs are checked as packed, by `nu scripts/pack-ffi.nu
 verify` on each release's runners: the counter built against each kind,

@@ -149,11 +149,21 @@ impl Core {
     /// the event's edge trigger anyway. The query
     /// shape of the `layout` event: the same numbers, read during the next
     /// build with no event, no tag and no model field. `None` for a key
-    /// that did not declare `on_layout` last frame; read during a build it
-    /// describes the previous frame, like [`Self::scroll_geometry`].
+    /// that did not declare `on_layout` last frame — with diagnostics on,
+    /// a node that declares none raises `layout-of-without-handler` when
+    /// the frame finishes; read during a build it describes the previous
+    /// frame, like [`Self::scroll_geometry`].
     pub fn layout_of(&self, key: Key) -> Option<Rect> {
         let r = self.layout_of_raw(key);
         self.note_read(|| replay::Read::Layout(key, r));
+        if r.is_none() && self.diag.enabled {
+            // Bounded: a view that asks for every row of a long list
+            // before its first layout says so in the first few.
+            let mut misses = self.layout_misses.borrow_mut();
+            if misses.len() < 64 && !misses.contains(&key) {
+                misses.push(key);
+            }
+        }
         r
     }
 

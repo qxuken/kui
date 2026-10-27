@@ -1115,7 +1115,9 @@ emit_door :: proc(g: ^Gen, f: ^Function) {
 		g.used[fmt.tprintf("opener.%s", f.name)] = true
 		if f.ret != "void" || len(rets) > 0 do fail("OPENERS %s: an opener returns nothing in C", f.name)
 		fmt.sbprintln(b, "// Opens a node: `if` it, and the block's end closes it.")
-		fmt.sbprintfln(b, "@(deferred_in = close_%s)", raw_name(f.name))
+		// A bare call, its result dropped, would leave the node open to
+		// the end of the enclosing block (backlog F230): refused.
+		fmt.sbprintfln(b, "@(deferred_in = close_%s, require_results)", raw_name(f.name))
 		append(&rets, D_Ret{"result", "bool", ""})
 		result_set = fmt.tprintf("result = true")
 		append(&post, call)

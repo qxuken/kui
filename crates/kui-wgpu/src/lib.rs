@@ -1842,23 +1842,32 @@ impl Renderer {
         } else {
             atlas.id() != self.atlas_id || atlas.rev != self.atlas_rev
         };
-        if changed || self.atlas_epoch != atlas.epoch {
+        let same_page = self.atlas_epoch == atlas.epoch && self.atlas_id == atlas.id();
+        if changed || !same_page {
+            // The core's own renderer, on the page it uploaded last, sends
+            // only what changed since (backlog F228): a new glyph is its
+            // rect, not the 4 MB page. Rows are the page's, so the rect is
+            // read in place.
+            let [x, y, w, h] = match atlas.dirty_rect() {
+                Some(rect) if owns && same_page => rect,
+                _ => [0, 0, atlas.size, atlas.size],
+            };
             self.gpu.queue().write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.atlas_tex,
                     mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
+                    origin: wgpu::Origin3d { x, y, z: 0 },
                     aspect: wgpu::TextureAspect::All,
                 },
                 &atlas.pixels,
                 wgpu::TexelCopyBufferLayout {
-                    offset: 0,
+                    offset: (u64::from(y) * u64::from(atlas.size) + u64::from(x)) * 4,
                     bytes_per_row: Some(atlas.size * 4),
-                    rows_per_image: Some(atlas.size),
+                    rows_per_image: Some(h),
                 },
                 wgpu::Extent3d {
-                    width: atlas.size,
-                    height: atlas.size,
+                    width: w,
+                    height: h,
                     depth_or_array_layers: 1,
                 },
             );
@@ -2336,7 +2345,7 @@ impl Renderer {
             return Err(RenderError::Skip);
         }
         self.sync_atlas(atlas, true);
-        atlas.dirty = false;
+        atlas.mark_uploaded();
         let prep = self.prepare(dl);
 
         // Acquiring the swapchain image is where vsync backpressure blocks;
@@ -2410,7 +2419,7 @@ impl Renderer {
         self.config.width = target.width();
         self.config.height = target.height();
         self.sync_atlas(atlas, true);
-        atlas.dirty = false;
+        atlas.mark_uploaded();
         let prep = self.prepare(dl);
         let view = target.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
