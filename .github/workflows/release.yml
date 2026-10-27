@@ -4,6 +4,7 @@
 #           │     each leg: the Node addon, the `kui` runner, libkui_ffi  ├── npm-stage ──┐
 #           └─────────────────────────────────────────────────────────────┴───────────────┴── publish
 #   smoke (macos-15, windows-2025) ─────────────────────────── packs, publish
+#   packs + publish ── latest (the release made GitHub's latest, last)
 #
 # and `publish` puts the crates on crates.io and the ten npm packages on
 # npmjs, while `packs` attaches to the tag's GitHub release:
@@ -415,6 +416,9 @@ jobs:
 
       # Created here if the tag has no release yet, else the assets are
       # replaced, so a re-run of this job finishes what a failed one began.
+      # Created as a pre-release, whatever the version, and never latest:
+      # `latest`, the last job, makes it a release and GitHub's latest once
+      # `publish` and this job have both finished.
       - name: GitHub release
         if: github.event_name == 'push'
         env:
@@ -426,9 +430,7 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${files[@]}" --clobber
           else
-            pre=
-            case "$tag" in *-*) pre=--prerelease ;; esac
-            gh release create "$tag" "${files[@]}" --verify-tag $pre --title "$tag" \
+            gh release create "$tag" "${files[@]}" --verify-tag --prerelease --latest=false --title "$tag" \
               --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The kui runner: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.sh | sh\` on macOS and Linux, \`irm https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.ps1 | iex\` on Windows, or the kui-${tag#v}-<platform> archives by hand (SHA256SUMS covers every asset). The C and Odin tarballs hold libkui_ffi for linux-x64, linux-arm64, darwin-arm64 and win32-x64, shared and static; README.md in each says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui, and the runner as @qxuken/kui-cli)."
           fi
 
@@ -709,3 +711,39 @@ jobs:
             echo "::error::published, but latest still names an older version on:$untagged"
             exit 1
           fi
+
+  # The last step: once the crates and npm packages are live (`publish`)
+  # and the release holds every asset (`packs`), the tag's GitHub release
+  # stops being a pre-release and becomes GitHub's latest, so
+  # `releases/latest` never names a version whose packages are not all up.
+  # Latest by npm's rule: only when the version sorts highest among the
+  # releases (semver, so a stable 0.1.0 sorts above its alphas and a
+  # re-run of an older tag takes nothing back). A `packs` that failed and
+  # is re-run ("Re-run failed jobs") brings this job with it.
+  latest:
+    needs: [publish, packs]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Mark the release latest
+        run: |
+          set -eu
+          tag="$GITHUB_REF_NAME"
+          tags=$(gh release list --exclude-drafts --limit 1000 --json tagName --jq '[.[].tagName]')
+          highest=$(TAGS="$tags" TAG="$tag" NPM_ROOT="$(npm root -g)" node -e '
+            const semver = require(require.resolve("semver", { paths: [process.env.NPM_ROOT + "/npm/node_modules"] }));
+            const all = [].concat(JSON.parse(process.env.TAGS), process.env.TAG).filter((t) => semver.valid(t));
+            process.stdout.write(all.sort(semver.rcompare)[0]);
+          ')
+          if [ "$highest" = "$tag" ]; then
+            gh release edit "$tag" --prerelease=false --latest
+          else
+            echo "latest left alone: $highest sorts above $tag"
+            gh release edit "$tag" --prerelease=false --latest=false
+          fi
+          gh release view "$tag" --json tagName,isPrerelease,isDraft,url

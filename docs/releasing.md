@@ -63,10 +63,13 @@ moves it), checks the archive against the release's `SHA256SUMS` and
 prints the PATH line for the user's shell without editing anything. With
 no version (`KUI_VERSION` or `sh install.sh <version>` names one) they take
 the newest release the GitHub API lists, prereleases included: GitHub's
-own `latest` skips prereleases, so while every release is an alpha it
-names an older one (alpha.66, which is not marked a prerelease, is
-GitHub's `latest` while alpha.67 is out), and
-`releases/latest/download/install.sh` is not a link to give out. `KUI_MIRROR=<base>` reads `<base>/v<version>/<asset>`
+own `latest` skips prereleases, and until alpha.69 an alpha's release
+stayed one unless marked by hand. From alpha.69 the release job makes
+each release GitHub's latest as its last step, so
+`releases/latest/download/install.sh` names the newest version once its
+run has finished — but a release is listed (a pre-release, its packages
+not all up) while the run is still going, which is when the API list
+answers with it and `latest` does not yet. `KUI_MIRROR=<base>` reads `<base>/v<version>/<asset>`
 instead of GitHub, and `<base>/latest.txt` (the bare version) when no
 version is named, so a mirror holds that file beside the release
 directories (`kui runners fetch` lays one out).
@@ -138,8 +141,15 @@ release pipeline:
   four runner assets and the two install scripts, writes one `SHA256SUMS`
   over all of it, installs the linux-x64 runner through `install.sh`
   from those files laid out as a mirror, and attaches everything to the
-  tag's GitHub release, creating it (a prerelease for an alpha). A failed
-  `packs` is re-run on its own; the release's assets are replaced.
+  tag's GitHub release, creating it as a pre-release whatever the
+  version. A failed `packs` is re-run on its own; the release's assets
+  are replaced. Last, `latest` — after `publish` and `packs` both — makes
+  the release a release and GitHub's latest, when its version sorts
+  highest among the releases (semver, npm's rule: a re-run of an older
+  tag takes nothing back), so GitHub's latest never names a version whose
+  crates, npm packages or assets are not all up. Since alpha.69; until
+  then an alpha stayed a pre-release unless marked by hand. "Re-run
+  failed jobs" on a run whose `packs` failed runs `latest` after it.
   `workflow_dispatch` runs the same without `publish`, without the
   release and without `npm-stage` (a dry run stages nothing it will not
   publish; since alpha.69), leaving the release's assets as the run's
