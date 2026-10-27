@@ -34,7 +34,7 @@ use crate::access::Role;
 use crate::color::Color;
 use crate::cursor::CursorShape;
 use crate::edit::EditOptions;
-use crate::geom::{Edges, Vec2};
+use crate::geom::{Edges, Size, Vec2};
 use crate::key::Key;
 use crate::menu::{MenuBar, MenuItem, MenuRole};
 use crate::metrics::Metrics;
@@ -1456,6 +1456,9 @@ pub const MENU_KEY: &str = "kui.menu";
 /// because a context menu belongs at the pointer and not under whatever
 /// node happens to enclose it; `fit` is what keeps it in the window, which
 /// for a menu near the bottom edge means flipping above the point.
+/// A menu taller than the window less [`MENU_EDGE`] above and below is
+/// placed at the top of that room, cut to it, and scrolls; its submenus
+/// likewise (`layout::fit_menu_panel`).
 ///
 /// It declares `modal`, so a press outside it or Escape emits a `dismiss`
 /// event on it rather than through a dismissal rule of its own; the caller
@@ -1466,6 +1469,14 @@ pub const MENU_KEY: &str = "kui.menu";
 /// Each chosen row posts the item's `id`, or its label when it declares
 /// none. A `Separator` posts nothing and takes no focus.
 pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
+    context_menu_within(ui, at, items, Size::new(f32::INFINITY, f32::INFINITY))
+}
+
+/// [`context_menu`] held to `max` (logical px), it and each of its
+/// submenus: a row wider is ellipsized, a menu taller scrolls. An infinite
+/// axis is the room's, which holds whatever `max` says — what
+/// [`crate::menu::Menu::max_size`] draws the core's menu with.
+pub fn context_menu_within(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem], max: Size) -> Key {
     let t = ui.theme();
     let m = ui.metrics();
     // The menu's nodes are the core's, not the host's: opened under their
@@ -1477,8 +1488,9 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
     // devtools' own select opens one inside the dock): the host's point
     // becomes the window's.
     let at = at.plus(ui.core().dt_shift());
-    let root = menu_panel(
+    let root = menu_level(
         ui,
+        MENU_KEY,
         MENU_KEY,
         menu_panel_spec(&t, &m)
             .float(
@@ -1494,6 +1506,8 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
             .modal(Value::str(MENU_KEY))
             .label("Menu"),
         items,
+        &[],
+        max,
     );
     ui.set_origin(saved);
     root
@@ -1534,12 +1548,15 @@ pub fn menu_panel_spec(t: &Theme, m: &Metrics) -> NodeSpec {
 /// arrow); an app drawing this panel itself gets the chevron and opens
 /// nothing, since the open submenus are the core's state.
 pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuItem]) -> Key {
-    menu_level(ui, label, label, spec, items, &[])
+    let unbounded = Size::new(f32::INFINITY, f32::INFINITY);
+    menu_level(ui, label, label, spec, items, &[], unbounded)
 }
 
 /// One level of a menu: `items` built into `spec` under `label`, at `path`
 /// — empty for the menu itself, the rows opened on the way for a submenu.
-/// `root` is the outermost panel's label, which names the hover groups.
+/// `root` is the outermost panel's label, which names the hover groups;
+/// `max` the size the app holds the menu and its submenus to
+/// ([`context_menu_within`]).
 fn menu_level(
     ui: &mut Ui<'_>,
     root: &str,
@@ -1547,6 +1564,7 @@ fn menu_level(
     spec: NodeSpec,
     items: &[MenuItem],
     path: &[usize],
+    max: Size,
 ) -> Key {
     let t = ui.theme();
     let m = ui.metrics();
@@ -1554,8 +1572,24 @@ fn menu_level(
     // than that — a recent file's whole path — ellipsizes its label
     // instead of running the panel, and its accelerator, off the edge
     // (backlog RG150). A ceiling the caller declared that is narrower
-    // stands.
-    let ceiling = (ui.viewport().w - 2.0 * MENU_EDGE).max(m.menu_width);
+    // stands. In a menu's popup window the room is the display's, since
+    // the window is only as wide as the panel (`Core::open_menu_popup`).
+    // Narrower still where the app holds the menu to less (backlog F210),
+    // the metric's floor with it.
+    let room = ui.core().menu_popup_room().unwrap_or(ui.viewport());
+    let ceiling = (room.w - 2.0 * MENU_EDGE).max(m.menu_width).min(max.w);
+    let spec = if ceiling < m.menu_width {
+        spec.min_width(ceiling)
+    } else {
+        spec
+    };
+    // And no taller than the app said: past it, the panel scrolls as one
+    // the room cut does (`layout::fit_menu_panel` places it).
+    let spec = if max.h.is_finite() {
+        spec.max_height(max.h.max(0.0))
+    } else {
+        spec
+    };
     let spec = if spec.layout.max_w >= 0.0 && spec.layout.max_w > ceiling {
         spec.max_width(ceiling)
     } else {
@@ -1596,6 +1630,19 @@ fn menu_level(
     // Which of the core's menus this is, by the origin its nodes open
     // under: only those have submenu state to open and close.
     let surface = crate::runtime::MenuSurface::of(ui.origin());
+    // A core menu's panel scrolls its rows, the usual bar and all: layout
+    // cuts one that does not fit to the window less `MENU_EDGE` above and
+    // below (`layout::fit_menu_panel`), and the rows past the cut are
+    // reached by the wheel, the bar, or the keyboard — a row focus lands
+    // on is scrolled into view, as Tab's is. One that fits never moves.
+    // Its scroll is its own: the wheel over a short submenu does not
+    // scroll the menu it hangs off, which would carry the row it hangs
+    // from away under it.
+    let spec = if surface.is_some() {
+        spec.scroll_y().overscroll(crate::spec::Overscroll::Contain)
+    } else {
+        spec
+    };
     let group = |i: usize| format!("{root}/{path:?}/{i}");
     // Where the pointer rests opens or closes a submenu, resolved before
     // anything is built — the frame that notices the hover draws what it
@@ -1615,6 +1662,9 @@ fn menu_level(
         }
     }
     let open_here = surface.and_then(|s| ui.core().submenu_open_at(s, path));
+    // A menu's popup window draws the row open and not its submenu, which
+    // is a popup of its own beside it (`Core::menu_popup_submenu`).
+    let draws_submenus = !ui.core().is_menu_popup();
     let mut first_key = None;
     let root_key = ui.with_keyed(label, spec, |ui| {
         let mut first = path.is_empty();
@@ -1756,7 +1806,7 @@ fn menu_level(
                         .min_width(crate::spec::Bound::Fit),
                     |ui| {
                         key = ui.with_keyed(MENU_ROW_KEY, spec, row);
-                        if is_open && item.enabled {
+                        if is_open && item.enabled && draws_submenus {
                             let sub: Vec<usize> = path.iter().copied().chain([i]).collect();
                             menu_level(
                                 ui,
@@ -1784,6 +1834,8 @@ fn menu_level(
                                     ),
                                 &item.submenu,
                                 &sub,
+                                // A submenu is held to what its menu is.
+                                max,
                             );
                         }
                     },
@@ -1813,10 +1865,12 @@ fn menu_level(
 }
 
 /// The padding inside a menu's panel, logical px: what a submenu is offset
-/// by so its first row sits level with the row that opened it.
-const MENU_PANEL_PAD: f32 = 4.0;
+/// by so its first row sits level with the row that opened it — beside its
+/// row in the window, and beside it on the display in a popup.
+pub const MENU_PANEL_PAD: f32 = 4.0;
 
-/// How far a menu at its widest stays from each side of the window.
+/// How far a menu at its widest stays from each side of the window, and
+/// one at its tallest from its top and bottom.
 pub const MENU_EDGE: f32 = 8.0;
 
 /// The least a row's label keeps when its accelerator would take the rest:

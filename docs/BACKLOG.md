@@ -3508,6 +3508,16 @@ presets and the default unchanged — **built 2026-10-24**, the day it was
 filed, and in the archive. Which preset becomes the default is the
 user's to say once they have tried them.
 
+## From Carnet's page menu in a short window (2026-10-27)
+
+Moving Carnet to alpha.68, the user found its page menu cut off in a
+short window: the core's context menu is a viewport float with `fit`
+and no height limit, so one taller than the window was pinned to its top
+with the last rows past the bottom, out of reach. One entry, F210 — a
+height limit with scrolling for every menu the core draws, and the
+native runner's popup window for a context menu that does not fit —
+**built 2026-10-27**, the day it was filed, and in the archive.
+
 ## From the alpha.67 fuzz half hour (2026-10-24)
 
 Half an hour of every target at once on the Mac's twelve cores at a low
@@ -5887,6 +5897,10 @@ move.
 - `!` **F207** — [A Node view cannot paint with an extension's exported tokens](backlog/closed-2026-09.md#-f207--a-node-view-cannot-paint-with-an-extensions-exported-tokens--done-2026-10-27) — done (2026-10-27) — a `$name` the encoder's map does not hold crosses by name (frame v28) and the core resolves it, exported tables included
 - `~` **F208** — [Kit's handler props take any message in Node](backlog/closed-2026-09.md#-f208--kits-handler-props-take-any-message-in-node--done-2026-10-27) — done (2026-10-27) — `kui-addon-schema` types an `on*` prop as `HandlerMsg<{ <event>: … }>`, as the core's are
 - `.` **F209** — [`keyNamed`'s doc example calls a `ctx.click` Node does not have](backlog/closed-2026-09.md#-f209--keynameds-doc-example-calls-a-ctxclick-node-does-not-have--done-2026-10-27) — done (2026-10-27) — `ctx.access(ctx.keyNamed('Like')!, 'click')`; no `click(key)` added
+
+**From Carnet's page menu in a short window (2026-10-27)** — F210, filed and built the same day
+
+- `.` **F210** — [A menu taller than the window cannot be used](backlog/closed-2026-09.md#-f210--a-menu-taller-than-the-window-cannot-be-used--done-2026-10-27) — done (2026-10-27) — every core menu panel scrolls, cut by layout to the window less `MENU_EDGE` and placed as high as that goes; the keyboard keeps its row in view; kui-native shows one that does not fit as a popup window (ADR 0004 amended), not on Wayland; `Menu::max_size` and `Menu::in_window` in every binding
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 

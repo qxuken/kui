@@ -63,6 +63,7 @@ use Cell::{As, Is, No};
 pub const GUEST: &str = "a script is a guest in the host's frame (ADR 0067): its env is the view's reading, and registering, driving, pacing and reading back are the host's";
 
 /// The reason for Lua's `No` on the resource rows.
+const MENU_POPUPS: &str = "the runner that opens the windows places the menus: `kui_run`'s and `runWindowed`'s are kui-native's, which do";
 const NO_HANDLE: &str = "a script owns no handle: the host registers and the script names the id it was given (`image { id = }`, `font = id`, `audio { src = id }`)";
 
 /// The reason for Odin's `No`: every Odin door is a kui.h function, so
@@ -1016,6 +1017,46 @@ pub const DOORS: &[Door] = &[
         node: Is("activateMenuPath"),
         lua: No(GUEST),
         doc: "`activate_menu_item` for a row inside a submenu, by its path through the rows' submenus (backlog F128); a row that opens a submenu is refused.",
+    },
+    Door {
+        rust: "Menu::max_size",
+        c: Is("kui_open_menu_with"),
+        odin: Is("open_menu_with"),
+        node: As("`openMenu`'s fifth argument, `{maxWidth, maxHeight}`"),
+        lua: As("`open_menu`'s fifth argument, `{ max_width =, max_height = }`"),
+        doc: "Holds a context menu and its submenus to a size: a row wider is ellipsized, a menu taller scrolls; an axis left out is the room's (backlog F210).",
+    },
+    Door {
+        rust: "Menu::in_window",
+        c: As("`KUI_MENU_IN_WINDOW` in `kui_open_menu_with`'s flags"),
+        odin: As("`MENU_IN_WINDOW` in `open_menu_with`'s flags"),
+        node: As("`openMenu`'s fifth argument, `{inWindow: true}`"),
+        lua: As("`open_menu`'s fifth argument, `{ in_window = true }`"),
+        doc: "Keeps a context menu drawn in the window where the runner would show one that does not fit in a popup window of its own (backlog F210).",
+    },
+    Door {
+        rust: "Core::set_menu_popups",
+        c: No(MENU_POPUPS),
+        odin: No(ODIN_IS_C),
+        node: No(MENU_POPUPS),
+        lua: No(GUEST),
+        doc: "Whether the host shows a context menu that does not fit the window in a popup window of its own; a menu then waits, drawn nowhere, until `set_menu_in_popup` says where (backlog F210).",
+    },
+    Door {
+        rust: "Core::set_menu_in_popup",
+        c: No(MENU_POPUPS),
+        odin: No(ODIN_IS_C),
+        node: No(MENU_POPUPS),
+        lua: No(GUEST),
+        doc: "Where the open menu goes: in the host's popup window, the core keeping it and drawing none of it, or in the window (backlog F210).",
+    },
+    Door {
+        rust: "Core::open_menu_popup",
+        c: No(MENU_POPUPS),
+        odin: No(ODIN_IS_C),
+        node: No(MENU_POPUPS),
+        lua: No(GUEST),
+        doc: "Makes a core a menu's popup window: its frame is the rows and nothing else, and a row chosen, Escape and the Left arrow are said back (`take_menu_popup_answer`) rather than performed; a submenu's row is `menu_popup_submenu` (backlog F210).",
     },
     Door {
         rust: "Core::menu_bar",
@@ -2225,6 +2266,7 @@ mod tests {
         let edge = read(root.join("edge_scroll.rs"));
         let slot = read(root.join("slot.rs"));
         let channel = read(root.join("channel.rs"));
+        let menu = read(root.join("menu.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
@@ -2246,6 +2288,7 @@ mod tests {
                 "Theme" => &theme,
                 "slot" => &slot,
                 "Channel" => &channel,
+                "Menu" => &menu,
                 "WheelFeel" => &scroll,
                 "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,

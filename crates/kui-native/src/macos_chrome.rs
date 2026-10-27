@@ -68,7 +68,7 @@ pub fn set_titlebar(window: &Window, titlebar: Titlebar) {
     ns_window.setToolbarStyle(style);
 }
 
-fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
+pub(crate) fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let RawWindowHandle::AppKit(h) = window.window_handle().ok()?.as_raw() else {
         return None;

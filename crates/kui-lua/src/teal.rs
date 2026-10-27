@@ -107,7 +107,7 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("text_hit", "key: KeyRef, x: number, y: number", "TextHit"),
     (
         "open_menu",
-        "key: KeyRef, x: number, y: number, items: {any}",
+        "key: KeyRef, x: number, y: number, items: {any}, opts?: {string: any}",
         "boolean",
     ),
     ("close_menu", "", "boolean"),

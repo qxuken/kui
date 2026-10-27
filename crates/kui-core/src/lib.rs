@@ -233,7 +233,8 @@ pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
 pub use runtime::perf::{LoopNote, SpanId};
 pub use runtime::{
-    Content, Core, Extension, FillAnswer, Owed, PaintAudit, PaintEscape, SvgOpts, SvgSource,
+    Content, Core, Extension, FillAnswer, MenuPopupAnswer, MenuPopupSubmenu, Owed, PaintAudit,
+    PaintEscape, SvgOpts, SvgSource,
 };
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry, WheelFeel};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};

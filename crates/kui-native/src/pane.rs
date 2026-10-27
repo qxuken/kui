@@ -438,6 +438,14 @@ pub(crate) struct Pane {
     /// What the app's [`crate::App::view_state`] said after the last
     /// frame built with its view (backlog C138).
     pub(crate) view_state: Option<u64>,
+    /// This window is a context menu's popup, or one of its submenus'
+    /// (`mod menu_popup`, backlog F210): its frame is the menu and no
+    /// view, and what its core says goes back to the window the menu is
+    /// in. `None` for every window the app declared.
+    pub(crate) menu_pane: Option<crate::menu_popup::MenuPane>,
+    /// A popup kept off the screen until its first frame is presented
+    /// (`menu_popup::cloak`), so it never shows the OS's empty surface.
+    pub(crate) cloaked: bool,
     /// The platform accessibility bridge.
     pub(crate) access: Option<access_bridge::Bridge>,
     /// Windows: the timer that keeps an animation running while the modal

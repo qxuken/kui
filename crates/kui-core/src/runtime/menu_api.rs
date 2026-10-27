@@ -14,7 +14,7 @@
 //! keys produce never reach the app; what reaches the app is the item's
 //! own payload, on the node the menu was opened over.
 
-use crate::geom::Vec2;
+use crate::geom::{Size, Vec2};
 /// The longest selection a definition panel is offered for. A word, a
 /// term, a short phrase — past this it is a passage, and a dictionary has
 /// nothing to say about a passage.
@@ -186,8 +186,17 @@ impl Core {
         // the same string back (backlog F127).
         MenuItem::normalize_accels(&mut menu.items);
         self.menu = Some(menu);
-        // A new menu opens with none of its submenus open.
+        // A new menu opens with none of its submenus open, drawn here —
+        // or, where the host places menus, nowhere until it has said where
+        // (`set_menu_popups`).
         self.menu_sub = Submenus::default();
+        // A menu that asked to stay in the window is placed here at once.
+        let in_window = self.menu.as_ref().is_some_and(|m| m.in_window);
+        self.menu_where = if self.menu_popups && !in_window {
+            MenuWhere::Pending
+        } else {
+            MenuWhere::Window
+        };
     }
 
     /// A select field built this frame (`widgets::select`): its key and
@@ -241,6 +250,7 @@ impl Core {
     /// open.
     pub fn close_menu(&mut self) -> bool {
         self.menu_sub = Submenus::default();
+        self.menu_where = MenuWhere::Window;
         self.menu.take().is_some()
     }
 
@@ -265,10 +275,11 @@ impl Core {
     /// slots, so the menu is the last thing declared and therefore the
     /// frame's modal scope and its topmost float.
     pub(crate) fn build_menu(ui: &mut Ui<'_>) {
-        if ui.core().native_menus {
-            // The host is showing it. Nothing is drawn, so there are no
-            // rows to click and `consume_menu_events` finds nothing to
-            // take back.
+        if ui.core().native_menus || ui.core().menu_where != MenuWhere::Window {
+            // The host is showing it, in the platform's menu or in a
+            // window of its own, or has yet to say where. Nothing is
+            // drawn, so there are no rows to click and
+            // `consume_menu_events` finds nothing to take back.
             return;
         }
         let Some(menu) = ui.core().menu.clone() else {
@@ -279,7 +290,10 @@ impl Core {
         // becomes a host one. Its nodes are opened under `OriginId::MENU`,
         // which is how `consume_menu_events` knows them.
         let at = menu.at.minus(ui.core().dt_shift());
-        crate::widgets::context_menu(ui, at, &menu.items);
+        let max = menu
+            .max_size
+            .unwrap_or(Size::new(f32::INFINITY, f32::INFINITY));
+        crate::widgets::context_menu_within(ui, at, &menu.items, max);
     }
 
     /// The stock items for a right-click on `region`, or none when there
@@ -393,6 +407,15 @@ impl Core {
                 self.choose_menu_path(&path, out);
             }
         } else if taken.dismissed {
+            // In a menu's popup window, Escape is said back to the host:
+            // a submenu's goes back to its row, the menu's own closes it.
+            if let Some(p) = self.menu_popup.as_mut() {
+                p.answer = Some(if p.submenu {
+                    MenuPopupAnswer::Back
+                } else {
+                    MenuPopupAnswer::Dismissed
+                });
+            }
             self.close_menu();
         }
     }
@@ -433,6 +456,13 @@ impl Core {
         let Some(menu) = self.menu.clone() else {
             return;
         };
+        // A menu's popup window performs nothing: the menu is its owner's,
+        // which the host hands the row to (`take_menu_popup_answer`).
+        if let Some(p) = self.menu_popup.as_mut() {
+            p.answer = Some(MenuPopupAnswer::Chose(path.to_vec()));
+            self.close_menu();
+            return;
+        }
         let Some(item) = MenuItem::at_path(&menu.items, path).cloned() else {
             return;
         };
@@ -457,7 +487,12 @@ impl Core {
         kp: &crate::input::KeyPress,
         out: &mut Vec<UiEvent>,
     ) -> bool {
-        if let Some(menu) = self.menu.as_ref().filter(|_| !self.native_menus)
+        // Only a menu drawn here: one in a popup has the popup's keyboard
+        // (the host lends it the keys), and one not placed yet is not up.
+        if let Some(menu) = self
+            .menu
+            .as_ref()
+            .filter(|_| !self.native_menus && self.menu_where == MenuWhere::Window)
             && let Some(path) = accel_path(&menu.items, kp)
         {
             self.choose_menu_path(&path, out);
@@ -1029,6 +1064,17 @@ impl Core {
                 self.close_submenu(s, path.len() - 2);
                 true
             }
+            // A submenu shown in a popup window of its own has its rows at
+            // the top level here, and the row it hangs off in the window
+            // before: going back to it is the host's (`MenuPopupAnswer`).
+            (EditKey::Left, Some((MenuSurface::Context, _)))
+                if self.menu_popup.as_ref().is_some_and(|p| p.submenu) =>
+            {
+                if let Some(p) = self.menu_popup.as_mut() {
+                    p.answer = Some(MenuPopupAnswer::Back);
+                }
+                true
+            }
             (EditKey::Escape, focused) => {
                 // The menu the focus is in, or else whichever has a submenu
                 // open: the pointer may have opened one the keyboard is not in.
@@ -1075,5 +1121,222 @@ impl Core {
         if let Some(n) = at {
             self.land_focus(n);
         }
+    }
+}
+
+// -- In a popup window (backlog F210, ADR 0004 amended 2026-10-27) ----------
+// A host that can open a borderless window anywhere on the display shows a
+// context menu that does not fit its window in one: `kui-native` does, on
+// Windows, macOS and X11. Two cores take part. The window's own keeps the
+// menu as state and draws none of it (`set_menu_in_popup`), as it does for
+// a platform's menu; the popup's is a core of its own whose frame is the
+// menu and nothing else (`open_menu_popup`), drawn by the same
+// `widgets::context_menu`, so its rows, keyboard, scrolling and access
+// tree are the in-window menu's. What it does not do is perform a row: the
+// row, Escape and the Left arrow are said back to the host
+// (`take_menu_popup_answer`), which hands a row to the window's core
+// through `activate_menu_path`, as it does a platform menu's. A submenu is
+// a further popup beside its row, with a core of its own showing the
+// submenu's rows; the row it hangs off is `menu_popup_submenu`.
+
+/// What a core that is a menu's popup window has to say back to the host
+/// ([`Core::take_menu_popup_answer`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MenuPopupAnswer {
+    /// The row at this path in the items the popup was opened with was
+    /// chosen — the click, Enter, its accelerator. Prefix the path of the
+    /// submenu the popup shows to hand it to the menu's own core.
+    Chose(Vec<usize>),
+    /// Escape or the Left arrow in a submenu's popup: it closes, and the
+    /// keyboard goes back to the row it hangs off
+    /// ([`Core::close_menu_popup_submenu`] on the popup before it).
+    Back,
+    /// Escape in the menu's own popup: the menu is dismissed.
+    Dismissed,
+}
+
+/// The row of a menu's popup whose submenu is open
+/// ([`Core::menu_popup_submenu`]): where the host opens the submenu's
+/// popup.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MenuPopupSubmenu {
+    /// Its index in the items the popup was opened with.
+    pub row: usize,
+    /// Its box, in this window's logical px, as the last layout placed it.
+    pub rect: crate::geom::Rect,
+    /// The keyboard opened it (Enter, the Right arrow), so its first row
+    /// shows focus; the pointer resting on the row opens one that does not.
+    pub keyboard: bool,
+}
+
+/// A core that is a menu's popup window: what it was opened with, and
+/// what it has said and the host has not taken.
+#[derive(Clone, Debug)]
+pub(crate) struct MenuPopup {
+    room: crate::geom::Size,
+    submenu: bool,
+    answer: Option<MenuPopupAnswer>,
+}
+
+/// Where the open menu is drawn.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum MenuWhere {
+    /// In this window, as a float.
+    #[default]
+    Window,
+    /// In a popup window the host opened for it.
+    Popup,
+    /// Nowhere yet: the host places menus (`set_menu_popups`) and has not
+    /// said where this one goes.
+    Pending,
+}
+
+impl Core {
+    /// Tells the core that the host can show a context menu that does not
+    /// fit the window in a popup window of its own, and will say where
+    /// each one goes before it is drawn — `kui-native` does, where the
+    /// platform lets it place a window. A menu then opens drawn nowhere
+    /// ([`Self::menu_awaits_host`]) until the host answers with
+    /// [`Self::set_menu_in_popup`]: the frame that opened it does not
+    /// show it in the window first and then in the popup.
+    ///
+    /// Declared once by the driver, as [`Self::set_native_menus`] is. Off
+    /// by default, and off in every host that opens no windows: a menu is
+    /// drawn in the window the frame it opens.
+    pub fn set_menu_popups(&mut self, on: bool) {
+        self.menu_popups = on;
+        if !on && self.menu_where == MenuWhere::Pending {
+            self.menu_where = MenuWhere::Window;
+        }
+    }
+
+    /// Whether the host said it places menus (`set_menu_popups`).
+    pub fn menu_popups(&self) -> bool {
+        self.menu_popups
+    }
+
+    /// Whether a menu is open that the host has yet to place: drawn
+    /// nowhere until [`Self::set_menu_in_popup`] says where.
+    pub fn menu_awaits_host(&self) -> bool {
+        self.menu.is_some() && self.menu_where == MenuWhere::Pending
+    }
+
+    /// The host's answer for the open menu: `true` shows it in a popup
+    /// window the host opened for it (`kui-native` does, for a context
+    /// menu that does not fit the window) — the core keeps it as state and
+    /// draws none of it, as under [`Self::set_native_menus`], and the host
+    /// reports back with [`Self::activate_menu_path`] or
+    /// [`Self::close_menu`]; `false` draws it in the window.
+    ///
+    /// For this menu only: the next one waits for the host again, or is
+    /// drawn here where the host does not place menus. Nothing with no
+    /// menu open.
+    pub fn set_menu_in_popup(&mut self, on: bool) {
+        if self.menu.is_some() {
+            self.menu_where = if on {
+                MenuWhere::Popup
+            } else {
+                MenuWhere::Window
+            };
+        }
+    }
+
+    /// Whether the open menu is in a popup window the host opened for it.
+    pub fn menu_in_popup(&self) -> bool {
+        self.menu.is_some() && self.menu_where == MenuWhere::Popup
+    }
+
+    /// Makes this core a menu's popup window: its frame is `items`, as the
+    /// in-window menu draws them, at the window's top-left, and nothing
+    /// else — a host builds its frames without a view. A menu taller than
+    /// the window is cut to it and scrolls; `room` is the display's work
+    /// area (logical px) a row's width is held to, since the window is
+    /// only as wide as the panel. `max_size` is the menu's own
+    /// ([`Menu::max_size`](crate::menu::Menu#structfield.max_size)), which a
+    /// submenu's popup carries too. `submenu` says it shows a submenu,
+    /// whose Escape and Left arrow go back rather than dismiss.
+    ///
+    /// Nothing chosen here is performed: see [`MenuPopupAnswer`]. A host
+    /// measuring what window to open lays one frame out at the room's size
+    /// and reads [`Self::menu_popup_size`].
+    pub fn open_menu_popup(
+        &mut self,
+        items: Vec<MenuItem>,
+        max_size: Option<Size>,
+        room: Size,
+        submenu: bool,
+    ) {
+        self.menu_popup = Some(MenuPopup {
+            room,
+            submenu,
+            answer: None,
+        });
+        let mut menu = Menu::new(Key::ROOT, Vec2::ZERO, items);
+        menu.max_size = max_size;
+        self.open_menu_raw(menu);
+    }
+
+    /// Whether this core is a menu's popup window (`open_menu_popup`).
+    pub fn is_menu_popup(&self) -> bool {
+        self.menu_popup.is_some()
+    }
+
+    /// What this popup's menu said since the last call: a row chosen,
+    /// Escape, the Left arrow. Taken once. `None` while it has said
+    /// nothing, and for a core that is no menu's popup.
+    pub fn take_menu_popup_answer(&mut self) -> Option<MenuPopupAnswer> {
+        self.menu_popup.as_mut()?.answer.take()
+    }
+
+    /// The size the last layout gave this popup's menu panel, logical px:
+    /// the size its window should be. `None` before a frame has drawn it.
+    pub fn menu_popup_size(&self) -> Option<Size> {
+        self.menu_popup.as_ref()?;
+        let i = (0..self.tree.len()).find(|&i| self.tree.origins[i] == OriginId::MENU)?;
+        Some(self.tree.size[i])
+    }
+
+    /// The row of this popup whose submenu is open, if one is: the row the
+    /// pointer rests on, or the keyboard opened. Its submenu is not drawn
+    /// here — the host opens a popup for it beside `rect`.
+    pub fn menu_popup_submenu(&self) -> Option<MenuPopupSubmenu> {
+        self.menu_popup.as_ref()?;
+        let row = *self.menu_sub.open.first()?;
+        let i = (0..self.tree.len()).find(|&n| {
+            self.tree.origins[n] == OriginId::MENU
+                && self.tree.specs[n].events().on_click().is_some_and(|tag| {
+                    tag.get("row").and_then(Value::as_int) == Some(row as i64)
+                        && row_path_of(tag).is_empty()
+                })
+        })?;
+        Some(MenuPopupSubmenu {
+            row,
+            rect: crate::geom::Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]),
+            keyboard: self.menu_sub.focus_first,
+        })
+    }
+
+    /// The keyboard opened this popup's submenu (Enter or the Right arrow
+    /// on its row, [`MenuPopupSubmenu::keyboard`]): its first row shows
+    /// focus, as a submenu the keyboard opens in the window does.
+    pub fn menu_popup_by_keyboard(&mut self) {
+        if self.menu_popup.is_some() {
+            self.focus_visible = true;
+        }
+    }
+
+    /// Closes this popup's open submenu, putting focus back on its row:
+    /// what the host does when the submenu's popup answers
+    /// [`MenuPopupAnswer::Back`].
+    pub fn close_menu_popup_submenu(&mut self) {
+        if !self.menu_sub.open.is_empty() {
+            self.close_submenu(MenuSurface::Context, 0);
+        }
+    }
+
+    /// The work area a menu's popup was opened with: what its rows' width
+    /// is held to in place of the window's.
+    pub(crate) fn menu_popup_room(&self) -> Option<Size> {
+        Some(self.menu_popup.as_ref()?.room)
     }
 }

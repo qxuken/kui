@@ -77,6 +77,7 @@ mod reframe;
 /// A slot replayed by its host (ADR 0045).
 pub(crate) mod replay;
 pub(crate) use menu_api::MenuSurface;
+pub use menu_api::{MenuPopupAnswer, MenuPopupSubmenu};
 mod menubar_api;
 mod resources_api;
 mod rooms;
@@ -546,6 +547,16 @@ pub struct Core {
     menu_focus: Option<Key>,
     /// Whether the host draws menus itself (`set_native_menus`).
     native_menus: bool,
+    /// The host shows a menu that does not fit the window in a popup of
+    /// its own, and says where each one goes before it is drawn
+    /// (`set_menu_popups`).
+    menu_popups: bool,
+    /// Where the open menu is drawn: here, in the host's popup, or —
+    /// under `menu_popups`, until the host has said — nowhere yet.
+    menu_where: menu_api::MenuWhere,
+    /// This core *is* such a window (`open_menu_popup`): what it shows
+    /// and what it has to say back.
+    menu_popup: Option<menu_api::MenuPopup>,
     /// The submenus open in the drawn context menu and in the drawn bar's
     /// open menu (backlog F128): retained, like `menu_bar_open`, because
     /// the frame cannot derive which row the pointer last rested on.
@@ -1493,6 +1504,9 @@ impl Core {
             menu_editor: None,
             menu_focus: None,
             native_menus: false,
+            menu_popups: false,
+            menu_where: Default::default(),
+            menu_popup: None,
             menu_sub: Default::default(),
             menu_bar_sub: Default::default(),
             menu_bar: None,

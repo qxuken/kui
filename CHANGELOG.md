@@ -46,6 +46,26 @@ was the first bare bump to break an app in five releases).
   `unknown-token`, but the encoder's `unknownTokens` no longer lists it —
   the core raises it, by its name. The Node frame is v28; the encoder
   and the addon ship together, so only a hand-built stream sees it.
+- A context menu, submenu or drawn menu bar's menu the core draws that
+  is taller than the window is cut to it and scrolls, where it was
+  pinned to the window's top with its last rows past the bottom; its
+  panel is a scroll container (`scroll_y`, `overscroll: contain`) at
+  every size, so the wheel over a menu that fits scrolls nothing behind
+  it (backlog F210).
+- In a `kui-native` window on Windows, X11, and macOS where the core
+  draws its menus, a context menu that would be moved or cut in the
+  window opens in a popup window of its own: the window's core keeps it
+  as state and draws none of it, so its rows are not in that window's
+  frame or access tree while it is up (`Core::menu_in_popup`). A menu
+  opened there is drawn nowhere until the runner has placed it, within
+  the same turn (`Core::menu_awaits_host`). Every other host draws every
+  menu in the window as before (backlog F210, ADR 0004 amended
+  2026-10-27).
+- A declared popup window (`WindowKind::Popup`) appears at once on
+  Windows, with its first frame, where the OS faded it in over a white
+  surface.
+- `Menu` gained `max_size` and `in_window` (backlog F210): a Rust struct
+  literal names them or is built with `Menu::new`.
 
 The failure is the world's — a missing file, a refused connection, a
 file that is not JSON — not a bug in the line that asked, so a traceback
@@ -89,6 +109,37 @@ already generated for each event.
   stopped; Kit's relay, preferences and field-notes samples and its
   gallery use the `try_` forms, and the preferences sample no longer
   stops on a settings file it cannot read.
+- **A context menu that does not fit its window opens past its edge**
+  (backlog F210, [ADR 0004 amended
+  2026-10-27](docs/adr/0004-multi-window.md)). Where the runner can place
+  a window — Windows, macOS, X11 — a menu the core draws that would be
+  pushed in over its point, or cut and scrolled, opens as a borderless,
+  non-activating popup at its point on the display, flipped left or up
+  where the room runs out, held to the monitor's work area, and cut to it
+  and scrolling when taller. A submenu opens as a further popup beside
+  its row. The keyboard, Escape, a press outside, type-ahead and the
+  accessibility tree are the in-window menu's, and a chosen row posts the
+  same `menu` event. A menu that fits stays a float, and Wayland keeps
+  every menu in the window. For a Rust host that opens its own windows:
+  `Core::set_menu_popups`, `set_menu_in_popup`, `menu_awaits_host` on the
+  window's core; `open_menu_popup`, `take_menu_popup_answer`
+  (`MenuPopupAnswer`), `menu_popup_size`, `menu_popup_submenu`
+  (`MenuPopupSubmenu`), `close_menu_popup_submenu` and
+  `menu_popup_by_keyboard` on the popup's; `Session::host_window_id`;
+  `widgets::MENU_PANEL_PAD` public. C, Odin and Node hosts get it through
+  `kui_run` and `runWindowed`, whose runner is kui-native's.
+- **A context menu held to a size, or kept in the window** (backlog
+  F210). `Menu::max_size(w, h)` holds the menu and each of its submenus
+  to `w` by `h` logical px — a row wider is ellipsized, a menu taller
+  scrolls, in the window or in a popup — with `f32::INFINITY` leaving an
+  axis to the room. `Menu::in_window()` keeps a menu drawn in the window
+  where the runner would put one that does not fit in a popup. C:
+  `kui_open_menu_with(ctx, key, x, y, items, count, max_w, max_h, flags)`
+  with `KUI_MENU_IN_WINDOW` (a side of 0 is the room's); Odin:
+  `open_menu_with`; Node: `openMenu(key, x, y, items, {maxWidth,
+  maxHeight, inWindow})`; Lua: `open_menu(key, x, y, items, { max_width =,
+  max_height =, in_window = })`. `widgets::context_menu_within` is the
+  widget with a limit.
 
 ### Fixed
 
@@ -115,6 +166,21 @@ already generated for each event.
   `update`. No `ctx.click(key)` was added: `access(key, 'click')` is
   already the door that drives a node as a reader does, which is the
   doc's point, and `click` on an app is the pointer's, at coordinates.
+- **A menu taller than the window can be used** (backlog F210, from
+  Carnet's page menu in a short window). The core's context menu was a
+  viewport float with `fit` and no height limit: taller than the window,
+  `fit` pinned it to the top and its last rows were past the bottom,
+  where neither the pointer nor the keyboard reached them; its submenus
+  and the drawn bar's menus were the same. Each panel now scrolls, and
+  layout cuts one that does not fit to the window less `MENU_EDGE`
+  (8 px) above and below: a context menu or submenu is placed as high as
+  that room goes — where Windows puts a menu taller than the screen, and
+  where macOS's ends up once scrolled to its end — so it covers the point
+  it opened at and the row it hangs off; a bar's menu keeps its top under
+  its title and is cut at the room's bottom. A menu that fits is placed
+  exactly where it was. Up, Down, Home, End and type-ahead keep the row
+  they land on in view, as Tab does; the wheel and a trackpad scroll the
+  panel under the pointer, and a submenu's scroll is its own.
 
 **What you can delete.**
 
@@ -126,6 +192,12 @@ already generated for each event.
   in Kit's skin.
 - A cast or a wrapper around a Kit component, kept only so its `on*`
   prop was checked against the app's messages.
+- A context menu split into submenus, or a shorter menu offered in a
+  small window, kept only so its last rows could be reached.
+- A menu's point moved in from the window's edge, kept only so the menu
+  did not cover the point it was opened at.
+- A long menu cut into "More…" submenus, kept only so it stayed a
+  reasonable height: `max_size` scrolls it at the height you choose.
 
 ## 0.1.0-alpha.68 (2026-10-27)
 

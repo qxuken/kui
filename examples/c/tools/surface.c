@@ -1531,6 +1531,13 @@ static int surface(void) {
         check(kui_open_menu(ui, k.card, 0, 0, rows, 3) && kui_close_menu(ui), "kui_close_menu");
         check(!kui_close_menu(ui), "false when nothing was open");
         check(!kui_open_menu(ui, 0, 0, 0, rows, 3), "a key of 0 opens nothing");
+        /* Held to a size and kept in the window (backlog F210): opened as
+         * any, both are the drawn menu's, so what reads back is the menu. */
+        check(kui_open_menu_with(ui, k.card, 4, 6, rows, 3, 0, 120, KUI_MENU_IN_WINDOW)
+                  && kui_menu_item_count(ui, NULL, &mx, &my) == 3 && mx == 4 && my == 6,
+              "kui_open_menu_with opens the menu");
+        check(kui_close_menu(ui), "and it closes as any");
+        check(!kui_open_menu_with(ui, 0, 0, 0, rows, 3, 100, 100, 0), "a key of 0 opens nothing");
         kui_set_native_menus(ui, false);
         kui_set_native_menu_bar(ui, false);
     }

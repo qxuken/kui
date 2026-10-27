@@ -3606,6 +3606,17 @@ open_menu :: proc(ui: ^Ui, key: u64, x: f32, y: f32, items: []Menu_Item) -> bool
 	return c.open_menu(ui, key, x, y, raw_data(items_c), uint(len(items)))
 }
 
+// Holds a context menu and its submenus to a size: a row wider is ellipsized,
+// a menu taller scrolls; an axis left out is the room's (backlog F210).
+// Rust: Menu::max_size.
+open_menu_with :: proc(ui: ^Ui, key: u64, x: f32, y: f32, items: []Menu_Item, max_w: f32, max_h: f32, flags: u32) -> bool {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	items_c := make([]c.MenuItem, len(items), context.temp_allocator)
+	for x, k in items do items_c[k] = menu_item_to_c(x, &scratch)
+	return c.open_menu_with(ui, key, x, y, raw_data(items_c), uint(len(items)), max_w, max_h, flags)
+}
+
 // Closes it.
 // Rust: Ui::close_menu.
 close_menu :: proc(ui: ^Ui) -> bool {

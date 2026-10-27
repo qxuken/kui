@@ -200,6 +200,12 @@ impl DynShell<'_> {
             }
         };
         self.icon.set_on(&window);
+        // A popup is a menu surface, and appears as one: at once, and not
+        // before its first frame is there to show.
+        let cloaked = config.kind == WindowKind::Popup && {
+            crate::menu_popup::appear_at_once(&window);
+            crate::menu_popup::cloak(&window, true)
+        };
         // The Window menu lists windows the user would switch to, and a
         // popup is not one (ADR 0030).
         #[cfg(target_os = "macos")]
@@ -255,6 +261,9 @@ impl DynShell<'_> {
         self.push_pane(
             event_loop, id, config, owner, chrome, core, window, renderer, applied,
         );
+        if let Some(i) = self.pane_of(id) {
+            self.panes[i].cloaked = cloaked;
+        }
         // ADR 0009 decision 1: a non-activating popup that opens while the
         // primary button is down **joins that press**. Evaluated once, here,
         // with no geometry — and it is tight because of the press-outside
@@ -382,6 +391,11 @@ impl DynShell<'_> {
         #[cfg(not(target_os = "macos"))]
         let native_menus = false;
         core.set_native_menus(native_menus);
+        // A menu the core draws that does not fit the window goes in a
+        // popup of its own, where the platform lets the runner place one
+        // (`mod menu_popup`, backlog F210): the runner says where each
+        // goes before the core draws it.
+        core.set_menu_popups(crate::menu_popup::places_popups(&window));
         // And the menu *bar*, which is the platform's on macOS and drawn
         // by `widgets::menu_bar` everywhere else (ADR 0018, decision 4).
         #[cfg(target_os = "macos")]
@@ -518,6 +532,8 @@ impl DynShell<'_> {
             pacer,
             unseen: Default::default(),
             view_state: None,
+            menu_pane: None,
+            cloaked: false,
             access,
             #[cfg(target_os = "windows")]
             anim_timer,
@@ -609,6 +625,12 @@ impl DynShell<'_> {
 
     pub(super) fn close_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
         let Some(i) = self.pane_of(id) else { return };
+        // A context menu's popup the OS asked to close (Alt+F4 while it
+        // held the keyboard): its menu closes, as Escape would close it.
+        if let Some(host) = self.panes[i].menu_pane.as_ref().map(|m| m.host) {
+            self.dismiss_menu_popups(host);
+            return;
+        }
         // Whatever this press was about, it is not about this window any
         // more (ADR 0009): a popup chosen from closes here, and its release
         // must not be classified against a surface that has stopped

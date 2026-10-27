@@ -4276,8 +4276,16 @@ export declare class Ctx {
    * `onContextMenu` calls — and what the core calls itself for
    * a right-click nobody claimed, so the two menus are one
    * implementation.
+   *
+   * `options.maxWidth` / `options.maxHeight` hold the menu and
+   * its submenus to a size, logical px: a row wider is
+   * ellipsized, a menu taller scrolls (backlog F210). One left
+   * out, or not above 0, is the room the menu is drawn in.
+   * `options.inWindow` keeps the menu drawn in the window where
+   * the runner would show one that does not fit in a popup
+   * window of its own.
    */
-  openMenu(key: string, x: number, y: number, items: MenuItemInput[]): boolean
+  openMenu(key: string, x: number, y: number, items: MenuItemInput[], options?: { maxWidth?: number; maxHeight?: number; inWindow?: boolean } | null): boolean
   /**
    * Drains what choosing a menu row left for the host: the
    * clipboard, which is the host's in this library. Each entry
@@ -5981,8 +5989,16 @@ export declare class KuiWindow {
    * `onContextMenu` calls — and what the core calls itself for
    * a right-click nobody claimed, so the two menus are one
    * implementation.
+   *
+   * `options.maxWidth` / `options.maxHeight` hold the menu and
+   * its submenus to a size, logical px: a row wider is
+   * ellipsized, a menu taller scrolls (backlog F210). One left
+   * out, or not above 0, is the room the menu is drawn in.
+   * `options.inWindow` keeps the menu drawn in the window where
+   * the runner would show one that does not fit in a popup
+   * window of its own.
    */
-  openMenu(key: string, x: number, y: number, items: MenuItemInput[]): boolean
+  openMenu(key: string, x: number, y: number, items: MenuItemInput[], options?: { maxWidth?: number; maxHeight?: number; inWindow?: boolean } | null): boolean
   /**
    * Drains what choosing a menu row left for the host: the
    * clipboard, which is the host's in this library. Each entry
