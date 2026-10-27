@@ -138,7 +138,12 @@ use crate::{Result, err, value_of};
 /// And ADR 0074's: the float stanza's flags word carries 4 for `escape`,
 /// and its 2 (`clip`, v16) is no longer read — what a parent-anchored
 /// float does now.
-pub const VERSION: u32 = 27;
+/// v28: a token slot holding a negative number is a reference by name,
+/// packing where the name sits in the strings — -(1 + offset +
+/// len·2^32) — for a `$name` the encoder's map does not hold: the core
+/// resolves it, an extension's exported table among the ones it reads
+/// (backlog F207).
+pub const VERSION: u32 = 28;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -598,9 +603,12 @@ fn read_props(r: &mut Reader<'_>, refs: &mut Refs<'_>) -> Result<PropsOut> {
 /// default and an `unknown-token` line, never a frame refused.
 struct Refs<'a> {
     look: TokenLookup<'a>,
+    /// The frame's strings, which a by-name slot (v28) points into.
+    strings: &'a [u8],
     missed: Vec<(TokenKind, u32)>,
     /// The by-name half, for a keyframe stop or an entrance, which cross
-    /// as plain data with the `$name` still in them.
+    /// as plain data with the `$name` still in them, and for a slot that
+    /// carries its name (v28).
     names: kui_core::NameRefs<'a>,
 }
 
@@ -614,9 +622,10 @@ struct Missed {
 }
 
 impl<'a> Refs<'a> {
-    fn new(look: TokenLookup<'a>) -> Self {
+    fn new(look: TokenLookup<'a>, strings: &'a [u8]) -> Self {
         Self {
             look,
+            strings,
             missed: Vec::new(),
             names: kui_core::NameRefs::new(look),
         }
@@ -630,7 +639,28 @@ impl<'a> Refs<'a> {
         }
     }
 
+    /// The name a negative slot packs (v28): -(1 + offset + len·2^32)
+    /// into the frame's strings. A slot that lands outside them, or on
+    /// bytes that are no UTF-8, can only be a corrupt stream; it reads as
+    /// the empty name, which misses like any undeclared one.
+    fn name(&self, slot: f64) -> &'a str {
+        let x = -slot - 1.0;
+        let packed =
+            ((0.0..9_007_199_254_740_992.0).contains(&x) && x.fract() == 0.0).then_some(x as u64);
+        packed
+            .and_then(|x| {
+                let (at, len) = ((x & 0xffff_ffff) as usize, (x >> 32) as usize);
+                self.strings.get(at..at.checked_add(len)?)
+            })
+            .and_then(|b| std::str::from_utf8(b).ok())
+            .unwrap_or("")
+    }
+
     fn color(&mut self, index: f64) -> Option<Color> {
+        if index < 0.0 {
+            let name = self.name(index);
+            return self.names.color(name);
+        }
         let c = self.look.color_at(index as u32);
         if c.is_none() {
             self.missed.push((TokenKind::Color, index as u32));
@@ -639,6 +669,10 @@ impl<'a> Refs<'a> {
     }
 
     fn length(&mut self, index: f64) -> Option<f32> {
+        if index < 0.0 {
+            let name = self.name(index);
+            return self.names.length(name);
+        }
         let v = self.look.length_at(index as u32);
         if v.is_none() {
             self.missed.push((TokenKind::Length, index as u32));
@@ -649,7 +683,7 @@ impl<'a> Refs<'a> {
 
 /// The warnings a lowering's misses become, once the borrow of the core
 /// is handed back: keyed by the index, since the name never crossed —
-/// except for a stop's or an entrance's, which did.
+/// except for a stop's, an entrance's or a by-name slot's, which did.
 fn warn_missed(core: &mut kui_core::Core, missed: Missed) {
     for e in &missed.by_name {
         core.warn_unknown_token(e);
@@ -678,8 +712,8 @@ fn warn_missed(core: &mut kui_core::Core, missed: Missed) {
 
 /// One length by wire index, for a slot outside a prop list (a line's
 /// width); a miss is raised the way a prop's is.
-fn lookup_length(ui: &mut kui_core::Ui<'_>, index: f64) -> Option<f32> {
-    let mut refs = Refs::new(ui.core().token_lookup());
+fn lookup_length(ui: &mut kui_core::Ui<'_>, strings: &[u8], index: f64) -> Option<f32> {
+    let mut refs = Refs::new(ui.core().token_lookup(), strings);
     let v = refs.length(index);
     let missed = refs.take();
     warn_missed(ui.core(), missed);
@@ -687,8 +721,8 @@ fn lookup_length(ui: &mut kui_core::Ui<'_>, index: f64) -> Option<f32> {
 }
 
 /// One colour by wire index (a grid's cursor colour), the same way.
-fn lookup_color(ui: &mut kui_core::Ui<'_>, index: f64) -> Option<Color> {
-    let mut refs = Refs::new(ui.core().token_lookup());
+fn lookup_color(ui: &mut kui_core::Ui<'_>, strings: &[u8], index: f64) -> Option<Color> {
+    let mut refs = Refs::new(ui.core().token_lookup(), strings);
     let c = refs.color(index);
     let missed = refs.take();
     warn_missed(ui.core(), missed);
@@ -722,7 +756,7 @@ fn lower_props_over(
     ui: &mut kui_core::Ui<'_>,
 ) -> Result<PropsOut> {
     let (p, missed) = {
-        let mut refs = Refs::new(ui.core().token_lookup());
+        let mut refs = Refs::new(ui.core().token_lookup(), r.strings);
         (read_props_over(r, out, &mut refs), refs.take())
     };
     warn_missed(ui.core(), missed);
@@ -731,7 +765,7 @@ fn lower_props_over(
 
 fn lower_spans<'a>(r: &mut Reader<'a>, ui: &mut kui_core::Ui<'_>) -> Result<Vec<Span<'a>>> {
     let (spans, missed) = {
-        let mut refs = Refs::new(ui.core().token_lookup());
+        let mut refs = Refs::new(ui.core().token_lookup(), r.strings);
         (read_spans(r, &mut refs), refs.take())
     };
     warn_missed(ui.core(), missed);
@@ -1193,7 +1227,7 @@ fn with_text_binary<R>(
         OP_TEXT => {
             let content = r.req_str()?;
             let (p, missed) = {
-                let mut refs = Refs::new(core.token_lookup());
+                let mut refs = Refs::new(core.token_lookup(), r.strings);
                 (read_props(&mut r, &mut refs), refs.take())
             };
             warn_missed(core, missed);
@@ -1201,7 +1235,7 @@ fn with_text_binary<R>(
         }
         OP_RICH_TEXT => {
             let (p, spans, missed) = {
-                let mut refs = Refs::new(core.token_lookup());
+                let mut refs = Refs::new(core.token_lookup(), r.strings);
                 let p = read_props(&mut r, &mut refs);
                 let spans = read_spans(&mut r, &mut refs);
                 (p, spans, refs.take())
@@ -1412,7 +1446,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let dash = read_dash(r, flags & 16 != 0)?;
             let p = lower_props(r, ui)?;
             let width = if flags & 1 != 0 {
-                lookup_length(ui, width_slot).unwrap_or(0.0)
+                lookup_length(ui, r.strings, width_slot).unwrap_or(0.0)
             } else {
                 width_slot as f32
             };
@@ -1566,7 +1600,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             // Bit 2: the width slot is a length token's index (v11, AR14);
             // one the table does not hold is the default stroke, 1 px.
             let width = if flags & 2 != 0 {
-                lookup_length(ui, width_slot).unwrap_or(1.0)
+                lookup_length(ui, r.strings, width_slot).unwrap_or(1.0)
             } else {
                 width_slot as f32
             };
@@ -1637,7 +1671,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             // default, white.
             let cshape = cshape_slot & 3;
             let ccolor = if cshape_slot & 4 != 0 {
-                lookup_color(ui, ccolor_slot).unwrap_or(Color::WHITE)
+                lookup_color(ui, r.strings, ccolor_slot).unwrap_or(Color::WHITE)
             } else {
                 color_num(ccolor_slot as u32)
             };
@@ -1911,6 +1945,24 @@ mod tests {
         assert_eq!(payload("-5").unwrap(), Value::Int(-5));
     }
 
+    /// A by-name token slot (v28) resolves through the core's lookup by
+    /// name — a role here, an exported table's token in an app — and a
+    /// slot that lands outside the strings misses as the empty name
+    /// rather than refusing the frame (backlog F207).
+    #[test]
+    fn a_by_name_token_slot_resolves_in_the_core() {
+        let core = kui_core::Core::new();
+        let strings: &[u8] = b"..surface";
+        let slot = |at: u64, len: u64| -(1.0 + (at + (len << 32)) as f64);
+        let mut refs = Refs::new(core.token_lookup(), strings);
+        assert_eq!(refs.color(slot(2, 7)), Some(core.theme().surface));
+        assert_eq!(refs.color(slot(2, 40)), None, "past the strings");
+        assert_eq!(refs.length(-0.5), None, "no packed slot");
+        let missed = refs.take();
+        assert!(missed.by_index.is_empty());
+        assert_eq!(missed.by_name.len(), 2);
+    }
+
     /// Decodes one prop list from a hand-built stream.
     fn decode(stream: &[f64], strings: &[u8]) -> PropsOut {
         let mut r = Reader {
@@ -1919,7 +1971,7 @@ mod tests {
             strings,
         };
         let core = kui_core::Core::new();
-        let mut refs = Refs::new(core.token_lookup());
+        let mut refs = Refs::new(core.token_lookup(), r.strings);
         read_props(&mut r, &mut refs).unwrap()
     }
 

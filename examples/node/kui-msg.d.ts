@@ -25,6 +25,7 @@ import type {
   SliderChangeMsg,
   SystemMsg,
 } from '@qxuken/kui';
+import type { ButtonPressMsg, SegmentedChangeMsg } from '@qxuken/kui/kit';
 
 type AppMessages =
   // The harness's own (devtools.tsx): an OS setting changing, declared on
@@ -49,6 +50,10 @@ type AppMessages =
   | DragMsg<{ tag: 'nudge' }>
   | EditChangeMsg<{ kind: 'note' }>
   | SliderChangeMsg<{ kind: 'tally' }>
+  // tools/types.tsx: a Kit button's press and a Kit segmented control's
+  // change, registered as they arrive, as the core's are.
+  | ButtonPressMsg<{ kind: 'run' }>
+  | SegmentedChangeMsg<{ kind: 'seg' }>
   // features/slide.tsx: the canvas's drag and a card's click.
   | DragMsg<{ kind: 'pan' }>
   | { kind: 'card'; id: string }
