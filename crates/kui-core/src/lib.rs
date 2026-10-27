@@ -231,6 +231,7 @@ pub use runtime::cause::{FrameCause, FrameHolder, FrameRequest, OwedBy};
 pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
+pub use runtime::perf;
 pub use runtime::perf::{LoopNote, SpanId};
 pub use runtime::{
     Content, Core, Extension, FillAnswer, MenuPopupAnswer, MenuPopupSubmenu, Owed, PaintAudit,

@@ -7,10 +7,12 @@
 //! timeline: a summary, frames counted by cause and by holder, a bar a
 //! frame with the runs of frames with no input marked under them, the
 //! spans grouped by name and by origin, what the gaps between frames held,
-//! counters and gauges; and a frame opened says why it lagged — its
-//! verdict, the path from its input to the screen, its gap, its spans as a
-//! flame chart. The recording saves as a `.kuitrace` for `kui-perf` and
-//! the adapters; the window is captured as a screenshot or a GIF.
+//! counters and gauges, the components by how often they replayed; and a
+//! frame opened says why it lagged — its verdict, the path from its input
+//! to the screen, its gap, its spans as a flame chart, the components it
+//! drew fresh and why, the app's notes. The recording saves as a
+//! `.kuitrace` for `kui-perf` and the adapters; the window is captured as
+//! a screenshot or a GIF.
 //!
 //! While it records the tab draws nothing that changes from frame to
 //! frame, so the panel — docked, part of the window's picture — never
@@ -1085,6 +1087,39 @@ fn detail(ui: &mut Ui<'_>, t: &Theme, view: &Arc<PerfView>, i: usize, hovered: &
                     f.counters.iter().map(|(n, v)| format!("{} {v}", name(*n))),
                 );
             }
+            let end = f.end_or_begin() + 1;
+            let fresh: Vec<_> = tl
+                .placements_in(f.begin, end)
+                .iter()
+                .filter(|p| name(p.answer) != analysis::REPLAYED)
+                .collect();
+            if !fresh.is_empty() {
+                section(ui, t, "components drawn fresh");
+                for p in fresh.iter().take(24) {
+                    let label = match name(p.why) {
+                        "" => name(p.component).to_string(),
+                        why => format!("{} · {why}", name(p.component)),
+                    };
+                    holder_row(ui, t, name(p.answer), p.node, &label, None, hovered);
+                }
+                if fresh.len() > 24 {
+                    ui.text(
+                        &format!("and {} more", fresh.len() - 24),
+                        TextStyle::new(11.0).color(t.faint),
+                    );
+                }
+            }
+            let notes = tl.notes_in(f.gap_from, end);
+            if !notes.is_empty() {
+                section(ui, t, "notes");
+                for (_, text) in notes {
+                    ui.text_in(
+                        NodeSpec::row().grow_width().min_height(Min::FIT),
+                        text,
+                        TextStyle::new(11.0).color(t.fg).mono(),
+                    );
+                }
+            }
         },
     );
 }
@@ -1336,6 +1371,42 @@ fn tables(ui: &mut Ui<'_>, t: &Theme, view: &Arc<PerfView>, ranged: bool) {
             .map(|(n, last, lo, hi)| (name(*n), format!("{last} · least {lo} · most {hi}")))
             .collect();
         pairs(ui, t, &rows);
+    }
+    if !view.placements.is_empty() {
+        section(ui, t, "components · drawn fresh");
+        ui.with(NodeSpec::table().grow_width().gap(2.0), |ui| {
+            ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
+                for h in ["component", "placed", "replayed", "most often fresh for"] {
+                    ui.text(h, TextStyle::new(10.0).color(t.faint).nowrap());
+                }
+            });
+            for p in view.placements.iter().take(14) {
+                ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
+                    ui.text_in(
+                        NodeSpec::row().grow_width(),
+                        name(p.component),
+                        TextStyle::new(11.0).color(t.fg).mono().nowrap().ellipsis(),
+                    );
+                    let cell = |ui: &mut Ui<'_>, v: String| {
+                        ui.text(&v, TextStyle::new(11.0).color(t.muted).mono().nowrap());
+                    };
+                    cell(ui, p.placed.to_string());
+                    cell(
+                        ui,
+                        format!("{:.0}%", p.replayed as f64 * 100.0 / p.placed.max(1) as f64),
+                    );
+                    cell(
+                        ui,
+                        p.fresh
+                            .first()
+                            .map_or("—".to_string(), |(a, w, n)| match name(*w) {
+                                "" => format!("{} ×{n}", name(*a)),
+                                w => format!("{} {w} ×{n}", name(*a)),
+                            }),
+                    );
+                });
+            }
+        });
     }
     if !view.burns.is_empty() {
         section(ui, t, "burns");

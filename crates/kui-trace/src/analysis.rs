@@ -17,6 +17,8 @@ pub const DEVTOOLS: &str = "devtools";
 pub const HANDLER: &str = "handler";
 /// An extension's fill is `fill <namespace>`.
 pub const FILL: &str = "fill ";
+/// A placement's answer when its last fill was pushed again.
+pub const REPLAYED: &str = "replayed";
 
 /// The frame-cause kinds that are input: a run of frames with none of
 /// them is a burn.
@@ -511,4 +513,59 @@ pub fn gauges(tl: &Timeline) -> Vec<(NameId, f64, f64, f64)> {
         .collect();
     out.sort_by_key(|g| g.0);
     out
+}
+
+/// A component kind's placements over the timeline: how many, how many
+/// replayed, and the rest by answer and reason, the most first.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlacementStat {
+    pub component: NameId,
+    pub placed: u64,
+    pub replayed: u64,
+    /// `(answer, why, count)` for each way it was drawn fresh.
+    pub fresh: Vec<(NameId, NameId, u64)>,
+}
+
+impl PlacementStat {
+    /// Drawn fresh: placed and not replayed.
+    pub fn drawn(&self) -> u64 {
+        self.placed - self.replayed
+    }
+}
+
+/// Every placement of the timeline, grouped by component kind, the most
+/// drawn fresh first.
+pub fn placements(tl: &Timeline, names: &impl NameOf) -> Vec<PlacementStat> {
+    /// Placed, replayed, and drawn fresh by `(answer, why)`.
+    type Tally = (u64, u64, HashMap<(NameId, NameId), u64>);
+    let mut map: HashMap<NameId, Tally> = HashMap::new();
+    for p in &tl.placements {
+        let e = map.entry(p.component).or_default();
+        e.0 += 1;
+        if names.name_of(p.answer) == REPLAYED {
+            e.1 += 1;
+        } else {
+            *e.2.entry((p.answer, p.why)).or_default() += 1;
+        }
+    }
+    let mut v: Vec<PlacementStat> = map
+        .into_iter()
+        .map(|(component, (placed, replayed, fresh))| {
+            let mut fresh: Vec<(NameId, NameId, u64)> =
+                fresh.into_iter().map(|((a, w), n)| (a, w, n)).collect();
+            fresh.sort_by(|a, b| b.2.cmp(&a.2).then((a.0, a.1).cmp(&(b.0, b.1))));
+            PlacementStat {
+                component,
+                placed,
+                replayed,
+                fresh,
+            }
+        })
+        .collect();
+    v.sort_by(|a, b| {
+        b.drawn()
+            .cmp(&a.drawn())
+            .then(a.component.cmp(&b.component))
+    });
+    v
 }

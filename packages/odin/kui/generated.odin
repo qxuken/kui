@@ -4255,6 +4255,31 @@ perf_mark :: proc(ui: ^Ui, name: string) {
 	c.perf_mark(ui, name)
 }
 
+// Puts a line on the timeline — what the numbers beside it cannot say,
+// "editor moved, reads fs.stat" — shown in its frame's detail; at most 64 a
+// frame and its gap, of 512 bytes each.
+// Rust: Core::perf_note.
+perf_note :: proc(ui: ^Ui, text: string) {
+	c.perf_note(ui, text)
+}
+
+// Begins a span where no core is at hand — inside a script runtime, a
+// library deep in a stack — on the recording of the core whose span is open
+// on this thread, nested in the span open now, under its origin and node; 0
+// while none is.
+// Rust: perf::span_begin.
+thread_span_begin :: proc(name: string) -> u32 {
+	return c.thread_span_begin(name)
+}
+
+// Ends the thread span an id names, and any opened inside it and left open;
+// one still open when the core's last span closes is closed there and marked
+// cut.
+// Rust: perf::span_end.
+thread_span_end :: proc(id: u32) {
+	c.thread_span_end(id)
+}
+
 // Asks for a frame and names why: `owed_by` lists it under the name, and a
 // recording's causes read `request: why`.
 // Rust: Ui::request_frame_for.

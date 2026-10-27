@@ -69,6 +69,35 @@ pub extern "C" fn kui_perf_mark(ptr: *mut KuiCtx, name: KuiStr) {
     })
 }
 
+/// Puts a line on the timeline — what the numbers beside it cannot say —
+/// shown in its frame's detail: at most 64 a frame and its gap, of 512
+/// bytes each.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_perf_note(ptr: *mut KuiCtx, text: KuiStr) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().perf_note(&kstr(text));
+        }
+    })
+}
+
+/// Begins a span named `name` with no context at hand — inside a script
+/// runtime, a library deep in a stack — on the recording of the context
+/// whose span is open on this thread (its view's build, `kui_run`'s
+/// callback, a span of the host's), nested in the span open now. 0 while
+/// no span of a recording context is open on this thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_thread_span_begin(name: KuiStr) -> u32 {
+    guard(0, || kui_core::perf::span_begin(&kstr(name)).0)
+}
+
+/// Ends the span [`kui_thread_span_begin`] began, and any opened inside it
+/// and left open. 0, or an id with no begin, is nothing.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_thread_span_end(id: u32) {
+    guard((), || kui_core::perf::span_end(kui_core::SpanId(id)))
+}
+
 /// Whether anything is recorded: the devtools' Perf tab recording or on
 /// show, `KUI_PERF_TRACE`, [`kui_set_perf_recording`]. A host reads it to
 /// skip reading clocks of its own for [`kui_perf_measure`].

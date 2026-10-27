@@ -1785,13 +1785,18 @@ static int surface(void) {
         KuiCtx *rec = kui_ctx_new();
         check(!kui_perf_measuring(rec) && !kui_perf_recording(rec), "kui_perf_measuring: nothing listens");
         check(kui_span_begin(rec, KUI_STR("off")) == 0, "kui_span_begin: no span while off");
+        check(kui_thread_span_begin(KUI_STR("off")) == 0, "kui_thread_span_begin: no span open here");
         kui_set_perf_recording(rec, true);
         check(kui_perf_measuring(rec) && kui_perf_recording(rec), "kui_set_perf_recording: on");
         kui_note_wake(rec, KUI_STR("pty"));
         kui_frame_begin(rec, 320, 240, 1);
         uint32_t span = kui_span_begin(rec, KUI_STR("rows"));
         check(span != 0, "a span while recording");
+        uint32_t deep = kui_thread_span_begin(KUI_STR("deep"));
+        check(deep != 0, "kui_thread_span_begin: inside the context's span");
+        kui_thread_span_end(deep);
         kui_perf_count(rec, KUI_STR("rows"), 12);
+        kui_perf_note(rec, KUI_STR("a line"));
         kui_span_end(rec, span);
         kui_request_frame_for(rec, KUI_STR("blink"));
         kui_frame_finish(rec);

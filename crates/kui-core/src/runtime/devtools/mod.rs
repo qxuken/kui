@@ -363,6 +363,8 @@ pub(crate) struct PerfView {
     pub(crate) gaps: kui_trace::analysis::Gaps,
     pub(crate) counters: Vec<(kui_trace::NameId, f64, i64)>,
     pub(crate) gauges: Vec<(kui_trace::NameId, f64, f64, f64)>,
+    /// Components by kind: placed, replayed, and drawn fresh why.
+    pub(crate) placements: Vec<kui_trace::analysis::PlacementStat>,
     /// Each frame's phases, by its index.
     pub(crate) phases: Vec<kui_trace::analysis::Phases>,
     /// Frames counted by cause, and by holder (what, name, node), the
@@ -383,6 +385,7 @@ impl PerfView {
         let gaps = analysis::gaps(&tl, &trace);
         let counters = analysis::counters(&tl);
         let gauges = analysis::gauges(&tl);
+        let placements = analysis::placements(&tl, &trace);
         let budget = trace
             .session
             .as_ref()
@@ -419,6 +422,7 @@ impl PerfView {
             gaps,
             counters,
             gauges,
+            placements,
             phases,
             causes,
             holders,

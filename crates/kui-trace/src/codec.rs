@@ -53,6 +53,7 @@ mod tag {
     pub const GAUGE: u8 = 15;
     pub const MARK: u8 = 16;
     pub const NOTE: u8 = 17;
+    pub const PLACEMENT: u8 = 18;
 }
 
 fn put_u(out: &mut Vec<u8>, mut v: u64) {
@@ -267,6 +268,20 @@ impl Encoder {
                 self.t(*t);
                 put_str(&mut self.body, text);
                 tag::NOTE
+            }
+            Record::Placement {
+                t,
+                node,
+                component,
+                answer,
+                why,
+            } => {
+                self.t(*t);
+                put_u(&mut self.body, *node);
+                put_u(&mut self.body, *component as u64);
+                put_u(&mut self.body, *answer as u64);
+                put_u(&mut self.body, *why as u64);
+                tag::PLACEMENT
             }
         };
         out.push(tag);
@@ -526,6 +541,13 @@ impl<'a> Reader<'a> {
             tag::NOTE => Record::Note {
                 t: self.t(&mut c)?,
                 text: c.str()?,
+            },
+            tag::PLACEMENT => Record::Placement {
+                t: self.t(&mut c)?,
+                node: c.u()?,
+                component: c.u32()?,
+                answer: c.u32()?,
+                why: c.u32()?,
             },
             // A tag from a later version: skipped by its length.
             _ => return Some(None),

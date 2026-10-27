@@ -144,6 +144,22 @@ pub fn dump(trace: &Trace) -> String {
                 format!("{} mark {} {}", ms(*t), trace.track_name(*track), n(*name))
             }
             Record::Note { t, text } => format!("{} note {text}", ms(*t)),
+            Record::Placement {
+                t,
+                node,
+                component,
+                answer,
+                why,
+            } => format!(
+                "{} placed {} {}{} node {node:016x}",
+                ms(*t),
+                n(*component),
+                n(*answer),
+                match n(*why) {
+                    "" => String::new(),
+                    w => format!(" ({w})"),
+                }
+            ),
             Record::Session(_) | Record::Name { .. } | Record::Track { .. } => continue,
         };
         out.push_str(&line);

@@ -197,8 +197,8 @@
 //!   which): `span(name, fn)` runs `fn` inside a span and returns what it
 //!   returned, `perf_count(name, n)` adds to the frame's counter,
 //!   `perf_gauge(name, value)` sets a reading, `perf_mark(name)` puts an
-//!   instant on the timeline, `perf_measure(name, ms)` a span timed
-//!   elsewhere.
+//!   instant on the timeline, `perf_note(text)` a line beside the
+//!   numbers, `perf_measure(name, ms)` a span timed elsewhere.
 //! - Scrolling: `reveal(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
 //!   `set_scroll(key, x, y)`, `shift_scroll(key, drawn, target)`,
 //!   `edge_scroll(key, x, y, rect)`.
@@ -1277,7 +1277,7 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// `request_frame_at(at)` (a frame at a time on the frame clock, `now`),
 /// `exit_with(key, exit)` (the exit a node leaves by this frame), the
 /// recording's `span(name, fn)` / `perf_count(name, n)` / `perf_gauge(name,
-/// value)` / `perf_mark(name)` / `perf_measure(name, ms)` /
+/// value)` / `perf_mark(name)` / `perf_note(text)` / `perf_measure(name, ms)` /
 /// `perf_measuring()` and `request_frame_for(why)` (ADR 0058)
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `shift_scroll(key, drawn, target)` / `edge_scroll(key, x, y, rect)` /
@@ -1656,6 +1656,13 @@ fn env_table(
         "perf_mark",
         lua.create_function(move |_, name: String| {
             ui.borrow_mut()?.core().perf_mark(&name);
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "perf_note",
+        lua.create_function(move |_, text: String| {
+            ui.borrow_mut()?.core().perf_note(&text);
             Ok(())
         })?,
     )?;
@@ -7627,6 +7634,7 @@ mod tests {
                   env.span("after", function() end)
                   env.perf_gauge("bytes", 10)
                   env.perf_mark("opened")
+                  env.perf_note("a line")
                   env.perf_measure("parse", 2)
                   env.request_frame_for("blink")
                   return column { key = "root" }
@@ -7674,6 +7682,9 @@ mod tests {
         ));
         assert!(has(
             &|r| matches!(r, Record::Mark { name, .. } if t.name(*name) == "opened")
+        ));
+        assert!(has(
+            &|r| matches!(r, Record::Note { text, .. } if text == "a line")
         ));
         assert!(has(
             &|r| matches!(r, Record::Request { why, .. } if t.name(*why) == "blink")

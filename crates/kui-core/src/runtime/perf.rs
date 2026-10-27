@@ -19,10 +19,15 @@
 //! leaves, and every frame asked for. The drivers add what only they see
 //! (decision 5) through [`Core::note_loop`], [`Core::push_frame_sample`]
 //! and a `handler` span round each call into the app; an app adds its own
-//! spans, counters, gauges, marks and measures (decisions 6, 7).
+//! spans, counters, gauges, marks, measures and notes (decisions 6, 7),
+//! and code with no core at hand its spans through [`span`] — on the
+//! thread a core's span is open on, nested under it (backlog F215). Each
+//! component placed is recorded with how it was filled (backlog F212).
 
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::panic::Location;
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use kui_trace::{LoopEvent, NameId, Names, Origin as TOrigin, Record, Session, Track};
@@ -38,6 +43,22 @@ pub const RING_FRAMES: usize = 1800;
 pub const LIVE_FRAMES: usize = 120;
 /// How many spans a frame keeps; the rest are counted.
 const MAX_SPANS: usize = 1024;
+/// How many notes a frame and its gap keep, and how long one is.
+const MAX_NOTES: usize = 64;
+const MAX_NOTE_BYTES: usize = 512;
+
+/// Span ids, one counter for the process: a thread span (backlog F215)
+/// takes its id where no core is at hand.
+static NEXT_SPAN: AtomicU32 = AtomicU32::new(0);
+
+fn next_span_id() -> u32 {
+    loop {
+        let id = NEXT_SPAN.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+        if id != 0 {
+            return id;
+        }
+    }
+}
 
 /// Why measuring is on: a bit each.
 pub(crate) mod why {
@@ -105,7 +126,6 @@ pub(crate) struct Recorder {
     ring: VecDeque<Record>,
     ring_frames: usize,
     stack: Vec<Open>,
-    next_id: u32,
     /// The frame being built, from `begin_frame` to `finish_frame`.
     frame: Option<u64>,
     /// The last frame finished: what a present is for.
@@ -116,8 +136,15 @@ pub(crate) struct Recorder {
     /// recorded, not at a time left from the last frame anything kept.
     frame_t: Option<u64>,
     spans_in_frame: usize,
-    /// Spans a frame had past [`MAX_SPANS`].
+    /// Notes since the last frame ended: this frame's and its gap's.
+    notes_in_frame: usize,
+    /// Spans a frame had past [`MAX_SPANS`], and notes past
+    /// [`MAX_NOTES`].
     pub(crate) dropped: u64,
+    /// This recorder's [`Here`] on the thread, while a span of its is
+    /// open: its owner id, and whether it is there.
+    here_id: u64,
+    here_on: bool,
     /// A run of pointer moves: first, last, how many, its kind.
     run: Option<(u64, u64, u32, NameId)>,
     counters: Vec<(NameId, i64)>,
@@ -325,6 +352,7 @@ impl Core {
             // Measuring ends: the trace as the app had it; what is open
             // closes.
             self.perf.stack.clear();
+            self.here_sync();
             self.perf.run = None;
             if let Some(was) = self.perf.trace_was.take() {
                 self.set_frame_trace(was);
@@ -373,9 +401,13 @@ impl Core {
             .last()
             .and_then(|&i| self.tree.keys.get(i as usize))
             .map_or(0, |k| k.0);
-        self.perf.next_id += 1;
-        let id = self.perf.next_id;
-        let parent = self.perf.stack.last().map_or(0, |o| o.id);
+        let id = next_span_id();
+        // Inside a thread span open now, when one is: code with no core
+        // at hand called back into code with one.
+        let parent = self
+            .here_open_top()
+            .or_else(|| self.perf.stack.last().map(|o| o.id))
+            .unwrap_or(0);
         let start = self.perf.now();
         #[cfg(feature = "tracing")]
         let traced = (self.perf.why & why::TRACING != 0).then(|| {
@@ -396,6 +428,7 @@ impl Core {
             #[cfg(feature = "tracing")]
             traced,
         });
+        self.here_sync();
         SpanId(id)
     }
 
@@ -413,6 +446,7 @@ impl Core {
             let o = self.perf.stack.pop().unwrap();
             self.perf_close(o, end, cpu, false);
         }
+        self.here_sync();
     }
 
     fn perf_close(&mut self, o: Open, end: u64, cpu: Option<u64>, cut: bool) {
@@ -454,8 +488,7 @@ impl Core {
         let name_id = self.perf.name(name);
         let end = self.perf.now();
         let dur = (ms.max(0.0) * 1000.0) as u64;
-        self.perf.next_id += 1;
-        let id = self.perf.next_id;
+        let id = next_span_id();
         self.perf.push(Record::Span(kui_trace::Span {
             track,
             id,
@@ -504,6 +537,63 @@ impl Core {
             t,
             track: Track::MAIN,
             name,
+        });
+    }
+
+    /// Puts a line on the timeline — what the numbers beside it cannot
+    /// say: "editor moved, reads fs.stat" — shown in its frame's detail.
+    /// At most 64 a frame and its gap, of 512 bytes each; a note goes
+    /// where the recording goes, into bug reports, so it is the app's
+    /// words and never what was typed.
+    pub fn perf_note(&mut self, text: &str) {
+        if self.perf.why == 0 {
+            return;
+        }
+        self.perf.notes_in_frame += 1;
+        if self.perf.notes_in_frame > MAX_NOTES {
+            self.perf.dropped += 1;
+            return;
+        }
+        let mut end = text.len().min(MAX_NOTE_BYTES);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let t = self.perf.now();
+        self.perf.push(Record::Note {
+            t,
+            text: text[..end].to_string(),
+        });
+    }
+
+    /// A component placed at `node` and how it was filled, with the
+    /// fact that moved or what made it unreplayable (backlog F212).
+    pub(crate) fn perf_placement(
+        &mut self,
+        node: Key,
+        component: &str,
+        answer: crate::FillAnswer,
+        why: Option<&str>,
+    ) {
+        if self.perf.why == 0 {
+            return;
+        }
+        if self.perf.frame.is_some() {
+            self.perf.spans_in_frame += 1;
+            if self.perf.spans_in_frame > MAX_SPANS {
+                self.perf.dropped += 1;
+                return;
+            }
+        }
+        let t = self.perf.now();
+        let component = self.perf.name(component);
+        let answer = self.perf.name(answer.name());
+        let why = why.map_or(0, |w| self.perf.name(w));
+        self.perf.push(Record::Placement {
+            t,
+            node: node.0,
+            component,
+            answer,
+            why,
         });
     }
 
@@ -778,6 +868,8 @@ impl Core {
         while let Some(o) = self.perf.stack.pop() {
             self.perf_close(o, end, cpu, true);
         }
+        self.here_sync();
+        self.perf.notes_in_frame = 0;
         let shaped = self.text.shaped - self.perf.shaped_at;
         let rasterized = self.atlas.rasterized - self.perf.rasterized_at;
         let mut counters = std::mem::take(&mut self.perf.counters);
@@ -892,6 +984,9 @@ impl Core {
 
 impl Drop for Recorder {
     fn drop(&mut self) {
+        if self.here_on {
+            let _ = here_take(self.here_id);
+        }
         match &mut self.sink {
             Some(Sink::Stream(w)) => {
                 let _ = w.flush();
@@ -917,6 +1012,281 @@ pub(crate) fn short_path(path: &str) -> &str {
     match (cuts.next(), cuts.next()) {
         (Some(_), Some(i)) => &path[i + 1..],
         _ => path,
+    }
+}
+
+// --- Spans where no core is at hand (backlog F215) ------------------------
+
+/// A core's recording as its thread sees it while a span of the core's is
+/// open — the build, a handler, the app's own: the clock a thread span is
+/// timed on and the span it nests under.
+struct Here {
+    owner: u64,
+    epoch: Instant,
+    /// The core's innermost open span, and its origin and node.
+    parent: u32,
+    origin: TOrigin,
+    node: u64,
+    /// Thread spans open, innermost last.
+    open: Vec<HereOpen>,
+    /// Closed, for the core to keep at its next span's begin or end.
+    done: Vec<HereDone>,
+    /// Closed past [`MAX_SPANS`] before the core kept them.
+    lost: u64,
+}
+
+struct HereOpen {
+    id: u32,
+    parent: u32,
+    name: String,
+    origin: TOrigin,
+    node: u64,
+    start: u64,
+    cpu0: Option<u64>,
+}
+
+struct HereDone {
+    open: HereOpen,
+    end: u64,
+    cpu: Option<u64>,
+    cut: bool,
+}
+
+thread_local! {
+    /// The recordings with a span open on this thread, the last opened on
+    /// top: a second window's core driven from inside the first's handler
+    /// takes the thread's spans until its own last span closes.
+    static HERE: RefCell<Vec<Here>> = const { RefCell::new(Vec::new()) };
+}
+
+/// How many [`Here`]s there are on every thread: with none, a thread span
+/// is one load.
+static HERES: AtomicUsize = AtomicUsize::new(0);
+static NEXT_HERE: AtomicU64 = AtomicU64::new(1);
+
+fn here_take(owner: u64) -> Option<Here> {
+    let h = HERE
+        .try_with(|c| {
+            let mut v = c.borrow_mut();
+            v.iter()
+                .rposition(|h| h.owner == owner)
+                .map(|i| v.remove(i))
+        })
+        .ok()
+        .flatten();
+    if h.is_some() {
+        HERES.fetch_sub(1, Ordering::Relaxed);
+    }
+    h
+}
+
+fn here_now(epoch: Instant) -> u64 {
+    epoch.elapsed().as_micros() as u64
+}
+
+/// Whether a span begun here with [`span_begin`] would be recorded: a
+/// core on this thread records and has a span open.
+pub fn measuring() -> bool {
+    HERES.load(Ordering::Relaxed) != 0 && HERE.try_with(|c| !c.borrow().is_empty()) == Ok(true)
+}
+
+/// Begins a span named `name` where no core is at hand — inside a script
+/// runtime, a library deep in a stack: on the thread's recording, nested
+/// in the span open now (the core's, or a thread span), under its origin
+/// and node, timed on its clock. A core's span must be open on this
+/// thread — the build, a handler the runner times, the app's own —
+/// or nothing is recorded and the id is [`SpanId::NONE`]. End it with
+/// [`span_end`], not [`Core::span_end`]; one still open when the core's
+/// last span closes is closed there and marked cut.
+pub fn span_begin(name: &str) -> SpanId {
+    if HERES.load(Ordering::Relaxed) == 0 {
+        return SpanId::NONE;
+    }
+    HERE.try_with(|c| {
+        let mut v = c.borrow_mut();
+        let Some(h) = v.last_mut() else {
+            return SpanId::NONE;
+        };
+        let id = next_span_id();
+        let parent = h.open.last().map_or(h.parent, |o| o.id);
+        h.open.push(HereOpen {
+            id,
+            parent,
+            name: name.to_owned(),
+            origin: h.origin,
+            node: h.node,
+            start: here_now(h.epoch),
+            cpu0: cpu_us(),
+        });
+        SpanId(id)
+    })
+    .unwrap_or(SpanId::NONE)
+}
+
+/// Ends the thread span `id` began, and any opened inside it and left
+/// open; [`SpanId::NONE`], or an id with no begin here, is nothing.
+pub fn span_end(id: SpanId) {
+    if id == SpanId::NONE || HERES.load(Ordering::Relaxed) == 0 {
+        return;
+    }
+    let _ = HERE.try_with(|c| {
+        let mut v = c.borrow_mut();
+        for h in v.iter_mut().rev() {
+            let Some(pos) = h.open.iter().rposition(|o| o.id == id.0) else {
+                continue;
+            };
+            let end = here_now(h.epoch);
+            let cpu = cpu_us();
+            while h.open.len() > pos {
+                let open = h.open.pop().unwrap();
+                if h.done.len() >= MAX_SPANS {
+                    h.lost += 1;
+                    continue;
+                }
+                h.done.push(HereDone {
+                    open,
+                    end,
+                    cpu,
+                    cut: false,
+                });
+            }
+            return;
+        }
+    });
+}
+
+/// A thread span ([`span_begin`]) that ends when the guard drops.
+pub fn span(name: &str) -> SpanGuard {
+    SpanGuard(span_begin(name))
+}
+
+/// A thread span open until this drops ([`span`]).
+#[must_use = "the span ends when the guard drops"]
+pub struct SpanGuard(SpanId);
+
+impl SpanGuard {
+    /// Its id: [`SpanId::NONE`] while nothing is recorded.
+    pub fn id(&self) -> SpanId {
+        self.0
+    }
+}
+
+impl Drop for SpanGuard {
+    fn drop(&mut self) {
+        span_end(self.0);
+    }
+}
+
+impl Core {
+    /// The thread span open now inside this core's, if any.
+    fn here_open_top(&self) -> Option<u32> {
+        if !self.perf.here_on {
+            return None;
+        }
+        let owner = self.perf.here_id;
+        HERE.try_with(|c| {
+            c.borrow()
+                .iter()
+                .rev()
+                .find(|h| h.owner == owner)
+                .and_then(|h| h.open.last().map(|o| o.id))
+        })
+        .ok()
+        .flatten()
+    }
+
+    /// Keeps the thread's view of the recording in step with the core's
+    /// open spans: there while one is, the innermost what a thread span
+    /// nests under; gone when none is. The thread spans closed meanwhile
+    /// are kept either way.
+    fn here_sync(&mut self) {
+        let top = self.perf.stack.last().map(|o| (o.id, o.origin, o.node));
+        let (done, lost) = match top {
+            Some((parent, origin, node)) if !self.perf.here_on => {
+                if self.perf.here_id == 0 {
+                    self.perf.here_id = NEXT_HERE.fetch_add(1, Ordering::Relaxed);
+                }
+                self.perf.now();
+                let here = Here {
+                    owner: self.perf.here_id,
+                    epoch: self.perf.epoch.unwrap_or_else(Instant::now),
+                    parent,
+                    origin,
+                    node,
+                    open: Vec::new(),
+                    done: Vec::new(),
+                    lost: 0,
+                };
+                if HERE.try_with(|c| c.borrow_mut().push(here)).is_ok() {
+                    HERES.fetch_add(1, Ordering::Relaxed);
+                    self.perf.here_on = true;
+                }
+                return;
+            }
+            Some((parent, origin, node)) => {
+                let owner = self.perf.here_id;
+                HERE.try_with(|c| {
+                    let mut v = c.borrow_mut();
+                    match v.iter_mut().rev().find(|h| h.owner == owner) {
+                        Some(h) => {
+                            h.parent = parent;
+                            h.origin = origin;
+                            h.node = node;
+                            (std::mem::take(&mut h.done), std::mem::take(&mut h.lost))
+                        }
+                        None => (Vec::new(), 0),
+                    }
+                })
+                .unwrap_or_default()
+            }
+            None if self.perf.here_on => {
+                self.perf.here_on = false;
+                match here_take(self.perf.here_id) {
+                    Some(mut h) => {
+                        let end = here_now(h.epoch);
+                        let cpu = cpu_us();
+                        while let Some(open) = h.open.pop() {
+                            h.done.push(HereDone {
+                                open,
+                                end,
+                                cpu,
+                                cut: true,
+                            });
+                        }
+                        (h.done, h.lost)
+                    }
+                    None => (Vec::new(), 0),
+                }
+            }
+            None => return,
+        };
+        if self.perf.why == 0 {
+            return;
+        }
+        self.perf.dropped += lost;
+        for d in done {
+            if self.perf.frame.is_some() {
+                self.perf.spans_in_frame += 1;
+                if self.perf.spans_in_frame > MAX_SPANS {
+                    self.perf.dropped += 1;
+                    continue;
+                }
+            }
+            let o = d.open;
+            let name = self.perf.name(&o.name);
+            self.perf.push(Record::Span(kui_trace::Span {
+                track: Track::MAIN,
+                id: o.id,
+                parent: o.parent,
+                name,
+                origin: o.origin,
+                start: o.start,
+                dur: d.end.saturating_sub(o.start),
+                cpu: o.cpu0.zip(d.cpu).map(|(a, b)| b.saturating_sub(a)),
+                node: o.node,
+                cut: d.cut,
+            }));
+        }
     }
 }
 

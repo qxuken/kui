@@ -102,6 +102,7 @@ Lua is a guest that wakes nothing.
    | `wake`, `request` | a wake and a frame asked for, with their names | core, driver |
    | `loop` | the driver went to sleep (until when), woke (by what), or handled an OS event that never became input | driver |
    | `counter`, `gauge`, `mark`, `note` | a count, a reading, an instant, a line | core, app |
+   | `placement` | a component placed: its kind, node, how it was filled and, run again, the fact that moved by kind and node (amended 2026-10-27) | core |
 
    No record holds a payload, typed text or a concealed field's
    anything: kinds, keys, labels and times. A recording goes into bug
@@ -444,4 +445,39 @@ building settled that the decisions left open, or changed:
 - **Not built**: `kui-perf` (decision 13, now F200), the devtools read
   door its tab form needs, and the panel's restyle in the design
   system's look.
+
+## Amendment: kawoosh's three (2026-10-27)
+
+Asked by kawoosh moving its own perf log and frame ledger onto the
+recording (backlog F212, F215, F216), and built the day they were filed:
+
+- **A span where no core is at hand** (decision 6). `kui_core::perf`'s
+  `span` / `span_begin` / `span_end` record on the recording of the core
+  whose span is open on the calling thread — the build, a handler a
+  runner times, the app's own — nested in the span open now, under its
+  origin and node, timed on its clock: a profiler inside a script
+  runtime records each call where it ran, under the fill that made it,
+  where `perf_measure` put a sum at the frame's end on a track of its
+  own. The thread holds a stack of such views, the last core to open a
+  span on top; the core keeps the thread's closed spans at its next
+  span's begin or end and cuts one left open with its last. Span ids
+  are one counter for the process, so a thread span takes one with no
+  core at hand. Outside every core span, or with nothing recording, a
+  thread span is nothing, one atomic load. C and Odin call it with no
+  context (`kui_thread_span_begin`), Node as a module function; Lua's
+  `env.span` already runs where the script does.
+- **`perf_note(text)` writes the `note` record** (decision 7), which had
+  no door: 64 a frame and its gap, 512 bytes each, shown in the opened
+  frame's detail. A note is the app's words, and a recording goes into
+  bug reports.
+- **A `placement` record** (decision 2's table gains a row): a component
+  placed (ADR 0067) — its kind, its node, how it was filled, and for a
+  fill run again the fact that moved by its kind and node (`hover
+  00000000000000ab`, `the clock`), never what it read. The answer
+  `FillAnswer` gives says `reads`; ADR 0067 sends the *which* to the
+  devtools, and the recording is where they read it: a frame opened
+  lists its components drawn fresh and why, and the recording groups
+  them by kind, how often each replayed. It counts against a frame's
+  1024 spans. Tag 18; a reader before it skips it by its length, so the
+  format's version stays 1.
 

@@ -61,6 +61,12 @@ fn sample() -> Trace {
         n("input"),
         n("owed"),
     );
+    let (n_component, n_reads, n_hover, n_replayed) = (
+        n("ui:pane"),
+        n("reads"),
+        n("hover 0000000000000abc"),
+        n(crate::analysis::REPLAYED),
+    );
     t.tracks.push((Track(2), parser));
     let mut rows_span = span(2, 1, rows, Track::MAIN, 100, 500);
     rows_span.origin = Origin::Host;
@@ -144,6 +150,20 @@ fn sample() -> Trace {
         Record::Note {
             t: 14_000,
             text: NOTE.into(),
+        },
+        Record::Placement {
+            t: 16_100,
+            node: 0xabc,
+            component: n_component,
+            answer: n_reads,
+            why: n_hover,
+        },
+        Record::Placement {
+            t: 16_200,
+            node: 0xabd,
+            component: n_component,
+            answer: n_replayed,
+            why: 0,
         },
         Record::FrameBegin {
             t: 16_000,
@@ -605,6 +625,14 @@ fn chrome_is_trace_events_nested_per_thread() {
         "src/app.rs:4"
     );
     assert_eq!(inst("woke input").get("tid").num(), 2.0);
+    // A component drawn fresh, with its reason; a replayed one not at all.
+    let fresh = inst("ui:pane reads");
+    assert_eq!(fresh.get("args").get("why").str(), "hover 0000000000000abc");
+    assert_eq!(fresh.get("args").get("node").str(), "0000000000000abc");
+    assert!(
+        !evs.iter()
+            .any(|e| ph(e) == "i" && e.get("name").str() == "ui:pane replayed")
+    );
     let note = inst("note");
     assert_eq!(note.get("s").str(), "g");
     assert_eq!(note.get("args").get("text").str(), NOTE);

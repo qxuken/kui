@@ -180,9 +180,24 @@ pub enum Record {
         track: Track,
         name: NameId,
     },
+    /// A line the app wrote (`perf_note`): what the numbers beside it
+    /// cannot say — a pane's "editor moved, reads fs.stat".
     Note {
         t: u64,
         text: String,
+    },
+    /// A component placed (ADR 0067): its kind, the node it is at, how
+    /// it was filled — `replayed`, or drawn fresh and why in a word
+    /// (`not-kept`, `params`, `reads`, `not-replayable`, `heard`) — and,
+    /// for `reads` and `not-replayable`, the fact that moved or what made
+    /// it unreplayable: `hover 00000000000000ab`, `the clock`. The fact's
+    /// kind and node, never what it read.
+    Placement {
+        t: u64,
+        node: u64,
+        component: NameId,
+        answer: NameId,
+        why: NameId,
     },
 }
 
@@ -205,7 +220,8 @@ impl Record {
             | Record::Counter { t, .. }
             | Record::Gauge { t, .. }
             | Record::Mark { t, .. }
-            | Record::Note { t, .. } => *t,
+            | Record::Note { t, .. }
+            | Record::Placement { t, .. } => *t,
             Record::Span(s) => s.start,
         })
     }

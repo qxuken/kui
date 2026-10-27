@@ -6,7 +6,8 @@
 //! presents, nested spans with their CPU time and the node they began
 //! under, inputs arriving, events handed to the app, wakes, frame
 //! requests, the driver's loop going to sleep and waking, counters,
-//! gauges, marks and notes. Frames are intervals on the clock; what
+//! gauges, marks, the app's notes, and each component placed and how it
+//! was filled. Frames are intervals on the clock; what
 //! happens after one ends and before the next begins is the next one's
 //! gap.
 //!
@@ -46,7 +47,7 @@ mod record;
 
 pub use codec::{Encoder, Error, MAGIC, Reader, VERSION, Writer, header};
 pub use model::{
-    Event, Frame, Gauge, Holder, Input, Mark, Names, Present, Request, Timeline, Trace,
+    Event, Frame, Gauge, Holder, Input, Mark, Names, Placement, Present, Request, Timeline, Trace,
 };
 pub use record::{LoopEvent, NameId, Origin, Record, Session, Span, Track};
 

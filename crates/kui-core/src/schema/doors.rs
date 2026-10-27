@@ -74,6 +74,7 @@ const ODIN_IS_C: &str =
 
 /// The reason for Node's `No` on the renderer rows (not done
 /// here).
+const LUA_SPAN_HERE: &str = "a script runs inside the host's call with its env at hand: `env.span(name, fn)` nests where it runs, and the host's own Rust times its calls into the script with `perf::span`";
 const NEVER_PAINTS: &str = "a Node host never paints: the renderer behind `KuiWindow` is the runner's, and a headless `Ctx` has none";
 
 pub const DOORS: &[Door] = &[
@@ -1703,6 +1704,42 @@ pub const DOORS: &[Door] = &[
         doc: "Puts an instant on the timeline: a file opened, a command run.",
     },
     Door {
+        rust: "Core::perf_note",
+        c: Is("kui_perf_note"),
+        odin: Is("perf_note"),
+        node: Is("perfNote"),
+        lua: Is("perf_note"),
+        doc: "Puts a line on the timeline — what the numbers beside it cannot say, \"editor moved, reads fs.stat\" — shown in its frame's detail; at most 64 a frame and its gap, of 512 bytes each.",
+    },
+    Door {
+        rust: "perf::span_begin",
+        c: Is("kui_thread_span_begin"),
+        odin: Is("thread_span_begin"),
+        node: Is("kui.threadSpanBegin"),
+        lua: No(LUA_SPAN_HERE),
+        doc: "Begins a span where no core is at hand — inside a script runtime, a library deep in a stack — on the recording of the core whose span is open on this thread, nested in the span open now, under its origin and node; 0 while none is.",
+    },
+    Door {
+        rust: "perf::span_end",
+        c: Is("kui_thread_span_end"),
+        odin: Is("thread_span_end"),
+        node: Is("kui.threadSpanEnd"),
+        lua: No(LUA_SPAN_HERE),
+        doc: "Ends the thread span an id names, and any opened inside it and left open; one still open when the core's last span closes is closed there and marked cut.",
+    },
+    Door {
+        rust: "perf::span",
+        c: No(
+            "no guard crosses kui.h: `kui_thread_span_begin` before the work and `kui_thread_span_end` after it",
+        ),
+        odin: No(ODIN_IS_C),
+        node: No(
+            "a JS value has no drop to end it on: `threadSpanBegin` before the work and `threadSpanEnd` after it",
+        ),
+        lua: No(LUA_SPAN_HERE),
+        doc: "A thread span that ends when the guard it returns drops.",
+    },
+    Door {
         rust: "Core::perf_measuring",
         c: Is("kui_perf_measuring"),
         odin: Is("perf_measuring"),
@@ -2238,7 +2275,8 @@ mod tests {
     /// in `session.rs`, `Tokens::` in `tokens.rs`, `WheelFeel::` in
     /// `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` and
     /// `Waker::` in the
-    /// `kui-native` crate, `kui_native::` and `Animation::` in its
+    /// `kui-native` crate, `perf::` (the recording's free functions) under
+    /// `runtime/`, `kui_native::` and `Animation::` in its
     /// `decode.rs` (or `capture.rs`, `encode.rs`, `system.rs`), and `App::` a method of that crate's `App` trait (a
     /// trait's `fn` is public without the word) — so a renamed or
     /// removed verb is a red row and not a stale one, which is the pin
@@ -2293,6 +2331,7 @@ mod tests {
                 "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,
                 "kui_native" | "Animation" | "AnimationEncoder" | "Captures" => &decode,
+                "perf" => &runtime,
                 "App" => app_trait,
                 other => panic!("{}: {other} is not a prefix the table knows", d.rust),
             };

@@ -130,6 +130,42 @@ already generated for each event.
   the C and Odin packs' READMEs, the Odin README and kui-ffi's README say
   so, and why — every Rust archive carries its own standard library, so
   two collide at `rust_eh_personality`.
+
+- **A span where no core is at hand** (backlog F215, from kawoosh):
+  `kui_core::perf::span("plugin")` — a guard, or `span_begin` /
+  `span_end` — records a span on the recording of the core whose span
+  is open on this thread (the build, a handler the runner times, the
+  app's own), nested where it ran, under that span's origin and node: a
+  profiler inside a script runtime, a terminal's read under the status
+  line. Outside every core span, or with nothing recording, it is
+  nothing, at the cost of one atomic load. C `kui_thread_span_begin` /
+  `kui_thread_span_end` (no context), Odin `thread_span_begin` /
+  `thread_span_end`, Node `threadSpanBegin` / `threadSpanEnd`.
+
+  *What you can delete:* each plugin's time summed per frame and
+  reported with `perf_measure` on a track of its own — the span sits
+  under the fill that ran it.
+
+- **`perf_note(text)`** (backlog F216, from kawoosh): a line on the
+  timeline beside the numbers — "editor moved, reads fs.stat" — shown in
+  its frame's detail in the Perf tab; 64 a frame and its gap, 512 bytes
+  each. In every binding: C `kui_perf_note`, Odin `perf_note`, Node
+  `perfNote`, Lua `env.perf_note`.
+
+  *What you can delete:* counters named for a reason (`pane ran: WHY`)
+  kept only to carry a sentence.
+
+- **A recording says why each component was drawn fresh** (backlog
+  F212, from kawoosh): every placement is a `placement` record — its
+  kind, its node, its answer (`replayed`, `not-kept`, `params`, `reads`,
+  `not-replayable`, `heard`) and, for `reads`, the fact that moved by
+  its kind and node (`hover 00000000000000ab`, `the clock`), never what
+  it read. The Perf tab lists a frame's components drawn fresh and why,
+  and the recording's components by how often each replayed;
+  `kui-trace dump` prints them, the adapters write each one drawn fresh
+  as an instant, and `kui_trace::analysis::placements` groups them. A
+  reader before this one skips the record.
+
 - **One child process started at a time, whichever thread asks**
   (backlog F223): `kui_native::spawn` — `spawn`, `output`, `status` —
   std's own with the start under one process-wide lock, or under the

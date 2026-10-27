@@ -2060,6 +2060,23 @@ pub fn open_external(target: String) -> Result<()> {
         .map_err(|e| napi::Error::from_reason(format!("openExternal: {e}")))
 }
 
+/// Begins a span named `name` where the window is not at hand — a
+/// library deep in a stack — on the recording of the window whose span is
+/// open now on this thread (an `update` the loop times, a span of the
+/// app's), nested in the span open now (backlog F215). 0 while none is,
+/// which `threadSpanEnd` ignores.
+#[napi]
+pub fn thread_span_begin(name: String) -> u32 {
+    kui_core::perf::span_begin(&name).0
+}
+
+/// Ends the span `threadSpanBegin` began, and any opened inside it and
+/// left open; 0, or an id with no begin, is nothing.
+#[napi]
+pub fn thread_span_end(id: u32) {
+    kui_core::perf::span_end(kui_core::SpanId(id));
+}
+
 /// What an `AnimationEncoder` takes beside its size: `loops`, how many
 /// times it plays (absent or 0: for ever).
 #[napi(object)]
@@ -3253,6 +3270,14 @@ macro_rules! core_methods {
             #[napi]
             pub fn perf_mark(&mut self, name: String) {
                 self.$core().perf_mark(&name);
+            }
+
+            /// Puts a line on the timeline — what the numbers beside it
+            /// cannot say — shown in its frame's detail: at most 64 a
+            /// frame and its gap, of 512 bytes each.
+            #[napi]
+            pub fn perf_note(&mut self, text: String) {
+                self.$core().perf_note(&text);
             }
 
             /// Asks for a frame after this one and names why: `owedBy()`
