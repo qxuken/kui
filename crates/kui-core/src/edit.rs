@@ -2071,8 +2071,11 @@ impl EditStore {
     /// the buffer from the moment it appears — following text shifts and
     /// the paragraph rewraps — but never in the undo history; the caret
     /// sits at the IME-reported offset inside it. Empty text cancels
-    /// (winit sends that before every commit). Returns true if anything
-    /// visible changed.
+    /// (winit sends that before every commit). Returns true when the
+    /// committed text changed — a composition begun over a selection
+    /// deletes it, a real edit the app hears as a `change` then, so a
+    /// composition abandoned after it (a blur, an empty preedit) leaves
+    /// the editor and the app agreeing (backlog FZ17).
     pub(crate) fn set_preedit(
         &mut self,
         key: Key,
@@ -2091,6 +2094,7 @@ impl EditStore {
         }
         let (text, cursor) = composed(text, cursor, s.multiline);
         let text = &*text;
+        let mut committed = false;
         if text.is_empty() {
             if !s.abandon_preedit() {
                 return false;
@@ -2104,7 +2108,7 @@ impl EditStore {
                 None => {
                     // Composing over a selection replaces it, as typing
                     // would — that part is a real, recorded edit.
-                    s.delete_selection_recorded();
+                    committed = s.delete_selection_recorded();
                     let at = s.editor.cursor();
                     s.editor.insert_string(text, None);
                     at
@@ -2128,7 +2132,7 @@ impl EditStore {
         s.version += 1;
         s.invalidate_measurements();
         self.touch_caret(key);
-        true
+        committed
     }
 
     /// Drops the selection of one editor, leaving the caret where the

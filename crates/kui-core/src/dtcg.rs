@@ -630,6 +630,12 @@ fn color(v: &Value, warn: &mut Vec<String>) -> Option<Color> {
 
 fn hex(s: &str) -> Option<Color> {
     let h = s.strip_prefix('#')?;
+    // Hex digits alone, before anything is sliced: a byte index inside a
+    // character panicked (`#1̠413`, backlog FZ16), and `from_str_radix`
+    // takes a leading `+` (`#+fff`).
+    if !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
     let n = |i: usize, w: usize| u8::from_str_radix(&h[i..i + w], 16).ok();
     match h.len() {
         3 | 4 => {
@@ -943,6 +949,18 @@ mod tests {
             "brandBackgroundElevation1"
         );
         assert_eq!(kui_name("", "Text.secondary_muted"), "textSecondaryMuted");
+    }
+
+    /// A character past ASCII in a hex colour is not one, and is no
+    /// panic: the parser sliced it by byte (backlog FZ16, from `dtcg`).
+    #[test]
+    fn a_hex_colour_is_hex_digits_alone() {
+        assert_eq!(hex("#1\u{320}413"), None);
+        assert_eq!(hex("#1\u{19f}413"), None);
+        assert_eq!(hex("#é00"), None);
+        assert_eq!(hex("#+fff"), None);
+        assert_eq!(hex("#ff00ff"), Some(Color::rgba8(255, 0, 255, 255)));
+        assert_eq!(hex("#0f08"), Some(Color::rgba8(0, 255, 0, 136)));
     }
 
     #[test]

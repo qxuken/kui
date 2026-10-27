@@ -3,6 +3,8 @@
 #   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, win32-x64) ──┬── packs
 #           │     each leg: the Node addon, the `kui` runner, libkui_ffi  ├── npm-stage ──┐
 #           └─────────────────────────────────────────────────────────────┴───────────────┴── publish
+#   smoke (macos-15, windows-2025) ─────────────────────────── packs, publish
+#   packs + publish ── latest (the release made GitHub's latest, last)
 #
 # and `publish` puts the crates on crates.io and the ten npm packages on
 # npmjs, while `packs` attaches to the tag's GitHub release:
@@ -29,10 +31,10 @@
 # <platform>, the runner) before the two that name them (@qxuken/kui,
 # @qxuken/kui-cli), esbuild's shape.
 #
-# `workflow_dispatch` runs everything but the publishing steps, so the
-# builds and the packs can be tried on a branch without a tag; the
-# release's assets are then the run's `release-packs` artifact and the npm
-# tarballs its `npm-packages` artifact.
+# `workflow_dispatch` runs everything but the publishing steps and
+# `npm-stage`, so the check, the smoke rounds, the builds and the packs can
+# be tried on a branch without a tag; the release's assets are then the
+# run's `release-packs` artifact. The npm tarballs are a tag's run's alone.
 #
 # `check` is ci.yml itself, called: the whole check every push to main gets
 # (fmt, clippy, the workspace tests on lavapipe, the C round, the Odin
@@ -41,6 +43,15 @@
 # any of it. Until alpha.68 this was fmt, clippy and the tests alone, and
 # the full check was Forgejo's, started by hand; the repository lives on
 # GitHub alone now, and Forgejo's registries take no new versions.
+#
+# `smoke` is smoke.yml, called with `blocking: true`: the workspace tests,
+# every windowed example and the C round on macOS and Windows themselves,
+# where `check` is Linux's. It runs beside `check` and `build` (its ~30
+# minutes on Windows are the longest leg), and `packs` and `publish` wait
+# for it, so a red macOS or Windows round leaves the tag movable with
+# nothing on crates.io, npmjs or the release. Since alpha.69: alpha.67 and
+# alpha.68 went out with these rounds run only on pushes to main, where
+# they do not block.
 #
 # Each prebuild is built on the platform it targets, so no cross SDK is
 # involved: GitHub's macOS runners carry Xcode, Windows runners MSVC, and
@@ -97,6 +108,11 @@ env:
 jobs:
   check:
     uses: ./.github/workflows/ci.yml
+
+  smoke:
+    uses: ./.github/workflows/smoke.yml
+    with:
+      blocking: true
 
   build:
     needs: check
@@ -314,7 +330,7 @@ jobs:
   # of it attached to the tag's GitHub release. Not in `publish`'s way: see
   # the top of this file.
   packs:
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-24.04
     # The one job that writes to the repository: creating the release.
     permissions:
@@ -400,6 +416,9 @@ jobs:
 
       # Created here if the tag has no release yet, else the assets are
       # replaced, so a re-run of this job finishes what a failed one began.
+      # Created as a pre-release, whatever the version, and never latest:
+      # `latest`, the last job, makes it a release and GitHub's latest once
+      # `publish` and this job have both finished.
       - name: GitHub release
         if: github.event_name == 'push'
         env:
@@ -411,9 +430,7 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${files[@]}" --clobber
           else
-            pre=
-            case "$tag" in *-*) pre=--prerelease ;; esac
-            gh release create "$tag" "${files[@]}" --verify-tag $pre --title "$tag" \
+            gh release create "$tag" "${files[@]}" --verify-tag --prerelease --latest=false --title "$tag" \
               --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The kui runner: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.sh | sh\` on macOS and Linux, \`irm https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.ps1 | iex\` on Windows, or the kui-${tag#v}-<platform> archives by hand (SHA256SUMS covers every asset). The C and Odin tarballs hold libkui_ffi for linux-x64, linux-arm64, darwin-arm64 and win32-x64, shared and static; README.md in each says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui, and the runner as @qxuken/kui-cli)."
           fi
 
@@ -426,8 +443,10 @@ jobs:
   # @qxuken/kui-cli-linux-x64. The other platforms' packages are not yet
   # on npmjs at this version; npm skips an optional dependency it cannot
   # fetch, which is what makes the install possible before the publish.
+  # A tag's run only: a manual run publishes nothing, so it stages nothing.
   npm-stage:
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -497,7 +516,7 @@ jobs:
           compression-level: 0
 
   publish:
-    needs: [check, build, npm-stage]
+    needs: [check, smoke, build, npm-stage]
     # Only a tag publishes; a manual run stops at the builds and the packs.
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
@@ -692,3 +711,39 @@ jobs:
             echo "::error::published, but latest still names an older version on:$untagged"
             exit 1
           fi
+
+  # The last step: once the crates and npm packages are live (`publish`)
+  # and the release holds every asset (`packs`), the tag's GitHub release
+  # stops being a pre-release and becomes GitHub's latest, so
+  # `releases/latest` never names a version whose packages are not all up.
+  # Latest by npm's rule: only when the version sorts highest among the
+  # releases (semver, so a stable 0.1.0 sorts above its alphas and a
+  # re-run of an older tag takes nothing back). A `packs` that failed and
+  # is re-run ("Re-run failed jobs") brings this job with it.
+  latest:
+    needs: [publish, packs]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Mark the release latest
+        run: |
+          set -eu
+          tag="$GITHUB_REF_NAME"
+          tags=$(gh release list --exclude-drafts --limit 1000 --json tagName --jq '[.[].tagName]')
+          highest=$(TAGS="$tags" TAG="$tag" NPM_ROOT="$(npm root -g)" node -e '
+            const semver = require(require.resolve("semver", { paths: [process.env.NPM_ROOT + "/npm/node_modules"] }));
+            const all = [].concat(JSON.parse(process.env.TAGS), process.env.TAG).filter((t) => semver.valid(t));
+            process.stdout.write(all.sort(semver.rcompare)[0]);
+          ')
+          if [ "$highest" = "$tag" ]; then
+            gh release edit "$tag" --prerelease=false --latest
+          else
+            echo "latest left alone: $highest sorts above $tag"
+            gh release edit "$tag" --prerelease=false --latest=false
+          fi
+          gh release view "$tag" --json tagName,isPrerelease,isDraft,url

@@ -122,9 +122,29 @@ fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
     part.push(format!(".{}.{n}.part", std::process::id()));
     let part = PathBuf::from(part);
     std::fs::write(&part, text)?;
-    std::fs::rename(&part, path).inspect_err(|_| {
-        let _ = std::fs::remove_file(&part);
-    })
+    // Windows refuses a rename over a file something holds open without
+    // sharing its deletion — a scanner looking at the new file, or a
+    // reader opening it that instant — as `PermissionDenied`, so the
+    // rename is tried again, for 0.65 s at most; a file that holds the
+    // text by then was written by another check (backlog F242: the test
+    // below, once under a full parallel test run on Windows).
+    let mut tries = 0;
+    loop {
+        match std::fs::rename(&part, path) {
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && tries < 25 => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(2 * tries));
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&part);
+                if std::fs::read(path).is_ok_and(|b| b == text.as_bytes()) {
+                    return Ok(());
+                }
+                return Err(e);
+            }
+            Ok(()) => return Ok(()),
+        }
+    }
 }
 
 /// Writes the declarations `kui check` reads into a cache folder of this
@@ -197,22 +217,27 @@ mod decls_tests {
     /// command line's — and a reader never sees a file part written:
     /// read mid-write, `kui.d.tl` was empty and every name in it unknown
     /// (`unknown variable: kui`, PR #7's CI). The writer writes a stale
-    /// folder each time, as a check of another version would.
+    /// folder each time, as a check of another version would — a folder
+    /// of the test's own: the version's real one is what every other
+    /// check reads, and a `kui check` in another test binary run beside
+    /// this one found its `kui.d.tl` saying "stale".
     #[test]
     fn a_reader_never_sees_a_declaration_part_written() {
         let whole = super::kui_decls();
-        let dir = super::decls_dir().unwrap();
+        let dir = std::env::temp_dir().join(format!("kui-decls-test-{}", std::process::id()));
+        super::write_types(&dir).unwrap();
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let writer = {
             let stop = stop.clone();
+            let dir = dir.clone();
             std::thread::spawn(move || {
                 while !stop.load(std::sync::atomic::Ordering::Relaxed) {
                     super::write_whole(&dir.join("kui.d.tl"), "stale").unwrap();
-                    super::decls_dir().unwrap();
+                    super::write_types(&dir).unwrap();
                 }
             })
         };
-        let file = super::decls_dir().unwrap().join("kui.d.tl");
+        let file = dir.join("kui.d.tl");
         let mut torn = 0;
         for _ in 0..20_000 {
             if let Ok(read) = std::fs::read_to_string(&file)
@@ -224,6 +249,7 @@ mod decls_tests {
         }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         writer.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(torn, 0, "reads of a part-written kui.d.tl");
     }
 }

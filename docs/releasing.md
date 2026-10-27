@@ -63,10 +63,13 @@ moves it), checks the archive against the release's `SHA256SUMS` and
 prints the PATH line for the user's shell without editing anything. With
 no version (`KUI_VERSION` or `sh install.sh <version>` names one) they take
 the newest release the GitHub API lists, prereleases included: GitHub's
-own `latest` skips prereleases, so while every release is an alpha it
-names an older one (alpha.66, which is not marked a prerelease, is
-GitHub's `latest` while alpha.67 is out), and
-`releases/latest/download/install.sh` is not a link to give out. `KUI_MIRROR=<base>` reads `<base>/v<version>/<asset>`
+own `latest` skips prereleases, and until alpha.69 an alpha's release
+stayed one unless marked by hand. From alpha.69 the release job makes
+each release GitHub's latest as its last step, so
+`releases/latest/download/install.sh` names the newest version once its
+run has finished — but a release is listed (a pre-release, its packages
+not all up) while the run is still going, which is when the API list
+answers with it and `latest` does not yet. `KUI_MIRROR=<base>` reads `<base>/v<version>/<asset>`
 instead of GitHub, and `<base>/latest.txt` (the bare version) when no
 version is named, so a mirror holds that file beside the release
 directories (`kui runners fetch` lays one out).
@@ -96,8 +99,8 @@ heading move together — registries refuse a version that already
 exists), which it requires to read `## <version> (unreleased)` first,
 and prints what is left. GitHub's [ci.yml](../.github/workflows/ci.yml)
 checks every push to main (and every pull request), and the tag runs it
-again as the release's first job, so the last run on main is the first
-thing to read; the round on the release machines — the windowed smoke
+again as the release's first job, with smoke.yml beside it, so the last
+runs of both on main are the first things to read; the round on the release machines — the windowed smoke
 round with a display, the accessibility audit, below — is what CI cannot
 do. Then
 commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag:
@@ -111,7 +114,9 @@ stale or still says unreleased fails the release. The tag starts the
 release pipeline:
 
 - [release.yml](../.github/workflows/release.yml): `check` (ci.yml,
-  called: the whole check a push to main gets), then one build per platform on
+  called: the whole check a push to main gets) and, beside it, `smoke`
+  (smoke.yml, called blocking: the macOS and Windows rounds below, which
+  `packs` and `publish` wait for), then one build per platform on
   the platform itself (`ubuntu-24.04` and `ubuntu-24.04-arm` through
   cargo-zigbuild for a glibc 2.28 floor, `macos-15` for arm64 — Intel
   Macs have had no prebuild since alpha.41 — and `windows-2025`) of the
@@ -136,11 +141,20 @@ release pipeline:
   four runner assets and the two install scripts, writes one `SHA256SUMS`
   over all of it, installs the linux-x64 runner through `install.sh`
   from those files laid out as a mirror, and attaches everything to the
-  tag's GitHub release, creating it (a prerelease for an alpha). A failed
-  `packs` is re-run on its own; the release's assets are replaced.
-  `workflow_dispatch` runs the same without `publish` and without the
-  release, leaving the release's assets as the run's `release-packs`
-  artifact and the npm tarballs as its `npm-packages` artifact. It needs one
+  tag's GitHub release, creating it as a pre-release whatever the
+  version. A failed `packs` is re-run on its own; the release's assets
+  are replaced. Last, `latest` — after `publish` and `packs` both — makes
+  the release a release and GitHub's latest, when its version sorts
+  highest among the releases (semver, npm's rule: a re-run of an older
+  tag takes nothing back), so GitHub's latest never names a version whose
+  crates, npm packages or assets are not all up. Since alpha.69; until
+  then an alpha stayed a pre-release unless marked by hand. "Re-run
+  failed jobs" on a run whose `packs` failed runs `latest` after it.
+  `workflow_dispatch` runs the same without `publish`, without the
+  release and without `npm-stage` (a dry run stages nothing it will not
+  publish; since alpha.69), leaving the release's assets as the run's
+  `release-packs` artifact; the npm tarballs come from a tag's run only,
+  or by hand from a run's build artifacts (below). It needs one
   repository secret, `CRATES_IO_TOKEN` (a crates.io API token with publish
   rights on the `kui-*` crates); npmjs takes no secret (below). The runner
   is not on crates.io: `kui-cli` stays `publish = false` (ADR 0068).
@@ -192,8 +206,9 @@ it fails:
   npmjs deprecates them and drops their `bootstrap` tag (by hand: it
   needs the account, not the workflow). Done 2026-10-25 for the
   nine names: placeholders published and trusted. Or by
-  hand: release.yml's `npm-packages` artifact from a `workflow_dispatch`
-  run, the nine new ones published from it platform packages first
+  hand: the ten tarballs packed from a `workflow_dispatch` run's build
+  artifacts (`nu scripts/npm-platform-packages.nu --pack`, as "To rebuild
+  the staged copies" below says), the nine new ones published from them platform packages first
   (`npm publish ./qxuken-kui-cli-linux-x64-<version>.tgz --tag alpha
   --access public`, …), then each given a trusted publisher as above; the
   tag's run finds those versions live and skips them, without provenance. What to check on npmjs the first time: that the
@@ -294,9 +309,9 @@ with the tag checked out and a crates.io token publishes whatever crates.io
 is missing, in dependency order; the npm half is the run's `npm-packages`
 artifact, staged by hand as above.
 
-The release pipeline runs no test on a Mac or Windows machine — its macOS
-and Windows legs compile the addon, the runner and the C library, and ask
-the runner its version — and `check` runs on Linux. The Windows non-client
+The release's build legs on macOS and Windows compile the addon, the
+runner and the C library and ask the runner its version, and `check` runs
+on Linux; the tests on a Mac and on Windows are `smoke`'s, below. The Windows non-client
 chrome ([windows_nc.rs](../crates/kui-native/src/windows_nc.rs)), the macOS traffic-light
 inset in `widgets::titlebar_with` and the whole AccessKit bridge
 ([access_bridge.rs](../crates/kui-native/src/access_bridge.rs)) are compiled and linked by
@@ -306,9 +321,17 @@ the platform's acceptance of it. [smoke.yml](../.github/workflows/smoke.yml)
 narrows the gap: on every push to main, on GitHub's `macos-15` and
 `windows-2025`, it builds and runs `cargo test --workspace` natively against
 the real SDK, then the C round (`cbuild --run`) on the platform's own
-compiler. It is non-blocking (`continue-on-error`) and in no release's way,
-for the reason `audit` is its own workflow: it shares nothing with what
-makes `check` expensive.
+compiler. On a push it is non-blocking (`continue-on-error`), its own
+workflow for the reason `audit` is: it shares nothing with what makes
+`check` expensive. A release blocks on it since alpha.69: release.yml
+calls it as its `smoke` job with `blocking: true`, beside `check`, and
+`packs` and `publish` wait for both legs, so a red macOS or Windows round
+stops the tag with nothing published and the tag still movable. It is the
+release's longest leg (about 30 minutes on Windows). alpha.67 and
+alpha.68 went out with these rounds run only on pushes to main, and
+alpha.69's pre-tag round found a capture panic only macOS showed (backlog
+F241). Read the last smoke run on main before tagging all the same: a red
+one there is a release that will stop.
 
 It does one thing more, and it is the only automated check in the repo that
 opens a window: `cargo run -p kui-devtools --bin smoke`

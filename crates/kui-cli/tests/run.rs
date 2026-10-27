@@ -106,7 +106,11 @@ fn the_modules_answer_from_a_task() {
               db:exec("create table t(x); insert into t values (1); insert into t values (2);")
               db:exec("insert into t values (:v)", { v = 4 })
               print("sql", #db:query("select * from t"), db:first("select sum(x) s from t").s)
-              local p = kui.process.run("echo", { "hi" })
+              -- `echo` is cmd's own on Windows, a program only where Git's
+              -- tools are on PATH (GitHub's runner, not every machine)
+              local p = kui.platform == "windows"
+                and kui.process.run("cmd", { "/c", "echo hi" })
+                or kui.process.run("echo", { "hi" })
               print("proc", p.code, p.stdout:gsub("%s+$", ""))
               local s = kui.http.serve { port = 0 }
               s:get("/api/:name", function(req) return { hello = req.params.name, q = req.query.q } end)
@@ -2063,9 +2067,18 @@ fn docs_searches_what_the_runner_carries_and_prints_an_adr() {
     );
     let o = kui(&dir, &["docs", "nothing-is-called-this"], 20);
     assert_eq!(o.status.code(), Some(1), "{}", out(&o));
+    // An `echo` that is a program on every platform: on Windows it is
+    // cmd's own, and a program only where Git's tools are on PATH.
+    let echo = if cfg!(windows) {
+        let f = dir.join("echo.cmd");
+        std::fs::write(&f, "@echo off\r\necho %*\r\n").unwrap();
+        f.into_os_string()
+    } else {
+        "echo".into()
+    };
     let o = Command::new(KUI)
         .arg("docs")
-        .env("KUI_BROWSER", "echo")
+        .env("KUI_BROWSER", &echo)
         .current_dir(&dir)
         .output()
         .unwrap();

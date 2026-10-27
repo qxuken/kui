@@ -22,12 +22,18 @@
 # hold (docs/releasing.md).
 #
 # Its own workflow, not two more jobs in ci.yml: it shares nothing with what
-# makes `check` expensive, it is on no release path, and a red here should
-# not read as a red check. `continue-on-error` keeps a run green while the
-# rounds find their footing on hosted runners - neither has a GPU, so the
-# windowed round draws on whatever software adapter the platform offers, if
-# any - and each round runs even when the one before it failed, so one run
-# says everything. Make it blocking once it has been green for a while.
+# makes `check` expensive, and a red one on a push to main should not read
+# as a red check. On a push `continue-on-error` keeps the run green - neither
+# runner has a GPU, so the windowed round draws on whatever software adapter
+# the platform offers, if any - and each round runs even when the one before
+# it failed, so one run says everything.
+#
+# A release blocks on it (since alpha.69): release.yml calls this workflow
+# with `blocking: true`, and its `publish` waits for both legs, so nothing
+# reaches crates.io or npmjs from a commit whose macOS or Windows round
+# fails. alpha.67 and alpha.68 went out with these rounds run nowhere but
+# here, and alpha.69's own pre-tag run found a capture panic on macOS
+# (backlog F241) that only this workflow could see.
 #
 # The cargo cache holds the registry and nothing else: the repository's
 # caches share 10 GB, and two more target dirs would push ci.yml's and
@@ -38,9 +44,19 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      blocking:
+        description: A failed leg fails the run (release.yml's call).
+        type: boolean
+        default: false
 
+# Its own prefix: called from release.yml, `github.workflow` is the
+# caller's, and ci.yml - called beside this from the same run - groups by
+# `${{ github.workflow }}-${{ github.ref }}` too, so a shared group would
+# have one cancel the other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: smoke-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -58,7 +74,8 @@ jobs:
       matrix:
         os: [macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
+    # `inputs` is empty on a push or a manual run: non-blocking there.
+    continue-on-error: ${{ !inputs.blocking }}
     steps:
       - uses: actions/checkout@v7
 

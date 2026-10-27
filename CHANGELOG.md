@@ -80,6 +80,10 @@ was the first bare bump to break an app in five releases).
   Such a call left its node open to the end of the enclosing block, so
   everything after it was its child: write `if kui.box(ui, spec) { }`, or
   `kui.rect(ui, spec)` for a box with no children.
+- An editor's `change` arrives when an IME composition begins over a
+  selection, carrying the text without it (backlog FZ17), where the
+  first `change` came at the commit. An app that counts changes, or
+  takes one as the end of a composition, sees one more.
 - A view that returns with nodes still open raises `unclosed-node`, and a
   `layout_of` on a node that declares no `on_layout` raises
   `layout-of-without-handler`, where both said nothing (backlog F230,
@@ -344,6 +348,32 @@ already generated for each event.
   a Markdown link's path — as no path at all, and opened Documents. A
   target that is not a URL has every `/` made `\` before the command is
   built; a URL is left as it is.
+- **A capture no longer panics while another thread captures, on macOS**
+  (backlog F241, from smoke.yml's macOS run): F225's wait polled the
+  device until its readback had run, and a poll that waits can find the
+  queue emptied by another thread's poll before its own fence read caught
+  up, which wgpu-core answers with a panic ("the current submission index
+  (1) should be at least the wait submission index (4)"). The wait polls
+  without waiting now, and sleeps between.
+- **A design-token file with a stray character in a hex colour is refused,
+  not a panic** (backlog FZ16, found by the `dtcg` fuzz target):
+  `"#1̠413"` sliced a character in two in `kui_core::dtcg`. A hex colour
+  is hex digits alone now, and `#+fff`, which parsed, is refused with it.
+- **`kui check` on Windows rides out a declaration file held open**
+  (backlog F242): the rename F224 writes each file with is refused while
+  something holds the file without sharing its deletion, and the check
+  failed with "Access is denied"; it is tried again for a moment.
+- **`kill` on Windows says nothing of its own** (backlog F243): taskkill's
+  "SUCCESS: The process with PID …" lines reached the app's output.
+- **A composition begun over a selection and then abandoned no longer
+  loses the selection behind the app's back** (backlog FZ17, found by
+  the `events` fuzz target; in every release since compositions replaced
+  a selection). Composing deletes the selection, a recorded edit, but the
+  app heard nothing until the commit — and a blur or an empty preedit
+  abandons a composition without one, so the field showed the text
+  without the selection while the app's model still held it, until the
+  next keystroke's `change` made the loss the app's too. The deletion is
+  a `change` now, as it happens.
 
 **What you can delete.**
 

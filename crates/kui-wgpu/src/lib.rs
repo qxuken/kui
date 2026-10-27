@@ -2891,17 +2891,22 @@ impl PendingCapture {
         // as a failed readback on Mesa's software Vulkan with tests
         // capturing in parallel (backlog F225). A failed map, a lost
         // device or the deadline ends it.
+        //
+        // `Poll`, never `Wait`: a waiting poll reads the fence, and when
+        // another thread's poll retires every submission before this one
+        // looks at the queue, wgpu-core's check that an empty queue's
+        // fence has reached the wait panics ("If the queue is empty, the
+        // current submission index (1) should be at least the wait
+        // submission index (4)", on Metal, smoke.yml on b21aa38e). A
+        // plain poll asserts nothing; the sleep between is the wait.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while self.mapped.load(std::sync::atomic::Ordering::Acquire) == MAP_PENDING
             && !self.gpu.lost()
             && std::time::Instant::now() < deadline
         {
-            let _ = device.poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: Some(std::time::Duration::from_millis(100)),
-            });
+            let _ = device.poll(wgpu::PollType::Poll);
             if self.mapped.load(std::sync::atomic::Ordering::Acquire) == MAP_PENDING {
-                std::thread::yield_now();
+                std::thread::sleep(std::time::Duration::from_micros(250));
             }
         }
         if self.mapped.load(std::sync::atomic::Ordering::Acquire) != MAP_DONE {

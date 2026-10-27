@@ -568,7 +568,12 @@ impl Core {
             }
             InputEvent::Preedit(s, cursor) => {
                 if let Some(key) = self.edit.focused() {
-                    self.edit_with_fonts(|edit, fs| edit.set_preedit(key, &s, cursor, fs));
+                    // A composition begun over a selection deleted it: the
+                    // app hears that edit now, not only at the commit,
+                    // which a blur may never send (backlog FZ17).
+                    if self.edit_with_fonts(|edit, fs| edit.set_preedit(key, &s, cursor, fs)) {
+                        self.push_edit_event(key, EventKind::Change, &mut out);
+                    }
                 } else {
                     let cursor = match cursor {
                         Some((a, b)) => {
