@@ -2360,6 +2360,34 @@ fn the_panel_raises_no_warning_of_its_own() {
     assert!(warnings.is_empty(), "{warnings:#?}");
 }
 
+/// The Perf tab on show measures, and the panel going stops it (backlog
+/// F211): turned off, or hidden by its close button, on the Perf tab,
+/// nothing is measured from the next frame and the frame trace is as the
+/// app had it. It was left on for the rest of the session: the panel off
+/// returned from its frame's start before the tab's live view was let go.
+#[test]
+fn the_panel_going_on_its_perf_tab_stops_the_measuring() {
+    let mut core = on();
+    core.devtools_act("tab:perf");
+    frame(&mut core);
+    frame(&mut core);
+    assert!(core.perf_measuring(), "the tab on show measures");
+    core.set_devtools(false);
+    frame(&mut core);
+    assert!(!core.perf_measuring(), "off with the panel");
+    assert!(!core.frame_trace(), "and the trace as the app had it");
+    // On again, it is the Perf tab's still, and measures again.
+    core.set_devtools(true);
+    frame(&mut core);
+    frame(&mut core);
+    assert!(core.perf_measuring(), "back on the Perf tab");
+    // Hidden by its close button, the panel on and drawn nowhere.
+    core.set_devtools_dock(Dock::Off);
+    frame(&mut core);
+    assert!(core.devtools());
+    assert!(!core.perf_measuring(), "off with the panel hidden");
+}
+
 /// The Perf tab's recording (ADR 0058): off, nothing is recorded and the
 /// frame trace is as the app had it; recording, every frame is kept as a
 /// timeline — its causes, the `request_frame` that held it, the core's

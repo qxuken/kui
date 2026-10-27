@@ -3944,6 +3944,124 @@ body, the howto, the guide, props.md's section headings and the glossary,
 which gains it beside **Component**. No symbol changes unless the word
 does (`widgets::` in Rust is already the module).
 
+## From kawoosh's alpha.68 port (2026-10-27)
+
+kawoosh moved to alpha.68 — slots folded into components, a press on a
+Tab stop inside a sink, the ring on a focused sink — and then put its
+Perf and Frames tabs, its frame ledger and its two logs on ADR 0058's
+recording, deleting about 2,300 lines of its own (its
+`docs/design/lua-boundary.md` Decision 10's amendment, its `perf.rs`).
+What it met on the way, checked against the tree at `e2bd83fa`. Nine
+entries, F211–F219: F211, a defect, **built 2026-10-27**, the day it
+was filed, and in the archive; F212–F219, doors kawoosh worked around
+or went without, filed and **not built**.
+
+### `.` F212 — A component's refusal says its kind, not what moved
+
+**Found** porting kawoosh's replay notes: `slot_fill_why` named the fact
+that moved — a hover on a key, the theme, the clock — and kawoosh's perf
+log put it beside the host's own reason, so a pane that would not replay
+said why. ADR 0067 decision 6 folded it into the placement's
+`FillAnswer`, which says `Reads` and not which; `take_replayable_instance`
+computes the fact (`first_moved`) and drops it (`Err((fill, _why))` in
+`Ui::place_at`). **Do.** The reason beside the answer —
+`Ui::component_why` or a `FillAnswer` that carries it — or a recording
+record a refused instance leaves (its key and the fact), so the Perf tab
+says it where the devtools are the place ADR 0067 sends it.
+
+### `.` F213 — A declared tab is listed only after a frame with the panel on
+
+**Found** with kawoosh's `:perf` before its own tab went: `set_devtools_tab
+("perf")` on the frame that turns the panel on showed kui's Perf, not the
+app's tab of that name (F198's rule), because `DevtoolsState::tabs` is
+filled from `dt_tabs` only in `devtools_after_frame`, and only while the
+panel is on: on the first frame it lists nothing, or the tabs of the last
+frame it was on. kawoosh held its ask a frame. **Do.** Resolve
+`set_devtools_tab`'s name against this frame's declarations too (or the
+session's last list kept while the panel is off), so the frame that opens
+the panel can open it on an app's tab.
+
+### `.` F214 — A sink cannot keep the keyboard through a press inside it and still select
+
+**Found** with C135 (a press on a Tab stop inside a sink focuses the stop):
+kawoosh's panes are sinks whose keys are all its own — Space its leader,
+Tab and Enter its keymap's — over rows and chips that are Tab stops by
+having a click. `keepFocus` on the pane gives the old rule back but also
+stops a drag-select in a selection scope under it and leaves the
+selection uncleared (`dispatch.rs`, the `Some(_) if keep` arm), so a
+terminal grid, which selects, cannot have it; kawoosh put `keepFocus` on
+its memory and undo panes, on a Lua pane only while it is focused (so a
+press on an unfocused one still reaches the sink's `on_focus`), and on a
+terminal grid only while ⌘ is held. **Do.** A sink-level opt —
+`keysStay` or `keepKeyboard` — under which a press anywhere inside
+focuses the sink, as before C135, and does everything else a press does:
+selects, clears, starts a drag-select.
+
+### `.` F215 — No span can be recorded where the core is out of reach
+
+**Found** porting kawoosh's spans: its Lua profiler times each call into
+a plugin (`kawoosh_lua`'s `prof.rs`) from inside the Lua runtime, which
+holds no `Core`; so did a terminal's foreground read (`tcgetpgrp`) under
+the status line. `span_begin` is a `Core` method, and `perf_measure`
+lands a span on a track named for it at the time it is reported, not
+where it ran, so kawoosh reports each plugin's time summed at the end of
+the frame on 29 tracks of its own. **Do.** A span door that needs no
+core at hand — a thread-local "current recorder" the runner sets around
+`view` and `on_event` (`kui_core::perf::span(name)` returning a guard),
+or `perf_span_at(name, start, end, cpu)` on the main track for a span
+timed by the app's own clock — so code deep in a stack records where it
+ran, nested under the span it ran in.
+
+### `.` F216 — The recording has notes and no door writes one
+
+**Found** porting kawoosh's perf log, which put a line a frame beside
+the numbers — a Lua pane's "editor moved, kui: reads, opaque fs.stat".
+`kui_trace::Timeline::notes` and ADR 0058's record table have `note`
+("a line"), but no `Core` door writes one, so kawoosh counts names
+instead (`pane ran: WHY`, `pane read: NATIVE`). **Do.** `perf_note(text)`
+in every binding, kept per frame and shown in the opened frame's detail;
+bounded per frame as spans are.
+
+### `.` F217 — One Lua state is several extensions only through `reentry`
+
+**Found** building kawoosh's plugins as extensions (its
+`docs/design/plugin-extensions.md`): 29 plugins share one Lua state and
+each other's tables, so each is loaded as a handle over that state under
+its own namespace. The only door to such a handle is
+`LuaExtension::reentry` — meant for a spare while an extension draws,
+whose contributions are empty (`contributions: Vec::new()`) and whose
+components are its parent's — so kawoosh wraps each in an `Extension` of
+its own that answers the plugin's namespace, components and
+contributions and hands drawing and events on (`fields::PluginHost`).
+It works; it leans on `reentry` for what it was not made for. **Do.**
+`LuaExtension::share(&self, components, contributions)` — a handle over
+the same state with its own lists, its events back to the state's
+`on_event` with its namespace as `from` — documented as how one
+interpreter is several extensions, in every binding that loads a script.
+
+### `.` F218 — Contributions are read once, at load
+
+**Found** with F217: a plugin's contributions come from its top level,
+and a user's `init.lua` adds to a bundled plugin's after it loaded, or a
+plugin reloaded on save changes its own; ADR 0067 decision 10 reads them
+at load only. **Do.** A door to replace an extension's contributions
+after load (`Extensions::set_contributions(namespace, list)`, the slot's
+instances re-keyed by provider and component as now), or contributions
+read again when an extension says they moved.
+
+### `.` F219 — A host cannot ask whether a slot has contributions
+
+**Found** with F217: kawoosh draws a slot in a row of its own, keyed so
+the width it took last frame counts where its chrome fits text to the
+room, and draws no row for an empty slot, which would otherwise add a
+gap between its neighbours. `Ui::slot` answers how many it placed only
+once it has placed them, and `Fill::contributions` is private, so kawoosh
+keeps its own list of which slots its plugins contribute to — blind to a
+C extension's (`kui_ext_contributions`). **Do.** `Ui::slot_contributors
+(name) -> usize`, or a slot whose wrapper the host names
+(`slot_in(name, props, spec)`, drawn only when it has contributions), in
+every binding.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go
@@ -5901,6 +6019,10 @@ move.
 **From Carnet's page menu in a short window (2026-10-27)** — F210, filed and built the same day
 
 - `.` **F210** — [A menu taller than the window cannot be used](backlog/closed-2026-09.md#-f210--a-menu-taller-than-the-window-cannot-be-used--done-2026-10-27) — done (2026-10-27) — every core menu panel scrolls, cut by layout to the window less `MENU_EDGE` and placed as high as that goes; the keyboard keeps its row in view; kui-native shows one that does not fit as a popup window (ADR 0004 amended), not on Wayland; `Menu::max_size` and `Menu::in_window` in every binding
+
+**From kawoosh's alpha.68 port (2026-10-27)** — F211, filed and built the same day
+
+- `!` **F211** — [Closing the panel on its Perf tab leaves the recording on](backlog/closed-2026-09.md#-f211--closing-the-panel-on-its-perf-tab-leaves-the-recording-on--done-2026-10-27) — done (2026-10-27) — a panel off lets the Perf tab's live view go (`perf_set_live(false)`) before `devtools_begin_frame` returns, where only `perf_begin_frame`, which a panel off never reached, did
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 
