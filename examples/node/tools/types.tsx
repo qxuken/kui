@@ -14,6 +14,7 @@ import type {
   App, Arrived, ColorToken, DragMsg, EditChangeMsg, HandlerMsg, KeyMsg, ResizeMsg, SliderChangeMsg, Theme, UiEvent, WindowDecl,
   WindowEvents, WithDrag, WithResize,
 } from '@qxuken/kui';
+import { Button, Segmented } from '@qxuken/kui/kit';
 
 // Tokens (ADR 0027): the names typed at the declaration. `T.peach` is the
 // literal `'$peach'` branded as a colour, `T.sideW` a length; a colour
@@ -126,6 +127,18 @@ void peach; void hover; void sideW; void lit; void typo; void wrongKind; void wr
 // its ends across a scroll (ADR 0017).
 const term = <cells rows={1} cols={2} cells={new Uint32Array(8)} originLine={900} selectable />;
 void field; void hint; void styledField; void term;
+// Kit's handler props are typed as the core's are (backlog F208, from the
+// kui-node-template field report): `onPress` takes a registered message
+// that arrives with `press`, declared without it, where it took anything.
+const run = <Button label="Run" onPress={{ kind: 'run' }} />;
+// @ts-expect-error — `typo` is no registered message
+const typoPress = <Button label="Run" onPress={{ kind: 'typo' }} />;
+// @ts-expect-error — `reset` carries no `press`
+const wrongPress = <Button label="Run" onPress={{ kind: 'reset' }} />;
+const seg = <Segmented options={[]} value="a" onChange={{ kind: 'seg' }} />;
+// @ts-expect-error — `run` carries no `change`
+const wrongSeg = <Segmented options={[]} value="a" onChange={{ kind: 'run' }} />;
+void run; void typoPress; void wrongPress; void seg; void wrongSeg;
 
 type Model = { count: number; note: string };
 // The editor's text and the slider's proposal arrive as the messages the
@@ -221,7 +234,9 @@ app.ctx.focus('note');
 app.type('hello from node');
 app.key('backspace', { word: true });
 app.type('jsx');
-app.click(...center(buttons[2])); // reset
+// reset, pressed by the name a reader hears: `keyNamed`'s own doc
+// example, typechecked and run (backlog F209).
+app.access(app.ctx.keyNamed('reset')!, 'click');
 app.access('tally', 'decrement');
 
 // The window resizing (ADR 0048): the root's `onResize` message, run on a

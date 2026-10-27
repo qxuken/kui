@@ -4135,9 +4135,12 @@ export declare class Ctx {
    * whose accessible name is `name` (backlog F137) — its
    * `label` prop, else its own text, else a control's derived
    * name — so a test clicks "the button named Like" as a reader
-   * would: `ctx.click(ctx.keyNamed('Like'))`. Not `keyOf`'s key
-   * label, which a reader never hears. Null when no node has the
-   * name; two raise `ambiguous-name`.
+   * would: `ctx.access(ctx.keyNamed('Like')!, 'click')`, or
+   * `app.access(…)` on a headless app, which settles what
+   * follows through `update`. (`click` is the pointer's, at
+   * coordinates, on an app.) Not `keyOf`'s key label, which a
+   * reader never hears. Null when no node has the name; two
+   * raise `ambiguous-name`.
    */
   keyNamed(name: string): string | null
   blur(): void
@@ -5837,9 +5840,12 @@ export declare class KuiWindow {
    * whose accessible name is `name` (backlog F137) — its
    * `label` prop, else its own text, else a control's derived
    * name — so a test clicks "the button named Like" as a reader
-   * would: `ctx.click(ctx.keyNamed('Like'))`. Not `keyOf`'s key
-   * label, which a reader never hears. Null when no node has the
-   * name; two raise `ambiguous-name`.
+   * would: `ctx.access(ctx.keyNamed('Like')!, 'click')`, or
+   * `app.access(…)` on a headless app, which settles what
+   * follows through `update`. (`click` is the pointer's, at
+   * coordinates, on an app.) Not `keyOf`'s key label, which a
+   * reader never hears. Null when no node has the name; two
+   * raise `ambiguous-name`.
    */
   keyNamed(name: string): string | null
   blur(): void

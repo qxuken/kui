@@ -174,7 +174,7 @@ fn dts(schema: &Schema) -> String {
     let a = &schema.addon;
     let mut s = super::banner("//", schema);
     s.push_str(&wrap(&schema.doc, "// ", 78));
-    s.push_str("\nimport type { Channel, KuiNode } from '@qxuken/kui';\nimport type { ColorProp } from '@qxuken/kui/jsx-runtime';\n\n");
+    s.push_str("\nimport type { Channel, HandlerMsg, KuiNode } from '@qxuken/kui';\nimport type { ColorProp } from '@qxuken/kui/jsx-runtime';\n\n");
     for e in &schema.enums {
         let _ = writeln!(s, "/** {} */", e.doc);
         let values: Vec<String> = e.values.iter().map(|v| format!("'{v}'")).collect();
@@ -213,14 +213,22 @@ fn dts(schema: &Schema) -> String {
                 ts(&f.ty)
             );
         }
+        // Typed as the core's handler props are (`onDrag` is
+        // `HandlerMsg<WithDrag>`): a registered message that arrives with
+        // the event's field, declared without it — so a typo, or a
+        // message registered for another event, fails at the prop
+        // (backlog F208, from the kui-node-template field report).
         for e in &c.events {
             let _ = writeln!(
                 s,
-                "  /** The message {} arrives as: yours, with `{}: {p}{}` in it. {} */\n  on{}?: unknown;",
+                "  /** The message {} arrives as: yours, with `{}: {p}{}` in it — register it as `{p}{}Msg<…>`. {} */\n  on{}?: HandlerMsg<{{ {}: {p}{} }}>;",
                 e.name,
                 e.name,
                 pascal(&e.name),
+                pascal(&e.name),
                 e.doc,
+                pascal(&e.name),
+                e.name,
                 pascal(&e.name)
             );
         }

@@ -519,3 +519,15 @@ node.
     `enter::parse_with`) instead of failing the frame. The `props.md`
     sentence this ADR promised is the `unknown-token` row and the
     `$` form in each kind's type text.
+13. **Node's wire carries a name the encoder does not hold (2026-10-27,
+    backlog F207).** Decision 4's index reaches the roles and one table,
+    and Node's encoder refused any other name before it crossed — so an
+    extension's exported table (C74, `$kitPanel`) never reached a Node
+    view. A `$name` the encoder's map does not hold now rides in the
+    same one slot, negative, packing where the name sits in the frame's
+    strings (-(1 + offset + len·2^32), frame v28), and the core resolves
+    it through `NameRefs` in the order every other binding reads: own,
+    host, exported. A name the map holds still rides as its index, so
+    the price is paid only where the core's tables hold what the
+    encoder's do not. Decision 7's index-keyed miss stays for an index;
+    a miss by name is keyed by the name.

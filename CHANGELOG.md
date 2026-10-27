@@ -32,11 +32,38 @@ was the first bare bump to break an app in five releases).
   first line of `tostring(err)` — now sees the caller's position at the
   front; reach for the call's `try_` form instead, whose message is the
   error's alone.
+- **A Kit `on*` prop is typed against the app's registered messages**
+  (backlog F208): `onPress`, `onChange`, `onChoose` and every other Kit
+  event prop take `HandlerMsg<{ press: ButtonPress }>` and its siblings,
+  where they took `unknown`. An app that augments `KuiMsg` registers its
+  Kit messages as they arrive — `ButtonPressMsg<{ kind: 'run' }>` — or
+  the prop no longer typechecks; an app that does not augment it sees
+  `Msg`, any plain data, as at every core prop.
+- A `$name` in a Node view that neither the roles nor the surface's
+  `setTokens` hold is resolved by the core rather than refused by the
+  encoder (backlog F207): an extension's exported token now paints. One
+  that nothing declares still keeps the slot's default and raises
+  `unknown-token`, but the encoder's `unknownTokens` no longer lists it —
+  the core raises it, by its name. The Node frame is v28; the encoder
+  and the addon ship together, so only a hand-built stream sees it.
 
 The failure is the world's — a missing file, a refused connection, a
 file that is not JSON — not a bug in the line that asked, so a traceback
 through the runner's own frames said nothing an app could use. An error
 the app does not catch still says where it happened.
+
+F207, F208 and F209 below are the field reports `kui-node-template`
+filed: two as it moved onto Kit in its alpha.68 bump, and one it had
+open since alpha.48.
+
+Kit's props were the one corner of a Node app's view a payload typo
+slipped through: `<Button onPress={{ kind: 'typo' }}/>` compiled where
+`<button onClick={{ kind: 'typo' }}>` failed. They are typed the way
+the core's handler props are (ADR 0047): a registered message that
+arrives with the event's field, declared without it. That is a type
+break and only that — the wrapper writes what it wrote — and the fix
+is a line per message in the app's union, the `…Msg<T>` helper Kit
+already generated for each event.
 
 ### Added
 
@@ -63,11 +90,42 @@ the app does not catch still says where it happened.
   gallery use the `try_` forms, and the preferences sample no longer
   stops on a settings file it cannot read.
 
+### Fixed
+
+- **Kit's tokens paint a Node view's own boxes** (backlog F207, from the
+  kui-node-template field report): `<box bg="$kitPanel">` paints the
+  skin's panel and follows a skin switch, where the encoder resolved a
+  `$name` against the app's `setTokens` and the roles only, and raised
+  `unknown-token` for every `$kit…` name. A name the encoder's map does
+  not hold now crosses by name and the core resolves it in its own order
+  — the running origin's table, the host's, then every extension's
+  exported one (`Tokens::exported`, C74) — as Lua's and Rust's lookups
+  always did; a name the map holds still rides as its index. A name
+  nothing declares misses in the core, and its `unknown-token` line
+  names it.
+- **Kit's `on*` props take the app's messages** (backlog F208, from the
+  kui-node-template field report): typed as `HandlerMsg<{ <event>:
+  <Component><Event> }>` by `kui-addon-schema`, so a message that is not
+  registered, or is registered for another event, fails at the prop.
+- **`keyNamed`'s example compiles** (backlog F209, from the
+  kui-node-template field report): its doc comment showed
+  `ctx.click(ctx.keyNamed('Like'))`, and Node's `Ctx` has no `click`
+  (TS2339). It reads `ctx.access(ctx.keyNamed('Like')!, 'click')`, or
+  `app.access(…)` on a headless app, which settles what follows through
+  `update`. No `ctx.click(key)` was added: `access(key, 'click')` is
+  already the door that drives a node as a reader does, which is the
+  doc's point, and `click` on an app is the pointer's, at coordinates.
+
 **What you can delete.**
 
 - A `pcall` around a runner call, and the `tostring(err)`, the
   `"runtime error: "` strip and the first-line cut that made its message
   readable.
+- A Kit token copied into the app's `setTokens` by value, or a box's
+  colour taken from `tokens()` by hand, kept only so a Node box painted
+  in Kit's skin.
+- A cast or a wrapper around a Kit component, kept only so its `on*`
+  prop was checked against the app's messages.
 
 ## 0.1.0-alpha.68 (2026-10-27)
 

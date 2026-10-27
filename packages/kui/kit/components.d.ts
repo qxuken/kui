@@ -3,7 +3,7 @@
 // overlays, layout, charts and a trace waterfall, drawn by a skin (Ledger,
 // Phosphor, Neutral) the host picks.
 
-import type { Channel, KuiNode } from '@qxuken/kui';
+import type { Channel, HandlerMsg, KuiNode } from '@qxuken/kui';
 import type { ColorProp } from '@qxuken/kui/jsx-runtime';
 
 /** How loud a control is; success confirms what just happened (Copied). */
@@ -227,8 +227,8 @@ export interface SplitProps {
   fraction: number;
   /** The least either pane is, in px; 80 when left out. */
   min?: number;
-  /** The message resize arrives as: yours, with `resize: SplitResize` in it. The rule was dragged: the fraction it asks for. */
-  onResize?: unknown;
+  /** The message resize arrives as: yours, with `resize: SplitResize` in it — register it as `SplitResizeMsg<…>`. The rule was dragged: the fraction it asks for. */
+  onResize?: HandlerMsg<{ resize: SplitResize }>;
   /** is the first pane. */
   first?: KuiNode;
   /** is the second pane. */
@@ -253,8 +253,8 @@ export interface TabsProps {
   tabs: Tab[];
   /** The one shown: yours to keep. */
   value: string;
-  /** The message change arrives as: yours, with `change: TabsChange` in it. Another tab was chosen. */
-  onChange?: unknown;
+  /** The message change arrives as: yours, with `change: TabsChange` in it — register it as `TabsChangeMsg<…>`. Another tab was chosen. */
+  onChange?: HandlerMsg<{ change: TabsChange }>;
   /** is the chosen tab's body. */
   children?: KuiNode;
   /** ends the strip, at the far side: what acts on the chosen tab. */
@@ -283,8 +283,8 @@ export interface SectionProps {
   count?: number;
   /** The body's left inset in px; 18 when left out, under the title. 0 for rows with their own inset that line up with `leading`. */
   indent?: number;
-  /** The message toggle arrives as: yours, with `toggle: SectionToggle` in it. The heading was pressed. */
-  onToggle?: unknown;
+  /** The message toggle arrives as: yours, with `toggle: SectionToggle` in it — register it as `SectionToggleMsg<…>`. The heading was pressed. */
+  onToggle?: HandlerMsg<{ toggle: SectionToggle }>;
   /** is what it folds. */
   children?: KuiNode;
   /** goes before the heading, beside it rather than in it: a box that ticks the whole section. */
@@ -331,8 +331,8 @@ export interface ButtonProps {
   pressed?: boolean;
   /** A hint under the pointer — why it is disabled, say. */
   tooltip?: string;
-  /** The message press arrives as: yours, with `press: ButtonPress` in it. Pressed. */
-  onPress?: unknown;
+  /** The message press arrives as: yours, with `press: ButtonPress` in it — register it as `ButtonPressMsg<…>`. Pressed. */
+  onPress?: HandlerMsg<{ press: ButtonPress }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -359,8 +359,8 @@ export interface IconButtonProps {
   pressed?: boolean;
   /** The hint under the pointer; the label when left out. */
   tooltip?: string;
-  /** The message press arrives as: yours, with `press: IconButtonPress` in it. Pressed. */
-  onPress?: unknown;
+  /** The message press arrives as: yours, with `press: IconButtonPress` in it — register it as `IconButtonPressMsg<…>`. Pressed. */
+  onPress?: HandlerMsg<{ press: IconButtonPress }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -399,10 +399,10 @@ export interface TextFieldProps {
   browse?: Browse;
   /** The button's label; Choose… when left out. */
   browseLabel?: string;
-  /** The message change arrives as: yours, with `change: TextFieldChange` in it. The text changed, or a path was picked. */
-  onChange?: unknown;
-  /** The message submit arrives as: yours, with `submit: TextFieldSubmit` in it. Enter. */
-  onSubmit?: unknown;
+  /** The message change arrives as: yours, with `change: TextFieldChange` in it — register it as `TextFieldChangeMsg<…>`. The text changed, or a path was picked. */
+  onChange?: HandlerMsg<{ change: TextFieldChange }>;
+  /** The message submit arrives as: yours, with `submit: TextFieldSubmit` in it — register it as `TextFieldSubmitMsg<…>`. Enter. */
+  onSubmit?: HandlerMsg<{ submit: TextFieldSubmit }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -455,8 +455,8 @@ export interface TextAreaProps {
   error?: string;
   /** Tab and Shift+Tab move the keyboard to the next or the last control, as from a one-line field: a note, a comment. Left out, Tab types indentation as a code editor's does, and the ways out are Escape then Tab, or Ctrl+M (Ctrl+Shift+M on macOS). */
   tabMovesFocus?: boolean;
-  /** The message change arrives as: yours, with `change: TextAreaChange` in it. The text changed. */
-  onChange?: unknown;
+  /** The message change arrives as: yours, with `change: TextAreaChange` in it — register it as `TextAreaChangeMsg<…>`. The text changed. */
+  onChange?: HandlerMsg<{ change: TextAreaChange }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -485,10 +485,10 @@ export interface SearchProps {
   focus?: number;
   /** Takes the keyboard as it first shows. */
   autofocus?: boolean;
-  /** The message change arrives as: yours, with `change: SearchChange` in it. The query changed; cleared is the empty string. */
-  onChange?: unknown;
-  /** The message submit arrives as: yours, with `submit: SearchSubmit` in it. Enter. */
-  onSubmit?: unknown;
+  /** The message change arrives as: yours, with `change: SearchChange` in it — register it as `SearchChangeMsg<…>`. The query changed; cleared is the empty string. */
+  onChange?: HandlerMsg<{ change: SearchChange }>;
+  /** The message submit arrives as: yours, with `submit: SearchSubmit` in it — register it as `SearchSubmitMsg<…>`. Enter. */
+  onSubmit?: HandlerMsg<{ submit: SearchSubmit }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -523,8 +523,8 @@ export interface SelectProps {
   label?: string;
   /** Its width in px. */
   width?: number;
-  /** The message change arrives as: yours, with `change: SelectChange` in it. An option was chosen. */
-  onChange?: unknown;
+  /** The message change arrives as: yours, with `change: SelectChange` in it — register it as `SelectChangeMsg<…>`. An option was chosen. */
+  onChange?: HandlerMsg<{ change: SelectChange }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -553,8 +553,8 @@ export interface CheckboxProps {
   hideLabel?: boolean;
   /** Takes its row's room, the whole height a target: a list row ticked anywhere. */
   grow?: boolean;
-  /** The message toggle arrives as: yours, with `toggle: CheckboxToggle` in it. Pressed. */
-  onToggle?: unknown;
+  /** The message toggle arrives as: yours, with `toggle: CheckboxToggle` in it — register it as `CheckboxToggleMsg<…>`. Pressed. */
+  onToggle?: HandlerMsg<{ toggle: CheckboxToggle }>;
   /** draws after the box, the label's place: read as part of it, so nothing in it is a control. */
   children?: KuiNode;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -579,10 +579,10 @@ export interface ChecklistProps {
   label?: string;
   /** An × on each item, which the pointer presses to remove it; Delete or Backspace removes the focused one. */
   removable?: boolean;
-  /** The message toggle arrives as: yours, with `toggle: ChecklistToggle` in it. An item was ticked or unticked. */
-  onToggle?: unknown;
-  /** The message remove arrives as: yours, with `remove: ChecklistRemove` in it. An item asked to go. */
-  onRemove?: unknown;
+  /** The message toggle arrives as: yours, with `toggle: ChecklistToggle` in it — register it as `ChecklistToggleMsg<…>`. An item was ticked or unticked. */
+  onToggle?: HandlerMsg<{ toggle: ChecklistToggle }>;
+  /** The message remove arrives as: yours, with `remove: ChecklistRemove` in it — register it as `ChecklistRemoveMsg<…>`. An item asked to go. */
+  onRemove?: HandlerMsg<{ remove: ChecklistRemove }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -615,8 +615,8 @@ export interface SwitchProps {
   on: boolean;
   /** Unavailable. */
   disabled?: boolean;
-  /** The message toggle arrives as: yours, with `toggle: SwitchToggle` in it. Pressed. */
-  onToggle?: unknown;
+  /** The message toggle arrives as: yours, with `toggle: SwitchToggle` in it — register it as `SwitchToggleMsg<…>`. Pressed. */
+  onToggle?: HandlerMsg<{ toggle: SwitchToggle }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -641,8 +641,8 @@ export interface RadioGroupProps {
   label?: string;
   /** The name is read but not drawn: a group whose place says what it is. */
   hideLabel?: boolean;
-  /** The message change arrives as: yours, with `change: RadioGroupChange` in it. An option was chosen. */
-  onChange?: unknown;
+  /** The message change arrives as: yours, with `change: RadioGroupChange` in it — register it as `RadioGroupChangeMsg<…>`. An option was chosen. */
+  onChange?: HandlerMsg<{ change: RadioGroupChange }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -665,8 +665,8 @@ export interface SegmentedProps {
   value: string;
   /** The group's name, read and not drawn: what the choice is of. */
   label?: string;
-  /** The message change arrives as: yours, with `change: SegmentedChange` in it. A segment was chosen. */
-  onChange?: unknown;
+  /** The message change arrives as: yours, with `change: SegmentedChange` in it — register it as `SegmentedChangeMsg<…>`. A segment was chosen. */
+  onChange?: HandlerMsg<{ change: SegmentedChange }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -695,8 +695,8 @@ export interface SliderProps {
   label?: string;
   /** The value as text, shown beside the label and read for it: `20 MB/s`, `30 days`. The number when left out. */
   valueLabel?: string;
-  /** The message change arrives as: yours, with `change: SliderChange` in it. It asks for another value. */
-  onChange?: unknown;
+  /** The message change arrives as: yours, with `change: SliderChange` in it — register it as `SliderChangeMsg<…>`. It asks for another value. */
+  onChange?: HandlerMsg<{ change: SliderChange }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -737,16 +737,16 @@ export interface TableProps {
   cells?: boolean;
   /** Takes the room its parent leaves. */
   grow?: boolean;
-  /** The message select arrives as: yours, with `select: TableSelect` in it. The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000. */
-  onSelect?: unknown;
-  /** The message cursor arrives as: yours, with `cursor: TableCursor` in it. The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often. */
-  onCursor?: unknown;
-  /** The message activate arrives as: yours, with `activate: TableActivate` in it. Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did. */
-  onActivate?: unknown;
-  /** The message sort arrives as: yours, with `sort: TableSort` in it. A header was clicked. */
-  onSort?: unknown;
-  /** The message range arrives as: yours, with `range: TableRange` in it. The rows in view changed: page your source by it. */
-  onRange?: unknown;
+  /** The message select arrives as: yours, with `select: TableSelect` in it — register it as `TableSelectMsg<…>`. The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000. */
+  onSelect?: HandlerMsg<{ select: TableSelect }>;
+  /** The message cursor arrives as: yours, with `cursor: TableCursor` in it — register it as `TableCursorMsg<…>`. The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often. */
+  onCursor?: HandlerMsg<{ cursor: TableCursor }>;
+  /** The message activate arrives as: yours, with `activate: TableActivate` in it — register it as `TableActivateMsg<…>`. Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did. */
+  onActivate?: HandlerMsg<{ activate: TableActivate }>;
+  /** The message sort arrives as: yours, with `sort: TableSort` in it — register it as `TableSortMsg<…>`. A header was clicked. */
+  onSort?: HandlerMsg<{ sort: TableSort }>;
+  /** The message range arrives as: yours, with `range: TableRange` in it — register it as `TableRangeMsg<…>`. The rows in view changed: page your source by it. */
+  onRange?: HandlerMsg<{ range: TableRange }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -827,12 +827,12 @@ export interface ListProps {
   selectOnFocus?: boolean;
   /** Takes the room its parent leaves. */
   grow?: boolean;
-  /** The message select arrives as: yours, with `select: ListSelect` in it. The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000. */
-  onSelect?: unknown;
-  /** The message cursor arrives as: yours, with `cursor: ListCursor` in it. The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often. */
-  onCursor?: unknown;
-  /** The message activate arrives as: yours, with `activate: ListActivate` in it. Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did. */
-  onActivate?: unknown;
+  /** The message select arrives as: yours, with `select: ListSelect` in it — register it as `ListSelectMsg<…>`. The selection changed: a click, Space, the keyboard landing on a row when moves select, ⌘A, a Shift-range. One row in a single selection; in a multiple one, the ranges, their count, and the rows themselves when there are no more than 1,000. */
+  onSelect?: HandlerMsg<{ select: ListSelect }>;
+  /** The message cursor arrives as: yours, with `cursor: ListCursor` in it — register it as `ListCursorMsg<…>`. The row the keyboard is on moved — an arrow, a page key, a type-ahead, a click: cheap, and often. */
+  onCursor?: HandlerMsg<{ cursor: ListCursor }>;
+  /** The message activate arrives as: yours, with `activate: ListActivate` in it — register it as `ListActivateMsg<…>`. Enter on a row, or a double click: open it. Without a handler, Enter selects, as it did. */
+  onActivate?: HandlerMsg<{ activate: ListActivate }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -893,8 +893,8 @@ export interface LogProps {
   wrap?: boolean;
   /** The time column; on when left out. */
   time?: boolean;
-  /** The message select arrives as: yours, with `select: LogSelect` in it. A line was clicked. */
-  onSelect?: unknown;
+  /** The message select arrives as: yours, with `select: LogSelect` in it — register it as `LogSelectMsg<…>`. A line was clicked. */
+  onSelect?: HandlerMsg<{ select: LogSelect }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -1067,8 +1067,8 @@ export interface DialogProps {
   title: string;
   /** Its width in px; 420 when left out. */
   width?: number;
-  /** The message dismiss arrives as: yours, with `dismiss: DialogDismiss` in it. Escape, or a press outside. */
-  onDismiss?: unknown;
+  /** The message dismiss arrives as: yours, with `dismiss: DialogDismiss` in it — register it as `DialogDismissMsg<…>`. Escape, or a press outside. */
+  onDismiss?: HandlerMsg<{ dismiss: DialogDismiss }>;
   /** is the body. */
   children?: KuiNode;
   /** are its buttons, at the end of its foot. */
@@ -1091,8 +1091,8 @@ export interface PopoverProps {
   label?: string;
   /** Its width in px. */
   width?: number;
-  /** The message dismiss arrives as: yours, with `dismiss: PopoverDismiss` in it. Escape, or a press outside. */
-  onDismiss?: unknown;
+  /** The message dismiss arrives as: yours, with `dismiss: PopoverDismiss` in it — register it as `PopoverDismissMsg<…>`. Escape, or a press outside. */
+  onDismiss?: HandlerMsg<{ dismiss: PopoverDismiss }>;
   /** is what it holds. */
   children?: KuiNode;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -1111,10 +1111,10 @@ export type PopoverDismissMsg<T = {}> = T & { dismiss: PopoverDismiss };
 export interface MenuProps {
   /** The rows, in order. */
   items: Item[];
-  /** The message choose arrives as: yours, with `choose: MenuChoose` in it. A row was chosen. */
-  onChoose?: unknown;
-  /** The message dismiss arrives as: yours, with `dismiss: MenuDismiss` in it. Escape, or a press outside. */
-  onDismiss?: unknown;
+  /** The message choose arrives as: yours, with `choose: MenuChoose` in it — register it as `MenuChooseMsg<…>`. A row was chosen. */
+  onChoose?: HandlerMsg<{ choose: MenuChoose }>;
+  /** The message dismiss arrives as: yours, with `dismiss: MenuDismiss` in it — register it as `MenuDismissMsg<…>`. Escape, or a press outside. */
+  onDismiss?: HandlerMsg<{ dismiss: MenuDismiss }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -1149,10 +1149,10 @@ export interface ToastProps {
   duration?: number;
   /** One of a `toaster`'s stack rather than floating in the corner on its own. */
   inline?: boolean;
-  /** The message dismiss arrives as: yours, with `dismiss: ToastDismiss` in it. Its close button, or its `duration` ran out. */
-  onDismiss?: unknown;
-  /** The message action arrives as: yours, with `action: ToastAction` in it. Its action was pressed. */
-  onAction?: unknown;
+  /** The message dismiss arrives as: yours, with `dismiss: ToastDismiss` in it — register it as `ToastDismissMsg<…>`. Its close button, or its `duration` ran out. */
+  onDismiss?: HandlerMsg<{ dismiss: ToastDismiss }>;
+  /** The message action arrives as: yours, with `action: ToastAction` in it — register it as `ToastActionMsg<…>`. Its action was pressed. */
+  onAction?: HandlerMsg<{ action: ToastAction }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -1227,8 +1227,8 @@ export interface LineChartProps {
   readout?: boolean;
   /** A Tab stop that is a slider over the samples: the arrows move the readout a sample, Page Up and Down ten, Home and End to the ends, and a screen reader hears the readout as its value and as a live region. No key sink: every other key, Tab and the app's chords, goes on as from any control. Left out, the chart is no Tab stop; the pointer's readout works either way. */
   focusable?: boolean;
-  /** The message hover arrives as: yours, with `hover: LineChartHover` in it. The pointer moved over a row. */
-  onHover?: unknown;
+  /** The message hover arrives as: yours, with `hover: LineChartHover` in it — register it as `LineChartHoverMsg<…>`. The pointer moved over a row. */
+  onHover?: HandlerMsg<{ hover: LineChartHover }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -1261,8 +1261,8 @@ export interface BarChartProps {
   horizontal?: boolean;
   /** Lying bars: the names' column in px; 120 when left out. */
   labelWidth?: number;
-  /** The message select arrives as: yours, with `select: BarChartSelect` in it. A bar was clicked. */
-  onSelect?: unknown;
+  /** The message select arrives as: yours, with `select: BarChartSelect` in it — register it as `BarChartSelectMsg<…>`. A bar was clicked. */
+  onSelect?: HandlerMsg<{ select: BarChartSelect }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -1307,10 +1307,10 @@ export interface WaterfallProps {
   selected?: number;
   /** Takes the room its parent leaves. */
   grow?: boolean;
-  /** The message select arrives as: yours, with `select: WaterfallSelect` in it. A span was clicked. */
-  onSelect?: unknown;
-  /** The message zoom arrives as: yours, with `zoom: WaterfallZoom` in it. The wheel or a drag asks for another window. */
-  onZoom?: unknown;
+  /** The message select arrives as: yours, with `select: WaterfallSelect` in it — register it as `WaterfallSelectMsg<…>`. A span was clicked. */
+  onSelect?: HandlerMsg<{ select: WaterfallSelect }>;
+  /** The message zoom arrives as: yours, with `zoom: WaterfallZoom` in it — register it as `WaterfallZoomMsg<…>`. The wheel or a drag asks for another window. */
+  onZoom?: HandlerMsg<{ zoom: WaterfallZoom }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
