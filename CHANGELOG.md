@@ -344,6 +344,23 @@ already generated for each event.
   a Markdown link's path — as no path at all, and opened Documents. A
   target that is not a URL has every `/` made `\` before the command is
   built; a URL is left as it is.
+- **A capture no longer panics while another thread captures, on macOS**
+  (backlog F241, from smoke.yml's macOS run): F225's wait polled the
+  device until its readback had run, and a poll that waits can find the
+  queue emptied by another thread's poll before its own fence read caught
+  up, which wgpu-core answers with a panic ("the current submission index
+  (1) should be at least the wait submission index (4)"). The wait polls
+  without waiting now, and sleeps between.
+- **A design-token file with a stray character in a hex colour is refused,
+  not a panic** (backlog FZ16, found by the `dtcg` fuzz target):
+  `"#1̠413"` sliced a character in two in `kui_core::dtcg`. A hex colour
+  is hex digits alone now, and `#+fff`, which parsed, is refused with it.
+- **`kui check` on Windows rides out a declaration file held open**
+  (backlog F242): the rename F224 writes each file with is refused while
+  something holds the file without sharing its deletion, and the check
+  failed with "Access is denied"; it is tried again for a moment.
+- **`kill` on Windows says nothing of its own** (backlog F243): taskkill's
+  "SUCCESS: The process with PID …" lines reached the app's output.
 
 **What you can delete.**
 

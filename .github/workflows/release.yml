@@ -3,6 +3,7 @@
 #   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, win32-x64) ──┬── packs
 #           │     each leg: the Node addon, the `kui` runner, libkui_ffi  ├── npm-stage ──┐
 #           └─────────────────────────────────────────────────────────────┴───────────────┴── publish
+#   smoke (macos-15, windows-2025) ─────────────────────────── packs, publish
 #
 # and `publish` puts the crates on crates.io and the ten npm packages on
 # npmjs, while `packs` attaches to the tag's GitHub release:
@@ -41,6 +42,15 @@
 # any of it. Until alpha.68 this was fmt, clippy and the tests alone, and
 # the full check was Forgejo's, started by hand; the repository lives on
 # GitHub alone now, and Forgejo's registries take no new versions.
+#
+# `smoke` is smoke.yml, called with `blocking: true`: the workspace tests,
+# every windowed example and the C round on macOS and Windows themselves,
+# where `check` is Linux's. It runs beside `check` and `build` (its ~30
+# minutes on Windows are the longest leg), and `packs` and `publish` wait
+# for it, so a red macOS or Windows round leaves the tag movable with
+# nothing on crates.io, npmjs or the release. Since alpha.69: alpha.67 and
+# alpha.68 went out with these rounds run only on pushes to main, where
+# they do not block.
 #
 # Each prebuild is built on the platform it targets, so no cross SDK is
 # involved: GitHub's macOS runners carry Xcode, Windows runners MSVC, and
@@ -97,6 +107,11 @@ env:
 jobs:
   check:
     uses: ./.github/workflows/ci.yml
+
+  smoke:
+    uses: ./.github/workflows/smoke.yml
+    with:
+      blocking: true
 
   build:
     needs: check
@@ -314,7 +329,7 @@ jobs:
   # of it attached to the tag's GitHub release. Not in `publish`'s way: see
   # the top of this file.
   packs:
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-24.04
     # The one job that writes to the repository: creating the release.
     permissions:
@@ -497,7 +512,7 @@ jobs:
           compression-level: 0
 
   publish:
-    needs: [check, build, npm-stage]
+    needs: [check, smoke, build, npm-stage]
     # Only a tag publishes; a manual run stops at the builds and the packs.
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04

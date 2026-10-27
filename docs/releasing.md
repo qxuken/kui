@@ -96,8 +96,8 @@ heading move together — registries refuse a version that already
 exists), which it requires to read `## <version> (unreleased)` first,
 and prints what is left. GitHub's [ci.yml](../.github/workflows/ci.yml)
 checks every push to main (and every pull request), and the tag runs it
-again as the release's first job, so the last run on main is the first
-thing to read; the round on the release machines — the windowed smoke
+again as the release's first job, with smoke.yml beside it, so the last
+runs of both on main are the first things to read; the round on the release machines — the windowed smoke
 round with a display, the accessibility audit, below — is what CI cannot
 do. Then
 commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag:
@@ -111,7 +111,9 @@ stale or still says unreleased fails the release. The tag starts the
 release pipeline:
 
 - [release.yml](../.github/workflows/release.yml): `check` (ci.yml,
-  called: the whole check a push to main gets), then one build per platform on
+  called: the whole check a push to main gets) and, beside it, `smoke`
+  (smoke.yml, called blocking: the macOS and Windows rounds below, which
+  `packs` and `publish` wait for), then one build per platform on
   the platform itself (`ubuntu-24.04` and `ubuntu-24.04-arm` through
   cargo-zigbuild for a glibc 2.28 floor, `macos-15` for arm64 — Intel
   Macs have had no prebuild since alpha.41 — and `windows-2025`) of the
@@ -294,9 +296,9 @@ with the tag checked out and a crates.io token publishes whatever crates.io
 is missing, in dependency order; the npm half is the run's `npm-packages`
 artifact, staged by hand as above.
 
-The release pipeline runs no test on a Mac or Windows machine — its macOS
-and Windows legs compile the addon, the runner and the C library, and ask
-the runner its version — and `check` runs on Linux. The Windows non-client
+The release's build legs on macOS and Windows compile the addon, the
+runner and the C library and ask the runner its version, and `check` runs
+on Linux; the tests on a Mac and on Windows are `smoke`'s, below. The Windows non-client
 chrome ([windows_nc.rs](../crates/kui-native/src/windows_nc.rs)), the macOS traffic-light
 inset in `widgets::titlebar_with` and the whole AccessKit bridge
 ([access_bridge.rs](../crates/kui-native/src/access_bridge.rs)) are compiled and linked by
@@ -306,9 +308,17 @@ the platform's acceptance of it. [smoke.yml](../.github/workflows/smoke.yml)
 narrows the gap: on every push to main, on GitHub's `macos-15` and
 `windows-2025`, it builds and runs `cargo test --workspace` natively against
 the real SDK, then the C round (`cbuild --run`) on the platform's own
-compiler. It is non-blocking (`continue-on-error`) and in no release's way,
-for the reason `audit` is its own workflow: it shares nothing with what
-makes `check` expensive.
+compiler. On a push it is non-blocking (`continue-on-error`), its own
+workflow for the reason `audit` is: it shares nothing with what makes
+`check` expensive. A release blocks on it since alpha.69: release.yml
+calls it as its `smoke` job with `blocking: true`, beside `check`, and
+`packs` and `publish` wait for both legs, so a red macOS or Windows round
+stops the tag with nothing published and the tag still movable. It is the
+release's longest leg (about 30 minutes on Windows). alpha.67 and
+alpha.68 went out with these rounds run only on pushes to main, and
+alpha.69's pre-tag round found a capture panic only macOS showed (backlog
+F241). Read the last smoke run on main before tagging all the same: a red
+one there is a release that will stop.
 
 It does one thing more, and it is the only automated check in the repo that
 opens a window: `cargo run -p kui-devtools --bin smoke`

@@ -184,10 +184,14 @@ fn signal(pid: u32, sig: &str, group: bool) -> Result<bool, String> {
     if group {
         args.push("/T");
     }
+    // Its "SUCCESS: The process with PID …" lines are taskkill's, not the
+    // app's: nothing of them reaches the app's own output (backlog F243).
     let status = kui_native::spawn::status(
         Command::new("taskkill")
             .args(args)
-            .creation_flags(0x0800_0000),
+            .creation_flags(0x0800_0000)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
     )
     .map_err(|e| e.to_string())?;
     Ok(status.success())
