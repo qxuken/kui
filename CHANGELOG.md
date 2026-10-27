@@ -219,6 +219,12 @@ already generated for each event.
   the live view go; it lets it go first now. The hidden panel was right
   already, and is tested beside it.
 
+- **A capture reads its frame back while another thread captures**
+  (backlog F225, from PR #7's CI): the capture device is the process's,
+  and a readback's wait polled it once — when another thread's poll had
+  collected its callback and not run it yet, the wait returned with the
+  frame unread, "the GPU could not read the frame back". It polls until
+  its own callback has run now, ten seconds at the most.
 - **Two `kui check`s at once agree** (backlog F224, from PR #7's CI):
   every check writes kui's declarations into one folder a version before
   it reads them, truncating each file first, so a check that read

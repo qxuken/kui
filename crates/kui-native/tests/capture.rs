@@ -56,6 +56,43 @@ fn a_headless_core_captures_its_frame_over_the_theme_s_ground() {
     assert_eq!(shot(&core).expect("again").rgba, c.rgba);
 }
 
+/// Captures from several threads at once each read their frame back: the
+/// device is the process's, and a readback's map callback runs on
+/// whichever thread's poll gets to it, so one thread's wait could return
+/// with its frame mapped by another's poll still to come (PR #7's CI, on
+/// Mesa's software Vulkan: "the GPU could not read the frame back").
+#[test]
+fn captures_from_several_threads_at_once_each_read_their_frame_back() {
+    {
+        let mut core = Core::new();
+        core.frame(Size::new(8.0, 8.0), 1.0).finish();
+        if shot(&core).is_none() {
+            return;
+        }
+    }
+    let threads: Vec<_> = (0..8)
+        .map(|n| {
+            std::thread::spawn(move || {
+                for i in 0..25 {
+                    let mut core = Core::new();
+                    let mut ui = core.frame(Size::new(24.0 + n as f32, 16.0), 1.0);
+                    ui.leaf_keyed(
+                        "box",
+                        NodeSpec::column().size(4.0, 4.0).bg(Color::hex(0x00ff00ff)),
+                    );
+                    ui.finish();
+                    let c =
+                        capture(&core).unwrap_or_else(|e| panic!("thread {n}, capture {i}: {e}"));
+                    assert_eq!(at(&c, 1, 1), [0, 255, 0, 255], "thread {n}, capture {i}");
+                }
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
+}
+
 #[test]
 fn a_core_with_no_finished_frame_has_nothing_to_capture() {
     let core = Core::new();
