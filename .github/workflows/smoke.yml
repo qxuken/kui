@@ -86,15 +86,19 @@ jobs:
 
       # The dev profile, the one the test step just built the examples in,
       # so this is a fingerprint check and not a second compile of the GUI
-      # stack. One window at a time: the default of eight at once, cascaded,
-      # was measured on a Mac with a display, not on a runner.
-      # Bounded: on windows-2025, with no GPU, the round took 52 minutes
-      # the first time it passed, and a hang would hold the runner for the
-      # job's six hours.
+      # stack. One window at a time on macOS: the default of eight at once,
+      # cascaded, was measured on a Mac with a display, not on a runner.
+      #
+      # On Windows, 30 frames, two at a time. windows-2025 has no GPU and
+      # draws on the software adapter, 15-60 s an example at the default
+      # 120 frames: the round took 52 minutes one at a time. What it is for
+      # is a crash or a validation panic, which shows in the first frames,
+      # not pacing (`--frames 300` on a workstation is that). Bounded, so a
+      # hang cannot hold the runner for the job's six hours.
       - name: Smoke the examples in a window
         if: ${{ !cancelled() }}
-        timeout-minutes: 75
-        run: cargo run -p kui-devtools --bin smoke -- --windowed --jobs 1
+        timeout-minutes: 40
+        run: cargo run -p kui-devtools --bin smoke -- --windowed ${{ runner.os == 'Windows' && '--frames 30 --jobs 2' || '--jobs 1' }}
 
       # Needs a C compiler: Xcode's clang on macOS, Visual Studio's `cl` or
       # LLVM's `clang-cl` on Windows; the tool says so and fails if it finds
