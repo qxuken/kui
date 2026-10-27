@@ -494,6 +494,18 @@ warnings! {
     /// would have landed inside the extension's last open node. The
     /// extension has an `open` without its `close`.
     pub const UNBALANCED_EXTENSION: &str = "unbalanced-extension";
+    /// The view returned with nodes still open: an `open` without its
+    /// `close` — in Odin, a bare `kui.box(ui, spec)` where `if
+    /// kui.box(ui, spec) { }` was meant. Layout closes them, but every
+    /// node declared after the forgotten close, the core's own menu and
+    /// devtools panel included, landed inside the open one. Raised once
+    /// per innermost open node.
+    pub const UNCLOSED_NODE: &str = "unclosed-node";
+    /// `layout_of` was asked for a node that declares no `on_layout`, and
+    /// answered nothing: it keeps the rects of those nodes alone. Declare
+    /// `on_layout` on it, or read every node's rect from the inspection
+    /// snapshot (`set_inspect` and `nodes`). Raised once per key.
+    pub const LAYOUT_OF_WITHOUT_HANDLER: &str = "layout-of-without-handler";
     /// An extension's `view` returned an error. The message is drawn in
     /// red where the fill would have been, and reported here once per
     /// extension and component rather than once per frame.
@@ -725,6 +737,31 @@ pub fn unbalanced_extension(slot: &str, slot_key: Key, open: usize) -> Warning {
              open; they were closed for it — it has an `open` without its `close`",
             if open == 1 { "" } else { "s" }
         ),
+    }
+}
+
+/// The [`UNCLOSED_NODE`] warning for a view that returned with `open`
+/// nodes still open, keyed by the innermost.
+pub fn unclosed_node(innermost: Key, open: usize) -> Warning {
+    Warning {
+        code: UNCLOSED_NODE,
+        key: innermost.str(UNCLOSED_NODE),
+        message: format!(
+            "the view returned with {open} node{} still open; every node declared after the \
+             missing close was built inside it — an `open` without its `close`",
+            if open == 1 { "" } else { "s" }
+        ),
+    }
+}
+
+/// The [`LAYOUT_OF_WITHOUT_HANDLER`] warning for one key.
+pub fn layout_of_without_handler(key: Key) -> Warning {
+    Warning {
+        code: LAYOUT_OF_WITHOUT_HANDLER,
+        key,
+        message: "layout_of was asked for a node that declares no on_layout, and keeps no \
+                  rect for it; declare on_layout on the node"
+            .into(),
     }
 }
 

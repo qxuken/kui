@@ -4141,6 +4141,140 @@ C extension's (`kui_ext_contributions`). **Do.** `Ui::slot_contributors
 (`slot_in(name, props, spec)`, drawn only when it has contributions), in
 every binding.
 
+## From Replicator Bloom's wishlist (2026-10-27)
+
+Replicator Bloom is a game on Odin, GLFW and wgpu-native that embeds kui
+from the alpha.68 Odin pack without `kui_run`: it feeds input, runs a
+view, reads `kui_draw_data`, draws the quads with its own wgpu pipeline
+into a texture and composites that over the scene. Its wishlist
+(`playground/games/kui-ui/kui-wishlist.md`, eleven items) checked against
+the tree at `f730a35d`. Twelve entries. F228–F232 — a dirty rect on the
+atlas, the host loop written down, the Odin openers and an
+`unclosed-node` warning, a word from `layout_of`, and the pack's
+Rust-beside-Rust note — **built 2026-10-27**, the day they were filed,
+and in the archive. F233–F239, the rest, filed and **not built**: each
+is a door in every binding or a design of its own. F240, F224's part
+file shared by two threads, was what the round's test run found, built
+the same day and in the archive.
+
+### `.` F233 — A host cannot ask whether the pointer is over the UI
+
+**Found** in the wishlist's item 3. A full-window transparent layer over
+a game must tell a click on the UI from a click on the world, and there
+is no question to ask: the game declares a catch-all `GROW` box with
+`on_click` under everything and hears the world's click as that event.
+So the world's input is routed through kui as messages, a drag, wheel or
+key kui did not take has no "fell through", and the host cannot decide
+before it feeds the input (a camera orbit on right-drag over empty
+space). The core has the answer: `Interaction::hit_at` is the topmost
+hit region at a point, and `hovered()` the region under the cursor;
+neither has a door. **Decide** what blocks the world: a hit region alone
+(a button, an `on_hover`, a `hoverable`) or any node that paints — a
+panel with only a background is no hit region today, and over a game it
+should still take the click. **Do.** `Core::hit(x, y) -> Option<Key>`
+and `Core::pointer_wants()` (egui's `wants_pointer_input`, Dear ImGui's
+`WantCaptureMouse`), as of the last frame, under whichever rule is
+chosen — perhaps a `blocks` row a box opts into, with painted boxes in a
+transparent root blocking by default; doors in C, Odin, Node and Lua,
+pinned in DOORS. Possibly each `kui_input_*` door returns whether kui
+took it.
+
+### `~` F234 — A host's renderer copies kui-wgpu's shader and its instance packing
+
+**Found** in the wishlist's item 2. Drawing `KuiDrawData` meant copying
+`crates/kui-wgpu/src/shader.wgsl` by hand and stripping its `//DUAL:` /
+`//SINGLE:` lines (`preprocess_shader`, private), and rewriting
+`instance_of` (private): the clip resolved against `clips`, a segment's
+ends and a shadow's knock-out as float bits with `border_w` moved into
+`border_color.a`, the kinds as the shader's numbers (texture → 3, group
+end → 8). Every release can move any of it, and nothing tells the copy.
+No C or Odin example draws `kui_draw_data`; the only renderer is the Rust
+one. **Do.** The instance layout and `instance_of` in kui-core (no wgpu
+needed), the shader text beside it; `kui_renderer_wgsl(variant)` for
+`SINGLE` and `DUAL`, and `kui_pack_instances(ctx, out, cap)` writing the
+frame's quads as the shader's instance bytes at a fixed, documented
+stride (176 today), so a host's renderer is "upload these bytes, draw 6 ×
+n". Then a reference host under `examples/` — C or Odin on wgpu-native —
+drawing through `kui_draw_data`, built in CI. What it leaves out: the
+opacity groups' and backdrops' passes, which are passes and not
+instances; the reference host says so, or draws them.
+
+### `.` F235 — The draw data has no bounds
+
+**Found** in the wishlist's item 4. A transparent full-window layer that
+draws two small tags still costs the host a 2560×1600 clear, draw and
+composite every frame: nothing says only two small floats were drawn.
+**Do.** `KuiDrawData.bounds`, the union of the frame's quads in physical
+px — through each clip's turn (ADR 0043), with a shadow's blur and a
+segment's width — so a host scissors the clear and the composite.
+Per-layer or per-float rects would serve an overlay better still; the
+union first. (The other half of the item, `kui_frame_unchanged` as "skip
+your render pass", is F229's, built.)
+
+### `~` F236 — A subtree cannot be drawn into a target of its own
+
+**Found** in the wishlist's item 5. To put UI in the world — on the gate
+ring, warped by perspective, behind the swarm — the host needs that
+subtree's quads apart, and `KuiDrawData` does not say which node a quad
+came from. Today: a `KuiCtx` per island (fonts and atlas of its own, no
+shared focus, the host routing input and inverting its own transforms),
+or opacity groups abused for begin/end markers (`opacity = 0.999` and
+`kui_set_opacity_groups`). **Do.** An ADR for a `surface` row: the
+subtree laid out at its own size, its quads a separate range with its
+own origin and bounds, `kui_input_cursor_in(ctx, surface, x, y)` taking
+the pointer in the surface's coordinates once the host has un-projected
+it; focus, atlas and fonts shared because it is one context. Decide with
+F237: islands done in one context are most of what several contexts
+were wanted for.
+
+### `.` F237 — Contexts cannot share their fonts, images or atlas
+
+**Found** in the wishlist's item 6. Every `kui_ctx_new` brings its own
+font system and glyph atlas, so several HUDs or islands (F236 the hard
+way) load fonts and raster glyphs again, and upload an atlas each. The
+core already shares a `Session` — fonts, images, sounds — between cores
+(`Core::new_in`), which kui-native's windows use; no binding reaches it.
+The atlas stays per core: `Core::output` and `CachedText`'s atlas epoch
+pin it there (ADR 0004 step 1, "three of four hoisted"). **Do.** First
+the door: `kui_ctx_new_in(other)` (and Node's, Lua's, Odin's) joining
+another context's session. Then the atlas, which is ADR 0004's step 2 and
+F236's question too.
+
+### `.` F238 — The release packs carry no library without the runner
+
+**Found** in the wishlist's item 1, with F232. `pack-ffi.nu --no-runner`
+builds `kui_ffi` without `kui_run` — no wgpu, no winit, no audio device,
+under half the size — for a host with its own window, but the release
+ships only the runner build in `kui-c-<version>` and `kui-odin-<version>`.
+A host like this one carries wgpu, winit and `raw-window-metal` it never
+calls. **Do.** A no-runner library beside each platform's two in both
+tarballs (`lib/<platform>/core/{shared,static}`, and `KUI_CORE=true` in
+Odin's `kui_c.odin`), with `verify` linking a counter against it; a
+release dry run before the tag, as alpha.68 taught. It does not solve
+F232's collision — the standard library is still in the archive — so the
+shared kind stays the advice beside another Rust library.
+
+### `.` F239 — Every host maps its window library's keys to kui's by hand
+
+**Found** in the wishlist's item 9. Forwarding keys means mapping GLFW or
+SDL key codes to kui's `code` / `physical` names (`"escape"`, `"a"`,
+`"left"`) and their modifiers to `KUI_KMOD_*`. The game skipped it, so
+kui hears no keys and Tab and Enter on its HUD's buttons do nothing.
+**Do.** Tables for the common libraries — GLFW and SDL3 to begin with —
+outside the C library, which knows no window library: a header-only
+`kui_glfw.h` / `kui_sdl.h` in the C pack, and `kui/glfw.odin` and
+`kui/sdl.odin` over `vendor:glfw` and `vendor:sdl3` in Odin, generated
+from one table so the names match `KeyCode::named()`.
+
+### Theirs, not ours
+
+- **Item 11, "tell a single-blend host to turn subpixel text off".** It
+  is off: a `kui_ctx_new` context rasterizes alpha masks until
+  `kui_set_subpixel_text(ctx, true)` (`TextSystem::subpixel` starts
+  `false`; only `kui_run`'s windows turn it on, on a device with
+  dual-source blending). The game, or a probe, turned it on. F229's host
+  loop section says to leave it off on a single-blend renderer.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go
@@ -6122,6 +6256,22 @@ move.
 
 - `.` **F226** — [`open_external` and `show_in_folder` on Windows take a `/` as no path at all](backlog/closed-2026-09.md#-f226--open_external-and-show_in_folder-on-windows-take-a--as-no-path-at-all--done-2026-10-27) — done (2026-10-27) — every `/` made `\` before `explorer` is asked, a URL left alone
 - `.` **F227** — [A span's background sits flush on its first and last letters](backlog/closed-2026-09.md#-f227--a-spans-background-sits-flush-on-its-first-and-last-letters--done-2026-10-27) — done (2026-10-27) — `Span::bg_pad` widens the rect's two ends, stopping at another background's edge and sharing a narrow gap; in every binding, C at ABI 40
+
+**From Replicator Bloom's wishlist (2026-10-27)** — F228–F232 filed and built the same day; F233–F239 open; F240, found by the round's test run, built
+
+- `.` **F228** — [The atlas is uploaded whole for every new glyph](backlog/closed-2026-09.md#-f228--the-atlas-is-uploaded-whole-for-every-new-glyph--done-2026-10-27) — done (2026-10-27) — `GlyphAtlas::dirty_rect` and `mark_uploaded`; kui-wgpu uploads the rect; `KuiDrawData.atlas_dirty_rect` (ABI 40)
+- `.` **F229** — [Nothing says how a host's loop runs, or when its draw can be skipped](backlog/closed-2026-09.md#-f229--nothing-says-how-a-hosts-loop-runs-or-when-its-draw-can-be-skipped--done-2026-10-27) — done (2026-10-27) — kui.h's "The host loop": input, drain, build, drain, draw; what only the second drain sees; `kui_frame_unchanged` as "skip the draw"
+- `.` **F230** — [Odin's openers compile when misused, and a view that leaves a node open says nothing](backlog/closed-2026-09.md#-f230--odins-openers-compile-when-misused-and-a-view-that-leaves-a-node-open-says-nothing--done-2026-10-27) — done (2026-10-27) — `@(require_results)` on every opener, `kui.rect`, the rule in view.odin and the README; core `unclosed-node`
+- `.` **F231** — [`layout_of` answers nothing for a node without `on_layout`, without a word](backlog/closed-2026-09.md#-f231--layout_of-answers-nothing-for-a-node-without-on_layout-without-a-word--done-2026-10-27) — done (2026-10-27) — `layout-of-without-handler` when the frame finishes; the Odin README points at `set_inspect` and `nodes`
+- `.` **F232** — [Linking kui's archive beside another Rust archive fails, and nothing says to link the shared one](backlog/closed-2026-09.md#-f232--linking-kuis-archive-beside-another-rust-archive-fails-and-nothing-says-to-link-the-shared-one--done-2026-10-27) — done (2026-10-27) — the pack README, the Odin README and kui-ffi's README say so, and why
+- `.` **F233** — [A host cannot ask whether the pointer is over the UI](#-f233--a-host-cannot-ask-whether-the-pointer-is-over-the-ui) — open — `hit(x, y)` / `pointer_wants()` in every binding, once what blocks the world is decided
+- `~` **F234** — [A host's renderer copies kui-wgpu's shader and its instance packing](#-f234--a-hosts-renderer-copies-kui-wgpus-shader-and-its-instance-packing) — open — the shader and the instance packing in the core with C doors, and a reference C or Odin host
+- `.` **F235** — [The draw data has no bounds](#-f235--the-draw-data-has-no-bounds) — open — `KuiDrawData.bounds`, then per-layer rects
+- `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — open — an ADR for a `surface` row, decided with F237
+- `.` **F237** — [Contexts cannot share their fonts, images or atlas](#-f237--contexts-cannot-share-their-fonts-images-or-atlas) — open — `kui_ctx_new_in` over `Core::new_in`, then the atlas (ADR 0004 step 2)
+- `.` **F238** — [The release packs carry no library without the runner](#-f238--the-release-packs-carry-no-library-without-the-runner) — open — a no-runner library in both tarballs, verified, after a release dry run
+- `.` **F239** — [Every host maps its window library's keys to kui's by hand](#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand) — open — header-only GLFW and SDL tables for C, files for Odin, from one table
+- `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 

@@ -20,7 +20,17 @@ import c "c"
 //
 // A container opens with its proc and closes at the end of the block it
 // was called in - the `if` above - through @(deferred_in), so an open
-// without its close cannot be written.
+// without its close cannot be written. Always `if kui.box(...) { }`:
+//
+//   - never a bare `kui.box(ui, spec)`: the node would stay open to the end
+//     of the enclosing block and swallow every sibling after it. The
+//     openers are @(require_results), so that does not compile; a box with
+//     no children is `kui.rect(ui, spec)`.
+//   - never `if !kui.column(ui, spec) do return`: the `if` is the block, so
+//     the column closes at once and its children land in the parent. That
+//     one compiles; nothing to return from, the openers are always true.
+//
+// (backlog F230, from a game embedding kui)
 
 // The root of the frame: the viewport, laid out by spec.
 root :: proc(ui: ^Ui, spec: Spec = {}) {
@@ -79,14 +89,14 @@ Window_Events :: struct {
 
 // A container: a box laid out by spec, holding what the block declares.
 // Returns true, for the `if` that scopes it.
-@(deferred_in = close)
+@(deferred_in = close, require_results)
 box :: proc(ui: ^Ui, spec: Spec = {}) -> bool {
 	open(ui, spec)
 	return true
 }
 
 // A box whose children stack top to bottom (the default direction).
-@(deferred_in = close)
+@(deferred_in = close, require_results)
 column :: proc(ui: ^Ui, spec: Spec = {}) -> bool {
 	s := spec
 	s.dir = .Column
@@ -95,12 +105,20 @@ column :: proc(ui: ^Ui, spec: Spec = {}) -> bool {
 }
 
 // A box whose children sit side by side.
-@(deferred_in = close)
+@(deferred_in = close, require_results)
 row :: proc(ui: ^Ui, spec: Spec = {}) -> bool {
 	s := spec
 	s.dir = .Row
 	open(ui, s)
 	return true
+}
+
+// A box with no children - a swatch, a rule, a decoration - opened and
+// closed in one call, where a bare box would stay open. Returns its key.
+rect :: proc(ui: ^Ui, spec: Spec = {}) -> (key: u64) {
+	key = open(ui, spec)
+	close(ui)
+	return
 }
 
 // The unscoped pair under box, column and row, for a node opened in one
@@ -198,7 +216,7 @@ stock :: proc(door: proc "c" (_: ^c.Ctx, _: string, _: ^c.Spec, _: ^c.TextStyle,
 }
 
 // A group of radios, one Tab stop with the arrows inside it.
-@(deferred_in = close_radio_group)
+@(deferred_in = close_radio_group, require_results)
 radio_group :: proc(ui: ^Ui, label: string, spec: Spec = {}) -> bool {
 	cs: c.Spec
 	scratch: Scratch
@@ -303,7 +321,7 @@ tooltip_with :: proc(ui: ^Ui, data: ^$T, body: proc(data: ^T, ui: ^Ui)) {
 // A tab of the app's own in the devtools panel, whose content is built only
 // while the tab is on show: `if` it, build inside, and the block's end closes
 // the node - when there is one, since a tab not on show opens nothing.
-@(deferred_in_out = close_devtools_tab)
+@(deferred_in_out = close_devtools_tab, require_results)
 devtools_tab_open :: proc(ui: ^Ui, name, label: string) -> bool {
 	return c.devtools_tab_open(ui, name, label)
 }

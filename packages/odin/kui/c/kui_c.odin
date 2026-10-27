@@ -1040,6 +1040,7 @@ DrawData :: struct {
 	clip_count: uint,
 	textures: [^]TextureDraw,
 	texture_count: uint,
+	atlas_dirty_rect: [4]u32,
 }
 
 Theme :: struct {

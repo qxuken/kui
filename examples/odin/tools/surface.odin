@@ -989,9 +989,9 @@ surface :: proc() -> bool {
 		check(wgsl_ok && strings.contains(wgsl, "params[0]"), "fragment_source is the module around it")
 		params := []f32{1, 0, 0, 1}
 		kui.frame_begin(ui, 320, 240, 1)
-		kui.fragment_open_with(ui, "painted", frag, 0, params, {width = kui.px(20), height = kui.px(20)})
-		kui.text(ui, "over it")
-		kui.close(ui)
+		if kui.fragment_open_with(ui, "painted", frag, 0, params, {width = kui.px(20), height = kui.px(20)}) {
+			kui.text(ui, "over it")
+		}
 		kui.frame_finish(ui)
 		fdd, fdd_ok := kui.draw_data(ui)
 		check(fdd_ok && len(fdd.fragments) == 1, "fragment_open_with drew one")

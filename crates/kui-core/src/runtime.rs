@@ -153,7 +153,7 @@ pub(crate) enum RegionTarget {
 /// // The renderer's view of the frame: quads in physical pixels.
 /// let (list, atlas) = core.output();
 /// assert!(list.quads.iter().any(|q| q.kind == QuadKind::Solid));
-/// atlas.dirty = false; // after uploading `atlas.pixels`
+/// atlas.mark_uploaded(); // after uploading `atlas.dirty_rect()` of `atlas.pixels`
 ///
 /// // 5: input, hit-tested against the frame that finished.
 /// core.handle_input(InputEvent::CursorMoved(Vec2::new(20.0, 20.0)));
@@ -401,6 +401,10 @@ pub struct Core {
     /// asked for, rather than into a root laid out for something else.
     dt_dock: Option<devtools::Dock>,
     dt_window: bool,
+    /// Keys `layout_of` answered `None` for while diagnostics are on,
+    /// checked when the frame finishes for a node that declared no
+    /// `on_layout` (backlog F231). `layout_of` reads through `&self`.
+    layout_misses: std::cell::RefCell<Vec<Key>>,
     dt_theme: Option<(ThemeSource, ThemeSource)>,
     /// The menu mode the host had before the panel's override went on —
     /// drawn or native, the bar with it — for the override's `platform`
@@ -1447,6 +1451,7 @@ impl Core {
             dt_app: None,
             dt_dock: None,
             dt_window: false,
+            layout_misses: Default::default(),
             dt_theme: None,
             dt_menus: None,
             dt_built: None,

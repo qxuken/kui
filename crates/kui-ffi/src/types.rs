@@ -2383,6 +2383,12 @@ pub struct KuiDrawData {
     /// zero on a frame that draws none. Added in ABI 14.
     pub textures: *const KuiTextureDraw,
     pub texture_count: usize,
+    /// What of the atlas changed since the last draw data, `[x, y, w, h]`
+    /// in texels: with `atlas_dirty` set and `atlas_epoch` unchanged, the
+    /// one rect to upload (a new glyph is its own rect, not the page); the
+    /// whole page when the epoch moved; zero with `atlas_dirty` clear.
+    /// Added in ABI 40 (backlog F228).
+    pub atlas_dirty_rect: [u32; 4],
 }
 
 impl Default for KuiDrawData {
@@ -2405,6 +2411,7 @@ impl Default for KuiDrawData {
             clip_count: 0,
             textures: std::ptr::null(),
             texture_count: 0,
+            atlas_dirty_rect: [0; 4],
         }
     }
 }
