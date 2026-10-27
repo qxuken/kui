@@ -327,6 +327,18 @@ function row_heights(rows, estimate) end
 ---@field column fun(self: kui.Channel, col: string | integer): any[]
 ---@field reduce fun(self: kui.Channel, col: string | integer, from: number, to: number, n: number): kui.ChannelReduction
 ---@field publish fun(self: kui.Channel, columns: table<string, any[]>): kui.Channel
+---@field append fun(self: kui.Channel, columns: table<string, any[]>, cap?: integer): kui.Channel
+---@field filter fun(self: kui.Channel, col: string | integer, match: kui.ChannelMatch, rows?: integer[]): integer[]
+---@field sort fun(self: kui.Channel, col: string | integer, descending?: boolean, rows?: integer[]): integer[]
+---@field take fun(self: kui.Channel, rows: integer[]): kui.Channel
+
+---What `ch:filter` keeps a row for (backlog C148): `eq`, a cell equal to it; `contains`, a string cell holding it (`case` true to match its letters' case); `min` / `max`, a number cell in that range, either end open.
+---@class kui.ChannelMatch
+---@field eq? number | integer | string | boolean
+---@field contains? string
+---@field case? boolean
+---@field min? number
+---@field max? number
 
 ---What `ch:reduce(col, from, to, n)` answers (backlog C95): rows `from` up to `to` in `n` buckets (one a row when fewer), each field a list with a bucket per index; NaN skipped, a bucket of only NaN NaN. Rows are the channel's, 0-based.
 ---@class kui.ChannelReduction

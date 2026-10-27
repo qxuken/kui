@@ -472,7 +472,10 @@ extern "C" {
  * [out] struct, so a host that reserved the shorter one is written no
  * further than its size and uploads the page whole, as it did.
  * New with it, moving no struct: kui_perf_note (backlog F216), and
- * kui_thread_span_begin and kui_thread_span_end (backlog F215).
+ * kui_thread_span_begin and kui_thread_span_end (backlog F215); after
+ * alpha.69, kui_channel_append (backlog C147), and kui_channel_filter_f64,
+ * kui_channel_filter_str, kui_channel_sort and kui_channel_take with the
+ * KUI_CHANNEL_EQUAL / _CONTAINS / _CONTAINS_ANY_CASE ways (backlog C148).
  */
 #define KUI_ABI_VERSION 40u
 uint32_t kui_abi_version(void);
@@ -3192,6 +3195,35 @@ bool kui_channel_get_str(const KuiChannel *ch, size_t row, size_t col, KuiStr *o
 #define KUI_CHANNEL_BUCKET 8
 bool kui_channel_reduce(const KuiChannel *ch, size_t col, size_t from, size_t to, size_t buckets,
                         double *out, size_t *count);
+/* The next revision of ch's identity: its rows, then the builder's
+ * (backlog C147) - each of ch's columns named, of its kind (integers widen
+ * into a number column), all of one length - with the oldest rows past cap
+ * gone when cap is above 0. ch's rows are shared with it, not copied, so a
+ * growing log costs its new lines. The builder is consumed either way; ch
+ * is untouched and still yours. NULL on a mismatch, the reason in
+ * kui_channel_error. */
+KuiChannel *kui_channel_append(const KuiChannel *ch, KuiChannelBuilder *rows, size_t cap);
+/* A view built in Rust (backlog C148). The rows - all, or the n_within of
+ * within in its order - whose number in column col is at least min and at
+ * most max (min == max for one value, -INFINITY / INFINITY for an open
+ * end; NaN is in no range), or whose string is text (KUI_CHANNEL_EQUAL) or
+ * holds it (KUI_CHANNEL_CONTAINS, or KUI_CHANNEL_CONTAINS_ANY_CASE whatever
+ * its letters' case); kui_channel_sort's, ordered by col, least first or
+ * greatest with descending, ties in order and NaN last. out has room for
+ * the channel's length, or n_within; *count is how many were written.
+ * False for NULL, no column col, a column of the other kind, or a row past
+ * the end, the reason in kui_channel_error. kui_channel_take makes a new
+ * channel of the n rows given, in that order. */
+#define KUI_CHANNEL_EQUAL 0
+#define KUI_CHANNEL_CONTAINS 1
+#define KUI_CHANNEL_CONTAINS_ANY_CASE 2
+bool kui_channel_filter_f64(const KuiChannel *ch, size_t col, double min, double max,
+                            const size_t *within, size_t n_within, size_t *out, size_t *count);
+bool kui_channel_filter_str(const KuiChannel *ch, size_t col, KuiStr text, int32_t how,
+                            const size_t *within, size_t n_within, size_t *out, size_t *count);
+bool kui_channel_sort(const KuiChannel *ch, size_t col, bool descending, const size_t *within,
+                      size_t n_within, size_t *out, size_t *count);
+KuiChannel *kui_channel_take(const KuiChannel *ch, const size_t *rows, size_t n);
 bool kui_token_family(KuiCtx *ctx, KuiStr name, uint32_t *family, uint64_t *font);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before

@@ -3,7 +3,9 @@
 //! single call; it serializes as its handle, so `props: { rows: channel }`
 //! hands a hundred thousand rows to a component as one small value, and a
 //! Lua or C reader resolves the same handle without a copy. `reduce`
-//! buckets a range for a chart in Rust (backlog C95).
+//! buckets a range for a chart in Rust (backlog C95); `append` is the next
+//! revision with more rows (backlog C147); `filter`, `sort` and `take`
+//! build a view in Rust (backlog C148).
 
 use kui_core::channel::{self, Cell, Column};
 use napi::bindgen_prelude::{Either, Float64Array, Object, Uint32Array};
@@ -63,6 +65,51 @@ pub struct ChannelReduction {
     pub max_row: Uint32Array,
     pub first_row: Uint32Array,
     pub last_row: Uint32Array,
+}
+
+/// What `channel.filter` keeps a row for (backlog C148): `eq`, a cell
+/// equal to it; `contains`, a string cell holding it (`caseSensitive` to
+/// match its letters' case); `min` / `max`, a number cell in that range,
+/// either end left open.
+#[napi(object)]
+pub struct ChannelMatch {
+    pub eq: Option<Value>,
+    pub contains: Option<String>,
+    pub case_sensitive: Option<bool>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}
+
+fn match_of(m: &ChannelMatch) -> Result<channel::Match> {
+    if let Some(text) = &m.contains {
+        return Ok(channel::Match::Contains {
+            text: text.clone(),
+            case: m.case_sensitive.unwrap_or(false),
+        });
+    }
+    if let Some(v) = &m.eq {
+        return Ok(channel::Match::Eq(crate::value_of(v)));
+    }
+    if m.min.is_some() || m.max.is_some() {
+        return Ok(channel::Match::Range {
+            min: m.min,
+            max: m.max,
+        });
+    }
+    Err(err(
+        "filter: a match is { eq }, { contains, caseSensitive } or { min, max }",
+    ))
+}
+
+fn rows_of(rows: &Either<Uint32Array, Vec<u32>>) -> Vec<usize> {
+    match rows {
+        Either::A(a) => a.iter().map(|&r| r as usize).collect(),
+        Either::B(v) => v.iter().map(|&r| r as usize).collect(),
+    }
+}
+
+fn rows_out(rows: Vec<usize>) -> Uint32Array {
+    Uint32Array::new(rows.into_iter().map(|r| r as u32).collect())
 }
 
 impl Channel {
@@ -185,6 +232,67 @@ impl Channel {
             .inner
             .publish(columns_of(&columns)?)
             .map_err(|e| err(format!("publish: {e}")))?;
+        Ok(Channel { inner })
+    }
+
+    /// The next revision under the same identity: this one's rows and
+    /// `columns`' after them, each column of this channel named, of its
+    /// kind and all of one length (backlog C147). With `cap`, the oldest
+    /// rows go past it. This revision's rows are shared with the next, not
+    /// copied, so a growing log costs its new lines.
+    #[napi]
+    pub fn append(&self, columns: Object, cap: Option<u32>) -> Result<Channel> {
+        let inner = self
+            .inner
+            .append(columns_of(&columns)?, cap.map(|c| c as usize))
+            .map_err(|e| err(format!("append: {e}")))?;
+        Ok(Channel { inner })
+    }
+
+    /// The rows — all, or those of `rows` in its order — whose cell in
+    /// column `col` matches, 0-based (backlog C148). Throws for a match of
+    /// the wrong kind for the column, or a row past the end.
+    #[napi]
+    pub fn filter(
+        &self,
+        col: Either<String, u32>,
+        matching: ChannelMatch,
+        rows: Option<Either<Uint32Array, Vec<u32>>>,
+    ) -> Result<Uint32Array> {
+        let c = self.col(col)?;
+        let within = rows.as_ref().map(rows_of);
+        self.inner
+            .filter(c, &match_of(&matching)?, within.as_deref())
+            .map(rows_out)
+            .map_err(|e| err(format!("filter: {e}")))
+    }
+
+    /// The rows — all, or `rows` — ordered by column `col`, least first or
+    /// greatest with `descending`; ties keep their order, NaN goes last
+    /// (backlog C148).
+    #[napi]
+    pub fn sort(
+        &self,
+        col: Either<String, u32>,
+        descending: Option<bool>,
+        rows: Option<Either<Uint32Array, Vec<u32>>>,
+    ) -> Result<Uint32Array> {
+        let c = self.col(col)?;
+        let within = rows.as_ref().map(rows_of);
+        self.inner
+            .sort(c, descending.unwrap_or(false), within.as_deref())
+            .map(rows_out)
+            .map_err(|e| err(format!("sort: {e}")))
+    }
+
+    /// A new channel of `rows`, in that order (backlog C148): a filtered
+    /// or sorted view, made in Rust.
+    #[napi]
+    pub fn take(&self, rows: Either<Uint32Array, Vec<u32>>) -> Result<Channel> {
+        let inner = self
+            .inner
+            .take(&rows_of(&rows))
+            .map_err(|e| err(format!("take: {e}")))?;
         Ok(Channel { inner })
     }
 

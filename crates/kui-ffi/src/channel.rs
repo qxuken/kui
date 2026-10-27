@@ -291,3 +291,173 @@ pub extern "C" fn kui_channel_reduce(
         }
     })
 }
+
+fn fail<T>(e: kui_core::channel::ChannelError, none: T) -> T {
+    LAST_ERROR.with_borrow_mut(|s| *s = e.0);
+    none
+}
+
+/// The next revision of `ch`'s identity: its rows, then the builder's
+/// (backlog C147), each of `ch`'s columns named in the builder, of its
+/// kind (integers widen into a number column) and all of one length. With
+/// `cap` above 0, the oldest rows go past it. The builder is consumed
+/// either way; `ch` is untouched and still yours. NULL on a mismatch, the
+/// reason in [`kui_channel_error`].
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_append(
+    ch: *const KuiChannel,
+    rows: *mut KuiChannelBuilder,
+    cap: usize,
+) -> *mut KuiChannel {
+    guard(std::ptr::null_mut(), || {
+        if rows.is_null() {
+            return std::ptr::null_mut();
+        }
+        let b = unsafe { Box::from_raw(rows) };
+        let Some(c) = (unsafe { ch.as_ref() }) else {
+            return std::ptr::null_mut();
+        };
+        match c.0.append(b.cols, (cap > 0).then_some(cap)) {
+            Ok(next) => {
+                LAST_ERROR.with_borrow_mut(String::clear);
+                Box::into_raw(Box::new(KuiChannel(next)))
+            }
+            Err(e) => fail(e, std::ptr::null_mut()),
+        }
+    })
+}
+
+/// `within`'s rows, or none for NULL.
+fn rows_in<'a>(within: *const usize, n: usize) -> Option<&'a [usize]> {
+    (!within.is_null()).then(|| unsafe { std::slice::from_raw_parts(within, n) })
+}
+
+/// Writes `rows` into `out` and their count into `count`.
+fn rows_out(rows: Vec<usize>, out: *mut usize, count: *mut usize) -> bool {
+    unsafe {
+        std::ptr::copy_nonoverlapping(rows.as_ptr(), out, rows.len());
+        *count = rows.len();
+    }
+    true
+}
+
+fn query(
+    ch: *const KuiChannel,
+    out: *mut usize,
+    count: *mut usize,
+    run: impl FnOnce(&Channel) -> Result<Vec<usize>, kui_core::channel::ChannelError>,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ch.as_ref() }) else {
+            return false;
+        };
+        if out.is_null() || count.is_null() {
+            return false;
+        }
+        match run(&c.0) {
+            Ok(rows) => rows_out(rows, out, count),
+            Err(e) => fail(e, false),
+        }
+    })
+}
+
+/// The rows — all, or the `n_within` of `within` in its order — whose
+/// number in column `col` is at least `min` and at most `max` (backlog
+/// C148): `min == max` for one value, `-INFINITY` or `INFINITY` for an
+/// open end; NaN is in no range. `out` has room for the channel's length,
+/// or `n_within`; `*count` is how many were written. False for NULL, no
+/// column `col`, a column that is not numbers, or a row past the end, the
+/// reason in [`kui_channel_error`].
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_filter_f64(
+    ch: *const KuiChannel,
+    col: usize,
+    min: f64,
+    max: f64,
+    within: *const usize,
+    n_within: usize,
+    out: *mut usize,
+    count: *mut usize,
+) -> bool {
+    let m = if min == max {
+        kui_core::channel::Match::Eq(kui_core::Value::Float(min))
+    } else {
+        kui_core::channel::Match::Range {
+            min: min.is_finite().then_some(min),
+            max: max.is_finite().then_some(max),
+        }
+    };
+    query(ch, out, count, |c| {
+        c.filter(col, &m, rows_in(within, n_within))
+    })
+}
+
+/// A string filter's way: the cell is `text`.
+pub const KUI_CHANNEL_EQUAL: i32 = 0;
+/// The cell holds `text`, its letters' case as given.
+pub const KUI_CHANNEL_CONTAINS: i32 = 1;
+/// The cell holds `text`, whatever its letters' case.
+pub const KUI_CHANNEL_CONTAINS_ANY_CASE: i32 = 2;
+
+/// [`kui_channel_filter_f64`] for a string column: the rows whose cell is
+/// `text` (`KUI_CHANNEL_EQUAL`) or holds it (`KUI_CHANNEL_CONTAINS`,
+/// `KUI_CHANNEL_CONTAINS_ANY_CASE`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_filter_str(
+    ch: *const KuiChannel,
+    col: usize,
+    text: KuiStr,
+    how: i32,
+    within: *const usize,
+    n_within: usize,
+    out: *mut usize,
+    count: *mut usize,
+) -> bool {
+    let text = kstr(text).into_owned();
+    let m = match how {
+        KUI_CHANNEL_CONTAINS => kui_core::channel::Match::Contains { text, case: true },
+        KUI_CHANNEL_CONTAINS_ANY_CASE => kui_core::channel::Match::Contains { text, case: false },
+        _ => kui_core::channel::Match::Eq(kui_core::Value::Str(text)),
+    };
+    query(ch, out, count, |c| {
+        c.filter(col, &m, rows_in(within, n_within))
+    })
+}
+
+/// The rows — all, or `within`'s — ordered by column `col`, least first or
+/// greatest with `descending`; ties keep their order, NaN goes last
+/// (backlog C148). `out` and `*count` as [`kui_channel_filter_f64`]'s.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_sort(
+    ch: *const KuiChannel,
+    col: usize,
+    descending: bool,
+    within: *const usize,
+    n_within: usize,
+    out: *mut usize,
+    count: *mut usize,
+) -> bool {
+    query(ch, out, count, |c| {
+        c.sort(col, descending, rows_in(within, n_within))
+    })
+}
+
+/// A new channel of the `n` rows `rows`, in that order, yours until
+/// [`kui_channel_free`] (backlog C148). NULL for a row past the end, the
+/// reason in [`kui_channel_error`].
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_take(
+    ch: *const KuiChannel,
+    rows: *const usize,
+    n: usize,
+) -> *mut KuiChannel {
+    guard(std::ptr::null_mut(), || {
+        let Some(c) = (unsafe { ch.as_ref() }) else {
+            return std::ptr::null_mut();
+        };
+        match c.0.take(rows_in(rows, n).unwrap_or(&[])) {
+            Ok(view) => Box::into_raw(Box::new(KuiChannel(view))),
+            Err(e) => fail(e, std::ptr::null_mut()),
+        }
+    })
+}

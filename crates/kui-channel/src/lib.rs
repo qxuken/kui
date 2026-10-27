@@ -33,7 +33,7 @@
 //! ```
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, Weak};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock, Weak};
 
 use rustc_hash::FxHashMap;
 
@@ -82,6 +82,31 @@ impl Column {
             Column::I64(_) => "integer",
             Column::Bool(_) => "boolean",
             Column::Str(_) => "string",
+        }
+    }
+
+    /// An empty column of this one's kind.
+    fn empty_like(&self) -> Column {
+        match self {
+            Column::F64(_) => Column::F64(Vec::new()),
+            Column::I64(_) => Column::I64(Vec::new()),
+            Column::Bool(_) => Column::Bool(Vec::new()),
+            Column::Str(_) => Column::Str(Strs::default()),
+        }
+    }
+
+    /// `other`'s rows `range` after this column's, of the same kind.
+    fn extend_rows(&mut self, other: &Column, range: std::ops::Range<usize>) {
+        match (self, other) {
+            (Column::F64(a), Column::F64(b)) => a.extend_from_slice(&b[range]),
+            (Column::I64(a), Column::I64(b)) => a.extend_from_slice(&b[range]),
+            (Column::Bool(a), Column::Bool(b)) => a.extend_from_slice(&b[range]),
+            (Column::Str(a), Column::Str(b)) => {
+                for i in range {
+                    a.push(b.get(i).unwrap_or_default());
+                }
+            }
+            _ => unreachable!("runs of one column are of one kind"),
         }
     }
 
@@ -195,11 +220,72 @@ impl std::fmt::Display for ChannelError {
 
 impl std::error::Error for ChannelError {}
 
+/// A run of a table's rows, shared between the revisions that hold it:
+/// an append adds one, so a revision costs its new rows and not its old
+/// ones (backlog C147). Its rows in the channel are `start..`, its own
+/// from `skip` on — a cap drops the oldest from the front.
+#[derive(Clone)]
+struct Chunk {
+    start: usize,
+    skip: usize,
+    cols: Arc<Vec<Column>>,
+}
+
+impl Chunk {
+    fn rows(&self) -> usize {
+        self.cols.first().map_or(0, Column::len) - self.skip
+    }
+}
+
+enum Body {
+    /// The columns' names, the runs of rows, and the columns whole, made
+    /// once when a reader asks for one whole and there is more than one
+    /// run (or the first is cut).
+    Table {
+        names: Vec<String>,
+        chunks: Vec<Chunk>,
+        flat: OnceLock<Vec<Column>>,
+        data: OnceLock<Data>,
+    },
+    Bytes(Data),
+}
+
 struct Inner {
     id: u64,
     rev: u64,
-    data: Data,
+    body: Body,
     len: usize,
+}
+
+impl Inner {
+    /// The table's columns whole.
+    fn flat(&self) -> Option<&[Column]> {
+        let Body::Table {
+            names,
+            chunks,
+            flat,
+            ..
+        } = &self.body
+        else {
+            return None;
+        };
+        if let [one] = chunks.as_slice()
+            && one.skip == 0
+        {
+            return Some(&one.cols);
+        }
+        Some(flat.get_or_init(|| {
+            (0..names.len())
+                .map(|c| {
+                    let mut out = chunks[0].cols[c].empty_like();
+                    for ch in chunks {
+                        out.extend_rows(&ch.cols[c], ch.skip..ch.skip + ch.rows());
+                    }
+                    out
+                })
+                .collect()
+        }))
+    }
 }
 
 /// One revision of a channel, held: cheap to clone, and the data stays as
@@ -260,9 +346,41 @@ fn table_len(names: &[String], cols: &[Column]) -> Result<usize, ChannelError> {
     Ok(len)
 }
 
+/// At most this many runs before a reader by row searches them: past it
+/// the runs merge however their sizes stand.
+const MAX_CHUNKS: usize = 48;
+
+/// Merges the last two runs while the last is as long as the one before
+/// it, so a table appended to a row at a time holds about log₂ of its rows
+/// in runs and each row is copied about that many times in all.
+fn settle(chunks: &mut Vec<Chunk>) {
+    while chunks.len() >= 2 {
+        let n = chunks.len();
+        let (a, b) = (&chunks[n - 2], &chunks[n - 1]);
+        if b.rows() < a.rows() && n <= MAX_CHUNKS {
+            break;
+        }
+        let cols = (0..a.cols.len())
+            .map(|c| {
+                let mut out = a.cols[c].empty_like();
+                out.extend_rows(&a.cols[c], a.skip..a.skip + a.rows());
+                out.extend_rows(&b.cols[c], b.skip..b.skip + b.rows());
+                out
+            })
+            .collect();
+        let start = a.start;
+        chunks.truncate(n - 2);
+        chunks.push(Chunk {
+            start,
+            skip: 0,
+            cols: Arc::new(cols),
+        });
+    }
+}
+
 impl Channel {
-    fn register(id: u64, rev: u64, data: Data, len: usize) -> Channel {
-        let inner = Arc::new(Inner { id, rev, data, len });
+    fn register(id: u64, rev: u64, body: Body, len: usize) -> Channel {
+        let inner = Arc::new(Inner { id, rev, body, len });
         let mut reg = registry();
         // A sweep of the gone, now and then: the map holds weak entries,
         // and one per identity ever made would grow with a busy writer.
@@ -273,19 +391,32 @@ impl Channel {
         Channel(inner)
     }
 
+    fn table_body(names: Vec<String>, cols: Vec<Column>) -> Body {
+        Body::Table {
+            names,
+            chunks: vec![Chunk {
+                start: 0,
+                skip: 0,
+                cols: Arc::new(cols),
+            }],
+            flat: OnceLock::new(),
+            data: OnceLock::new(),
+        }
+    }
+
     /// A table of named columns of one length.
     pub fn table(cols: Vec<(String, Column)>) -> Result<Channel, ChannelError> {
         let (names, cols): (Vec<String>, Vec<Column>) = cols.into_iter().unzip();
         let len = table_len(&names, &cols)?;
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-        Ok(Self::register(id, 1, Data::Table { names, cols }, len))
+        Ok(Self::register(id, 1, Self::table_body(names, cols), len))
     }
 
     /// A run of bytes.
     pub fn bytes(bytes: Vec<u8>) -> Channel {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let len = bytes.len();
-        Self::register(id, 1, Data::Bytes(bytes), len)
+        Self::register(id, 1, Body::Bytes(Data::Bytes(bytes)), len)
     }
 
     /// The next revision under this identity, holding `cols`: a handle to
@@ -297,7 +428,7 @@ impl Channel {
         Ok(Self::register(
             self.0.id,
             self.0.rev + 1,
-            Data::Table { names, cols },
+            Self::table_body(names, cols),
             len,
         ))
     }
@@ -305,7 +436,118 @@ impl Channel {
     /// [`Self::publish`] for bytes.
     pub fn publish_bytes(&self, bytes: Vec<u8>) -> Channel {
         let len = bytes.len();
-        Self::register(self.0.id, self.0.rev + 1, Data::Bytes(bytes), len)
+        Self::register(
+            self.0.id,
+            self.0.rev + 1,
+            Body::Bytes(Data::Bytes(bytes)),
+            len,
+        )
+    }
+
+    /// The next revision under this identity: this one's rows and `rows`
+    /// after them (backlog C147). `rows` names every column this table
+    /// has, each of the same kind (integers widen into a number column),
+    /// all of one length. With `cap`, the oldest rows go past it, so a log
+    /// keeps its last `cap` lines. The rows this revision holds are shared
+    /// with the next, not copied: an append costs its own rows.
+    pub fn append(
+        &self,
+        rows: Vec<(String, Column)>,
+        cap: Option<usize>,
+    ) -> Result<Channel, ChannelError> {
+        let Body::Table { names, chunks, .. } = &self.0.body else {
+            return Err(ChannelError("a channel of bytes takes no rows".into()));
+        };
+        if rows.len() != names.len() {
+            return Err(ChannelError(format!(
+                "{} columns appended to a channel of {}: {}",
+                rows.len(),
+                names.len(),
+                names.join(", ")
+            )));
+        }
+        let mut given: Vec<Option<Column>> = vec![None; names.len()];
+        let mut n = None;
+        for (name, col) in rows {
+            let Some(i) = names.iter().position(|x| *x == name) else {
+                return Err(ChannelError(format!(
+                    "the channel has no column `{name}`; it has {}",
+                    names.join(", ")
+                )));
+            };
+            if given[i].is_some() {
+                return Err(ChannelError(format!("column `{name}` is appended twice")));
+            }
+            let have = &chunks[0].cols[i];
+            let col = match (have, col) {
+                (Column::F64(_), Column::I64(v)) => {
+                    Column::F64(v.into_iter().map(|x| x as f64).collect())
+                }
+                (h, c) if h.kind() == c.kind() => c,
+                (h, c) => {
+                    return Err(ChannelError(format!(
+                        "column `{name}` holds {}s; {}s were appended to it",
+                        h.kind(),
+                        c.kind()
+                    )));
+                }
+            };
+            match n {
+                None => n = Some(col.len()),
+                Some(n) if n != col.len() => {
+                    return Err(ChannelError(format!(
+                        "column `{name}` appends {} rows where another appends {n}",
+                        col.len()
+                    )));
+                }
+                Some(_) => {}
+            }
+            given[i] = Some(col);
+        }
+        let added = n.unwrap_or(0);
+        let mut chunks = chunks.clone();
+        let mut len = self.0.len;
+        if added > 0 {
+            chunks.push(Chunk {
+                start: len,
+                skip: 0,
+                cols: Arc::new(given.into_iter().map(Option::unwrap).collect()),
+            });
+            len += added;
+            settle(&mut chunks);
+        }
+        if let Some(cap) = cap
+            && len > cap
+        {
+            let mut drop = len - cap;
+            len = cap;
+            while drop > 0 && !chunks.is_empty() {
+                let rows = chunks[0].rows();
+                if rows <= drop && chunks.len() > 1 {
+                    chunks.remove(0);
+                    drop -= rows;
+                } else {
+                    chunks[0].skip += drop.min(rows);
+                    drop = 0;
+                }
+            }
+            let mut start = 0;
+            for c in &mut chunks {
+                c.start = start;
+                start += c.rows();
+            }
+        }
+        Ok(Self::register(
+            self.0.id,
+            self.0.rev + 1,
+            Body::Table {
+                names: names.clone(),
+                chunks,
+                flat: OnceLock::new(),
+                data: OnceLock::new(),
+            },
+            len,
+        ))
     }
 
     pub fn id(&self) -> u64 {
@@ -325,15 +567,23 @@ impl Channel {
         self.0.len == 0
     }
 
+    /// What it holds, whole: a table appended to is put together once,
+    /// on the first ask.
     pub fn data(&self) -> &Data {
-        &self.0.data
+        match &self.0.body {
+            Body::Bytes(d) => d,
+            Body::Table { names, data, .. } => data.get_or_init(|| Data::Table {
+                names: names.clone(),
+                cols: self.0.flat().unwrap_or_default().to_vec(),
+            }),
+        }
     }
 
     /// The column names, in order; empty for bytes.
     pub fn names(&self) -> &[String] {
-        match &self.0.data {
-            Data::Table { names, .. } => names,
-            Data::Bytes(_) => &[],
+        match &self.0.body {
+            Body::Table { names, .. } => names,
+            Body::Bytes(_) => &[],
         }
     }
 
@@ -342,12 +592,10 @@ impl Channel {
         self.names().iter().position(|n| n == name)
     }
 
-    /// The column at `i`.
+    /// The column at `i`, whole: a table appended to is put together once
+    /// a revision, on the first ask; [`Self::get`] reads a row without.
     pub fn column(&self, i: usize) -> Option<&Column> {
-        match &self.0.data {
-            Data::Table { cols, .. } => cols.get(i),
-            Data::Bytes(_) => None,
-        }
+        self.0.flat()?.get(i)
     }
 
     /// The column called `name`.
@@ -357,14 +605,26 @@ impl Channel {
 
     /// Row `row` of column `col`; `Cell::Null` out of range.
     pub fn get(&self, row: usize, col: usize) -> Cell<'_> {
-        self.column(col).map_or(Cell::Null, |c| c.get(row))
+        let Body::Table { chunks, .. } = &self.0.body else {
+            return Cell::Null;
+        };
+        if row >= self.0.len {
+            return Cell::Null;
+        }
+        let at = match chunks.as_slice() {
+            [one] => one,
+            many => &many[many.partition_point(|c| c.start <= row) - 1],
+        };
+        at.cols
+            .get(col)
+            .map_or(Cell::Null, |c| c.get(row - at.start + at.skip))
     }
 
     /// The bytes, for a bytes channel.
     pub fn as_bytes(&self) -> Option<&[u8]> {
-        match &self.0.data {
-            Data::Bytes(b) => Some(b),
-            Data::Table { .. } => None,
+        match &self.0.body {
+            Body::Bytes(Data::Bytes(b)) => Some(b),
+            _ => None,
         }
     }
 
@@ -379,6 +639,184 @@ impl Channel {
     pub fn resolve(v: &Value) -> Option<Channel> {
         let (id, _) = handle_of(v)?;
         registry().get(&id)?.upgrade().map(Channel)
+    }
+}
+
+/// What [`Channel::filter`] keeps a row for (backlog C148).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Match {
+    /// The cell equals this: a number to a number column (an integer to
+    /// an integer one exactly), a string to a string, a boolean to a
+    /// boolean.
+    Eq(Value),
+    /// A string cell holds `text`; `case` false matches it whatever the
+    /// letters' case.
+    Contains { text: String, case: bool },
+    /// A number cell is at least `min` and at most `max`, either left
+    /// open; NaN is in no range.
+    Range { min: Option<f64>, max: Option<f64> },
+}
+
+/// `needle` in `hay`, ASCII letters of either case alike.
+fn contains_ascii_blind(hay: &str, needle: &str) -> bool {
+    let (h, n) = (hay.as_bytes(), needle.as_bytes());
+    n.is_empty() || h.windows(n.len()).any(|w| w.eq_ignore_ascii_case(n))
+}
+
+impl Channel {
+    fn column_index(&self, col: usize) -> Result<&Column, ChannelError> {
+        self.column(col).ok_or_else(|| {
+            ChannelError(format!(
+                "the channel has no column {col}; it has {}",
+                self.names().len()
+            ))
+        })
+    }
+
+    fn rows_in<'a>(
+        &self,
+        within: Option<&'a [usize]>,
+    ) -> Result<Box<dyn Iterator<Item = usize> + 'a>, ChannelError> {
+        let len = self.len();
+        Ok(match within {
+            Some(rows) => {
+                if let Some(r) = rows.iter().find(|&&r| r >= len) {
+                    return Err(ChannelError(format!(
+                        "row {r} is past the channel's {len} rows"
+                    )));
+                }
+                Box::new(rows.iter().copied())
+            }
+            None => Box::new(0..len),
+        })
+    }
+
+    /// The rows whose cell in column `col` matches `m`, in row order —
+    /// all of them, or those of `within` in its order (backlog C148): a
+    /// filter a worker or a table builds a view from without the rows
+    /// crossing into a binding. A match of the wrong kind for the column
+    /// is an error.
+    pub fn filter(
+        &self,
+        col: usize,
+        m: &Match,
+        within: Option<&[usize]>,
+    ) -> Result<Vec<usize>, ChannelError> {
+        let column = self.column_index(col)?;
+        let name = &self.names()[col];
+        let rows = self.rows_in(within)?;
+        let wrong = |what: &str| {
+            Err(ChannelError(format!(
+                "column `{name}` holds {}s; {what} matches none",
+                column.kind()
+            )))
+        };
+        Ok(match (column, m) {
+            (Column::F64(v), Match::Eq(x)) => match x.as_float() {
+                Some(x) => rows.filter(|&r| v[r] == x).collect(),
+                None => return wrong("that value"),
+            },
+            (Column::I64(v), Match::Eq(Value::Int(x))) => rows.filter(|&r| v[r] == *x).collect(),
+            (Column::I64(v), Match::Eq(Value::Float(x))) => {
+                rows.filter(|&r| v[r] as f64 == *x).collect()
+            }
+            (Column::Bool(v), Match::Eq(Value::Bool(x))) => rows.filter(|&r| v[r] == *x).collect(),
+            (Column::Str(v), Match::Eq(Value::Str(x))) => {
+                rows.filter(|&r| v.get(r) == Some(x.as_str())).collect()
+            }
+            (Column::Str(v), Match::Contains { text, case: true }) => rows
+                .filter(|&r| v.get(r).is_some_and(|s| s.contains(text.as_str())))
+                .collect(),
+            (Column::Str(v), Match::Contains { text, case: false }) if text.is_ascii() => rows
+                .filter(|&r| v.get(r).is_some_and(|s| contains_ascii_blind(s, text)))
+                .collect(),
+            (Column::Str(v), Match::Contains { text, case: false }) => {
+                let text = text.to_lowercase();
+                rows.filter(|&r| v.get(r).is_some_and(|s| s.to_lowercase().contains(&text)))
+                    .collect()
+            }
+            (Column::F64(_) | Column::I64(_), Match::Range { min, max }) => {
+                let (lo, hi) = (
+                    min.unwrap_or(f64::NEG_INFINITY),
+                    max.unwrap_or(f64::INFINITY),
+                );
+                let at = |r| column.get(r).as_f64().unwrap_or(f64::NAN);
+                rows.filter(|&r| {
+                    let x = at(r);
+                    x >= lo && x <= hi
+                })
+                .collect()
+            }
+            (_, Match::Eq(_)) => return wrong("that value"),
+            (_, Match::Contains { .. }) => return wrong("a string search"),
+            (_, Match::Range { .. }) => return wrong("a range"),
+        })
+    }
+
+    /// The rows — all, or `within`'s — ordered by column `col`, least
+    /// first or with `descending` greatest first (backlog C148). Rows of
+    /// one value keep their order; NaN goes last either way; strings
+    /// compare by their bytes, `false` before `true`.
+    pub fn sort(
+        &self,
+        col: usize,
+        descending: bool,
+        within: Option<&[usize]>,
+    ) -> Result<Vec<usize>, ChannelError> {
+        use std::cmp::Ordering as O;
+        let column = self.column_index(col)?;
+        let mut rows: Vec<usize> = self.rows_in(within)?.collect();
+        let flip = |o: O| if descending { o.reverse() } else { o };
+        match column {
+            Column::F64(v) => rows.sort_by(|&a, &b| match (v[a].is_nan(), v[b].is_nan()) {
+                (false, false) => flip(v[a].total_cmp(&v[b])),
+                (a, b) => a.cmp(&b),
+            }),
+            Column::I64(v) => rows.sort_by(|&a, &b| flip(v[a].cmp(&v[b]))),
+            Column::Bool(v) => rows.sort_by(|&a, &b| flip(v[a].cmp(&v[b]))),
+            Column::Str(v) => rows.sort_by(|&a, &b| flip(v.get(a).cmp(&v.get(b)))),
+        }
+        Ok(rows)
+    }
+
+    /// The columns of `rows`, in that order, under this channel's names:
+    /// what [`Self::take`] makes a channel of, and what a view publishes
+    /// as the next revision of its own.
+    pub fn take_columns(&self, rows: &[usize]) -> Result<Vec<(String, Column)>, ChannelError> {
+        let len = self.len();
+        if let Some(r) = rows.iter().find(|&&r| r >= len) {
+            return Err(ChannelError(format!(
+                "row {r} is past the channel's {len} rows"
+            )));
+        }
+        Ok(self
+            .names()
+            .iter()
+            .enumerate()
+            .map(|(c, name)| {
+                let have = self.column(c).expect("a named column");
+                let col = match have {
+                    Column::F64(v) => Column::F64(rows.iter().map(|&r| v[r]).collect()),
+                    Column::I64(v) => Column::I64(rows.iter().map(|&r| v[r]).collect()),
+                    Column::Bool(v) => Column::Bool(rows.iter().map(|&r| v[r]).collect()),
+                    Column::Str(v) => {
+                        Column::Str(rows.iter().map(|&r| v.get(r).unwrap_or_default()).collect())
+                    }
+                };
+                (name.clone(), col)
+            })
+            .collect())
+    }
+
+    /// A new channel of `rows`, in that order (backlog C148): a filtered
+    /// or sorted view, made in Rust.
+    pub fn take(&self, rows: &[usize]) -> Result<Channel, ChannelError> {
+        if self.as_bytes().is_some() {
+            return Err(ChannelError(
+                "a channel of bytes has no rows to take".into(),
+            ));
+        }
+        Channel::table(self.take_columns(rows)?)
     }
 }
 
@@ -845,5 +1283,134 @@ mod tests {
         assert_eq!(mixed, Column::F64(vec![1.0, 2.5]));
         let err = column_of(&[Value::str("a"), Value::Int(1)]).unwrap_err();
         assert!(err.0.contains("row 2 is a number"), "{err}");
+    }
+
+    fn log(n: usize) -> Channel {
+        Channel::table(vec![
+            ("line".into(), Column::strs((0..n).map(|i| format!("l{i}")))),
+            ("ms".into(), Column::F64((0..n).map(|i| i as f64).collect())),
+        ])
+        .unwrap()
+    }
+
+    fn rows(lines: &[&str], ms: &[i64]) -> Vec<(String, Column)> {
+        vec![
+            ("ms".into(), Column::I64(ms.to_vec())),
+            ("line".into(), Column::strs(lines)),
+        ]
+    }
+
+    /// An append is the next revision with the rows after this one's —
+    /// columns by name, integers widened into a number column — and the
+    /// old revision keeps its rows (backlog C147).
+    #[test]
+    fn an_append_adds_rows_and_the_old_revision_keeps_its_own() {
+        let a = log(2);
+        let b = a.append(rows(&["x", "y"], &[10, 11]), None).unwrap();
+        assert_eq!((b.id(), b.rev(), b.len()), (a.id(), 2, 4));
+        assert_eq!(b.get(3, 0), Cell::Str("y"));
+        assert_eq!(b.get(2, 1), Cell::F64(10.0));
+        assert_eq!(a.len(), 2);
+        assert_eq!(a.get(2, 0), Cell::Null);
+        assert_eq!(Channel::resolve(&a.handle()).unwrap().len(), 4);
+        let whole = b.column_named("line").unwrap();
+        assert_eq!(whole, &Column::strs(["l0", "l1", "x", "y"]));
+    }
+
+    /// A row at a time, past a cap: the last `cap` rows, read by row and
+    /// whole alike, and the runs few.
+    #[test]
+    fn a_capped_log_keeps_its_last_rows() {
+        let mut ch = log(0);
+        for i in 0..1000i64 {
+            ch = ch
+                .append(rows(&[&format!("n{i}")], &[i]), Some(300))
+                .unwrap();
+            if let Body::Table { chunks, .. } = &ch.0.body {
+                assert!(chunks.len() <= 12, "{} runs at row {i}", chunks.len());
+            }
+        }
+        assert_eq!(ch.len(), 300);
+        assert_eq!(ch.get(0, 0), Cell::Str("n700"));
+        assert_eq!(ch.get(299, 1), Cell::F64(999.0));
+        let ms = ch.column_named("ms").unwrap();
+        assert_eq!(ms.len(), 300);
+        assert_eq!(ms.get(150), Cell::F64(850.0));
+        for r in [0, 1, 77, 150, 298, 299] {
+            assert_eq!(ch.get(r, 1), ms.get(r), "row {r}");
+        }
+    }
+
+    #[test]
+    fn an_append_of_the_wrong_shape_is_refused() {
+        let a = log(1);
+        let e = |r: Result<Channel, ChannelError>| r.unwrap_err().0;
+        assert!(
+            e(a.append(vec![("ms".into(), Column::F64(vec![1.0]))], None)).contains("1 columns")
+        );
+        assert!(e(a.append(rows(&["x"], &[1, 2]), None)).contains("rows"));
+        let bools = vec![
+            ("ms".into(), Column::Bool(vec![true])),
+            ("line".into(), Column::strs(["x"])),
+        ];
+        assert!(e(a.append(bools, None)).contains("booleans"));
+        assert!(
+            Channel::bytes(vec![1])
+                .append(rows(&["x"], &[1]), None)
+                .is_err()
+        );
+    }
+
+    /// Filters by value, by a string's part and by a range, chained
+    /// through `within`; a sort that keeps ties in order and NaN last; and
+    /// a take of the rows they chose (backlog C148).
+    #[test]
+    fn a_filter_a_sort_and_a_take() {
+        let ch = Channel::table(vec![
+            (
+                "name".into(),
+                Column::strs(["api/get", "db", "API/put", "api/del", "x"]),
+            ),
+            ("ms".into(), Column::F64(vec![5.0, 1.0, f64::NAN, 5.0, 9.0])),
+            ("n".into(), Column::I64(vec![1, 2, 3, 4, 5])),
+        ])
+        .unwrap();
+        let api = Match::Contains {
+            text: "api".into(),
+            case: false,
+        };
+        assert_eq!(ch.filter(0, &api, None).unwrap(), [0, 2, 3]);
+        let exact = Match::Contains {
+            text: "api".into(),
+            case: true,
+        };
+        assert_eq!(ch.filter(0, &exact, None).unwrap(), [0, 3]);
+        let fast = Match::Range {
+            min: None,
+            max: Some(5.0),
+        };
+        let both = ch.filter(1, &fast, Some(&[0, 2, 3])).unwrap();
+        assert_eq!(both, [0, 3], "NaN is in no range");
+        assert_eq!(ch.filter(2, &Match::Eq(Value::Int(4)), None).unwrap(), [3]);
+        assert_eq!(
+            ch.filter(1, &Match::Eq(Value::Int(5)), None).unwrap(),
+            [0, 3]
+        );
+        assert!(ch.filter(1, &api, None).is_err(), "a search on numbers");
+        assert!(
+            ch.filter(0, &fast, Some(&[9])).is_err(),
+            "a row past the end"
+        );
+
+        assert_eq!(ch.sort(1, false, None).unwrap(), [1, 0, 3, 4, 2]);
+        assert_eq!(ch.sort(1, true, None).unwrap(), [4, 0, 3, 1, 2]);
+        assert_eq!(ch.sort(0, false, Some(&[3, 0])).unwrap(), [3, 0]);
+
+        let view = ch.take(&[3, 0]).unwrap();
+        assert_ne!(view.id(), ch.id());
+        assert_eq!(view.len(), 2);
+        assert_eq!(view.get(0, 0), Cell::Str("api/del"));
+        assert_eq!(view.get(1, 2), Cell::I64(1));
+        assert!(ch.take(&[5]).is_err());
     }
 }

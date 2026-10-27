@@ -21,6 +21,64 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.70 (unreleased)
+
+**What breaks.** Nothing: two crates split out of `kui-core` and
+re-exported where they were, and four channel doors added in every
+binding, the C ABI at 40.
+
+The first step of [ADR 0075](docs/adr/0075-kui-perf-reads-a-recording-in-kit.md),
+`kui-perf`, the trace inspector: the recording's reader needs to hand a
+script its columns as channels, and could not reach the channel from
+under `kui-core`. Splitting it out brought two of the channel's open
+entries with it — the inspector's Live view appends to a million spans,
+and its tables sort and filter them.
+
+### Added
+
+- **`kui-value` and `kui-channel`, crates of their own** (backlog F245):
+  `Value`, `json` and the message traits, with `lua` (`kui_value::lua`,
+  the conversions to and from an `mlua` value) and `derive`
+  (`#[derive(Message)]`, `#[message(crate = "kui_value")]` for a crate
+  with no core) features; and the data channel, with a `lua` feature for
+  the userdata a script holds. Neither depends on another kui crate, so
+  what has no core — the recording's reader next — speaks values and
+  makes channels. `kui-core` re-exports both where they were
+  (`kui_core::Value`, `kui_core::json`, `kui_core::message`,
+  `kui_core::channel`), and kui-lua's `lua_to_value`, `value_to_lua` and
+  `mark_array` are the new crates' with a channel crossing as its handle.
+
+- **A channel appended to** (backlog C147): `Channel::append(rows, cap)`
+  is the next revision with `rows` after this one's — each column named,
+  of its kind, integers widening into a number column — the oldest past
+  `cap` dropped. A revision's rows are shared with the next, not copied:
+  a table is a few runs that merge as they grow, so a log appended to a
+  line at a time costs about its new lines and a reader by row looks
+  through a dozen runs at most; a reader of a whole column has it put
+  together once a revision. In every binding: Lua `ch:append(columns,
+  cap)`, Node `channel.append(columns, cap)`, C `kui_channel_append(ch,
+  builder, cap)`, Odin `channel_append`.
+
+  *What you can delete:* a log's cap kept low because every line
+  republished the lot — the Kit gallery's 500.
+
+- **A channel's filter, sort and take** (backlog C148): `filter(col,
+  match, within)` — a value (`Match::Eq`), a string's part with or
+  without its letters' case (`Match::Contains`), a number range
+  (`Match::Range`) — `sort(col, descending, within)`, ties in order and
+  NaN last, both answering row indices, and `take(rows)`, a new channel
+  of those rows in order (`take_columns` for publishing them as the next
+  revision of a view's own). In every binding: Lua `ch:filter(col, {
+  eq | contains, case | min, max }, rows)` / `ch:sort` / `ch:take`, Node
+  `channel.filter` / `sort` (a `Uint32Array`) / `take`, C
+  `kui_channel_filter_f64` (a range, `min == max` for one value),
+  `kui_channel_filter_str` (`KUI_CHANNEL_EQUAL`, `_CONTAINS`,
+  `_CONTAINS_ANY_CASE`), `kui_channel_sort` and `kui_channel_take`, and
+  Odin's.
+
+  *What you can delete:* a worker's copy of its rows in Lua kept only to
+  filter and sort them — the gallery's 21 MB.
+
 ## 0.1.0-alpha.69 (2026-10-28)
 
 **What breaks.**

@@ -1151,10 +1151,46 @@ static int surface(void) {
         check(!kui_channel_reduce(ch, (size_t)col_name, 0, 3, 2, buckets, &n_buckets) &&
                   kui_channel_error(&name) && name.len > 0,
               "kui_channel_reduce refuses a column of strings, with why");
+        /* Backlog C147: two rows appended under a cap of four, the oldest
+         * dropped; the revision before keeps its three. */
+        double more_ms[2] = {7, 1};
+        int64_t more_depth[2] = {2, 2};
+        KuiStr more_names[2] = {KUI_STR("api/get"), KUI_STR("API/put")};
+        KuiChannelBuilder *more = kui_channel_new();
+        kui_channel_add_f64(more, KUI_STR("ms"), more_ms, 2);
+        kui_channel_add_i64(more, KUI_STR("depth"), more_depth, 2);
+        kui_channel_add_str(more, KUI_STR("name"), more_names, 2);
+        KuiChannel *grown = kui_channel_append(ch, more, 4);
+        check(grown && kui_channel_len(grown) == 4 && kui_channel_rev(grown) == 2 &&
+                  kui_channel_len(ch) == 3 &&
+                  kui_channel_get_str(grown, 0, (size_t)col_name, &name) && kui_str_eq(name, "test"),
+              "kui_channel_append");
+        /* Backlog C148: test, deploy, api/get, API/put by ms 30, 4, 7, 1. */
+        size_t rows[4];
+        size_t n_rows = 0;
+        check(kui_channel_filter_str(grown, (size_t)col_name, KUI_STR("api"),
+                                     KUI_CHANNEL_CONTAINS_ANY_CASE, NULL, 0, rows, &n_rows) &&
+                  n_rows == 2 && rows[0] == 2 && rows[1] == 3,
+              "kui_channel_filter_str");
+        size_t api[2] = {2, 3};
+        check(kui_channel_filter_f64(grown, (size_t)col_ms, -INFINITY, 5, api, 2, rows, &n_rows) &&
+                  n_rows == 1 && rows[0] == 3,
+              "kui_channel_filter_f64");
+        check(kui_channel_sort(grown, (size_t)col_ms, true, NULL, 0, rows, &n_rows) && n_rows == 4 &&
+                  rows[0] == 0 && rows[3] == 3,
+              "kui_channel_sort");
+        KuiChannel *view = kui_channel_take(grown, rows, 2);
+        check(view && kui_channel_len(view) == 2 &&
+                  kui_channel_get_f64(view, 1, (size_t)col_ms, &x) && x == 7,
+              "kui_channel_take");
+        check(!kui_channel_filter_f64(grown, (size_t)col_name, 0, 1, NULL, 0, rows, &n_rows),
+              "a range over strings is refused");
+        kui_channel_free(view);
         KuiValue *handle = kui_channel_handle(ch);
         KuiChannel *again = kui_channel_resolve(handle);
-        check(again && kui_channel_len(again) == 3, "kui_channel_resolve reads the same rows");
+        check(again && kui_channel_len(again) == 4, "kui_channel_resolve reads the latest rows");
         kui_channel_free(again);
+        kui_channel_free(grown);
         kui_channel_free(ch);
         check(kui_channel_resolve(handle) == NULL, "a handle nobody holds resolves to nothing");
         kui_value_free(handle);

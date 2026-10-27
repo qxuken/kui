@@ -773,6 +773,19 @@ global type kui = record
     column: function(self: Channel, col: string | integer): {any}
     reduce: function(self: Channel, col: string | integer, from: number, to: number, n: number): ChannelReduction
     publish: function(self: Channel, columns: {string:{any}}): Channel
+    append: function(self: Channel, columns: {string:{any}}, cap?: integer): Channel
+    filter: function(self: Channel, col: string | integer, match: ChannelMatch, rows?: {integer}): {integer}
+    sort: function(self: Channel, col: string | integer, descending?: boolean, rows?: {integer}): {integer}
+    take: function(self: Channel, rows: {integer}): Channel
+  end
+
+  -- What `ch:filter` keeps a row for (backlog C148): `eq` a cell equal to it, `contains` a string cell holding it (`case` true to match its letters' case), `min` / `max` a number cell in that range.
+  record ChannelMatch
+    eq: number | string | boolean
+    contains: string
+    case: boolean
+    min: number
+    max: number
   end
 
   -- What `ch:reduce` answers (backlog C95): a list per field, a bucket per index; rows 0-based.

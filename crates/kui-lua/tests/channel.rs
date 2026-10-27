@@ -175,3 +175,42 @@ fn a_scripts_columns_keep_their_kinds() {
         "{stray}"
     );
 }
+
+/// A log appended to a line at a time under a cap, and a view filtered,
+/// sorted and taken in Rust (backlog C147, C148).
+#[test]
+fn a_script_appends_filters_sorts_and_takes() {
+    let ext = LuaExtension::from_source(
+        "views.lua",
+        r#"
+        local log = channel { line = { "a" }, ms = { 1 } }
+        for i = 2, 10 do log = log:append({ line = { "l" .. i }, ms = { i } }, 4) end
+        kept = { #log, log:get(0, "line"), log:get(3, "ms"), log.rev }
+        local jobs = channel {
+          name = { "api/get", "db", "API/put", "api/del" },
+          ms = { 5, 1, 7, 2 },
+        }
+        local api = jobs:filter("name", { contains = "api" })
+        local fast = jobs:filter("ms", { max = 5 }, api)
+        local by = jobs:sort("ms", true, api)
+        local view = jobs:take(by)
+        found = table.concat(api, ",") .. "|" .. table.concat(fast, ",")
+          .. "|" .. table.concat(by, ",") .. "|" .. view:get(0, "name")
+        exact = #jobs:filter("name", { contains = "API", case = true })
+        eq = jobs:filter("ms", { eq = 7 })[1]
+        bad = tostring(select(2, pcall(jobs.filter, jobs, "ms", { contains = "x" })))
+        function view(env) return column {} end
+        "#,
+    )
+    .unwrap();
+    let g = ext.lua().globals();
+    let kept: mlua::Table = g.get("kept").unwrap();
+    assert_eq!(kept.get::<i64>(1).unwrap(), 4);
+    assert_eq!(kept.get::<String>(2).unwrap(), "l7");
+    assert_eq!(kept.get::<i64>(3).unwrap(), 10);
+    assert_eq!(kept.get::<i64>(4).unwrap(), 10);
+    assert_eq!(g.get::<String>("found").unwrap(), "0,2,3|0,3|2,0,3|API/put");
+    assert_eq!(g.get::<i64>("exact").unwrap(), 1);
+    assert_eq!(g.get::<i64>("eq").unwrap(), 2);
+    assert!(g.get::<String>("bad").unwrap().contains("string search"));
+}

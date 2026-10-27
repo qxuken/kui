@@ -1903,6 +1903,42 @@ pub const DOORS: &[Door] = &[
         doc: "Buckets a number column's rows `from` up to `to` into at most `n`, each one's least, greatest, first and last value and their rows (backlog C95): a chart's pixel columns of a hundred thousand rows without the rows crossing into the binding.",
     },
     Door {
+        rust: "Channel::append",
+        c: Is("kui_channel_append"),
+        odin: Is("channel_append"),
+        node: As("`channel.append(columns, cap)`"),
+        lua: As("`ch:append(columns, cap)`"),
+        doc: "The next revision with more rows after this one's, the oldest past `cap` dropped (backlog C147): this revision's rows are shared with the next, so a growing log costs its new lines.",
+    },
+    Door {
+        rust: "Channel::filter",
+        c: As(
+            "`kui_channel_filter_f64` (a range, `min == max` for one value) and `kui_channel_filter_str` (equal, contains, contains in any case)",
+        ),
+        odin: As("`channel_filter_f64` and `channel_filter_str`"),
+        node: As(
+            "`channel.filter(col, { eq | contains, caseSensitive | min, max }, rows)`, a `Uint32Array`",
+        ),
+        lua: As("`ch:filter(col, { eq | contains, case | min, max }, rows)`, a list"),
+        doc: "The rows — all, or a given list's — whose cell in a column is a value, holds a string or lies in a range (backlog C148): a view built in Rust, not in the binding.",
+    },
+    Door {
+        rust: "Channel::sort",
+        c: Is("kui_channel_sort"),
+        odin: Is("channel_sort"),
+        node: As("`channel.sort(col, descending, rows)`, a `Uint32Array`"),
+        lua: As("`ch:sort(col, descending, rows)`, a list"),
+        doc: "The rows — all, or a given list's — ordered by a column, ties in order and NaN last (backlog C148).",
+    },
+    Door {
+        rust: "Channel::take",
+        c: Is("kui_channel_take"),
+        odin: Is("channel_take"),
+        node: As("`channel.take(rows)`"),
+        lua: As("`ch:take(rows)`"),
+        doc: "A new channel of the rows given, in that order (backlog C148): a filtered or sorted view to hand a component.",
+    },
+    Door {
         rust: "Launcher::extensions",
         c: As("`kui_ctx_extension_count` / `kui_ctx_extension_namespace`, one at a time"),
         odin: As("`ctx_extension_count` / `ctx_extension_namespace`, one at a time"),

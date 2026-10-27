@@ -3657,21 +3657,10 @@ building order step 4.
 ## From the kui-perf grilling (2026-10-27)
 
 What ADR 0075's building order needs beside the app (F200), filed the
-day it was written. Seven entries, F245–F251, none built; and four open
-entries it builds on the way — C147 and C148 in step 1, C149 and C102 in
-step 4.
-
-### `.` F245 — `kui-trace` cannot make a channel
-
-**Found** in the grilling: `kui-core` depends on `kui-trace`, and the
-data channel (`kui_core::channel`, ADR 0065) and `Value` live in
-`kui-core`, so `kui-trace` cannot hand Lua the columns it keeps as
-channels. The channel uses nothing of the core's but `Value`; `Value`
-nothing but `Key`, in `Handles`. **Do.** ADR 0075, decision 3: a
-`kui-value` crate (`Value`, `json`, the Lua conversions behind `lua`,
-the derives behind `derive`; `Handles` stays) and a `kui-channel` crate
-on it (a handle's Lua side behind `lua`), both re-exported from
-`kui-core` where they are, every binding's tests green.
+day it was written. Seven entries, F245–F251 — F245 **built
+2026-10-28** and in the archive, the rest open; and four open entries it
+builds on the way — C147 and C148 in step 1, **built 2026-10-28** and in
+the archive, C149 and C102 in step 4.
 
 ### `.` F246 — A recording is read only whole, from bytes in memory
 
@@ -3817,6 +3806,8 @@ filed the same day for the round that builds them.
 - `.` **C141** — [A runner timer that dispatches draws two frames a tick](backlog/closed-2026-09.md#-c141--a-runner-timer-that-dispatches-draws-two-frames-a-tick--done-2026-10-26) — done (2026-10-26) — a poke while the runner drains rings nothing: one frame a timer tick, not two
 - `.` **C142** — [A covered window still renders every frame its timers ask for](backlog/closed-2026-09.md#-c142--a-covered-window-still-renders-every-frame-its-timers-ask-for--done-2026-10-26) — done (2026-10-26) — a covered or minimized window's redraws are built as unseen frames: nothing rendered or submitted
 - `.` **C143** — [A channel made or published from Lua makes a `Value` a cell](backlog/closed-2026-09.md#-c143--a-channel-made-or-published-from-lua-makes-a-value-a-cell--done-2026-10-26) — done (2026-10-26) — a column is built straight from the Lua values, no `Value` a cell: the 9,000-line log publishes in 1.62 ms, not 2.31
+- `.` **C147** — [A channel cannot be appended to](backlog/closed-2026-09.md#-c147--a-channel-cannot-be-appended-to--done-2026-10-28) — done (2026-10-28) — `append(rows, cap)`, a revision's rows shared with the next in runs that merge as they grow; in every binding
+- `.` **C148** — [A channel has no filter, sort or take](backlog/closed-2026-09.md#-c148--a-channel-has-no-filter-sort-or-take--done-2026-10-28) — done (2026-10-28) — `filter` (value, part of a string, range), `sort`, `take`, in Rust and every binding
 - `.` **C150** — [The runner's heap fragments under the system allocator](backlog/closed-2026-09.md#-c150--the-runners-heap-fragments-under-the-system-allocator--done-2026-10-27) — done (2026-10-27) — mimalloc as the runner's allocator, purging at once: the Kit gallery 103 → 66 MB on Charts, 84 → 69 on Overview, Watchtower 51 → 44, Tasks 13 → 16; frames unchanged
 - `.` **C151** — [A float anchored to its parent escapes every clip unless it says so](backlog/closed-2026-09.md#-c151--a-float-anchored-to-its-parent-escapes-every-clip-unless-it-says-so--done-2026-10-27) — done (2026-10-27) — ADR 0074: what a node paints is cut by the nearest box that clips or scrolls it, unless it says `escape` (or floats on the viewport); an exit keeps the clip it left from; doors in every binding, `float_escape` in ABI 39, bit 4 in protocol 27
 - `.` **C152** — [Nothing checks that a node's paint stays in its box](backlog/closed-2026-09.md#-c152--nothing-checks-that-a-nodes-paint-stays-in-its-box--done-2026-10-27) — done (2026-10-27) — the paint audit (`Core::set_paint_audit`, `KUI_PAINT_AUDIT=1`, `paint-escape`); the Kit gallery walked under it at scale 1 and 1.5, failing on the old rule; `kui run --scale`
@@ -4020,31 +4011,6 @@ run with `MallocStackLogging=1`, which this round could not start.
 **Do.** That run, by hand (`MallocStackLogging=1 kui run …`, then
 `malloc_history <pid> -allBySize`), and then a look at what churns the
 small blocks enough to leave a third of the zone empty.
-
-### `.` C147 — A channel cannot be appended to
-
-**Found** capping the Kit gallery's log (2026-10-26): `Channel::publish`
-replaces the whole column set, so a log that grows by a line republishes
-every line it keeps (the gallery caps it at 500). **Do.** `append(rows)`
-in every binding, with a cap that drops the oldest, so a growing log
-costs one line a tick.
-
-**Planned** in
-[ADR 0075](adr/0075-kui-perf-reads-a-recording-in-kit.md)'s
-building order, step 1: the inspector needs it.
-
-### `.` C148 — A channel has no filter, sort or take
-
-**Found** moving the gallery's worker onto its channel: with the rows read
-back into Lua per view (no 21 MB copy kept), a filter on "api" sorted by
-ms went 80 → 122 ms. **Do.** In Rust, in every binding: a filter (equality
-and substring on a column) returning row indices, a sort order (indices
-sorted by a column), and a take (a new channel of chosen rows) — so a
-worker builds a view without copying into Lua.
-
-**Planned** in
-[ADR 0075](adr/0075-kui-perf-reads-a-recording-in-kit.md)'s
-building order, step 1: the inspector needs it.
 
 ### `.` C149 — The line chart's y glide runs the view each frame
 
@@ -6395,9 +6361,9 @@ move.
 - `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
 - `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
 
-**From the kui-perf grilling (2026-10-27)** — F245–F251, open
+**From the kui-perf grilling (2026-10-27)** — F245–F251; F245 built 2026-10-28, the rest open
 
-- `.` **F245** — [`kui-trace` cannot make a channel](#-f245--kui-trace-cannot-make-a-channel) — open — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
+- `.` **F245** — [`kui-trace` cannot make a channel](backlog/closed-2026-09.md#-f245--kui-trace-cannot-make-a-channel--done-2026-10-28) — done (2026-10-28) — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
 - `.` **F246** — [A recording is read only whole, from bytes in memory](#-f246--a-recording-is-read-only-whole-from-bytes-in-memory) — open — a stream decoder, a transport trait, a watched file transport
 - `.` **F247** — [Nothing writes a recording the size of a long session](#-f247--nothing-writes-a-recording-the-size-of-a-long-session) — open — `kui-trace synth`
 - `.` **F248** — [A Lua app cannot read a recording](#-f248--a-lua-app-cannot-read-a-recording) — open — `kui-trace`'s `lua` feature: channels of columns, detail on request, a filter value

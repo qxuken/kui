@@ -2768,6 +2768,31 @@ export declare class Channel {
    */
   publish(columns: object): Channel
   /**
+   * The next revision under the same identity: this one's rows and
+   * `columns`' after them, each column of this channel named, of its
+   * kind and all of one length (backlog C147). With `cap`, the oldest
+   * rows go past it. This revision's rows are shared with the next, not
+   * copied, so a growing log costs its new lines.
+   */
+  append(columns: object, cap?: number | undefined | null): Channel
+  /**
+   * The rows — all, or those of `rows` in its order — whose cell in
+   * column `col` matches, 0-based (backlog C148). Throws for a match of
+   * the wrong kind for the column, or a row past the end.
+   */
+  filter(col: string | number, matching: ChannelMatch, rows?: Uint32Array | Array<number> | undefined | null): Uint32Array
+  /**
+   * The rows — all, or `rows` — ordered by column `col`, least first or
+   * greatest with `descending`; ties keep their order, NaN goes last
+   * (backlog C148).
+   */
+  sort(col: string | number, descending?: boolean | undefined | null, rows?: Uint32Array | Array<number> | undefined | null): Uint32Array
+  /**
+   * A new channel of `rows`, in that order (backlog C148): a filtered
+   * or sorted view, made in Rust.
+   */
+  take(rows: Uint32Array | Array<number>): Channel
+  /**
    * The handle: `{ $channel, rev }`, a value that rides in props, in
    * messages and to a worker.
    */
@@ -2793,6 +2818,20 @@ export interface ChannelReduction {
   maxRow: Uint32Array
   firstRow: Uint32Array
   lastRow: Uint32Array
+}
+
+/**
+ * What `channel.filter` keeps a row for (backlog C148): `eq`, a cell
+ * equal to it; `contains`, a string cell holding it (`caseSensitive` to
+ * match its letters' case); `min` / `max`, a number cell in that range,
+ * either end left open.
+ */
+export interface ChannelMatch {
+  eq?: any
+  contains?: string
+  caseSensitive?: boolean
+  min?: number
+  max?: number
 }
 
 /**

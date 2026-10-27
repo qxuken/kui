@@ -178,6 +178,22 @@ pub(crate) const CHANNEL: &[(&str, &str, &str)] = &[
         "kui.ChannelReduction",
     ),
     ("publish", "columns: table<string, any[]>", "kui.Channel"),
+    (
+        "append",
+        "columns: table<string, any[]>, cap?: integer",
+        "kui.Channel",
+    ),
+    (
+        "filter",
+        "col: string | integer, match: kui.ChannelMatch, rows?: integer[]",
+        "integer[]",
+    ),
+    (
+        "sort",
+        "col: string | integer, descending?: boolean, rows?: integer[]",
+        "integer[]",
+    ),
+    ("take", "rows: integer[]", "kui.Channel"),
 ];
 
 /// A class's fields: each one's name, whether it is always there, and
@@ -729,6 +745,9 @@ pub fn luals_meta() -> String {
             "---@field {name} fun(self: kui.Channel, {params}): {ret}"
         );
     }
+    out.push_str(
+        "\n---What `ch:filter` keeps a row for (backlog C148): `eq`, a cell equal to it; `contains`, a string cell holding it (`case` true to match its letters' case); `min` / `max`, a number cell in that range, either end open.\n---@class kui.ChannelMatch\n---@field eq? number | integer | string | boolean\n---@field contains? string\n---@field case? boolean\n---@field min? number\n---@field max? number\n",
+    );
     out.push_str(
         "\n---What `ch:reduce(col, from, to, n)` answers (backlog C95): rows `from` up to `to` in `n` buckets (one a row when fewer), each field a list with a bucket per index; NaN skipped, a bucket of only NaN NaN. Rows are the channel's, 0-based.\n---@class kui.ChannelReduction\n---@field min number[]\n---@field max number[]\n---@field first number[]\n---@field last number[]\n---@field min_row integer[]\n---@field max_row integer[]\n---@field first_row integer[]\n---@field last_row integer[]\n",
     );

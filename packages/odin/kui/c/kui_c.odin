@@ -61,6 +61,10 @@ DISMISS_ESCAPE :: 1
 
 CHANNEL_BUCKET :: 8
 
+CHANNEL_EQUAL :: 0
+CHANNEL_CONTAINS :: 1
+CHANNEL_CONTAINS_ANY_CASE :: 2
+
 OPTION_AS_ALT_NONE :: 0
 OPTION_AS_ALT_LEFT :: 1
 OPTION_AS_ALT_RIGHT :: 2
@@ -1244,6 +1248,11 @@ foreign lib {
 	channel_get_f64 :: proc(ch: [^]Channel, row: uint, col: uint, out: ^f64) -> bool ---
 	channel_get_str :: proc(ch: [^]Channel, row: uint, col: uint, out: ^string) -> bool ---
 	channel_reduce :: proc(ch: [^]Channel, col: uint, from: uint, to: uint, buckets: uint, out: ^f64, count: ^uint) -> bool ---
+	channel_append :: proc(ch: ^Channel, rows: [^]ChannelBuilder, cap: uint) -> ^Channel ---
+	channel_filter_f64 :: proc(ch: [^]Channel, col: uint, min: f64, max: f64, within: [^]uint, n_within: uint, out: ^uint, count: ^uint) -> bool ---
+	channel_filter_str :: proc(ch: [^]Channel, col: uint, text: string, how: i32, within: [^]uint, n_within: uint, out: ^uint, count: ^uint) -> bool ---
+	channel_sort :: proc(ch: [^]Channel, col: uint, descending: bool, within: [^]uint, n_within: uint, out: ^uint, count: ^uint) -> bool ---
+	channel_take :: proc(ch: ^Channel, rows: [^]uint, n: uint) -> ^Channel ---
 	token_family :: proc(ctx: ^Ctx, name: string, family: ^u32, font: ^u64) -> bool ---
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---
