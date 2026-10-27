@@ -219,9 +219,20 @@ jobs:
       # shares most of its tree: through cargo-zigbuild at glibc 2.28 on
       # Linux, as the addon is, so the one binary runs on the same
       # distributions the addon does.
+      #
+      # `--allow-shlib-undefined` on the binary's own link: lld checks an
+      # executable's shared libraries for symbols nothing defines, and the
+      # runner's libasound.so asks for this Ubuntu's glibc (2.33-2.38),
+      # which zig's 2.28 stubs do not have. The addon is a shared library
+      # and never met it; alpha.68's first tag run did. On a user's machine
+      # libasound comes from their distribution, built against their glibc.
+      # `rustc` passes the flag to the final link alone, so no dependency is
+      # rebuilt for it.
       - name: Build the runner (Linux, glibc 2.28 floor)
         if: runner.os == 'Linux'
-        run: cargo zigbuild -p kui-cli --release --target "${{ matrix.target }}.2.28"
+        run: |
+          cargo zigbuild rustc -p kui-cli --bin kui --release --target "${{ matrix.target }}.2.28" \
+            -- -C link-arg=-Wl,--allow-shlib-undefined
 
       - name: Build the runner
         if: runner.os != 'Linux'
