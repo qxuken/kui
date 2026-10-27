@@ -4,8 +4,7 @@
 /target
 .DS_Store
 /examples/node/node_modules
-/examples/node# The npm packages scripts/npm-platform-packages.nu stages (ADR 0068).
-/dist
+/examples/node/dist
 /packages/kui/prebuilds
 /packages/kui/props.md
 /packages/kui/howto.md
