@@ -235,38 +235,32 @@ fn every_quad_of_a_leaving_toast_moves_together() {
             }
             closes.push(close_on_face(&now).expect("its close button"));
             // Each is one the toast drew before it left, moved right by
-            // the exit and by nothing else, as opaque as it was.
-            let mut dxs = Vec::new();
-            for q in &now {
-                let from = before
-                    .iter()
-                    .filter(|b| b.0 == q.0 && (b.3 - q.3).abs() < 0.01 && (b.4 - q.4).abs() < 0.01)
-                    .filter(|b| (b.2 - q.2).abs() < 0.01 && q.1 >= b.1 - 0.01)
-                    .filter(|b| (b.5 - q.5).abs() < 0.01)
-                    .map(|b| q.1 - b.1)
-                    .fold(f32::INFINITY, f32::min);
-                assert!(
-                    from.is_finite(),
-                    "groups {groups}, at {t}: drawn apart from the toast, or faded: {q:?}"
-                );
-                dxs.push(from);
-            }
-            let lo = dxs.iter().copied().fold(f32::INFINITY, f32::min);
-            let hi = dxs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            assert!(
-                hi - lo < 0.5,
-                "groups {groups}, at {t}: its quads moved apart, by {lo}..{hi}: {now:?}"
-            );
-            // Its old right edge stays under its face until the face has
-            // gone past it: nothing of the page shows there as its edge.
+            // as much as its face and by nothing else, as opaque as it
+            // was. Matched against every quad of its shape: two glyphs
+            // can share a box (DejaVu's in "Saved 2." do), so the nearest
+            // one is not always its own.
             let face_now = now
                 .iter()
                 .find(|q| q.0 == QuadKind::Solid && (q.3 - face.w).abs() < 0.01)
                 .expect("its face");
+            let dx = face_now.1 - face.x;
+            for q in &now {
+                let moved_with = before
+                    .iter()
+                    .filter(|b| b.0 == q.0 && (b.3 - q.3).abs() < 0.01 && (b.4 - q.4).abs() < 0.01)
+                    .filter(|b| (b.2 - q.2).abs() < 0.01 && (b.5 - q.5).abs() < 0.01)
+                    .any(|b| (q.1 - b.1 - dx).abs() < 0.5);
+                assert!(
+                    moved_with,
+                    "groups {groups}, at {t}: drawn apart from the toast's {dx} px, or faded: {q:?} in {now:?}"
+                );
+            }
+            // Its old right edge stays under its face until the face has
+            // gone past it: nothing of the page shows there as its edge.
             if face_now.1 <= face.x + face.w - 2.0 {
                 assert!(face_now.1 + face_now.3 >= face.x + face.w);
             }
-            moved.push(lo);
+            moved.push(dx);
         }
         assert!(moved.len() >= 5, "the exit was drawn: {moved:?}");
         assert!(

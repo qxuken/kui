@@ -185,9 +185,11 @@ jobs:
       # is behind kui-core's `conformance` feature (off in every shipped
       # build); no flag is passed here on purpose, because kui-core and
       # kui-lua both turn it on through a dev-dependency, so a plain
-      # `cargo test` cannot leave the corpus out.
+      # `cargo test` cannot leave the corpus out. `--no-fail-fast`: one red
+      # suite would otherwise hide every suite after it, and a failure
+      # only this runner's fonts reach is a round trip apiece.
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast
 
       # The book (docs/book, ADR 0039) includes its code from the tutorial
       # steps by anchor, so a step whose anchor moved or went missing is a
