@@ -87,6 +87,22 @@ already generated for each event.
 
 ### Added
 
+- **One child process started at a time, whichever thread asks**
+  (backlog F223): `kui_native::spawn` — `spawn`, `output`, `status` —
+  std's own with the start under one process-wide lock, or under the
+  host's spawner when it set one (`set_spawner`, F222, now in the same
+  module and still at the crate's root). Everything kui starts goes
+  through it: the runner's `kui.process`, from the app's thread and from
+  every worker's, the tools `show_in_folder` and `open_external` run,
+  the devtools' "open folder". An app's own spawns beside kui's take it
+  too. On macOS a pipe is made and marked close-on-exec in two calls,
+  and a child started between them keeps the other spawn's ends for its
+  life.
+
+  *What you can delete:* a lock of the app's own around its spawns,
+  kept only so they did not race each other — `kui_native::spawn::spawn`
+  is that lock.
+
 - **A host's way of starting children, for kui's** (backlog F222,
   from kawoosh): `kui_native::set_spawner(spawn)` starts the tools
   `show_in_folder` and `open_external` run — and so the devtools' "open
@@ -203,6 +219,11 @@ already generated for each event.
   the live view go; it lets it go first now. The hidden panel was right
   already, and is tested beside it.
 
+- **A `kui.process.run` in a worker no longer hangs on a child another
+  thread started** (backlog F223): on macOS a `kui.process.spawn` from
+  the app's thread could take the write end of a worker's `run`'s pipe,
+  and the `run` waited for as long as that child lived. Every start is
+  under one lock now.
 - **`show_in_folder` selects on Linux, and `open_external` shows a
   folder on macOS** (backlog F222, from kawoosh): a Linux desktop's file
   manager is asked over D-Bus (`FileManager1.ShowItems`) to select the

@@ -170,11 +170,12 @@ fn signal(pid: u32, sig: &str, group: bool) -> Result<bool, String> {
     use std::os::windows::process::CommandExt;
     let pid_s = pid.to_string();
     if sig == "0" {
-        let out = Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
-            .creation_flags(0x0800_0000)
-            .output()
-            .map_err(|e| e.to_string())?;
+        let out = kui_native::spawn::output(
+            Command::new("tasklist")
+                .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+                .creation_flags(0x0800_0000),
+        )
+        .map_err(|e| e.to_string())?;
         return Ok(String::from_utf8_lossy(&out.stdout)
             .split_whitespace()
             .any(|w| w == pid_s));
@@ -183,11 +184,12 @@ fn signal(pid: u32, sig: &str, group: bool) -> Result<bool, String> {
     if group {
         args.push("/T");
     }
-    let status = Command::new("taskkill")
-        .args(args)
-        .creation_flags(0x0800_0000)
-        .status()
-        .map_err(|e| e.to_string())?;
+    let status = kui_native::spawn::status(
+        Command::new("taskkill")
+            .args(args)
+            .creation_flags(0x0800_0000),
+    )
+    .map_err(|e| e.to_string())?;
     Ok(status.success())
 }
 
@@ -200,21 +202,27 @@ fn command_line(pid: u32) -> Option<String> {
     #[cfg(windows)]
     let out = {
         use std::os::windows::process::CommandExt;
-        Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                &format!("(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"),
-            ])
-            .creation_flags(0x0800_0000)
-            .output()
-            .ok()?
+        kui_native::spawn::output(
+            Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    &format!(
+                        "(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"
+                    ),
+                ])
+                .creation_flags(0x0800_0000),
+        )
+        .ok()?
     };
     #[cfg(not(windows))]
-    let out = Command::new("ps")
-        .args(["-o", "command=", "-p", &pid.to_string()])
-        .output()
-        .ok()?;
+    let out = kui_native::spawn::output(Command::new("ps").args([
+        "-o",
+        "command=",
+        "-p",
+        &pid.to_string(),
+    ]))
+    .ok()?;
     let line = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (out.status.success() && !line.is_empty()).then_some(line)
 }
@@ -354,7 +362,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                         Stdio::null()
                     });
                     c.stdout(Stdio::piped()).stderr(Stdio::piped());
-                    let mut child = c.spawn().map_err(|e| format!("{cmd}: {e}"))?;
+                    let mut child =
+                        kui_native::spawn::spawn(&mut c).map_err(|e| format!("{cmd}: {e}"))?;
                     if let Some(input) = o.stdin
                         && let Some(mut w) = child.stdin.take()
                     {
@@ -394,7 +403,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 c.stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
-                let mut child = c.spawn().map_err(|e| fail(format!("{cmd}: {e}")))?;
+                let mut child =
+                    kui_native::spawn::spawn(&mut c).map_err(|e| fail(format!("{cmd}: {e}")))?;
                 let s = shared(lua);
                 let state = Arc::new(Mutex::new(State::default()));
                 reader(
