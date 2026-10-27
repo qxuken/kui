@@ -10,10 +10,10 @@ Install it from npm:
 npm install @qxuken/kui@alpha
 ```
 
-Every release is also on the Forgejo npm registry the project grew up on
-(`npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/`
-first; it does not proxy npmjs, so scope the setting rather than replacing
-the default registry).
+Releases up to 0.1.0-alpha.67 are also on the Forgejo npm registry the
+project grew up on, which takes no new ones; a project still scoped to it
+(`@qxuken:registry` naming `drydock9.qxuken.dev`) drops that line to get
+the later versions from npmjs.
 
 Or start from the template: `npm create @qxuken/kui-node my-app`.
 

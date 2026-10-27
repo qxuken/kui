@@ -36,11 +36,8 @@ categories = ["gui"]
 
 [workspace.dependencies]
 # No `registry` key: the kui crates resolve from crates.io, which is where
-# they publish first. They publish to the Forgejo registry (`drydock9`,
-# .cargo/config.toml) as well, and the copies there name crates.io for
-# their kui-* dependencies too - one manifest cannot name both, and
-# crates.io refuses a dependency from any other registry
-# (scripts/publish-crates.nu).
+# they publish (scripts/publish-crates.nu), and crates.io refuses a
+# dependency from any other registry.
 kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.67" }
 kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.67" }
 kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.67" }

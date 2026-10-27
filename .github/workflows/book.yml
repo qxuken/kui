@@ -1,0 +1,76 @@
+# The kui book (docs/book), built with mdBook and published to GitHub Pages
+# at https://kui-book.qxuken.dev.
+#
+# It is published on a release tag, not on every push to main: the book's
+# programs are written against the published crates, so the copy people read
+# should describe the version they can install. `workflow_dispatch` is there
+# for a republish without cutting a release. Kept out of release.yml because
+# it needs none of it - no toolchain, no target dir - and a book that fails
+# to deploy should not hold up a release. ci.yml builds the book on every
+# push, so a tag's build is not where a broken anchor is found.
+#
+# Until alpha.68 the book was a git-pages server behind a Cloudflare tunnel,
+# uploaded to by Forgejo; the YAML is in the history
+# (.forgejo/workflows/book.yml). Setting up Pages once, by hand:
+#
+#   * Settings → Pages: Source "GitHub Actions"; Custom domain
+#     kui-book.qxuken.dev; "Enforce HTTPS" once GitHub has the certificate.
+#   * DNS: a CNAME `kui-book` → `qxuken.github.io`, DNS only (not proxied),
+#     so GitHub can issue and renew the certificate itself.
+#   * Settings → Environments → github-pages: the deployment rule GitHub
+#     creates allows the default branch only, and this deploys from a tag,
+#     so add a tag rule `v*` (a run on main by hand is allowed as it is).
+#
+# mdBook comes as the upstream release binary, pinned to the version the
+# book was written with (ci.yml builds it with the same one).
+name: book
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time, and a running one is never cancelled halfway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  MDBOOK_VERSION: v0.5.4
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install mdBook
+        run: |
+          set -eu
+          curl -fsSL "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/mdbook-${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin mdbook
+          mdbook --version
+
+      - name: Build
+        run: mdbook build docs/book -d "$RUNNER_TEMP/book"
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/book
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    # pages and id-token are what deploy-pages needs, here only.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

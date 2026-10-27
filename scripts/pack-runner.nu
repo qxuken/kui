@@ -71,7 +71,7 @@ def main [
         if $nu.os-info.name == "windows" {
             ^powershell -NoProfile -NonInteractive -Command $"Compress-Archive -Path '($stage | path join $row.exe)' -DestinationPath '($asset)' -CompressionLevel Optimal"
         } else {
-            # Off Windows (release-local.nu's cargo-xwin build): zip(1).
+            # Off Windows (a cargo-xwin build on a workstation): zip(1).
             do { cd $stage; ^zip -q -9 $asset $row.exe }
         }
     } else {

@@ -9,7 +9,7 @@ keywords.workspace = true
 categories.workspace = true
 description = "wgpu backend for kui: one instanced pipeline, a single draw call per frame"
 readme = "README.md"
-publish = ["crates-io", "drydock9"]
+publish = ["crates-io"]
 
 [dependencies]
 kui-core.workspace = true

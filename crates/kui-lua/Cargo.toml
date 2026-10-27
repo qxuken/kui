@@ -9,7 +9,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Lua extensions for kui via mlua: table trees in, events as tables out"
-publish = ["crates-io", "drydock9"]
+publish = ["crates-io"]
 # Teal's compiler, vendored for the tests that check `teal_decls()` with
 # it (src/teal.rs); 650 KB no user of the crate needs.
 exclude = ["tests/tl"]

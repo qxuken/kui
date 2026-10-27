@@ -3,22 +3,18 @@
 # order, skipping each crate whose version that registry already holds - so
 # a run cut short (crates.io's rate limit on new crates, a network error, a
 # job cancelled halfway) is finished by running it again rather than failed
-# by "already exists". The release workflow and scripts/release-local.nu
-# both publish through it.
+# by "already exists". The release workflow publishes through it, and so
+# does a maintainer finishing a release by hand.
 #
 #   nu scripts/publish-crates.nu crates-io
-#   nu scripts/publish-crates.nu drydock9
 #   nu scripts/publish-crates.nu crates-io --dry-run
 #
-# crates.io goes first. The kui-* dependencies name crates.io (the
-# workspace's [workspace.dependencies] carry no `registry` key, because
-# crates.io refuses a dependency from any other registry), so a crate's
-# verify build against either registry resolves its kui-* dependencies
-# there - the Forgejo copies included.
+# crates.io is the one registry since alpha.68. Until then the crates went
+# to the Forgejo registry (`drydock9`) as well, which still holds every
+# version up to alpha.67 and takes no new ones.
 #
-# The token comes from cargo's own places: CARGO_REGISTRY_TOKEN (crates.io)
-# or CARGO_REGISTRIES_DRYDOCK9_TOKEN (`Bearer <token>`) in the environment,
-# as CI sets them, or `cargo login` / ~/.cargo/credentials.toml.
+# The token comes from cargo's own places: CARGO_REGISTRY_TOKEN in the
+# environment, as CI sets it, or `cargo login` / ~/.cargo/credentials.toml.
 
 # Dependency order: each crate's verify build needs the ones before it.
 # kui-trace (ADR 0058) is before kui-core, which writes its format.
@@ -26,7 +22,6 @@ const CRATES = [kui-derive kui-trace kui-core kui-wgpu kui-native kui-lua kui-ff
 
 const INDEX = {
     crates-io: "https://index.crates.io"
-    drydock9: "https://drydock9.qxuken.dev/api/packages/qxuken/cargo"
 }
 
 # The cargo sparse index path of a crate (lowercase; 1, 2, 3 and 4+ chars).
@@ -49,7 +44,7 @@ export def crate-published [registry: string, name: string, version: string] {
 }
 
 def main [
-    registry: string  # crates-io or drydock9
+    registry: string  # crates-io
     --dry-run         # package and verify, publish nothing
 ] {
     cd ($env.FILE_PWD | path dirname)

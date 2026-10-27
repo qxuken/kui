@@ -9,7 +9,7 @@ keywords.workspace = true
 categories.workspace = true
 description = "kui's recording format: a timeline of frames and what happened between them, its reader and writer, and adapters to Chrome's trace, Perfetto, speedscope and the Firefox Profiler (docs/adr/0058)"
 readme = "README.md"
-publish = ["crates-io", "drydock9"]
+publish = ["crates-io"]
 
 # No dependencies: kui-core writes the format, and a tool reads it without
 # kui (ADR 0058, decision 3).

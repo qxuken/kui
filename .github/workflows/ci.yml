@@ -1,0 +1,362 @@
+# The check: every push to main, every pull request, by hand, and every
+# release tag (release.yml calls this workflow as its `check`, so nothing
+# reaches crates.io or npmjs from a commit that fails any of it).
+#
+# Until alpha.68 this was Forgejo's (.forgejo/workflows/ci.yml, in the
+# history), on one self-hosted docker runner whose queue had made it a
+# by-hand job; GitHub's hosted runners are free for a public repository, so
+# it runs unasked again. Forgejo is a mirror now and runs no workflow.
+#
+# The other workflows: release.yml (a `v*` tag: the builds, the packs, the
+# publish), smoke.yml (macOS and Windows natively, on main, non-blocking),
+# audit.yml (RustSec, weekly and on lockfile changes), fuzz.yml (by hand)
+# and book.yml (GitHub Pages, on a tag).
+#
+# check is one job so the cargo target dir is built once and shared by fmt,
+# clippy, the workspace tests, the two C examples (C as the host, and C as an
+# extension inside a Rust host), the Odin binding, the Node addon parity
+# tests and the Node example typecheck (which is what exercises the shipped
+# .d.ts). It is also what makes the scene corpus work: all five adapters over
+# crates/kui-core/src/conformance.rs run here, on one machine with one set
+# of fonts, against one generated reference report - which is why the
+# report is never checked in and the C, Odin and Node steps depend on the
+# `Conformance reference report` step above them. Separate jobs would each
+# rebuild the target dir, and it is far too big to hand between jobs as an
+# artifact.
+#
+# Worth saying plainly: nothing in this job runs on Windows or macOS
+# (smoke.yml does, and runs the tests there, but still executes nothing
+# against the platform's chrome or access tree). That leaves uncovered:
+#
+#   * crates/kui-native/src/windows_nc.rs - the WM_NCHITTEST / DWM caption work
+#     behind custom chrome (drag strip, caption buttons, resize borders);
+#   * the macOS traffic-light inset in `widgets::titlebar_with`, and the
+#     `native_controls` rect that feeds it;
+#   * crates/kui-native/src/access_bridge.rs - the whole AccessKit bridge (UIA,
+#     NSAccessibility, AT-SPI).
+#
+# Neither windows_nc.rs nor access_bridge.rs contains a single #[test]:
+# the headless suite pins the data they carry, not the platform's
+# acceptance of it. Behavioural coverage of the macOS access tree is
+# scripts/ax-audit.swift, a manual pre-release step (docs/releasing.md).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+# A newer push to the same ref cancels the run it makes stale. Called from
+# release.yml, `github.workflow` is the caller's, so a tag's check has a
+# group of its own.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # Line tables keep panic backtraces readable at a fraction of full debug
+  # info's size; the target dir is what the disk and the cache both hold.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  # The Nushell the scripts are written against (scripts/*.nu), pinned like
+  # every other tool here.
+  NU_VERSION: "0.116.1"
+  # The Odin the binding (packages/odin) is generated and checked with: an
+  # odin-lang release tag, whose Linux build is one self-contained binary
+  # beside its core library. Moved with the compiler the binding is
+  # written on: dev-2026-09 to dev-2026-10 for alpha.60, after a local
+  # build newer than the pin took a spec literal the pin refused and only
+  # CI said so. release.yml verifies the release's Odin pack with the same
+  # one; move both together.
+  ODIN_VERSION: "dev-2026-10"
+  # The mdBook the book (docs/book) is written with; book.yml publishes it
+  # with the same one.
+  MDBOOK_VERSION: v0.5.4
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    # The runner has no GPU, so every test that draws (the captures of
+    # ADR 0054, the backdrop blur, the C and Odin counters' last frame)
+    # draws on lavapipe, Mesa's software Vulkan, installed below. Those
+    # tests skip where there is no adapter, and a skip is green, so here
+    # KUI_REQUIRE_GPU turns a missing adapter into a failure, and its
+    # value is the name the adapter must have (kui-wgpu's
+    # tests/capture.rs checks it): a runner that lost the driver, or a
+    # wgpu that took another adapter, goes red instead of quietly
+    # covering nothing. WGPU_BACKEND keeps wgpu off GL.
+    env:
+      WGPU_BACKEND: vulkan
+      KUI_REQUIRE_GPU: llvmpipe
+    steps:
+      - uses: actions/checkout@v7
+
+      # The repository's scripts are Nushell, so one script runs on every
+      # platform a workstation or runner has.
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
+
+      # The book's Examples part lists every example; an example added,
+      # renamed or removed without a rerun of the script would leave the
+      # published book without it (or failing to build). Needs nothing but
+      # the checkout, so it runs first and fails in seconds.
+      - name: Book examples are listed
+        run: nu scripts/book-examples.nu --check
+
+      # A hosted runner has about 14 GB free, and this job's target dir
+      # (the test build, the release addon, the examples) does not fit
+      # beside the toolchains the image ships that it never uses.
+      - name: Free disk space
+        run: |
+          set -eu
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift \
+            /usr/local/share/powershell /usr/local/share/chromium
+          sudo docker image prune --all --force >/dev/null
+          df -h /
+
+      # ALSA headers: the runner crate's audio backend (kira/cpal) links
+      # libasound on Linux. The font is for the text tests, which measure
+      # real glyphs. mesa-vulkan-drivers is lavapipe, the device the GPU
+      # tests draw on (see the job's env), and libvulkan1 the loader wgpu
+      # opens it through; its Wayland probe prints "XDG_RUNTIME_DIR is
+      # invalid" for every device a test opens unless the dir exists, and an
+      # empty one quiets it. clang is what Odin links with on Linux, and
+      # what parses the header for the Odin generator.
+      - name: Install system deps
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config \
+            libasound2-dev mesa-vulkan-drivers libvulkan1 clang
+          mkdir -p -m 700 /tmp/xdg
+          echo "XDG_RUNTIME_DIR=/tmp/xdg" >> "$GITHUB_ENV"
+          rustup update --no-self-update stable
+          rustup default stable
+          rustup component add rustfmt clippy
+          cargo --version
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      # Restore and save are separate steps so that only a push to main
+      # writes the cache (a pull request's entry would be scoped to its own
+      # ref and only crowd main's out of the repository's 10 GB), and so
+      # the prune below runs between the checks and the write. The cache is
+      # restored through `restore-keys` when Cargo.lock moved, so a run
+      # starts from the newest entry main left.
+      - name: Restore cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: check-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: check-${{ runner.os }}-v1-
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # Covers the Rust and Lua adapters over the scene corpus
+      # (crates/kui-core/src/conformance.rs): kui-core asserts the scenes
+      # against their checked-in expectations and that they still cover
+      # every schema::CUSTOM and schema::ELEMENTS row; kui-lua rebuilds
+      # them from Lua tables and diffs report against report. The corpus
+      # is behind kui-core's `conformance` feature (off in every shipped
+      # build); no flag is passed here on purpose, because kui-core and
+      # kui-lua both turn it on through a dev-dependency, so a plain
+      # `cargo test` cannot leave the corpus out.
+      - name: Test
+        run: cargo test --workspace
+
+      # The book (docs/book, ADR 0039) includes its code from the tutorial
+      # steps by anchor, so a step whose anchor moved or went missing is a
+      # build failure here rather than a chapter that quietly shows nothing.
+      # The steps themselves compile under `cargo test` above.
+      - name: Book
+        run: |
+          set -eu
+          curl -fsSL "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/mdbook-${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin mdbook
+          mdbook build docs/book -d "$RUNNER_TEMP/book"
+
+      # The conformance reference: quad digests over real glyph geometry,
+      # so it holds only for this machine's fonts and is never checked in.
+      # The C, Odin and Node adapters below diff their own scenes against it.
+      - name: Conformance reference report
+        run: |
+          cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+          echo "KUI_CONFORMANCE=$(pwd)/target/conformance.txt" >> "$GITHUB_ENV"
+
+      # cbuild (examples/devtools/src/bin/cbuild.rs) first compiles the
+      # generated ABI asserts (crates/kui-ffi/src/abi_parity.rs) against
+      # include/kui.h - the header is hand-written and otherwise unchecked
+      # against the repr(C) structs - and then builds the examples, which are
+      # the only things that link against the real header. `--run` rather
+      # than a list of commands here: the tool owns the round, prints it when
+      # it is not running it, and runs exactly what it printed - so
+      # reproducing a failure locally is the line below. What it covers:
+      #
+      #  * C as the host, headless: the counter's own drive, and then the
+      #    header walk (examples/c/tools/surface.c), which calls every
+      #    prototype in kui.h once and checks what comes back.
+      #  * A Rust host dlopening target/debug/panel.so, the plugin resolving
+      #    every kui_* back out of the host executable. That works only while
+      #    build.rs keeps passing --export-dynamic, which has no compile
+      #    error to announce it going missing.
+      #  * C on both sides, through kui_ctx_add_extension (ADR 0014's C
+      #    half).
+      #  * The load the loader must refuse: the same plugin with its
+      #    kui_ext_abi deleted, required to fail with the right message.
+      #
+      # The conformance replay is separate because it is the one thing in
+      # the round that needs a report built by another step.
+      - name: C examples (header ABI check + the header walk + the C round)
+        run: |
+          cargo run -p kui-devtools --bin cbuild -- --run
+          ./target/debug/conformance target/conformance.txt
+
+      # The Odin binding (packages/odin, experimental): kui/c and the typed
+      # layer are generated from include/kui.h (through clang's AST) and the
+      # prop schema, so a header or schema change that was not regenerated
+      # fails `gen --check` here, the way a stale .d.ts fails the Node step
+      # below. `check` vets the generator, both packages and every example
+      # under -strict-style; `test` runs each example's --headless drive,
+      # the Odin adapter over the scene corpus among them (against
+      # KUI_CONFORMANCE); `slots` is the extension contract across
+      # languages - the Odin panel in the C host and in the Rust one, the C
+      # panel in the Odin host - and reuses what the C round above built.
+      - name: Install Odin
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/odin"
+          curl -fL --retry 3 \
+            "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP/odin" --strip-components=1
+          echo "$RUNNER_TEMP/odin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/odin/odin" version
+
+      - name: Odin binding (generated, vetted, driven, and across languages)
+        run: |
+          nu scripts/odin.nu gen --check
+          nu scripts/odin.nu check
+          nu scripts/odin.nu test
+          nu scripts/odin.nu slots
+
+      # npm test covers both the encoder tests and the Node adapter over
+      # the corpus, which needs KUI_CONFORMANCE to run (it skips without
+      # it, so that release.yml's publish job - which has no cargo target
+      # dir - can still run the rest against the prebuilds). Here, the one
+      # job where the adapter is meant to run, KUI_CONFORMANCE_REQUIRED
+      # turns that skip into a failure.
+      #
+      # The `cargo build` below is what the tests load. It has to be its own
+      # invocation: a build that also builds kui-node's tests unifies its
+      # `napi/noop` dev-dependency feature into the cdylib, and Node refuses
+      # that addon ("Module did not self-register"); native.cjs skips such a
+      # candidate and says why, but the release build still has to happen,
+      # or there is nothing good to fall back to.
+      - name: Node addon tests
+        env:
+          KUI_CONFORMANCE_REQUIRED: "1"
+        run: |
+          cargo build -p kui-node --release
+          cd packages/kui
+          npm test
+          # Three generated files: the TS prop types and docs/props.md come
+          # from the schema, and index.d.ts's addon surface from the `#[napi]`
+          # attributes (napi-rs derives it; the cargo build above left it in
+          # target/napi-type-defs). A stale file means someone changed PROPS
+          # or the addon's API without running `npm run gen`.
+          npm run gen
+          git diff --exit-code -- jsx-runtime.d.ts index.d.ts ../../docs/props.md
+
+      # The .d.ts is only exercised by a type checker; the examples are
+      # what uses every app-facing type (messages, events, props), and
+      # examples/node/tools/types.tsx is the one written for that. Running
+      # them is the headless round's, below. `--ignore-scripts`: esbuild's
+      # install script only swaps its JS shim for the binary, and once died
+      # with ETXTBSY on the old docker runner; the shim runs the same binary.
+      - name: Node examples typecheck
+        run: |
+          cd examples/node
+          npm ci --ignore-scripts
+          npm run typecheck
+
+      # Every example with a self-check, run with `--headless` and judged
+      # by its exit code (ADR 0021, decision 4): the Rust ones each crate's
+      # Cargo.toml lists under `[package.metadata.kui] headless`, the Lua
+      # and C panel hosts, and `npm run smoke` for Node. One program for the
+      # round on every platform (examples/devtools/src/bin/smoke.rs): it
+      # reads the rosters the pin tests read, prints the round and runs it.
+      # The windowed examples are its `--windowed` half, on a machine with a
+      # display (smoke.yml).
+      - name: The headless round
+        run: cargo run -p kui-devtools --bin smoke -- --headless
+
+      # examples/node depends on packages/kui by `file:` path, so its
+      # lockfile keeps a copy of that manifest version - and `npm ci` above
+      # neither validates nor rewrites it. Compare the two files directly
+      # rather than regenerating and diffing; scripts/set-version.nu writes
+      # both, so they diverge only when a manifest is edited by hand.
+      - name: The examples lockfile matches the linked package
+        run: |
+          node -e '
+            const want = require("./packages/kui/package.json").version;
+            const lock = "./examples/node/package-lock.json";
+            const got = require(lock).packages?.["../../packages/kui"]?.version;
+            if (got !== want) {
+              console.error(`${lock} records ${got}, packages/kui is ${want}` +
+                "\n(cd examples/node && npm install --package-lock-only)");
+              process.exit(1);
+            }
+            console.log(`examples lockfile matches packages/kui at ${want}`);
+          '
+
+      # Everything above this line is a check; everything below is the
+      # cache write, on a push to main only.
+      #
+      # The prune is what keeps the entry from growing without limit: cargo
+      # removes nothing an older build left behind, so every release,
+      # dev-dependency and stable rustc would leave another set of the
+      # workspace's artifacts beside the last. Only the workspace's own
+      # artifacts go - the dependency builds, which are the reason the cache
+      # exists, stay - and the steps above recompile the workspace from
+      # source on every run regardless. scripts/prune-target.nu's header
+      # says what accumulated and how it is found.
+      - name: Prune the target dir
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-cache.outputs.cache-hit != 'true'
+        run: nu scripts/prune-target.nu
+
+      # `cache-hit` is the exact key: when Cargo.lock has not moved, the
+      # entry under this key is already the one that would be written.
+      - name: Save cargo cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}

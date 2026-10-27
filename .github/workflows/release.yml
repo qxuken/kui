@@ -32,17 +32,15 @@
 # `workflow_dispatch` runs everything but the publishing steps, so the
 # builds and the packs can be tried on a branch without a tag; the
 # release's assets are then the run's `release-packs` artifact and the npm
-# tarballs its `npm-packages` artifact. The Forgejo pipeline (.forgejo/workflows/ci.yml) is the other half
-# of a release, started by hand since alpha.66: it checks the tag in full
-# (the C round, the Node parity tests, the scene corpus, the book) and
-# publishes the crates to the Forgejo cargo registry once crates.io holds
-# them. The npm package reaches
-# the Forgejo npm registry by hand (scripts/release-local.nu; see
-# docs/releasing.md).
+# tarballs its `npm-packages` artifact.
 #
-# `check` here is the fast half of Forgejo's: fmt, clippy and the workspace
-# tests, so nothing reaches crates.io from a commit that fails them. It is
-# not a second CI; pull requests and pushes to main are Forgejo's.
+# `check` is ci.yml itself, called: the whole check every push to main gets
+# (fmt, clippy, the workspace tests on lavapipe, the C round, the Odin
+# binding, the Node parity tests, the scene corpus, the book, the headless
+# round), so nothing reaches crates.io or npmjs from a commit that fails
+# any of it. Until alpha.68 this was fmt, clippy and the tests alone, and
+# the full check was Forgejo's, started by hand; Forgejo is a mirror now,
+# and its registries take no new versions.
 #
 # Each prebuild is built on the platform it targets, so no cross SDK is
 # involved: GitHub's macOS runners carry Xcode, Windows runners MSVC, and
@@ -85,10 +83,10 @@ env:
   # info's size; the test build of this workspace is large either way.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   # The Nushell the scripts are written against (scripts/*.nu), pinned like
-  # every other tool here and in the Forgejo workflow.
+  # every other tool here and in ci.yml.
   NU_VERSION: "0.116.1"
-  # The Odin the packs' Odin half is verified with: the Forgejo workflow's
-  # pin (.forgejo/workflows/ci.yml), moved with it.
+  # The Odin the packs' Odin half is verified with: ci.yml's pin, moved
+  # with it.
   ODIN_VERSION: "dev-2026-10"
   CARGO_ZIGBUILD_VERSION: "0.23.3"
   ZIGLANG_VERSION: "0.17.0"
@@ -98,52 +96,7 @@ env:
 
 jobs:
   check:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-
-      # A hosted runner has about 14 GB free and this workspace's test
-      # build does not fit beside the toolchains the image ships that this
-      # job never uses (.NET, Android, Haskell, CodeQL). Removing them is
-      # the usual answer and takes under a minute.
-      - name: Free disk space
-        run: |
-          set -eu
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h /
-
-      - name: Install system deps
-        run: |
-          set -eu
-          sudo apt-get update
-          # ALSA headers: the runner crate's audio backend (kira/cpal) links
-          # libasound on Linux; the font is for the text tests, which
-          # measure real glyphs.
-          sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config libasound2-dev
-          rustup update --no-self-update stable
-          rustup default stable
-          rustup component add rustfmt clippy
-          cargo --version
-
-      - name: Cache cargo
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: check-${{ hashFiles('Cargo.lock') }}
-          restore-keys: check-
-
-      - name: Format
-        run: cargo fmt --all --check
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Test
-        run: cargo test --workspace
+    uses: ./.github/workflows/ci.yml
 
   build:
     needs: check

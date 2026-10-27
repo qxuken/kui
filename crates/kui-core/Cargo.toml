@@ -9,7 +9,7 @@ keywords.workspace = true
 categories.workspace = true
 description = "kui contract: flat per-frame tree, clay-style flex layout, text stack, events as data, quad display list"
 readme = "README.md"
-publish = ["crates-io", "drydock9"]
+publish = ["crates-io"]
 
 [dependencies]
 slotmap.workspace = true

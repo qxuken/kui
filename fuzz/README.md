@@ -31,8 +31,8 @@ nu scripts/fuzz.nu run scenes --time 600   # one target, ten minutes
 nu scripts/fuzz.nu all --time 300          # every target, five minutes each
 ```
 
-The `fuzz` workflow (`.forgejo/workflows/fuzz.yml`) runs the same script
-on the runner, by hand only, and carries each target's corpus from run
+The `fuzz` workflow (`.github/workflows/fuzz.yml`) runs the same script
+on a GitHub runner, by hand only, and carries each target's corpus from run
 to run.
 
 Several targets at once is several `run`s, each its own process. Stop

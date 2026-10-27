@@ -16,10 +16,9 @@
 # release. This runs every one of them, in write mode, on a clean tree:
 # whatever comes back changed was stale, and is left in the tree to commit.
 #
-# Since alpha.66 nothing runs Forgejo's `check` unasked (ci.yml is
-# dispatched by hand), so there is no CI on main to ask about, and the
-# step that read its last result is gone: the machine that cuts the
-# release is the check, with what this prints at the end.
+# Since alpha.68 GitHub's ci.yml checks every push to main again (and the
+# tag, as release.yml's `check`), so what this prints at the end starts
+# with its last run on main: a red there is a red tag.
 #
 # The steps, each skippable by name with --skip (said in the summary, so a
 # skip is a choice and not an accident): `fmt` (cargo fmt --all), then the
@@ -117,11 +116,11 @@ def main [
     let github = (^git remote -v | lines | parse -r '^(?<name>\S+)\s+\S*github\.com\S*\s+\(push\)$' | get -o 0.name | default "github")
     print $"
 what is left, in order:
+  gh run list -R qxuken/kui -w ci -b main -L 1    the last check on main is green
   nu scripts/test.nu --node         the workspace and Node, on this tree
   write CHANGELOG.md's ### Native verification for ($version)
   git commit -am '($version): ...'
   git tag ($tag)
   git push origin main ($tag)
-  git push ($github) main ($tag)    the mirror does not start GitHub's pipeline
-  the drydock9 crates, by hand once crates.io has them: dispatch Forgejo's ci on ($tag) with publish"
+  git push ($github) main ($tag)    the mirror does not start GitHub's pipeline"
 }

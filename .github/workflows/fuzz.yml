@@ -6,11 +6,11 @@
 # minutes of CPU per target that find something or nothing, and a finding
 # is a backlog item to read, minimize and fix - not a red commit. What a
 # run once found is kept under fuzz/regressions/ and replayed on stable by
-# `cargo test --workspace`, so every test run - a release round, GitHub's
-# `check` on a tag, ci.yml's when it is started - holds every fixed crash
-# fixed without a fuzzer in it (fuzz/Cargo.toml, scripts/fuzz.nu). Run this
-# after work on a parser, a decoder or encoder, the Node wire or the input and edit
-# paths, and before a release when there is an hour to spare.
+# `cargo test --workspace`, so every test run - ci.yml's on every push, a
+# release round - holds every fixed crash fixed without a fuzzer in it
+# (fuzz/Cargo.toml, scripts/fuzz.nu). Run this after work on a parser, a
+# decoder or encoder, the Node wire or the input and edit paths, and before
+# a release when there is an hour to spare.
 #
 # A run is `nu scripts/fuzz.nu` with the inputs below, the same script a
 # workstation runs (WSL on Windows; libFuzzer on Windows MSVC is not one to
@@ -49,10 +49,11 @@ on:
         description: Streams for the kui-node decoder's own fuzz test; 0 skips it
         default: "200000"
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
-  CARGO_HOME: /usr/local/cargo
-  RUSTUP_HOME: /usr/local/rustup
   NU_VERSION: "0.116.1"
   # cargo-fuzz builds with flags only a nightly takes (`-Zsanitizer`).
   # Pinned, like every other tool here, to the nightly the first round ran
@@ -62,14 +63,13 @@ env:
 
 jobs:
   fuzz:
-    runs-on: docker
-    container:
-      image: node:24-bookworm
+    runs-on: ubuntu-24.04
     # Five targets at the default ten minutes is under an hour with the
-    # build; the cap is for the inputs someone raises.
+    # build; the cap (a hosted runner's own) is for the inputs someone
+    # raises.
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install nu
         run: |
@@ -77,33 +77,29 @@ jobs:
           dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
           curl -fL --retry 3 \
             "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
-            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
           nu --version
 
-      # A font, because `scenes` shapes and draws real text; zstd for
-      # actions/cache (see ci.yml). The image already has the C++ compiler
-      # libfuzzer-sys builds libFuzzer with. The ALSA headers are for the
-      # kui-node step alone: the addon builds kui-native with its audio
-      # feature, which the fuzz crate leaves out.
+      # A font, because `scenes` shapes and draws real text. The image
+      # already has the C++ compiler libfuzzer-sys builds libFuzzer with.
+      # The ALSA headers are for the kui-node step alone: the addon builds
+      # kui-native with its audio feature, which the fuzz crate leaves out.
       - name: Install system deps and rust
         run: |
           set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl \
-            pkg-config libasound2-dev zstd
-          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
-            --default-toolchain stable
-          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
-          "${CARGO_HOME}/bin/rustup" toolchain install "${NIGHTLY}" --profile minimal
-          "${CARGO_HOME}/bin/cargo" "+${NIGHTLY}" --version
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config libasound2-dev
+          rustup update --no-self-update stable
+          rustup toolchain install "${NIGHTLY}" --profile minimal
+          cargo "+${NIGHTLY}" --version
           # fuzz.nu builds with `cargo +$KUI_FUZZ_TOOLCHAIN`, `nightly`
           # when unset: the pinned one here.
           echo "KUI_FUZZ_TOOLCHAIN=${NIGHTLY}" >> "$GITHUB_ENV"
 
       - name: Cache cargo-fuzz
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
-          path: /usr/local/cargo/bin/cargo-fuzz
+          path: ~/.cargo/bin/cargo-fuzz
           key: cargo-fuzz-${{ runner.os }}-${{ env.CARGO_FUZZ_VERSION }}
 
       - name: Install cargo-fuzz
@@ -116,7 +112,7 @@ jobs:
           cargo install --locked "cargo-fuzz@${CARGO_FUZZ_VERSION}"
 
       - name: Restore the corpus
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
@@ -172,7 +168,7 @@ jobs:
       - name: Upload the crash inputs
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts-${{ github.run_id }}
           path: fuzz/artifacts
@@ -181,7 +177,7 @@ jobs:
       # the others' corpora.
       - name: Save the corpus
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}

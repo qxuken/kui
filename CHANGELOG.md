@@ -1643,6 +1643,20 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Changed
 
+- **CI is GitHub's alone, and the crates and npm packages publish to
+  crates.io and npmjs only.** The full check (fmt, clippy, the workspace
+  tests on lavapipe, the C round, the Odin binding, the Node parity tests,
+  the scene corpus, the book, the headless round) runs on every push to
+  main and every pull request again, as `.github/workflows/ci.yml`, and a
+  release tag runs it as its first job, where it had been fmt, clippy and
+  the tests. `smoke.yml` runs the tests, the windowed round and the C
+  round natively on macOS and Windows on every push to main, non-blocking;
+  `audit.yml` checks yanked crates again; `fuzz.yml` is by hand as before.
+  The book is on GitHub Pages at the same address. Forgejo is a mirror and
+  runs nothing: its cargo and npm registries keep every version up to
+  0.1.0-alpha.67 and take no new ones (`scripts/release-local.nu`, which
+  published to them, is gone).
+
 - **The `kui` runner allocates with mimalloc** (backlog C150), the Lua
   heaps too — mlua allocates through Rust's allocator — and gives freed
   pages back to the OS at once (mimalloc's `purge_delay` 0;

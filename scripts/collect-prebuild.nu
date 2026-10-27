@@ -5,8 +5,8 @@
 # layout scripts/npm-platform-packages.nu reads the addons from, one
 # @qxuken/kui-<platform> package each (ADR 0068), and the one
 # packages/kui/native.cjs still falls back to for a hand-staged package.
-# The release workflow does the same in its build legs' shell (and
-# scripts/release-local.nu runs this).
+# The release workflow does the same in its build legs' shell; this is the
+# by-hand spelling, for a prebuild staged on a workstation.
 #
 #   nu scripts/collect-prebuild.nu <rust target> <platform-arch>
 

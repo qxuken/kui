@@ -9,7 +9,7 @@ keywords.workspace = true
 categories.workspace = true
 description = "Batteries-included kui runner: winit + wgpu around a Core, App trait, widgets"
 readme = "README.md"
-publish = ["crates-io", "drydock9"]
+publish = ["crates-io"]
 
 [dependencies]
 kui-core.workspace = true

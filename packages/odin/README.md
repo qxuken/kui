@@ -261,7 +261,7 @@ checked: `nu scripts/odin.nu test`.
 
 ## CI
 
-`check` in `.forgejo/workflows/ci.yml` installs the Odin release pinned as
+`check` in `.github/workflows/ci.yml` installs the Odin release pinned as
 `ODIN_VERSION`, plus clang, after the C round. It then runs `gen --check`,
 `check`, `test` and `slots`, the last reusing the C panel, the C host and
 the Rust host the round before it built.

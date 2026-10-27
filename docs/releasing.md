@@ -1,8 +1,8 @@
 # Releases
 
 Tagged commits publish the library crates (`kui-derive`, `kui-core`,
-`kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to crates.io and to the
-self-hosted Forgejo's cargo registry; ten npm packages to npmjs
+`kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to crates.io; ten npm
+packages to npmjs
 ([ADR 0068](adr/0068-how-kui-reaches-a-machine.md), esbuild's shape):
 [`packages/kui`](../packages/kui) as `@qxuken/kui`, the JS and types, and
 [`packages/kui-cli`](../packages/kui-cli) as `@qxuken/kui-cli`, a `bin`
@@ -24,7 +24,8 @@ kui-native = "0.1.0-alpha.67"  # `use kui_native::…`; `cargo add kui-native` w
 ```
 
 crates.io has had them since 0.1.0-alpha.33; every earlier version is on
-the Forgejo registry only. A project that already names that registry
+the Forgejo registry only, which holds every version up to 0.1.0-alpha.67
+and takes no new ones. A project that already names that registry
 (`[registries.drydock9]` with index
 `sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/`, and
 `registry = "drydock9"` on the dependency) still finds every version
@@ -33,16 +34,14 @@ crates.io: with one `kui-*` crate from drydock9 a build reads both and
 works, with two (`kui-native` and `kui-core`) it holds two `kui_core`s
 whose types do not meet. Dropping `registry = "drydock9"` is the move.
 Node installs from npmjs, which has had the package since 0.1.0-alpha.35;
-every earlier version is on the Forgejo npm registry only, and that one
-gets the later ones too once the by-hand step below has been run, scoped:
+every earlier version is on the Forgejo npm registry only, which, like the
+cargo one, stops at 0.1.0-alpha.67 (a project scoped to it, with an
+`@qxuken:registry` line naming drydock9, drops that line):
 
 ```bash
 npm install @qxuken/kui@alpha    # prereleases publish under their identifier as the dist-tag
 npm create @qxuken/kui-node my-app   # or scaffold an app from the template
 npm install -g @qxuken/kui-cli@alpha   # the runner, `kui`
-
-# the Forgejo copy, scoped on purpose: Forgejo does not proxy npmjs, so only @qxuken/* goes there
-npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
 ```
 
 Every release so far is a prerelease, so `latest` and `alpha` point at the same
@@ -95,10 +94,12 @@ without a version it runs the checks alone. Then it runs
 requirements, package.json and the changelog's open `(unreleased)`
 heading move together — registries refuse a version that already
 exists), which it requires to read `## <version> (unreleased)` first,
-and prints what is left. Nothing checks main between releases any more
-(Forgejo's `check` is started by hand since alpha.66, and GitHub's runs on
-a tag), so the round on the release machines — the tests, the C, Odin and
-Node rounds, the smoke rounds, below — is what a tag stands on. Then
+and prints what is left. GitHub's [ci.yml](../.github/workflows/ci.yml)
+checks every push to main (and every pull request), and the tag runs it
+again as the release's first job, so the last run on main is the first
+thing to read; the round on the release machines — the windowed smoke
+round with a display, the accessibility audit, below — is what CI cannot
+do. Then
 commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag:
 `git push origin main v0.1.0-alpha.2`. `origin` is
 Forgejo, and its push mirror carries both refs to GitHub — but do not
@@ -112,12 +113,11 @@ a ref `origin` does not hold is the mirror's to overwrite, so push the
 same commit and tag to both and nothing else to `github`. The next release's
 `## <version> (unreleased)` heading is opened by hand; the script only dates
 the open one, and a tag whose top heading is missing, stale or still says
-unreleased fails the release. A release has two pipelines, one on each
-host the repository lives on; the tag starts GitHub's, and Forgejo's is
-started by hand:
+unreleased fails the release. The tag starts the release pipeline;
+Forgejo is a mirror since alpha.68 and runs nothing:
 
-- **GitHub**, [release.yml](../.github/workflows/release.yml): `check`
-  (fmt, clippy, the workspace tests), then one build per platform on
+- [release.yml](../.github/workflows/release.yml): `check` (ci.yml,
+  called: the whole check a push to main gets), then one build per platform on
   the platform itself (`ubuntu-24.04` and `ubuntu-24.04-arm` through
   cargo-zigbuild for a glibc 2.28 floor, `macos-15` for arm64 — Intel
   Macs have had no prebuild since alpha.41 — and `windows-2025`) of the
@@ -150,23 +150,6 @@ started by hand:
   repository secret, `CRATES_IO_TOKEN` (a crates.io API token with publish
   rights on the `kui-*` crates); npmjs takes no secret (below). The runner
   is not on crates.io: `kui-cli` stays `publish = false` (ADR 0068).
-- **Forgejo**, [ci.yml](../.forgejo/workflows/ci.yml), by hand: Actions →
-  ci → Run workflow on the tag, with `publish` ticked. `check` in full (the
-  C round, the Odin binding, the Node parity tests, the scene corpus, the
-  book), then
-  `publish`, which waits for crates.io to list the version (the Forgejo
-  copies name crates.io for their `kui-*` dependencies, so their verify
-  builds cannot run before it does; it gives up after two hours, and a
-  re-run finishes the job) and publishes the crates to the Forgejo cargo
-  registry. It needs one repository secret, `PACKAGES_TOKEN` (a Forgejo
-  personal access token with `write:packages`), and the one docker runner.
-  Started on anything but a tag, or with `publish` unticked, it is
-  `check` alone. Until alpha.66 both jobs ran on every push to main and
-  every tag; `scripts/release-local.nu` publishes any crate drydock9 is
-  missing as well, so either way finishes this half.
-
-Neither pipeline publishes the npm package to the Forgejo npm registry; that
-is done by hand, below.
 
 The npmjs half is finished by the runner through trusted publishing, since
 alpha.67: each package's settings on npmjs.com name GitHub Actions,
@@ -305,60 +288,36 @@ release assets are the run's four `kui-runner-<platform>` artifacts:
 download them into one directory with `install.sh` and `install.ps1`
 beside them, `nu scripts/pack-runner.nu sums <dir>` (it covers every
 file there, so add the C and Odin tarballs first if they are to be in
-it), and `gh release upload v<version> <dir>/* --clobber`. To see where the
-other half stands, `gh run view <run-id> -R qxuken/kui` lists the GitHub
-jobs, and the Forgejo cargo registry answers per crate at
-`https://drydock9.qxuken.dev/api/v1/packages/qxuken/cargo/<crate>/<version>`.
+it), and `gh release upload v<version> <dir>/* --clobber`. `gh run view
+<run-id> -R qxuken/kui` lists where each job stands.
 
-The Forgejo npm copy: once both pipelines are through, `nu
-scripts/release-local.nu` from a Mac with the tag on HEAD builds the four
-prebuilds and the four runners (the Linux ones in Docker with CI's pinned
-zig, the macOS ones natively, Windows through cargo-xwin), stages the ten
-npm packages (`scripts/npm-platform-packages.nu --pack`), runs CI's
-verification (`npm test` over the bundled prebuilds, `cargo publish
---dry-run`), asks for a typed confirmation, skips every crate the registries
-already hold, publishes the ten npm packages to the Forgejo registry in
-CI's order and applies the `latest` guard to each. It reads the token from `$env.DRYDOCK9_TOKEN` and
-takes `--dry-run` to stop before publishing. The same script is the
-fallback when a runner cannot publish at all (alpha.17's tag job hung in
-checkout): it publishes whatever crates are missing too. It does not stage
-on npmjs; do that by hand from the staged copies it leaves in `dist/npm/`,
-platform packages first:
+When the runner cannot publish the crates at all (alpha.17's tag job once
+hung in checkout), `nu scripts/publish-crates.nu crates-io` from a machine
+with the tag checked out and a crates.io token publishes whatever crates.io
+is missing, in dependency order; the npm half is the run's `npm-packages`
+artifact, staged by hand as above.
 
-```bash
-cd dist/npm
-for p in kui-linux-x64 kui-cli-linux-x64 kui-linux-arm64 kui-cli-linux-arm64 kui-darwin-arm64 kui-cli-darwin-arm64 kui-win32-x64 kui-cli-win32-x64 kui kui-cli; do
-  (cd "$p" && npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public)
-done
-```
-
-then `nu scripts/npm-approve.nu` as above. Nor does it attach the runner
-to a GitHub release; its four assets are in `target/pack/runner/`, for
-the `pack-runner.nu sums` and `gh release upload` steps above.
-
-No Mac or Windows machine runs a test or opens a window in either pipeline —
-GitHub's macOS and Windows runners compile the Node addon and nothing else —
-and that is the limit of what CI proves. The Windows non-client
+The release pipeline runs no test on a Mac or Windows machine — its macOS
+and Windows legs compile the addon, the runner and the C library, and ask
+the runner its version — and `check` runs on Linux. The Windows non-client
 chrome ([windows_nc.rs](../crates/kui-native/src/windows_nc.rs)), the macOS traffic-light
 inset in `widgets::titlebar_with` and the whole AccessKit bridge
 ([access_bridge.rs](../crates/kui-native/src/access_bridge.rs)) are compiled and linked by
 the release build and never executed by it — and neither of those two files
 carries a test, so the headless suite pins the data they hand the platform, not
-the platform's acceptance of it. Two optional jobs, `smoke-macos` and
-`smoke-windows`, build and run `cargo test --workspace` natively against the
-real SDK; both are started by hand (since alpha.66, as `ci.yml` is), are
-gated on the repository variables `SMOKE_MACOS` / `SMOKE_WINDOWS`, and
-skip unless a runner with the matching label is registered.
-They live in their own workflow, [smoke.yml](../.forgejo/workflows/smoke.yml),
-for the reason `audit` does: they share nothing with what makes `check`
-expensive and are on no release path — and a job whose runner label matches
-nothing does not fail fast in Forgejo, it queues, which in `ci.yml` would
-leave a run without a result long after `check` and `publish` had finished.
+the platform's acceptance of it. [smoke.yml](../.github/workflows/smoke.yml)
+narrows the gap: on every push to main, on GitHub's `macos-15` and
+`windows-2025`, it builds and runs `cargo test --workspace` natively against
+the real SDK, then the C round (`cbuild --run`) on the platform's own
+compiler. It is non-blocking (`continue-on-error`) and in no release's way,
+for the reason `audit` is its own workflow: it shares nothing with what
+makes `check` expensive.
 
-`smoke-windows` does one thing more, and it is the only automated check in the
-repo that opens a window: `cargo run -p kui-devtools --bin smoke`
+It does one thing more, and it is the only automated check in the repo that
+opens a window: `cargo run -p kui-devtools --bin smoke`
 ([examples/devtools/src/bin/smoke.rs](../examples/devtools/src/bin/smoke.rs))
-runs every windowed example on the runner's own GPU for 120 frames apiece, on
+runs every windowed example on the runner's own adapter (a hosted runner
+has no GPU, so whatever software one the platform offers) for 120 frames apiece, on
 both theme bases, and fails on a crash or a hang — one program for every
 platform, so the round cannot drift between a unix host and the Windows
 runner; `--node` adds the Node windows. `KUI_SMOKE_FRAMES=n` is what
@@ -380,7 +339,7 @@ hosts were linked against, and they then fail to start with
 
 The fuzz targets ([fuzz/](../fuzz/README.md)) are on no release path
 either, and nothing runs them unasked: the `fuzz` workflow
-([fuzz.yml](../.forgejo/workflows/fuzz.yml)) is started by hand, and
+([fuzz.yml](../.github/workflows/fuzz.yml)) is started by hand, and
 `nu scripts/fuzz.nu all` is the same run on a workstation. What they
 once found is replayed by every test run (`fuzz/regressions/`, under
 `cargo test --workspace`). Before a tag that touched a parser,
@@ -418,11 +377,11 @@ draw it, and Accessibility permission for the calling terminal (System Settings
 → Privacy & Security → Accessibility). That last one is a TCC grant — per
 machine, given by hand, and not scriptable without disabling SIP — so an
 ephemeral runner can never hold one. A permanently self-hosted Mac with
-auto-login and the grant already in place could run it inside `smoke-macos`;
-nothing else can.
+auto-login and the grant already in place could run it in CI; nothing
+else can.
 
 Advisories are checked separately, by
-[audit.yml](../.forgejo/workflows/audit.yml): `cargo audit --deny warnings` over
+[audit.yml](../.github/workflows/audit.yml): `cargo audit --deny warnings` over
 `Cargo.lock`, on pushes that touch the lockfile and on a weekly schedule —
 weekly because an advisory is published against code that has not moved, so a
 commit-triggered check would only find it the next time someone happened to
@@ -437,14 +396,12 @@ unmaintained, reached through cosmic-text's `fontdb`; and `zvariant`,
 unmaintained since zbus 6 folded them in, reached on Linux only through
 AccessKit's AT-SPI bridge, which still requires zbus 5.
 
-The job also passes `--no-yanked`. Checking for yanked crates costs one
-sparse-index request per crate — 440 of them — and this runner's egress is
-slow enough that most time out; a timed-out lookup is not a warning, so
-`--deny warnings` cannot see it, and run 141 printed 175 `error:` lines and
-reported success. That check is off on purpose rather than silently not
-happening. A local `cargo audit --deny warnings` still runs it.
+Yanked crates fail it too. On Forgejo's runner the job passed `--no-yanked`,
+because one sparse-index request per crate timed out there and a timed-out
+lookup is not a warning (run 141 printed 175 `error:` lines and reported
+success); GitHub's runners complete it, as a workstation does.
 
-That job is deliberately not in `publish`'s `needs`. A release is cut from a
+That job is deliberately not in release.yml's way. A release is cut from a
 tag, and an advisory landing between the last green `main` and the tag would
 otherwise block a release whose code nobody had touched — so read the audit
 job before tagging rather than having it read for you.
