@@ -1031,6 +1031,12 @@ surface :: proc() -> bool {
 		kui.set_scroll(ui, k.card, 0, 9999)
 		kui.reveal(ui, k.slider)
 		kui.frame(ui, &k, surface_view, 800, 600, 2)
+		{
+			// The sink asked above declares no on_layout: the frame that
+			// finishes after the question says why it was false (backlog F231).
+			why := kui.take_warnings(ui)
+			check(len(why) == 1 && why[0].code == "layout-of-without-handler" && why[0].key == k.sink, "layout_of on a node without on_layout: layout-of-without-handler")
+		}
 		sx, sy := kui.scroll_offset(ui, k.card)
 		check(sx == 0 && sy >= 0, "scroll_offset reads the clamped offset back")
 		_, sy = kui.scroll_offset(ui, 12345)
