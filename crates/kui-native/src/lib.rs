@@ -3092,7 +3092,6 @@ impl DynShell<'_> {
         // open a submenu, which is a popup of its own: either may open or
         // close windows, and move this one.
         self.pump_menu_popups(event_loop);
-        let Some(i) = self.pane_of(here) else { return };
         // Windows moves and resizes a window inside its own modal
         // loop, where `about_to_wait` — the pacing that asks for
         // the next frame of an animation — does not run, so a
@@ -3107,7 +3106,9 @@ impl DynShell<'_> {
         // reopen's own `request_redraw` arms it again. Nor while
         // it is minimized (RG45); the restore's `Resized` does.
         #[cfg(target_os = "windows")]
-        if let Some(p) = self.panes.get_mut(i) {
+        if let Some(i) = self.pane_of(here)
+            && let Some(p) = self.panes.get_mut(i)
+        {
             let animating = p.animates_now();
             if let Some(t) = &mut p.anim_timer {
                 t.set(animating);
