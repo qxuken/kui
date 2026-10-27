@@ -4238,6 +4238,51 @@ from one table so the names match `KeyCode::named()`.
   dual-source blending). The game, or a probe, turned it on. F229's host
   loop section says to leave it off on a single-blend renderer.
 
+## From the alpha.69 pre-tag round (2026-10-27)
+
+The round on the release machines — Windows on an RTX 5080, WSL Linux,
+an hour of all ten fuzz targets — and smoke.yml's macOS run on main,
+after two releases (alpha.67's 254 commits, alpha.68's) whose macOS and
+Windows rounds had run only on GitHub's hosted runners. F241–F243, FZ16
+and FZ17 were **built 2026-10-27/28**, the days they were filed, and are
+in the archive; smoke.yml blocks a release from alpha.69 on. Two stay
+open.
+
+### `.` FZ18 — A run of neutral characters reuses its shape from the other direction
+
+**Found** 2026-10-28 by the corpus reuse check after the alpha.69 fuzz
+hour (`KUI_FUZZ_CORPUS=1 cargo test --release -p kui-fuzz --test
+reuse`): `events` ran 8 of 11 356 inputs differently on a kept session —
+an editor's access run of `]]]]…` measured left to right on a new
+session (`x: 8, w: 163.9`, positions rising) and right to left on a
+kept one (`x: 166.4, w: -152.9`, positions falling), and a run inside
+right-to-left text had `w: -76.5` on a new session. The same 8 differ at
+alpha.68: not a regression. The cause is upstream: cosmic-text 0.19's
+`shape_run_cached` (`shape.rs`, the `shape-run-cache` feature kui has
+turned on since its first text commit, 2026-08-31) keys a run by its
+text and attributes, not by `span_rtl`. A run of neutral characters
+takes its paragraph's direction, so the same `" — "`, `"()"` or `"..."`
+shaped inside right-to-left text and then in left-to-right text — in one
+session, any window — gets the first one's glyphs: brackets mirrored,
+advances reversed, and an access run of negative width. **Do.** The
+direction in the key upstream (`ShapeRunKey` gains `rtl`, one line in
+`shape_run_cached`), and until a release has it either a `[patch]` of
+cosmic-text or the feature off — `benches/` say what the cache is worth
+first. Then the reuse check is the test: 0 of the corpus's runs differ.
+
+### `.` F244 — Vulkan instances made at once on several threads sometimes fail to load
+
+**Found** 2026-10-27 by the alpha.69 round on Windows (RTX 5080,
+`KUI_REQUIRE_GPU=NVIDIA`, `WGPU_BACKEND=vulkan`): kui-wgpu's capture
+tests, each making its own instance on a test thread, failed one test in
+3 runs of 20 with "No suitable graphics adapter found; … vulkan
+drivers/libraries could not be loaded"; 0 of 10 on one thread, 0 of 20
+on dx12. An app makes one instance, so no app is known to meet it; a
+host making a `KuiCtx` per thread could. **Do.** Find whether it is the
+loader's or the driver's (another machine's Vulkan, a loader log with
+`VK_LOADER_DEBUG=all`), then either make instances under one lock in
+kui-wgpu or leave it the platform's, said in `docs/`.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go
@@ -6239,13 +6284,15 @@ move.
 - `.` **F239** — [Every host maps its window library's keys to kui's by hand](#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand) — open — header-only GLFW and SDL tables for C, files for Odin, from one table
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
 
-**From the alpha.69 pre-tag round (2026-10-27)** — F241–F243, FZ16 and FZ17, filed and built the same day; smoke.yml blocks a release from here on
+**From the alpha.69 pre-tag round (2026-10-27)** — F241–F243, FZ16 and FZ17, filed and built the same day; FZ18 and F244 open; smoke.yml blocks a release from here on
 
 - `!` **F241** — [A capture's wait panics in wgpu-core when another thread's poll empties the queue first](backlog/closed-2026-09.md#-f241--a-captures-wait-panics-in-wgpu-core-when-another-threads-poll-empties-the-queue-first--done-2026-10-27) — done (2026-10-27) — `PendingCapture::wait` polls with `PollType::Poll` and sleeps between; found by smoke.yml's macOS leg
 - `!` **F242** — [`kui check` on Windows fails when a declaration file is held open as it is replaced](backlog/closed-2026-09.md#-f242--kui-check-on-windows-fails-when-a-declaration-file-is-held-open-as-it-is-replaced--done-2026-10-27) — done (2026-10-27) — `write_whole` retries the rename on `PermissionDenied`; its test writes a folder of its own
 - `.` **F243** — [`kill` on Windows prints taskkill's lines into the app's output](backlog/closed-2026-09.md#-f243--kill-on-windows-prints-taskkills-lines-into-the-apps-output--done-2026-10-27) — done (2026-10-27) — taskkill's output is null
 - `!` **FZ16** — [A hex colour with a character past ASCII panics the token loader](backlog/closed-2026-09.md#-fz16--a-hex-colour-with-a-character-past-ascii-panics-the-token-loader--done-2026-10-27) — done (2026-10-27) — `dtcg::hex` takes ASCII hex digits alone; found by `dtcg`
 - `!` **FZ17** — [A composition begun over a selection and abandoned loses the selection without a `change`](backlog/closed-2026-09.md#-fz17--a-composition-begun-over-a-selection-and-abandoned-loses-the-selection-without-a-change--done-2026-10-28) — done (2026-10-28) — `set_preedit` answers whether the committed text changed and dispatch raises the `change`; found by `events` in the alpha.69 fuzz hour, present since alpha.67 at least
+- `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
+- `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 
