@@ -1024,7 +1024,7 @@ pub const DOORS: &[Door] = &[
         odin: Is("open_menu_with"),
         node: As("`openMenu`'s fifth argument, `{maxWidth, maxHeight}`"),
         lua: As("`open_menu`'s fifth argument, `{ max_width =, max_height = }`"),
-        doc: "Holds a context menu and its submenus to a size: a row wider is ellipsized, a menu taller scrolls; an axis left out is the room's (backlog F207).",
+        doc: "Holds a context menu and its submenus to a size: a row wider is ellipsized, a menu taller scrolls; an axis left out is the room's (backlog F210).",
     },
     Door {
         rust: "Menu::in_window",
@@ -1032,7 +1032,7 @@ pub const DOORS: &[Door] = &[
         odin: As("`MENU_IN_WINDOW` in `open_menu_with`'s flags"),
         node: As("`openMenu`'s fifth argument, `{inWindow: true}`"),
         lua: As("`open_menu`'s fifth argument, `{ in_window = true }`"),
-        doc: "Keeps a context menu drawn in the window where the runner would show one that does not fit in a popup window of its own (backlog F207).",
+        doc: "Keeps a context menu drawn in the window where the runner would show one that does not fit in a popup window of its own (backlog F210).",
     },
     Door {
         rust: "Core::set_menu_popups",
@@ -1040,7 +1040,7 @@ pub const DOORS: &[Door] = &[
         odin: No(ODIN_IS_C),
         node: No(MENU_POPUPS),
         lua: No(GUEST),
-        doc: "Whether the host shows a context menu that does not fit the window in a popup window of its own; a menu then waits, drawn nowhere, until `set_menu_in_popup` says where (backlog F207).",
+        doc: "Whether the host shows a context menu that does not fit the window in a popup window of its own; a menu then waits, drawn nowhere, until `set_menu_in_popup` says where (backlog F210).",
     },
     Door {
         rust: "Core::set_menu_in_popup",
@@ -1048,7 +1048,7 @@ pub const DOORS: &[Door] = &[
         odin: No(ODIN_IS_C),
         node: No(MENU_POPUPS),
         lua: No(GUEST),
-        doc: "Where the open menu goes: in the host's popup window, the core keeping it and drawing none of it, or in the window (backlog F207).",
+        doc: "Where the open menu goes: in the host's popup window, the core keeping it and drawing none of it, or in the window (backlog F210).",
     },
     Door {
         rust: "Core::open_menu_popup",
@@ -1056,7 +1056,7 @@ pub const DOORS: &[Door] = &[
         odin: No(ODIN_IS_C),
         node: No(MENU_POPUPS),
         lua: No(GUEST),
-        doc: "Makes a core a menu's popup window: its frame is the rows and nothing else, and a row chosen, Escape and the Left arrow are said back (`take_menu_popup_answer`) rather than performed; a submenu's row is `menu_popup_submenu` (backlog F207).",
+        doc: "Makes a core a menu's popup window: its frame is the rows and nothing else, and a row chosen, Escape and the Left arrow are said back (`take_menu_popup_answer`) rather than performed; a submenu's row is `menu_popup_submenu` (backlog F210).",
     },
     Door {
         rust: "Core::menu_bar",

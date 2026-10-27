@@ -620,14 +620,14 @@ pub struct Menu {
     pub items: Vec<MenuItem>,
     /// The largest the app lets the menu's panel be, logical px, and each
     /// of its submenus': a row wider is ellipsized, a menu taller scrolls
-    /// (backlog F207). `None` — and an axis that is infinite — is the room
+    /// (backlog F210). `None` — and an axis that is infinite — is the room
     /// the menu is drawn in, the window or the display less `MENU_EDGE`,
     /// which holds whatever this says.
     pub max_size: Option<crate::geom::Size>,
     /// Drawn in the window whatever the host could do: where a runner
     /// shows a menu that does not fit in a popup window of its own
     /// (`Core::set_menu_popups`), this one stays a float, cut to the
-    /// window and scrolling (backlog F207). What a menu wants that must
+    /// window and scrolling (backlog F210). What a menu wants that must
     /// sit inside the app — one a screenshot or a recording has to hold.
     pub in_window: bool,
 }

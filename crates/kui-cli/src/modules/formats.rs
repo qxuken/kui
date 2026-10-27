@@ -6,21 +6,21 @@
 use kui_core::Value;
 use mlua::{Lua, Table};
 
-use super::fail;
+use super::{fail, try_fn};
 
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let json = lua.create_table()?;
     json.set(
-        "decode",
-        lua.create_function(|lua, text: mlua::LuaString| {
+        "try_decode",
+        try_fn(lua, |lua, text: mlua::LuaString| {
             let v =
                 kui_core::json::parse(&text.to_str()?).map_err(|e| fail(format!("json: {e}")))?;
             kui_lua::value_to_lua(lua, &v)
         })?,
     )?;
     json.set(
-        "encode",
-        lua.create_function(|_, (v, opts): (mlua::Value, Option<Table>)| {
+        "try_encode",
+        try_fn(lua, |_, (v, opts): (mlua::Value, Option<Table>)| {
             let pretty = opts
                 .map(|o| o.get::<Option<bool>>("pretty"))
                 .transpose()?
@@ -75,16 +75,16 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
 
     let toml = lua.create_table()?;
     toml.set(
-        "decode",
-        lua.create_function(|lua, text: mlua::LuaString| {
+        "try_decode",
+        try_fn(lua, |lua, text: mlua::LuaString| {
             let v: toml::Table =
                 toml::from_str(&text.to_str()?).map_err(|e| fail(format!("toml: {e}")))?;
             kui_lua::value_to_lua(lua, &from_toml(toml::Value::Table(v)))
         })?,
     )?;
     toml.set(
-        "encode",
-        lua.create_function(|_, v: mlua::Value| {
+        "try_encode",
+        try_fn(lua, |_, v: mlua::Value| {
             let t = to_toml(&kui_lua::lua_to_value(&v)?)?;
             toml::to_string_pretty(&t).map_err(|e| fail(format!("toml: {e}")))
         })?,
@@ -93,8 +93,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
 
     let yaml = lua.create_table()?;
     yaml.set(
-        "decode",
-        lua.create_function(|lua, text: mlua::LuaString| {
+        "try_decode",
+        try_fn(lua, |lua, text: mlua::LuaString| {
             let docs = yaml_rust2::YamlLoader::load_from_str(&text.to_str()?)
                 .map_err(|e| fail(format!("yaml: {e}")))?;
             let first = docs.into_iter().next().unwrap_or(yaml_rust2::Yaml::Null);
@@ -102,8 +102,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         })?,
     )?;
     yaml.set(
-        "encode",
-        lua.create_function(|_, v: mlua::Value| {
+        "try_encode",
+        try_fn(lua, |_, v: mlua::Value| {
             let y = to_yaml(&kui_lua::lua_to_value(&v)?);
             let mut out = String::new();
             yaml_rust2::YamlEmitter::new(&mut out)

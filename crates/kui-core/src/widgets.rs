@@ -1574,7 +1574,7 @@ fn menu_level(
     // (backlog RG150). A ceiling the caller declared that is narrower
     // stands. In a menu's popup window the room is the display's, since
     // the window is only as wide as the panel (`Core::open_menu_popup`).
-    // Narrower still where the app holds the menu to less (backlog F207),
+    // Narrower still where the app holds the menu to less (backlog F210),
     // the metric's floor with it.
     let room = ui.core().menu_popup_room().unwrap_or(ui.viewport());
     let ceiling = (room.w - 2.0 * MENU_EDGE).max(m.menu_width).min(max.w);

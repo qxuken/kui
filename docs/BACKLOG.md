@@ -3513,7 +3513,7 @@ user's to say once they have tried them.
 Moving Carnet to alpha.68, the user found its page menu cut off in a
 short window: the core's context menu is a viewport float with `fit`
 and no height limit, so one taller than the window was pinned to its top
-with the last rows past the bottom, out of reach. One entry, F207 — a
+with the last rows past the bottom, out of reach. One entry, F210 — a
 height limit with scrolling for every menu the core draws, and the
 native runner's popup window for a context menu that does not fit —
 **built 2026-10-27**, the day it was filed, and in the archive.
@@ -5892,9 +5892,16 @@ move.
 - `.` **F205** — [A one-line text in a box that scrolls sideways is cut at the box with nothing to scroll to](backlog/closed-2026-09.md#-f205--a-one-line-text-in-a-box-that-scrolls-sideways-is-cut-at-the-box-with-nothing-to-scroll-to--done-2026-10-25) — done (2026-10-25) — a text in a `scroll_x` box is no narrower than its min-content
 - `.` **F206** — [The devtools' strip wraps tabs onto more lines, holds four placement buttons, and its tooltips cover the pane](backlog/closed-2026-09.md#-f206--the-devtools-strip-wraps-tabs-onto-more-lines-holds-four-placement-buttons-and-its-tooltips-cover-the-pane--done-2026-10-25) — done (2026-10-25) — "⋮" menu with the dock side, one scrolling tab line, short tooltips, drag-select followed from the inner scroller, the examples' View menu
 
-**From Carnet's page menu in a short window (2026-10-27)** — F207, filed and built the same day
+**From kui-node-template's field reports (2026-10-27)** — F207 and F208 from its alpha.68 bump onto Kit, F209 open there since its alpha.48 bump; filed and built the same day
 
-- `.` **F207** — [A menu taller than the window cannot be used](backlog/closed-2026-09.md#-f207--a-menu-taller-than-the-window-cannot-be-used--done-2026-10-27) — done (2026-10-27) — every core menu panel scrolls, cut by layout to the window less `MENU_EDGE` and placed as high as that goes; the keyboard keeps its row in view; kui-native shows one that does not fit as a popup window (ADR 0004 amended), not on Wayland; `Menu::max_size` and `Menu::in_window` in every binding
+- `!` **F207** — [A Node view cannot paint with an extension's exported tokens](backlog/closed-2026-09.md#-f207--a-node-view-cannot-paint-with-an-extensions-exported-tokens--done-2026-10-27) — done (2026-10-27) — a `$name` the encoder's map does not hold crosses by name (frame v28) and the core resolves it, exported tables included
+- `~` **F208** — [Kit's handler props take any message in Node](backlog/closed-2026-09.md#-f208--kits-handler-props-take-any-message-in-node--done-2026-10-27) — done (2026-10-27) — `kui-addon-schema` types an `on*` prop as `HandlerMsg<{ <event>: … }>`, as the core's are
+- `.` **F209** — [`keyNamed`'s doc example calls a `ctx.click` Node does not have](backlog/closed-2026-09.md#-f209--keynameds-doc-example-calls-a-ctxclick-node-does-not-have--done-2026-10-27) — done (2026-10-27) — `ctx.access(ctx.keyNamed('Like')!, 'click')`; no `click(key)` added
+
+**From Carnet's page menu in a short window (2026-10-27)** — F210, filed and built the same day
+
+- `.` **F210** — [A menu taller than the window cannot be used](backlog/closed-2026-09.md#-f210--a-menu-taller-than-the-window-cannot-be-used--done-2026-10-27) — done (2026-10-27) — every core menu panel scrolls, cut by layout to the window less `MENU_EDGE` and placed as high as that goes; the keyboard keeps its row in view; kui-native shows one that does not fit as a popup window (ADR 0004 amended), not on Wayland; `Menu::max_size` and `Menu::in_window` in every binding
+
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 
 - `~` **C59** — [Only a Rust host loads a Lua extension](backlog/closed-2026-09.md#-c59--only-a-rust-host-loads-a-lua-extension--done-2026-10-25) — done (2026-10-25) — every host's door loads a `.lua` file or a folder holding `init.lua` (`kui_ffi::open_extension`), kui-lua opens C plugins through a loader kui-ffi registers, a loaded file's chunk is `@path` and its folder first on `package.path`

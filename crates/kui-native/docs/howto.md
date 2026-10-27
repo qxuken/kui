@@ -2565,9 +2565,9 @@ time and draws; a host driving its own window reads
 
 Look it up by the name a reader hears: `Drive::key_named("Like")` in
 Rust (`Core::key_named` under it, `ctx.keyNamed` in Node, `kui_key_named`
-in C), then `click_key` it. The name is the node's `label` row, else the
-text inside a control, so a test that finds a button this way also checks
-that a screen reader can. `key_of` asks a different question: the *key
+in C), then `click_key` it (`access(key, 'click')` in Node). The name is
+the node's `label` row, else the text inside a control, so a test that
+finds a button this way also checks that a screen reader can. `key_of` asks a different question: the *key
 label*, the name the view opened the node under (`with_keyed("like",
 ..)`, a `key` prop), which a reader never hears and `texts_under` reads
 too. Two nodes with one name resolve to the first in tree order and raise

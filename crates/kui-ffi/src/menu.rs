@@ -128,7 +128,7 @@ pub const KUI_MENU_IN_WINDOW: u32 = 1;
 
 /// [`kui_open_menu`] held to `max_w` by `max_h` logical px, the menu and
 /// each of its submenus: a row wider is ellipsized, a menu taller scrolls
-/// (backlog F207). Zero or less on an axis leaves it to the room the menu
+/// (backlog F210). Zero or less on an axis leaves it to the room the menu
 /// is drawn in — the window, or the display where the runner shows it in
 /// a window of its own. `flags`: [`KUI_MENU_IN_WINDOW`]; other bits are
 /// ignored.

@@ -489,7 +489,7 @@ impl Session {
 
     /// A window id no declaration is given, for a window a host opens on
     /// its own account — `kui-native`'s popup for a context menu that does
-    /// not fit its window (backlog F207). Drawn from the ids the declared
+    /// not fit its window (backlog F210). Drawn from the ids the declared
     /// set hands out, so the two never meet; the set itself never lists
     /// it, and no `window` event is raised for it.
     pub fn host_window_id(&self) -> crate::window::WindowId {

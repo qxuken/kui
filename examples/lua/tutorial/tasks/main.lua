@@ -17,9 +17,13 @@ local kit = require("kit.ui")
 
 -- ANCHOR: init
 function init()
-  local tasks = {}
-  if kui.fs.exists(opts.file) then tasks = kui.json.decode(kui.fs.read(opts.file)) end
-  return { tasks = tasks, draft = "", error = nil, saving = false }
+  local tasks, err = {}, nil
+  if kui.fs.exists(opts.file) then
+    local ok, got = kui.fs.try_read(opts.file)
+    if ok then ok, got = kui.json.try_decode(got) end
+    if ok then tasks = got else err = got end
+  end
+  return { tasks = tasks, draft = "", error = err, saving = false }
 end
 -- ANCHOR_END: init
 

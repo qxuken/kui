@@ -1124,7 +1124,7 @@ impl Core {
     }
 }
 
-// -- In a popup window (backlog F207, ADR 0004 amended 2026-10-27) ----------
+// -- In a popup window (backlog F210, ADR 0004 amended 2026-10-27) ----------
 // A host that can open a borderless window anywhere on the display shows a
 // context menu that does not fit its window in one: `kui-native` does, on
 // Windows, macOS and X11. Two cores take part. The window's own keeps the

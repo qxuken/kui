@@ -4354,9 +4354,12 @@ macro_rules! core_methods {
             /// whose accessible name is `name` (backlog F137) — its
             /// `label` prop, else its own text, else a control's derived
             /// name — so a test clicks "the button named Like" as a reader
-            /// would: `ctx.click(ctx.keyNamed('Like'))`. Not `keyOf`'s key
-            /// label, which a reader never hears. Null when no node has the
-            /// name; two raise `ambiguous-name`.
+            /// would: `ctx.access(ctx.keyNamed('Like')!, 'click')`, or
+            /// `app.access(…)` on a headless app, which settles what
+            /// follows through `update`. (`click` is the pointer's, at
+            /// coordinates, on an app.) Not `keyOf`'s key label, which a
+            /// reader never hears. Null when no node has the name; two
+            /// raise `ambiguous-name`.
             #[napi]
             pub fn key_named(&mut self, name: String) -> Option<String> {
                 self.$core().key_named(&name).map(key_str)
@@ -4567,7 +4570,7 @@ macro_rules! core_methods {
             ///
             /// `options.maxWidth` / `options.maxHeight` hold the menu and
             /// its submenus to a size, logical px: a row wider is
-            /// ellipsized, a menu taller scrolls (backlog F207). One left
+            /// ellipsized, a menu taller scrolls (backlog F210). One left
             /// out, or not above 0, is the room the menu is drawn in.
             /// `options.inWindow` keeps the menu drawn in the window where
             /// the runner would show one that does not fit in a popup

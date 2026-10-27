@@ -18,7 +18,7 @@ use mlua::{Lua, Table, UserData, UserDataMethods};
 
 use crate::ops::{self, Ops};
 
-use super::{fail, shared};
+use super::{fail, shared, tried, try_fn};
 
 struct Opts {
     cwd: Option<std::path::PathBuf>,
@@ -305,14 +305,17 @@ impl UserData for Proc {
             }
             Ok(id)
         });
-        m.add_method("write", |_, this, data: mlua::LuaString| {
+        m.add_method("try_write", |lua, this, data: mlua::LuaString| {
             let mut stdin = this.stdin.lock().unwrap();
-            match stdin.as_mut() {
-                Some(w) => w
-                    .write_all(&data.as_bytes())
-                    .map_err(|e| fail(format!("write: {e}"))),
-                None => Err(fail("the process's stdin is closed".into())),
-            }
+            tried(
+                lua,
+                match stdin.as_mut() {
+                    Some(w) => w
+                        .write_all(&data.as_bytes())
+                        .map_err(|e| fail(format!("write: {e}"))),
+                    None => Err(fail("the process's stdin is closed".into())),
+                },
+            )
         });
         m.add_method("close", |_, this, ()| {
             this.stdin.lock().unwrap().take();
@@ -337,8 +340,9 @@ impl UserData for Proc {
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let process = lua.create_table()?;
     process.set(
-        "__run",
-        lua.create_function(
+        "__try_run",
+        try_fn(
+            lua,
             |lua, (cmd, args, opts): (String, Option<Vec<String>>, Option<Table>)| {
                 let (mut c, o) = command(lua, &cmd, args, opts)?;
                 let s = shared(lua);
@@ -382,8 +386,9 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         )?,
     )?;
     process.set(
-        "__spawn",
-        lua.create_function(
+        "__try_spawn",
+        try_fn(
+            lua,
             |lua, (cmd, args, opts): (String, Option<Vec<String>>, Option<Table>)| {
                 let (mut c, o) = command(lua, &cmd, args, opts)?;
                 c.stdin(Stdio::piped())

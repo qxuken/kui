@@ -12,7 +12,7 @@ use mlua::{Lua, Table};
 
 use crate::ops::{Inbound, Ops};
 
-use super::{Shared, fail, shared};
+use super::{Shared, fail, shared, try_fn};
 
 /// What the app holds of a worker it started.
 pub struct Handle {
@@ -22,8 +22,8 @@ pub struct Handle {
 
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     kui.set(
-        "__worker_start",
-        lua.create_function(|lua, path: String| {
+        "__try_worker_start",
+        try_fn(lua, |lua, path: String| {
             let app = shared(lua);
             let file = app.path(&path);
             let file = if file.extension().is_none() && !file.exists() {
@@ -63,8 +63,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         })?,
     )?;
     kui.set(
-        "__worker_send",
-        lua.create_function(|lua, (id, msg): (u64, mlua::Value)| {
+        "__try_worker_send",
+        try_fn(lua, |lua, (id, msg): (u64, mlua::Value)| {
             let msg = kui_lua::lua_to_value(&msg)?;
             match shared(lua).workers.lock().unwrap().get(&id) {
                 Some(w) => w.ops.send(Inbound::Message(msg)),

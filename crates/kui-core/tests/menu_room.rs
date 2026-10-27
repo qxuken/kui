@@ -1,4 +1,4 @@
-//! A menu taller than the window (backlog F207, from Carnet's page menu in
+//! A menu taller than the window (backlog F210, from Carnet's page menu in
 //! a short window): the core's context menu, its submenus and the drawn
 //! bar's dropped menu are cut to the window less `MENU_EDGE` above and
 //! below and scroll — by the wheel, and by the keyboard, whose row is kept

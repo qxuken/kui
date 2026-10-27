@@ -3978,7 +3978,7 @@ mod borrows {
 
     /// `kui_open_menu_with` holds the menu to its size, a side of zero or
     /// less leaving that axis to the room, and keeps it in the window under
-    /// `KUI_MENU_IN_WINDOW`; `kui_open_menu` does neither (backlog F207).
+    /// `KUI_MENU_IN_WINDOW`; `kui_open_menu` does neither (backlog F210).
     #[test]
     fn a_c_menu_is_held_to_the_size_it_was_opened_within() {
         let ctx = kui_ctx_new();

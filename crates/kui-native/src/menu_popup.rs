@@ -1,4 +1,4 @@
-//! A context menu in a popup window of its own (backlog F207, ADR 0004
+//! A context menu in a popup window of its own (backlog F210, ADR 0004
 //! amended 2026-10-27).
 //!
 //! The core draws its context menu in the window, as a float that `fit`
@@ -206,7 +206,7 @@ fn work_area(window: &Window, p: (f64, f64)) -> Option<Area> {
 
 /// Shows a popup at once when it is shown, as a menu appears: Windows
 /// fades a newly shown window in, which on a menu read as the menu being
-/// slow to open (the user, trying F207). Set before the window is shown;
+/// slow to open (the user, trying F210). Set before the window is shown;
 /// nothing elsewhere, where a borderless window appears as it is.
 pub(crate) fn appear_at_once(window: &Window) {
     #[cfg(target_os = "windows")]
@@ -242,7 +242,7 @@ pub(crate) fn appear_at_once(window: &Window) {
 /// (DWM's cloak), or shows it again. A popup is cloaked from creation to
 /// its first frame presented (`Pane::cloaked`): shown at once, with no
 /// fade, Windows drew its empty surface white for the frames before kui's
-/// first one landed (the user, trying F207). Answers whether the platform
+/// first one landed (the user, trying F210). Answers whether the platform
 /// cloaked it; nothing elsewhere.
 pub(crate) fn cloak(window: &Window, on: bool) -> bool {
     #[cfg(target_os = "windows")]

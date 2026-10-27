@@ -59,7 +59,7 @@ secondary to it), so a handle used in the wrong session is a miss that
 behaves as a removed handle and raises `foreign-resource`. No ABI change:
 the `u64` form is untouched.
 
-**Amended 2026-10-27** (backlog F207): the core's own context menu takes
+**Amended 2026-10-27** (backlog F210): the core's own context menu takes
 the popup kind where decision 11 said a float should give way to one —
 when it provably does not fit. `kui-native` shows a menu that would be
 moved or cut in the window as a popup window of its own, on Windows,
@@ -626,7 +626,7 @@ entry under Consequences.
     key, and a platform that cannot be talked out of it would need an
     `NSPanel` with the non-activating mask, which winit 0.30 cannot make.
 - **Amended 2026-10-27: the core's context menu in a popup, when it does
-  not fit** (backlog F207). Carnet's page menu, taller than a short
+  not fit** (backlog F210). Carnet's page menu, taller than a short
   window, ran past its bottom; the float now scrolls and is cut to the
   window (`layout::fit_menu_panel`), which every host gets. Where the
   runner can place a window, it does better:

@@ -276,6 +276,43 @@ const ARGS_LUA: &str = include_str!("../lua/args.lua");
 
 /// Installs `kui` and every module into `lua`, for the app (`ui`) or a
 /// worker.
+/// A runner call's `try_` form, the runner's convention for a call that
+/// can fail on its input or on the world: `true` and what `f` returns, or
+/// `false` and the error's message. Only an argument of the wrong type
+/// raises, before `f` runs. runtime.lua makes the plain call from it,
+/// raising the message at its caller's line.
+pub fn try_fn<A, R, F>(lua: &Lua, f: F) -> mlua::Result<mlua::Function>
+where
+    A: mlua::FromLuaMulti,
+    R: mlua::IntoLuaMulti,
+    F: Fn(&Lua, A) -> mlua::Result<R> + mlua::MaybeSend + 'static,
+{
+    lua.create_function(move |lua, a: A| tried(lua, f(lua, a)))
+}
+
+/// `f`'s result as a `try_` form answers it (see `try_fn`): for a method.
+pub fn tried(
+    lua: &Lua,
+    r: mlua::Result<impl mlua::IntoLuaMulti>,
+) -> mlua::Result<mlua::MultiValue> {
+    match r {
+        Ok(v) => {
+            let mut out = v.into_lua_multi(lua)?;
+            out.push_front(mlua::Value::Boolean(true));
+            Ok(out)
+        }
+        Err(e) => mlua::IntoLuaMulti::into_lua_multi((false, message(&e)), lua),
+    }
+}
+
+fn message(e: &mlua::Error) -> String {
+    match e {
+        mlua::Error::CallbackError { cause, .. } => message(cause),
+        mlua::Error::RuntimeError(m) => m.clone(),
+        other => other.to_string(),
+    }
+}
+
 pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     lua.set_app_data(shared.clone());
     let kui = lua.create_table()?;
@@ -303,6 +340,19 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
                 s.ops.poke();
             }
             Ok(())
+        })?,
+    )?;
+    // The message alone of an error `try_transaction` caught from the
+    // app's function, where a Rust call's error arrives as "runtime
+    // error: …" with a traceback.
+    kui.set(
+        "__message",
+        lua.create_function(|_, v: mlua::Value| {
+            Ok(match v {
+                mlua::Value::Error(e) => message(&e),
+                mlua::Value::String(s) => s.to_string_lossy(),
+                other => other.to_string()?,
+            })
         })?,
     )?;
     kui.set(

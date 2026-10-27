@@ -393,7 +393,7 @@ impl DynShell<'_> {
         core.set_native_menus(native_menus);
         // A menu the core draws that does not fit the window goes in a
         // popup of its own, where the platform lets the runner place one
-        // (`mod menu_popup`, backlog F207): the runner says where each
+        // (`mod menu_popup`, backlog F210): the runner says where each
         // goes before the core draws it.
         core.set_menu_popups(crate::menu_popup::places_popups(&window));
         // And the menu *bar*, which is the platform's on macOS and drawn

@@ -55,8 +55,8 @@ end
 
 local function load()
   kui.spawn(function()
-    local ok, notes = pcall(store.open, boot.db, seed(kui.now()))
-    kui.dispatch(ok and { kind = "loaded", notes = notes } or { kind = "load_failed", error = tostring(notes) })
+    local ok, notes = store.open(boot.db, seed(kui.now()))
+    kui.dispatch(ok and { kind = "loaded", notes = notes } or { kind = "load_failed", error = notes })
   end)
 end
 if not boot.loading then

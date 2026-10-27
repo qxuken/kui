@@ -461,7 +461,7 @@ extern "C" {
  * KUI_PLATFORM_* codes (backlog C116), kui_focus_item (backlog C125) and
  * kui_scale (backlog C127) are new functions. After alpha.68, still at 39
  * since no struct moved: kui_open_menu_with, a context menu held to a
- * size or kept in the window (backlog F207).
+ * size or kept in the window (backlog F210).
  */
 #define KUI_ABI_VERSION 39u
 uint32_t kui_abi_version(void);
@@ -4135,7 +4135,7 @@ bool kui_open_menu(KuiCtx *ctx, uint64_t key, float x, float y,
                    const KuiMenuItem *items, size_t count);
 /* kui_open_menu held to max_w by max_h logical px, the menu and each of
  * its submenus: a row wider is ellipsized, a menu taller scrolls (backlog
- * F207). Zero or less on an axis leaves it to the room the menu is drawn
+ * F210). Zero or less on an axis leaves it to the room the menu is drawn
  * in - the window, or the display where the runner shows a menu that does
  * not fit in a window of its own. `flags`: KUI_MENU_IN_WINDOW keeps this
  * menu drawn in the window there, cut to it and scrolling; other bits are

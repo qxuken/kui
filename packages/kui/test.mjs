@@ -2352,7 +2352,7 @@ test('openMenu draws a menu whose chosen row posts on the target', () => {
   assert.deepEqual(bare.pollEvents(), [], 'no handler, no event');
 });
 
-// A menu held to a size (backlog F207): no taller than `maxHeight`, so
+// A menu held to a size (backlog F210): no taller than `maxHeight`, so
 // thirty rows scroll inside 120 px; no options is the room's, as before.
 test('openMenu holds the menu to maxWidth / maxHeight', () => {
   const ctx = new Ctx();
@@ -9050,13 +9050,45 @@ test('the token tag and the role indices the encoder writes are the protocol\'s'
   assert.equal(P.tokenTag, 0x8000);
   assert.equal(P.tokenRoles.colors[1], 'surface');
   assert.ok(P.tokenRoles.lengths.includes('radius'));
-  // The bare encoder, no surface: a role still resolves, an app name does not.
+  // The bare encoder, no surface: a role resolves to its index; a name
+  // its map does not hold crosses by name, for the core to resolve
+  // (backlog F207); a name it holds as the other kind is left out.
   const enc = createEncoder(P);
-  const out = enc.encode(box({ bg: '$surface', width: '$peach' }));
-  assert.deepEqual(out.unknownTokens, [['peach', 'length']]);
+  const out = enc.encode(box({ bg: '$surface', width: '$peach', height: '$peach', padL: '$surface' }));
+  assert.deepEqual(out.unknownTokens, [['surface', 'length']]);
   const ids = Array.from(out.stream);
   assert.ok(ids.includes(P.prop.bg.id | 0x8000), 'the bg id is tagged');
-  assert.ok(!ids.includes(P.prop.width.id | 0x8000), 'the unresolved width is left out');
+  const at = ids.indexOf(P.prop.width.id | 0x8000);
+  assert.ok(at > 0, 'the width is tagged');
+  const slot = ids[at + 1];
+  assert.ok(slot < 0, 'by name: a negative slot');
+  const x = -slot - 1;
+  const [off, len] = [x % 2 ** 32, Math.floor(x / 2 ** 32)];
+  assert.equal(new TextDecoder().decode(out.strings.subarray(off, off + len)), 'peach');
+  assert.equal(ids[ids.indexOf(P.prop.height.id | 0x8000) + 1], slot, 'the name is written once an encode');
+  assert.ok(!ids.includes(P.prop.pad.id | 0x8000), 'the other kind is left out');
+});
+
+test('a `$name` the encoder does not hold resolves in the core, and a miss is raised by its name (backlog F207)', () => {
+  // The surface's map is what `setTokens` declared; a name it does not
+  // hold is no longer the encoder's to refuse.
+  const P = protocol();
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.setTokens({ colors: { peach: '#ffcc99' } });
+  // A bare encoder that knows nothing of `peach`: the core finds it.
+  const { stream, strings, unknownTokens } = createEncoder(P).encode(
+    root({}, [box({ width: 20, height: 20, bg: '$peach', padL: '$nothing', borderW: '$nothing', borderColor: '$peach' }, [], 'q')]),
+  );
+  assert.deepEqual(unknownTokens, []);
+  ctx.frameBinary(320, 240, 1, stream, strings);
+  const q = ctx.nodes().find((n) => n.label === 'q');
+  assert.equal(q.bg, 0xffcc99ff);
+  assert.equal(q.borderColor, 0xffcc99ff);
+  assert.equal(q.padding.l, 0, 'the miss keeps the default');
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-token');
+  assert.equal(ws.length, 1, JSON.stringify(ws));
+  assert.match(ws[0].message, /nothing/, 'named, where an index miss could only say its number');
 });
 
 test('metrics() is the sizes the protocol declares, and setMetrics reaches the stock button', () => {
@@ -10239,6 +10271,45 @@ test('Kit through its generated wrappers: a Kit button in a Kit toolbar, pressed
   events = press('Beta');
   assert.equal(events[0].payload.kind, 'seg');
   assert.deepEqual(events[0].payload.change, { value: 'b' });
+});
+
+test('Kit\'s exported tokens paint a Node view\'s own boxes, and follow its skin (backlog F207)', async () => {
+  // From the kui-node-template field report: `bg="$kitBg"` raised
+  // `unknown-token` from JSX, since the encoder looked only at the app's
+  // `setTokens` and the roles.
+  const kit = await import('./kit/index.js');
+  const app = createApp(
+    {
+      init: { skin: 'neutral' },
+      update: (m, msg) => ({ skin: msg.skin }),
+      view: (m) =>
+        box({ width: 'grow', height: 'grow' }, [
+          kit.Settings({ skin: m.skin }),
+          box({ width: 40, height: 20, bg: '$kitPanel', padL: '$kitNothing' }, [], 'mine'),
+        ]),
+    },
+    { width: 300, height: 120, extensions: [kit.extension], warnings: false }
+  );
+  app.ctx.setInspect(true);
+  app.render();
+  app.render();
+  const bg = () => app.ctx.nodes().find((n) => n.label === 'mine').bg;
+  const panel = () => {
+    const c = app.ctx.tokens().colors.kitPanel;
+    assert.ok(c, 'Kit exports kitPanel');
+    return c;
+  };
+  assert.notEqual(bg(), 0, 'painted, not left transparent');
+  assert.equal(bg(), panel());
+  const before = bg();
+  app.dispatch({ skin: 'ledger' });
+  app.render();
+  app.render();
+  assert.equal(bg(), panel(), 'read again from the skin it is in');
+  assert.notEqual(bg(), before, 'Ledger\'s panel is not Neutral\'s');
+  const ws = app.warnings.filter((w) => w.code === 'unknown-token');
+  assert.equal(ws.length, 1, JSON.stringify(ws));
+  assert.match(ws[0].message, /kitNothing/);
 });
 
 test('createApp loads extensions before the first frame, as a window does (Kit\'s entry)', async () => {

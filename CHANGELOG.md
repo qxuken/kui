@@ -21,16 +21,37 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.69 (unreleased)
 
 **What breaks.**
 
+- A runner call that fails raises its message at the line that called
+  it — `main.lua:12: json: 1:3: expected a key in double quotes` — where
+  it raised `runtime error: json: …` with a stack traceback after it.
+  Code that read the old text — `gsub("^runtime error: ", "")`, the
+  first line of `tostring(err)` — now sees the caller's position at the
+  front; reach for the call's `try_` form instead, whose message is the
+  error's alone.
+- **A Kit `on*` prop is typed against the app's registered messages**
+  (backlog F208): `onPress`, `onChange`, `onChoose` and every other Kit
+  event prop take `HandlerMsg<{ press: ButtonPress }>` and its siblings,
+  where they took `unknown`. An app that augments `KuiMsg` registers its
+  Kit messages as they arrive — `ButtonPressMsg<{ kind: 'run' }>` — or
+  the prop no longer typechecks; an app that does not augment it sees
+  `Msg`, any plain data, as at every core prop.
+- A `$name` in a Node view that neither the roles nor the surface's
+  `setTokens` hold is resolved by the core rather than refused by the
+  encoder (backlog F207): an extension's exported token now paints. One
+  that nothing declares still keeps the slot's default and raises
+  `unknown-token`, but the encoder's `unknownTokens` no longer lists it —
+  the core raises it, by its name. The Node frame is v28; the encoder
+  and the addon ship together, so only a hand-built stream sees it.
 - A context menu, submenu or drawn menu bar's menu the core draws that
   is taller than the window is cut to it and scrolls, where it was
   pinned to the window's top with its last rows past the bottom; its
   panel is a scroll container (`scroll_y`, `overscroll: contain`) at
   every size, so the wheel over a menu that fits scrolls nothing behind
-  it (backlog F207).
+  it (backlog F210).
 - In a `kui-native` window on Windows, X11, and macOS where the core
   draws its menus, a context menu that would be moved or cut in the
   window opens in a popup window of its own: the window's core keeps it
@@ -38,18 +59,58 @@ was the first bare bump to break an app in five releases).
   frame or access tree while it is up (`Core::menu_in_popup`). A menu
   opened there is drawn nowhere until the runner has placed it, within
   the same turn (`Core::menu_awaits_host`). Every other host draws every
-  menu in the window as before (backlog F207, ADR 0004 amended
+  menu in the window as before (backlog F210, ADR 0004 amended
   2026-10-27).
 - A declared popup window (`WindowKind::Popup`) appears at once on
   Windows, with its first frame, where the OS faded it in over a white
   surface.
-- `Menu` gained `max_size` and `in_window` (backlog F207): a Rust struct
+- `Menu` gained `max_size` and `in_window` (backlog F210): a Rust struct
   literal names them or is built with `Menu::new`.
+
+The failure is the world's — a missing file, a refused connection, a
+file that is not JSON — not a bug in the line that asked, so a traceback
+through the runner's own frames said nothing an app could use. An error
+the app does not catch still says where it happened.
+
+F207, F208 and F209 below are the field reports `kui-node-template`
+filed: two as it moved onto Kit in its alpha.68 bump, and one it had
+open since alpha.48.
+
+Kit's props were the one corner of a Node app's view a payload typo
+slipped through: `<Button onPress={{ kind: 'typo' }}/>` compiled where
+`<button onClick={{ kind: 'typo' }}>` failed. They are typed the way
+the core's handler props are (ADR 0047): a registered message that
+arrives with the event's field, declared without it. That is a type
+break and only that — the wrapper writes what it wrote — and the fix
+is a line per message in the app's union, the `…Msg<T>` helper Kit
+already generated for each event.
 
 ### Added
 
+- **A `try_` form for every runner call that can fail on its input or on
+  the world** — a file, text read in, the network, a process, a
+  database, a worker's script: `local ok, tasks =
+  kui.json.try_decode(text)` returns `true` and what the call returns, or
+  `false` and the error's message. The `try_` form is the call; the plain
+  one is made from it and raises the message. Wrong input is a failure
+  too (`kui.http.try_get("")` is `false, "http: no url"`); only an
+  argument of the wrong type raises, as an assertion would. The forms
+  wait as their calls do; a decoded `null` is `true, nil`; an HTTP 404 is
+  a response, a refused connection `false`; `try_transaction` rolls back
+  and answers `false` when its function raises. `try_` is the runner's
+  convention from here on: the forms of `kui.json`, `kui.toml`, `kui.yaml` (`decode`, `encode`),
+  `kui.fs` (`read`, `write`, `append`, `create`, `list`, `lines`, `walk`,
+  `mkdir`, `remove`, `rename`), `kui.process` (`run`, `spawn`, and a
+  process's `read_line`, `write`, `wait`), `kui.http` (each request and
+  `serve`), `kui.sqlite` (`open`, and a database's `query`, `first`,
+  `exec`, `transaction`) and `kui.worker` (and a worker's `dispatch`),
+  declared for Teal (`if got is kui.Response`) and lua-language-server.
+  The book's task list opens a broken `tasks.json` and says why, where it
+  stopped; Kit's relay, preferences and field-notes samples and its
+  gallery use the `try_` forms, and the preferences sample no longer
+  stops on a settings file it cannot read.
 - **A context menu that does not fit its window opens past its edge**
-  (backlog F207, [ADR 0004 amended
+  (backlog F210, [ADR 0004 amended
   2026-10-27](docs/adr/0004-multi-window.md)). Where the runner can place
   a window — Windows, macOS, X11 — a menu the core draws that would be
   pushed in over its point, or cut and scrolled, opens as a borderless,
@@ -68,7 +129,7 @@ was the first bare bump to break an app in five releases).
   `widgets::MENU_PANEL_PAD` public. C, Odin and Node hosts get it through
   `kui_run` and `runWindowed`, whose runner is kui-native's.
 - **A context menu held to a size, or kept in the window** (backlog
-  F207). `Menu::max_size(w, h)` holds the menu and each of its submenus
+  F210). `Menu::max_size(w, h)` holds the menu and each of its submenus
   to `w` by `h` logical px — a row wider is ellipsized, a menu taller
   scrolls, in the window or in a popup — with `f32::INFINITY` leaving an
   axis to the room. `Menu::in_window()` keeps a menu drawn in the window
@@ -82,7 +143,30 @@ was the first bare bump to break an app in five releases).
 
 ### Fixed
 
-- **A menu taller than the window can be used** (backlog F207, from
+- **Kit's tokens paint a Node view's own boxes** (backlog F207, from the
+  kui-node-template field report): `<box bg="$kitPanel">` paints the
+  skin's panel and follows a skin switch, where the encoder resolved a
+  `$name` against the app's `setTokens` and the roles only, and raised
+  `unknown-token` for every `$kit…` name. A name the encoder's map does
+  not hold now crosses by name and the core resolves it in its own order
+  — the running origin's table, the host's, then every extension's
+  exported one (`Tokens::exported`, C74) — as Lua's and Rust's lookups
+  always did; a name the map holds still rides as its index. A name
+  nothing declares misses in the core, and its `unknown-token` line
+  names it.
+- **Kit's `on*` props take the app's messages** (backlog F208, from the
+  kui-node-template field report): typed as `HandlerMsg<{ <event>:
+  <Component><Event> }>` by `kui-addon-schema`, so a message that is not
+  registered, or is registered for another event, fails at the prop.
+- **`keyNamed`'s example compiles** (backlog F209, from the
+  kui-node-template field report): its doc comment showed
+  `ctx.click(ctx.keyNamed('Like'))`, and Node's `Ctx` has no `click`
+  (TS2339). It reads `ctx.access(ctx.keyNamed('Like')!, 'click')`, or
+  `app.access(…)` on a headless app, which settles what follows through
+  `update`. No `ctx.click(key)` was added: `access(key, 'click')` is
+  already the door that drives a node as a reader does, which is the
+  doc's point, and `click` on an app is the pointer's, at coordinates.
+- **A menu taller than the window can be used** (backlog F210, from
   Carnet's page menu in a short window). The core's context menu was a
   viewport float with `fit` and no height limit: taller than the window,
   `fit` pinned it to the top and its last rows were past the bottom,
@@ -100,6 +184,14 @@ was the first bare bump to break an app in five releases).
 
 **What you can delete.**
 
+- A `pcall` around a runner call, and the `tostring(err)`, the
+  `"runtime error: "` strip and the first-line cut that made its message
+  readable.
+- A Kit token copied into the app's `setTokens` by value, or a box's
+  colour taken from `tokens()` by hand, kept only so a Node box painted
+  in Kit's skin.
+- A cast or a wrapper around a Kit component, kept only so its `on*`
+  prop was checked against the app's messages.
 - A context menu split into submenus, or a shorter menu offered in a
   small window, kept only so its last rows could be reached.
 - A menu's point moved in from the window's edge, kept only so the menu

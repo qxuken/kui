@@ -1,4 +1,4 @@
-//! A context menu in a popup window of its own (backlog F207, ADR 0004
+//! A context menu in a popup window of its own (backlog F210, ADR 0004
 //! amended 2026-10-27): the two cores a host's popup takes. The window's
 //! own keeps the menu and draws none of it; the popup's draws the rows,
 //! as the in-window menu would, and says back what was chosen rather than

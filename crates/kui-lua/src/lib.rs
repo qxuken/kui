@@ -1860,7 +1860,7 @@ fn env_table(
     // A fifth argument, `{ max_width =, max_height = }`, holds the menu and
     // its submenus to a size: a row wider is ellipsized, a menu taller
     // scrolls; a side left out, or not above 0, is the room's (backlog
-    // F207). `in_window = true` keeps it drawn in the window where the
+    // F210). `in_window = true` keeps it drawn in the window where the
     // runner would show one that does not fit in a popup of its own.
     t.set(
         "open_menu",
@@ -9317,7 +9317,7 @@ mod tests {
     }
 
     /// `env.open_menu`'s fifth argument holds the menu to a size (backlog
-    /// F207): `max_height` alone leaves the width to the room, and a menu
+    /// F210): `max_height` alone leaves the width to the room, and a menu
     /// opened without it has no limit.
     #[test]
     fn scripts_hold_a_menu_to_a_size() {

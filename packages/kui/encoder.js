@@ -105,9 +105,6 @@ export function createEncoder(P) {
   // Whether a prop value is a reference: a string starting with `$`.
   const isRef = (v) => typeof v === 'string' && v.length > 1 && v.charCodeAt(0) === 36;
 
-  // The wire index of `$name` in the `kind` space, or `undefined` for a
-  // name that resolved to nothing or to the other kind — reported like an
-  // unknown prop, and the slot is left out so the core keeps its default.
   // A stroke's `dash` and `dashOffset` as the five floats the stream
   // carries — a mark, a gap, a mark, a gap, the offset — or null for a
   // solid stroke. `dash` is one length (marks and gaps alike), a
@@ -125,14 +122,41 @@ export function createEncoder(P) {
     return [a, b, c, e, p.dashOffset ?? 0];
   }
 
+  // What a `$name` writes in the `kind` space: its wire index when the
+  // roles or the surface's map hold it; `undefined` for a name they hold
+  // as the other kind — reported like an unknown prop, and the slot is
+  // left out so the core keeps its default; and a by-name reference for a
+  // name they do not hold at all.
+  //
+  // That last is the core's to resolve, in its own order — the running
+  // origin's table, the host's, then every extension's exported one — so
+  // an add-on's palette (`$kitPanel`, `Tokens::exported`) reaches a Node
+  // view without the encoder copying tables it does not own, and a name
+  // nothing declared misses there, raised by its name (backlog F207). It
+  // rides in the same one slot as an index, negative, packing where the
+  // name sits in the strings: -(1 + offset + len·2^32), the name written
+  // once an encode however many slots spell it.
   function tokenRef(v, kind) {
     const name = v.slice(1);
     const hit = ROLE_TOKENS.get(name) ?? tokens?.get(name);
-    if (hit === undefined || hit.kind !== kind) {
+    if (hit === undefined) return nameRef(name);
+    if (hit.kind !== kind) {
       unknownTokens.push([name, kind]);
       return undefined;
     }
     return hit.index;
+  }
+
+  const NAME_LEN = 2 ** 32;
+  let names = new Map();
+  function nameRef(name) {
+    let ref = names.get(name);
+    if (ref === undefined) {
+      const [at, len] = utf8(name);
+      ref = -(1 + at + len * NAME_LEN);
+      names.set(name, ref);
+    }
+    return ref;
   }
 
   function checkProps(type, p) {
@@ -188,13 +212,19 @@ export function createEncoder(P) {
       const where = `<${curTag || '?'}>${curProp ? ` ${curProp}` : ''}`;
       throw new TypeError(`${where} must be a string, got ${typeof s === 'object' ? JSON.stringify(s) : String(s)}`);
     }
+    const [at, len] = utf8(s);
+    f[fi++] = at;
+    f[fi++] = len;
+  }
+
+  // Writes `s` into the strings and answers where: [offset, len].
+  function utf8(s) {
     for (;;) {
       const r = textEncoder.encodeInto(s, u.subarray(ui));
       if (r.read === s.length) {
-        f[fi++] = ui;
-        f[fi++] = r.written;
+        const at = ui;
         ui += r.written;
-        return;
+        return [at, r.written];
       }
       const next = new Uint8Array(u.length * 2);
       next.set(u);
@@ -636,9 +666,10 @@ export function createEncoder(P) {
             break;
           }
           // A reference on a colour, length, sizing or min row: the
-          // tagged id and the index, or nothing at all for a name that did
-          // not resolve (reported through `unknownTokens`), so the core
-          // keeps the row's default (AR14).
+          // tagged id and the index (or the name, for the core to
+          // resolve), or nothing at all for a name of the other kind
+          // (reported through `unknownTokens`), so the core keeps the
+          // row's default (AR14).
           if (isRef(v) && (def.kind === 'f32' || def.kind === 'color' || def.kind === 'sizing' || def.kind === 'min' || def.kind === 'max')) {
             const i = tokenRef(v, def.kind === 'color' ? 'color' : 'length');
             if (i !== undefined) {
@@ -1515,6 +1546,7 @@ export function createEncoder(P) {
       ui = 0;
       unknown = [];
       unknownTokens = [];
+      names = new Map();
       tokens = tokenMap ?? null;
       shownTab = opts?.shownTab ?? null;
       lazyChoices = opts?.lazy ?? null;
@@ -1534,9 +1566,10 @@ export function createEncoder(P) {
       f[fi++] = OP.end;
       // `unknown` is the names this pass had no id for — `[element, name]`
       // pairs the caller hands to `warnUnknownProps` — and `unknownTokens`
-      // the `$name`s that resolved to nothing, `[name, kind]` pairs for
-      // `warnUnknownTokens`. Like the buffers, both are valid until the
-      // next encode().
+      // the `$name`s the encoder's map holds as the other kind, `[name,
+      // kind]` pairs for `warnUnknownTokens` (a name it does not hold
+      // crosses by name, and the core raises its miss). Like the buffers,
+      // both are valid until the next encode().
       return { stream: f.subarray(0, fi), strings: u.subarray(0, ui), unknown, unknownTokens };
     },
     // One `<text>` element and nothing else — what `measureText` sends, so
@@ -1548,6 +1581,7 @@ export function createEncoder(P) {
       ui = 0;
       unknown = [];
       unknownTokens = [];
+      names = new Map();
       tokens = tokenMap ?? null;
       reserve(96);
       f[fi++] = VERSION;

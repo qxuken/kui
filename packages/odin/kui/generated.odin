@@ -3607,7 +3607,7 @@ open_menu :: proc(ui: ^Ui, key: u64, x: f32, y: f32, items: []Menu_Item) -> bool
 }
 
 // Holds a context menu and its submenus to a size: a row wider is ellipsized,
-// a menu taller scrolls; an axis left out is the room's (backlog F207).
+// a menu taller scrolls; an axis left out is the room's (backlog F210).
 // Rust: Menu::max_size.
 open_menu_with :: proc(ui: ^Ui, key: u64, x: f32, y: f32, items: []Menu_Item, max_w: f32, max_h: f32, flags: u32) -> bool {
 	scratch: Scratch

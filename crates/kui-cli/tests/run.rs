@@ -213,6 +213,84 @@ fn a_worker_hands_back_a_channel_and_teal_runs_as_it_is() {
 }
 
 #[test]
+fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
+    let dir = app(
+        "try-twins",
+        &[
+            ("bad.json", "{ not json"),
+            (
+                "typed.tl",
+                r#"
+                local ok, got = kui.http.try_get("http://127.0.0.1:9/")
+                if got is kui.Response then print(got.status) else print(ok, got) end
+                local _, lines = kui.fs.try_lines("x.txt")
+                if lines is {string} then print(#lines) end
+                "#,
+            ),
+            (
+                "main.lua",
+                r#"
+                print("decode", kui.json.try_decode('{"a":[1]}'))
+                local ok, err = kui.json.try_decode(kui.fs.read("bad.json"))
+                print("bad json", ok, type(err), err)
+                print("null", kui.json.try_decode("null"))
+                print("read", kui.fs.try_read("missing.txt"))
+                print("create", kui.fs.try_create("made.txt", "x"), kui.fs.try_create("made.txt", "x"))
+                print("worker", kui.try_worker("nope.lua"))
+                local db_ok, db = kui.sqlite.try_open(":memory:")
+                print("db", db_ok, db:try_query("select * from nowhere"))
+                print("tx", db:try_transaction(function(d) d:exec("create table t(x)"); error("undo") end))
+                print("rolled back", db:try_first("select * from t"))
+                print("no url", kui.http.try_get(""))
+                print("wrong type raises", (pcall(kui.fs.try_read)))
+                local _, plain = pcall(function() local v = kui.json.decode("{"); return v end)
+                print("plain", plain)
+                kui.spawn(function()
+                  print("run", kui.process.try_run("kui-no-such-command"))
+                  local hit, res = kui.http.try_get("http://127.0.0.1:9/")
+                  print("refused", hit, type(res))
+                  print("walk", kui.fs.try_walk("no-such-dir"))
+                  kui.exit(0)
+                end)
+                "#,
+            ),
+        ],
+    );
+    let o = kui(&dir, &["run", "--headless"], 20);
+    let s = out(&o);
+    assert!(s.contains("decode\ttrue\ttable: "), "{s}");
+    assert!(s.contains("bad json\tfalse\tstring\tjson: "), "{s}");
+    assert!(
+        s.contains("null\ttrue\tnil"),
+        "a decoded null is a value, not a failure:\n{s}"
+    );
+    assert!(
+        s.contains("missing.txt: ") && !s.contains("runtime error"),
+        "the message alone:\n{s}"
+    );
+    assert!(s.contains("create\ttrue\ttrue\tfalse"), "{s}");
+    assert!(s.contains("worker\tfalse\tkui.worker: no file"), "{s}");
+    assert!(s.contains("db\ttrue\tfalse\tno such table: nowhere"), "{s}");
+    assert!(s.contains("tx\tfalse\t") && s.contains("undo"), "{s}");
+    assert!(s.contains("rolled back\tfalse\tno such table: t"), "{s}");
+    assert!(s.contains("run\tfalse\tkui-no-such-command: "), "{s}");
+    assert!(s.contains("refused\tfalse\tstring"), "{s}");
+    assert!(s.contains("walk\tfalse\t"), "{s}");
+    assert!(
+        s.contains("no url\tfalse\thttp: no url"),
+        "wrong input is a failure, not a raise:\n{s}"
+    );
+    assert!(s.contains("wrong type raises\tfalse"), "{s}");
+    assert!(
+        s.contains("plain\t") && s.contains("main.lua:15: json: "),
+        "the plain call raises at its caller's line:\n{s}"
+    );
+    assert!(!s.contains("traceback"), "{s}");
+    let c = kui(&dir, &["check"], 60);
+    assert!(out(&c).contains("ok: 1 file(s) checked"), "{}", out(&c));
+}
+
+#[test]
 fn a_worker_that_throws_arrives_as_a_message() {
     let dir = app(
         "worker-error",
