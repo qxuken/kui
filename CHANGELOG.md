@@ -426,6 +426,17 @@ and its tables sort and filter them.
   set `native_controls` at the top of every `view`, kept only so a
   picture taken off a Mac looked like one: `.platform(Platform::MacOs)`.
 
+### The release itself
+
+- **The crates go to crates.io through trusted publishing.** release.yml's
+  `publish` trades GitHub's OIDC token for a crates.io token of 30
+  minutes (`rust-lang/crates-io-auth-action`), as npm's half has since
+  alpha.67; the `CRATES_IO_TOKEN` secret is no longer read. A crate
+  crates.io has never held cannot be created that way, so
+  `publish-crates.nu --trusted` names one before anything goes out:
+  `kui-value` and `kui-channel`, new in this release, were published once
+  by hand.
+
 ## 0.1.0-alpha.69 (2026-10-28)
 
 **What breaks.**

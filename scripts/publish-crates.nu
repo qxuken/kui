@@ -15,6 +15,10 @@
 #
 # The token comes from cargo's own places: CARGO_REGISTRY_TOKEN in the
 # environment, as CI sets it, or `cargo login` / ~/.cargo/credentials.toml.
+# CI's is a trusted-publishing token (since alpha.70), which publishes a
+# new version of a crate crates.io holds and cannot create one; `--trusted`
+# says so before anything goes out, naming the crates crates.io has never
+# held, which a maintainer publishes once by hand with a token of their own.
 
 # Dependency order: each crate's verify build needs the ones before it.
 # kui-trace (ADR 0058) is before kui-core, which writes its format;
@@ -44,9 +48,17 @@ export def crate-published [registry: string, name: string, version: string] {
     $body | lines | any {|l| ($l | from json | get -o vers) == $version }
 }
 
+# Whether `registry`'s index holds `name` at all, at any version.
+export def crate-known [registry: string, name: string] {
+    let url = $"($INDEX | get $registry)/(index-path $name)"
+    let body = (try { http get --raw --headers [User-Agent "kui-release (publish-crates.nu)"] $url } catch { "" })
+    $body | lines | any {|l| ($l | from json | get -o name) == $name }
+}
+
 def main [
     registry: string  # crates-io
     --dry-run         # package and verify, publish nothing
+    --trusted         # the token is crates.io's trusted publishing: refuse a crate it never held
 ] {
     cd ($env.FILE_PWD | path dirname)
     if $registry not-in ($INDEX | columns) {
@@ -55,6 +67,13 @@ def main [
     let version = (open Cargo.toml | get workspace.package.version)
     let pending = if $dry_run { $CRATES } else {
         $CRATES | where {|c| not (crate-published $registry $c $version) }
+    }
+    if $trusted and not $dry_run {
+        let new = ($pending | where {|c| not (crate-known $registry $c) })
+        if ($new | is-not-empty) {
+            let flags = ($new | each {|c| $"-p ($c)" } | str join ' ')
+            error make {msg: $"($registry) has never held ($new | str join ', '), and a trusted-publishing token cannot create a crate: from this tag, `cargo publish ($flags) --registry ($registry)` with a token of your own, give each release.yml as its trusted publisher on crates.io, then re-run this job \(docs/releasing.md\)"}
+        }
     }
     if ($pending | is-empty) {
         print $"($registry): every crate is already at ($version)"

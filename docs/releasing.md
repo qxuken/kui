@@ -1,7 +1,8 @@
 # Releases
 
-Tagged commits publish the library crates (`kui-derive`, `kui-core`,
-`kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to crates.io; ten npm
+Tagged commits publish the library crates (`kui-derive`, `kui-value`,
+`kui-channel`, `kui-trace`, `kui-core`, `kui-wgpu`, `kui-native`,
+`kui-lua`, `kui-ffi`) to crates.io; ten npm
 packages to npmjs
 ([ADR 0068](adr/0068-how-kui-reaches-a-machine.md), esbuild's shape):
 [`packages/kui`](../packages/kui) as `@qxuken/kui`, the JS and types, and
@@ -154,10 +155,35 @@ release pipeline:
   release and without `npm-stage` (a dry run stages nothing it will not
   publish; since alpha.69), leaving the release's assets as the run's
   `release-packs` artifact; the npm tarballs come from a tag's run only,
-  or by hand from a run's build artifacts (below). It needs one
-  repository secret, `CRATES_IO_TOKEN` (a crates.io API token with publish
-  rights on the `kui-*` crates); npmjs takes no secret (below). The runner
-  is not on crates.io: `kui-cli` stays `publish = false` (ADR 0068).
+  or by hand from a run's build artifacts (below). It needs no secret:
+  crates.io and npmjs both take the run through trusted publishing
+  (below). The runner is not on crates.io: `kui-cli` stays `publish =
+  false` (ADR 0068).
+
+The crates.io half goes through trusted publishing too, since alpha.70
+(until then a `CRATES_IO_TOKEN` repository secret, an API token with
+publish rights on the `kui-*` crates): each crate's settings on crates.io
+name GitHub, `qxuken/kui` and `release.yml` as its trusted publisher, with
+no environment. `publish` runs `rust-lang/crates-io-auth-action`, which
+trades GitHub's OIDC token (the job's `id-token: write`) for a crates.io
+token that lives 30 minutes and is revoked when the job ends, then
+`publish-crates.nu crates-io --trusted`. What that needs and how it fails:
+
+- A trusted publisher is set on a crate crates.io holds, so a crate it has
+  never held — one split out of `kui-core`, as `kui-value` and
+  `kui-channel` were for alpha.70 — cannot be created by the run.
+  `--trusted` checks every crate it would publish before publishing any
+  and fails naming the new ones, while nothing is out and the tag can
+  still move. Publish those once by hand from the tag with a token of
+  your own (`cargo publish -p kui-value -p kui-channel --registry
+  crates-io`; `cargo login` keeps it in `~/.cargo/credentials.toml`), add
+  `release.yml` as each one's trusted publisher, and re-run `publish`: the
+  crates already up are skipped.
+- A field that does not match (another workflow file, an environment
+  named on crates.io that the job does not use) shows only at the token
+  step, as the action's error.
+- The 30 minutes start at the token step, right before the publish, which
+  took three minutes for alpha.69's seven crates.
 
 The npmjs half is finished by the runner through trusted publishing, since
 alpha.67: each package's settings on npmjs.com name GitHub Actions,

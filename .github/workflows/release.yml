@@ -62,11 +62,20 @@
 # no darwin-x64 leg: Intel Macs lost their prebuild after alpha.40 (the
 # CHANGELOG says why), and build the addon from source.
 #
-# Secrets:
-#   * CRATES_IO_TOKEN: a crates.io API token with publish-update on the
-#     kui-* crates (publish-new too, for a crate not yet there).
+# No secrets: both registries take trusted publishing.
 #
-# npmjs needs no secret: each of the ten packages trusts this workflow as
+# crates.io (since alpha.70; until then a CRATES_IO_TOKEN secret): each
+# kui-* crate trusts this workflow as its publisher (crates.io → the
+# crate's settings → Trusted Publishing: GitHub, qxuken/kui, release.yml,
+# no environment). The publish job asks GitHub for an OIDC token and
+# rust-lang/crates-io-auth-action trades it for a crates.io token that
+# lives 30 minutes and is revoked when the job ends. A trusted publisher is
+# set on a crate that exists, so a crate crates.io has never held (one
+# split out of kui-core, say) is published once by hand first
+# (docs/releasing.md); `publish-crates.nu --trusted` names it before
+# anything goes out.
+#
+# npmjs: each of the ten packages trusts this workflow as
 # its publisher (npmjs.com → the package's settings → Trusted Publisher:
 # GitHub Actions, qxuken/kui, release.yml, with "Allow npm publish" and
 # "Allow npm dist-tag"). The publish job asks GitHub for an OIDC token
@@ -520,14 +529,13 @@ jobs:
     # Only a tag publishes; a manual run stops at the builds and the packs.
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
-    # id-token is npm's trusted publishing: the OIDC token npmjs trades for
-    # a publish token. It is asked for here only, never workflow-wide.
+    # id-token is trusted publishing, crates.io's and npm's: the OIDC token
+    # each registry trades for a publish token. It is asked for here only,
+    # never workflow-wide.
     permissions:
       contents: read
       id-token: write
     env:
-      # cargo reads crates.io's token from CARGO_REGISTRY_TOKEN.
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
       NPMJS_REGISTRY: https://registry.npmjs.org/
     steps:
       - uses: actions/checkout@v7
@@ -560,7 +568,6 @@ jobs:
           sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
           rustup update --no-self-update stable
           rustup default stable
-          test -n "$CARGO_REGISTRY_TOKEN" || { echo "CRATES_IO_TOKEN secret is not set" >&2; exit 1; }
           npm install -g "npm@${NPM_VERSION}"
           node --version
           npm --version
@@ -632,10 +639,22 @@ jobs:
             exit 1
           fi
 
+      # The token for the step below, through trusted publishing (see the
+      # top of this file): asked for last, so its 30 minutes start here,
+      # and revoked by the action when the job ends.
+      - name: crates.io token
+        id: crates-io
+        uses: rust-lang/crates-io-auth-action@v1.0.6
+
       # In dependency order; a crate crates.io already holds at this version
       # is skipped, so re-running a job that failed partway finishes it.
+      # --trusted refuses, before anything goes out, a crate crates.io has
+      # never held: the token above cannot create one.
       - name: cargo publish (crates.io)
-        run: nu scripts/publish-crates.nu crates-io
+        env:
+          # cargo reads crates.io's token from CARGO_REGISTRY_TOKEN.
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io.outputs.token }}
+        run: nu scripts/publish-crates.nu crates-io --trusted
 
       # Published live, through trusted publishing (see the top of this
       # file): npm finds the OIDC environment itself, takes no token and
