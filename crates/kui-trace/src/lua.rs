@@ -212,6 +212,9 @@ pub struct Recording {
     frame_index: Vec<usize>,
     frame_unchanged: Vec<bool>,
     frame_verdict: Vec<&'static str>,
+    /// Each placed frame's `burn` column, kept to notice a burn that grew
+    /// back over frames placed before it was one (backlog RG171).
+    frame_burn: Vec<bool>,
     spans_view: View,
     frames_view: View,
     filter: Filter,
@@ -367,6 +370,7 @@ impl Recording {
             frame_index: Vec::new(),
             frame_unchanged: Vec::new(),
             frame_verdict: Vec::new(),
+            frame_burn: Vec::new(),
             filter: Filter::default(),
             filter_error: None,
         }
@@ -662,13 +666,71 @@ impl Recording {
                 self.frame_index.push(i);
                 self.frame_unchanged.push(f.unchanged == Some(true));
                 self.frame_verdict.push(kind);
+                self.frame_burn.push(in_burn(i));
             }
             self.frames = self
                 .frames
                 .append(fc.0, None)
                 .expect("the frames' own columns");
+            // A burn is a run of BURN_FRAMES, so the frames of one that
+            // came before it was that long were placed as no burn; they
+            // are one now, and their verdict may be too (backlog RG171).
+            // Written once a burn, when it reaches the frames placed.
+            let mut regraded = false;
+            for b in &burns {
+                for i in b.first..(b.last + 1).min(first_new_frame) {
+                    if !self.frame_burn[i] {
+                        self.frame_burn[i] = true;
+                        let v = analysis::verdict(tl, i, self.budget, &burns, trace);
+                        self.frame_verdict[i] = verdict_kind(&v);
+                        regraded = true;
+                    }
+                }
+            }
+            if regraded {
+                self.regrade_frames();
+                self.grow_views(first_new_span, self.frame_index.len());
+                self.refilter_frames();
+                return;
+            }
         }
         self.grow_views(first_new_span, first_new_frame);
+    }
+
+    /// The frames' next revision with every frame's verdict and burn as
+    /// they stand: the rest of their columns as they were.
+    fn regrade_frames(&mut self) {
+        let names = self.frames.names().to_vec();
+        let all: Vec<usize> = (0..self.frames.len()).collect();
+        let mut cols = self.frames.take_columns(&all).expect("rows it holds");
+        for (name, col) in &mut cols {
+            match name.as_str() {
+                "verdict" => *col = Column::strs(&self.frame_verdict),
+                "burn" => *col = Column::Bool(self.frame_burn.clone()),
+                _ => {}
+            }
+        }
+        debug_assert_eq!(
+            cols.iter().map(|(n, _)| n).collect::<Vec<_>>(),
+            names.iter().collect::<Vec<_>>()
+        );
+        self.frames = self.frames.publish(cols).expect("the frames' own columns");
+    }
+
+    /// The frames' view shown again from the start: after frames were
+    /// regraded, a verdict filter keeps another set.
+    fn refilter_frames(&mut self) {
+        if self.filter.is_empty() {
+            self.frames_view.shown = self.frames_view.shown.publish_from(&self.frames);
+            self.frames_view.rows = None;
+            return;
+        }
+        let frames: Vec<usize> = (0..self.frame_index.len())
+            .filter(|&i| self.keeps_frame(i))
+            .collect();
+        let cols = self.frames.take_columns(&frames).expect("rows it holds");
+        self.frames_view.shown = self.frames_view.shown.publish(cols).expect("its columns");
+        self.frames_view.rows = Some(frames);
     }
 
     fn keeps_span(&self, i: usize) -> mlua::Result<bool> {
@@ -1480,6 +1542,71 @@ mod tests {
         assert_eq!(g.get::<String>("reset").unwrap(), "reset");
         assert_eq!(g.get::<i64>("third").unwrap(), 19);
         assert!(g.get::<bool>("kept_id").unwrap());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Grown a piece at a time, a recording ends with the verdicts and
+    /// burns it has read whole: a burn longer than a poll's frames marks
+    /// the frames placed before it was one (backlog RG171).
+    #[test]
+    fn a_recording_grown_in_pieces_grades_its_frames_as_read_whole() {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!(
+            "kui-trace-lua-burn-{}.kuitrace",
+            std::process::id()
+        ));
+        let bytes = Synth {
+            frames: 400,
+            ..Default::default()
+        }
+        .trace()
+        .to_bytes();
+        let grades = r#"
+            local out = {}
+            for i = 0, #rec.frames - 1 do
+              out[#out + 1] = rec.frames:get(i, "verdict") .. (rec.frames:get(i, "burn") and "*" or "")
+            end
+            return table.concat(out, " ")
+        "#;
+        std::fs::write(&path, &bytes).unwrap();
+        let lua = state();
+        lua.globals().set("path", path.to_str().unwrap()).unwrap();
+        lua.load("rec = trace.open(path)").exec().unwrap();
+        let whole: String = lua.load(grades).eval().unwrap();
+        assert!(whole.contains('*'), "the recording has a burn to grow");
+        let pieces = 20;
+        let step = bytes.len().div_ceil(pieces);
+        std::fs::write(&path, &bytes[..step]).unwrap();
+        lua.load("rec = trace.open(path); burned = rec:filter { verdicts = { 'burn' } }")
+            .exec()
+            .unwrap();
+        for k in 1..pieces {
+            let (a, z) = (k * step, ((k + 1) * step).min(bytes.len()));
+            if a < z {
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&path)
+                    .unwrap()
+                    .write_all(&bytes[a..z])
+                    .unwrap();
+            }
+            lua.load("rec:poll()").exec().unwrap();
+        }
+        // The view a verdict filter keeps, kept through the growth,
+        // follows the regrade; then the frames whole.
+        let shown: i64 = lua.load("return #rec.frames").eval().unwrap();
+        lua.load("rec:filter()").exec().unwrap();
+        let grown: String = lua.load(grades).eval().unwrap();
+        // Both wait for a frame after the last, the file being watched.
+        let (w, g) = (
+            whole.split(' ').collect::<Vec<_>>(),
+            grown.split(' ').collect::<Vec<_>>(),
+        );
+        assert_eq!(g.len(), w.len());
+        assert_eq!(w, g, "graded as read whole");
+        let want = g.iter().filter(|v| v.starts_with("burn")).count() as i64;
+        assert!(want > 0);
+        assert_eq!(shown, want, "the burn filter's view");
         let _ = std::fs::remove_file(&path);
     }
 }

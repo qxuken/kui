@@ -437,6 +437,14 @@ and its tables sort and filter them.
   Measured on Windows 11 with a 1.5 s teardown: off the screen 7–16 ms
   after the close, where it stayed for the whole 1.6 s.
 
+- **Live grades a burn's first frames as burns** (backlog RG171). A
+  burn is 30 quiet frames in a row, so the frames of one that a poll
+  placed before it was that long kept `burn = false` and their verdict,
+  and a `verdicts = { "burn" }` filter missed them; when a burn reaches
+  back over frames already placed, `kui.trace` writes their `burn` and
+  verdict again, once, and the frames' view follows. A file grown in
+  pieces now reads as the file read whole.
+
 - **A corrupt recording no longer aborts its reader** (backlog FZ19,
   from the `trace` fuzz target, new this release): a name record whose
   id lay far past the names read so far made room for every id before
@@ -493,7 +501,10 @@ the speed-ups above took back C149's and F220's cost). Three read-only
 reviews of the 82 commits since alpha.69 — the core and the recording's
 crates, the bindings and the platform, the docs and the packaging — found
 what the backlog's alpha.70 pre-tag section lists: fixed before the tag,
-folded into the entries above, and RG171–RG173 open. Twenty minutes of
+folded into the entries above. Of the three it filed, RG171 (a Live
+burn's first frames, above) was built before the tag; RG172 and RG173,
+in `kui-channel`, are alpha.71's, since that crate went to crates.io
+before them. Twenty minutes of
 all eleven fuzz targets after, `trace` new and `channel` grown to this
 release's reads: FZ19 fixed (above), FZ20 open (an editor's declared
 value after a composition a press ends; alpha.69 the same).
@@ -502,7 +513,8 @@ Not verified natively this release: Windows and Linux on a machine
 (smoke.yml's Windows round and ci.yml's Linux check run on GitHub's
 runners, and both block the release), the
 trusted-publishing token step, which only a tag's `publish` runs, and
-Live in kui-perf over a growing file (RG171, RG172).
+Live in kui-perf over a growing file by hand (its test grows a file in
+pieces).
 
 ## 0.1.0-alpha.69 (2026-10-28)
 

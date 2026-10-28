@@ -4276,23 +4276,13 @@ same day: a name record whose id lay far past the names read so far grew
 the table to it — 16 bytes asked for 94 GB, so a corrupt `.kuitrace`
 dropped on kui-perf aborted it; a name more than 65 536 past the table
 is read as none (`fuzz/regressions/trace/fz19-name-past-the-table`).
-Four stay open.
+RG171 was built the same day, before the tag, and is in the archive.
+RG172 and RG173 were built the same day too, after `kui-channel`
+0.1.0-alpha.70 had gone to crates.io from the commit before them, so
+they ship in alpha.71 (the tag holds what crates.io holds). FZ20 stays
+open.
 
-### `.` RG171 — Live: a burn's first frames keep the verdict they had before it was one
-
-**Found** 2026-10-28 by the alpha.70 review of `kui-trace/src/lua.rs`'s
-`absorb`: a poll writes `burn`, the verdict column and `frame_verdict`
-for the frames new in that poll alone, from `analysis::burns` over the
-timeline so far. A burn is `BURN_FRAMES` frames in a row, so the frames
-that arrived before the run reached that length keep `burn = false` and
-a verdict that is not a burn for good, and the `verdicts` filter goes by
-those. A whole file is read until it is idle before its frames are
-placed, so only Live (a watched file growing) meets it. **Do.** Hold the
-last frames back until no burn can still take them in (the tail of
-`BURN_FRAMES - 1`), or rewrite the rows of a burn that grew past the
-poll's first new frame — the channel's revision either way.
-
-### `.` RG172 — A table read whole after appends is copied whole, at every revision
+### `.` RG172 — A table read whole after appends is copied whole, at every revision — built for alpha.71
 
 **Found** 2026-10-28 by the alpha.70 review of `kui-channel`: `Inner::flat`
 joins every column of a revision held in more than one run into a copy,
@@ -4326,7 +4316,7 @@ empty preedit. The minimized input (217 bytes, base64), for
 selection, a preedit, a press), fix where the press ends the
 composition, and keep the input.
 
-### `.` RG173 — Numbers with a fraction appended to a column of integers are refused
+### `.` RG173 — Numbers with a fraction appended to a column of integers are refused — built for alpha.71
 
 **Found** 2026-10-28 by the alpha.70 review of `Channel::append`: a
 column built from whole numbers is integers (`column_of`, and Node's
