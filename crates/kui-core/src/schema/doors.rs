@@ -442,7 +442,7 @@ pub const DOORS: &[Door] = &[
         odin: No(ODIN_IS_C),
         node: No("the platform is the build's; a test that fakes another is a Rust test"),
         lua: No(GUEST),
-        doc: "Says the core runs on another platform than the build's (backlog C116): a test of one platform's convention on another machine, the `platform` conditions and the env reading both following.",
+        doc: "Says the core runs on another platform than the build's (backlog C116): a test of one platform's convention on another machine, or a headless run pinned to another platform's look (`Launcher::platform`, `kui run --platform`, backlog F220). The `platform` conditions and the env reading follow, and so does every choice the core makes by platform: a drawn menu's shortcut labels, the primary modifier, the editing keys' modifiers, glyph hinting and the titlebar's caption height.",
     },
     Door {
         rust: "Ui::tab_moves_focus",

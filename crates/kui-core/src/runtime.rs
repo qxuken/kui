@@ -1379,10 +1379,11 @@ impl Core {
     }
 
     /// The titlebar height that stands for "the platform's" in this
-    /// window: the driver's, or the stock caption height.
-    fn platform_titlebar_h(&self) -> f32 {
+    /// window: the driver's, or the caption height of the platform the
+    /// core says it runs on ([`Core::platform`], backlog F220).
+    pub(crate) fn platform_titlebar_h(&self) -> f32 {
         self.platform_titlebar_h
-            .unwrap_or(crate::metrics::Metrics::comfortable().titlebar_h)
+            .unwrap_or(crate::metrics::caption_h(self.platform))
     }
 
     /// A core with a session of its own — one window, nothing shared.
@@ -2396,9 +2397,13 @@ impl Core {
         // because a removal can land between frames, after the list was
         // cleared, and through a window that never draws again.
         self.sync_dropped();
-        // A window moved to a scale hinted otherwise draws every glyph
+        // A window moved to a scale hinted otherwise — or a core told it
+        // runs on a platform that hints otherwise — draws every glyph
         // again: the atlas keys a glyph by its size, not by its hinting.
-        if self.text.set_hint(crate::text::hints_at(scale)) {
+        if self
+            .text
+            .set_hint(crate::text::hints_at(scale, self.platform))
+        {
             self.atlas.clear();
         }
         // Before anything is emitted: the one point where the atlas may

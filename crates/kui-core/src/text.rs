@@ -40,8 +40,9 @@ pub(crate) struct Raster {
     pub(crate) hint: bool,
 }
 
-/// Whether glyphs are hinted at `scale`: never on macOS, and elsewhere only
-/// below 1.5×. Hinting snaps each glyph to the pixel grid by the face's own
+/// Whether glyphs are hinted at `scale` on `platform` — the core's, so a
+/// run pinned to another platform's look draws its glyphs as that one
+/// does (backlog F220): never on macOS, and elsewhere only below 1.5×. Hinting snaps each glyph to the pixel grid by the face's own
 /// program, glyph by glyph, and a face whose program does not treat every
 /// glyph alike snaps one flat top up and the next down: in Helvetica
 /// Neue `п` and `н`, `a` and `c`, landed a whole row apart in one word at
@@ -49,8 +50,8 @@ pub(crate) struct Raster {
 /// stem one pixel wide, and Windows' and Linux's own text is hinted; at
 /// 2× there is no coarse grid to fit, and macOS draws nothing hinted at
 /// any scale, so an app there is drawn as the system's text is.
-pub(crate) fn hints_at(scale: f32) -> bool {
-    !cfg!(target_os = "macos") && scale < 1.5
+pub(crate) fn hints_at(scale: f32, platform: crate::rules::Platform) -> bool {
+    platform != crate::rules::Platform::MacOs && scale < 1.5
 }
 
 impl Raster {
@@ -59,7 +60,7 @@ impl Raster {
             ctx: swash::scale::ScaleContext::new(),
             axes: FxHashMap::default(),
             subpixel: false,
-            hint: hints_at(1.0),
+            hint: hints_at(1.0, crate::rules::Platform::current()),
         }
     }
 

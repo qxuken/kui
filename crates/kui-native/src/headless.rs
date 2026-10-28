@@ -21,6 +21,15 @@
 //! - **`env.system`**: only what the launcher pinned
 //!   ([`Launcher::system`]). The OS is not asked, so a picture taken on one
 //!   machine is the picture another takes.
+//! - **Its platform**: the build's, or the one the launcher pinned
+//!   ([`Launcher::platform`]) — the shortcuts a menu writes, the primary
+//!   modifier, the titlebar a custom-chrome app draws against.
+//! - **`env.window`**: written once at open — the main window's id,
+//!   whether the app draws its chrome, and under [`Chrome::Custom`] on
+//!   macOS (the build's or the pinned one) the traffic lights' keep-out
+//!   ([`Titlebar::mac_controls`]) — and kept from frame to frame. A host
+//!   tells it another through [`HeadlessInput::window`]: maximized, in
+//!   fullscreen, other controls.
 //!
 //! And what a window does to the OS, a headless runner keeps to itself:
 //!
@@ -40,8 +49,9 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::{
-    App, Captures, Core, Extensions, FrameCause, FrameSample, InputEvent, Launcher, MenuAction,
-    Session, Size, SystemEnv, UiEvent, WindowCommand, WindowEnv, WindowId,
+    App, Captures, Chrome, Core, Extensions, FrameCause, FrameSample, InputEvent, Launcher,
+    MenuAction, Platform, Session, Size, SystemEnv, Titlebar, UiEvent, WindowCommand, WindowEnv,
+    WindowId,
 };
 
 /// How often a frame is drawn while something animates: there is no
@@ -61,6 +71,7 @@ enum Ask {
     Input(InputEvent),
     Resize(Size, f32),
     Focus(bool),
+    Window(WindowEnv),
     Clipboard(String),
     Close,
 }
@@ -169,6 +180,16 @@ impl HeadlessInput {
         self.0.ask(Ask::Focus(focused));
     }
 
+    /// What the OS would say of the window (`env.window`): maximized, in
+    /// fullscreen, above every other window, the controls it draws over
+    /// the content. Kept until told again; the id stays the main
+    /// window's. The runner starts from the one its launcher makes (see
+    /// the [module docs](self)), so a host that changes one field reads
+    /// [`HeadlessRunner::window`] and sends it back changed.
+    pub fn window(&self, env: WindowEnv) {
+        self.0.ask(Ask::Window(env));
+    }
+
     /// The runner's clipboard set to `text`, as if another app had copied
     /// it: what the app's next paste reads.
     pub fn set_clipboard(&self, text: impl Into<String>) {
@@ -195,7 +216,9 @@ struct Headless<A: App + ?Sized> {
     viewport: Size,
     scale: f32,
     focused: bool,
-    custom_chrome: bool,
+    /// What `env.window` reads: made at open, kept across frames, changed
+    /// by [`HeadlessInput::window`] (backlog F221).
+    window: WindowEnv,
     pinned_system: SystemEnv,
     clipboard: String,
     /// Origin of the frame clock.
@@ -246,11 +269,12 @@ pub struct HeadlessRunner<A: App> {
 impl Launcher {
     /// Opens the app with no window: `w` by `h` logical px at `scale`, on
     /// the real clock, its frames drawn for nobody and kept as files when
-    /// it asks. The launcher's core, setup, diagnostics, extensions, chrome
-    /// and pinned `env.system` apply as they would to a window; its title,
-    /// icon, size bounds and backdrop have nothing to apply to, and
-    /// `KUI_DEVTOOLS` does not open the panel. [`App::setup`] runs
-    /// now, with a [`Waker`] for this runner.
+    /// it asks. The launcher's core, setup, diagnostics, extensions, chrome,
+    /// titlebar and pinned `env.system` apply as they would to a window,
+    /// and its pinned platform ([`Launcher::platform`]) as it would to no
+    /// window; its title, icon, size bounds and backdrop have nothing to
+    /// apply to, and `KUI_DEVTOOLS` does not open the panel.
+    /// [`App::setup`] runs now, with a [`Waker`] for this runner.
     pub fn open_headless<A: App>(
         mut self,
         app: A,
@@ -258,7 +282,10 @@ impl Launcher {
         h: f32,
         scale: f32,
     ) -> HeadlessRunner<A> {
-        let (_diagnostics, session, core) = self.main_core_for(false);
+        let (_diagnostics, session, mut core) = self.main_core_for(false);
+        let platform = self.platform.unwrap_or_else(Platform::current);
+        core.set_platform(platform);
+        let window = headless_window(&mut core, self.chrome, self.titlebar, platform);
         let signal = Arc::new(Signal::default());
         let mut inner = Box::new(Headless {
             signal: signal.clone(),
@@ -269,7 +296,7 @@ impl Launcher {
             viewport: Size::new(w, h),
             scale,
             focused: true,
-            custom_chrome: self.chrome != crate::Chrome::Native,
+            window,
             pinned_system: self.system,
             clipboard: String::new(),
             epoch: Instant::now(),
@@ -380,6 +407,12 @@ impl<A: App> HeadlessRunner<A> {
         (self.inner.viewport, self.inner.scale)
     }
 
+    /// What `env.window` reads: the one the runner opened with, or the
+    /// last [`HeadlessInput::window`] handled.
+    pub fn window(&self) -> WindowEnv {
+        self.inner.window
+    }
+
     /// The runner's clipboard: what the app last copied, or what
     /// [`HeadlessInput::set_clipboard`] put there.
     pub fn clipboard(&self) -> &str {
@@ -472,6 +505,16 @@ impl DynHeadless<'_> {
                 Ask::Focus(focused) => {
                     self.focused = focused;
                     self.owe(FrameCause::FOCUS);
+                }
+                Ask::Window(env) => {
+                    let env = WindowEnv {
+                        id: WindowId::MAIN,
+                        ..env
+                    };
+                    if env != self.window {
+                        self.window = env;
+                        self.owe(FrameCause::HOST);
+                    }
                 }
                 Ask::Clipboard(text) => self.clipboard = text,
                 Ask::Close => {
@@ -568,11 +611,7 @@ impl DynHeadless<'_> {
         core.env.refresh_hz = Some(ANIMATION_HZ);
         core.env.focused = self.focused;
         core.env.system = self.pinned_system.over(SystemEnv::default());
-        core.env.window = WindowEnv {
-            id: WindowId::MAIN,
-            custom_chrome: self.custom_chrome,
-            ..WindowEnv::default()
-        };
+        core.env.window = self.window;
         core.set_time(now);
         core.note_frame_cause(why);
         let t_view = Instant::now();
@@ -690,6 +729,34 @@ impl DynHeadless<'_> {
             self.app.teardown();
             let _ = self.core.perf_flush();
         }
+    }
+}
+
+/// The `env.window` a headless run opens with, and the titlebar metric
+/// beside it, as a window of `platform` would have them (backlog F220,
+/// F221): under custom chrome on macOS the OS's lights at macOS 27's
+/// place for `titlebar` and the strip as tall as they say; elsewhere no
+/// controls of the OS's, and the strip the caption's or the launcher's
+/// [`Titlebar::strip_h`].
+fn headless_window(
+    core: &mut Core,
+    chrome: Chrome,
+    titlebar: Titlebar,
+    platform: Platform,
+) -> WindowEnv {
+    let custom = chrome == Chrome::Custom;
+    let native_controls = (custom && platform == Platform::MacOs).then(|| titlebar.mac_controls());
+    if custom {
+        core.set_platform_titlebar_h(match native_controls {
+            Some(r) => Some(r.h),
+            None => titlebar.strip_h(),
+        });
+    }
+    WindowEnv {
+        id: WindowId::MAIN,
+        custom_chrome: chrome != Chrome::Native,
+        native_controls,
+        ..WindowEnv::default()
     }
 }
 

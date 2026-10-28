@@ -505,6 +505,35 @@ impl Titlebar {
         }
     }
 
+    /// The keep-out macOS 27 measures for this titlebar under custom
+    /// chrome (the table above): the traffic lights with the gap before
+    /// them repeated after, and the strip they are centred in — 78×32,
+    /// 84×40 and 98×52. What a headless run pinned to macOS reports as
+    /// `env.window.native_controls`, having no window to measure (backlog
+    /// F221).
+    pub const fn mac_controls(self) -> Rect {
+        match self {
+            Titlebar::Standard => Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 78.0,
+                h: 32.0,
+            },
+            Titlebar::Medium => Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 84.0,
+                h: 40.0,
+            },
+            Titlebar::Tall => Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 98.0,
+                h: 52.0,
+            },
+        }
+    }
+
     /// Every name [`Titlebar::from_name`] reads, in order.
     pub const NAMES: [&'static str; 3] = ["standard", "medium", "tall"];
 
@@ -568,6 +597,7 @@ pub fn app(title: &str) -> Launcher {
         frame_latency: kui_wgpu::DEFAULT_FRAME_LATENCY,
         backdrop: Backdrop::Opaque,
         titlebar: Titlebar::Standard,
+        platform: None,
     }
 }
 
@@ -620,6 +650,9 @@ pub struct Launcher {
     /// How tall the macOS titlebar is under custom chrome
     /// ([`Launcher::titlebar`]).
     titlebar: Titlebar,
+    /// The platform a headless run draws as ([`Launcher::platform`]);
+    /// `None` is the build's.
+    platform: Option<Platform>,
 }
 
 impl Launcher {
@@ -764,6 +797,37 @@ impl Launcher {
     /// `core.env.system`.
     pub fn system(mut self, pinned: SystemEnv) -> Self {
         self.system = pinned;
+        self
+    }
+
+    /// The platform a headless run ([`Launcher::open_headless`]) draws
+    /// as, in place of the build's (backlog F220): a picture of the Mac's
+    /// window taken on Windows, or the other way round. The core is told
+    /// it runs there (`Core::set_platform`), so the `platform` conditions
+    /// and `env.platform` read it, a drawn menu writes its shortcuts as
+    /// that platform does (`⌥⌘8`, `Ctrl+Alt+8`), the primary modifier a
+    /// shortcut and an editing key mean is its own (⌘ or Ctrl), and the
+    /// titlebar under [`Chrome::Custom`] is its own: on macOS the OS's
+    /// traffic lights in `env.window.native_controls`
+    /// ([`Titlebar::mac_controls`]) and the strip as tall as they say,
+    /// elsewhere the caption's height or [`Titlebar::strip_h`], with
+    /// `widgets::titlebar` drawing its own buttons.
+    ///
+    /// ```rust,no_run
+    /// # use kui_native::{App, Platform, Titlebar, Ui};
+    /// # struct Notes;
+    /// # impl App for Notes { fn view(&mut self, _ui: &mut Ui<'_>) {} }
+    /// let runner = kui_native::app("Notes")
+    ///     .custom_titlebar()
+    ///     .titlebar(Titlebar::Tall)
+    ///     .platform(Platform::MacOs)
+    ///     .open_headless(Notes, 800.0, 500.0, 2.0);
+    /// ```
+    ///
+    /// A window keeps the build's: its chrome and its keys are the OS's,
+    /// whatever the launcher says.
+    pub fn platform(mut self, platform: Platform) -> Self {
+        self.platform = Some(platform);
         self
     }
 

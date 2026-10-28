@@ -38,7 +38,7 @@ impl Core {
     /// can bind the key. A spelling kui cannot parse is left exactly as
     /// written and drawn as written — an app's own shortcut is the app's.
     pub fn declare_menu_bar(&mut self, bar: MenuBar) {
-        let bar = normalize(bar);
+        let bar = normalize(bar, self.platform);
         if self.menu_bar.as_ref() == Some(&bar) {
             return;
         }
@@ -266,9 +266,9 @@ impl Core {
 /// spelling, and leaves the rest exactly as declared. Runs once per
 /// changed declaration and not per frame, which is why `declare_menu_bar`
 /// compares after normalizing rather than before.
-fn normalize(mut bar: MenuBar) -> MenuBar {
+fn normalize(mut bar: MenuBar, platform: crate::rules::Platform) -> MenuBar {
     for menu in &mut bar.menus {
-        MenuItem::normalize_accels(&mut menu.items);
+        MenuItem::normalize_accels(&mut menu.items, platform);
     }
     bar
 }

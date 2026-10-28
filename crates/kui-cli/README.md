@@ -69,6 +69,7 @@ end
 | `--scale S` | With `--headless` or `--shot`, the display's scale (1): `1.5` draws as a 150% display does, fractional pixels and all. A window takes its monitor's. |
 | `KUI_PAINT_AUDIT=1` | In the environment: every frame checks that nothing a node draws leaves the box that clips or scrolls it (ADR 0074), a `paint-escape` warning per node that does; a headless run prints the counts at its end. A test aid. |
 | `--appearance light\|dark` | Pins the appearance over the OS's, so a token with a light and a dark value takes that one; headless has no OS to ask, so a `--shot` in light needs it. |
+| `--platform macos\|windows\|linux` | With `--headless` or `--shot`, draws as that platform does rather than this machine's: a menu's shortcuts (`⌥⌘8` or `Ctrl+Alt+8`), the modifier a shortcut and an editing key mean (⌘ or Ctrl), `env.platform` and the `platform` conditions, and under custom chrome its titlebar — on `macos` the traffic lights' room at macOS 27's place for the manifest's `titlebar`. So a README's pictures match whichever machine takes them. |
 | `-- args…` | What follows is the app's own, in `kui.args`: `kui run . -- --port 3001`. |
 | `--devtools` | Opens with the devtools panel; its Log tab has what the app printed and logged. |
 | `--no-rename` | Keeps the name "kui" in the Dock and ⌘Tab (macOS names an app by its binary, so a windowed run relaunches as a free clone named after the app). |

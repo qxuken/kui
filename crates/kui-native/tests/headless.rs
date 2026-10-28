@@ -399,3 +399,111 @@ fn a_recording_is_written_on_its_thread_and_answered_on_its_wake() {
     assert!(t0.elapsed() < Duration::from_secs(5), "{:?}", t0.elapsed());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// What each frame's view read of its window and its platform.
+#[derive(Default)]
+struct Chromed {
+    seen: Vec<(kui_native::WindowEnv, kui_native::Platform, f32)>,
+}
+
+impl App for Chromed {
+    fn view(&mut self, ui: &mut Ui<'_>) {
+        self.seen
+            .push((ui.env().window, ui.platform(), ui.metrics().titlebar_h));
+        widgets::titlebar(ui, "Notes");
+    }
+}
+
+fn open_as(
+    platform: kui_native::Platform,
+    titlebar: kui_native::Titlebar,
+) -> kui_native::HeadlessRunner<Chromed> {
+    kui_native::app("chromed")
+        .custom_titlebar()
+        .titlebar(titlebar)
+        .platform(platform)
+        .open_headless(Chromed::default(), 480.0, 300.0, 1.0)
+}
+
+/// A run pinned to macOS under custom chrome is told of the traffic
+/// lights a Mac's window has at macOS 27's place, on any machine, and the
+/// strip is as tall as they say (backlog F220, F221).
+#[test]
+fn a_run_pinned_to_macos_has_the_lights_of_its_titlebar() {
+    for (titlebar, w, h) in [
+        (kui_native::Titlebar::Standard, 78.0, 32.0),
+        (kui_native::Titlebar::Medium, 84.0, 40.0),
+        (kui_native::Titlebar::Tall, 98.0, 52.0),
+    ] {
+        let mut r = open_as(kui_native::Platform::MacOs, titlebar);
+        r.turn();
+        let (win, platform, strip) = r.app_mut().seen[0];
+        assert_eq!(platform, kui_native::Platform::MacOs);
+        assert!(win.custom_chrome);
+        assert_eq!(
+            win.native_controls,
+            Some(kui_native::Rect::new(0.0, 0.0, w, h)),
+            "{titlebar:?}"
+        );
+        assert_eq!(strip, h, "{titlebar:?}");
+    }
+}
+
+/// Pinned elsewhere, the OS draws no controls over the content (the
+/// titlebar draws its own) and the strip is the caption's, or the
+/// launcher's taller one.
+#[test]
+fn a_run_pinned_elsewhere_draws_its_own_controls() {
+    for (platform, titlebar, h) in [
+        (
+            kui_native::Platform::Windows,
+            kui_native::Titlebar::Standard,
+            32.0,
+        ),
+        (
+            kui_native::Platform::Linux,
+            kui_native::Titlebar::Standard,
+            34.0,
+        ),
+        (
+            kui_native::Platform::Windows,
+            kui_native::Titlebar::Tall,
+            52.0,
+        ),
+    ] {
+        let mut r = open_as(platform, titlebar);
+        r.turn();
+        let (win, seen, strip) = r.app_mut().seen[0];
+        assert_eq!(seen, platform);
+        assert_eq!(win.native_controls, None, "{platform:?}");
+        assert_eq!(strip, h, "{platform:?} {titlebar:?}");
+    }
+}
+
+/// `env.window` is the runner's to keep, not made afresh each frame: a
+/// host's word on it (maximized, other controls) stands frame after
+/// frame, and the id stays the main window's.
+#[test]
+fn the_window_a_host_tells_is_kept_across_frames() {
+    let mut r = open_as(kui_native::Platform::MacOs, kui_native::Titlebar::Tall);
+    r.turn();
+    let opened = r.window();
+    assert_eq!(r.app_mut().seen[0].0, opened);
+    let told = kui_native::WindowEnv {
+        id: WindowId(7),
+        maximized: true,
+        native_controls: Some(kui_native::Rect::new(0.0, 0.0, 120.0, 60.0)),
+        ..opened
+    };
+    r.input().window(told);
+    assert!(r.turn());
+    r.waker().wake();
+    assert!(r.turn());
+    let seen = &r.app_mut().seen;
+    assert_eq!(seen.len(), 3, "the change and the wake each drew a frame");
+    for (win, ..) in &seen[1..] {
+        assert_eq!(win.id, WindowId::MAIN);
+        assert!(win.maximized);
+        assert_eq!(win.native_controls, told.native_controls);
+    }
+}
