@@ -47,7 +47,7 @@ Waker :: struct {}
 AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 41
+ABI_VERSION :: 42
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -270,6 +270,10 @@ OVERSCROLL_CONTAIN :: 2
 SCROLL_AXES_BOTH :: 1
 SCROLL_AXES_X :: 2
 SCROLL_AXES_Y :: 3
+
+HOST_HIT_AUTO :: 1
+HOST_HIT_BLOCK :: 2
+HOST_HIT_PASS :: 3
 
 EXPANDED_COLLAPSED :: 1
 EXPANDED_EXPANDED :: 2
@@ -761,6 +765,7 @@ Spec :: struct {
 	float_escape: u32,
 	scale_x: f32,
 	scale_y: f32,
+	host_hit: u32,
 }
 
 Announcement :: struct {
@@ -1231,6 +1236,9 @@ foreign lib {
 	release_held_keys :: proc(ctx: ^Ctx) ---
 	input_modifiers :: proc(ctx: ^Ctx, mods: u32) ---
 	poll_event :: proc(ctx: ^Ctx, out: ^Event) -> bool ---
+	hit :: proc(ctx: ^Ctx, x: f32, y: f32) -> u64 ---
+	pointer_wants :: proc(ctx: ^Ctx) -> bool ---
+	keyboard_wants :: proc(ctx: ^Ctx) -> bool ---
 	env_set :: proc(ctx: ^Ctx, refresh_hz: f32, focused: bool) ---
 	env_set_system :: proc(ctx: ^Ctx, appearance: u32, accent: u32, motion: u32, locale: string) ---
 	env_set_contrast :: proc(ctx: ^Ctx, contrast: u32) ---

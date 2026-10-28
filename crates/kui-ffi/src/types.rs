@@ -1013,6 +1013,10 @@ pub struct KuiSpec {
     /// 41, appended.
     pub scale_x: f32,
     pub scale_y: f32,
+    /// What a host's `kui_hit` and `kui_pointer_wants` count the box as
+    /// (`hostHit`, backlog F233): `KUI_HOST_HIT_*`, 0 for auto. ABI 42,
+    /// appended.
+    pub host_hit: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.
@@ -1188,6 +1192,12 @@ pub const KUI_SCROLLBAR_AUTO: u32 = 3;
 /// unset, which is `auto`).
 pub const KUI_OVERSCROLL_AUTO: u32 = 1;
 pub const KUI_OVERSCROLL_CONTAIN: u32 = 2;
+
+/// KUI_HOST_HIT_* is the position in `schema::HOST_HITS` plus one (0 =
+/// unset, which is `auto`).
+pub const KUI_HOST_HIT_AUTO: u32 = 1;
+pub const KUI_HOST_HIT_BLOCK: u32 = 2;
+pub const KUI_HOST_HIT_PASS: u32 = 3;
 
 /// KUI_SCROLL_AXES_* is the position in `schema::SCROLL_AXES` plus one (0
 /// = unset, which is both).

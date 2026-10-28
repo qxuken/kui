@@ -2023,6 +2023,56 @@ impl HitTurn {
     }
 }
 
+/// A box that blocks a host's world without being a hit region (backlog
+/// F233): one that paints — a background, a border, an image — or
+/// declares `host_hit: block`. kui's own input never reads these; they
+/// answer `Core::hit` and `Core::pointer_wants`.
+#[derive(Clone, Debug)]
+pub struct Blocker {
+    pub key: Key,
+    /// How many of the frame's hit regions were painted before it: a
+    /// region at that index or later is over it.
+    pub above: u32,
+    /// Logical px, in the node's own space, as a region's `rect`.
+    pub rect: Rect,
+    /// Ancestor clip in viewport coordinates.
+    pub clip: Rect,
+    /// The turn it is drawn through, as a region's.
+    pub turn: Option<Box<HitTurn>>,
+    /// Its corner radii, logical px; square for none.
+    pub radius: [f32; 4],
+}
+
+impl Blocker {
+    /// Whether `p` (viewport px) is in the box: in its clip, then through
+    /// its turn into its own space, in its rect and its rounded corners.
+    fn contains(&self, p: Vec2) -> bool {
+        if !self.clip.contains(p) {
+            return false;
+        }
+        let p = match &self.turn {
+            None => p,
+            Some(turn) => {
+                let q = turn.transform.unapply(p);
+                if !turn.inner.contains(q) {
+                    return false;
+                }
+                q
+            }
+        };
+        if !self.rect.contains(p) {
+            return false;
+        }
+        self.radius == crate::display::SQUARE
+            || in_rounded_rect(
+                Vec2::new(p.x - self.rect.x, p.y - self.rect.y),
+                self.rect.w,
+                self.rect.h,
+                self.radius,
+            )
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct HitRegion {
     pub key: Key,
@@ -2416,6 +2466,9 @@ struct ButtonCapture {
 pub struct Interaction {
     /// In paint order: later entries are on top.
     pub(crate) hits: Vec<HitRegion>,
+    /// The frame's painted boxes that are no hit region, in paint order,
+    /// for the host's hit query (backlog F233).
+    pub(crate) blockers: Vec<Blocker>,
     /// The points the stroke and fill shapes index, rebuilt with the
     /// hits; empty on a frame of plain boxes.
     shape_points: Vec<Vec2>,
@@ -2511,6 +2564,19 @@ impl Interaction {
     /// Drains the sounds nodes asked for since the last drain.
     pub(crate) fn take_sound_requests(&mut self) -> Vec<crate::resources::SoundId> {
         std::mem::take(&mut self.sound_requests)
+    }
+
+    /// The frame's blockers, installed with its hits (backlog F233).
+    pub(crate) fn set_blockers(&mut self, blockers: Vec<Blocker>) {
+        self.blockers = blockers;
+    }
+
+    /// The previous frame's blocker buffer (cleared), as
+    /// [`Self::take_hit_buffer`].
+    pub(crate) fn take_blocker_buffer(&mut self) -> Vec<Blocker> {
+        let mut blockers = std::mem::take(&mut self.blockers);
+        blockers.clear();
+        blockers
     }
 
     /// Hands back the previous frame's hit buffer (cleared) so emission can
@@ -2626,6 +2692,30 @@ impl Interaction {
 
     pub(crate) fn hit_at(&self, p: Vec2) -> Option<&HitRegion> {
         self.hits.iter().rev().find(|h| self.contains(h, p))
+    }
+
+    /// The topmost node at `p` that blocks a host's world (backlog F233):
+    /// the topmost hit region there, or a blocker painted over it.
+    pub(crate) fn host_hit_at(&self, p: Vec2) -> Option<Key> {
+        let hit = self.hits.iter().rposition(|h| self.contains(h, p));
+        let block = self.blockers.iter().rev().find(|b| b.contains(p));
+        match (hit, block) {
+            (Some(h), Some(b)) if b.above as usize > h => Some(b.key),
+            (Some(h), _) => Some(self.hits[h].key),
+            (None, Some(b)) => Some(b.key),
+            (None, None) => None,
+        }
+    }
+
+    /// Whether the pointer is held by something kui started under it: a
+    /// press, a drag, a slider's slide, a scrollbar's thumb, a claimed
+    /// button. Its release is kui's wherever it lands.
+    pub(crate) fn pointer_held(&self) -> bool {
+        self.pressed.is_some()
+            || self.drag.is_some()
+            || self.slide.is_some()
+            || self.scrollbar_drag.is_some()
+            || !self.held_buttons.is_empty()
     }
 
     /// The region a primary press at `p` lands on: the topmost region

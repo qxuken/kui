@@ -494,8 +494,15 @@ extern "C" {
  * embedded twice in KuiSpec, which moves every field after enter - and
  * KuiSpec appends scale_x and scale_y (912 bytes on 64-bit, from 888).
  * Recompile; zeroed, nothing stretches.
+ *
+ * ABI 42 is for a host that draws the UI over a world of its own (the
+ * Replicator Bloom wishlist, backlog F233-F239). KuiSpec appends host_hit
+ * with KUI_HOST_HIT_AUTO / _BLOCK / _PASS (920 bytes on 64-bit, from
+ * 912), what kui_hit and kui_pointer_wants count the box as; and
+ * kui_hit, kui_pointer_wants and kui_keyboard_wants are new functions.
+ * Recompile; zeroed, a box counts as derived.
  */
-#define KUI_ABI_VERSION 41u
+#define KUI_ABI_VERSION 42u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1619,6 +1626,15 @@ typedef struct KuiSpec {
      * stroke inside is stretched with it. 0 is 1, as scale's is. ABI 41,
      * appended (912 bytes on 64-bit). */
     float scale_x, scale_y;
+    /* What a host's kui_hit and kui_pointer_wants count this box as
+     * (hostHit, backlog F233): 0 (the zeroed field) or KUI_HOST_HIT_AUTO
+     * blocks the world where kui takes the pointer or the box paints (a
+     * background, a border, an image); KUI_HOST_HIT_BLOCK blocks wherever
+     * the box is, painted or not; KUI_HOST_HIT_PASS lets the pointer
+     * through a painted box - a damage flash, a vignette. A node kui takes
+     * the pointer on blocks whatever this says. kui's own hit testing is
+     * unchanged. ABI 42, appended (920 bytes on 64-bit). */
+    uint32_t host_hit;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
@@ -1677,6 +1693,12 @@ enum {
     KUI_SCROLL_AXES_BOTH = 1,
     KUI_SCROLL_AXES_X = 2,
     KUI_SCROLL_AXES_Y = 3,
+};
+/* KuiSpec.host_hit: the schema index plus one, so zero is auto. ABI 42. */
+enum {
+    KUI_HOST_HIT_AUTO = 1,
+    KUI_HOST_HIT_BLOCK = 2,
+    KUI_HOST_HIT_PASS = 3,
 };
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -2598,6 +2620,14 @@ typedef struct KuiDrawData {
  * composites what it has. The trace keeps a digest of every frame, a cost
  * only a host that skips draws needs.
  *
+ * The UI over a world of its own (a game, a map, a 3D view): before step
+ * 1 hands an input to the world as well, kui_pointer_wants and
+ * kui_keyboard_wants say whether it is the UI's (backlog F233), and
+ * kui_hit names the node at a point; feed kui every event either way. A
+ * transparent root paints nothing, so only what the view paints - and
+ * what kui takes the pointer on - blocks the world; KuiSpec.host_hit
+ * moves a box either way.
+ *
  * Text on a renderer without dual-source blending: subpixel glyphs
  * (KUI_QUAD_GLYPH_SUBPIXEL) need per-channel blending, and are off unless
  * kui_set_subpixel_text(ctx, true) turned them on; leave them off there.
@@ -2787,6 +2817,32 @@ void kui_release_held_keys(KuiCtx *ctx);
  * declares none hears nothing. */
 void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
+/* A host that draws the UI over a world of its own - a game, a map, a 3D
+ * view - asks these before it decides whose an input is (backlog F233;
+ * Dear ImGui's WantCaptureMouse and WantCaptureKeyboard). Each answers as
+ * of the last finished frame and the input fed since; feed kui every event
+ * either way.
+ *
+ * kui_hit: the topmost node at (x, y), logical px, that blocks the world,
+ * as a key; 0 for the world. A node kui takes the pointer on (a click, a
+ * hover, a drag, an editor) blocks, and so does a box that paints - a
+ * background, a border, an image - unless its host_hit is
+ * KUI_HOST_HIT_PASS; any box whose host_hit is KUI_HOST_HIT_BLOCK does,
+ * painted or not. Bare text and a box that paints nothing do not.
+ *
+ * kui_pointer_wants: whether the pointer is the UI's - over a node kui_hit
+ * answers for, or held by something kui started (a press, a drag, a
+ * slider, a scrollbar's thumb, a selection) whose release is kui's
+ * wherever it lands; and everywhere while a menu is open or a modal is in
+ * effect. Ask it before handing a press, a drag or a wheel to the world.
+ *
+ * kui_keyboard_wants: whether the keyboard is the UI's - an editor has
+ * focus, the focused node is a key sink (on_key), or a menu is open. Keep
+ * movement and hotkeys while it is false; a focused button still takes
+ * Tab, Enter and Space. */
+uint64_t kui_hit(KuiCtx *ctx, float x, float y);
+bool kui_pointer_wants(KuiCtx *ctx);
+bool kui_keyboard_wants(KuiCtx *ctx);
 
 /* -- Host environment ---------------------------------------------------- */
 /* These setters are the whole of C's `env`: the fields of kui_core's Env,

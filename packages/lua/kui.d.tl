@@ -50,6 +50,10 @@ global type kui = record
     "auto" "contain"
   end
 
+  enum HostHit
+    "auto" "block" "pass"
+  end
+
   enum ScrollAxes
     "both" "x" "y"
   end
@@ -320,6 +324,8 @@ global type kui = record
     scrollbar_active_color: Color
     -- What a scroll gesture that starts over this scroller does when it is already at its limit that way (backlog F107, CSS's `overscroll-behavior`): `auto` (the default) passes the gesture on to the scroller around it, `contain` keeps it here, moving nothing until it turns back. A gesture picks its target once, when it starts — the innermost scroller under the pointer that can still move the way it goes — and keeps it until it ends, wherever the pointer or the content has gone; one that reaches a limit midway stops there, whatever this says. Only on the axes the node scrolls: a `scrollY` list that contains still passes a sideways swipe to the strip around it. For a panel or a popup's list whose scrolling must never move what is behind it.
     overscroll: Overscroll
+    -- What a host that draws the UI over a world of its own — a game, a map, a 3D view — counts this box as when it asks whether the pointer is over the UI (`Core::hit` / `pointer_wants`, `kui_hit` / `kui_pointer_wants`, `Ctx.hit` / `pointerWants`; backlog F233): `auto` (the default) blocks the world where kui takes the pointer (a click, a hover, a drag, an editor) or where the box paints — a background, a border, an image — and lets it through over bare text and a box that paints nothing; `block` blocks wherever the box is, painted or not, a transparent catcher over a minimap; `pass` lets the pointer through a painted box to the world, a damage flash or a vignette over the whole window. A node kui takes the pointer on blocks whatever this says, so a click is never both kui's and the world's. kui's own hit testing is unchanged: only the host's question reads it.
+    host_hit: HostHit
     -- Inert: no click, drag or key sink, no hover / pressed / focus background, skipped by Tab, reported disabled to assistive technology; hover tracking stays so a `tooltip` can say why.
     disabled: boolean
     -- Background while the pointer is over the node or anything inside it, a clickable child included (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`.

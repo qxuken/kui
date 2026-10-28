@@ -1844,6 +1844,44 @@ static int surface(void) {
         kui_ctx_free(why);
     }
 
+    /* A host's questions about the pointer and the keyboard (backlog
+     * F233), on a context of its own: a painted panel blocks the world, a
+     * box that paints nothing does not unless it says KUI_HOST_HIT_BLOCK,
+     * a painted one KUI_HOST_HIT_PASS lets it through; nothing is focused,
+     * so the keyboard is the world's. */
+    {
+        KuiCtx *host = kui_ctx_new();
+        kui_frame_begin(host, 320, 240, 1);
+        KuiSpec panel = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 80},
+                         .bg = 0x202020ccu};
+        uint64_t panel_key = kui_open_keyed(host, KUI_STR("panel"), &panel, NULL);
+        kui_close(host);
+        KuiSpec plain = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 40}};
+        kui_open_keyed(host, KUI_STR("plain"), &plain, NULL);
+        kui_close(host);
+        KuiSpec catcher = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 40},
+                           .host_hit = KUI_HOST_HIT_BLOCK};
+        uint64_t catcher_key = kui_open_keyed(host, KUI_STR("catcher"), &catcher, NULL);
+        kui_close(host);
+        KuiSpec flash = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 40},
+                         .bg = 0xff000040u, .host_hit = KUI_HOST_HIT_PASS};
+        kui_open_keyed(host, KUI_STR("flash"), &flash, NULL);
+        kui_close(host);
+        kui_frame_finish(host);
+        check(kui_hit(host, 50, 40) == panel_key, "kui_hit: the painted panel");
+        check(kui_hit(host, 50, 100) == 0, "a box that paints nothing is the world's");
+        check(kui_hit(host, 50, 140) == catcher_key, "KUI_HOST_HIT_BLOCK takes it unpainted");
+        check(kui_hit(host, 50, 180) == 0, "KUI_HOST_HIT_PASS lets a painted box through");
+        check(kui_hit(host, 300, 20) == 0, "and the root paints nothing");
+        check(!kui_pointer_wants(host), "kui_pointer_wants: no cursor yet");
+        kui_input_cursor(host, 50, 40);
+        check(kui_pointer_wants(host), "over the panel");
+        kui_input_cursor(host, 300, 20);
+        check(!kui_pointer_wants(host), "over the world");
+        check(!kui_keyboard_wants(host), "kui_keyboard_wants: nothing has focus");
+        kui_ctx_free(host);
+    }
+
     /* The recording (ADR 0058), on a context of its own: off, a span's id
      * is 0 and nothing is kept; recording, the spans and the rest land in
      * kui-trace bytes. A standalone context has no waker - its host wakes

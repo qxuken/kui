@@ -245,8 +245,8 @@ pub use slot::{
     full_name, split_name,
 };
 pub use spec::{
-    Align, Bound, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, Min,
-    NodeSpec, OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, Overscroll, PadShorthand,
+    Align, Bound, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, HostHit,
+    Min, NodeSpec, OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, Overscroll, PadShorthand,
     ScrollAxes, Scrollbar, ScrollbarMode, Shadow, Sizing, TextStyle, TextWrap, TransformSpec,
     UnderlineStyle, Vec2Offset, corner,
 };

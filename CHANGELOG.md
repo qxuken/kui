@@ -30,6 +30,9 @@ was the first bare bump to break an app in five releases).
   read as numbers (`Cell::F64`, a float in Lua and Node), the revisions
   before keep their integers. A reader that matched `Column::I64` on a
   column a log appends to meets `Column::F64` once a fraction comes.
+- ABI 42 (C and Odin): `KuiSpec` appends `host_hit` (backlog F233), 920
+  bytes on 64-bit. Recompile against the new `kui.h`; zeroed, nothing
+  changes.
 
 Nothing else breaks.
 
@@ -49,6 +52,27 @@ Nothing else breaks.
   whole numbers alike, and `ch:append{ t = { 2.5 } }` was refused with
   "holds integers; numbers were appended". The column widens, its runs so
   far made again as numbers once.
+
+### Added
+
+- **A host can ask whether an input is the UI's** (backlog F233, from
+  Replicator Bloom's wishlist). A game, a map or a 3D view that draws a
+  transparent kui layer over its world asks before it hands a click, a
+  drag or a key to the world: `Core::hit(x, y)` names the topmost node at
+  a point that blocks the world, `Core::pointer_wants()` says whether the
+  pointer is the UI's (over such a node, or held by a press, a drag or a
+  selection kui started, or anywhere while a menu is open or a modal is
+  in effect), `Core::keyboard_wants()` whether the keyboard is (a focused
+  editor or key sink, an open menu) — Dear ImGui's `WantCaptureMouse` and
+  `WantCaptureKeyboard`. A node kui takes the pointer on blocks, and so
+  does a box that paints — a background, a border, an image; bare text
+  and a box that paints nothing let the world through. The new
+  `hostHit` row moves a box either way: `block` for a transparent
+  catcher, `pass` for a damage flash or a vignette the world shows
+  through. C `kui_hit`, `kui_pointer_wants`, `kui_keyboard_wants` and
+  `KuiSpec.host_hit` (`KUI_HOST_HIT_*`); Odin `hit`, `pointer_wants`,
+  `keyboard_wants`; Node `Ctx.hit`, `pointerWants`, `keyboardWants`; JSX
+  `hostHit`, Lua `host_hit`. kui's own hit testing is unchanged.
 
 ## 0.1.0-alpha.70 (2026-10-28)
 

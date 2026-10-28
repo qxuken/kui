@@ -295,6 +295,11 @@ pub(crate) fn spec_of(
     {
         spec = spec.overscroll(*o);
     }
+    if s.host_hit != 0
+        && let Some(h) = kui_core::HostHit::ALL.get(s.host_hit as usize - 1)
+    {
+        spec = spec.host_hit(*h);
+    }
     if s.scroll_axes != 0
         && let Some(a) = kui_core::ScrollAxes::ALL.get(s.scroll_axes as usize - 1)
     {

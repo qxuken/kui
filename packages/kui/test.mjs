@@ -3206,6 +3206,34 @@ test('owedBy names who holds an owed frame, frameCause says why a frame ran (F11
   assert.equal(app.ctx.frameUnchanged(), true, 'nothing moved');
 });
 
+test('a host asks whether the pointer and the keyboard are the UI\'s: hit, pointerWants, keyboardWants (F233)', () => {
+  const app = createApp(
+    {
+      init: {},
+      update: (m) => m,
+      view: () =>
+        box({ pad: 0 }, [
+          box({ width: 100, height: 80, bg: '#202020cc' }, [], 'panel'),
+          box({ width: 100, height: 40 }, [], 'plain'),
+          box({ width: 100, height: 40, hostHit: 'block' }, [], 'catcher'),
+          box({ width: 100, height: 40, bg: '#ff000040', hostHit: 'pass' }, [], 'flash'),
+        ]),
+    },
+    { startTime: 0, width: 320, height: 240 },
+  );
+  app.render();
+  assert.equal(app.ctx.hit(50, 40), app.ctx.keyOf('panel'), 'the painted panel');
+  assert.equal(app.ctx.hit(50, 100), null, 'a box that paints nothing is the world\'s');
+  assert.equal(app.ctx.hit(50, 140), app.ctx.keyOf('catcher'), 'block takes it unpainted');
+  assert.equal(app.ctx.hit(50, 180), null, 'pass lets a painted box through');
+  assert.equal(app.ctx.pointerWants(), false, 'no cursor yet');
+  app.ctx.cursor(50, 40);
+  assert.equal(app.ctx.pointerWants(), true, 'over the panel');
+  app.ctx.cursor(300, 20);
+  assert.equal(app.ctx.pointerWants(), false, 'over the world');
+  assert.equal(app.ctx.keyboardWants(), false, 'nothing has focus');
+});
+
 test('a view reads the frame it is for: frameCause and owedBy from inside createApp\'s view (RG81)', () => {
   // A view runs before its frame begins — it returns the tree the frame is
   // handed — so it read the frame before: `[]` on the key's frame, `key`

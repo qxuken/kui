@@ -3287,6 +3287,29 @@ export declare class Ctx {
    */
   windowDismissed(id: number, reason: string): void
   /**
+   * The topmost node at (`x`, `y`) (logical px) that blocks a host's
+   * world, as its key, as of the last finished frame; null for the
+   * world (backlog F233). A node kui takes the pointer on blocks, and
+   * so does a box that paints — a background, a border, an image —
+   * unless it says `hostHit="pass"`; any box that says
+   * `hostHit="block"` does. For a host that draws the UI over a world
+   * of its own: a game, a map, a 3D view.
+   */
+  hit(x: number, y: number): string | null
+  /**
+   * Whether the pointer is the UI's now: over a node `hit` answers
+   * for, held by a press, a drag or a selection kui started, or
+   * anywhere while a menu is open or a `modal` is in effect (backlog
+   * F233). Ask before handing a press, a drag or a wheel to the world.
+   */
+  pointerWants(): boolean
+  /**
+   * Whether the keyboard is the UI's now: an editor has focus, the
+   * focused node is a key sink (`onKey`), or a menu is open (backlog
+   * F233). Keep movement and hotkeys while it is false.
+   */
+  keyboardWants(): boolean
+  /**
    * The window title the last frame declared (a root `<box title>`), or
    * null when it declared none. `runWindowed` applies it to the real
    * window; a bare `Ctx` hands it back so a test can assert on it.

@@ -70,6 +70,7 @@ mod focus;
 pub mod follow;
 mod gesture;
 mod groups;
+mod host_hit;
 pub mod inspect;
 mod menu_api;
 pub mod perf;
@@ -466,6 +467,9 @@ pub struct Core {
     /// handed to `interaction` with them at the end of
     /// emission; the previous frame's buffers, cleared, in between.
     pub(crate) hit_shapes: crate::input::HitShapes,
+    /// The painted boxes that are no hit region, filled by emission and
+    /// installed with the hits (backlog F233).
+    pub(crate) blockers: Vec<crate::input::Blocker>,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -1485,6 +1489,7 @@ impl Core {
             fragments: Default::default(),
             stock_polygon: None,
             hit_shapes: Default::default(),
+            blockers: Vec::new(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,

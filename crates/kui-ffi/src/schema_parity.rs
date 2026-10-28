@@ -341,6 +341,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onButton" => s.on_button = &layout_tag,
             "buttons" => s.buttons = KUI_BUTTONS_MIDDLE,
             "overscroll" => s.overscroll = KUI_OVERSCROLL_CONTAIN,
+            "hostHit" => s.host_hit = KUI_HOST_HIT_BLOCK,
             "scrollAxes" => s.scroll_axes = KUI_SCROLL_AXES_X,
             "scrollMods" => s.scroll_mods = KUI_KMOD_CTRL,
             "backdropBlur" => s.backdrop_blur = F,
@@ -614,6 +615,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         float_escape: 1,
         scale_x: 0.5,
         scale_y: 2.0,
+        host_hit: KUI_HOST_HIT_PASS,
         tooltip: KuiStr {
             ptr: "hint".as_ptr(),
             len: 4,
@@ -714,6 +716,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .scale(1.2)
         .scale_x(0.5)
         .scale_y(2.0)
+        .host_hit(kui_core::HostHit::Pass)
         .pivot(0.25, 0.75)
         .iterations(2.0)
         .over_siblings()
