@@ -371,6 +371,10 @@ impl Transform {
     /// Exact for any pair: a turn inside a stretch comes out as a turn, a
     /// scale and a sheared stretch.
     pub fn then(&self, outer: &Transform) -> Transform {
+        // A turned node under nothing turned, the common case: no trig.
+        if outer.is_identity() {
+            return *self;
+        }
         let t = outer.apply(Vec2::new(self.tx, self.ty));
         if !outer.stretched() {
             // R2·s2·R1·s1·U1 = R(a1 + a2)·(s1·s2)·U1: the similarity ADR
@@ -441,12 +445,7 @@ impl Transform {
     /// The smallest axis-aligned rect holding `r` put through this
     /// transform: what an access rect and a cull read.
     pub fn bounds(&self, r: Rect) -> Rect {
-        corners_bounds([
-            self.apply(Vec2::new(r.x, r.y)),
-            self.apply(Vec2::new(r.x + r.w, r.y)),
-            self.apply(Vec2::new(r.x + r.w, r.y + r.h)),
-            self.apply(Vec2::new(r.x, r.y + r.h)),
-        ])
+        bounds_through(self.matrix(), Vec2::new(self.tx, self.ty), r)
     }
 
     /// The bounding box of `r` pulled back through this transform: the
@@ -466,20 +465,16 @@ impl Transform {
                 self.unapply(Vec2::new(r.x, r.y + r.h)),
             ]);
         }
-        let inv = Transform {
-            angle: -self.angle,
-            scale: 1.0 / self.scale,
-            tx: 0.0,
-            ty: 0.0,
-            ..Transform::IDENTITY
-        };
-        let o = inv.apply(Vec2::new(-self.tx, -self.ty));
-        Transform {
-            tx: o.x,
-            ty: o.y,
-            ..inv
-        }
-        .bounds(r)
+        // The inverse of a turn and a scale is the turn back over the
+        // scale: its matrix from one `sin_cos`, the move pulled through it.
+        let (s, c) = self.angle.sin_cos();
+        let k = 1.0 / self.scale;
+        let m = [c * k, s * k, -s * k, c * k];
+        let t = Vec2::new(
+            -(m[0] * self.tx + m[1] * self.ty),
+            -(m[2] * self.tx + m[3] * self.ty),
+        );
+        bounds_through(m, t, r)
     }
 
     /// The four lanes a tween carries for the slot: angle in turns, the
@@ -492,6 +487,24 @@ impl Transform {
 }
 
 /// The smallest axis-aligned rect holding four points.
+/// The smallest axis-aligned rect holding `r` through `p' = m·p + t`
+/// (`m` row by row): the centre mapped, and the half-extents through the
+/// matrix's magnitudes — one pass where four corners through
+/// [`Transform::apply`] read the turn four times, on every turned node a
+/// frame culls.
+#[inline]
+fn bounds_through(m: [f32; 4], t: Vec2, r: Rect) -> Rect {
+    let [a, b, c, d] = m;
+    let (hw, hh) = (r.w * 0.5, r.h * 0.5);
+    let (cx, cy) = (r.x + hw, r.y + hh);
+    let (hw, hh) = (hw.abs(), hh.abs());
+    let x = a * cx + b * cy + t.x;
+    let y = c * cx + d * cy + t.y;
+    let ex = a.abs() * hw + b.abs() * hh;
+    let ey = c.abs() * hw + d.abs() * hh;
+    Rect::new(x - ex, y - ey, 2.0 * ex, 2.0 * ey)
+}
+
 fn corners_bounds(corners: [Vec2; 4]) -> Rect {
     let mut x0 = f32::INFINITY;
     let mut y0 = f32::INFINITY;

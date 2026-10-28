@@ -1812,10 +1812,13 @@ impl Core {
         if self.prev_tree.keys == self.tree.keys {
             return;
         }
+        // The departing roots are watched through the store's own set
+        // (`DepartStore::holds`), not copied into this one: a full store is
+        // 4096 keys, hashed again into a fresh table on every frame whose
+        // tree moved — most of what replaying one cost.
         let mut watch: FxHashSet<Key> = FxHashSet::default();
         let mut mask = 0u64;
         for k in self.depart.keys() {
-            watch.insert(k);
             mask |= 1u64 << (k.0 & 63);
         }
         let mut candidates: Vec<usize> = Vec::new();
@@ -1836,12 +1839,12 @@ impl Core {
                 }
             }
         }
-        if watch.is_empty() {
+        if watch.is_empty() && self.depart.is_empty() {
             return;
         }
         let mut live: FxHashSet<Key> = FxHashSet::default();
         for &k in &self.tree.keys {
-            if mask & (1u64 << (k.0 & 63)) != 0 && watch.contains(&k) {
+            if mask & (1u64 << (k.0 & 63)) != 0 && (watch.contains(&k) || self.depart.holds(k)) {
                 live.insert(k);
             }
         }
