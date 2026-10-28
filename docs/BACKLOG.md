@@ -4073,10 +4073,13 @@ the tree at `f730a35d`. Twelve entries. F228–F232 — a dirty rect on the
 atlas, the host loop written down, the Odin openers and an
 `unclosed-node` warning, a word from `layout_of`, and the pack's
 Rust-beside-Rust note — **built 2026-10-27**, the day they were filed,
-and in the archive. F233–F239, the rest, filed and **not built**: each
-is a door in every binding or a design of its own. F240, F224's part
-file shared by two threads, was what the round's test run found, built
-the same day and in the archive.
+and in the archive. F233–F239, the rest, filed and not built then: each
+a door in every binding or a design of its own. F233–F235, F237–F239
+were **built 2026-10-28** and are in the archive; F236 was decided with
+the user the same day as [ADR 0076](adr/0076-an-island-is-a-window-the-host-draws.md)
+and is the one left to build. F240, F224's part file shared by two
+threads, was what the round's test run found, built the same day and in
+the archive.
 
 ### `~` F236 — A subtree cannot be drawn into a target of its own
 
@@ -6205,7 +6208,7 @@ move.
 - `.` **F226** — [`open_external` and `show_in_folder` on Windows take a `/` as no path at all](backlog/closed-2026-09.md#-f226--open_external-and-show_in_folder-on-windows-take-a--as-no-path-at-all--done-2026-10-27) — done (2026-10-27) — every `/` made `\` before `explorer` is asked, a URL left alone
 - `.` **F227** — [A span's background sits flush on its first and last letters](backlog/closed-2026-09.md#-f227--a-spans-background-sits-flush-on-its-first-and-last-letters--done-2026-10-27) — done (2026-10-27) — `Span::bg_pad` widens the rect's two ends, stopping at another background's edge and sharing a narrow gap; in every binding, C at ABI 40
 
-**From Replicator Bloom's wishlist (2026-10-27)** — F228–F232 filed and built the same day; F233–F239 open; F240, found by the round's test run, built; F245, found adopting F228, built (2026-10-28)
+**From Replicator Bloom's wishlist (2026-10-27)** — F228–F232 filed and built the same day; F233–F235 and F237–F239 built 2026-10-28, F236 decided (ADR 0076) and open; F240, found by the round's test run, built; F245, found adopting F228, built (2026-10-28)
 
 - `.` **F228** — [The atlas is uploaded whole for every new glyph](backlog/closed-2026-09.md#-f228--the-atlas-is-uploaded-whole-for-every-new-glyph--done-2026-10-27) — done (2026-10-27) — `GlyphAtlas::dirty_rect` and `mark_uploaded`; kui-wgpu uploads the rect; `KuiDrawData.atlas_dirty_rect` (ABI 40)
 - `.` **F229** — [Nothing says how a host's loop runs, or when its draw can be skipped](backlog/closed-2026-09.md#-f229--nothing-says-how-a-hosts-loop-runs-or-when-its-draw-can-be-skipped--done-2026-10-27) — done (2026-10-27) — kui.h's "The host loop": input, drain, build, drain, draw; what only the second drain sees; `kui_frame_unchanged` as "skip the draw"
