@@ -56,6 +56,7 @@
 
 use crate::geom::Vec2;
 use crate::key::Key;
+use crate::rules::Platform;
 use crate::tree::OriginId;
 use crate::value::Value;
 
@@ -180,7 +181,13 @@ impl MenuRole {
     ///
     /// [`KeyMods::primary`]: crate::input::KeyMods::primary
     pub fn default_accel(self) -> &'static str {
-        let mac = cfg!(target_os = "macos");
+        self.default_accel_on(Platform::current())
+    }
+
+    /// [`Self::default_accel`] as `platform` spells it: what a core told it
+    /// runs on another platform than the build's draws (backlog F220).
+    pub fn default_accel_on(self, platform: Platform) -> &'static str {
+        let mac = platform == Platform::MacOs;
         match self {
             MenuRole::Cut if mac => "⌘X",
             MenuRole::Copy if mac => "⌘C",
@@ -546,9 +553,15 @@ impl MenuItem {
     /// spell a shortcut for. As declared — [`Self::accel_label`] is what is
     /// drawn.
     pub fn accel_text(&self) -> Option<&str> {
+        self.accel_text_on(Platform::current())
+    }
+
+    /// [`Self::accel_text`] with a role's default as `platform` spells it
+    /// (backlog F220).
+    pub fn accel_text_on(&self, platform: Platform) -> Option<&str> {
         match &self.accel {
             Some(accel) => Some(accel),
-            None => Some(self.role.default_accel()).filter(|a| !a.is_empty()),
+            None => Some(self.role.default_accel_on(platform)).filter(|a| !a.is_empty()),
         }
     }
 
@@ -558,7 +571,14 @@ impl MenuItem {
     /// written when it cannot (`"gd"`, an app's own hint). See
     /// [`Accel::label`].
     pub fn accel_label(&self) -> Option<std::borrow::Cow<'_, str>> {
-        self.accel_text().map(Accel::label)
+        self.accel_label_on(Platform::current())
+    }
+
+    /// [`Self::accel_label`] in `platform`'s spelling: what the drawn menu
+    /// writes, by the core's platform (backlog F220).
+    pub fn accel_label_on(&self, platform: Platform) -> Option<std::borrow::Cow<'_, str>> {
+        self.accel_text_on(platform)
+            .map(|a| Accel::label_on(a, platform))
     }
 
     /// Whether the row takes focus and can be chosen — or, for a row with
@@ -591,14 +611,14 @@ impl MenuItem {
     /// the way in, so the menu a host reads back (`Core::menu`,
     /// `Core::menu_bar`) is the one the drawn menu shows, and a platform
     /// menu parses the same string into the same key.
-    pub(crate) fn normalize_accels(items: &mut [MenuItem]) {
+    pub(crate) fn normalize_accels(items: &mut [MenuItem], platform: Platform) {
         for item in items {
             if let Some(accel) = &item.accel
-                && let std::borrow::Cow::Owned(display) = Accel::label(accel)
+                && let std::borrow::Cow::Owned(display) = Accel::label_on(accel, platform)
             {
                 item.accel = Some(display);
             }
-            Self::normalize_accels(&mut item.submenu);
+            Self::normalize_accels(&mut item.submenu, platform);
         }
     }
 }
@@ -923,6 +943,12 @@ impl Accel {
     /// string alone and draws it as written, since a shortcut kui cannot
     /// parse is still a shortcut the app's own keymap runs.
     pub fn parse(s: &str) -> Option<Accel> {
+        Self::parse_on(s, Platform::current())
+    }
+
+    /// [`Self::parse`] with `mod` read as `platform`'s primary modifier
+    /// (backlog F220).
+    pub fn parse_on(s: &str, platform: Platform) -> Option<Accel> {
         use crate::input::{KeyCode, KeyMods};
         let mut mods = KeyMods::default();
         let mut rest = s.trim();
@@ -950,7 +976,7 @@ impl Accel {
                 // The one token that is not a key on any keyboard:
                 // whichever modifier this platform puts shortcuts behind.
                 "mod" | "cmdorctrl" => {
-                    if cfg!(target_os = "macos") {
+                    if platform == Platform::MacOs {
                         mods.super_key = true;
                     } else {
                         mods.ctrl = true;
@@ -1008,8 +1034,16 @@ impl Accel {
     /// How the platform writes it: the macOS glyph run (`⇧⌘S`, in AppKit's
     /// order, no separators) or the spelled form (`Ctrl+Shift+S`).
     pub fn display(&self) -> String {
-        let key = key_label(self.code);
-        if cfg!(target_os = "macos") {
+        self.display_on(Platform::current())
+    }
+
+    /// [`Self::display`] as `platform` writes it: what a core told it runs
+    /// on another platform than the build's draws (backlog F220), so a
+    /// picture taken on Windows of a Mac's menu reads `⌥⌘8`.
+    pub fn display_on(&self, platform: Platform) -> String {
+        let mac = platform == Platform::MacOs;
+        let key = key_label_on(self.code, mac);
+        if mac {
             let mut out = String::new();
             for (on, glyph) in [
                 (self.mods.ctrl, '\u{2303}'),
@@ -1048,8 +1082,13 @@ impl Accel {
     /// accelerator through this, so a portable `"mod+shift+n"` never
     /// reaches the screen as written (backlog F127).
     pub fn label(spelled: &str) -> std::borrow::Cow<'_, str> {
-        match Accel::parse(spelled) {
-            Some(a) => std::borrow::Cow::Owned(a.display()),
+        Self::label_on(spelled, Platform::current())
+    }
+
+    /// [`Self::label`] in `platform`'s spelling (backlog F220).
+    pub fn label_on(spelled: &str, platform: Platform) -> std::borrow::Cow<'_, str> {
+        match Accel::parse_on(spelled, platform) {
+            Some(a) => std::borrow::Cow::Owned(a.display_on(platform)),
             None => std::borrow::Cow::Borrowed(spelled),
         }
     }
@@ -1101,15 +1140,9 @@ impl Accel {
     }
 }
 
-/// What a menu writes a key as: the macOS glyph a user reads a shortcut by
-/// (`⇧`, `⌫`, `↩`), and the spelled word everywhere else. A key name is
-/// wire vocabulary (`"pageup"`); this is the label beside a row.
-fn key_label(code: crate::input::KeyCode) -> String {
-    key_label_on(code, cfg!(target_os = "macos"))
-}
-
-/// The key [`key_label`] writes as `label`, on either platform's spelling:
-/// what [`Accel::parse`] reads a displayed accelerator back through.
+/// The key [`key_label_on`] writes as `label`, on either platform's
+/// spelling: what [`Accel::parse`] reads a displayed accelerator back
+/// through.
 fn key_from_label(label: &str) -> Option<crate::input::KeyCode> {
     crate::input::KeyCode::named()
         .iter()
@@ -1119,6 +1152,9 @@ fn key_from_label(label: &str) -> Option<crate::input::KeyCode> {
         })
 }
 
+/// What a menu writes a key as: the macOS glyph a user reads a shortcut by
+/// (`⇧`, `⌫`, `↩`) when `mac`, and the spelled word otherwise. A key name
+/// is wire vocabulary (`"pageup"`); this is the label beside a row.
 fn key_label_on(code: crate::input::KeyCode, mac: bool) -> String {
     use crate::input::KeyCode;
     match code {

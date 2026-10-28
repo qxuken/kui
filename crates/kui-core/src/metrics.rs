@@ -21,6 +21,16 @@
 pub const TITLEBAR_H_WINDOWS: f32 = 32.0;
 pub const TITLEBAR_H_ELSEWHERE: f32 = 34.0;
 
+/// The caption height `platform` draws: [`TITLEBAR_H_WINDOWS`] or
+/// [`TITLEBAR_H_ELSEWHERE`]. What a core told it runs on another platform
+/// than the build's takes for the platform's titlebar (backlog F220).
+pub const fn caption_h(platform: crate::rules::Platform) -> f32 {
+    match platform {
+        crate::rules::Platform::Windows => TITLEBAR_H_WINDOWS,
+        _ => TITLEBAR_H_ELSEWHERE,
+    }
+}
+
 /// The sizes the stock widgets are built from. Plain data and [`Copy`]: a
 /// view reads it off `ui.metrics()` and may keep or change its own copy,
 /// and `Core::set_metrics` makes one the frame's.

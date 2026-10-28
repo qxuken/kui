@@ -98,12 +98,27 @@ impl Core {
     /// Says this core runs on `platform`, in place of the build's (backlog
     /// C116): a test that checks a platform's convention — Windows
     /// stepping a select on a bare arrow, macOS opening it — on the one
-    /// machine it runs on, or a preview of another platform's look. Both
-    /// the `platform` conditions and the env reading follow, and a change
-    /// owes a frame.
+    /// machine it runs on, or a picture of another platform's look (a
+    /// headless run's `Launcher::platform`, backlog F220). The `platform`
+    /// conditions and the env reading follow, and so does every choice
+    /// the core makes by platform: the primary modifier a shortcut and an
+    /// editing key mean (⌘ or Ctrl), the accelerators a drawn menu writes
+    /// (`⌥⌘8` or `Ctrl+Alt+8`), glyph hinting (never on macOS, below 1.5×
+    /// elsewhere), and the `titlebar_h` metric while it is the platform's
+    /// caption height. A menu already declared keeps the
+    /// spelling it was normalized into; a driver says this before the
+    /// first frame. A change owes a frame.
     pub fn set_platform(&mut self, platform: Platform) {
         if self.platform != platform {
+            let stock = self.metrics.titlebar_h == self.platform_titlebar_h();
             self.platform = platform;
+            if stock {
+                let h = self.platform_titlebar_h();
+                if self.metrics.titlebar_h != h {
+                    self.metrics.titlebar_h = h;
+                    self.metrics_gen += 1;
+                }
+            }
             self.owe_frame("set_platform");
         }
     }
