@@ -364,6 +364,19 @@
     verdicts: {string}
     -- Frames that drew what the one before drew are hidden.
     hide_unchanged: boolean
+    -- A span's own test: handed one table per span (`name`, `origin`,
+    -- `start`, `len`, `self`, `depth`, `track`, `frame`), kept when true.
+    where: function(span: TraceSpanFields): boolean
+  end
+  record TraceSpanFields
+    name: string
+    origin: string
+    start: number
+    len: number
+    self: number
+    depth: integer
+    track: integer
+    frame: integer
   end
   -- Why a frame lagged (`kind`), and what its kind says: `late` wait,
   -- slept; `blocked` busy; `slow` work, phase, phase_ms, span, span_ms;
@@ -448,6 +461,8 @@
     -- The frame budget, ms.
     budget: number
     filtered: boolean
+    -- Why a `where` stopped keeping what a poll brought, if it threw.
+    filter_error: string
     -- Reads what the file has: "more" and how many records, "idle",
     -- "ended", or "reset" for a file written again from its start.
     poll: function(self: Recording): string, integer

@@ -385,6 +385,14 @@ surface :: proc() -> bool {
 		check(kui.channel_len(view) == 1, "channel_take")
 		_, str_ok := kui.channel_filter_str(grown, 0, "x", .Contains, buf[:])
 		check(!str_ok, "a string search over numbers is refused")
+		// ADR 0075: the rows' ms as points, a run each.
+		lanes := kui.channel_lanes(grown, 0)
+		defer kui.channel_lanes_free(lanes)
+		lo, hi, ext_ok := kui.channel_lanes_extent(lanes)
+		check(ext_ok && kui.channel_lanes_count(lanes) == 1 && lo == 4 && hi == 30, "channel_lanes_extent")
+		runs: [3 * kui.CHANNEL_RUN]f64
+		n_runs, win_ok := kui.channel_lanes_window(lanes, 0, 0, 40, 0.001, runs[:])
+		check(win_ok && n_runs == 3 && runs[0] == 4 && runs[3] == 1, "channel_lanes_window: a run a point")
 	}
 
 	// Resources. Unusable input is a 0 handle, not a crash.

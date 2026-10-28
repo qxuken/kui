@@ -2793,6 +2793,13 @@ export declare class Channel {
    */
   take(rows: Uint32Array | Array<number>): Channel
   /**
+   * The intervals `start .. start + len` (`len` left out: points) on
+   * the lanes column `lane` names (one lane without it), built once in
+   * Rust for `ChannelLanes.window` (ADR 0075): what a waterfall draws a
+   * million spans as, a window at a level of detail.
+   */
+  lanes(start: string | number, len?: string | number | undefined | null, lane?: string | number | undefined | null): ChannelLanes
+  /**
    * The handle: `{ $channel, rev }`, a value that rides in props, in
    * messages and to a worker.
    */
@@ -2818,6 +2825,37 @@ export interface ChannelReduction {
   maxRow: Uint32Array
   firstRow: Uint32Array
   lastRow: Uint32Array
+}
+
+/** A channel's intervals on lanes (`channel.lanes`, ADR 0075). */
+export declare class ChannelLanes {
+  /** How many lanes. */
+  get count(): number
+  /** How many intervals. */
+  get length(): number
+  /** The earliest start. */
+  get lo(): number
+  /** The latest end. */
+  get hi(): number
+  /**
+   * Lane `lane`'s runs reaching into `v0 .. v1`, at the detail where
+   * an interval at least `min` long is a run of its own and shorter
+   * ones a gap under it apart merge into a strip: about a run a pixel
+   * with `min` a pixel's width.
+   */
+  window(lane: number, v0: number, v1: number, min: number): ChannelRuns
+}
+
+/**
+ * What `lanes.window` answers: a typed array per field, a run per index —
+ * its start, end, row (0-based; -1 for a strip of several) and how many
+ * intervals it holds.
+ */
+export interface ChannelRuns {
+  s: Float64Array
+  e: Float64Array
+  row: Int32Array
+  n: Uint32Array
 }
 
 /**

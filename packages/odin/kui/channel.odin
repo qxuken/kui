@@ -158,3 +158,38 @@ channel_sort :: proc(ch: ^c.Channel, col: int, out: []uint, descending := false,
 channel_take :: proc(ch: ^c.Channel, rows: []uint) -> ^c.Channel {
 	return c.channel_take(ch, raw_data(rows), uint(len(rows)))
 }
+
+// Doubles a run of channel_lanes_window takes: its start, end, row (-1 for a
+// strip of several) and how many intervals it holds.
+CHANNEL_RUN :: c.CHANNEL_RUN
+
+// A channel's intervals on lanes (ADR 0075): column start to start + len
+// (len -1: points) on the lanes column lane names (-1: one lane), built once;
+// nil for a column that is not numbers. Free it with channel_lanes_free.
+// Rust: Channel::lanes.
+channel_lanes :: proc(ch: ^c.Channel, start: int, len := -1, lane := -1) -> ^c.ChannelLanes {
+	return c.channel_lanes(ch, uint(start), i32(len), i32(lane))
+}
+
+channel_lanes_free :: proc(l: ^c.ChannelLanes) {
+	c.channel_lanes_free(l)
+}
+
+channel_lanes_count :: proc(l: ^c.ChannelLanes) -> int {
+	return int(c.channel_lanes_count(l))
+}
+
+channel_lanes_extent :: proc(l: ^c.ChannelLanes) -> (lo, hi: f64, ok: bool) {
+	ok = c.channel_lanes_extent(l, &lo, &hi)
+	return
+}
+
+// Lane lane's runs reaching into [v0, v1] at the detail where an interval at
+// least min long is a run of its own, CHANNEL_RUN doubles each, as many as
+// out has room for; count is how many were written.
+channel_lanes_window :: proc(l: ^c.ChannelLanes, lane: int, v0, v1, min: f64, out: []f64) -> (count: int, ok: bool) {
+	n: uint
+	ok = c.channel_lanes_window(l, uint(lane), v0, v1, min, (^f64)(raw_data(out)), uint(len(out) / CHANNEL_RUN), &n)
+	count = int(n)
+	return
+}

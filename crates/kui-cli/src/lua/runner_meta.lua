@@ -511,7 +511,8 @@ function kui.sqlite.try_open(path) end
 ---@field stats fun(self: kui.Recording, first?: integer, last?: integer): table<string, any>
 ---@field series fun(self: kui.Recording, name: string): kui.Channel?
 ---@field series_names fun(self: kui.Recording): string[]
----@field filter fun(self: kui.Recording, f?: { origins?: string[], name?: string, min_us?: number, verdicts?: string[], hide_unchanged?: boolean }): integer, integer
+---@field filter_error string? Why a `where` stopped keeping what a poll brought, if it threw.
+---@field filter fun(self: kui.Recording, f?: { origins?: string[], name?: string, min_us?: number, verdicts?: string[], hide_unchanged?: boolean, where?: fun(span: { name: string, origin: string, start: number, len: number, self: number, depth: integer, track: integer, frame: integer }): boolean }): integer, integer
 
 kui.trace = {}
 ---A recording read whole, then watched: `{ watch = false }` reads it once; `message` is what `update` gets when the file moves.

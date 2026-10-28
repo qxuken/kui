@@ -100,6 +100,7 @@ struct Row {
     span: Span,
     depth: u32,
     frame: i64,
+    self_us: u64,
 }
 
 /// What the views keep (decision 8): nothing filtered is everything.
@@ -110,11 +111,44 @@ struct Filter {
     min_us: u64,
     verdicts: Option<Vec<String>>,
     hide_unchanged: bool,
+    /// `where`: a script's own test of a span, called from Rust with one
+    /// table filled afresh for each (the query box's candidate, ADR 0075
+    /// decision 8).
+    predicate: Option<Predicate>,
+}
+
+/// A `where`: the script's function, the one table it is handed, and the
+/// strings it reads made once a name (a span's name and origin).
+#[derive(Clone, Debug)]
+struct Predicate {
+    test: mlua::Function,
+    span: Table,
+    lua: Lua,
+    strings: std::cell::RefCell<Vec<Option<mlua::LuaString>>>,
+    /// The table's keys, made once: a key spelled as a `&str` is made a
+    /// Lua string again at every set.
+    keys: [mlua::LuaString; 8],
+}
+
+impl Predicate {
+    fn string(&self, id: usize, text: &str) -> mlua::Result<mlua::LuaString> {
+        if let Some(Some(s)) = self.strings.borrow().get(id) {
+            return Ok(s.clone());
+        }
+        let made = self.lua.create_string(text)?;
+        let mut cache = self.strings.borrow_mut();
+        if cache.len() <= id {
+            cache.resize(id + 1, None);
+        }
+        cache[id] = Some(made.clone());
+        Ok(made)
+    }
 }
 
 impl Filter {
     fn is_empty(&self) -> bool {
-        self.origins.is_none()
+        self.predicate.is_none()
+            && self.origins.is_none()
             && self.name.is_none()
             && self.min_us == 0
             && self.verdicts.is_none()
@@ -171,6 +205,7 @@ pub struct Recording {
     spans_view: View,
     frames_view: View,
     filter: Filter,
+    filter_error: Option<String>,
 }
 
 fn span_columns() -> Vec<(String, Column)> {
@@ -322,6 +357,7 @@ impl Recording {
             frame_unchanged: Vec::new(),
             frame_verdict: Vec::new(),
             filter: Filter::default(),
+            filter_error: None,
         }
     }
 
@@ -431,6 +467,7 @@ impl Recording {
                 span,
                 depth,
                 frame: -1,
+                self_us: 0,
             });
         }
     }
@@ -525,9 +562,12 @@ impl Recording {
             let s = &row.span;
             row.frame = tl.frames.partition_point(|f| f.end_or_begin() < s.start) as i64;
         }
-        let selfs: Vec<u64> = placed.iter().map(|r| tl.self_us(&r.span)).collect();
+        for row in &mut placed {
+            row.self_us = tl.self_us(&row.span);
+        }
         let trace = self.stream.trace();
-        for (row, self_us) in placed.iter().zip(selfs) {
+        for row in &placed {
+            let self_us = row.self_us;
             let s = &row.span;
             let group = group(&mut self.groups, s.origin);
             let name = trace.name(s.name);
@@ -610,25 +650,46 @@ impl Recording {
         self.grow_views(first_new_span, first_new_frame);
     }
 
-    fn keeps_span(&self, i: usize) -> bool {
+    fn keeps_span(&self, i: usize) -> mlua::Result<bool> {
         let f = &self.filter;
         let row = &self.rows[i];
         let s = &row.span;
         if s.dur < f.min_us {
-            return false;
+            return Ok(false);
         }
         if let Some(origins) = &f.origins
             && !origins.iter().any(|o| o == self.origin_name(s.origin))
         {
-            return false;
+            return Ok(false);
         }
+        let trace = self.stream.trace();
         if let Some(name) = &f.name {
-            let n = self.stream.trace().name(s.name).to_lowercase();
+            let n = trace.name(s.name).to_lowercase();
             if !n.contains(&name.to_lowercase()) {
-                return false;
+                return Ok(false);
             }
         }
-        true
+        if let Some(p) = &f.predicate {
+            let t = &p.span;
+            let k = &p.keys;
+            // Names by their ids from 2; kui's and the app's origins at 0
+            // and 1.
+            t.raw_set(&k[0], p.string(s.name as usize + 2, trace.name(s.name))?)?;
+            let origin = match s.origin {
+                Origin::Kui => p.string(0, "kui")?,
+                Origin::Host => p.string(1, "host")?,
+                Origin::Extension(ns) => p.string(ns as usize + 2, trace.name(ns))?,
+            };
+            t.raw_set(&k[1], origin)?;
+            t.raw_set(&k[2], ms(s.start))?;
+            t.raw_set(&k[3], ms(s.dur))?;
+            t.raw_set(&k[4], ms(row.self_us))?;
+            t.raw_set(&k[5], row.depth)?;
+            t.raw_set(&k[6], s.track.0)?;
+            t.raw_set(&k[7], row.frame)?;
+            return p.test.call::<bool>(t);
+        }
+        Ok(true)
     }
 
     fn keeps_frame(&self, i: usize) -> bool {
@@ -652,9 +713,17 @@ impl Recording {
             self.frames_view.rows = None;
             return;
         }
-        let spans: Vec<usize> = (from_span..self.rows.len())
-            .filter(|&i| self.keeps_span(i))
-            .collect();
+        let mut spans = Vec::new();
+        for i in from_span..self.rows.len() {
+            match self.keeps_span(i) {
+                Ok(true) => spans.push(i),
+                Ok(false) => {}
+                Err(e) => {
+                    self.filter_error = Some(e.to_string());
+                    break;
+                }
+            }
+        }
         let frames: Vec<usize> = (from_frame..self.frame_index.len())
             .filter(|&i| self.keeps_frame(i))
             .collect();
@@ -684,16 +753,26 @@ impl Recording {
             .extend(frames);
     }
 
-    /// Sets the filter and shows the rows it keeps.
-    fn set_filter(&mut self, f: Filter) {
-        self.filter = f;
+    /// Sets the filter and shows the rows it keeps; a `where` that throws
+    /// leaves the views as they were.
+    fn set_filter(&mut self, f: Filter) -> mlua::Result<()> {
+        let was = std::mem::replace(&mut self.filter, f);
+        self.filter_error = None;
         if self.filter.is_empty() {
             self.grow_views(self.rows.len(), self.frame_index.len());
-            return;
+            return Ok(());
         }
-        let spans: Vec<usize> = (0..self.rows.len())
-            .filter(|&i| self.keeps_span(i))
-            .collect();
+        let mut spans = Vec::new();
+        for i in 0..self.rows.len() {
+            match self.keeps_span(i) {
+                Ok(true) => spans.push(i),
+                Ok(false) => {}
+                Err(e) => {
+                    self.filter = was;
+                    return Err(e);
+                }
+            }
+        }
         let frames: Vec<usize> = (0..self.frame_index.len())
             .filter(|&i| self.keeps_frame(i))
             .collect();
@@ -703,6 +782,7 @@ impl Recording {
         self.frames_view.shown = self.frames_view.shown.publish(fcs).expect("its columns");
         self.spans_view.rows = Some(spans);
         self.frames_view.rows = Some(frames);
+        Ok(())
     }
 
     fn trace(&self) -> &Trace {
@@ -710,7 +790,7 @@ impl Recording {
     }
 }
 
-fn filter_of(t: &Table) -> mlua::Result<Filter> {
+fn filter_of(lua: &Lua, t: &Table) -> mlua::Result<Filter> {
     let list = |k: &str| -> mlua::Result<Option<Vec<String>>> {
         Ok(match t.get::<Option<Table>>(k)? {
             Some(l) => Some(l.sequence_values::<String>().collect::<mlua::Result<_>>()?),
@@ -723,6 +803,25 @@ fn filter_of(t: &Table) -> mlua::Result<Filter> {
         min_us: t.get::<Option<f64>>("min_us")?.unwrap_or(0.0).max(0.0) as u64,
         verdicts: list("verdicts")?,
         hide_unchanged: t.get::<Option<bool>>("hide_unchanged")?.unwrap_or(false),
+        predicate: match t.get::<Option<mlua::Function>>("where")? {
+            Some(test) => Some(Predicate {
+                test,
+                span: lua.create_table_with_capacity(0, 8)?,
+                lua: lua.clone(),
+                strings: Default::default(),
+                keys: [
+                    lua.create_string("name")?,
+                    lua.create_string("origin")?,
+                    lua.create_string("start")?,
+                    lua.create_string("len")?,
+                    lua.create_string("self")?,
+                    lua.create_string("depth")?,
+                    lua.create_string("track")?,
+                    lua.create_string("frame")?,
+                ],
+            }),
+            None => None,
+        },
     })
 }
 
@@ -1017,6 +1116,8 @@ impl UserData for Recording {
         f.add_field_method_get("ended", |_, r| Ok(r.ended));
         f.add_field_method_get("budget", |_, r| Ok(ms(r.budget)));
         f.add_field_method_get("filtered", |_, r| Ok(!r.filter.is_empty()));
+        // Why a `where` stopped keeping what came on a poll, if it threw.
+        f.add_field_method_get("filter_error", |_, r| Ok(r.filter_error.clone()));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
@@ -1092,12 +1193,12 @@ impl UserData for Recording {
         m.add_method("series_names", |lua, r, ()| {
             lua.create_sequence_from(series_names(r))
         });
-        m.add_method_mut("filter", |_, r, spec: Option<Table>| {
+        m.add_method_mut("filter", |lua, r, spec: Option<Table>| {
             let f = match spec {
-                Some(t) => filter_of(&t)?,
+                Some(t) => filter_of(lua, &t)?,
                 None => Filter::default(),
             };
-            r.set_filter(f);
+            r.set_filter(f)?;
             Ok((r.spans_view.shown.len(), r.frames_view.shown.len()))
         });
     }
@@ -1303,13 +1404,22 @@ mod timing {
         let t = std::time::Instant::now();
         lua.load("rec:filter { name = 'rows' }").exec().unwrap();
         let filter = t.elapsed();
+        let t = std::time::Instant::now();
+        lua.load(
+            "kept = rec:filter { where = function(s) return s.len > 0.5 and s.name:find('fill', 1, true) ~= nil end }",
+        )
+        .exec()
+        .unwrap();
+        let predicate = t.elapsed();
         let g = lua.globals();
         println!(
-            "open {:?} ({} spans, {} frames), filter {:?}",
+            "open {:?} ({} spans, {} frames), filter {:?}, a Lua where over every span {:?} ({} kept)",
             open,
             g.get::<i64>("n").unwrap(),
             g.get::<i64>("f").unwrap(),
-            filter
+            filter,
+            predicate,
+            g.get::<i64>("kept").unwrap()
         );
     }
 }

@@ -8,7 +8,7 @@
 //! build a view in Rust (backlog C148).
 
 use kui_core::channel::{self, Cell, Column};
-use napi::bindgen_prelude::{Either, Float64Array, Object, Uint32Array};
+use napi::bindgen_prelude::{Either, Float64Array, Int32Array, Object, Uint32Array};
 use napi_derive::napi;
 // `serde_json::Value` spelled out, never aliased: napi-rs writes the name it
 // sees into index.d.ts, and an alias there is a type TypeScript has never
@@ -65,6 +65,70 @@ pub struct ChannelReduction {
     pub max_row: Uint32Array,
     pub first_row: Uint32Array,
     pub last_row: Uint32Array,
+}
+
+/// A channel's intervals on lanes (`channel.lanes`, ADR 0075).
+#[napi]
+pub struct ChannelLanes {
+    inner: channel::Lanes,
+}
+
+/// What `lanes.window` answers: a typed array per field, a run per index —
+/// its start, end, row (0-based; -1 for a strip of several) and how many
+/// intervals it holds.
+#[napi(object)]
+pub struct ChannelRuns {
+    pub s: Float64Array,
+    pub e: Float64Array,
+    pub row: Int32Array,
+    pub n: Uint32Array,
+}
+
+#[napi]
+impl ChannelLanes {
+    /// How many lanes.
+    #[napi(getter)]
+    pub fn count(&self) -> u32 {
+        self.inner.count() as u32
+    }
+
+    /// How many intervals.
+    #[napi(getter)]
+    pub fn length(&self) -> u32 {
+        self.inner.len() as u32
+    }
+
+    /// The earliest start.
+    #[napi(getter)]
+    pub fn lo(&self) -> f64 {
+        self.inner.extent().0
+    }
+
+    /// The latest end.
+    #[napi(getter)]
+    pub fn hi(&self) -> f64 {
+        self.inner.extent().1
+    }
+
+    /// Lane `lane`'s runs reaching into `v0 .. v1`, at the detail where
+    /// an interval at least `min` long is a run of its own and shorter
+    /// ones a gap under it apart merge into a strip: about a run a pixel
+    /// with `min` a pixel's width.
+    #[napi]
+    pub fn window(&self, lane: u32, v0: f64, v1: f64, min: f64) -> ChannelRuns {
+        let mut runs = Vec::new();
+        self.inner.window(lane as usize, v0, v1, min, &mut runs);
+        ChannelRuns {
+            s: Float64Array::new(runs.iter().map(|r| r.start).collect()),
+            e: Float64Array::new(runs.iter().map(|r| r.end).collect()),
+            row: Int32Array::new(
+                runs.iter()
+                    .map(|r| r.row.map_or(-1, |x| x as i32))
+                    .collect(),
+            ),
+            n: Uint32Array::new(runs.iter().map(|r| r.count).collect()),
+        }
+    }
 }
 
 /// What `channel.filter` keeps a row for (backlog C148): `eq`, a cell
@@ -294,6 +358,27 @@ impl Channel {
             .take(&rows_of(&rows))
             .map_err(|e| err(format!("take: {e}")))?;
         Ok(Channel { inner })
+    }
+
+    /// The intervals `start .. start + len` (`len` left out: points) on
+    /// the lanes column `lane` names (one lane without it), built once in
+    /// Rust for `ChannelLanes.window` (ADR 0075): what a waterfall draws a
+    /// million spans as, a window at a level of detail.
+    #[napi]
+    pub fn lanes(
+        &self,
+        start: Either<String, u32>,
+        len: Option<Either<String, u32>>,
+        lane: Option<Either<String, u32>>,
+    ) -> Result<ChannelLanes> {
+        let s = self.col(start)?;
+        let l = len.map(|c| self.col(c)).transpose()?;
+        let d = lane.map(|c| self.col(c)).transpose()?;
+        let inner = self
+            .inner
+            .lanes(s, l, d)
+            .map_err(|e| err(format!("lanes: {e}")))?;
+        Ok(ChannelLanes { inner })
     }
 
     /// The handle: `{ $channel, rev }`, a value that rides in props, in

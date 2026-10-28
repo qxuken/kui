@@ -39,8 +39,11 @@ use rustc_hash::FxHashMap;
 
 use kui_value::Value;
 
+mod lanes;
 #[cfg(feature = "lua")]
 pub mod lua;
+
+pub use lanes::{Lanes, Run};
 
 /// The key a handle's identity rides under.
 pub const HANDLE_KEY: &str = "$channel";

@@ -194,6 +194,11 @@ pub(crate) const CHANNEL: &[(&str, &str, &str)] = &[
         "integer[]",
     ),
     ("take", "rows: integer[]", "kui.Channel"),
+    (
+        "lanes",
+        "start: string | integer, len?: string | integer, lane?: string | integer",
+        "kui.ChannelLanes",
+    ),
 ];
 
 /// A class's fields: each one's name, whether it is always there, and
@@ -745,6 +750,9 @@ pub fn luals_meta() -> String {
             "---@field {name} fun(self: kui.Channel, {params}): {ret}"
         );
     }
+    out.push_str(
+        "\n---A channel's intervals on lanes (ADR 0075): `#lanes` lanes, read a window at a time at a level of detail.\n---@class kui.ChannelLanes\n---@field lo number\n---@field hi number\n---@field len integer\n---@field window fun(self: kui.ChannelLanes, lane: integer, v0: number, v1: number, min: number): kui.ChannelRuns\n\n---What `lanes:window` answers: a list per field, a run per index; `row` 0-based, -1 for a strip of `n`.\n---@class kui.ChannelRuns\n---@field s number[]\n---@field e number[]\n---@field row integer[]\n---@field n integer[]\n",
+    );
     out.push_str(
         "\n---What `ch:filter` keeps a row for (backlog C148): `eq`, a cell equal to it; `contains`, a string cell holding it (`case` true to match its letters' case); `min` / `max`, a number cell in that range, either end open.\n---@class kui.ChannelMatch\n---@field eq? number | integer | string | boolean\n---@field contains? string\n---@field case? boolean\n---@field min? number\n---@field max? number\n",
     );

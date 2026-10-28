@@ -109,6 +109,23 @@ impl UserData for LuaChannel {
                 reduction_to_lua(lua, &buckets)
             },
         );
+        m.add_method(
+            "lanes",
+            |_, this, (start, len, lane): (Value, Value, Option<Value>)| {
+                let s = column_index(&this.0, &start)?;
+                let l = (!len.is_nil())
+                    .then(|| column_index(&this.0, &len))
+                    .transpose()?;
+                let d = lane
+                    .filter(|v| !v.is_nil())
+                    .map(|c| column_index(&this.0, &c))
+                    .transpose()?;
+                this.0
+                    .lanes(s, l, d)
+                    .map(|lanes| LuaLanes(lanes, std::cell::RefCell::new(Vec::new())))
+                    .map_err(|e| mlua::Error::runtime(format!("lanes: {e}")))
+            },
+        );
         m.add_method("append", |_, this, (spec, cap): (Table, Option<usize>)| {
             let cols = columns_of(&spec)?;
             this.0
@@ -154,6 +171,44 @@ impl UserData for LuaChannel {
                 .map(LuaChannel)
                 .map_err(|e| mlua::Error::runtime(format!("publish: {e}")))
         });
+    }
+}
+
+/// A channel's intervals on lanes (`ch:lanes(start, len, lane)`, ADR
+/// 0075): `#lanes` lanes, `lanes.lo` / `lanes.hi` / `lanes.len`, and
+/// `lanes:window(lane, v0, v1, min)` the runs of a 0-based lane reaching
+/// into the window at the detail where `min` is a run's least width — a
+/// list per field, a run per index: `s`, `e`, `row` (0-based; -1 for a
+/// strip of several) and `n`.
+pub struct LuaLanes(pub crate::Lanes, std::cell::RefCell<Vec<crate::Run>>);
+
+impl UserData for LuaLanes {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("lo", |_, this| Ok(this.0.extent().0));
+        f.add_field_method_get("hi", |_, this| Ok(this.0.extent().1));
+        f.add_field_method_get("len", |_, this| Ok(this.0.len()));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_meta_method(MetaMethod::Len, |_, this, ()| Ok(this.0.count()));
+        m.add_method(
+            "window",
+            |lua, this, (lane, v0, v1, min): (usize, f64, f64, f64)| {
+                let mut runs = this.1.borrow_mut();
+                this.0.window(lane, v0, v1, min, &mut runs);
+                let t = lua.create_table_with_capacity(0, 4)?;
+                let list =
+                    |f: &dyn Fn(&crate::Run) -> Value| lua.create_sequence_from(runs.iter().map(f));
+                t.raw_set("s", list(&|r| Value::Number(r.start))?)?;
+                t.raw_set("e", list(&|r| Value::Number(r.end))?)?;
+                t.raw_set(
+                    "row",
+                    list(&|r| Value::Integer(r.row.map_or(-1, |x| x as i64)))?,
+                )?;
+                t.raw_set("n", list(&|r| Value::Integer(r.count as i64))?)?;
+                Ok(t)
+            },
+        );
     }
 }
 

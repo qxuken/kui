@@ -5,7 +5,7 @@ A trace waterfall: spans as bars on a time axis, nested by depth, coloured by gr
 
 ## When to use
 
-Use a waterfall for a trace: frames and the work inside them, a request's phases, spans from a profiler. Lanes are 20px, one per depth; each span is a 16px bar in its group's pale fill (group-1 to group-6) with a hairline rule edge and its name in the data face when it is 48px wide or more; a span narrower than 2px collapses into a faint tick. The selected span takes the selection with an ink edge; marks are 1px accent rules down the lanes. The head carries the window's range and span count, and zoom out, zoom in and fit.
+Use a waterfall for a trace: frames and the work inside them, a request's phases, spans from a profiler. Lanes are 20px, one per depth; each span is a 16px bar in its group's pale fill (group-1 to group-6) with a hairline rule edge and its name in the data face when it is 48px wide or more; a span narrower than 2px collapses into a faint tick. The selected span takes the selection with an ink edge; marks are 1px accent rules down the lanes, those closer than a pixel one rule whose tooltip counts them. A frame costs its width, not its spans: the bars come from the channel's lanes (`bars:lanes`, read a window at a time in Rust), so a million spans pan and zoom as an 18-span request does. The head carries the window's range and span count, and zoom out, zoom in and fit.
 
 ## What you provide
 

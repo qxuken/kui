@@ -475,7 +475,9 @@ extern "C" {
  * kui_thread_span_begin and kui_thread_span_end (backlog F215); after
  * alpha.69, kui_channel_append (backlog C147), and kui_channel_filter_f64,
  * kui_channel_filter_str, kui_channel_sort and kui_channel_take with the
- * KUI_CHANNEL_EQUAL / _CONTAINS / _CONTAINS_ANY_CASE ways (backlog C148).
+ * KUI_CHANNEL_EQUAL / _CONTAINS / _CONTAINS_ANY_CASE ways (backlog C148);
+ * the opaque KuiChannelLanes with kui_channel_lanes, _free, _count, _extent
+ * and _window, and KUI_CHANNEL_RUN (ADR 0075).
  */
 #define KUI_ABI_VERSION 40u
 uint32_t kui_abi_version(void);
@@ -3224,6 +3226,23 @@ bool kui_channel_filter_str(const KuiChannel *ch, size_t col, KuiStr text, int32
 bool kui_channel_sort(const KuiChannel *ch, size_t col, bool descending, const size_t *within,
                       size_t n_within, size_t *out, size_t *count);
 KuiChannel *kui_channel_take(const KuiChannel *ch, const size_t *rows, size_t n);
+/* A channel's intervals on lanes (ADR 0075): column start to start + len
+ * (len -1: points) on the lanes column lane names (-1: one lane), built
+ * once; NULL for a column that is not numbers, the reason in
+ * kui_channel_error. kui_channel_lanes_window writes lane's runs reaching
+ * into [v0, v1] at the detail where an interval at least min long is a run
+ * of its own (a pixel's width: about a run a pixel, whatever the rows
+ * behind them) - KUI_CHANNEL_RUN doubles each, its start, end, row (-1 for
+ * a strip of several) and how many it holds - the first `room` of them,
+ * *count how many were written. */
+typedef struct KuiChannelLanes KuiChannelLanes;
+#define KUI_CHANNEL_RUN 4
+KuiChannelLanes *kui_channel_lanes(const KuiChannel *ch, size_t start, int32_t len, int32_t lane);
+void kui_channel_lanes_free(KuiChannelLanes *l);
+size_t kui_channel_lanes_count(const KuiChannelLanes *l);
+bool kui_channel_lanes_extent(const KuiChannelLanes *l, double *lo, double *hi);
+bool kui_channel_lanes_window(const KuiChannelLanes *l, size_t lane, double v0, double v1, double min,
+                              double *out, size_t room, size_t *count);
 bool kui_token_family(KuiCtx *ctx, KuiStr name, uint32_t *family, uint64_t *font);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before

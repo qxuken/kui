@@ -1,17 +1,17 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-27
 ---
 
 # kui-perf reads a recording in Kit, over columns Rust keeps
 
-> **Proposed (2026-10-27); backlog F200, F245–F251, and C147, C148,
-> C149 and C102 built on the way.** Settled by a grilling round
-> with the user, after Kit landed on main. It replaces ADR 0058's
-> decision 13 with what `kui-perf`, the trace inspector, is and how it
-> is built. It stays proposed until the spike (decision 11) reports:
-> the spike's numbers accept it as written, or amend decision 1's
-> language.
+> **Accepted (2026-10-28) after its spike; backlog F200, F245–F251, and
+> C147, C148, C149 and C102 built on the way.** Settled by a grilling round
+> with the user, after Kit landed on main. It replaces ADR 0058's decision
+> 13 with what `kui-perf`, the trace inspector, is and how it is built.
+> The spike (decision 11) met every budget once Kit's waterfall read a
+> channel's lanes (the amendment at the end): decision 1 stands as
+> written.
 
 ## Context
 
@@ -268,3 +268,53 @@ date: 2026-10-27
    tables reach them, and what else it finds, filed as found.
 5. How it ships, decided with the spike's numbers; the book's devtools
    page and ADR 0058's pointers to it.
+
+## Amendment: the spike (2026-10-28)
+
+Run as decision 11 says (backlog F249, `tools/kui-perf/spike`): a bare Lua
+app on the runner, Kit's waterfall over `rec.spans` and `rec.instants`
+and its table over `rec.frames`, over a recording `kui-trace synth` made
+of 72,000 frames and 936,723 spans (27.5 MB); release builds, an M3 Pro;
+each phase a headless run recording itself, read back through
+`kui.trace`.
+
+**First, as Kit was.** Opening into channels took 523 ms, the first frame
+4.6 s; a frame showing the whole recording cost about 50 ms, and zooming
+out spiked to 520. The waterfall built its index in Lua — a table a row
+(`bars:row(r)`), every lane sorted, nineteen levels made at once — on
+every new revision, and drew every mark in the window as a node of its
+own, a hundred thousand of them zoomed out.
+
+**The primitive** (decision 11's first answer to a miss): `Channel::lanes
+(start, len, lane)` in `kui-channel` — a channel's intervals on lanes,
+each lane sorted once in Rust, its levels (Kit's, an extent over 2⁴ …
+2²²) made the first time a window asks — and `Lanes::window(lane, v0, v1,
+min)`, the runs reaching into a window at the detail where `min` is a
+run's least width: about a run a pixel, whatever the rows behind them. In
+every binding (Lua `ch:lanes`, Node `channel.lanes`, C
+`kui_channel_lanes*`, Odin). Kit's waterfall reads it: a frame asks each
+lane for its runs and reads the names and groups of the bars it draws;
+marks go through it as points, one rule a pixel.
+
+**Then:**
+
+| | budget | measured |
+|---|---|---|
+| open — read, decoded, analysed, the first frame drawn | 1 s | 0.58–0.65 s (0.48–0.53 s of it into channels) |
+| pan, a 2 s window across the whole | 4 ms a frame | p95 1.9 ms, max 2.2 ms |
+| zoom, the window halved sixteen times over | 4 ms | p95 3.2 ms, max 3.5 ms |
+| zoomed fully out | 4 ms | p95 0.44 ms |
+| the frame table's selection 25 rows a step | 1.5 ms | p95 0.99 ms, max 1.1 ms |
+| idle | 0% | no frame of its own headless; 0.00 s of CPU over 3 s windowed |
+| a Lua `where` over every span (decision 8) | 200 ms | 199–200 ms |
+
+The `where` sits on its budget, not under it: its table's keys and the
+strings it reads made once (`rec:filter { where = function(s) … end }`,
+230 → 200 ms), each call about 212 ns. The query box (v1.1) is cheap
+enough to run when the query changes, on this machine; on a slower one
+it is the fallback the decision names — the function once a distinct
+name and origin, the numbers in Rust.
+
+How `kui-perf` reaches a machine (decision 1, backlog F251) is decided
+next, with these numbers: the runner is fast enough to carry it.
+

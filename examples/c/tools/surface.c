@@ -1186,6 +1186,21 @@ static int surface(void) {
         check(!kui_channel_filter_f64(grown, (size_t)col_name, 0, 1, NULL, 0, rows, &n_rows),
               "a range over strings is refused");
         kui_channel_free(view);
+        /* ADR 0075: the four rows' ms as points on one lane, a run each
+         * close in; a window from 2 on holds the three past it. */
+        KuiChannelLanes *lanes = kui_channel_lanes(grown, (size_t)col_ms, -1, -1);
+        double lo = 0, hi = 0, runs[4 * KUI_CHANNEL_RUN];
+        size_t n_runs = 0;
+        check(lanes && kui_channel_lanes_count(lanes) == 1 && kui_channel_lanes_extent(lanes, &lo, &hi) &&
+                  lo == 1 && hi == 30,
+              "kui_channel_lanes, _count, _extent");
+        check(kui_channel_lanes_window(lanes, 0, 0, 40, 0.001, runs, 4, &n_runs) && n_runs == 4 &&
+                  runs[2] == 3 && runs[3] == 1,
+              "kui_channel_lanes_window: a run a point close in");
+        check(kui_channel_lanes_window(lanes, 0, 2, 40, 100, runs, 4, &n_runs) && n_runs == 3 &&
+                  runs[0] == 4,
+              "and from 2 on, the three past it");
+        kui_channel_lanes_free(lanes);
         KuiValue *handle = kui_channel_handle(ch);
         KuiChannel *again = kui_channel_resolve(handle);
         check(again && kui_channel_len(again) == 4, "kui_channel_resolve reads the latest rows");

@@ -331,6 +331,21 @@ function row_heights(rows, estimate) end
 ---@field filter fun(self: kui.Channel, col: string | integer, match: kui.ChannelMatch, rows?: integer[]): integer[]
 ---@field sort fun(self: kui.Channel, col: string | integer, descending?: boolean, rows?: integer[]): integer[]
 ---@field take fun(self: kui.Channel, rows: integer[]): kui.Channel
+---@field lanes fun(self: kui.Channel, start: string | integer, len?: string | integer, lane?: string | integer): kui.ChannelLanes
+
+---A channel's intervals on lanes (ADR 0075): `#lanes` lanes, read a window at a time at a level of detail.
+---@class kui.ChannelLanes
+---@field lo number
+---@field hi number
+---@field len integer
+---@field window fun(self: kui.ChannelLanes, lane: integer, v0: number, v1: number, min: number): kui.ChannelRuns
+
+---What `lanes:window` answers: a list per field, a run per index; `row` 0-based, -1 for a strip of `n`.
+---@class kui.ChannelRuns
+---@field s number[]
+---@field e number[]
+---@field row integer[]
+---@field n integer[]
 
 ---What `ch:filter` keeps a row for (backlog C148): `eq`, a cell equal to it; `contains`, a string cell holding it (`case` true to match its letters' case); `min` / `max`, a number cell in that range, either end open.
 ---@class kui.ChannelMatch

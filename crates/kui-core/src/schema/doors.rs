@@ -1939,6 +1939,14 @@ pub const DOORS: &[Door] = &[
         doc: "A new channel of the rows given, in that order (backlog C148): a filtered or sorted view to hand a component.",
     },
     Door {
+        rust: "Channel::lanes",
+        c: As("`kui_channel_lanes`, read with `kui_channel_lanes_window`, `_count` and `_extent`"),
+        odin: As("`channel_lanes`, read with `channel_lanes_window`, `_count` and `_extent`"),
+        node: As("`channel.lanes(start, len, lane)`, read with `lanes.window(lane, v0, v1, min)`"),
+        lua: As("`ch:lanes(start, len, lane)`, read with `lanes:window(lane, v0, v1, min)`"),
+        doc: "A channel's intervals on lanes, built once in Rust, read a window at a time at a level of detail — about a run a pixel, whatever the rows behind them (ADR 0075): what a waterfall draws a million spans as.",
+    },
+    Door {
         rust: "Launcher::extensions",
         c: As("`kui_ctx_extension_count` / `kui_ctx_extension_namespace`, one at a time"),
         odin: As("`ctx_extension_count` / `ctx_extension_namespace`, one at a time"),
@@ -2340,7 +2348,8 @@ mod tests {
         let edge = read(root.join("edge_scroll.rs"));
         let slot = read(root.join("slot.rs"));
         // The channel is a crate of its own (ADR 0075), re-exported.
-        let channel = read(root.join("../../kui-channel/src/lib.rs"));
+        let channel = read(root.join("../../kui-channel/src/lib.rs"))
+            + &read(root.join("../../kui-channel/src/lanes.rs"));
         let menu = read(root.join("menu.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))

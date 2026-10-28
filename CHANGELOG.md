@@ -84,6 +84,28 @@ and its tables sort and filter them.
   `kui_channel::Channel::publish_from` is new beside it: the next
   revision of a view's identity holding another channel's rows, shared.
 
+- **A channel's intervals on lanes** (ADR 0075): `Channel::lanes(start,
+  len, lane)` sorts each lane's intervals once in Rust and makes its
+  levels as they are first asked for; `Lanes::window(lane, v0, v1, min)`
+  answers the runs reaching into a window — an interval at least `min`
+  long its own, shorter ones a gap under it apart merged into a strip
+  that counts them — so a window costs about a run a pixel, whatever the
+  rows behind it. A million intervals zoomed fully out are about 1,200
+  runs. In every binding: Lua `ch:lanes(...)` and `lanes:window(...)` (a
+  list per field), Node `channel.lanes(...)` and `ChannelLanes.window`
+  (typed arrays), C `kui_channel_lanes`, `_window`, `_count`, `_extent`,
+  `_free` and `KUI_CHANNEL_RUN`, Odin's.
+
+- **`where` in `kui.trace`'s filter**: `rec:filter { where = function(s)
+  return s.len > 0.5 and s.name:find("fill") end }`, called from Rust
+  with one table a span; 200 ms over 937,000 spans.
+
+- **kui-perf's spike** (backlog F249, `tools/kui-perf/spike`): a bare Lua
+  app — Kit's waterfall and table over `kui.trace` — that measures
+  itself phase by phase over a long recording, and the script that reads
+  its recording back. ADR 0075 holds the numbers and is accepted with
+  them.
+
 - **A channel appended to** (backlog C147): `Channel::append(rows, cap)`
   is the next revision with `rows` after this one's — each column named,
   of its kind, integers widening into a number column — the oldest past
@@ -114,6 +136,17 @@ and its tables sort and filter them.
 
   *What you can delete:* a worker's copy of its rows in Lua kept only to
   filter and sort them — the gallery's 21 MB.
+
+### Changed
+
+- **Kit's waterfall costs its width, not its spans** (ADR 0075): it reads
+  its bars from the channel's lanes, a window at a time, and the names
+  and groups of the bars it draws — where it made a Lua table of every
+  row and nineteen levels of every lane on each new revision — and draws
+  marks closer than a pixel as one rule whose tooltip counts them, where
+  it drew each. Over 936,723 spans: the first frame 4.6 s → 0.1 s past
+  the open, a frame showing the whole recording 50 → 0.4 ms, zooming out
+  520 → 3.5 ms at its worst.
 
 ## 0.1.0-alpha.69 (2026-10-28)
 

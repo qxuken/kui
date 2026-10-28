@@ -42,6 +42,7 @@ Value :: struct {}
 ReplySink :: struct {}
 ChannelBuilder :: struct {}
 Channel :: struct {}
+ChannelLanes :: struct {}
 Waker :: struct {}
 AnimationEncoder :: struct {}
 
@@ -64,6 +65,8 @@ CHANNEL_BUCKET :: 8
 CHANNEL_EQUAL :: 0
 CHANNEL_CONTAINS :: 1
 CHANNEL_CONTAINS_ANY_CASE :: 2
+
+CHANNEL_RUN :: 4
 
 OPTION_AS_ALT_NONE :: 0
 OPTION_AS_ALT_LEFT :: 1
@@ -1253,6 +1256,11 @@ foreign lib {
 	channel_filter_str :: proc(ch: [^]Channel, col: uint, text: string, how: i32, within: [^]uint, n_within: uint, out: ^uint, count: ^uint) -> bool ---
 	channel_sort :: proc(ch: [^]Channel, col: uint, descending: bool, within: [^]uint, n_within: uint, out: ^uint, count: ^uint) -> bool ---
 	channel_take :: proc(ch: ^Channel, rows: [^]uint, n: uint) -> ^Channel ---
+	channel_lanes :: proc(ch: [^]Channel, start: uint, len: i32, lane: i32) -> ^ChannelLanes ---
+	channel_lanes_free :: proc(l: ^ChannelLanes) ---
+	channel_lanes_count :: proc(l: ^ChannelLanes) -> uint ---
+	channel_lanes_extent :: proc(l: ^ChannelLanes, lo: ^f64, hi: ^f64) -> bool ---
+	channel_lanes_window :: proc(l: [^]ChannelLanes, lane: uint, v0: f64, v1: f64, min: f64, out: [^]f64, room: uint, count: ^uint) -> bool ---
 	token_family :: proc(ctx: ^Ctx, name: string, family: ^u32, font: ^u64) -> bool ---
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---

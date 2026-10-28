@@ -461,3 +461,120 @@ pub extern "C" fn kui_channel_take(
         }
     })
 }
+
+/// A channel's intervals on lanes (ADR 0075), yours until
+/// [`kui_channel_lanes_free`].
+pub struct KuiChannelLanes(kui_core::channel::Lanes);
+
+/// Doubles a run of [`kui_channel_lanes_window`] takes: its start, its
+/// end, its row (-1 for a strip of several) and how many intervals it
+/// holds.
+pub const KUI_CHANNEL_RUN: usize = 4;
+
+/// The intervals of column `start` to `start + len` (`len` -1: points) on
+/// the lanes column `lane` names (-1: one lane), built once for
+/// [`kui_channel_lanes_window`]. NULL for NULL or a column that is not
+/// numbers, the reason in [`kui_channel_error`].
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_lanes(
+    ch: *const KuiChannel,
+    start: usize,
+    len: i32,
+    lane: i32,
+) -> *mut KuiChannelLanes {
+    guard(std::ptr::null_mut(), || {
+        let Some(c) = (unsafe { ch.as_ref() }) else {
+            return std::ptr::null_mut();
+        };
+        let opt = |i: i32| (i >= 0).then_some(i as usize);
+        match c.0.lanes(start, opt(len), opt(lane)) {
+            Ok(l) => Box::into_raw(Box::new(KuiChannelLanes(l))),
+            Err(e) => fail(e, std::ptr::null_mut()),
+        }
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_lanes_free(l: *mut KuiChannelLanes) {
+    guard((), || {
+        if !l.is_null() {
+            drop(unsafe { Box::from_raw(l) });
+        }
+    })
+}
+
+/// How many lanes; 0 for NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_lanes_count(l: *const KuiChannelLanes) -> usize {
+    guard(0, || unsafe { l.as_ref() }.map_or(0, |l| l.0.count()))
+}
+
+/// The earliest start and the latest end; false for NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_lanes_extent(
+    l: *const KuiChannelLanes,
+    lo: *mut f64,
+    hi: *mut f64,
+) -> bool {
+    guard(false, || {
+        let Some(l) = (unsafe { l.as_ref() }) else {
+            return false;
+        };
+        let (a, b) = l.0.extent();
+        unsafe {
+            if let Some(lo) = lo.as_mut() {
+                *lo = a;
+            }
+            if let Some(hi) = hi.as_mut() {
+                *hi = b;
+            }
+        }
+        true
+    })
+}
+
+/// Lane `lane`'s runs reaching into `[v0, v1]` at the detail where an
+/// interval at least `min` long is a run of its own (a pixel's width: a
+/// run a pixel), `KUI_CHANNEL_RUN` doubles each into `out`, which has room
+/// for `room` runs; `*count` is how many were written, the first `room`
+/// of them. False for NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_channel_lanes_window(
+    l: *const KuiChannelLanes,
+    lane: usize,
+    v0: f64,
+    v1: f64,
+    min: f64,
+    out: *mut f64,
+    room: usize,
+    count: *mut usize,
+) -> bool {
+    guard(false, || {
+        let Some(l) = (unsafe { l.as_ref() }) else {
+            return false;
+        };
+        if count.is_null() || (out.is_null() && room > 0) {
+            return false;
+        }
+        let mut runs = Vec::new();
+        l.0.window(lane, v0, v1, min, &mut runs);
+        let n = runs.len().min(room);
+        for (i, r) in runs.iter().take(n).enumerate() {
+            let row = [
+                r.start,
+                r.end,
+                r.row.map_or(-1.0, |x| x as f64),
+                r.count as f64,
+            ];
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    row.as_ptr(),
+                    out.add(i * KUI_CHANNEL_RUN),
+                    KUI_CHANNEL_RUN,
+                )
+            };
+        }
+        unsafe { *count = n };
+        true
+    })
+}

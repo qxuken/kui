@@ -597,6 +597,7 @@ package kui_c
 #assert(CHANNEL_EQUAL == 0)
 #assert(CHANNEL_CONTAINS == 1)
 #assert(CHANNEL_CONTAINS_ANY_CASE == 2)
+#assert(CHANNEL_RUN == 4)
 #assert(OPTION_AS_ALT_NONE == 0)
 #assert(OPTION_AS_ALT_LEFT == 1)
 #assert(OPTION_AS_ALT_RIGHT == 2)
