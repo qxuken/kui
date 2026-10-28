@@ -4219,8 +4219,9 @@ Code lines (cloc):
 | kui | 85 | 294 |
 | Clay | 153 | 82 |
 
-214 of kui's glue lines are the renderer the pack does not ship. Six
-entries, F263–F268, filed and not built.
+214 of kui's glue lines are the renderer the pack does not ship. Seven
+entries, F263–F269, filed and not built. F269 is what the user's
+question about the comparison's accessibility row found.
 
 ### `.` F263 — A host with its own device copies kui's renderer out of an example
 
@@ -4351,6 +4352,47 @@ bindings, and Clay's is one 260 KB header. The app packs (`kui-<ver>-<platform>`
 - Per-platform C and Odin packs (`kui-c-<ver>-<platform>.tar.gz`), built by the release's existing per-platform jobs, with the all-platform bundle kept for whoever vendors every target.
 - `install.sh`'s and the README's pointers follow.
 - A further cut, to weigh: the static archives in a pack of their own, since a host beside another Rust library is told to link shared anyway.
+
+### `~` F269 — A host with its own window has no accessibility bridge: a screen reader finds the window empty
+
+**Found** 2026-10-29: the spike's kui HUD, walked with the macOS AX API
+while it ran, showed only its window's three traffic-light buttons and
+its title. The same view gives 11 nodes from `kui_access_tree` (two
+buttons, a checkbox, five texts, a scroll view, its row, the window).
+
+The core has every part of accessibility except the delivery:
+- the tree;
+- announcements (`kui_take_announcements`);
+- actions in (`kui_input_access`, `kui_input_access_text`);
+- `kui_env_set_assistive`.
+
+The one bridge to a platform is `kui-native/src/access_bridge.rs`: 626
+lines on `accesskit_winit`, run by `kui_run`'s windows alone. The
+runner-less core library a game links, the one F234–F239 and ADR 0076
+built the host path around, has none. kui.h says only that "a host
+wiring its own platform accessibility layer reads it after each frame".
+A C host doing that would bring AccessKit's C API and write the same 626
+lines: the adapter on its view, every node translated, actions mapped
+back.
+
+So every embedded kui is silent to assistive technology: Replicator
+Bloom, the spike, and any game on GLFW or SDL3. Its keyboard focus still
+works. Dear ImGui and Clay have no accessibility either, but kui is the
+one that claims it.
+
+**Do.**
+- **A door in the core library** that attaches AccessKit's platform adapters to the host's native handle, with no winit:
+  - an `NSView` on macOS (`accesskit_macos::SubclassingAdapter`), an `HWND` on Windows (`accesskit_windows`'s), and nothing on Linux (`accesskit_unix` needs no window);
+  - something like `kui_access_attach(ctx, handle)` and `kui_access_detach`;
+  - it pushes a tree after `kui_frame_finish` when the tree's hash changed, delivers announcements, sets `env.system.assistive` when a client first asks, and turns a client's requests into `kui_input_access` on the same context.
+- **Move the runner onto it**, so `access_bridge.rs` is its one user rather than a second copy; `accesskit_winit` is mostly these adapters plus winit's event plumbing.
+- **Bindings:** doors in C and Odin. Rust's host path takes it as a function on the context. Node has no host path.
+- **A feature in the core build** (`access`), since it adds AccessKit's platform crates to a library that has none; on by default.
+- **Decide the islands (ADR 0076).**
+  - A surface is a context of its own, drawn in perspective in the world, so its nodes have no rect in the window until the host projects them.
+  - Either the host gives each surface context a transform, or the four corners of its quad in window px each frame, and the bridge grafts that context's tree under a node of the main one with projected rects.
+  - Or a surface is not exposed, and the reason is written in ADR 0076.
+- **The test:** the C reference host attached headlessly is not enough (no AX client). A walk of the macOS AX API from a swift script (as the VoiceOver repros are run headlessly) against a windowed host is: the spike's HUD should list its buttons and checkbox, and AXPress on Harvest should raise the click.
 
 ## From the core impurities audit (2026-10-25)
 
