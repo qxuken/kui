@@ -4135,20 +4135,6 @@ first registered and outlives it (kui-ffi's
 surface walk, Node's F237 test). `Core::new_in`'s doc no longer claims
 the atlas is shared. **Left:** the atlas, decided with F236.
 
-### `.` F238 — The release packs carry no library without the runner
-
-**Found** in the wishlist's item 1, with F232. `pack-ffi.nu --no-runner`
-builds `kui_ffi` without `kui_run` — no wgpu, no winit, no audio device,
-under half the size — for a host with its own window, but the release
-ships only the runner build in `kui-c-<version>` and `kui-odin-<version>`.
-A host like this one carries wgpu, winit and `raw-window-metal` it never
-calls. **Do.** A no-runner library beside each platform's two in both
-tarballs (`lib/<platform>/core/{shared,static}`, and `KUI_CORE=true` in
-Odin's `kui_c.odin`), with `verify` linking a counter against it; a
-release dry run before the tag, as alpha.68 taught. It does not solve
-F232's collision — the standard library is still in the archive — so the
-shared kind stays the advice beside another Rust library.
-
 ### Theirs, not ours
 
 - **Item 11, "tell a single-blend host to turn subpixel text off".** It
@@ -6260,7 +6246,7 @@ move.
 - `.` **F235** — [The draw data has no bounds](backlog/closed-2026-09.md#-f235--the-draw-data-has-no-bounds--done-2026-10-28) — done (2026-10-28) — `DisplayList::bounds`, `KuiDrawData.bounds` (ABI 42); per-layer rects wait for F236's surfaces
 - `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — open — an ADR for a `surface` row, decided with F237
 - `.` **F237** — [Contexts cannot share their fonts, images or atlas](#-f237--contexts-cannot-share-their-fonts-images-or-atlas) — door built (2026-10-28), atlas open — `kui_ctx_new_in` / `new_ui_in` / `Ctx.sibling` over `Core::new_in`; the atlas (ADR 0004 step 2) with F236
-- `.` **F238** — [The release packs carry no library without the runner](#-f238--the-release-packs-carry-no-library-without-the-runner) — open — a no-runner library in both tarballs, verified, after a release dry run
+- `.` **F238** — [The release packs carry no library without the runner](backlog/closed-2026-09.md#-f238--the-release-packs-carry-no-library-without-the-runner--done-2026-10-28) — done (2026-10-28) — `lib/<platform>/core/` in both tarballs, `KUI_CORE` in Odin, pkg-config files in the C pack, `host_loop` verified against it
 - `.` **F239** — [Every host maps its window library's keys to kui's by hand](backlog/closed-2026-09.md#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand--done-2026-10-28) — done (2026-10-28) — `kui_glfw.h` / `kui_sdl3.h` and Odin's `kui/glfw` / `kui/sdl3`, generated from one table checked against `KeyCode::from_name`
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
 - `.` **F245** — [The atlas epoch starts at 0, so a zeroed host takes the first page for one it has](backlog/closed-2026-09.md#-f245--the-atlas-epoch-starts-at-0-so-a-zeroed-host-takes-the-first-page-for-one-it-has--done-2026-10-28) — done (2026-10-28) — `GlyphAtlas::epoch` starts at 1 and is never 0; said in kui.h

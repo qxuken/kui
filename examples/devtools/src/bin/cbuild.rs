@@ -13,6 +13,8 @@
 //!
 //!     counter          C as the host, kui as a plain library
 //!     surface          the header walk, every prototype called once
+//!     host_loop        kui.h's host loop with nothing from the runner
+//!     keys             the GLFW and SDL3 key tables (kui_glfw.h, kui_sdl3.h)
 //!     conformance      the C adapter over the scene corpus
 //!     host             C as the host of a C *extension* (ADR 0014's C half)
 //!     panel.so/.dll    the panel, which either host loads
@@ -369,6 +371,9 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
     let exe = |src: &str, out: &str| exe_with(src, out, &[]);
     exe("examples/c/apps/counter.c", "counter")?;
     exe("examples/c/tools/surface.c", "surface")?;
+    // The host loop with nothing from the runner: what the release's
+    // no-runner library is verified with (backlog F238).
+    exe("examples/c/tools/host_loop.c", "host_loop")?;
     exe("examples/c/tools/conformance.c", "conformance")?;
     exe("examples/c/features/slots/host.c", "host")?;
     // Kit through the header its schema generates (docs/adr/0066).
@@ -469,6 +474,12 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
             exe: format!("{bin}/{}", exe_name("surface")),
             args: vec![],
             note: "the header walk: every prototype in kui.h called once",
+            must_fail: None,
+        },
+        Step {
+            exe: format!("{bin}/{}", exe_name("host_loop")),
+            args: vec![],
+            note: "the host loop without a window: build, drain, draw, input",
             must_fail: None,
         },
         Step {

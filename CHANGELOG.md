@@ -97,6 +97,15 @@ Nothing else breaks.
   typed text once. Generated from one table checked against kui's key
   names.
 
+- **The C and Odin packs carry the library without the runner** (backlog
+  F238): `lib/<platform>/core/` beside each platform's shared and static
+  libraries — no `kui_run`, wgpu, winit or audio device, about half the
+  size — for a host that brings its own window; Odin picks it with
+  `-define:KUI_CORE=true`. The C pack also carries pkg-config files
+  (`kui`, `kui-static`, `kui-core`, `kui-core-static` in
+  `lib/<platform>/pkgconfig/`, but on Windows), so a link line is
+  `$(pkg-config --cflags --libs kui-static)`.
+
 ## 0.1.0-alpha.70 (2026-10-28)
 
 **What breaks.**
