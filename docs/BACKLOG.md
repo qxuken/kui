@@ -489,6 +489,49 @@ visible in the pixels. **All eight, F16–F23, closed the same day** and are in
 whole — F23 as ADR 0013, accepted and built for alpha.8 rather than left
 for a view. What stays here is the two wishes that were not ours.
 
+### `.` F261 — C has no scoped openers: every `kui_open` needs its `kui_close` by hand
+
+**Filed** 2026-10-28 by the user, beside F230 (Odin's scoped openers). A
+C view pairs `kui_frame_begin` / `kui_frame_finish` and `kui_open*` /
+`kui_close` by hand; Odin got `@(deferred_in)` openers, C has nothing.
+Clay's loop trick gives C the same shape at no run-time cost:
+
+    KUI_FRAME(ctx, w, h, scale) {
+        KUI_BOX(ctx, .width = {KUI_GROW, 1}, .bg = 0x202020ffu) {
+            kui_text(ctx, KUI_STR("Hello from C"), &big);
+        }
+    }
+
+**Do.** Header-only macros (no ABI bump), C only (`#ifndef __cplusplus`,
+or a `kui_scope.h` of their own): a compound-literal `KuiSpec` from
+designated initializers is not standard C++, and C++20's designated
+initializers are order-bound. The run-once flag's name must come from
+one `__COUNTER__` expansion passed down, or its two uses get different
+names:
+
+    #define KUI__CAT2(a, b) a##b
+    #define KUI__CAT(a, b) KUI__CAT2(a, b)
+    #define KUI__SCOPE_N(v, open, close) for (int v = ((open), 0); !v; v = 1, (close))
+    #define KUI__SCOPE(open, close) KUI__SCOPE_N(KUI__CAT(kui__once_, __COUNTER__), open, close)
+    #define KUI_FRAME(ctx, w, h, s) KUI__SCOPE(kui_frame_begin((ctx), (w), (h), (s)), kui_frame_finish(ctx))
+    #define KUI_BOX(ctx, ...) KUI__SCOPE(kui_open((ctx), &(KuiSpec){__VA_ARGS__}, NULL), kui_close(ctx))
+    #define KUI_BOX_KEYED(ctx, label, ...) KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, NULL), kui_close(ctx))
+
+Plus variants for what the macro hides: one that writes out the key
+`kui_open` returns (`KUI_BOX_KEY(ctx, &key, ...)`), and one with a click
+message (a fresh `kui_value_*` each frame, since `kui_open*` takes
+ownership of it). The commas inside `{KUI_GROW, 1}` are fine: they split
+into several macro arguments and `__VA_ARGS__` joins them again.
+`__COUNTER__` works on GCC, Clang and MSVC; MSVC needs `/std:c11` for the
+compound literal. **The trap**, documented as view.odin documents Odin's:
+`break`, `return` or `goto` out of a block skips the close (`continue` is
+fine). Out of a `KUI_BOX` that leaves a node open, which the core's
+`unclosed-node` warning (F230) already catches at the frame's end in
+every binding; out of `KUI_FRAME` it leaves the frame unfinished, which
+is worse, so the doc says never to break or return out of either. Switch
+examples/c over where it reads better; a block in surface.c keeps the
+macros compiled in the C round.
+
 ### Theirs, not ours
 
 - **Wish 5 (per-surface font handles).** `init(surface)` runs after
@@ -6222,6 +6265,7 @@ move.
 - `.` **F237** — [Contexts cannot share their fonts, images or atlas](backlog/closed-2026-09.md#-f237--contexts-cannot-share-their-fonts-images-or-atlas--done-2026-10-28) — done (2026-10-28) — `kui_ctx_new_in` / `new_ui_in` / `Ctx.sibling` over `Core::new_in`; the atlas stays per context (ADR 0076, decision 7)
 - `.` **F238** — [The release packs carry no library without the runner](backlog/closed-2026-09.md#-f238--the-release-packs-carry-no-library-without-the-runner--done-2026-10-28) — done (2026-10-28) — `lib/<platform>/core/` in both tarballs, `KUI_CORE` in Odin, pkg-config files in the C pack, `host_loop` verified against it
 - `.` **F239** — [Every host maps its window library's keys to kui's by hand](backlog/closed-2026-09.md#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand--done-2026-10-28) — done (2026-10-28) — `kui_glfw.h` / `kui_sdl3.h` and Odin's `kui/glfw` / `kui/sdl3`, generated from one table checked against `KeyCode::from_name`
+- `.` **F261** — [C has no scoped openers: every `kui_open` needs its `kui_close` by hand](#-f261--c-has-no-scoped-openers-every-kui_open-needs-its-kui_close-by-hand) — open — Clay-style `KUI_FRAME` / `KUI_BOX` macros, header-only and C-only, the break/return trap documented
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
 - `.` **F245** — [The atlas epoch starts at 0, so a zeroed host takes the first page for one it has](backlog/closed-2026-09.md#-f245--the-atlas-epoch-starts-at-0-so-a-zeroed-host-takes-the-first-page-for-one-it-has--done-2026-10-28) — done (2026-10-28) — `GlyphAtlas::epoch` starts at 1 and is never 0; said in kui.h
 
