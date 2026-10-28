@@ -1794,6 +1794,7 @@ dependencies = [
  "arbitrary",
  "kui-core",
  "kui-native",
+ "kui-trace",
  "libfuzzer-sys",
 ]
 

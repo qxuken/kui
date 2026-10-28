@@ -25,6 +25,8 @@ kui-core = { workspace = true, features = ["conformance"] }
 # compiled but never called. No audio, dialogs or AccessKit: nothing here
 # opens a device.
 kui-native = { workspace = true, default-features = false }
+# The recording's reader, its analyses and adapters (the `trace` target).
+kui-trace.workspace = true
 arbitrary = { version = "1", features = ["derive"] }
 libfuzzer-sys = { version = "0.4", optional = true }
 
@@ -110,6 +112,14 @@ required-features = ["libfuzzer"]
 [[bin]]
 name = "channel"
 path = "fuzz_targets/channel.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]
+
+[[bin]]
+name = "trace"
+path = "fuzz_targets/trace.rs"
 test = false
 doc = false
 bench = false

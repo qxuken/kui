@@ -4267,7 +4267,16 @@ started the running kui on macOS, whose windowed run is a clone named
 after the app (F253 — the runner says so, `kui_native::set_runner`);
 Odin's `channel_filter_f64`, `channel_filter_str` and `channel_sort` wrote
 past a short `out` (refused now, as `channel_reduce` bounds by it); a tab
-byte in `kui.h`; changelog, README and crate-docs drift. Three stay open.
+byte in `kui.h`; changelog, README and crate-docs drift. Then twenty
+minutes of all eleven fuzz targets while the release's dry run ran, two
+of them new or grown for this release: `trace` (the recording read whole
+and in pieces, its analyses and adapters) and `channel` (append under a
+cap, filter, sort, take and lanes). FZ19, from `trace`, was fixed the
+same day: a name record whose id lay far past the names read so far grew
+the table to it — 16 bytes asked for 94 GB, so a corrupt `.kuitrace`
+dropped on kui-perf aborted it; a name more than 65 536 past the table
+is read as none (`fuzz/regressions/trace/fz19-name-past-the-table`).
+Four stay open.
 
 ### `.` RG171 — Live: a burn's first frames keep the verdict they had before it was one
 
@@ -4297,6 +4306,25 @@ undone at the first read. **Do.** Measure Live over a big recording
 first (`kui-trace synth` and a growing file); then the readers run by
 run (a filter and a sort over runs, a take that copies the rows it
 takes), or `settle` joining runs as they are read rather than at a cap.
+
+### `.` FZ20 — A composition a press ends leaves the editor off the value the app declared
+
+**Found** 2026-10-28 by the `events` target in the alpha.70 fuzz round;
+**not a regression**, alpha.69 fails the same input the same way. An
+editor declared with `EditOptions::value`, a selection, then a
+composition (`Preedit`) that replaces it: the `change` carries `""`, the
+app declares its correction (`"!"`), and the core holds it while the
+input method composes, as it should. A press (`Down`) then ends the
+composition with no commit, and the frames after it keep `""` where the
+app declared `"!"`: the hold outlives the composition. Likely where the
+press drops the preedit without clearing the state `held` reads
+(`edit.rs`, `opts.value && state.preedit.is_some()`), or clears it to an
+empty preedit. The minimized input (217 bytes, base64), for
+`fuzz/regressions/events/` once fixed:
+`LRaE60ol+dB3x0sIu7u7u7u7u7u7u7u7u7u7u7u7u7u7x0sI8Ruujk1NTX5NTU1NTU1NTU1NTU1NTbu7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u/Ebro5NTU1NTU1NTU1NTU1NTU1NTU0XF01NTU3jro5NTU1+TU1NTXNfX19fja9zc3Nz/////wEBAQEBAXByZXCDg4ODgwD/////bW1tbW1tbW1tbW2+eRwO/W1tbW1tbW1tbW1tbcjTjQ87LOmYZenpsA8XFxRFeRwO/Q==`.
+**Do.** Reproduce it in a kui-core test (a value-declared field, a
+selection, a preedit, a press), fix where the press ends the
+composition, and keep the input.
 
 ### `.` RG173 — Numbers with a fraction appended to a column of integers are refused
 

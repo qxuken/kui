@@ -8,6 +8,11 @@ use std::collections::HashMap;
 use crate::codec::{Encoder, Error, Reader, header};
 use crate::record::{LoopEvent, NameId, Record, Session, Span, Track};
 
+/// How far past the names read so far a name's id may land: a writer
+/// hands ids out in order, so any gap is a record lost, and one this wide
+/// is a corrupt file.
+const MAX_NAME_GAP: usize = 1 << 16;
+
 /// Names to ids, as a writer hands them out: each string once.
 #[derive(Clone, Debug, Default)]
 pub struct Names {
@@ -52,6 +57,13 @@ impl Names {
 
     fn set(&mut self, id: NameId, text: String) {
         let i = id as usize;
+        // A writer hands ids out one after another, so a name far past the
+        // table is a corrupt file, not a name: kept, it would make room
+        // for every id before it — one 20-byte record asked for 94 GB
+        // (the `trace` fuzz target). Read as a name never given.
+        if i > self.list.len() + MAX_NAME_GAP {
+            return;
+        }
         if self.list.len() <= i {
             self.list.resize(i + 1, String::new());
         }

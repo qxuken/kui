@@ -30,7 +30,7 @@
 # Exit codes: 0 no target crashed, 1 one did (its artifact is printed),
 # 2 a build or a tool failed.
 
-const TARGETS = [parsers values path scenes decode events encode dtcg svg channel]
+const TARGETS = [parsers values path scenes decode events encode dtcg svg channel trace]
 
 # libFuzzer's flags for every run. RSS: a decoder may allocate what an
 # image's header asks for, and the image crate's own cap is 512 MB, so the

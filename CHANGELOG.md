@@ -437,6 +437,13 @@ and its tables sort and filter them.
   Measured on Windows 11 with a 1.5 s teardown: off the screen 7–16 ms
   after the close, where it stayed for the whole 1.6 s.
 
+- **A corrupt recording no longer aborts its reader** (backlog FZ19,
+  from the `trace` fuzz target, new this release): a name record whose
+  id lay far past the names read so far made room for every id before
+  it, so 16 bytes asked for 94 GB and `kui perf`, the devtools' Perf tab
+  or `kui-trace` ended on an allocation failure. A name more than 65,536
+  past the table is read as no name.
+
 - **A C or Odin host uploads the first atlas page** (backlog F245, from
   Replicator Bloom). The glyph atlas's `epoch` started at 0, so a host
   keeping "the epoch I uploaded" in a zeroed struct saw no change on the
@@ -486,7 +493,10 @@ the speed-ups above took back C149's and F220's cost). Three read-only
 reviews of the 82 commits since alpha.69 — the core and the recording's
 crates, the bindings and the platform, the docs and the packaging — found
 what the backlog's alpha.70 pre-tag section lists: fixed before the tag,
-folded into the entries above, and RG171–RG173 open.
+folded into the entries above, and RG171–RG173 open. Twenty minutes of
+all eleven fuzz targets after, `trace` new and `channel` grown to this
+release's reads: FZ19 fixed (above), FZ20 open (an editor's declared
+value after a composition a press ends; alpha.69 the same).
 
 Not verified natively this release: Windows and Linux on a machine
 (smoke.yml's Windows round and ci.yml's Linux check run on GitHub's
