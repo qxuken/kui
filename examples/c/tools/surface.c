@@ -1368,6 +1368,15 @@ static int surface(void) {
         kui_frame_finish(ui);
         kui_scroll_offset(ui, k.card, NULL, &sy);
         check(sy == want, "kui_input_wheel moves the card its feel's line");
+        /* A pinch is an `on_scroll` node's zoom: a scroller it is over
+         * does not move. */
+        kui_input_pinch(ui, 0.2f, true);
+        kui_frame_begin(ui, 800, 600, 2.0f);
+        surface_view(&k, ui);
+        kui_frame_finish(ui);
+        float after = -1;
+        kui_scroll_offset(ui, k.card, NULL, &after);
+        check(after == sy, "kui_input_pinch scrolls no container");
         kui_set_wheel_feel(ui, 40, 0.30f, 0.6f);
         kui_set_smooth_wheel(ui, true);
 

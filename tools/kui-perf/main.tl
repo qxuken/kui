@@ -32,6 +32,8 @@ local function load_prefs(): Prefs
   p.recent = (t.recent or {}) as {string}
   p.lanes = (t.lanes or {}) as {string:{string}}
   p.split = t.split as number
+  p.dock = t.dock as number
+  p.helped = t.helped as boolean
   p.name = t.name as string
   p.min_us = t.min_us as number
   p.frames = t.frames as string
@@ -45,7 +47,7 @@ local function save_prefs(m: Model)
   local p = m.prefs
   local st = m.ins
   if st then
-    p.split, p.name, p.min_us, p.frames, p.devtools = st.split, st.name, st.min_us, st.frames, st.devtools
+    p.split, p.dock, p.name, p.min_us, p.frames, p.devtools = st.split, st.dock, st.name, st.min_us, st.frames, st.devtools
     local app = (st.session.app or "") as string
     p.lanes[app] = st.lanes
   end
@@ -69,6 +71,8 @@ local function open(m: Model, path: string)
   end
   m.path, m.error, m.waiting = path, nil, 0
   m.ins = inspector.new(rec as kui.Recording, m.prefs)
+  -- The keys' card, the first time a recording opens.
+  if not m.prefs.helped then m.help, m.prefs.helped = true, true end
   remember(m, path)
   save_prefs(m)
 end
@@ -112,7 +116,9 @@ global function update(msg: Msg)
     if k == "ins_split" or k == "ins_lane" or k:find("^ins_[nfmod]") then save_prefs(m) end
     return
   end
-  if k == "moved" then
+  if k == "help" then m.help = not m.help
+  elseif k == "help_close" then m.help = false
+  elseif k == "moved" then
     if m.live then poll(m) else m.waiting = m.waiting + 1 end
   elseif k == "refresh" then
     m.waiting = 0
@@ -136,11 +142,17 @@ global function update(msg: Msg)
     elseif id == "fit" and m.ins then inspector.update(m.ins, { kind = "ins_fit" })
     elseif id == "latest" and m.ins then inspector.update(m.ins, { kind = "ins_latest" })
     elseif id == "live" then m.live = not m.live
+    elseif id == "help" then m.help = true
     end
   elseif k == "keys" then
     local key = msg.key
     if not key then return end
     if key.phase == "down" and (key.super or key.ctrl) and key.code == "o" then ask_open() return end
+    if key.phase == "down" and (key.text == "?" or (key.code == "/" and key.shift)) then m.help = not m.help return end
+    if m.help then
+      if key.phase == "down" and key.code == "escape" then m.help = false end
+      return
+    end
     if m.ins then inspector.key(m.ins, key) end
   end
 end
@@ -164,6 +176,9 @@ local function menus(m: Model): kui.Node
         { label = "Go to the latest", id = "latest" },
         { label = "Live", id = "live", checked = m.live },
       } },
+      { label = "Help", items = {
+        { label = "Keys and gestures", id = "help", accel = "shift+/" },
+      } },
     },
   }
 end
@@ -182,6 +197,7 @@ local function toolbar(m: Model): kui.Node
         on_press = { kind = "ins_latest" } }) or nil,
       st and kit.button({ key = "fit", label = "Fit", variant = "ghost", on_press = { kind = "ins_fit" } }) or nil,
       kit.switch({ key = "live", label = "Live", on = m.live, on_toggle = { kind = "live" } }),
+      kit.icon_button({ key = "help", icon = "info", label = "Keys and gestures (?)", on_press = { kind = "help" } }),
     },
   })
 end
@@ -218,6 +234,52 @@ local function welcome(m: Model): kui.Node
   }
 end
 
+-- The keys' card: what the keys, the wheel and a drag do, a line each,
+-- after two lines on how the window reads.
+local KEYS: {{string}} = {
+  { "Frames", "" },
+  { "← →  h l", "the frame before or after" },
+  { "[ ]", "the slow frame before or after" },
+  { "{ }", "the burn before or after" },
+  { "Esc", "clear the range, then the selection" },
+  { "The window", "" },
+  { "wheel · pinch", "zoom about the pointer" },
+  { "swipe sideways · ⇧ wheel", "pan" },
+  { "drag the lanes", "pan" },
+  { "w s", "zoom in, out" },
+  { "a d", "pan left, right" },
+  { "drag the overview", "move the window" },
+  { "The range", "" },
+  { "drag the time axis", "select a range; a click clears it" },
+  { "f · z", "zoom to the range, or fit the selected frame or span" },
+  { "0", "the whole recording" },
+  { "Elsewhere", "" },
+  { "/", "filter spans by name" },
+  { "⌘O", "open a recording" },
+  { "?", "this card" },
+}
+
+local function help(): kui.Node
+  local body: kui.Props = {
+    text("The overview is every frame's work; the box on it is the window the timeline shows, and the tables under it read the window once it is still. Pick a frame or a span to read it in the detail.",
+      { size = "$kitSize", family = "$kitUi", color = "$kitFg", wrap = "word" } as kui.text),
+  }
+  for i, k in ipairs(KEYS) do
+    if k[2] == "" then
+      body[#body + 1] = row { key = "h" .. i, pad = { t = 6 },
+        text(k[1], { size = "$kitSizeLabel", family = "$kitUi", bold = true, color = "$kitAccent" } as kui.text) }
+    else
+      body[#body + 1] = row { key = "k" .. i, width = "grow", gap = 12, cross_align = "center",
+        row { width = 170, text(k[1], { size = "$kitSizeLabel", family = "$kitData", color = "$kitFg", max_lines = 1 } as kui.text) },
+        text(k[2], { size = "$kitSizeLabel", family = "$kitUi", color = "$kitMuted", wrap = "word" } as kui.text) }
+    end
+  end
+  local children = body as {any:any}
+  children.actions = { kit.button({ key = "help-ok", label = "Got it", variant = "primary", on_press = { kind = "help_close" } }) }
+  return kit.dialog({ key = "help-card", title = "Keys and gestures", width = 520, on_dismiss = { kind = "help_close" } },
+    children)
+end
+
 global function view(env: kui.Env): kui.Node
   local m = model
   return column { key = "root", width = "grow", height = "grow", bg = "$kitBg",
@@ -233,5 +295,6 @@ global function view(env: kui.Env): kui.Node
     toolbar(m),
     m.ins and inspector.view(m.ins, env) or welcome(m),
     status(m),
+    m.help and help() or nil,
   }
 end

@@ -210,6 +210,8 @@ fn every_schema_prop_has_a_c_counterpart() {
             scale: 0.0,
             dx: 0.0,
             dy: 0.0,
+            scale_x: 0.0,
+            scale_y: 0.0,
         }];
         let gradient_stops = [
             KuiGradientStop { color: C, at: -1.0 },
@@ -296,6 +298,8 @@ fn every_schema_prop_has_a_c_counterpart() {
                     opacity: 0.0,
                     rotate: 0.0,
                     scale: 0.0,
+                    scale_x: 0.0,
+                    scale_y: 0.0,
                 }
             }
             "exit" => {
@@ -310,6 +314,8 @@ fn every_schema_prop_has_a_c_counterpart() {
                     opacity: 0.0,
                     rotate: 0.0,
                     scale: 0.0,
+                    scale_x: 0.0,
+                    scale_y: 0.0,
                 }
             }
             "repeat" => s.repeat = 1,
@@ -340,6 +346,8 @@ fn every_schema_prop_has_a_c_counterpart() {
             "backdropBlur" => s.backdrop_blur = F,
             "rotate" => s.rotate = F,
             "scale" => s.scale = F,
+            "scaleX" => s.scale_x = F,
+            "scaleY" => s.scale_y = F,
             "pivotX" => (s.pivot_set, s.pivot_x) = (KUI_PIVOT_X, F),
             "pivotY" => (s.pivot_set, s.pivot_y) = (KUI_PIVOT_Y, F),
             "iterations" => s.iterations = F,
@@ -441,6 +449,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
             scale: 0.0,
             dx: 0.0,
             dy: 0.0,
+            scale_x: 0.0,
+            scale_y: 0.0,
         },
         KuiKeyframe {
             set: KUI_KF_AT | KUI_KF_WIDTH | KUI_KF_HEIGHT | KUI_KF_RADIUS,
@@ -454,6 +464,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
             scale: 0.0,
             dx: 0.0,
             dy: 0.0,
+            scale_x: 0.0,
+            scale_y: 0.0,
         },
     ];
     let modal_tag = KuiValue(Value::str("m"));
@@ -600,6 +612,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
         focus_ring: 0x44_55_66_ff,
         text_color: 0x77_88_99_ff,
         float_escape: 1,
+        scale_x: 0.5,
+        scale_y: 2.0,
         tooltip: KuiStr {
             ptr: "hint".as_ptr(),
             len: 4,
@@ -698,6 +712,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .backdrop_blur(6.0)
         .rotate(0.1)
         .scale(1.2)
+        .scale_x(0.5)
+        .scale_y(2.0)
         .pivot(0.25, 0.75)
         .iterations(2.0)
         .over_siblings()

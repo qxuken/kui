@@ -47,7 +47,7 @@ Waker :: struct {}
 AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 40
+ABI_VERSION :: 41
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -239,6 +239,8 @@ KF_OPACITY :: 32
 KF_ROTATE :: 64
 KF_SCALE :: 128
 KF_OFFSET :: 256
+KF_SCALE_X :: 512
+KF_SCALE_Y :: 1024
 
 GRADIENT_LINEAR :: 0
 GRADIENT_RADIAL :: 1
@@ -252,6 +254,8 @@ ENTER_OPACITY :: 32
 ENTER_ROTATE :: 64
 ENTER_SCALE :: 128
 ENTER_KEEP_ROOM :: 256
+ENTER_SCALE_X :: 512
+ENTER_SCALE_Y :: 1024
 
 PIVOT_X :: 1
 PIVOT_Y :: 2
@@ -575,6 +579,8 @@ Keyframe :: struct {
 	scale: f32,
 	dx: f32,
 	dy: f32,
+	scale_x: f32,
+	scale_y: f32,
 }
 
 GradientStop :: struct {
@@ -602,6 +608,8 @@ Enter :: struct {
 	opacity: f32,
 	rotate: f32,
 	scale: f32,
+	scale_x: f32,
+	scale_y: f32,
 }
 
 Spec :: struct {
@@ -751,6 +759,8 @@ Spec :: struct {
 	on_item_key: ^Value,
 	text_color: u32,
 	float_escape: u32,
+	scale_x: f32,
+	scale_y: f32,
 }
 
 Announcement :: struct {
@@ -1011,6 +1021,7 @@ Clip :: struct {
 	rect: [4]f32,
 	radius: [4]f32,
 	transform: [4]f32,
+	stretch: [3]f32,
 	inner: [4]f32,
 	inner_radius: [4]f32,
 }
@@ -1203,6 +1214,7 @@ foreign lib {
 	input_scroll :: proc(ctx: ^Ctx, dx: f32, dy: f32) ---
 	input_scroll_gesture :: proc(ctx: ^Ctx, dx: f32, dy: f32, begins: bool) ---
 	input_wheel :: proc(ctx: ^Ctx, lx: f32, ly: f32, begins: bool) ---
+	input_pinch :: proc(ctx: ^Ctx, delta: f32, begins: bool) ---
 	input_text :: proc(ctx: ^Ctx, text: string) ---
 	input_commit :: proc(ctx: ^Ctx, text: string) ---
 	input_paste :: proc(ctx: ^Ctx, text: string, marks: u32) ---

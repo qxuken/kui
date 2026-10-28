@@ -564,7 +564,8 @@ scene_pixel_snap :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 
 // conformance::build_transform (ADR 0043): a rounded, clipping card tilted an
 // eighth of a turn about its top-left corner, holding a child wider than
-// itself and a badge floating with it; beside it a box scaled half again.
+// itself and a badge floating with it; beside it a box scaled half again,
+// and a box stretched about its foot holding a turned one (backlog C149).
 scene_transform :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	if kui.row(ui) {
 		card := kui.Spec {
@@ -590,6 +591,19 @@ scene_transform :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			if kui.box(ui, badge) {}
 		}
 		if kui.box(ui, {key = "big", width = kui.px(40), height = kui.px(40), bg = 0x73d98cff, scale = 1.5}) {}
+		squat := kui.Spec {
+			key     = "squat",
+			width   = kui.px(40),
+			height  = kui.px(40),
+			bg      = 0x8c73d9ff,
+			scale_x = 1.5,
+			scale_y = 0.5,
+			pivot_x = 0.5,
+			pivot_y = 1,
+		}
+		if kui.box(ui, squat) {
+			if kui.box(ui, {key = "tilt", width = kui.px(20), height = kui.px(20), bg = 0xd9d973ff, rotate = 0.0625}) {}
+		}
 	}
 }
 
@@ -2311,10 +2325,10 @@ ACTION_NAMES := [?]string {
 }
 
 // FNV-1a over each quad's words 0..18 - the quad without its uv and clip
-// index - plus the uv of a segment or texture quad, then the eight words of
-// the clip that index names. Mirrors conformance::quad_digest.
+// index - plus the uv of a segment or texture quad, then the twenty-three
+// words of the clip that index names. Mirrors conformance::quad_digest.
 #assert(size_of(kui.Quad) == 24 * size_of(u32))
-#assert(size_of(kui.Clip) == 20 * size_of(u32))
+#assert(size_of(kui.Clip) == 23 * size_of(u32))
 
 digest_words :: proc(h: ^u64, words: []u32) {
 	for word in words {
@@ -2333,8 +2347,8 @@ quad_digest :: proc(quads: []kui.Quad, clips: []kui.Clip) -> u64 {
 		w := transmute([24]u32)q
 		digest_words(&h, w[:19])
 		if q.kind == .Segment || q.kind == .Texture do digest_words(&h, w[20:24])
-		cw: [20]u32
-		if int(q.clip) < len(clips) do cw = transmute([20]u32)clips[q.clip]
+		cw: [23]u32
+		if int(q.clip) < len(clips) do cw = transmute([23]u32)clips[q.clip]
 		digest_words(&h, cw[:])
 	}
 	return h

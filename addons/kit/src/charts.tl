@@ -340,11 +340,15 @@ end
 -- the readout — whether the pointer is over the plot, the row under it,
 -- the row the keyboard put it on, and a Tab to hand on to the ring.
 local record Glide
-  lo: number
-  hi: number
-  from_lo: number
-  from_hi: number
+  -- The y glide (C149): the map from a value to y in the plot the lines
+  -- are drawn through, `y = ga·v + gb`; the one on screen when the glide
+  -- began; when it began; and the glide's count, which keys its box.
+  ga: number
+  gb: number
+  ga0: number
+  gb0: number
   t0: number
+  ygen: integer
   over: boolean
   row: integer
   key_row: integer
@@ -524,34 +528,51 @@ local function reduced_runs(ch: kui.Channel, segs: {Seg}, field: string, x0: num
   return runs
 end
 
--- How long a range takes to glide to the next, in s.
-local GLIDE_S = 0.24
+-- How long a range takes to glide to the next, in ms.
+local GLIDE_MS = 240
 
--- The range to draw this frame on the way to [lo, hi]: the new one eased
--- in from wherever the last glide had got to, out of a cubic. A frame is
--- asked for while it moves, and the frame the chart is drawn in is not
--- replayed (`request_frame_at` keeps a fill from being kept). Under
--- reduced motion, and with no frame clock (a host that never sets one:
--- `now` stays 0), it jumps.
-local function glide(c: Ctx, lo: number, hi: number): number, number
+-- The y range's glide (C149). The lines are drawn for the new range at
+-- once, in a box keyed by the glide that enters stretched and moved
+-- (`scale_y` and `dy` about the plot's top) to where the range on screen
+-- had them, and settles over GLIDE_MS out of a cubic — the core's
+-- entrance, on the core's clock, so the frames between run no view (it
+-- asked for a frame every frame and ran the view in each). The gridlines
+-- and their labels are keyed by value and slide to their new places
+-- beside it. The map from a value to y is `y = a·v + b`; the one on
+-- screen mid-glide is the eased mix of where the glide began and where it
+-- goes, and is where the next one begins. Under reduced motion, with no
+-- frame clock (a host that never sets one: `now` stays 0), and for the
+-- first range, it jumps.
+--
+-- Answers the glide box's key; while the glide runs, its entrance; and
+-- how far down an area reaches so that its foot stays under the plot's
+-- while the box is drawn shorter than the plot.
+local function glide(c: Ctx, lo: number, hi: number, h: number): string, {string:number}, number
   local st = ctx.state(c, function(): Glide return {} end)
   local now = c.env.now or 0
-  if not st.lo or now <= 0 or ctx.reduced(c) then
-    st.lo, st.hi, st.from_lo, st.from_hi, st.t0 = lo, hi, lo, hi, -math.huge
-    return lo, hi
+  local a, b = -h / (hi - lo), h + lo * h / (hi - lo)
+  st.ygen = st.ygen or 0
+  if not st.ga or now <= 0 or ctx.reduced(c) then
+    st.ga, st.gb, st.ga0, st.gb0, st.t0 = a, b, a, b, -math.huge
+    return "glide" .. st.ygen, nil, h
   end
-  local function at(k: number): number, number
-    if k >= 1 then return st.lo, st.hi end
+  if a ~= st.ga or b ~= st.gb then
+    local k = math.min(1, (now - st.t0) * 1000 / GLIDE_MS)
     local e = 1 - (1 - k) ^ 3
-    return st.from_lo + (st.lo - st.from_lo) * e, st.from_hi + (st.hi - st.from_hi) * e
+    st.ga0, st.gb0 = st.ga0 + (st.ga - st.ga0) * e, st.gb0 + (st.gb - st.gb0) * e
+    st.ga, st.gb, st.t0, st.ygen = a, b, now, st.ygen + 1
   end
-  if lo ~= st.lo or hi ~= st.hi then
-    st.from_lo, st.from_hi = at((now - st.t0) / GLIDE_S)
-    st.lo, st.hi, st.t0 = lo, hi, now
-  end
-  local k = (now - st.t0) / GLIDE_S
-  if k < 1 then c.env.request_frame_at(now) end
-  return at(k)
+  local key = "glide" .. st.ygen
+  if (now - st.t0) * 1000 >= GLIDE_MS then return key, nil, h end
+  -- From the box at rest (`y = a·v + b`) to where the glide began
+  -- (`y = a0·v + b0`): stretched by a0 / a about the top, moved by the
+  -- rest. Both ease to none together, so what is drawn between is the
+  -- mix of the two maps.
+  local sy = st.ga0 / st.ga
+  local dy = st.gb0 - sy * st.gb
+  local foot = h
+  if sy > 0 and sy < 1 then foot = math.max(h, (h - dy) / sy) end
+  return key, { scale_y = sy, dy = dy }, foot
 end
 
 -- The row of rows [lo, hi) whose x is nearest `t`.
@@ -675,8 +696,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
   hi = math.ceil(hi / step) * step
   local y_unit = str(p.y_unit)
   local faint, rule = ref(c, "faint"), ref(c, "rule")
-  -- The gutter is as wide as the widest label of the range it is going
-  -- to, and of the one in view while it glides there.
+  -- The gutter is as wide as the widest label of the range.
   local gutter = 0.0
   do
     local v = lo
@@ -685,19 +705,19 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       v = v + step
     end
   end
-  -- What is drawn glides to the new range rather than jumping to it.
-  lo, hi = glide(c, lo, hi)
-  step = nice((hi - lo) / 4)
+  -- What is drawn glides to the new range rather than jumping to it: the
+  -- box the lines are in, carried by the core (C149).
+  local glide_key, glide_from, foot = glide(c, lo, hi, h)
 
   -- Its laid-out rect is kept for `layout_of` because it declares
   -- `on_layout`, and a width that moves is an event that redraws it.
-  -- It clips: everything drawn in it — the grid, the sliding box with the
-  -- lines and their areas, the hover layer, the crosshair and its dots —
-  -- is cut at its edges. A line the y glide has not caught up with yet
-  -- (it lags the data by up to 240 ms) is cut at the top or the foot
-  -- rather than drawn over the card's head and the window's bar; the
-  -- sample a slide uncovers at the left edge comes in from under it,
-  -- not from the y labels' gutter.
+  -- It clips: everything drawn in it — the grid, the gliding box with the
+  -- sliding one in it and the lines and their areas in that, the ticks,
+  -- the hover layer, the crosshair and its dots — is cut at its edges. A
+  -- line the y glide has not caught up with yet (it lags the data by up
+  -- to 240 ms) is cut at the top or the foot rather than drawn over the
+  -- card's head and the window's bar; the sample a slide uncovers at the
+  -- left edge comes in from under it, not from the y labels' gutter.
   local plot: kui.Props = { key = "plot", width = "grow", height = h, clip = true,
     on_layout = act(c, "line_chart.layout") }
   -- What slides: the lines, their areas and the x ticks, in a box over the
@@ -718,6 +738,16 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     return t
   end
   local moving = sliding("slide")
+  -- The ticks and the keyboard's crosshair slide with the lines but do
+  -- not glide with them: a box of their own, sliding in step.
+  local marks = sliding("marks")
+  -- The box that glides (C149): the sliding one in it, stretched and
+  -- moved about the plot's top while a glide runs.
+  local gliding: kui.Props = { key = glide_key, width = w, height = h, float = { anchor = "parent" },
+    pivot_y = 0 }
+  if glide_from then
+    gliding.transition, gliding.enter = GLIDE_MS, glide_from
+  end
   -- Grid lines and their labels: at the step's multiples in view,
   -- right-aligned against the plot.
   local ys: {number} = {}
@@ -732,14 +762,26 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       v = v + step
     end
   end
-  gutter = math.ceil(gutter) + 2
+  -- A gutter the host holds lines the plot up with what is over it.
+  gutter = p.gutter ~= nil and p.gutter as number or (math.ceil(gutter) + 2)
   local labels: kui.Props = { key = "gutter", width = gutter, height = h, transition = 160, when = { ctx.still() } }
+  -- Each line and label keyed by its value, so a reframe slides the ones
+  -- both ranges have to their new places beside the gliding lines, and
+  -- fades the others in and out (C149).
+  local fade: {string:number} = glide_from and { opacity = 0 } or nil
   for i, v in ipairs(ys) do
     local y = h - (v - lo) / (hi - lo) * h
-    plot[#plot + 1] = line { from = { 0, y }, to = { w, y }, width = 1, color = rule }
+    local vk = string.format("%.12g", v)
+    -- A box of no size at the line's height, the line in its space: a
+    -- width that eased would ease every resize too.
+    plot[#plot + 1] = column { key = "g" .. vk, float = { anchor = "parent", dy = y },
+      slide = true, transition = GLIDE_MS, enter = fade, exit = { opacity = 0 }, when = { ctx.still() },
+      line { from = { 0, 0 }, to = { w, 0 }, width = 1, color = rule } }
     labels[#labels + 1] = row {
+      key = "l" .. vk,
       float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
       width = "grow", main_align = "end",
+      slide = true, transition = GLIDE_MS, enter = fade, exit = { opacity = 0 }, when = { ctx.still() },
       ctx.data(c, ylabels[i], { size = 10, color = ref(c, "faint") }),
     }
   end
@@ -762,7 +804,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
   local shown: {boolean} = {}
   for i, tx in ipairs(tick_at) do
     local px = (tx - x0) / (x1 - x0) * w
-    moving[#moving + 1] = line { from = { px, h - 4 }, to = { px, h }, width = 1, color = faint }
+    marks[#marks + 1] = line { from = { px, h - 4 }, to = { px, h }, width = 1, color = faint }
     placed[i] = slide > 0 and px - tick_w[i] / 2 or math.max(0, math.min(w - tick_w[i], px - tick_w[i] / 2))
     shown[i] = true
   end
@@ -805,7 +847,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       elseif own then
         fill, opacity = color, skin.AREA_ALPHA
       end
-      area(moving, pts, h, fill, opacity, r and r.x or 0, c.env.scale or 1)
+      area(moving, pts, foot, fill, opacity, r and r.x or 0, c.env.scale or 1)
     end
     if #pts >= 2 then
       moving[#moving + 1] = line { points = pts, width = 1.5, color = color }
@@ -895,7 +937,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     -- The crosshair: at the pointer's x, still while the pointer is; at
     -- the keyboard's sample, sliding with it.
     local px = px_at or (xv - x0) / (x1 - x0) * w
-    local layer = px_at and plot or moving
+    local layer = px_at and plot or marks
     layer[#layer + 1] = line { from = { px, 0 }, to = { px, h }, width = 1, color = faint }
     local title, said = said_of(ch, xf, at_row, series, fmt, str(p.x_unit), y_unit)
     local box: kui.Props = { key = "readout", gap = 2, pad = { x = 8, y = 6 }, radius = "$kitRadius",
@@ -953,8 +995,11 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     box.float = { anchor = "parent", dx = x, dy = math.max(4, math.min(dy, h - 4 - box_h)) }
     said_box = column(box)
   end
-  -- The sliding box under the hover layer and the readout, over the grid.
-  table.insert(plot, #ys + 1, column(moving))
+  -- The gliding box with the sliding one in it, then the ticks, under the
+  -- hover layer and the readout, over the grid.
+  gliding[1] = column(moving)
+  table.insert(plot, #ys + 1, column(gliding))
+  table.insert(plot, #ys + 2, column(marks))
   return column {
     width = "grow",
     gap = 4,

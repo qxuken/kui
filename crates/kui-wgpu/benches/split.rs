@@ -52,22 +52,26 @@ struct Instance {
     /// The clip before the turn, and its radii.
     inner: [f32; 4],
     inner_radii: [f32; 4],
+    /// The stretch before the turn: sx, sy, shear, unused.
+    stretch: [f32; 4],
 }
 
-/// Zero but for the turn, which is the identity, and the inner clip,
-/// which clips nothing — a zeroed `xform` draws every quad at scale 0.
+/// Zero but for the turn and the stretch, which are the identity, and
+/// the inner clip, which clips nothing — a zeroed `xform` draws every
+/// quad at scale 0.
 impl Default for Instance {
     fn default() -> Self {
         Self {
             xform: [0.0, 1.0, 0.0, 0.0],
             inner: [-1e9, -1e9, 2e9, 2e9],
+            stretch: [1.0, 1.0, 0.0, 0.0],
             ..bytemuck::Zeroable::zeroed()
         }
     }
 }
 
-/// 44 floats. A mismatch here means `lib.rs` moved and this bench did not.
-const _: () = assert!(std::mem::size_of::<Instance>() == 176);
+/// 48 floats. A mismatch here means `lib.rs` moved and this bench did not.
+const _: () = assert!(std::mem::size_of::<Instance>() == 192);
 
 /// Mirrors the private `Globals` in `lib.rs`, field for field. The quad
 /// pipeline here is built from that crate's `shader.wgsl`, so this is the
@@ -409,6 +413,7 @@ impl Bench {
             3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
             6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
             9 => Float32x4, 10 => Float32x4, 11 => Float32x4,
+            12 => Float32x4,
         ];
         let vbuf = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Instance>() as u64,
@@ -836,6 +841,7 @@ impl Bench {
             3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
             6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
             9 => Float32x4, 10 => Float32x4, 11 => Float32x4,
+            12 => Float32x4,
         ];
         let vbuf = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Instance>() as u64,

@@ -1,5 +1,6 @@
 //! The animatable slots an entrance or a keyframe stop may name (width,
-//! height, bg, radius, opacity, rotate, scale) as one value.
+//! height, bg, radius, opacity, rotate, scale, scaleX, scaleY) as one
+//! value.
 //!
 //! You rarely build a [`Slots`] directly: [`crate::enter::Enter`] (where
 //! a node starts on first sight) and [`crate::keyframes::Keyframe`] (a
@@ -37,6 +38,11 @@ pub struct Slots {
     pub rotate: Option<f32>,
     /// The node's uniform scale about its pivot.
     pub scale: Option<f32>,
+    /// The node's stretch across (`scaleX`, ADR 0043's 2026-10-28
+    /// amendment), multiplying `scale`.
+    pub scale_x: Option<f32>,
+    /// The node's stretch down (`scaleY`).
+    pub scale_y: Option<f32>,
 }
 
 impl Slots {
@@ -75,10 +81,22 @@ impl Slots {
         self
     }
 
+    pub fn scale_x(mut self, sx: f32) -> Self {
+        self.scale_x = Some(sx);
+        self
+    }
+
+    pub fn scale_y(mut self, sy: f32) -> Self {
+        self.scale_y = Some(sy);
+        self
+    }
+
     /// Reads one field of a stop or an entrance from plain data, in the
     /// form the prop itself takes (sizings as a number, `"grow"`, `"50%"`,
     /// `{grow}` / `{percent}`; colours as `0xRRGGBBAA` or `"#hex"`).
-    /// `Ok(false)` when `name` is none of the seven, so the caller can read
+    /// `Ok(false)` when `name` is none of the nine (`scaleX` / `scaleY`
+    /// also spelt `scale_x` / `scale_y`, as a Lua table writes them), so
+    /// the caller can read
     /// its own fields after. Every binding funnels through here, so the
     /// shape is the same in JSX, Lua and C. With `refs`, a `$name` in a
     /// colour or length slot resolves through it, and one that misses
@@ -120,6 +138,8 @@ impl Slots {
             "opacity" => self.opacity = Some(num("opacity")?.clamp(0.0, 1.0)),
             "rotate" => self.rotate = Some(num("rotate")?),
             "scale" => self.scale = Some(num("scale")?),
+            "scaleX" | "scale_x" => self.scale_x = Some(num("scaleX")?),
+            "scaleY" | "scale_y" => self.scale_y = Some(num("scaleY")?),
             _ => return Ok(false),
         }
         Ok(true)
@@ -164,6 +184,33 @@ impl Slots {
             base[3],
         ])
     }
+
+    /// The stretch's lanes — `[scaleX, scaleY, 0, 0]` — when the stop or
+    /// the entrance names either, a lane it leaves out taken from `base`,
+    /// the node's own stretch (ADR 0043's 2026-10-28 amendment).
+    #[inline]
+    pub(crate) fn stretch_lanes(&self, base: [f32; 4]) -> Option<[f32; 4]> {
+        if self.scale_x.is_none() && self.scale_y.is_none() {
+            return None;
+        }
+        let pick = |v: Option<f32>, b: f32| v.filter(|v| v.is_finite()).unwrap_or(b);
+        Some([
+            pick(self.scale_x, base[0]),
+            pick(self.scale_y, base[1]),
+            0.0,
+            0.0,
+        ])
+    }
+
+    /// Whether the stop or the entrance names any lane of the transform
+    /// slot or the stretch: a turn, a scale or a stretch.
+    #[inline]
+    pub(crate) fn turns(&self) -> bool {
+        self.rotate.is_some()
+            || self.scale.is_some()
+            || self.scale_x.is_some()
+            || self.scale_y.is_some()
+    }
 }
 
 /// A scalar in a tween's four lanes: the value, then nothing.
@@ -172,7 +219,7 @@ pub(crate) fn one(v: f32) -> [f32; 4] {
     [v, 0.0, 0.0, 0.0]
 }
 
-/// The seven delegating builders on a type with a `slots: Slots` field, so
+/// The delegating builders on a type with a `slots: Slots` field, so
 /// `Enter::from(..).bg(..)` and `Keyframe::default().at(..).bg(..)` read
 /// the same and are written once.
 macro_rules! slot_builders {
@@ -223,6 +270,20 @@ macro_rules! slot_builders {
             /// A uniform scale about the node's pivot, as on a spec.
             pub fn scale(mut self, scale: f32) -> Self {
                 self.slots = self.slots.scale(scale);
+                self
+            }
+
+            /// A stretch across about the node's pivot (`scaleX`), as on
+            /// a spec.
+            pub fn scale_x(mut self, sx: f32) -> Self {
+                self.slots = self.slots.scale_x(sx);
+                self
+            }
+
+            /// A stretch down about the node's pivot (`scaleY`), as on a
+            /// spec.
+            pub fn scale_y(mut self, sy: f32) -> Self {
+                self.slots = self.slots.scale_y(sy);
                 self
             }
 

@@ -359,6 +359,10 @@ end
 
 
 
+
+
+
+
 function M.sparkline(c, p)
    local w, h = (p.width or 80), (p.height or 18)
    local ys = col(p.data, p.field)
@@ -526,7 +530,7 @@ local function reduced_runs(ch, segs, field, x0, x1,
 end
 
 
-local GLIDE_S = 0.24
+local GLIDE_MS = 240
 
 
 
@@ -534,25 +538,42 @@ local GLIDE_S = 0.24
 
 
 
-local function glide(c, lo, hi)
+
+
+
+
+
+
+
+
+
+
+local function glide(c, lo, hi, h)
    local st = ctx.state(c, function() return {} end)
    local now = c.env.now or 0
-   if not st.lo or now <= 0 or ctx.reduced(c) then
-      st.lo, st.hi, st.from_lo, st.from_hi, st.t0 = lo, hi, lo, hi, -math.huge
-      return lo, hi
+   local a, b = -h / (hi - lo), h + lo * h / (hi - lo)
+   st.ygen = st.ygen or 0
+   if not st.ga or now <= 0 or ctx.reduced(c) then
+      st.ga, st.gb, st.ga0, st.gb0, st.t0 = a, b, a, b, -math.huge
+      return "glide" .. st.ygen, nil, h
    end
-   local function at(k)
-      if k >= 1 then return st.lo, st.hi end
+   if a ~= st.ga or b ~= st.gb then
+      local k = math.min(1, (now - st.t0) * 1000 / GLIDE_MS)
       local e = 1 - (1 - k) ^ 3
-      return st.from_lo + (st.lo - st.from_lo) * e, st.from_hi + (st.hi - st.from_hi) * e
+      st.ga0, st.gb0 = st.ga0 + (st.ga - st.ga0) * e, st.gb0 + (st.gb - st.gb0) * e
+      st.ga, st.gb, st.t0, st.ygen = a, b, now, st.ygen + 1
    end
-   if lo ~= st.lo or hi ~= st.hi then
-      st.from_lo, st.from_hi = at((now - st.t0) / GLIDE_S)
-      st.lo, st.hi, st.t0 = lo, hi, now
-   end
-   local k = (now - st.t0) / GLIDE_S
-   if k < 1 then c.env.request_frame_at(now) end
-   return at(k)
+   local key = "glide" .. st.ygen
+   if (now - st.t0) * 1000 >= GLIDE_MS then return key, nil, h end
+
+
+
+
+   local sy = st.ga0 / st.ga
+   local dy = st.gb0 - sy * st.gb
+   local foot = h
+   if sy > 0 and sy < 1 then foot = math.max(h, (h - dy) / sy) end
+   return key, { scale_y = sy, dy = dy }, foot
 end
 
 
@@ -677,7 +698,6 @@ function M.line_chart(c, p)
    local y_unit = str(p.y_unit)
    local faint, rule = ref(c, "faint"), ref(c, "rule")
 
-
    local gutter = 0.0
    do
       local v = lo
@@ -687,8 +707,8 @@ function M.line_chart(c, p)
       end
    end
 
-   lo, hi = glide(c, lo, hi)
-   step = nice((hi - lo) / 4)
+
+   local glide_key, glide_from, foot = glide(c, lo, hi, h)
 
 
 
@@ -721,6 +741,16 @@ on_layout = act(c, "line_chart.layout"), }
    local moving = sliding("slide")
 
 
+   local marks = sliding("marks")
+
+
+   local gliding = { key = glide_key, width = w, height = h, float = { anchor = "parent" },
+pivot_y = 0, }
+   if glide_from then
+      gliding.transition, gliding.enter = GLIDE_MS, glide_from
+   end
+
+
    local ys = {}
    local ylabels = {}
    do
@@ -733,14 +763,26 @@ on_layout = act(c, "line_chart.layout"), }
          v = v + step
       end
    end
-   gutter = math.ceil(gutter) + 2
+
+   gutter = p.gutter ~= nil and p.gutter or (math.ceil(gutter) + 2)
    local labels = { key = "gutter", width = gutter, height = h, transition = 160, when = { ctx.still() } }
+
+
+
+   local fade = glide_from and { opacity = 0 } or nil
    for i, v in ipairs(ys) do
       local y = h - (v - lo) / (hi - lo) * h
-      plot[#plot + 1] = line({ from = { 0, y }, to = { w, y }, width = 1, color = rule })
+      local vk = string.format("%.12g", v)
+
+
+      plot[#plot + 1] = column({ key = "g" .. vk, float = { anchor = "parent", dy = y },
+slide = true, transition = GLIDE_MS, enter = fade, exit = { opacity = 0 }, when = { ctx.still() },
+line({ from = { 0, 0 }, to = { w, 0 }, width = 1, color = rule }), })
       labels[#labels + 1] = row({
+         key = "l" .. vk,
          float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
          width = "grow", main_align = "end",
+         slide = true, transition = GLIDE_MS, enter = fade, exit = { opacity = 0 }, when = { ctx.still() },
          ctx.data(c, ylabels[i], { size = 10, color = ref(c, "faint") }),
       })
    end
@@ -763,7 +805,7 @@ on_layout = act(c, "line_chart.layout"), }
    local shown = {}
    for i, tx in ipairs(tick_at) do
       local px = (tx - x0) / (x1 - x0) * w
-      moving[#moving + 1] = line({ from = { px, h - 4 }, to = { px, h }, width = 1, color = faint })
+      marks[#marks + 1] = line({ from = { px, h - 4 }, to = { px, h }, width = 1, color = faint })
       placed[i] = slide > 0 and px - tick_w[i] / 2 or math.max(0, math.min(w - tick_w[i], px - tick_w[i] / 2))
       shown[i] = true
    end
@@ -806,7 +848,7 @@ text(tick_label[i], { size = 10, family = "$kitData", color = faint, max_lines =
             elseif own then
                fill, opacity = color, skin.AREA_ALPHA
             end
-            area(moving, pts, h, fill, opacity, r and r.x or 0, c.env.scale or 1)
+            area(moving, pts, foot, fill, opacity, r and r.x or 0, c.env.scale or 1)
          end
          if #pts >= 2 then
             moving[#moving + 1] = line({ points = pts, width = 1.5, color = color })
@@ -896,7 +938,7 @@ on_hover = act(c, "line_chart.hover", { row = run_row }), })
 
 
       local px = px_at or (xv - x0) / (x1 - x0) * w
-      local layer = px_at and plot or moving
+      local layer = px_at and plot or marks
       layer[#layer + 1] = line({ from = { px, 0 }, to = { px, h }, width = 1, color = faint })
       local title, said = said_of(ch, xf, at_row, series, fmt, str(p.x_unit), y_unit)
       local box = { key = "readout", gap = 2, pad = { x = 8, y = 6 }, radius = "$kitRadius",
@@ -955,7 +997,10 @@ ctx.data(c, value, { size = "$kitSizeLabel", bold = true, max_lines = 1 }), })
       said_box = column(box)
    end
 
-   table.insert(plot, #ys + 1, column(moving))
+
+   gliding[1] = column(moving)
+   table.insert(plot, #ys + 1, column(gliding))
+   table.insert(plot, #ys + 2, column(marks))
    return column({
       width = "grow",
       gap = 4,

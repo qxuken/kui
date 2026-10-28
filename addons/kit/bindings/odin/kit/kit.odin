@@ -2806,6 +2806,10 @@ LineChart :: struct {
 	x_min: Maybe(f64),
 	// The x window's end, held by the host.
 	x_max: Maybe(f64),
+	// The y labels' column in px, held: charts stacked under one another, or under
+	// a waterfall with the same `gutter`, share their plot's left edge. As wide as
+	// the widest label when left out.
+	gutter: Maybe(f64),
 	// With it, only the last `window` of x is shown: a live chart. While samples
 	// come in it scrolls smoothly between them, drawn one sample behind and slid
 	// left over the time samples take to come (a keyframe cycle the core runs, so
@@ -2858,6 +2862,7 @@ line_chart_props :: proc(p: LineChart) -> ^c.Value {
 	if x, ok := p.area.?; ok do c.value_map_set(m, "area", c.value_bool(x))
 	if x, ok := p.x_min.?; ok do c.value_map_set(m, "x_min", c.value_float(x))
 	if x, ok := p.x_max.?; ok do c.value_map_set(m, "x_max", c.value_float(x))
+	if x, ok := p.gutter.?; ok do c.value_map_set(m, "gutter", c.value_float(x))
 	if x, ok := p.window.?; ok do c.value_map_set(m, "window", c.value_float(x))
 	if x, ok := p.x_format.?; ok do c.value_map_set(m, "x_format", c.value_str(X_FORMAT_NAMES[x]))
 	if p.x_unit != "" do c.value_map_set(m, "x_unit", c.value_str(p.x_unit))
@@ -2985,7 +2990,9 @@ histogram_in :: proc(ui: ^kui.Ui, namespace: string, p: Histogram) -> i32 {
 }
 
 // A trace waterfall: spans as bars on a time axis, nested by depth, coloured by
-// group, zoomed and panned by the wheel and a drag.
+// group. The wheel and a pinch zoom about the pointer, a sideways swipe or
+// Shift and the wheel pans, a drag on the lanes pans, and a drag on the time
+// axis selects a range to zoom to.
 Waterfall :: struct {
 	// The spans: fields `name`, `start`, `len` (ms), `depth`, `group`, and
 	// `target` (a label).
@@ -3000,9 +3007,22 @@ Waterfall :: struct {
 	selected: Maybe(i64),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
+	// An empty column in px left of the axis and the lanes, so they line up with
+	// charts under them that hold the same `gutter`.
+	gutter: Maybe(f64),
+	// The range selected on the axis, in ms, held by the host: with `on_range`,
+	// the range drawn is this one, and a drag on the axis proposes another. Kit's
+	// own otherwise.
+	range_start: Maybe(f64),
+	// The selected range's length in ms; none selected when left out or 0.
+	range_length: Maybe(f64),
 	// The message `select` arrives as. A span was clicked.
 	on_select: any,
-	// The message `zoom` arrives as. The wheel or a drag asks for another window.
+	// The message `range` arrives as. A drag on the time axis selected a range, or
+	// a click there or the range's × cleared it.
+	on_range: any,
+	// The message `zoom` arrives as. The wheel, a pinch, a drag, a tool or zooming
+	// to the range asks for another window.
 	on_zoom: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
@@ -3020,7 +3040,22 @@ With_Waterfall_Select :: struct {
 	select: Waterfall_Select,
 }
 
-// What `zoom` carries: The wheel or a drag asks for another window.
+// What `range` carries: A drag on the time axis selected a range, or a click
+// there or the range's × cleared it.
+Waterfall_Range :: struct {
+	// Its start in ms.
+	start: f64,
+	// Its length in ms; 0 when cleared.
+	length: f64,
+}
+
+// Embed with `using _:` in the message passed as `on_range`.
+With_Waterfall_Range :: struct {
+	range: Waterfall_Range,
+}
+
+// What `zoom` carries: The wheel, a pinch, a drag, a tool or zooming to the
+// range asks for another window.
 Waterfall_Zoom :: struct {
 	// Its start in ms.
 	start: f64,
@@ -3042,7 +3077,11 @@ waterfall_props :: proc(p: Waterfall) -> ^c.Value {
 	if x, ok := p.length.?; ok do c.value_map_set(m, "length", c.value_float(x))
 	if x, ok := p.selected.?; ok do c.value_map_set(m, "selected", c.value_int(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
+	if x, ok := p.gutter.?; ok do c.value_map_set(m, "gutter", c.value_float(x))
+	if x, ok := p.range_start.?; ok do c.value_map_set(m, "range_start", c.value_float(x))
+	if x, ok := p.range_length.?; ok do c.value_map_set(m, "range_length", c.value_float(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
+	if p.on_range != nil do c.value_map_set(m, "on_range", (^c.Value)(kui.encode(p.on_range)))
 	if p.on_zoom != nil do c.value_map_set(m, "on_zoom", (^c.Value)(kui.encode(p.on_zoom)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))

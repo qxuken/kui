@@ -80,6 +80,8 @@ Keyframe_Slot :: enum u32 {
 	Rotate = 6, // KUI_KF_ROTATE
 	Scale = 7, // KUI_KF_SCALE
 	Offset = 8, // KUI_KF_OFFSET
+	Scale_X = 9, // KUI_KF_SCALE_X
+	Scale_Y = 10, // KUI_KF_SCALE_Y
 }
 Keyframe_Slots :: bit_set[Keyframe_Slot;u32]
 
@@ -93,6 +95,8 @@ Enter_Slot :: enum u32 {
 	Rotate = 6, // KUI_ENTER_ROTATE
 	Scale = 7, // KUI_ENTER_SCALE
 	Keep_Room = 8, // KUI_ENTER_KEEP_ROOM
+	Scale_X = 9, // KUI_ENTER_SCALE_X
+	Scale_Y = 10, // KUI_ENTER_SCALE_Y
 }
 Enter_Slots :: bit_set[Enter_Slot;u32]
 
@@ -801,12 +805,21 @@ Spec :: struct {
 	// its pivot, after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`);
 	// 1 is none.
 	scale: f32,
-	// Where across the box `rotate` and `scale` are about, as a fraction of its
-	// width: 0 the left edge, 0.5 (the default) the middle, 1 the right edge;
-	// outside 0..1 is a point past the box.
+	// Stretches this node and everything under it across by this factor, along
+	// its own axes before its turn, about its pivot, after layout (ADR 0043's
+	// 2026-10-28 amendment, backlog C149); multiplies `scale`, 1 is none, -1
+	// mirrors it.
+	scale_x: f32,
+	// Stretches this node and everything under it down by this factor, about its
+	// pivot, after layout; see `scaleX`, which it pairs with.
+	scale_y: f32,
+	// Where across the box `rotate`, `scale`, `scaleX` and `scaleY` are about, as
+	// a fraction of its width: 0 the left edge, 0.5 (the default) the middle, 1
+	// the right edge; outside 0..1 is a point past the box.
 	pivot_x: Maybe(f32),
-	// Where down the box `rotate` and `scale` are about, as a fraction of its
-	// height: 0 the top, 0.5 (the default) the middle, 1 the bottom.
+	// Where down the box `rotate`, `scale`, `scaleX` and `scaleY` are about, as a
+	// fraction of its height: 0 the top, 0.5 (the default) the middle, 1 the
+	// bottom.
 	pivot_y: Maybe(f32),
 	// Moves this node and everything under it this many logical px across from
 	// where layout put it (backlog C105) — negative to the left.
@@ -961,13 +974,13 @@ Spec :: struct {
 	// commas — `"middle"`, `"secondary middle"`.
 	buttons: Mouse_Buttons,
 	// Scroll handler: the wheel over this node arrives on it as this message with
-	// `scroll: {x, y, dx, dy, lines}` in it (ADR 0047) instead of scrolling
-	// anything — `dx`/`dy` the delta in logical px as the driver reported it
-	// (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y`
-	// the pointer, and `lines` on a `cells` grid the whole lines the delta covers
-	// (positive = later history, the sign `originLine` grows in; the fraction is
-	// carried to the next notch so a trackpad's small steps add up) and null on
-	// any other node.
+	// `scroll: {x, y, dx, dy, lines, zoom?}` in it (ADR 0047) instead of
+	// scrolling anything — `dx`/`dy` the delta in logical px as the driver
+	// reported it (positive `dy` is the wheel rolling up, toward earlier
+	// content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole
+	// lines the delta covers (positive = later history, the sign `originLine`
+	// grows in; the fraction is carried to the next notch so a trackpad's small
+	// steps add up) and null on any other node.
 	on_scroll: any,
 	// Which axes `onScroll` takes (backlog F107): `both` (the default), `x` or
 	// `y`.
@@ -1005,19 +1018,20 @@ Spec :: struct {
 	// moving an item in the tree moves it in the stack on the next frame.
 	floats_in_order: bool,
 	// CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?,
-	// rotate?, scale? }, …]`: the slots they name cycle through them over
-	// `transition` ms, for ever unless `iterations` says how many times, without
-	// the view redrawing; `at` is 0..1 and spreads evenly when omitted.
+	// rotate?, scale?, scaleX?, scaleY? }, …]`: the slots they name cycle
+	// through them over `transition` ms, for ever unless `iterations` says how
+	// many times, without the view redrawing; `at` is 0..1 and spreads evenly
+	// when omitted.
 	keyframes: []Keyframe,
 	// Where the node starts the first frame it is seen `{ dx?, dy?, width?,
-	// height?, bg?, radius?, opacity?, rotate?, scale? }`: those slots ease in
-	// from there over `transition` ms instead of snapping (`dx`/`dy` slide it in
-	// from that far away, `opacity: 0` fades the whole subtree in, `scale: 0.8`
-	// settles it in).
+	// height?, bg?, radius?, opacity?, rotate?, scale?, scaleX?, scaleY? }`:
+	// those slots ease in from there over `transition` ms instead of snapping
+	// (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole
+	// subtree in, `scale: 0.8` settles it in).
 	enter: Enter,
 	// Where the node ends the frame after the view stops declaring it `{ dx?,
-	// dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }` — an
-	// `enter` read the other way.
+	// dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale?, scaleX?,
+	// scaleY? }` — an `enter` read the other way.
 	exit: Enter,
 	// How `keyframes` cycle (CSS `animation-direction`, default normal).
 	repeat: Repeat,
@@ -1169,6 +1183,8 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.backdrop_blur = s.backdrop_blur
 	out.rotate = s.rotate
 	out.scale = s.scale
+	out.scale_x = s.scale_x
+	out.scale_y = s.scale_y
 	if v, ok := s.pivot_x.?; ok do out.pivot_set, out.pivot_x = out.pivot_set | c.PIVOT_X, v
 	if v, ok := s.pivot_y.?; ok do out.pivot_set, out.pivot_y = out.pivot_set | c.PIVOT_Y, v
 	out.dx = s.dx
@@ -2386,6 +2402,11 @@ input_scroll_gesture :: proc(ui: ^Ui, dx: f32, dy: f32, begins: bool) {
 // kui_input_wheel (kui.h).
 input_wheel :: proc(ui: ^Ui, lx: f32, ly: f32, begins: bool) {
 	c.input_wheel(ui, lx, ly, begins)
+}
+
+// kui_input_pinch (kui.h).
+input_pinch :: proc(ui: ^Ui, delta: f32, begins: bool) {
+	c.input_pinch(ui, delta, begins)
 }
 
 // kui_input_text (kui.h).

@@ -201,9 +201,12 @@ impl FrameCause {
             InputEvent::CursorLeft => Self::POINTER_LEAVE,
             InputEvent::MouseDown { .. } | InputEvent::MouseUp { .. } => Self::BUTTON,
             InputEvent::ForceClick(_) => Self::BUTTON,
-            InputEvent::Scroll(_) | InputEvent::ScrollGesture { .. } | InputEvent::Wheel { .. } => {
-                Self::WHEEL
-            }
+            // A pinch is the trackpad's other gesture, and the frame's
+            // reason a wheel is (backlog F256).
+            InputEvent::Scroll(_)
+            | InputEvent::ScrollGesture { .. }
+            | InputEvent::Wheel { .. }
+            | InputEvent::Pinch { .. } => Self::WHEEL,
             InputEvent::Key(..) | InputEvent::KeyDown(_) | InputEvent::KeyUp(_) => Self::KEY,
             InputEvent::Modifiers(_) => Self::MODIFIERS,
             InputEvent::Text(_) | InputEvent::Commit(_) | InputEvent::Paste { .. } => Self::TEXT,

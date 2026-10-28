@@ -305,9 +305,10 @@ pub struct Clip {
     /// Clockwise from the top-left: `[tl, tr, br, bl]`. All zero = a plain
     /// rect clip.
     pub radius: [f32; 4],
-    /// The turn, scale and move every quad naming this entry is drawn
-    /// through: `pixel = R(angle) · scale · p + (tx, ty)` for `p` a point
-    /// of the quad's own rect. The identity when nothing turns.
+    /// The turn, scale, stretch and move every quad naming this entry is
+    /// drawn through: `pixel = R(angle) · scale · U · p + (tx, ty)` for `p`
+    /// a point of the quad's own rect, `U` the stretch `[[sx, shear], [0,
+    /// sy]]`. The identity when nothing turns.
     pub transform: Transform,
     /// The clip in the quad's own space, before `transform`: what a
     /// clipping node inside a turned subtree cuts. [`NO_CLIP`] when

@@ -716,6 +716,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         scale: f32 => "float",
         dx: f32 => "float",
         dy: f32 => "float",
+        scale_x: f32 => "float",
+        scale_y: f32 => "float",
     });
 
     abi_struct!(o, KuiGradientStop {
@@ -743,6 +745,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         opacity: f32 => "float",
         rotate: f32 => "float",
         scale: f32 => "float",
+        scale_x: f32 => "float",
+        scale_y: f32 => "float",
     });
 
     abi_struct!(o, KuiSpec {
@@ -892,6 +896,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         on_item_key: *const KuiValue => "const KuiValue *",
         text_color: u32 => "uint32_t",
         float_escape: u32 => "uint32_t",
+        scale_x: f32 => "float",
+        scale_y: f32 => "float",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1238,6 +1244,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         rect: [f32; 4] => "float *",
         radius: [f32; 4] => "float *",
         transform: [f32; 4] => "float *",
+        stretch: [f32; 3] => "float *",
         inner: [f32; 4] => "float *",
         inner_radius: [f32; 4] => "float *",
     });
@@ -1649,15 +1656,18 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // (backlog C105), and `opens_on_press` (backlog C108) to 872; then
         // `on_item_key` (backlog C120), one more pointer; then
         // `text_color` (backlog C130), past it, so 880 + 4 rounds up to 888;
-        // then `float_escape` (ADR 0074) into that padding.
-        ("KuiSpec", 888, 39),
+        // then `float_escape` (ADR 0074) into that padding. ABI 41:
+        // `scale_x` and `scale_y` (backlog C149) on `enter` and `exit`,
+        // eight bytes each, and past the end, 904 + 8.
+        ("KuiSpec", 912, 41),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),
         // ABI 27: `rotate` and `scale` on both (ADR 0043), and `dx` and
-        // `dy` on a stop (backlog F132).
-        ("KuiKeyframe", 52, 27),
-        ("KuiEnter", 48, 27),
+        // `dy` on a stop (backlog F132). ABI 41: `scale_x` and `scale_y`
+        // on both (backlog C149).
+        ("KuiKeyframe", 60, 41),
+        ("KuiEnter", 56, 41),
         // ABI 29: `bold` into the tail padding (backlog F150). ABI 31:
         // `initial_letter` past it (backlog F164).
         ("KuiTextStyle", 80, 31),

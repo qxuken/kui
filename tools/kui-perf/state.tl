@@ -14,10 +14,15 @@ local record state
     -- Rows of `rec.frames` and `rec.spans`; -1 for none.
     frame: integer
     span: integer
-    -- The tables' tab, and the medium band's one pane.
+    -- The range selected on the waterfall's axis, ms; nil for none.
+    r0: number
+    r1: number
+    -- The tables' tab, and the medium band's one pane; the detail's share
+    -- of the dock, and the timeline's of the height over it.
     tab: string
     pane: string
     split: number
+    dock: number
     -- The graph lanes shown, by series name, in order.
     lanes: {string}
     series: {string:kui.Channel}
@@ -39,6 +44,9 @@ local record state
   record Prefs
     recent: {string}
     split: number
+    dock: number
+    -- The keys' card was shown once.
+    helped: boolean
     -- Graph lanes by recorded app's name.
     lanes: {string:{string}}
     name: string
@@ -55,6 +63,8 @@ local record state
     -- Frames that came while Live was off.
     waiting: integer
     prefs: Prefs
+    -- The keys' card is open.
+    help: boolean
   end
 
   record Msg
@@ -63,6 +73,7 @@ local record state
     select: {string:integer}
     zoom: {string:number}
     resize: {string:number}
+    range: {string:number}
     toggle: {string:any}
     key: {string:any}
     menu: {string:any}

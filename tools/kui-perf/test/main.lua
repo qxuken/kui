@@ -11,8 +11,10 @@
 package.path = kui.dir .. "/../?.tl;" .. kui.dir .. "/../?.lua;" .. package.path
 local path, rest = kui.args[1], kui.args[2]
 kui.args = { path }
--- From no preferences: a run before this one saved its own.
-if kui.data_dir then kui.fs.try_remove(kui.data_dir .. "/prefs.json") end
+-- From no preferences, in a folder of the test's own: the app's is the
+-- person's, and a run before this one saved its own.
+kui.data_dir = (os.getenv("TMPDIR") or "/tmp"):gsub("/$", "") .. "/kui-perf-test-" .. tostring(os.time()) .. "-" .. tostring(math.random(1e9))
+kui.fs.try_remove(kui.data_dir .. "/prefs.json")
 require("main")
 ---@type any
 model = init()
@@ -34,6 +36,14 @@ require("inspector").restat(st)
 local frames = #st.rec.frames
 check(frames > 100, "frames in the table: " .. frames)
 check(#st.lanes == 2, "two graph lanes by default")
+check(m.help == true, "the keys' card opens the first time")
+key("l")
+check(st.frame == -1, "a key goes to the card while it is open")
+key("/", { shift = true })
+check(not m.help, "? closes it")
+key("/", { shift = true })
+check(m.help, "and opens it again")
+update({ kind = "help_close" })
 
 -- The keys.
 key("l")
@@ -60,6 +70,22 @@ local lo, hi = st.session.start, st.session.finish
 check(st.v0 == lo and st.v1 == hi, "0 the whole recording")
 key("f")
 check(st.v1 - st.v0 < hi - lo, "f fits the frame")
+-- The range on the axis.
+local w0, w1 = st.v0, st.v1
+local r0 = w0 + (w1 - w0) * 0.25
+update({ kind = "ins_range", range = { start = r0, length = (w1 - w0) * 0.25 } })
+check(st.r0 == r0, "a drag on the axis selects a range")
+key("escape")
+check(st.r0 == nil and st.frame >= 0, "Esc clears the range first")
+update({ kind = "ins_range", range = { start = r0, length = (w1 - w0) * 0.25 } })
+key("z")
+check(st.v0 == r0 and math.abs(st.v1 - (w0 + (w1 - w0) * 0.5)) < 1e-9 and st.r0 == nil, "z zooms to the range and spends it")
+update({ kind = "ins_range", range = { start = r0, length = 1 } })
+update({ kind = "ins_zoom", zoom = { start = r0, length = 1 } })
+check(st.r0 == nil, "the waterfall's zoom to the range spends it")
+update({ kind = "ins_range", range = { start = r0, length = 1 } })
+update({ kind = "ins_range", range = { start = 0, length = 0 } })
+check(st.r0 == nil, "a click on the axis clears it")
 key("escape")
 check(st.frame == -1 and st.span == -1, "Esc clears the selection")
 local before = st.search_focus
@@ -86,6 +112,10 @@ check(#st.rec.spans < spans, "an origin hidden")
 update({ kind = "ins_origin", name = "host" })
 check(#st.rec.spans == spans, "and shown again")
 
+-- The dock.
+update({ kind = "ins_dock", resize = { fraction = 0.7 } })
+check(st.dock == 0.7, "the dock's rule moves")
+
 -- The lanes.
 update({ kind = "ins_lane", name = st.lanes[1] })
 check(#st.lanes == 1, "a lane hidden")
@@ -102,5 +132,7 @@ if rest then
   check(m.waiting == 0, "and refresh takes them in")
 end
 
+kui.fs.try_remove(kui.data_dir .. "/prefs.json")
+kui.fs.try_remove(kui.data_dir)
 print(failed == 0 and "all passed" or (failed .. " failed"))
 kui.exit(failed)

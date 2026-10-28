@@ -38,7 +38,8 @@ impl Core {
             | InputEvent::MouseUp { .. }
             | InputEvent::Scroll(_)
             | InputEvent::ScrollGesture { .. }
-            | InputEvent::Wheel { .. } => "pointer",
+            | InputEvent::Wheel { .. }
+            | InputEvent::Pinch { .. } => "pointer",
             InputEvent::Access(_) => "assistive",
             InputEvent::Key(..)
             | InputEvent::KeyDown(_)
@@ -476,6 +477,9 @@ impl Core {
                 let delta = Vec2::new(lines.x * px, lines.y * px);
                 self.route_scroll(delta, begins, Some(whole), &mut out)
             }
+            // A pinch zooms what heard the wheel, and scrolls nothing
+            // (backlog F256, `mod gesture`).
+            InputEvent::Pinch { delta, begins } => self.route_pinch(delta, begins, &mut out),
             InputEvent::Text(s) => {
                 // Typing is another key: an Escape's arming is spent.
                 self.tab_armed = None;

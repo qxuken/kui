@@ -400,3 +400,26 @@ for a departing one — and only a float a view declared, or a stroke
 anchored to the viewport, opens a layer. `tests/layers.rs` pins the
 stroke under a toast opened before it, a stroke inside a float in that
 float's layer, and the viewport-anchored one above.
+
+## Amendment — a held float opens with the layer that holds it (2026-10-28, backlog F257)
+
+Decision 3 appended every float new to the stack on top. Since
+[ADR 0074](0074-paint-stays-in-the-box-it-is-in.md) a float anchored to
+its parent that does not `escape` is cut by the box it is in — it is that
+box's content — yet it still opened over every float before it. Kit's
+line chart lays out more x tick labels once its plot is measured (each a
+float held by the axis' float) and slides each sample in under a fresh
+key, so with a dialog open the labels that appeared a frame after the
+dialog were drawn over it, and a live chart's slide would have been on
+every sample. A float new to the stack that is **held** (parent-anchored,
+not escaping) now goes just after the last float held, directly or
+through held floats, by the same layer — the in-flow tree, or the float
+it is in, after that float itself — and at the bottom of the stack when
+the in-flow tree holds none yet. Among the floats of one layer the later
+opening is still on top. A float that escapes, or is anchored to the
+viewport or a node — a menu, a popover, a tooltip, a dialog, a toast —
+opens on top as before, so every consequence listed under decision 3
+holds. `tests/layers.rs`
+(`a_held_float_that_opens_later_stays_under_a_dialog_opened_before_it`)
+pins the labels and the slide under the dialog and an escaping menu over
+it.

@@ -891,6 +891,21 @@ impl Ctx {
         });
     }
 
+    /// A trackpad's pinch, as part of a pinch gesture (backlog F256):
+    /// `delta` the magnification since the last event (positive = zoom
+    /// in), `begins` on its first. The first picks the innermost
+    /// `onScroll` node around the pointer — whatever its `scrollAxes`,
+    /// passing by one that names `scrollMods` — and the rest go to it
+    /// wherever the pointer goes, as its message with `scroll: {x, y, dx:
+    /// 0, dy: 0, lines: null, zoom}` in it. Nothing scrolls for it.
+    #[napi]
+    pub fn pinch(&mut self, delta: f64, begins: bool) {
+        self.input(InputEvent::Pinch {
+            delta: delta as f32,
+            begins,
+        });
+    }
+
     /// Committed text input (typing, paste); routed to the focused editor.
     #[napi]
     pub fn text(&mut self, text: String) {
@@ -6092,6 +6107,8 @@ mod readback_pins {
                 "[].backdropBlur",
                 "[].rotate",
                 "[].scale",
+                "[].scaleX",
+                "[].scaleY",
                 "[].scroll",
                 "[].scroll.x",
                 "[].scroll.y",

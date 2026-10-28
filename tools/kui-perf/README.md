@@ -15,7 +15,10 @@ kui run tools/kui-perf -- session.kuitrace
 - **The timeline**: Kit's waterfall over the spans (their lanes read a window
   at a time in Rust, so a million spans pan as a hundred do), marks for input,
   events, notes and the components drawn fresh; counters and gauges as graph
-  lanes on the same window.
+  lanes on the same window, their plots starting where its lanes do. The wheel
+  or a pinch zooms about the pointer, a sideways swipe or ⇧ and the wheel pans,
+  a drag on the lanes pans, and a drag along the time axis selects a range —
+  its length beside the title, zoomed to by its button or `z`.
 - **The frame or span selected**: its verdict, phases, input path, holders,
   components drawn fresh and why, notes and counters.
 - **Tables over the window**: frames, spans, origins, components, counters and
@@ -25,16 +28,20 @@ kui run tools/kui-perf -- session.kuitrace
 - **Live**: the file is watched; what it gains comes in, the window riding the
   end until you move it (↦ latest takes it back). Off, a refresh button counts
   what waits.
-- **Bands** by the inspector's own width (container queries): the detail
-  beside the tables at 1200 px and over, one pane of tabs under that, and under
-  700 px the timeline the height with a short pane.
+- **The dock** under the timeline, its rule dragged (neither under 140 px); in
+  it, by its own width (a container query), the detail beside the tables at
+  1180 px and over, one pane of tabs under that; under 700 px no lane picker.
 
 Keys: ← → or `h` `l` the frame before and after, ↑ ↓ or `j` `k` too; `[` `]`
-the slow frame, `{` `}` the burn; `w` `s` zoom, `a` `d` pan; `f` fit the
-selection, `0` the whole recording; `/` the span search; Esc clears. ⌘O
-(Ctrl+O) opens. Preferences — splits, lanes per app, filters, recent files —
-are kept in the app's data folder.
+the slow frame, `{` `}` the burn; `w` `s` zoom, `a` `d` pan; `f` or `z` zoom to
+the range, or fit the selection; `0` the whole recording; `/` the span search;
+Esc clears the range, then the selection. ⌘O (Ctrl+O) opens, and `?` (Help ▸
+Keys and gestures, the ⓘ in the toolbar) shows them all on a card — open by
+itself the first time a recording opens. Preferences — splits, the dock, lanes
+per app, filters, recent files, the card seen — are kept in the app's data
+folder.
 
 `state.tl` is the model and messages, `inspector.tl` everything about one
 recording (what a devtools tab will mount), `main.tl` the shell. `test/` drives
-it headless: `kui run tools/kui-perf/test --headless -- part.kuitrace rest.bin`.
+it headless, its preferences in a folder of its own under `$TMPDIR`:
+`kui run tools/kui-perf/test --headless -- part.kuitrace rest.bin`.

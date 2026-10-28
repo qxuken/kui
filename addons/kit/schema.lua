@@ -561,6 +561,7 @@ return {
         { "area", "boolean?", doc = "Filled under the first line." },
         { "x_min", "number?", doc = "The x window's start, held by the host: a chart that shares its axis with another view (a timeline's lanes). With `x_max`; the data's own range when left out." },
         { "x_max", "number?", doc = "The x window's end, held by the host." },
+        { "gutter", "number?", doc = "The y labels' column in px, held: charts stacked under one another, or under a waterfall with the same `gutter`, share their plot's left edge. As wide as the widest label when left out." },
         { "window", "number?", doc = "With it, only the last `window` of x is shown: a live chart. While samples come in it scrolls smoothly between them, drawn one sample behind and slid left over the time samples take to come (a keyframe cycle the core runs, so a frame between samples runs no view); under reduced motion, and while the plot is out of the viewport, it steps." },
         { "x_format", "XFormat?", doc = "How the x ticks read; the number when left out." },
         { "x_unit", "string?", doc = "After each x tick's number: `min`, `s`." },
@@ -595,7 +596,7 @@ return {
         { "height", "number?", doc = "In px; 120 when left out." },
       } },
     { "waterfall",
-      doc = "A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group, zoomed and panned by the wheel and a drag.",
+      doc = "A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and a drag on the time axis selects a range to zoom to.",
       props = {
         { "bars", "channel", doc = "The spans: fields `name`, `start`, `len` (ms), `depth`, `group`, and `target` (a label)." },
         { "marks", "channel?", doc = "Points in time, fields `at` and `label`: a navigation, a paint." },
@@ -603,10 +604,17 @@ return {
         { "length", "number?", doc = "The window's length in ms; the whole trace when left out." },
         { "selected", "integer?", doc = "The selected span (its row)." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+        { "gutter", "number?", doc = "An empty column in px left of the axis and the lanes, so they line up with charts under them that hold the same `gutter`." },
+        { "range_start", "number?", doc = "The range selected on the axis, in ms, held by the host: with `on_range`, the range drawn is this one, and a drag on the axis proposes another. Kit's own otherwise." },
+        { "range_length", "number?", doc = "The selected range's length in ms; none selected when left out or 0." },
       },
       events = {
         { "select", doc = "A span was clicked.", fields = { { "row", "integer", doc = "Its row." } } },
-        { "zoom", doc = "The wheel or a drag asks for another window.", fields = {
+        { "range", doc = "A drag on the time axis selected a range, or a click there or the range's × cleared it.", fields = {
+          { "start", "number", doc = "Its start in ms." },
+          { "length", "number", doc = "Its length in ms; 0 when cleared." },
+        } },
+        { "zoom", doc = "The wheel, a pinch, a drag, a tool or zooming to the range asks for another window.", fields = {
           { "start", "number", doc = "Its start in ms." },
           { "length", "number", doc = "Its length in ms." },
         } },

@@ -16,6 +16,11 @@
 //! DX13's hand-off of a list's unused `x` to the strip around it becomes.
 //! F104's lock keeps a trackpad swipe to one axis, so a swipe has one
 //! target in practice; a wheel's diagonal or a turned swipe has two.
+//!
+//! A trackpad's pinch (backlog F256) latches the same way, with one
+//! target and no chaining: the innermost `on_scroll` node around the
+//! pointer when it begins, heard as that node's `scroll` with a `zoom`.
+//! Nothing scrolls for it, so no container is ever its target.
 
 use super::*;
 use crate::input::ScrollRegion;
@@ -39,6 +44,19 @@ pub(crate) struct ScrollLatch {
     /// a glide stays what the swipe was whatever is let go or pressed
     /// meanwhile (backlog F122).
     held: u32,
+}
+
+/// The node the pinch under way latched (backlog F256).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) enum PinchLatch {
+    /// No pinch has begun: the next one's event picks, `begins` or not.
+    #[default]
+    Unpicked,
+    /// The pinch under way began over no `on_scroll` node: nobody's to
+    /// its end.
+    Nobody,
+    /// The pinch under way is this node's.
+    Node(Key),
 }
 
 /// What a scroll region says to a gesture starting over it on one axis.
@@ -135,6 +153,59 @@ impl Core {
                     self.scroll_into(b, d, wheel, out);
                 }
             }
+        }
+    }
+
+    /// Routes one pinch delta (backlog F256): to the node the gesture
+    /// latched, or — for its first event, or when that node is gone or
+    /// behind a modal — to the innermost `on_scroll` node around the
+    /// pointer, as its `scroll` message with `zoom` in it. A handler that
+    /// names `scroll_mods` is passed by, as a gesture begun with nothing
+    /// held passes it; its `scroll_axes` are not asked, a pinch moving
+    /// along neither. A delta of 0 latches and is heard by nobody, and so
+    /// is one that is not a number (winit's may be NaN).
+    pub(crate) fn route_pinch(&mut self, delta: f32, begins: bool, out: &mut Vec<UiEvent>) {
+        if begins {
+            self.pinch_latch = PinchLatch::Unpicked;
+        }
+        let regions = &self.interaction.scroll_regions;
+        let hears = |r: &ScrollRegion| r.handler && r.mods == 0 && !r.inert;
+        let key = match self.pinch_latch {
+            PinchLatch::Nobody => return,
+            PinchLatch::Node(key) if regions.iter().rev().any(|r| r.key == key && hears(r)) => {
+                Some(key)
+            }
+            _ => {
+                let mut at = self
+                    .interaction
+                    .scroll_regions_at()
+                    .next()
+                    .map(|r| r.node)
+                    .and_then(|node| regions.iter().rposition(|r| r.node == node));
+                let mut picked = None;
+                while let Some(i) = at {
+                    let r = &regions[i];
+                    // Out through a modal's edge is out of its scope.
+                    if r.inert {
+                        break;
+                    }
+                    if hears(r) {
+                        picked = Some(r.key);
+                        break;
+                    }
+                    at = (r.parent != NIL).then_some(r.parent as usize);
+                }
+                self.pinch_latch = picked.map_or(PinchLatch::Nobody, PinchLatch::Node);
+                picked
+            }
+        };
+        let Some(key) = key else { return };
+        if delta == 0.0 || !delta.is_finite() {
+            return;
+        }
+        let p = self.interaction.cursor().unwrap_or(Vec2::ZERO);
+        if let Some(ev) = self.pinch_event(key, p, delta) {
+            out.push(ev);
         }
     }
 

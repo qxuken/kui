@@ -17,6 +17,7 @@
 
 
 
+
 local ctx = require("ctx")
 local data = require("data")
 local icons = require("icons")
@@ -24,6 +25,11 @@ local icons = require("icons")
 
 
 local ref, act = ctx.ref, ctx.act
+
+
+
+
+
 
 
 
@@ -74,6 +80,16 @@ local function state(c, p)
       if fresh then st.v0, st.v1 = st.index.lo, st.index.hi end
    end
    return st
+end
+
+
+local function range(st, p)
+   if p.on_range ~= nil then
+      local len = (p.range_length or 0)
+      if p.range_start == nil or len <= 0 then return nil, nil end
+      return p.range_start, p.range_start + len
+   end
+   return st.r0, st.r1
 end
 
 
@@ -188,7 +204,10 @@ function M.waterfall(c, p)
 
 
    local step = nice(100 / scale)
-   local axis = { height = 18, width = "grow", clip = true, cross_align = "end" }
+
+   local axis = { key = "axis", height = 18, width = "grow", clip = true, cross_align = "end",
+cursor = "ewResize", tooltip = "Drag to select a range",
+on_drag = act(c, "waterfall.range", { v0 = v0, v1 = v1, x = st.x, w = width }), }
    local t0 = math.ceil(v0 / step) * step
    local lead = (t0 - v0) * scale
    if lead > 0 then axis[#axis + 1] = column({ width = lead }) end
@@ -205,8 +224,6 @@ ctx.data(c, fmt(tick, step), { size = 10.5, color = ref(c, "muted") }), })
       role = picks and "list" or nil,
       label = picks and "spans" or nil,
       width = "grow",
-      height = p.grow == true and "grow" or nil,
-      scroll_y = p.grow == true,
       gap = 2,
       on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
 
@@ -218,6 +235,29 @@ ctx.data(c, fmt(tick, step), { size = 10.5, color = ref(c, "muted") }), })
    for lane = 0, n_lanes - 1 do
       lanes[#lanes + 1] = lane_row(c, lane, st, v0, v1, width, selected, picks)
    end
+
+
+   local a, b = range(st, p)
+   local band = nil
+   if a then
+      local x0 = math.max(-2, (a - v0) * scale)
+      local x1 = math.min(width + 2, (b - v0) * scale)
+      if x1 > x0 then
+
+         local function shade(key, h)
+            local edge = ref(c, "accent_text")
+            return {
+               column({ key = key, float = { anchor = "parent", dx = x0, dy = 0 }, width = math.max(1, x1 - x0),
+height = h, bg = ref(c, "accent"), opacity = 0.16, }),
+               column({ key = key .. "-a", float = { anchor = "parent", dx = x0, dy = 0 }, width = 1, height = h, bg = edge }),
+               column({ key = key .. "-b", float = { anchor = "parent", dx = x1 - 1, dy = 0 }, width = 1, height = h, bg = edge }),
+            }
+         end
+         for _, n in ipairs(shade("range", math.max(n_lanes, 1) * (LANE_H + 2))) do lanes[#lanes + 1] = n end
+         band = shade("range-axis", 18)
+      end
+   end
+   for _, n in ipairs(band or {}) do axis[#axis + 1] = n end
 
 
    if st.index.ticks then
@@ -238,25 +278,42 @@ ctx.data(c, fmt(tick, step), { size = 10.5, color = ref(c, "muted") }), })
       end
    end
 
+
+
+   local gutter = p.gutter
+   local function beside(n, grow)
+      if not gutter or gutter <= 0 then return n end
+      return row({ width = "grow", height = grow and "grow" or nil, gap = 6, column({ width = gutter }), n })
+   end
+   local head = {
+      width = "grow", gap = 8, cross_align = "center",
+      ctx.caption(c, "Trace"),
+      ctx.data(c, string.format("%s – %s · %d spans", fmt(v0, step), fmt(v1, step), st.index.count),
+      { size = "$kitSizeLabel", color = ref(c, "muted") }),
+   }
+   if a then
+      head[#head + 1] = ctx.data(c, string.format("range %s", fmt(b - a, nice((b - a) / 4))),
+      { size = "$kitSizeLabel", color = ref(c, "accent_text") })
+      head[#head + 1] = tool(c, "fit", "Zoom to the range", "to_range", a, b)
+      head[#head + 1] = tool(c, "x", "Clear the range", "clear", v0, v1)
+   end
+   head[#head + 1] = ctx.grow()
+   head[#head + 1] = tool(c, "zoom_out", "Zoom out", "out", v0, v1)
+   head[#head + 1] = tool(c, "zoom_in", "Zoom in", "in", v0, v1)
+   head[#head + 1] = tool(c, "fit", "Fit", "fit", v0, v1)
+
+
    return column({
       width = "grow",
       height = p.grow == true and "grow" or nil,
       gap = 4,
       pad = 10,
       bg = ref(c, "panel"),
-      row({
-         width = "grow", gap = 8, cross_align = "center",
-         ctx.caption(c, "Trace"),
-         ctx.data(c, string.format("%s – %s · %d spans", fmt(v0, step), fmt(v1, step), st.index.count),
-         { size = "$kitSizeLabel", color = ref(c, "muted") }),
-         ctx.grow(),
-         tool(c, "zoom_out", "Zoom out", "out", v0, v1),
-         tool(c, "zoom_in", "Zoom in", "in", v0, v1),
-         tool(c, "fit", "Fit", "fit", v0, v1),
-      }),
-      row(axis),
+      row(head),
+      beside(row(axis), false),
       ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),
-      column(lanes),
+      beside(column({ key = "lanes-box", width = "grow", height = p.grow == true and "grow" or nil,
+scroll_y = p.grow == true, column(lanes), }), p.grow == true),
    })
 end
 
@@ -281,10 +338,36 @@ function M.event(m, kit)
       v0 = (m.v0) - (d.dx) * px
       v1 = (m.v1) - (d.dx) * px
    elseif kit == "waterfall.wheel" then
+
+
       local s = m.scroll
       local a, b = m.v0, m.v1
-      local about = a + ((s.x) - (m.x)) / math.max(m.w, 1) * (b - a)
-      v0, v1 = zoomed(a, b, math.exp(-(s.dy) * 0.005), about)
+      local wpx = math.max(m.w, 1)
+      local about = a + ((s.x) - (m.x)) / wpx * (b - a)
+      local factor = math.exp(-((s.dy or 0)) * 0.005 - ((s.zoom or 0)))
+      v0, v1 = zoomed(a, b, factor, about)
+      local shift = ((s.dx or 0)) / wpx * (v1 - v0)
+      v0, v1 = v0 - shift, v1 - shift
+   elseif kit == "waterfall.range" then
+      local d = m.drag
+      local a, b = m.v0, m.v1
+      local at = a + ((d.x) - (m.x)) / math.max(m.w, 1) * (b - a)
+      if d.phase == "start" then
+         st.from = at
+         return nil
+      end
+      local from = st.from or at
+      local r0, r1 = math.min(from, at), math.max(from, at)
+
+      if d.phase == "end" and math.abs(d.dx) < 3 then r0, r1 = nil, nil end
+      st.r0, st.r1 = r0, r1
+      return emit("on_range", { start = r0 or 0, length = r0 and (r1 - r0) or 0 })
+   elseif kit == "waterfall.clear" then
+      st.r0, st.r1 = nil, nil
+      return emit("on_range", { start = 0, length = 0 })
+   elseif kit == "waterfall.to_range" then
+      v0, v1 = m.v0, m.v1
+      st.r0, st.r1 = nil, nil
    elseif kit == "waterfall.in" or kit == "waterfall.out" then
       local a, b = m.v0, m.v1
       v0, v1 = zoomed(a, b, kit == "waterfall.in" and 0.5 or 2, (a + b) / 2)

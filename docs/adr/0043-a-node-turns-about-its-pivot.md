@@ -6,7 +6,8 @@ date: 2026-10-08
 # A node turns about its pivot: `rotate` and `scale` on any node, paint-only, carried by the clip entry
 
 > **Accepted and built 2026-10-08**, the day it was proposed; the
-> *Amendment* at the end records what the building changed. Asked by
+> *Amendment* at the end records what the building changed, and a second
+> (2026-10-28) adds a stretch, `scaleX` / `scaleY` (backlog C149). Asked by
 > berainder (backlog F131): a card that tilts a few degrees towards the
 > side it is being dragged to is the swipe's whole look, and the app
 > tweened `width` and `height` instead and called it depth. [ADR
@@ -374,3 +375,61 @@ date: 2026-10-08
   until the race waited out `rustc` and read the fastest sample beside
   the median; and the guard's base was alpha.44, which hid that RG154
   sat between it and this build.
+
+## Amendment: a stretch, `scaleX` / `scaleY` (2026-10-28)
+
+Decision 10 declined a per-axis scale until an app asked, and *Considered
+options* named a flip as its one use. Kit asked, with another: its line
+chart's y glide (backlog C149) asked for a frame every frame for 240 ms
+when the rounded range changed and ran the view in each, and the fix —
+the glide as a transition on the plot's vertical scale and offset — needs
+the plot's lines drawn shorter or taller than their box. A uniform scale
+squeezes the time axis with it. So:
+
+1. **`scaleX` and `scaleY` on any node**, factors along the node's own
+   axes, multiplying `scale`, 1 for none; about the pivot, applied before
+   the turn — `pixel = R(angle) · scale · diag(sx, sy) · p + t`. Rust
+   `NodeSpec::scale_x` / `scale_y`; JSX `scaleX` / `scaleY`; Lua their
+   snake case; C `KuiSpec.scale_x` / `scale_y`, 0 being 1 as `scale`'s
+   is; Odin the generated fields. Paint-only, everything decisions 2 to
+   7 say of a turn: layout, the room and `onLayout` are the node's own;
+   the quads, the clip, the hits and the access rect (its bounding box)
+   are stretched.
+2. **The clip entry carries the stretch.** `geom::Transform` is an
+   affine map kept as a turn, a uniform scale, a stretch and a move:
+   `R(angle) · scale · U · p + t`, `U = [[sx, shear], [0, sy]]`. `shear`
+   is never declared: it is what a turned node nested inside a stretched
+   one composes to (the product's QR split), so nesting stays exact and
+   no case is approximated. A frame that stretches nothing composes the
+   way the similarity did, number for number. `KuiClip` takes `stretch`
+   (sx, sy, shear) after `transform`, 23 words a clip; the conformance
+   digest hashes them in all five adapters, and the `transform` scene
+   stretches a box about its foot holding a turned one. `kui-wgpu`'s
+   instance grows by one `vec4` (`stretch`, location 12), applied to the
+   corner before the turn, branchless; a renderer that ignores the words
+   draws a stretched box unstretched.
+3. **It tweens as the transform slot's second leg.** The slot's four
+   lanes were taken (`rotate`, `scale`, and C105's `dx` / `dy`), so the
+   stretch is a tween of its own, `[sx, sy]`, kept beside the turn's in
+   `AnimStore::stretches` for the nodes that stretch — a node that only
+   turns carries nothing for it. It eases from none when a node already
+   drawn starts declaring it, back to none when it stops, and an
+   entrance, an exit or a keyframe stop names `scaleX` / `scaleY` through
+   `Slots` (`scale_x` / `scale_y` as Lua writes them; C's bits
+   `KUI_ENTER_SCALE_X` / `_Y`, `KUI_KF_SCALE_X` / `_Y`). A ghost keeps
+   its stretch, eased toward the exit's.
+4. **What is inside is drawn through it.** A glyph is a quad of its
+   upright raster, so a stretched text is drawn wide or tall and
+   resampled, as a turned one is (*Consequences*); a segment's capsule is
+   read before the transform, so a stroke stretched down is thicker where
+   it runs across; an SDF edge ramps stretch with the box. None of it is
+   corrected: a stretch is for a box of lines and shapes on the way to a
+   factor of 1 — a chart's plot gliding to its range — or for a flip, and
+   text that must read crisp is put outside it. A mip level reads the
+   transform's larger axis.
+5. **Kit's line chart glides on it.** The lines are drawn for the new
+   range at once, in a box keyed by the glide that enters at `{ scale_y,
+   dy }` — where the range on screen had them, the stretch about the
+   plot's top — and settles out of a cubic over 240 ms; gridlines and
+   labels are keyed by value and slide. The frames between are built
+   from the kept tree (`Core::reframe`, backlog C138).

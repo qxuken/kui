@@ -24,6 +24,13 @@ local record inspector
 end
 
 local LANE_H = 52
+-- The y labels' column of the graph lanes, and the empty one the
+-- waterfall keeps beside its lanes, so both plots start at one x.
+local GUTTER = 44
+-- The waterfall's own padding, which the lanes under it match.
+local PAD = 10
+-- The least the timeline and the dock under it are, in px.
+local DOCK_MIN = 140
 local TABS = {
   { value = "frames", label = "Frames" },
   { value = "spans", label = "Spans" },
@@ -175,7 +182,7 @@ function inspector.new(rec: kui.Recording, prefs: state.Prefs): Inspector
   local s = rec:session()
   local st: Inspector = {
     rec = rec, session = s, follow = false, frame = -1, span = -1,
-    tab = "frames", pane = "detail", split = prefs.split or 0.42,
+    tab = "frames", pane = "detail", split = prefs.split or 0.42, dock = prefs.dock or 0.58,
     lanes = {}, series = {}, origins = {}, name = prefs.name or "", min_us = prefs.min_us or 0,
     frames = prefs.frames or "all", devtools = prefs.devtools == true, search_focus = 0,
   }
@@ -235,7 +242,10 @@ local function select_frame(st: Inspector, row: integer)
 end
 
 local function fit(st: Inspector)
-  if st.span >= 0 then
+  if st.r0 then
+    set_window(st, st.r0, st.r1)
+    st.r0, st.r1 = nil, nil
+  elseif st.span >= 0 then
     local s = st.rec:span(st.span)
     if s then set_window(st, s.start - s.len * 0.1, s.start + s.len * 1.1) end
   elseif st.frame >= 0 then
@@ -267,10 +277,11 @@ function inspector.key(st: Inspector, key: {string:any}): boolean
   elseif c == "s" then set_window(st, mid - len, mid + len); st.follow = false
   elseif c == "a" then set_window(st, st.v0 - len / 5, st.v1 - len / 5); st.follow = false
   elseif c == "d" then set_window(st, st.v0 + len / 5, st.v1 + len / 5)
-  elseif c == "f" then fit(st)
+  elseif c == "f" or c == "z" then fit(st)
   elseif c == "0" then local lo, hi = extent(st); set_window(st, lo, hi)
   elseif c == "/" then st.search_focus = st.search_focus + 1
-  elseif c == "escape" then st.frame, st.span = -1, -1
+  elseif c == "escape" then
+    if st.r0 then st.r0, st.r1 = nil, nil else st.frame, st.span = -1, -1 end
   else return false end
   return true
 end
@@ -281,8 +292,16 @@ function inspector.update(st: Inspector, msg: Msg): boolean
     st.restat_due = false
     if st.stale then inspector.restat(st) end
   elseif k == "ins_zoom" then
-    set_window(st, msg.zoom.start, msg.zoom.start + msg.zoom.length)
+    -- Zooming to the range spends it.
+    local z = msg.zoom
+    if st.r0 and math.abs(z.start - st.r0) < 1e-9 and math.abs(z.start + z.length - st.r1) < 1e-9 then
+      st.r0, st.r1 = nil, nil
+    end
+    set_window(st, z.start, z.start + z.length)
     st.follow = false
+  elseif k == "ins_range" then
+    local r = msg.range
+    if r.length > 0 then st.r0, st.r1 = r.start, r.start + r.length else st.r0, st.r1 = nil, nil end
   elseif k == "ins_span" then
     st.span = msg.select.row
   elseif k == "ins_frame" then
@@ -296,6 +315,7 @@ function inspector.update(st: Inspector, msg: Msg): boolean
   elseif k == "ins_tab" then st.tab = msg.change.value as string
   elseif k == "ins_pane" then st.pane = msg.change.value as string
   elseif k == "ins_split" then st.split = msg.resize.fraction
+  elseif k == "ins_dock" then st.dock = msg.resize.fraction
   elseif k == "ins_name" then st.name = msg.change.text as string; apply_filter(st)
   elseif k == "ins_frames" then st.frames = msg.change.value as string; apply_filter(st)
   elseif k == "ins_min" then st.min_us = tonumber(msg.change.value as string) or 0; apply_filter(st)
@@ -353,7 +373,10 @@ end
 local function lanes(st: Inspector): kui.Node
   -- The lanes scroll in at most two lanes' height, so the waterfall keeps
   -- its room whatever lanes are shown.
-  local rows: kui.Props = { key = "lanes", width = "grow", gap = 6, max_height = 2 * (LANE_H + 60), scroll_y = true }
+  -- Padded as the waterfall is, and their y labels as wide as its gutter,
+  -- so a lane's plot runs under its lanes at the same x.
+  local rows: kui.Props = { key = "lanes", width = "grow", gap = 6, max_height = 2 * (LANE_H + 60), scroll_y = true,
+    pad = { x = PAD } }
   for _, name in ipairs(st.lanes) do
     local ch = st.series[name]
     if not ch then
@@ -367,7 +390,7 @@ local function lanes(st: Inspector): kui.Node
             on_press = { kind = "ins_lane", name = name } }) },
         kit.line_chart({ key = "chart-" .. name, data = ch, x = "at",
           series = { { field = "value", name = name } }, height = LANE_H, x_min = st.v0, x_max = st.v1,
-          x_unit = "ms" }),
+          x_unit = "ms", gutter = GUTTER }),
       }
     end
   end
@@ -531,7 +554,9 @@ local function timeline(st: Inspector): kui.Node
     column { key = "wf", width = "grow", height = "grow", min_height = 160,
       kit.waterfall({ key = "waterfall", bars = st.rec.spans, marks = st.rec.instants,
         start = st.v0, length = st.v1 - st.v0, selected = st.span >= 0 and st.span or nil,
-        grow = true, on_select = { kind = "ins_span" }, on_zoom = { kind = "ins_zoom" } }) },
+        range_start = st.r0, range_length = st.r0 and (st.r1 - st.r0) or nil, gutter = GUTTER,
+        grow = true, on_select = { kind = "ins_span" }, on_zoom = { kind = "ins_zoom" },
+        on_range = { kind = "ins_range" } }) },
     #st.lanes > 0 and lanes(st) or nil,
     span_count == 0 and muted("No span is kept by the filter.") or nil,
   }
@@ -545,29 +570,35 @@ function inspector.view(st: Inspector, env: kui.Env): kui.Node
     kui.timer.after(150, function() kui.dispatch({ kind = "ins_restat" }) end)
   end
   -- The bands (decision 9) by the body's own width, a container query
-  -- (ADR 0069): wide, the detail beside the tables; medium, one pane of
-  -- tabs with the detail first; narrow, the timeline the height and a
-  -- short pane under it. Each band's pane is built and the others
-  -- hidden, so a resize lays out again and runs no view.
+  -- (ADR 0069): wide, the detail beside the tables in the dock; narrower,
+  -- one pane of tabs with the detail first, and under 700 px no lane
+  -- picker. Each band's pane is built and the other hidden, so a resize
+  -- lays out again and runs no view.
   return column { key = "inspector", width = "grow", height = "grow", gap = 8, pad = { x = 10, t = 8 },
     when = { { width = { below = 700, band = 24 }, hidden = { "lane-picker" } } },
     filters(st),
     overview(st, env),
     lane_picker(st),
     column { key = "bands", width = "grow", height = "grow", gap = 8,
-      when = {
-        { width = { above = 1200, band = 24 }, hidden = { "pane-box", "pane-narrow" } },
-        { width = { above = 700, below = 1200, band = 24 }, hidden = { "bottom", "pane-narrow" } },
-        { width = { below = 700, band = 24 }, hidden = { "bottom", "pane-box" } },
-      },
-      column { key = "top", width = "grow", height = "grow", timeline(st) },
-      column { key = "bottom", width = "grow", height = "42%",
-        kit.split({ key = "bottom-split", fraction = st.split, min = 280, on_resize = { kind = "ins_split" } }, {
-          first = { column { key = "detail-pane", width = "grow", height = "grow", scroll_y = true, detail(st) } },
-          second = { column { key = "tables-pane", width = "grow", height = "grow", tables(st, false) } },
-        }) },
-      column { key = "pane-box", width = "grow", height = "42%", tables(st, true) },
-      column { key = "pane-narrow", width = "grow", height = 220, tables(st, true) },
+      -- The timeline over the dock, the rule between them dragged.
+      kit.split({ key = "dock-split", axis = "column", fraction = st.dock, min = DOCK_MIN,
+        on_resize = { kind = "ins_dock" } }, {
+        first = { column { key = "top", width = "grow", height = "grow", timeline(st) } },
+        -- The dock's own width picks its pane: a `when` reaches only the
+        -- nodes of the scope it is declared in, and the split's are Kit's.
+        second = { column { key = "dock", width = "grow", height = "grow",
+          when = {
+            { width = { above = 1180, band = 24 }, hidden = { "pane-box" } },
+            { width = { below = 1180, band = 24 }, hidden = { "bottom" } },
+          },
+          column { key = "bottom", width = "grow", height = "grow",
+            kit.split({ key = "bottom-split", fraction = st.split, min = 280, on_resize = { kind = "ins_split" } }, {
+              first = { column { key = "detail-pane", width = "grow", height = "grow", scroll_y = true, detail(st) } },
+              second = { column { key = "tables-pane", width = "grow", height = "grow", tables(st, false) } },
+            }) },
+          column { key = "pane-box", width = "grow", height = "grow", tables(st, true) },
+        } },
+      }),
     },
   }
 end

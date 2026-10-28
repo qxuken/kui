@@ -320,7 +320,8 @@ export interface ButtonEvent {
  *  the fraction carried to the next notch — and null on any other node.
  *  The core scrolls nothing for it: re-declare the grid's `originLine`,
  *  or zoom the canvas. From the edge drag it comes once a frame while the
- *  pointer is held past the edge. */
+ *  pointer is held past the edge. A trackpad's pinch comes as one too
+ *  (backlog F256), with `zoom` and `dx`/`dy` 0. */
 export interface ScrollEvent {
   x: number;
   y: number;
@@ -330,6 +331,9 @@ export interface ScrollEvent {
   /** On a node that names `scrollMods`: the modifiers held when the
    *  gesture began. */
   mods?: { shift: boolean; ctrl: boolean; alt: boolean; super: boolean };
+  /** A trackpad's pinch (backlog F256): the magnification since the last
+   *  event, positive zooming in. Only a pinch carries it. */
+  zoom?: number;
 }
 
 /** Keyboard focus entered or left an `onFocus` node's subtree, and what
@@ -1918,6 +1922,10 @@ export interface NodeInfo {
    *  0043): 0 and 1 for a node that declares none. */
   rotate: number;
   scale: number;
+  /** Its stretch across and down as drawn this frame (`scaleX` /
+   *  `scaleY`, backlog C149): 1 each for a node that declares none. */
+  scaleX: number;
+  scaleY: number;
   /** A scroller's offset; `null` for a node that does not scroll. */
   scroll: { x: number; y: number } | null;
   /** Every handler it declared with the message it would post: `click`,
@@ -3097,6 +3105,16 @@ export declare class Ctx {
    * fraction of a line is applied as it comes.
    */
   wheel(lx: number, ly: number, begins: boolean): void
+  /**
+   * A trackpad's pinch, as part of a pinch gesture (backlog F256):
+   * `delta` the magnification since the last event (positive = zoom
+   * in), `begins` on its first. The first picks the innermost
+   * `onScroll` node around the pointer — whatever its `scrollAxes`,
+   * passing by one that names `scrollMods` — and the rest go to it
+   * wherever the pointer goes, as its message with `scroll: {x, y, dx:
+   * 0, dy: 0, lines: null, zoom}` in it. Nothing scrolls for it.
+   */
+  pinch(delta: number, begins: boolean): void
   /** Committed text input (typing, paste); routed to the focused editor. */
   text(text: string): void
   /**
@@ -6786,6 +6804,16 @@ export interface Clip {
   /** Corner radii, clockwise from the top-left: a clipping node with a
    *  radius rounds what it clips. All zero = a plain rect clip. */
   radii: [number, number, number, number];
+  /** The turn every quad naming this entry is drawn through (ADR 0043):
+   *  angle in radians, scale, tx, ty. `[0, 1, 0, 0]` when nothing turns. */
+  transform: [number, number, number, number];
+  /** The stretch before the turn (`scaleX` / `scaleY`, backlog C149): sx,
+   *  sy, shear. `[1, 1, 0]` when nothing stretches. */
+  stretch: [number, number, number];
+  /** A second clip in the quad's own space, before the turn, and its
+   *  radii: from clipping nodes inside a turned subtree. */
+  inner: [number, number, number, number];
+  innerRadii: [number, number, number, number];
 }
 
 /** The container `uniformList` declares: every `<box>` prop, plus what it

@@ -126,7 +126,7 @@ pub struct ButtonEvent {
     pub byte: Option<usize>,
 }
 
-/// A `scroll`: the wheel over an `onScroll` node.
+/// A `scroll`: the wheel over an `onScroll` node, or a trackpad's pinch.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Scroll {
     pub pos: Vec2,
@@ -137,6 +137,9 @@ pub struct Scroll {
     /// On a node that names `scroll_mods`: the modifiers held when the
     /// gesture began.
     pub mods: Option<KeyMods>,
+    /// A pinch's (backlog F256): the magnification since the last event,
+    /// positive zooming in; `delta` is zero and `lines` `None` beside it.
+    pub zoom: Option<f32>,
 }
 
 /// Which half of a hover an event reports.
@@ -441,6 +444,7 @@ fn read_scroll(p: &Value) -> Option<Scroll> {
         delta: Vec2::new(p.get_f32("dx")?, p.get_f32("dy")?),
         lines: p.get_int("lines"),
         mods: p.get("mods").map(mods),
+        zoom: p.get_f32("zoom"),
     })
 }
 
@@ -1214,6 +1218,9 @@ fn write_scroll(s: Scroll) -> Value {
     if let Some(m) = s.mods {
         f.push(("mods", m.to_fields()));
     }
+    if let Some(z) = s.zoom {
+        f.push(("zoom", num(z)));
+    }
     Value::map(f)
 }
 
@@ -1596,6 +1603,7 @@ mod field_tests {
                 ctrl: true,
                 ..KeyMods::default()
             }),
+            zoom: None,
         };
         assert_eq!(round_trip(scroll), Event::Scroll(scroll));
         let bare = Scroll {
@@ -1604,6 +1612,12 @@ mod field_tests {
             ..scroll
         };
         assert_eq!(round_trip(bare), Event::Scroll(bare));
+        let pinch = Scroll {
+            delta: Vec2::ZERO,
+            zoom: Some(0.25),
+            ..bare
+        };
+        assert_eq!(round_trip(pinch), Event::Scroll(pinch));
         let focus = Focus {
             phase: FocusPhase::Out,
             by: FocusBy::Assistive,

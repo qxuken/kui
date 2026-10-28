@@ -3518,6 +3518,23 @@ height limit with scrolling for every menu the core draws, and the
 native runner's popup window for a context menu that does not fit —
 **built 2026-10-27**, the day it was filed, and in the archive.
 
+## From Kit's line chart under a dialog (2026-10-28)
+
+Kit's line chart under a Kit dialog drew some of its x tick labels over
+the dialog's panel and the rest under it. One entry, F257 — a float
+anchored to its parent that does not escape opens with the layer that
+holds it, not on top of the stack (an amendment to ADR 0023) — **built
+2026-10-28**, the day it was filed, and in the archive.
+
+## From a pinch that zoomed nothing (2026-10-28)
+
+kui-perf's waterfall, and every canvas or timeline that zooms on
+`onScroll`, could not be pinched: the native runner dropped winit's
+`PinchGesture`, and no binding had a door for one. One entry, F256 — a
+pinch as the `onScroll` node's `scroll` with `zoom` in it, latched for
+the gesture, in every binding — **built 2026-10-28**, the day it was
+filed, and in the archive.
+
 ## From Carnet on alpha.69 (2026-10-28)
 
 On Windows, Carnet's window flashed white as it closed, through its
@@ -3639,22 +3656,11 @@ inspector, which waits on the kui tools design system.
 What ADR 0075's building order needs beside the app (F200), filed the
 day it was written. Seven entries, F248–F254, all **built 2026-10-28**
 and in the archive with the app itself, F200 (the spike accepting ADR
-0075); one found building the app, F255, open; and four open entries it
-builds on the way — C147 and C148 in step 1, **built 2026-10-28** and in
-the archive, C149 and C102 in step 4.
-
-### `.` F255 — A lazy branch chosen by a query is a fit column with no props
-
-**Found** building kui-perf's bands (2026-10-28): `lazy { query = {…},
-render = …, fallback = … }` opens its branch as a bare `NodeSpec::column()`
-(`lazy_open_key`) and the Lua form reads no layout props, so a branch whose
-render wants the room — a `grow` column, a split — gets its content's fit
-width and height, and everything inside collapsed to a character wide.
-kui-perf took ADR 0069's other half instead, `when` entries on its own
-width hiding the panes that do not apply. **Do.** A query branch takes
-the room its parent offers in the axes it queries (the parent is a
-container there already, decision 8), or `width` / `height` on the lazy
-form in every binding.
+0075); one found building the app, F255, and F258 from using it, built
+the same day and in the archive; and four entries it builds on the way —
+C147 and C148 in step 1 and C149 in step 4, **built 2026-10-28** and in
+the archive (C149 with `scaleX` / `scaleY`, a stretch in the core and
+every binding), and C102 in step 4, open.
 
 ## From Kit's M0 spike (2026-10-25)
 
@@ -3753,6 +3759,7 @@ filed the same day for the round that builds them.
 - `.` **C143** — [A channel made or published from Lua makes a `Value` a cell](backlog/closed-2026-09.md#-c143--a-channel-made-or-published-from-lua-makes-a-value-a-cell--done-2026-10-26) — done (2026-10-26) — a column is built straight from the Lua values, no `Value` a cell: the 9,000-line log publishes in 1.62 ms, not 2.31
 - `.` **C147** — [A channel cannot be appended to](backlog/closed-2026-09.md#-c147--a-channel-cannot-be-appended-to--done-2026-10-28) — done (2026-10-28) — `append(rows, cap)`, a revision's rows shared with the next in runs that merge as they grow; in every binding
 - `.` **C148** — [A channel has no filter, sort or take](backlog/closed-2026-09.md#-c148--a-channel-has-no-filter-sort-or-take--done-2026-10-28) — done (2026-10-28) — `filter` (value, part of a string, range), `sort`, `take`, in Rust and every binding
+- `.` **C149** — [The line chart's y glide runs the view each frame](backlog/closed-2026-09.md#-c149--the-line-charts-y-glide-runs-the-view-each-frame--done-2026-10-28) — done (2026-10-28) — `scaleX` / `scaleY` in the core and every binding (C ABI 41); the chart's lines enter stretched in a box keyed by the glide, gridlines and labels slide by value, no frame asked for
 - `.` **C150** — [The runner's heap fragments under the system allocator](backlog/closed-2026-09.md#-c150--the-runners-heap-fragments-under-the-system-allocator--done-2026-10-27) — done (2026-10-27) — mimalloc as the runner's allocator, purging at once: the Kit gallery 103 → 66 MB on Charts, 84 → 69 on Overview, Watchtower 51 → 44, Tasks 13 → 16; frames unchanged
 - `.` **C151** — [A float anchored to its parent escapes every clip unless it says so](backlog/closed-2026-09.md#-c151--a-float-anchored-to-its-parent-escapes-every-clip-unless-it-says-so--done-2026-10-27) — done (2026-10-27) — ADR 0074: what a node paints is cut by the nearest box that clips or scrolls it, unless it says `escape` (or floats on the viewport); an exit keeps the clip it left from; doors in every binding, `float_escape` in ABI 39, bit 4 in protocol 27
 - `.` **C152** — [Nothing checks that a node's paint stays in its box](backlog/closed-2026-09.md#-c152--nothing-checks-that-a-nodes-paint-stays-in-its-box--done-2026-10-27) — done (2026-10-27) — the paint audit (`Core::set_paint_audit`, `KUI_PAINT_AUDIT=1`, `paint-escape`); the Kit gallery walked under it at scale 1 and 1.5, failing on the old rule; `kui run --scale`
@@ -3956,23 +3963,6 @@ run with `MallocStackLogging=1`, which this round could not start.
 **Do.** That run, by hand (`MallocStackLogging=1 kui run …`, then
 `malloc_history <pid> -allBySize`), and then a look at what churns the
 small blocks enough to leave a third of the zone empty.
-
-### `.` C149 — The line chart's y glide runs the view each frame
-
-**Found** checking Kit for clock reads (C138): when the rounded y range
-changes, the chart asks for a frame every frame for 240 ms, and each runs
-the view. **Do.** The glide as a transition on the plot's vertical scale
-and offset, gridlines and labels keyed by value, so a reframe carries it.
-
-**Planned** in
-[ADR 0075](adr/0075-kui-perf-reads-a-recording-in-kit.md)'s
-building order, step 4: the inspector needs it.
-
-**Not built with kui-perf (2026-10-28)**: a box scales only uniformly
-(`scale`, ADR 0043), so the plot's vertical scale cannot ride a
-transition as this asks; it needs a `scale_y` (a non-uniform scale) in the
-core and every binding first. kui-perf's lanes reframe only when the
-window moves, which runs the view anyway.
 
 ### `.` C159 — A component cannot schedule a message to itself
 
@@ -6303,6 +6293,10 @@ move.
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
 - `.` **F245** — [The atlas epoch starts at 0, so a zeroed host takes the first page for one it has](backlog/closed-2026-09.md#-f245--the-atlas-epoch-starts-at-0-so-a-zeroed-host-takes-the-first-page-for-one-it-has--done-2026-10-28) — done (2026-10-28) — `GlyphAtlas::epoch` starts at 1 and is never 0; said in kui.h
 
+**From a pinch that zoomed nothing (2026-10-28)** — F256, filed and built the same day
+
+- `.` **F256** — [A trackpad's pinch reaches no app](backlog/closed-2026-09.md#-f256--a-trackpads-pinch-reaches-no-app--done-2026-10-28) — done (2026-10-28) — `InputEvent::Pinch`, heard by the innermost `onScroll` node as `zoom` and latched; `kui_input_pinch` and its doors
+
 **From Carnet on alpha.69 (2026-10-28)** — F246 and F247, filed and built the same day
 
 - `.` **F246** — [A window shows white as it closes, for as long as the app's teardown takes](backlog/closed-2026-09.md#-f246--a-window-shows-white-as-it-closes-for-as-long-as-the-apps-teardown-takes--done-2026-10-28) — done (2026-10-28) — every window hidden the moment the close is accepted, before `teardown`; a pane before it is destroyed
@@ -6318,7 +6312,7 @@ move.
 - `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
 - `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
 
-**From the kui-perf grilling (2026-10-27)** — F248–F254, built 2026-10-28; F255 open
+**From the kui-perf grilling (2026-10-27)** — F248–F255 and F258, built 2026-10-28
 
 - `.` **F248** — [`kui-trace` cannot make a channel](backlog/closed-2026-09.md#-f248--kui-trace-cannot-make-a-channel--done-2026-10-28) — done (2026-10-28) — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
 - `.` **F249** — [A recording is read only whole, from bytes in memory](backlog/closed-2026-09.md#-f249--a-recording-is-read-only-whole-from-bytes-in-memory--done-2026-10-28) — done (2026-10-28) — a stream decoder, a transport trait, a watched file transport
@@ -6327,7 +6321,12 @@ move.
 - `.` **F252** — [Nobody knows whether Lua draws a million spans in time](backlog/closed-2026-09.md#-f252--nobody-knows-whether-lua-draws-a-million-spans-in-time--done-2026-10-28) — done (2026-10-28) — every budget met once Kit's waterfall read `Channel::lanes`; ADR 0075 accepted
 - `.` **F253** — [The Perf tab cannot hand a recording to the inspector](backlog/closed-2026-09.md#-f253--the-perf-tab-cannot-hand-a-recording-to-the-inspector--done-2026-10-28) — done (2026-10-28) — *open in kui-perf* saves the trace and asks the runner, `kui_native::open_recording` in every binding
 - `.` **F254** — [How kui-perf reaches a machine is not decided](backlog/closed-2026-09.md#-f254--how-kui-perf-reaches-a-machine-is-not-decided--done-2026-10-28) — done (2026-10-28) — `kui perf RECORDING`, the app carried by the runner
-- `.` **F255** — [A lazy branch chosen by a query is a fit column with no props](#-f255--a-lazy-branch-chosen-by-a-query-is-a-fit-column-with-no-props) — open — the branch takes its parent's room in the axes it queries, or `width` / `height` on the lazy form
+- `.` **F255** — [A lazy branch chosen by a query is a fit column with no props](backlog/closed-2026-09.md#-f255--a-lazy-branch-chosen-by-a-query-is-a-fit-column-with-no-props--done-2026-10-28) — done (2026-10-28) — the branch takes its parent's room in the axes its query reads
+- `.` **F258** — [The waterfall's wheel scrolls its lanes once they overflow, and nothing selects a range](backlog/closed-2026-09.md#-f258--the-waterfalls-wheel-scrolls-its-lanes-once-they-overflow-and-nothing-selects-a-range--done-2026-10-28) — done (2026-10-28) — the wheel and a pinch zoom, a drag on the axis selects a range, kui-perf's dock and keys' card
+
+**From Kit's line chart under a dialog (2026-10-28)** — F257, filed and built the same day
+
+- `.` **F257** — [A float that opens inside a box draws over a dialog that opened before it](backlog/closed-2026-09.md#-f257--a-float-that-opens-inside-a-box-draws-over-a-dialog-that-opened-before-it--done-2026-10-28) — done (2026-10-28) — a held float opens just above the floats its layer holds, not on top (ADR 0023 amended)
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 

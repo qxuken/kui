@@ -2716,6 +2716,32 @@ test('scrollGesture latches: a swipe that moved the strip keeps it past a termin
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['term']);
 });
 
+// A trackpad's pinch (backlog F256): `pinch` reaches the `onScroll` node
+// under the pointer as its message with `zoom` in the scroll data, stays
+// its own to the gesture's end, and scrolls nothing.
+test('pinch: the onScroll node under the pointer hears zoom, latched', () => {
+  const ctx = new Ctx();
+  const tree = box({ width: 'grow', height: 'grow' }, [
+    box({ width: 'grow', height: 100, onScroll: { kind: 'zoom' }, scrollAxes: 'y' }, [], 'canvas'),
+    box({ width: 'grow', height: 100, scrollY: true }, [box({ width: 'grow', height: 900 })], 'list'),
+  ]);
+  ctx.frame(400, 200, 1, tree);
+  ctx.frame(400, 200, 1, tree);
+  ctx.cursor(50, 20);
+  ctx.pinch(0, true);
+  ctx.pinch(0.25, false);
+  ctx.cursor(50, 150);
+  ctx.pinch(-0.5, false);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
+    { kind: 'zoom', scroll: { x: 50, y: 20, dx: 0, dy: 0, lines: null, zoom: 0.25 } },
+    { kind: 'zoom', scroll: { x: 50, y: 150, dx: 0, dy: 0, lines: null, zoom: -0.5 } },
+  ]);
+  ctx.pinch(0.25, true);
+  assert.deepEqual(ctx.pollEvents(), [], 'begun over the list: nobody\'s');
+  ctx.frame(400, 200, 1, tree);
+  assert.equal(ctx.scrollOffset('list').y, 0);
+});
+
 // A wheel's notch glides (ADR 0050): `wheel` takes lines, a whole one
 // eases toward its 40 px over a few frames of the clock, and
 // `setSmoothWheel(false)` makes it jump as pixels do.
@@ -5255,13 +5281,17 @@ const SCENE_TREES = {
   },
   // ADR 0043: a rounded, clipping card tilted an eighth of a turn about
   // its top-left corner, holding a child wider than itself and a badge
-  // floating with it; beside it a box scaled half again.
+  // floating with it; beside it a box scaled half again, and a box
+  // stretched about its foot holding a turned one (backlog C149).
   'transform': () => root({}, [box({ dir: 'row' }, [
     box({ key: 'card', width: 60, height: 40, radius: 8, clip: true, bg: '#3b5bd4', rotate: 0.125, pivotX: 0, pivotY: 0 }, [
       box({ key: 'wide', width: 90, height: 20, bg: '#d9738c' }),
       box({ key: 'badge', width: 12, height: 12, bg: '#f6d55c', float: { anchor: 'parent', dx: 54, dy: -6 } }),
     ]),
     box({ key: 'big', width: 40, height: 40, bg: '#73d98c', scale: 1.5 }),
+    box({ key: 'squat', width: 40, height: 40, bg: '#8c73d9', scaleX: 1.5, scaleY: 0.5, pivotX: 0.5, pivotY: 1 }, [
+      box({ key: 'tilt', width: 20, height: 20, bg: '#d9d973', rotate: 0.0625 }),
+    ]),
   ])]),
   // Rounded span backgrounds joined across four texts (backlog F101), the
   // fourth in another colour.
@@ -6377,8 +6407,8 @@ const MASK = 0xffffffffffffffffn;
 /** FNV-1a over each quad's words 0..18 — `KuiQuad` without its `uv`, which
  *  depends on glyph insertion order, and without the clip index — plus the
  *  `uv` of a segment quad (kind 6), where it is the endpoints, and then the
- *  twenty words of the clip that index names (its rect, radii, transform,
- *  inner clip and its radii). The clip is digested resolved
+ *  twenty-three words of the clip that index names (its rect, radii,
+ *  transform, stretch, inner clip and its radii). The clip is digested resolved
  *  rather than as the index, so the number says what a backend clips by and
  *  not how this frame interned it. Mirrors `conformance::quad_digest`. */
 function quadDigest(buffer, clipBuffer) {
@@ -6404,7 +6434,7 @@ function quadDigest(buffer, clipBuffer) {
     const words = [...Array(19).keys(), ...(geometry ? [20, 21, 22, 23] : [])];
     for (const i of words) mix(view.getUint32(off + i * 4, true));
     const clip = view.getUint32(off + 19 * 4, true) * clipStrideBytes;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 23; i++) {
       mix(clip + (i + 1) * 4 <= clipBuffer.byteLength ? clipView.getUint32(clip + i * 4, true) : 0);
     }
   }
@@ -9363,7 +9393,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'frameBinary', 'setViewBinary', 'setView', 'measureTextBinary', 'caretInTextBinary', 'setTokensRaw',
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
-    'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'wheel', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
+    'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'wheel', 'pinch', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
     'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel', 'answerFiles', 'openDocuments',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',

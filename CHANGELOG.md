@@ -25,6 +25,11 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.**
 
+- A float anchored to its parent that does not `escape` opens just above
+  the floats its layer holds already, where it opened on top of every
+  float (backlog F257): one that opens inside a page while a toast, a HUD
+  or a dialog is up now paints under it. A menu or a popover that relied
+  on opening over those says `escape`.
 - A `kui-native` window leaves the screen when its close is accepted —
   every window, before `App::teardown` runs — where it stayed up through
   the teardown (backlog F246). A teardown that draws into a window, or
@@ -37,11 +42,36 @@ was the first bare bump to break an app in five releases).
   host that drains `kui_take_menu_action` sees the new kind,
   `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`, and one that does not know it
   drops it.
+- The C ABI is 41 (backlog C149): `KuiClip` takes `stretch[3]` after
+  `transform`, 23 words where it was 20; `KuiKeyframe` and `KuiEnter`
+  append `scale_x` and `scale_y` (60 and 56 bytes), and `KuiSpec` appends
+  them too and grows with its two `KuiEnter`s (912 bytes on 64-bit).
+  Recompile; a renderer that strides `KuiDrawData.clips` by its own
+  `sizeof` reads the new stride, and one that ignores the new words draws
+  a stretched box unstretched. Node's `clips()` is 92 bytes an entry, and
+  `decodeClips` reads `stretch` before `inner`.
+- `kui_core::Transform` has three more fields, `sx`, `sy` and `shear`,
+  and `TransformSpec` one, `stretch`: a struct literal of either names
+  them or takes `..Transform::IDENTITY` / `..TransformSpec::NONE`.
+- Kit's line chart draws a new y range at once, its lines gliding to it
+  in a box and its gridlines and labels sliding there (backlog C149),
+  where it drew every frame of the glide at a range part of the way: a
+  test that read a label in the middle of a glide reads the new range's.
+
+- A lazy branch chosen by a query (`lazy { query = … }`) takes the room
+  its parent offers in the axes the query reads, where it was a column
+  its content's size (backlog F255): a branch that should stay that size
+  says so inside it.
+
+- `InputEvent` has a variant `Pinch { delta, begins }` and
+  `kui_core::event::Scroll` a field `zoom: Option<f32>` (backlog F256): a
+  Rust host that matches `InputEvent` whole adds an arm, and one that
+  builds a `Scroll` by its fields adds `zoom: None`.
 
 Nothing else breaks: two crates split out of `kui-core` and re-exported
-where they were, four channel doors added in every binding (the C ABI at
-40), and the recording's reader, its made-up sessions and its Lua module
-added beside the format.
+where they were, four channel doors added in every binding, and the
+recording's reader, its made-up sessions and its Lua module added beside
+the format.
 
 The first step of [ADR 0075](docs/adr/0075-kui-perf-reads-a-recording-in-kit.md),
 `kui-perf`, the trace inspector: the recording's reader needs to hand a
@@ -51,6 +81,40 @@ entries with it — the inspector's Live view appends to a million spans,
 and its tables sort and filter them.
 
 ### Added
+
+- **A stretch: `scaleX` / `scaleY`** (backlog C149; the 2026-10-28
+  amendment of [ADR 0043](docs/adr/0043-a-node-turns-about-its-pivot.md)).
+  A node and its subtree stretched across and down by their own factors,
+  along the node's axes before its turn and about its pivot, multiplying
+  `scale` — paint-only as `scale` is: layout, the room taken and
+  `onLayout` are the unstretched node's, while what it draws, clips and
+  hits stretches and the access rect is the bounding box. It tweens with
+  `transition`, and an entrance, an exit or a keyframe stop may name it
+  (`enter: { scaleY: 2, dy: 40 }`). The clip entry carries a stretch —
+  `sx`, `sy` and a `shear`, which only a turn nested inside a stretch
+  composes to — so nesting stays exact. What is inside is drawn through
+  it: a stroke widens across, a glyph is drawn wide, resampled as a
+  turned one is, so keep text outside a box you stretch or settle it
+  back to 1. Rust `NodeSpec::scale_x` / `scale_y` and `Enter` /
+  `Keyframe` `scale_x` / `scale_y`; JSX `scaleX` / `scaleY` (and in
+  `enter`, `exit`, `keyframes`); Lua `scale_x` / `scale_y`; C
+  `KuiSpec.scale_x` / `scale_y` (0 is 1), `KuiEnter` / `KuiKeyframe`
+  with `KUI_ENTER_SCALE_X` / `_Y` and `KUI_KF_SCALE_X` / `_Y`; Odin the
+  generated `Spec`, `Enter` and `Keyframe` fields with `.Scale_X` /
+  `.Scale_Y`. The devtools' facts and `Core::nodes` show it beside
+  `rotate` and `scale`.
+
+- **A trackpad's pinch** (backlog F256): a macOS trackpad's pinch reaches
+  the innermost `onScroll` node under the pointer as its message with
+  `scroll: {x, y, dx: 0, dy: 0, lines: null, zoom}` in it — `zoom` the
+  magnification since the last event, positive zooming in — and stays
+  that node's until the fingers lift, wherever the pointer goes. Its
+  `scrollAxes` are not asked; a node that names `scrollMods` is passed
+  by; no scroll container moves for it, and one begun over no `onScroll`
+  node is nobody's. A canvas or a timeline that zooms on the wheel zooms
+  on a pinch by reading `zoom`. Headless, `InputEvent::Pinch`,
+  `kui_input_pinch`, Odin `input_pinch`, Node `ctx.pinch(delta,
+  begins)`. Windows and Linux report no pinch through winit.
 
 - **kui-perf, the trace inspector** (ADR 0075, backlog F200, F254):
   `kui perf session.kuitrace` opens a recording — from the devtools' Perf
@@ -77,7 +141,29 @@ and its tables sort and filter them.
   `openRecording` and its `{ kind: 'openRecording', path }` action.
 
 - **Kit's line chart takes a host's x window**: `x_min` / `x_max`, for a
-  chart that shares its axis with another view — a timeline's lanes.
+  chart that shares its axis with another view — a timeline's lanes — and
+  a held `gutter`, its y labels' column, so its plot starts where the view
+  over it does.
+
+- **Kit's waterfall selects a range and zooms by any wheel** (backlog
+  F258): a drag along its time axis selects a range, drawn over the lanes
+  and the axis with its length beside the title, zoomed to by its button
+  or cleared by its × or a click on the axis — `on_range`, and
+  `range_start` / `range_length` for a host that keeps it; the wheel zooms
+  about the pointer however deep the trace is (its lanes scroll in a box
+  around them, where they scrolled under the wheel once they overflowed),
+  a sideways swipe or ⇧ and the wheel pans, a pinch zooms (`scroll.zoom`);
+  `gutter` keeps an empty column left of the axis and the lanes, to line
+  them up with charts under them.
+
+- **kui-perf: the keys' card, the dock, the range** (backlog F258): `?`,
+  Help ▸ Keys and gestures or the toolbar's ⓘ shows every key and
+  gesture on a card, open by itself the first time a recording opens; the
+  dock under the timeline is a split whose rule is dragged (neither under
+  140 px), kept with the preferences; the range selected on the axis is
+  zoomed to by `z` (or `f`) and cleared by Esc; the graph lanes' plots
+  start where the waterfall's lanes do. Its headless test keeps its
+  preferences in a folder of its own, where it removed the app's.
 
 - **`kui.trace`'s filter hides span names whole**: `hide_names = {
   "devtools" }`.
@@ -196,6 +282,18 @@ and its tables sort and filter them.
 
 ### Changed
 
+- **Kit's line chart glides its y range on the core's clock** (backlog
+  C149). When the rounded range changed it asked for a frame every frame
+  for 240 ms and ran the view in each. The lines are drawn for the new
+  range at once, in a box keyed by the glide that enters stretched and
+  moved to where the old range had them (`scale_y` and `dy`) and settles
+  out of a cubic; the gridlines and their labels are keyed by value and
+  slide to their places, fading in and out where the ranges differ. The
+  frames of the glide are built from the kept tree (`Core::reframe`):
+  two view runs for a change (the frame that sees it and the next, the
+  first to keep what building again needs), where it was fifteen at 60
+  Hz. Under reduced motion it jumps, as it did.
+
 - **Kit's waterfall costs its width, not its spans** (ADR 0075): it reads
   its bars from the channel's lanes, a window at a time, and the names
   and groups of the bars it draws — where it made a Lua table of every
@@ -206,6 +304,17 @@ and its tables sort and filter them.
   520 → 3.5 ms at its worst.
 
 ### Fixed
+
+- **A float that opens inside a box no longer draws over a dialog**
+  (backlog F257): Kit's line chart lays out more x tick labels once its
+  plot is measured, a frame after a dialog over it opened, and those
+  labels — floats held by the axis — went on top of the stack, over the
+  dialog's panel, while the rest stayed under it; a live chart's slide,
+  under a fresh key each sample, did the same. A float anchored to its
+  parent that does not escape is its box's content (ADR 0074) and now
+  opens with the layer that holds it (ADR 0023, amended); one that
+  escapes, or is placed against the viewport or a node, opens on top as
+  before.
 
 - **A window no longer flashes white as it closes** (backlog F246, from
   Carnet). The main window stayed on screen from the close until the
@@ -220,6 +329,10 @@ and its tables sort and filter them.
 
 **What you can delete.**
 
+- A range eased by hand in a view — a frame asked for every frame and
+  everything drawn again at the range part of the way — kept only so a
+  chart's lines did not jump: draw them for the new range in a box that
+  enters at `{ scaleY, dy }` from where the old one had them.
 - Platform clipboard code of an app's own (`CF_HDROP`, `NSPasteboard`
   file URLs, `text/uri-list`), kept only to copy a file.
 - A hidden-window dance or a quick exit in an app's close path, kept

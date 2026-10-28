@@ -1219,6 +1219,8 @@ export interface LineChartProps {
   xMin?: number;
   /** The x window's end, held by the host. */
   xMax?: number;
+  /** The y labels' column in px, held: charts stacked under one another, or under a waterfall with the same `gutter`, share their plot's left edge. As wide as the widest label when left out. */
+  gutter?: number;
   /** With it, only the last `window` of x is shown: a live chart. While samples come in it scrolls smoothly between them, drawn one sample behind and slid left over the time samples take to come (a keyframe cycle the core runs, so a frame between samples runs no view); under reduced motion, and while the plot is out of the viewport, it steps. */
   window?: number;
   /** How the x ticks read; the number when left out. */
@@ -1311,9 +1313,17 @@ export interface WaterfallProps {
   selected?: number;
   /** Takes the room its parent leaves. */
   grow?: boolean;
+  /** An empty column in px left of the axis and the lanes, so they line up with charts under them that hold the same `gutter`. */
+  gutter?: number;
+  /** The range selected on the axis, in ms, held by the host: with `on_range`, the range drawn is this one, and a drag on the axis proposes another. Kit's own otherwise. */
+  rangeStart?: number;
+  /** The selected range's length in ms; none selected when left out or 0. */
+  rangeLength?: number;
   /** The message select arrives as: yours, with `select: WaterfallSelect` in it — register it as `WaterfallSelectMsg<…>`. A span was clicked. */
   onSelect?: HandlerMsg<{ select: WaterfallSelect }>;
-  /** The message zoom arrives as: yours, with `zoom: WaterfallZoom` in it — register it as `WaterfallZoomMsg<…>`. The wheel or a drag asks for another window. */
+  /** The message range arrives as: yours, with `range: WaterfallRange` in it — register it as `WaterfallRangeMsg<…>`. A drag on the time axis selected a range, or a click there or the range's × cleared it. */
+  onRange?: HandlerMsg<{ range: WaterfallRange }>;
+  /** The message zoom arrives as: yours, with `zoom: WaterfallZoom` in it — register it as `WaterfallZoomMsg<…>`. The wheel, a pinch, a drag, a tool or zooming to the range asks for another window. */
   onZoom?: HandlerMsg<{ zoom: WaterfallZoom }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
@@ -1328,6 +1338,16 @@ export interface WaterfallSelect {
 }
 /** Your message `T` as `select` arrives. */
 export type WaterfallSelectMsg<T = {}> = T & { select: WaterfallSelect };
+
+/** What `onRange`'s message carries under `range`. */
+export interface WaterfallRange {
+  /** Its start in ms. */
+  start: number;
+  /** Its length in ms; 0 when cleared. */
+  length: number;
+}
+/** Your message `T` as `range` arrives. */
+export type WaterfallRangeMsg<T = {}> = T & { range: WaterfallRange };
 
 /** What `onZoom`'s message carries under `zoom`. */
 export interface WaterfallZoom {
@@ -1465,7 +1485,7 @@ export declare function BarChart(props: BarChartProps, children?: KuiNode): KuiN
 /** How a column's values fall into bins. */
 export declare function Histogram(props: HistogramProps, children?: KuiNode): KuiNode;
 
-/** A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group, zoomed and panned by the wheel and a drag. */
+/** A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and a drag on the time axis selects a range to zoom to. */
 export declare function Waterfall(props: WaterfallProps, children?: KuiNode): KuiNode;
 
 export interface Kit {

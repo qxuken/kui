@@ -147,6 +147,7 @@ Scroll_Event :: struct {
 	x, y, dx, dy: f32,
 	lines:        Maybe(f64), // on a cells grid
 	mods:         Maybe(Held_Mods), // on a scrollMods node
+	zoom:         Maybe(f32), // a trackpad's pinch: the magnification
 }
 
 Focus_Event :: struct {

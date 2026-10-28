@@ -240,8 +240,8 @@ const TYPE_DOC = {
   handler: 'handler (the message its events arrive as, each event\'s data in the field named for it; `null` for the field alone)',
   str: 'string',
   resource: 'resource handle',
-  keyframes: 'keyframe list (`[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`)',
-  enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }`)',
+  keyframes: 'keyframe list (`[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale?, scaleX?, scaleY? }, …]`)',
+  enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale?, scaleX?, scaleY? }`)',
   gradient: 'gradient (`{ to? \\| angle? \\| radial?, at?, stops: [color \\| [color, at], …] }`)',
   rules: 'entry list (`[{ width?: { below?, above?, band? }, window?, dark?, hovered?, …, …props }, …]`)',
 };
