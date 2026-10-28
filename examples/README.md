@@ -236,6 +236,7 @@ library the hosts link.
 | [`features/kit/kit.c`](c/features/kit/kit.c) | Kit from C through the header its schema generates (`addons/kit/bindings/c/kit.h`): a Kit button in a Kit toolbar and a segmented control, heard as the host's messages | ✓ `kit --headless` |
 | [`tools/surface.c`](c/tools/surface.c) | The header walk: every prototype in `kui.h` called once and checked — the FFI self-test, not an example | ✓ `surface` |
 | [`tools/conformance.c`](c/tools/conformance.c) | The C adapter over the scene corpus | ✓ `conformance <report>` |
+| [`tools/wgpu_host.c`](c/tools/wgpu_host.c) | kui's frame drawn on a wgpu-native device of the host's own (kui.h's "Drawing it yourself"): the pipeline from `kui_renderer_wgsl` and the attribute layout read at run time, the instances from `kui_pack_instances`, the atlas by its dirty rect, offscreen, the pixels read back and checked. Built where a wgpu-native is found (`WGPU_NATIVE_DIR`, or the one Odin ships) | ✓ `wgpu_host`; no GPU adapter is a skip unless `KUI_REQUIRE_GPU` |
 
 ```bash
 cargo run -p kui-devtools --bin cbuild -- --run   # ABI check, the artifacts, the round
@@ -314,6 +315,7 @@ run by [`scripts/odin.nu`](../scripts/odin.nu) against this checkout's
 | [`features/kit/kit.odin`](odin/features/kit/kit.odin) | Kit from Odin through the generated `kit` package, the twin of `c/features/kit/kit.c`, its events read with the generated `With_` types | ✓ `--headless` |
 | [`tools/conformance.odin`](odin/tools/conformance.odin) | `tools/conformance.c` through the typed layer: every scene of the corpus rebuilt through package `kui`'s `Spec` and doors, its report diffed byte for byte against the reference | ✓ against `KUI_CONFORMANCE`, or a reference `odin.nu test` makes |
 | [`tools/surface.odin`](odin/tools/surface.odin) | `tools/surface.c` through the typed layer, plus what the C binding walks in its other programs: every door of package `kui` called and checked | ✓ |
+| [`tools/wgpu_host.odin`](odin/tools/wgpu_host.odin) | `tools/wgpu_host.c` on `vendor:wgpu`: kui drawn with the host's own device, offscreen and checked; `--window` is a GLFW window whose world is the clear colour, kui over it in the host-loop order, a click on the world (where `pointer_wants` is false) changing its colour, keys through `kui/glfw`. Skipped by `odin.nu` where `vendor:wgpu` has no library | ✓ `--headless`, offscreen |
 
 ```bash
 nu scripts/odin.nu run counter      # the window

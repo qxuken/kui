@@ -30,10 +30,21 @@ was the first bare bump to break an app in five releases).
   read as numbers (`Cell::F64`, a float in Lua and Node), the revisions
   before keep their integers. A reader that matched `Column::I64` on a
   column a log appends to meets `Column::F64` once a fraction comes.
+- ABI 42 (C and Odin): `KuiSpec` appends `host_hit` (backlog F233), 920
+  bytes on 64-bit, and `KuiDrawData` appends `bounds` (backlog F235), 152.
+  Recompile against the new `kui.h`; zeroed, nothing changes.
 
 Nothing else breaks.
 
 ### Fixed
+
+- **Text on a system with no fonts** (backlog F262). A container or a
+  minimal Linux image with no font installed made every shape panic
+  inside cosmic-text, which the bindings caught, leaving an app with no
+  text and its layout moved. kui now falls back to a face it generates,
+  every character a box half an em wide, so text measures and lays out,
+  and raises `no-system-fonts` saying to install a font
+  (`fonts-dejavu-core` on Debian and Ubuntu) or register one.
 
 - **A channel's readers no longer copy the table** (backlog RG172).
   After a few appends a revision is several runs, and every `filter`,
@@ -49,6 +60,91 @@ Nothing else breaks.
   whole numbers alike, and `ch:append{ t = { 2.5 } }` was refused with
   "holds integers; numbers were appended". The column widens, its runs so
   far made again as numbers once.
+
+### Added
+
+- **A host can ask whether an input is the UI's** (backlog F233, from
+  Replicator Bloom's wishlist). A game, a map or a 3D view that draws a
+  transparent kui layer over its world asks before it hands a click, a
+  drag or a key to the world: `Core::hit(x, y)` names the topmost node at
+  a point that blocks the world, `Core::pointer_wants()` says whether the
+  pointer is the UI's (over such a node, or held by a press, a drag or a
+  selection kui started, or anywhere while a menu is open or a modal is
+  in effect), `Core::keyboard_wants()` whether the keyboard is (a focused
+  editor or key sink, an open menu) — Dear ImGui's `WantCaptureMouse` and
+  `WantCaptureKeyboard`. A node kui takes the pointer on blocks, and so
+  does a box that paints — a background, a border, an image; bare text
+  and a box that paints nothing let the world through. The new
+  `hostHit` row moves a box either way: `block` for a transparent
+  catcher, `pass` for a damage flash or a vignette the world shows
+  through. C `kui_hit`, `kui_pointer_wants`, `kui_keyboard_wants` and
+  `KuiSpec.host_hit` (`KUI_HOST_HIT_*`); Odin `hit`, `pointer_wants`,
+  `keyboard_wants`; Node `Ctx.hit`, `pointerWants`, `keyboardWants`; JSX
+  `hostHit`, Lua `host_hit`. kui's own hit testing is unchanged.
+
+- **The draw data says where the frame drew** (backlog F235). A
+  full-window overlay that draws two small tags paid for a clear, a draw
+  and a composite of the whole window. `DisplayList::bounds()` is the
+  union of the quads' footprints — a shadow's blur, a stroke's width, a
+  turned node where it is drawn, each cut by its clip — in whole physical
+  px, and C's `KuiDrawData.bounds` carries it: scissor to it.
+
+- **A context can join another's session** (backlog F237): C
+  `kui_ctx_new_in(other)`, Odin `new_ui_in(other)`, Node `ctx.sibling()`,
+  over `Core::new_in`. Several HUDs, or islands drawn into targets of
+  their own, share the registered fonts, images and sounds and the
+  shaping caches, so nothing is loaded or shaped twice; each keeps its own
+  tree, focus, events and glyph atlas. They belong to one thread.
+
+- **GLFW's and SDL3's keys as kui's** (backlog F239). A host with its own
+  window no longer maps key codes by hand: `kui_glfw.h` and `kui_sdl3.h`
+  beside `kui.h` (header-only, in the C pack) and Odin's `kui/glfw` and
+  `kui/sdl3` packages forward a key callback or event and the library's
+  text event in one call each — `physical` from the key's place, `code`
+  from the layout, the keypad and the modifiers' twins by location, and
+  typed text once. Generated from one table checked against kui's key
+  names.
+
+- **The C and Odin packs carry the library without the runner** (backlog
+  F238): `lib/<platform>/core/` beside each platform's shared and static
+  libraries — no `kui_run`, wgpu, winit or audio device, about half the
+  size — for a host that brings its own window; Odin picks it with
+  `-define:KUI_CORE=true`. The C pack also carries pkg-config files
+  (`kui`, `kui-static`, `kui-core`, `kui-core-static` in
+  `lib/<platform>/pkgconfig/`, but on Windows), so a link line is
+  `$(pkg-config --cflags --libs kui-static)`.
+
+- **A host's renderer draws with kui's own shader and instances**
+  (backlog F234). A game drawing `KuiDrawData` with its own wgpu device
+  copied kui-wgpu's shader and its private instance packing, and the copy
+  drifted (Replicator Bloom's lacked alpha.70's stretch). Rust
+  `kui_core::gpu` (`Instance`, `instance_of`, the attribute table,
+  `Globals`, `shader(dual)`), which kui-wgpu now draws through; C
+  `kui_renderer_wgsl`, `kui_instance_stride`, `kui_instance_attributes`
+  and `kui_pack_instances` — the layout read at run time, so a pipeline
+  built from it follows a later library — and Odin's four. Reference
+  hosts in C and Odin (`examples/*/tools/wgpu_host`) draw a frame
+  offscreen through wgpu-native and check it; Odin's also runs in a GLFW
+  window over a "world". kui.h's "Drawing it yourself" says the rest.
+
+- **Scoped openers for C** (backlog F261): `KUI_FRAME(ctx, w, h, scale)
+  { ... }` and `KUI_BOX(ctx, .width = {KUI_GROW, 1}, .bg = ...) { ... }`
+  close what they open at the block's end, as Odin's `if kui.box(...)`
+  does — with `KUI_BOX_KEYED`, `KUI_BOX_KEY` (the key written out) and
+  `KUI_BOX_CLICK` (a click message). Macros in kui.h, C only; never
+  `break` or `return` out of one.
+
+- **Islands: a window the host draws** (backlog F236, [ADR
+  0076](docs/adr/0076-an-island-is-a-window-the-host-draws.md)). A game
+  that wants UI *in* its world — on a gate ring, under the camera's
+  perspective — declares a window of the new kind `surface` (Rust
+  `WindowKind::Surface`, C `KUI_WINDOW_KIND_SURFACE`, `kind: "surface"`
+  in JSX and Lua). It is never an OS window: the host runs it as a context
+  in the main one's session (`kui_ctx_new_in`), at the size its
+  declaration says — a new size arrives as `SetSize` — and a scale of its
+  own, draws it into its own texture (F234) and feeds it input in its own
+  coordinates. It closes with the window that declared it. The windowed
+  runner opens nothing for one and warns `surface-without-host`.
 
 ## 0.1.0-alpha.70 (2026-10-28)
 

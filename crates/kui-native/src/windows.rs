@@ -87,6 +87,24 @@ impl DynShell<'_> {
                     origin,
                     config,
                 } => {
+                    // A surface is an island a host draws into its own
+                    // world, and the runner has none (ADR 0076): it opens
+                    // nothing, and says so on the window that declared it.
+                    if config.kind == WindowKind::Surface {
+                        if let Some(i) =
+                            self.pane_of(owner).or_else(|| self.pane_of(WindowId::MAIN))
+                        {
+                            let name = self.panes[i]
+                                .core
+                                .session()
+                                .window_name_of(id)
+                                .unwrap_or_else(|| format!("window-{}", id.0).into());
+                            self.panes[i]
+                                .core
+                                .warn(kui_core::diag::surface_without_host(&name));
+                        }
+                        continue;
+                    }
                     if self.pane_of(id).is_none() {
                         // A popup is a menu surface: no chrome whatever the
                         // launcher asked for (backlog AR32 — under `Custom`

@@ -104,48 +104,8 @@ mod backdrop;
 mod groups;
 
 use kui_core::atlas::GlyphAtlas;
-use kui_core::{Clip, DisplayList, Quad, QuadKind};
-
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct Instance {
-    pos: [f32; 2],
-    size: [f32; 2],
-    color: [f32; 4],
-    border_color: [f32; 4],
-    params: [f32; 4],
-    uv: [f32; 4],
-    clip: [f32; 4],
-    /// Corner radii, clockwise from the top-left.
-    radii: [f32; 4],
-    /// Radii of the clip itself; all zero = a plain rect clip.
-    clip_radii: [f32; 4],
-    /// The turn the quad is drawn through (ADR 0043): angle in radians,
-    /// scale, tx, ty — the clip entry's `transform`. The identity on
-    /// every quad of a frame with no `rotate` or `scale`.
-    xform: [f32; 4],
-    /// The clip in the quad's own space, before the turn: x, y, w, h.
-    inner: [f32; 4],
-    /// Its radii, as `clip_radii` are the outer clip's.
-    inner_radii: [f32; 4],
-    /// The stretch before the turn (`scaleX` / `scaleY`): sx, sy, shear,
-    /// unused — the clip entry's. `[1, 1, 0, 0]` when nothing stretches.
-    stretch: [f32; 4],
-}
-
-/// The frame's own numbers, at group 0 binding 0 for both pipelines.
-/// `kui_core::fragment::PRELUDE` declares the same bytes as `KuiGlobals`
-/// so an app's fragment can read `time` and `scale`; the padding is what
-/// makes the struct a multiple of sixteen, which a uniform must be.
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct Globals {
-    viewport: [f32; 2],
-    atlas_size: [f32; 2],
-    time: f32,
-    scale: f32,
-    _pad: [f32; 2],
-}
+use kui_core::gpu::{Globals, Instance, instance_of, shader as preprocess_shader};
+use kui_core::{DisplayList, Quad, QuadKind};
 
 /// One fragment's parameters as the shader takes them — the sixteen
 /// floats and the texel rect of its `image`, laid out as the epilogue's
@@ -159,107 +119,6 @@ struct FragmentParams {
     /// `FragmentIn::image`: `[x, y, w, h]` in the texture bound at group 0
     /// for this draw — the atlas, or the image's own; zero with none.
     image: [f32; 4],
-}
-
-/// The clip is resolved out of the frame's table here rather than read off
-/// the quad: it rides as an index (`kui_core::ClipId`) so the display list
-/// carries it once per distinct clip instead of once per quad.
-fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureDraw]) -> Instance {
-    let clip = clips.get(q.clip as usize).copied().unwrap_or(Clip::NONE);
-    let kind = match q.kind {
-        QuadKind::Solid => 0.0,
-        QuadKind::GlyphMask => 1.0,
-        QuadKind::GlyphColor => 2.0,
-        QuadKind::Image => 3.0,
-        QuadKind::GlyphSubpixel => 4.0,
-        QuadKind::Shadow => 5.0,
-        QuadKind::Segment => 6.0,
-        QuadKind::Fragment => 7.0,
-        // Drawn by the image branch with its own texture bound in the
-        // atlas's place.
-        QuadKind::Texture => 3.0,
-        // Never drawn by this pipeline: the pass breaks at it and
-        // `backdrop` blurs what is under it. A solid with no colour, so
-        // one a frame did not plan a blur for draws nothing in a run.
-        QuadKind::Backdrop => 0.0,
-        // Where a group's run starts: nothing to draw (ADR 0056).
-        QuadKind::GroupBegin => 0.0,
-        // A group's picture, its place in the texture written into `uv`
-        // once the frame's groups are placed (`plan_groups`).
-        QuadKind::GroupEnd => 8.0,
-    };
-    // `uv` is atlas texels on every kind but two: a segment carries its
-    // endpoints there as f32 bits, and a texture quad an index into the
-    // side list whose entry holds the texel rect. The shader wants floats.
-    let mut border_color = [
-        q.border_color.r,
-        q.border_color.g,
-        q.border_color.b,
-        q.border_color.a,
-    ];
-    let uv = if q.kind == QuadKind::Segment {
-        q.segment_ends()
-    } else if q.kind == QuadKind::Shadow {
-        // The node's own box, knocked out of its shadow (`shade`, kind 5):
-        // its insets are `uv`'s float bits as a segment's ends are, and its
-        // radii `border_color`'s rgb and `border_w`, the bottom-left one
-        // moved into the alpha the shader reads them from
-        // (`Quad::shadow_knockout`).
-        border_color[3] = q.border_w;
-        q.segment_ends()
-    } else if q.kind == QuadKind::Texture {
-        let uv = textures.get(q.uv[0] as usize).map_or([0; 4], |t| t.uv);
-        [uv[0] as f32, uv[1] as f32, uv[2] as f32, uv[3] as f32]
-    } else {
-        [
-            q.uv[0] as f32,
-            q.uv[1] as f32,
-            q.uv[2] as f32,
-            q.uv[3] as f32,
-        ]
-    };
-    if matches!(q.kind, QuadKind::Backdrop | QuadKind::GroupBegin) {
-        return Instance {
-            pos: [q.rect.x, q.rect.y],
-            size: [0.0, 0.0],
-            color: [0.0; 4],
-            border_color: [0.0; 4],
-            params: [0.0; 4],
-            uv: [0.0; 4],
-            clip: [0.0; 4],
-            radii: [0.0; 4],
-            clip_radii: [0.0; 4],
-            xform: [0.0, 1.0, 0.0, 0.0],
-            inner: [0.0; 4],
-            inner_radii: [0.0; 4],
-            stretch: [1.0, 1.0, 0.0, 0.0],
-        };
-    }
-    Instance {
-        pos: [q.rect.x, q.rect.y],
-        size: [q.rect.w, q.rect.h],
-        color: [q.color.r, q.color.g, q.color.b, q.color.a],
-        border_color,
-        params: [q.blur, q.border_w, kind, 0.0],
-        uv,
-        clip: [clip.rect.x, clip.rect.y, clip.rect.w, clip.rect.h],
-        radii: q.radius,
-        clip_radii: clip.radius,
-        xform: [
-            clip.transform.angle,
-            clip.transform.scale,
-            clip.transform.tx,
-            clip.transform.ty,
-        ],
-        inner: [clip.inner.x, clip.inner.y, clip.inner.w, clip.inner.h],
-        inner_radii: clip.inner_radius,
-        stretch: [
-            clip.transform.sx,
-            clip.transform.sy,
-            clip.transform.shear,
-            0.0,
-        ],
-    }
 }
 
 /// The GPU objects an app's windows share: one instance, adapter, device and queue.
@@ -1203,27 +1062,6 @@ fn transparent_mode(
     wanted.into_iter().find(|m| modes.contains(m))
 }
 
-/// Picks the `//DUAL:` or `//SINGLE:` lines of the shader template.
-fn preprocess_shader(src: &str, dual: bool) -> String {
-    let (keep, drop) = if dual {
-        ("//DUAL:", "//SINGLE:")
-    } else {
-        ("//SINGLE:", "//DUAL:")
-    };
-    let mut out = String::with_capacity(src.len());
-    for line in src.lines() {
-        if let Some(rest) = line.strip_prefix(keep) {
-            out.push_str(rest);
-        } else if line.starts_with(drop) {
-            continue;
-        } else {
-            out.push_str(line);
-        }
-        out.push('\n');
-    }
-    out
-}
-
 /// How many frames may be queued ahead of the one on screen by default: two, or one on Windows.
 ///
 /// With two, a drawable to render into is waiting while the previous
@@ -1436,9 +1274,7 @@ impl Renderer {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kui"),
-            source: wgpu::ShaderSource::Wgsl(
-                preprocess_shader(include_str!("shader.wgsl"), dual_source).into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(preprocess_shader(dual_source).into()),
         });
         // Dual source: the shader outputs premultiplied color and a
         // per-channel coverage; out = src + dst * (1 - coverage). For
@@ -2094,9 +1930,7 @@ impl Renderer {
             let device = self.gpu.device();
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("kui.groups"),
-                source: wgpu::ShaderSource::Wgsl(
-                    preprocess_shader(include_str!("shader.wgsl"), false).into(),
-                ),
+                source: wgpu::ShaderSource::Wgsl(preprocess_shader(false).into()),
             });
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("kui.groups"),
@@ -3573,7 +3407,7 @@ mod tests {
             let end = body.find('}').expect("a closing brace");
             body[..end].to_string()
         };
-        let quads = of(include_str!("shader.wgsl"), "struct Globals {");
+        let quads = of(kui_core::gpu::SHADER_TEMPLATE, "struct Globals {");
         let frags = of(kui_core::fragment::PRELUDE, "struct KuiGlobals {");
         let read = |body: &str| -> Vec<String> {
             body.lines()
@@ -3625,7 +3459,7 @@ mod tests {
         ] {
             assert!(prelude.contains(line), "prelude lacks `{line}`");
         }
-        let quads = include_str!("shader.wgsl");
+        let quads = kui_core::gpu::SHADER_TEMPLATE;
         for line in [
             "@group(0) @binding(1) var atlas_tex: texture_2d<f32>;",
             "@group(0) @binding(2) var atlas_smp: sampler;",
@@ -3641,7 +3475,7 @@ mod tests {
     fn shader_variants_validate() {
         use wgpu::naga::valid::{Capabilities, ValidationFlags, Validator};
         for dual in [false, true] {
-            let src = preprocess_shader(include_str!("shader.wgsl"), dual);
+            let src = preprocess_shader(dual);
             let module = wgpu::naga::front::wgsl::parse_str(&src)
                 .unwrap_or_else(|e| panic!("dual={dual}: {}", e.emit_to_string(&src)));
             let caps = if dual {

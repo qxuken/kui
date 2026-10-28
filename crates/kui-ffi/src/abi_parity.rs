@@ -311,6 +311,9 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::OVERSCROLLS, 1 => [
         "KUI_OVERSCROLL_AUTO", "KUI_OVERSCROLL_CONTAIN",
     ]);
+    abi_enum!(o, kui_core::schema::HOST_HITS, 1 => [
+        "KUI_HOST_HIT_AUTO", "KUI_HOST_HIT_BLOCK", "KUI_HOST_HIT_PASS",
+    ]);
     abi_enum!(o, kui_core::schema::SCROLL_AXES, 1 => [
         "KUI_SCROLL_AXES_BOTH", "KUI_SCROLL_AXES_X", "KUI_SCROLL_AXES_Y",
     ]);
@@ -898,6 +901,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         float_escape: u32 => "uint32_t",
         scale_x: f32 => "float",
         scale_y: f32 => "float",
+        host_hit: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1213,6 +1217,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         ("KUI_CMD_OPEN", KUI_CMD_OPEN),
         ("KUI_WINDOW_KIND_NORMAL", KUI_WINDOW_KIND_NORMAL),
         ("KUI_WINDOW_KIND_POPUP", KUI_WINDOW_KIND_POPUP),
+        ("KUI_WINDOW_KIND_SURFACE", KUI_WINDOW_KIND_SURFACE),
         ("KUI_DISMISS_OUTSIDE", KUI_DISMISS_OUTSIDE),
         ("KUI_DISMISS_ESCAPE", KUI_DISMISS_ESCAPE),
         ("KUI_OPTION_AS_ALT_NONE", KUI_OPTION_AS_ALT_NONE),
@@ -1268,6 +1273,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         textures: *const KuiTextureDraw => "const KuiTextureDraw *",
         texture_count: usize => "size_t",
         atlas_dirty_rect: [u32; 4] => "uint32_t *",
+        bounds: [u32; 4] => "uint32_t *",
     });
     abi_out_struct!(o, KuiDrawData);
     abi_struct!(o, KuiFragmentDraw {
@@ -1485,6 +1491,7 @@ fn every_entry_point_is_called() {
         include_str!("../../../examples/c/common.h"),
         include_str!("../../../examples/c/tools/surface.c"),
         include_str!("../../../examples/c/tools/conformance.c"),
+        include_str!("../../../examples/c/tools/host_loop.c"),
         include_str!("../../../examples/c/apps/counter.c"),
         include_str!("../../../examples/c/features/slots/host.c"),
         include_str!("../../../examples/c/features/slots/panel.c"),
@@ -1658,8 +1665,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `text_color` (backlog C130), past it, so 880 + 4 rounds up to 888;
         // then `float_escape` (ADR 0074) into that padding. ABI 41:
         // `scale_x` and `scale_y` (backlog C149) on `enter` and `exit`,
-        // eight bytes each, and past the end, 904 + 8.
-        ("KuiSpec", 912, 41),
+        // eight bytes each, and past the end, 904 + 8. ABI 42: `host_hit`
+        // (backlog F233) past the end, so 912 + 4 rounds up to 920.
+        ("KuiSpec", 920, 42),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),

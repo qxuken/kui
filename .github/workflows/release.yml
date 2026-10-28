@@ -285,6 +285,9 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+      # Twice: with the runner, and without it (no kui_run, wgpu, winit or
+      # audio device) for a host that brings its own window - the
+      # tarballs' lib/<platform>/core/ (backlog F238).
       - name: Pack libkui_ffi
         shell: bash
         run: |
@@ -292,10 +295,12 @@ jobs:
           zig=
           [ "$RUNNER_OS" = Linux ] && zig=--zig
           nu scripts/pack-ffi.nu --platforms "${{ matrix.prebuild }}" $zig
+          nu scripts/pack-ffi.nu --platforms "${{ matrix.prebuild }}" $zig --no-runner
 
       # The pack linked and run on the platform it is for, as a user would
       # take it out of the release: the C counter and the Odin one, each
-      # against the shared library and the static one, each --headless.
+      # against the shared library and the static one, each --headless,
+      # and the host loop against the library without the runner.
       # Not on Windows, which has no cc (pack-ffi.nu's `verify` says so).
       - name: Install Odin
         if: runner.os != 'Windows'
@@ -328,7 +333,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: kui-ffi-${{ matrix.prebuild }}
-          path: target/pack/kui-ffi-*-${{ matrix.prebuild }}.tar.gz
+          path: |
+            target/pack/kui-ffi-*-${{ matrix.prebuild }}.tar.gz
+            target/pack/kui-ffi-*-${{ matrix.prebuild }}-no-runner.tar.gz
           if-no-files-found: error
           # Already a tarball; zipping it again buys nothing.
           compression-level: 0

@@ -1719,6 +1719,11 @@ pub struct InteractSpec {
     /// [`Overscroll`]). Cold like `scrollbar`: read once
     /// per scroller a gesture starts over.
     pub overscroll: Overscroll,
+    /// What a host's hit query counts this box as (see [`HostHit`]):
+    /// derived, a blocker, or a box the pointer passes through to the
+    /// world under the UI. Cold: read once per painted box per frame, and
+    /// only off the default.
+    pub host_hit: HostHit,
     /// On a table: lines of this colour between its columns and between
     /// its rows, drawn with the table's own box, under its cells, down the
     /// middle of each gap, so a table with a `gap` of at least `rule_w`
@@ -1940,6 +1945,34 @@ impl Overscroll {
     pub const ALL: [Overscroll; 2] = [Overscroll::Auto, Overscroll::Contain];
 }
 
+/// What a host that draws the UI over a world of its own — a game, a map,
+/// a 3D view — counts a box as when it asks whether the pointer is over
+/// the UI (`Core::hit`, `Core::pointer_wants`, backlog F233). kui's own
+/// hit testing is unchanged by it: this answers the host's question
+/// only.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HostHit {
+    /// A node kui takes the pointer on (a hit region: a click, a hover, a
+    /// drag, an editor) or one that paints a box — a background, a border,
+    /// an image — blocks; bare text and a box that paints nothing do not.
+    #[default]
+    Auto,
+    /// Blocks wherever its box is, painted or not: a transparent catcher
+    /// over a minimap, a panel whose background is a shader the host draws.
+    Block,
+    /// A painted box the pointer passes through to the world: a damage
+    /// flash, a vignette, a fog over the whole window. A node kui takes
+    /// the pointer on still blocks, so a click is never both kui's and the
+    /// world's.
+    Pass,
+}
+
+impl HostHit {
+    /// Every value, in the `hostHit` row's order (C's `KUI_HOST_HIT_*`
+    /// are these plus one).
+    pub const ALL: [HostHit; 3] = [HostHit::Auto, HostHit::Block, HostHit::Pass];
+}
+
 /// Which axes an `on_scroll` node takes, spelled by the `scrollAxes` row.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ScrollAxes {
@@ -1988,6 +2021,7 @@ impl InteractSpec {
         opens_on_press: false,
         scrollbar: Scrollbar::DEFAULT,
         overscroll: Overscroll::Auto,
+        host_hit: HostHit::Auto,
         rules: None,
         rule_w: 0.0,
         gradient: None,
@@ -2791,6 +2825,12 @@ impl NodeSpec {
     /// `Overscroll::Contain` keeps it here.
     pub fn overscroll(mut self, o: Overscroll) -> Self {
         self.interact_mut().overscroll = o;
+        self
+    }
+
+    /// What a host's hit query counts this box as (see [`HostHit`]).
+    pub fn host_hit(mut self, h: HostHit) -> Self {
+        self.interact_mut().host_hit = h;
         self
     }
 

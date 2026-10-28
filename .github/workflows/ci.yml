@@ -75,6 +75,12 @@ env:
   # CI said so. release.yml verifies the release's Odin pack with the same
   # one; move both together.
   ODIN_VERSION: "dev-2026-10"
+  # The wgpu-native the reference hosts draw kui's frame with (backlog
+  # F234: examples/c/tools/wgpu_host.c, examples/odin/tools/wgpu_host.odin):
+  # the release the pinned Odin's vendor:wgpu is written against - its
+  # BINDINGS_VERSION, which CreateInstance checks at run time. Move it with
+  # ODIN_VERSION.
+  WGPU_NATIVE_VERSION: "v29.0.1.1"
   # The mdBook the book (docs/book) is written with; book.yml publishes it
   # with the same one.
   MDBOOK_VERSION: v0.5.4
@@ -134,13 +140,18 @@ jobs:
       # opens it through; its Wayland probe prints "XDG_RUNTIME_DIR is
       # invalid" for every device a test opens unless the dir exists, and an
       # empty one quiets it. clang is what Odin links with on Linux, and
-      # what parses the header for the Odin generator.
+      # what parses the header for the Odin generator. GLFW's headers are
+      # what kui_glfw.h is compiled against in the C round (backlog F239);
+      # the runner image has no SDL3 package, so kui_sdl3.h is checked on
+      # a machine that has one and by the Odin step over vendor:sdl3.
+      # libx11-dev: Odin's vendor:glfw types its X11 natives with
+      # vendor:x11, which wgpu_host.odin links in.
       - name: Install system deps
         run: |
           set -eu
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config \
-            libasound2-dev mesa-vulkan-drivers libvulkan1 clang
+            libasound2-dev mesa-vulkan-drivers libvulkan1 clang libglfw3-dev libx11-dev
           mkdir -p -m 700 /tmp/xdg
           echo "XDG_RUNTIME_DIR=/tmp/xdg" >> "$GITHUB_ENV"
           rustup update --no-self-update stable
@@ -210,6 +221,22 @@ jobs:
           cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
           echo "KUI_CONFORMANCE=$(pwd)/target/conformance.txt" >> "$GITHUB_ENV"
 
+      # A wgpu-native release, unpacked where cbuild looks first
+      # (WGPU_NATIVE_DIR): the C round then builds and runs wgpu_host.c,
+      # kui's frame drawn on a wgpu device of the host's own (lavapipe here)
+      # and its pixels checked. The Odin step below copies it to where
+      # vendor:wgpu looks, since Odin ships no Linux build of it.
+      - name: Install wgpu-native
+        run: |
+          set -eu
+          dir="$RUNNER_TEMP/wgpu-native"
+          mkdir -p "$dir"
+          curl -fL --retry 3 -o "$RUNNER_TEMP/wgpu-native.zip" \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_NATIVE_VERSION}/wgpu-linux-x86_64-release.zip"
+          unzip -q "$RUNNER_TEMP/wgpu-native.zip" -d "$dir"
+          cat "$dir/wgpu-native-meta/wgpu-native-git-tag"; echo
+          echo "WGPU_NATIVE_DIR=$dir" >> "$GITHUB_ENV"
+
       # cbuild (examples/devtools/src/bin/cbuild.rs) first compiles the
       # generated ABI asserts (crates/kui-ffi/src/abi_parity.rs) against
       # include/kui.h - the header is hand-written and otherwise unchecked
@@ -230,11 +257,15 @@ jobs:
       #    half).
       #  * The load the loader must refuse: the same plugin with its
       #    kui_ext_abi deleted, required to fail with the right message.
+      #  * kui's frame drawn on a wgpu device of the host's own
+      #    (examples/c/tools/wgpu_host.c, on lavapipe under KUI_REQUIRE_GPU),
+      #    read back and its pixels checked.
       #
       # The conformance replay is separate because it is the one thing in
       # the round that needs a report built by another step.
       - name: C examples (header ABI check + the header walk + the C round)
         run: |
+          cargo run -p kui-devtools --bin keytables -- --check
           cargo run -p kui-devtools --bin cbuild -- --run
           ./target/debug/conformance target/conformance.txt
 
@@ -248,6 +279,10 @@ jobs:
       # KUI_CONFORMANCE); `slots` is the extension contract across
       # languages - the Odin panel in the C host and in the Rust one, the C
       # panel in the Odin host - and reuses what the C round above built.
+      # vendor:wgpu finds its library under the compiler's own vendor dir,
+      # and the Linux release carries none: the wgpu-native above goes
+      # there, so wgpu_host.odin is checked and driven too (odin.nu skips
+      # it, saying so, where the library is missing).
       - name: Install Odin
         run: |
           set -eu
@@ -255,6 +290,8 @@ jobs:
           curl -fL --retry 3 \
             "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz" \
             | tar -xz -C "$RUNNER_TEMP/odin" --strip-components=1
+          mkdir -p "$RUNNER_TEMP/odin/vendor/wgpu/lib"
+          cp -R "$WGPU_NATIVE_DIR" "$RUNNER_TEMP/odin/vendor/wgpu/lib/wgpu-linux-x86_64-release"
           echo "$RUNNER_TEMP/odin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/odin/odin" version
 

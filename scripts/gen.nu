@@ -22,6 +22,9 @@
 #   docs   crates/kui-native/docs: props.md and howto.md as the crate's
 #          rustdoc pages read them (kui_native::docs, ADR 0071), and an
 #          index of the ADRs linking to them and to the book
+#   keys   the GLFW and SDL3 key tables: kui_glfw.h and kui_sdl3.h in
+#          crates/kui-ffi/include, packages/odin/kui/glfw and kui/sdl3
+#          (the keytables bin, backlog F239)
 #   odin   nu scripts/odin.nu gen: packages/odin from kui.h and the schema
 #          (needs odin, or ODIN, and clang)
 #   book   nu scripts/book-examples.nu: the book's Examples part
@@ -30,7 +33,7 @@
 # release-prep.nu runs this, in write mode on a clean tree, before a tag.
 
 const ROOT = path self | path dirname | path dirname
-const STEPS = [lua addons node docs odin book]
+const STEPS = [lua addons node docs keys odin book]
 
 def --wrapped must [cmd: string, ...args] {
     ^$cmd ...$args
@@ -120,7 +123,7 @@ def crate-docs []: nothing -> list<record<path: string, text: string>> {
 
 def main [
     --check  # fail, writing nothing, if a rerun would change a generated file
-    --skip: string = ""  # steps to leave out, comma-separated: lua,addons,node,docs,odin,book
+    --skip: string = ""  # steps to leave out, comma-separated: lua,addons,node,docs,keys,odin,book
 ] {
     cd $ROOT
     let skip = $skip | split row "," | str trim | where {|s| $s != "" }
@@ -188,6 +191,9 @@ def main [
                 mkdir crates/kui-native/docs
                 for f in $stale { $f.text | save -f --raw $f.path }
             }
+        }]
+        [keys "the GLFW and SDL3 key tables (kui_glfw.h, kui_sdl3.h, packages/odin/kui/glfw and sdl3)" {
+            must cargo run -q -p kui-devtools --bin keytables -- ...$check_flag
         }]
         [odin "the Odin binding (packages/odin)" {
             let odin = $env.ODIN? | default "odin"

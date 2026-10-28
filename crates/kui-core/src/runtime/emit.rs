@@ -292,6 +292,36 @@ impl Core {
         });
     }
 
+    /// Node `i`'s blocker (backlog F233), painted after `above` hit
+    /// regions. Out of line for the reason `push_hit` is.
+    #[inline(never)]
+    fn push_blocker(
+        &mut self,
+        i: usize,
+        rect: Rect,
+        clip: Rect,
+        turn: Option<crate::input::HitTurn>,
+        above: usize,
+    ) {
+        self.blockers.push(crate::input::Blocker {
+            key: self.tree.keys[i],
+            above: above as u32,
+            rect,
+            clip,
+            turn: turn.map(Box::new),
+            radius: self.tree.specs[i].style.radius,
+        });
+    }
+
+    /// Whether node `i` paints by one of the cold rows: a gradient or a
+    /// backdrop blur, a frosted panel with no background of its own.
+    #[cold]
+    #[inline(never)]
+    fn paints_cold(&self, i: usize) -> bool {
+        let interact = self.tree.specs[i].interact();
+        interact.gradient.is_some() || interact.backdrop_blur > 0.0
+    }
+
     /// The index in `regions` of the nearest scroll region around node
     /// `i` in the tree, [`NIL`] for none. Ancestors are emitted before
     /// their descendants — a float's layer comes after the one its
@@ -351,8 +381,32 @@ impl Core {
         };
         // A stroke emits no hit region: it takes no input (ADR 0010,
         // decision 7).
-        if spec.hover_tracked() && interactive {
+        let tracked = spec.hover_tracked() && interactive;
+        if tracked {
             self.push_hit(i, rect, clip_rect, turn, drop.clone(), hits);
+        } else if !(interactive && matches!(self.tree.content[i], NodeContent::Edit(_))) {
+            // What blocks a host's world without being a hit region
+            // (backlog F233): a box that paints, or one that says so. An
+            // editor's own region is pushed below.
+            use crate::spec::HostHit;
+            let blocks = match spec.interact().host_hit {
+                HostHit::Block => true,
+                HostHit::Pass => false,
+                HostHit::Auto => {
+                    paint.opacity > 0.0
+                        && (style.bg.is_visible()
+                            || (style.border_w > 0.0 && style.border_color.is_visible())
+                            || matches!(
+                                self.tree.content[i],
+                                NodeContent::Image(..) | NodeContent::Cells(_)
+                            )
+                            || ((self.tree.any_gradient || self.tree.any_backdrop_blur)
+                                && self.paints_cold(i)))
+                }
+            };
+            if blocks {
+                self.push_blocker(i, rect, clip_rect, turn, hits.len());
+            }
         }
         let spec = &self.tree.specs[i];
         // An `on_scroll` node takes the wheel the way a container does —
@@ -622,6 +676,10 @@ impl Core {
         self.span_end(span);
         // A cycle whose node the frame culled owes no frame (backlog C137).
         self.settle_cycles();
+        // Text in boxes says why, once (the diag dedups by code and key).
+        if self.no_system_fonts {
+            self.diag.raise(crate::diag::no_system_fonts());
+        }
         self.building = false;
         // This frame's departures are ghosts now: the rooms the next build
         // keeps for them, and for whatever may depart next (backlog C110).
@@ -1052,6 +1110,7 @@ impl Core {
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
         self.hit_shapes = self.interaction.take_shape_buffer();
+        self.blockers = self.interaction.take_blocker_buffer();
         let mut scroll_regions: Vec<ScrollRegion> = Vec::new();
         self.display.viewport = Size::new(self.viewport.w * scale, self.viewport.h * scale);
         self.display.scale = scale;
@@ -1617,6 +1676,8 @@ impl Core {
 
         let shapes = std::mem::take(&mut self.hit_shapes);
         self.interaction.set_hits_shaped(hits, shapes);
+        self.interaction
+            .set_blockers(std::mem::take(&mut self.blockers));
         // A button held on a node this frame no longer declares has no one
         // to hear its release (backlog F105).
         let tree = &self.tree;

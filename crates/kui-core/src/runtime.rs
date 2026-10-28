@@ -70,6 +70,7 @@ mod focus;
 pub mod follow;
 mod gesture;
 mod groups;
+mod host_hit;
 pub mod inspect;
 mod menu_api;
 pub mod perf;
@@ -466,6 +467,13 @@ pub struct Core {
     /// handed to `interaction` with them at the end of
     /// emission; the previous frame's buffers, cleared, in between.
     pub(crate) hit_shapes: crate::input::HitShapes,
+    /// The painted boxes that are no hit region, filled by emission and
+    /// installed with the hits (backlog F233).
+    pub(crate) blockers: Vec<crate::input::Blocker>,
+    /// The session's scan found no font the shaper can read, so text is
+    /// drawn in the last-resort face (`no-system-fonts`): read when the
+    /// core joins the session.
+    no_system_fonts: bool,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -1392,10 +1400,11 @@ impl Core {
     }
 
     /// A core joining an existing session: it draws with the same fonts,
-    /// images, sounds, shaping caches and glyph atlas as every other core
-    /// constructed against `session`, and plays through the same audio
-    /// device. Everything else — tree, focus, scroll, viewport — is this
-    /// window's alone.
+    /// images, sounds and shaping caches as every other core constructed
+    /// against `session`, and plays through the same audio device.
+    /// Everything else — tree, focus, scroll, viewport, and the glyph
+    /// atlas, which `output` hands out beside the list it was drawn for
+    /// (ADR 0004 step 1) — is this window's alone.
     pub fn new_in(session: &Session) -> Self {
         let mut core = Self {
             session: session.clone(),
@@ -1485,6 +1494,8 @@ impl Core {
             fragments: Default::default(),
             stock_polygon: None,
             hit_shapes: Default::default(),
+            blockers: Vec::new(),
+            no_system_fonts: session.state().system.last_resort,
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,

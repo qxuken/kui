@@ -1013,6 +1013,10 @@ pub struct KuiSpec {
     /// 41, appended.
     pub scale_x: f32,
     pub scale_y: f32,
+    /// What a host's `kui_hit` and `kui_pointer_wants` count the box as
+    /// (`hostHit`, backlog F233): `KUI_HOST_HIT_*`, 0 for auto. ABI 42,
+    /// appended.
+    pub host_hit: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.
@@ -1188,6 +1192,16 @@ pub const KUI_SCROLLBAR_AUTO: u32 = 3;
 /// unset, which is `auto`).
 pub const KUI_OVERSCROLL_AUTO: u32 = 1;
 pub const KUI_OVERSCROLL_CONTAIN: u32 = 2;
+
+/// `kui_renderer_wgsl`'s variants (backlog F234).
+pub const KUI_WGSL_SINGLE: u32 = 0;
+pub const KUI_WGSL_DUAL: u32 = 1;
+
+/// KUI_HOST_HIT_* is the position in `schema::HOST_HITS` plus one (0 =
+/// unset, which is `auto`).
+pub const KUI_HOST_HIT_AUTO: u32 = 1;
+pub const KUI_HOST_HIT_BLOCK: u32 = 2;
+pub const KUI_HOST_HIT_PASS: u32 = 3;
 
 /// KUI_SCROLL_AXES_* is the position in `schema::SCROLL_AXES` plus one (0
 /// = unset, which is both).
@@ -1898,6 +1912,9 @@ pub const KUI_WINDOW_KIND_NORMAL: u32 = 0;
 /// by the window that declared it, placed against `anchor_*` in screen
 /// coordinates and closed when its owner closes.
 pub const KUI_WINDOW_KIND_POPUP: u32 = 1;
+/// `KUI_WINDOW_KIND_SURFACE`: an island the host draws, never an OS window
+/// (ADR 0076).
+pub const KUI_WINDOW_KIND_SURFACE: u32 = 2;
 
 pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
     let Some(c) = c else {
@@ -1915,6 +1932,7 @@ pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
         // on the way past, so the degradation is reported and not silent.
         kind: match c.kind {
             KUI_WINDOW_KIND_POPUP => WindowKind::Popup,
+            KUI_WINDOW_KIND_SURFACE => WindowKind::Surface,
             _ => WindowKind::Normal,
         },
         size,
@@ -2120,6 +2138,7 @@ fn window_config_to_c(c: WindowConfig) -> KuiWindowConfig {
         kind: match c.kind {
             WindowKind::Normal => KUI_WINDOW_KIND_NORMAL,
             WindowKind::Popup => KUI_WINDOW_KIND_POPUP,
+            WindowKind::Surface => KUI_WINDOW_KIND_SURFACE,
         },
         width: c.size.w,
         height: c.size.h,
@@ -2420,6 +2439,11 @@ pub struct KuiDrawData {
     /// whole page when the epoch moved; zero with `atlas_dirty` clear.
     /// Added in ABI 40 (backlog F228).
     pub atlas_dirty_rect: [u32; 4],
+    /// Where the frame drew, `[x, y, w, h]` in whole physical px inside
+    /// the viewport (`DisplayList::bounds`): what to scissor the clear,
+    /// the draw and the composite to. Zero on a frame that drew nothing.
+    /// Added in ABI 42 (backlog F235).
+    pub bounds: [u32; 4],
 }
 
 impl Default for KuiDrawData {
@@ -2443,6 +2467,7 @@ impl Default for KuiDrawData {
             textures: std::ptr::null(),
             texture_count: 0,
             atlas_dirty_rect: [0; 4],
+            bounds: [0; 4],
         }
     }
 }

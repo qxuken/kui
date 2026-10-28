@@ -93,6 +93,15 @@ new_ui :: proc() -> ^Ui {
 	return c.ctx_new()
 }
 
+// A context in other's session (backlog F237): the same registered fonts,
+// images and sounds, so a second HUD loads and shapes nothing twice; its
+// tree, focus, events and atlas are its own. Free it with free_ui, in any
+// order; all of them belong to the thread that made the first.
+new_ui_in :: proc(other: ^Ui) -> ^Ui {
+	if !abi_ok() do return nil
+	return c.ctx_new_in(other)
+}
+
 free_ui :: proc(ui: ^Ui) {c.ctx_free(ui)}
 
 // One frame: a w x h logical-px viewport at `scale`, built by view.

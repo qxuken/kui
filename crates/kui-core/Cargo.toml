@@ -13,6 +13,8 @@ publish = ["crates-io"]
 
 [dependencies]
 slotmap.workspace = true
+# The renderer's instance and uniform as plain bytes (`gpu`, backlog F234).
+bytemuck.workspace = true
 rustc-hash.workspace = true
 cosmic-text.workspace = true
 swash.workspace = true

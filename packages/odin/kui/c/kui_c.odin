@@ -47,7 +47,7 @@ Waker :: struct {}
 AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 41
+ABI_VERSION :: 42
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -56,6 +56,7 @@ WINDOW_MAIN :: 0
 
 WINDOW_KIND_NORMAL :: 0
 WINDOW_KIND_POPUP :: 1
+WINDOW_KIND_SURFACE :: 2
 
 DISMISS_OUTSIDE :: 0
 DISMISS_ESCAPE :: 1
@@ -271,6 +272,10 @@ SCROLL_AXES_BOTH :: 1
 SCROLL_AXES_X :: 2
 SCROLL_AXES_Y :: 3
 
+HOST_HIT_AUTO :: 1
+HOST_HIT_BLOCK :: 2
+HOST_HIT_PASS :: 3
+
 EXPANDED_COLLAPSED :: 1
 EXPANDED_EXPANDED :: 2
 
@@ -427,6 +432,9 @@ AUDIO_UNLOAD :: 7
 FRAGMENT_IMAGE_NONE :: 0
 FRAGMENT_IMAGE_ATLAS :: 1
 FRAGMENT_IMAGE_TEXTURE :: 2
+
+WGSL_SINGLE :: 0
+WGSL_DUAL :: 1
 
 MOUSE_PRIMARY :: 0
 MOUSE_SECONDARY :: 1
@@ -761,6 +769,7 @@ Spec :: struct {
 	float_escape: u32,
 	scale_x: f32,
 	scale_y: f32,
+	host_hit: u32,
 }
 
 Announcement :: struct {
@@ -1061,6 +1070,7 @@ DrawData :: struct {
 	textures: [^]TextureDraw,
 	texture_count: uint,
 	atlas_dirty_rect: [4]u32,
+	bounds: [4]u32,
 }
 
 Theme :: struct {
@@ -1205,7 +1215,12 @@ foreign lib {
 	size_max :: proc(args: [^]Sizing, n: uint) -> Sizing ---
 	size_clamp :: proc(lo: Sizing, target: Sizing, hi: Sizing) -> Sizing ---
 	size_parse :: proc(s: string, out: ^Sizing) -> bool ---
+	renderer_wgsl :: proc(variant: u32) -> string ---
+	instance_stride :: proc() -> u32 ---
+	instance_attributes :: proc(out: ^u32, cap: u32) -> u32 ---
+	pack_instances :: proc(ctx: ^Ctx, out: [^]u8, len: uint) -> uint ---
 	ctx_new :: proc() -> ^Ctx ---
+	ctx_new_in :: proc(other: ^Ctx) -> ^Ctx ---
 	ctx_free :: proc(ctx: ^Ctx) ---
 	input_cursor :: proc(ctx: ^Ctx, x: f32, y: f32) ---
 	input_cursor_left :: proc(ctx: ^Ctx) ---
@@ -1231,6 +1246,9 @@ foreign lib {
 	release_held_keys :: proc(ctx: ^Ctx) ---
 	input_modifiers :: proc(ctx: ^Ctx, mods: u32) ---
 	poll_event :: proc(ctx: ^Ctx, out: ^Event) -> bool ---
+	hit :: proc(ctx: ^Ctx, x: f32, y: f32) -> u64 ---
+	pointer_wants :: proc(ctx: ^Ctx) -> bool ---
+	keyboard_wants :: proc(ctx: ^Ctx) -> bool ---
 	env_set :: proc(ctx: ^Ctx, refresh_hz: f32, focused: bool) ---
 	env_set_system :: proc(ctx: ^Ctx, appearance: u32, accent: u32, motion: u32, locale: string) ---
 	env_set_contrast :: proc(ctx: ^Ctx, contrast: u32) ---

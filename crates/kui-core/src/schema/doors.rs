@@ -41,7 +41,8 @@ pub enum Cell {
 pub struct Door {
     /// The Rust spelling: `Ui::x` (view-time), `Core::x` (a host between
     /// frames), `SharedResources::x` (the session's registry, reached as
-    /// `core.resources`), `Tokens::x` (a table), `Launcher::x` (the runner).
+    /// `core.resources`), `Tokens::x` (a table), `Launcher::x` (the runner),
+    /// `gpu::x` (the renderer's pieces, `kui_core::gpu`).
     pub rust: &'static str,
     pub c: Cell,
     /// A procedure in the Odin binding's package `kui` (packages/odin),
@@ -800,6 +801,70 @@ pub const DOORS: &[Door] = &[
         node: Is("frameUnchanged"),
         lua: No(GUEST),
         doc: "Whether the last finished frame drew exactly what the one before drew, traced (backlog F111).",
+    },
+    Door {
+        rust: "gpu::shader",
+        c: Is("kui_renderer_wgsl"),
+        odin: Is("renderer_wgsl"),
+        node: No(NEVER_PAINTS),
+        lua: No(GUEST),
+        doc: "The WGSL that draws the display list, with or without dual-source blending: what kui-wgpu compiles, for a host with its own device (backlog F234).",
+    },
+    Door {
+        rust: "gpu::instance_stride",
+        c: Is("kui_instance_stride"),
+        odin: Is("instance_stride"),
+        node: No(NEVER_PAINTS),
+        lua: No(GUEST),
+        doc: "The bytes one packed instance takes: the vertex buffer's stride (backlog F234).",
+    },
+    Door {
+        rust: "gpu::instance_attributes",
+        c: Is("kui_instance_attributes"),
+        odin: Is("instance_attributes"),
+        node: No(NEVER_PAINTS),
+        lua: No(GUEST),
+        doc: "Each instance attribute's shader location, float count and byte offset: a pipeline built from these follows a later library's layout (backlog F234).",
+    },
+    Door {
+        rust: "gpu::instance_of",
+        c: Is("kui_pack_instances"),
+        odin: Is("pack_instances"),
+        node: No(NEVER_PAINTS),
+        lua: No(GUEST),
+        doc: "The finished frame's quads as the shader's instances, packed into the host's buffer (backlog F234).",
+    },
+    Door {
+        rust: "Core::new_in",
+        c: Is("kui_ctx_new_in"),
+        odin: Is("new_ui_in"),
+        node: Is("Ctx.sibling"),
+        lua: No(GUEST),
+        doc: "A context in another's session (backlog F237): the same registered fonts, images and sounds and the same shaping caches, so several HUDs or islands load and shape nothing twice; tree, focus, events and glyph atlas are its own. One thread's, as the first is. Node's `KuiWindow`s share theirs through the runner already.",
+    },
+    Door {
+        rust: "Core::hit",
+        c: Is("kui_hit"),
+        odin: Is("hit"),
+        node: Is("Ctx.hit"),
+        lua: No(GUEST),
+        doc: "The topmost node at a point that blocks a host's world — a node kui takes the pointer on, or a box that paints unless it says `hostHit: pass`, or one that says `hostHit: block` — as of the last finished frame; none for the world (backlog F233). For a game, a map or a 3D view drawing the UI over a world of its own. Node's `KuiWindow` has no world under it.",
+    },
+    Door {
+        rust: "Core::pointer_wants",
+        c: Is("kui_pointer_wants"),
+        odin: Is("pointer_wants"),
+        node: Is("Ctx.pointerWants"),
+        lua: No(GUEST),
+        doc: "Whether the pointer is the UI's now: over a node `hit` answers for, held by something kui started (a press, a drag, a slider, a selection), or anywhere while a menu is open or a modal is in effect — Dear ImGui's `WantCaptureMouse` (backlog F233).",
+    },
+    Door {
+        rust: "Core::keyboard_wants",
+        c: Is("kui_keyboard_wants"),
+        odin: Is("keyboard_wants"),
+        node: Is("Ctx.keyboardWants"),
+        lua: No(GUEST),
+        doc: "Whether the keyboard is the UI's now: an editor has focus, the focused node is a key sink, or a menu is open — Dear ImGui's `WantCaptureKeyboard` (backlog F233).",
     },
     Door {
         rust: "Ui::request_frame",
@@ -2367,6 +2432,7 @@ mod tests {
         let channel = read(root.join("../../kui-channel/src/lib.rs"))
             + &read(root.join("../../kui-channel/src/lanes.rs"));
         let menu = read(root.join("menu.rs"));
+        let gpu = read(root.join("gpu.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
@@ -2389,6 +2455,7 @@ mod tests {
                 "slot" => &slot,
                 "Channel" => &channel,
                 "Menu" => &menu,
+                "gpu" => &gpu,
                 "WheelFeel" => &scroll,
                 "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,

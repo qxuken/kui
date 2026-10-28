@@ -180,6 +180,13 @@ Overscroll :: enum u32 {
 	Contain = 2, // KUI_OVERSCROLL_CONTAIN
 }
 
+Host_Hit :: enum u32 {
+	Unset = 0,
+	Auto = 1, // KUI_HOST_HIT_AUTO
+	Block = 2, // KUI_HOST_HIT_BLOCK
+	Pass = 3, // KUI_HOST_HIT_PASS
+}
+
 Scroll_Axes :: enum u32 {
 	Unset = 0,
 	Both = 1, // KUI_SCROLL_AXES_BOTH
@@ -417,6 +424,7 @@ Audio_Cmd :: enum u32 {
 Window_Kind :: enum u32 {
 	Normal = 0, // KUI_WINDOW_KIND_NORMAL
 	Popup = 1, // KUI_WINDOW_KIND_POPUP
+	Surface = 2, // KUI_WINDOW_KIND_SURFACE
 }
 
 Window_Cmd :: enum u32 {
@@ -776,6 +784,17 @@ Spec :: struct {
 	// `auto` (the default) passes the gesture on to the scroller around it,
 	// `contain` keeps it here, moving nothing until it turns back.
 	overscroll: Overscroll,
+	// What a host that draws the UI over a world of its own — a game, a map, a
+	// 3D view — counts this box as when it asks whether the pointer is over the
+	// UI (`Core::hit` / `pointer_wants`, `kui_hit` / `kui_pointer_wants`,
+	// `Ctx.hit` / `pointerWants`; backlog F233): `auto` (the default) blocks the
+	// world where kui takes the pointer (a click, a hover, a drag, an editor) or
+	// where the box paints — a background, a border, an image — and lets it
+	// through over bare text and a box that paints nothing; `block` blocks
+	// wherever the box is, painted or not, a transparent catcher over a minimap;
+	// `pass` lets the pointer through a painted box to the world, a damage flash
+	// or a vignette over the whole window.
+	host_hit: Host_Hit,
 	// Inert: no click, drag or key sink, no hover / pressed / focus background,
 	// skipped by Tab, reported disabled to assistive technology; hover tracking
 	// stays so a `tooltip` can say why.
@@ -1177,6 +1196,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.scrollbar_color = s.scrollbar_color
 	out.scrollbar_active_color = s.scrollbar_active_color
 	out.overscroll = u32(s.overscroll)
+	out.host_hit = u32(s.host_hit)
 	out.disabled = 1 if s.disabled else 0
 	out.hover_bg = s.hover_bg
 	if gr, ok := s.gradient.?; ok do out.gradient = lower_gradient(gr)
@@ -2272,6 +2292,7 @@ Draw_Data :: struct {
 	clips: []Clip,
 	textures: []Texture_Draw,
 	atlas_dirty_rect: [4]u32,
+	bounds: [4]u32,
 }
 
 draw_data_to_c :: proc(v: Draw_Data, scratch: ^Scratch) -> (out: c.DrawData) {
@@ -2289,6 +2310,7 @@ draw_data_to_c :: proc(v: Draw_Data, scratch: ^Scratch) -> (out: c.DrawData) {
 	out.clips, out.clip_count = ([^]c.Clip)(raw_data(v.clips)), uint(len(v.clips))
 	{ tmp := make([]c.TextureDraw, len(v.textures), context.temp_allocator); for x, k in v.textures do tmp[k] = texture_draw_to_c(x, scratch); out.textures, out.texture_count = raw_data(tmp), uint(len(tmp)) }
 	out.atlas_dirty_rect = v.atlas_dirty_rect
+	out.bounds = v.bounds
 	return
 }
 
@@ -2306,6 +2328,7 @@ draw_data_from_c :: proc(v: c.DrawData) -> (out: Draw_Data) {
 	out.clips = ([^]Clip)(v.clips)[:v.clip_count]
 	{ tmp := make([]Texture_Draw, v.texture_count, context.temp_allocator); for &x, k in tmp do x = texture_draw_from_c(v.textures[k]); out.textures = tmp }
 	out.atlas_dirty_rect = v.atlas_dirty_rect
+	out.bounds = v.bounds
 	return
 }
 
@@ -2493,6 +2516,32 @@ poll_event :: proc(ui: ^Ui) -> (out: Event, ok: bool) #optional_ok {
 	ok = c.poll_event(ui, &c_out)
 	out = event_from_c(c_out)
 	return
+}
+
+// The topmost node at a point that blocks a host's world — a node kui takes
+// the pointer on, or a box that paints unless it says `hostHit: pass`, or one
+// that says `hostHit: block` — as of the last finished frame; none for the
+// world (backlog F233).
+// Rust: Core::hit.
+hit :: proc(ui: ^Ui, x: f32, y: f32) -> u64 {
+	return c.hit(ui, x, y)
+}
+
+// Whether the pointer is the UI's now: over a node `hit` answers for, held by
+// something kui started (a press, a drag, a slider, a selection), or anywhere
+// while a menu is open or a modal is in effect — Dear ImGui's
+// `WantCaptureMouse` (backlog F233).
+// Rust: Core::pointer_wants.
+pointer_wants :: proc(ui: ^Ui) -> bool {
+	return c.pointer_wants(ui)
+}
+
+// Whether the keyboard is the UI's now: an editor has focus, the focused node
+// is a key sink, or a menu is open — Dear ImGui's `WantCaptureKeyboard`
+// (backlog F233).
+// Rust: Core::keyboard_wants.
+keyboard_wants :: proc(ui: ^Ui) -> bool {
+	return c.keyboard_wants(ui)
 }
 
 // kui_env_set (kui.h).

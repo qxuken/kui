@@ -43,6 +43,7 @@ ENUMS :: []Enum_Rule {
 	{name = "Live", first = "KUI_LIVE_OFF", prefix = "KUI_LIVE_", list = "live"},
 	{name = "Scrollbar", first = "KUI_SCROLLBAR_VISIBLE", prefix = "KUI_SCROLLBAR_"},
 	{name = "Overscroll", first = "KUI_OVERSCROLL_AUTO", prefix = "KUI_OVERSCROLL_"},
+	{name = "Host_Hit", first = "KUI_HOST_HIT_AUTO", prefix = "KUI_HOST_HIT_"},
 	{name = "Scroll_Axes", first = "KUI_SCROLL_AXES_BOTH", prefix = "KUI_SCROLL_AXES_"},
 	{name = "Mods", first = "KUI_KMOD_SHIFT", prefix = "KUI_KMOD_", flag = "Mod"},
 	{name = "Mouse_Buttons", first = "KUI_BUTTONS_SECONDARY", prefix = "KUI_BUTTONS_", flag = "Mouse_Button"},

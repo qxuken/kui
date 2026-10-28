@@ -215,6 +215,32 @@ pub extern "C" fn kui_input_modifiers(ptr: *mut KuiCtx, mods: u32) {
     );
 }
 
+/// The topmost node at (`x`, `y`) (logical px) that blocks a host's world,
+/// as a key, as of the last finished frame; 0 for the world (backlog F233,
+/// `Core::hit`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_hit(ptr: *mut KuiCtx, x: f32, y: f32) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().hit(x, y).map_or(0, |k| k.0))
+    })
+}
+
+/// Whether the pointer is the UI's now (`Core::pointer_wants`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_pointer_wants(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().pointer_wants())
+    })
+}
+
+/// Whether the keyboard is the UI's now (`Core::keyboard_wants`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_keyboard_wants(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().keyboard_wants())
+    })
+}
+
 /// Editing key with modifier bits (1 = shift, 2 = word/alt, 4 = doc/primary,
 /// 8 = Control itself).
 #[unsafe(no_mangle)]

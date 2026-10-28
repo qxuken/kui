@@ -252,7 +252,13 @@
 ///   `KUI_ENTER_SCALE_X` / `_Y` (60 and 56 bytes); `KuiSpec` appends
 ///   `scale_x` and `scale_y` (912 bytes on 64-bit, from 888, its two
 ///   `KuiEnter`s grown by 8 each).
-pub const KUI_ABI_VERSION: u32 = 41;
+/// - ABI 42: for a host that draws the UI over a world of its own
+///   (backlog F233-F239). `KuiSpec` appends `host_hit` (920 bytes on
+///   64-bit, from 912) with `KUI_HOST_HIT_*`; `kui_hit`,
+///   `kui_pointer_wants` and `kui_keyboard_wants` are new functions.
+///   `KuiDrawData` appends `bounds` (152 bytes on 64-bit, from 136).
+///   `kui_ctx_new_in`, a context in another's session, is new.
+pub const KUI_ABI_VERSION: u32 = 42;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

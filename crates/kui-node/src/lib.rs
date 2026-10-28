@@ -537,6 +537,20 @@ impl Ctx {
         }
     }
 
+    /// A new context in this one's session (backlog F237): the same
+    /// registered fonts, images and sounds and the same shaping caches,
+    /// so a second HUD loads and shapes nothing twice. Its tree, focus,
+    /// events and glyph atlas are its own.
+    #[napi]
+    pub fn sibling(&self) -> Ctx {
+        Ctx {
+            core: Core::new_in(self.core.session()),
+            events: Vec::new(),
+            captures: kui_native::Captures::new(),
+            extensions: Default::default(),
+        }
+    }
+
     /// `frame` from an already-encoded binary instruction stream, for
     /// callers that own their encoder (`createEncoder(protocol())`) — the
     /// fastest path, and what the JS drivers use. Buffers are read
@@ -1290,6 +1304,35 @@ impl Ctx {
     }
 
     // -- Queries ---------------------------------------------------------
+
+    /// The topmost node at (`x`, `y`) (logical px) that blocks a host's
+    /// world, as its key, as of the last finished frame; null for the
+    /// world (backlog F233). A node kui takes the pointer on blocks, and
+    /// so does a box that paints — a background, a border, an image —
+    /// unless it says `hostHit="pass"`; any box that says
+    /// `hostHit="block"` does. For a host that draws the UI over a world
+    /// of its own: a game, a map, a 3D view.
+    #[napi]
+    pub fn hit(&self, x: f64, y: f64) -> Option<String> {
+        self.core.hit(x as f32, y as f32).map(key_str)
+    }
+
+    /// Whether the pointer is the UI's now: over a node `hit` answers
+    /// for, held by a press, a drag or a selection kui started, or
+    /// anywhere while a menu is open or a `modal` is in effect (backlog
+    /// F233). Ask before handing a press, a drag or a wheel to the world.
+    #[napi]
+    pub fn pointer_wants(&self) -> bool {
+        self.core.pointer_wants()
+    }
+
+    /// Whether the keyboard is the UI's now: an editor has focus, the
+    /// focused node is a key sink (`onKey`), or a menu is open (backlog
+    /// F233). Keep movement and hotkeys while it is false.
+    #[napi]
+    pub fn keyboard_wants(&self) -> bool {
+        self.core.keyboard_wants()
+    }
 
     /// The window title the last frame declared (a root `<box title>`), or
     /// null when it declared none. `runWindowed` applies it to the real

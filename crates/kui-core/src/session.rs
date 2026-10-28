@@ -188,6 +188,10 @@ struct WindowEntry {
     /// what was last declared (ADR 0048).
     lifecycle: WindowLifecycle,
     origin: OriginId,
+    /// The config it opened with, and for a surface the size its last
+    /// declaration said: a surface's size follows its declaration (ADR
+    /// 0076), where a window's is the user's once it opens.
+    config: WindowConfig,
 }
 
 /// A window's lifecycle messages and who declared them: what its
@@ -217,6 +221,11 @@ pub(crate) enum WindowChange {
         id: WindowId,
         /// The messages last declared for it.
         messages: WindowMessages,
+    },
+    /// A surface's declaration says a new size (ADR 0076).
+    Resized {
+        id: WindowId,
+        size: crate::geom::Size,
     },
 }
 
@@ -248,6 +257,7 @@ impl WindowRegistry {
                 live: true,
                 lifecycle: WindowLifecycle::default(),
                 origin: OriginId::HOST,
+                config: WindowConfig::default(),
             }],
             next_id: 1,
         }
@@ -388,6 +398,19 @@ impl WindowRegistry {
                         // declaration, so the latest one's are in force.
                         w.lifecycle = lifecycle;
                         w.origin = origin;
+                        // And a surface's size (ADR 0076): nobody drags
+                        // one, so its declaration is what sizes it.
+                        if w.live
+                            && w.config.kind == crate::window::WindowKind::Surface
+                            && config.kind == crate::window::WindowKind::Surface
+                            && config.size != w.config.size
+                        {
+                            w.config.size = config.size;
+                            out.push(WindowChange::Resized {
+                                id: w.id,
+                                size: config.size,
+                            });
+                        }
                         continue;
                     }
                     let id = WindowId(self.next_id);
@@ -398,6 +421,7 @@ impl WindowRegistry {
                         live: true,
                         lifecycle,
                         origin,
+                        config,
                     });
                     out.push(WindowChange::Opened {
                         id,
@@ -470,6 +494,13 @@ pub struct Session(Rc<RefCell<SessionState>>);
 impl Session {
     pub fn new() -> Self {
         Self(Rc::new(RefCell::new(SessionState::new())))
+    }
+
+    /// The name the window `id` was declared under, while the session
+    /// has it: what a driver says a window it will not open was called
+    /// (`surface-without-host`).
+    pub fn window_name_of(&self, id: WindowId) -> Option<Rc<str>> {
+        self.state().windows.name_of(id)
     }
 
     /// Whether two handles name the same session.

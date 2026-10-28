@@ -49,6 +49,8 @@ default = ["runner"]
 runner = ["dep:kui-native"]
 
 [dependencies]
+# The renderer's instances as bytes (`kui_pack_instances`, backlog F234).
+bytemuck.workspace = true
 kui-core.workspace = true
 kui-native = { workspace = true, optional = true }
 # Every host loads a `.lua` extension through `open_extension` (ADR 0059):

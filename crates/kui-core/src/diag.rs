@@ -339,14 +339,29 @@ warnings! {
     /// declare it again to reopen.
     pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
     /// A window declared with a `KUI_WINDOW_KIND_*` this build does not
-    /// have — `KUI_WINDOW_KIND_NORMAL` and `KUI_WINDOW_KIND_POPUP` are the
-    /// two there are. Only a C host can reach this: JSX and Lua name a kind
+    /// have — `KUI_WINDOW_KIND_NORMAL`, `KUI_WINDOW_KIND_POPUP` and
+    /// `KUI_WINDOW_KIND_SURFACE` are the three there are. Only a C host can reach this: JSX and Lua name a kind
     /// by string, so an unknown one is refused where it is written rather
     /// than reported a frame later. The window still opens, as a normal
     /// one, so a host built against a later header degrades to a window
     /// rather than to nothing; this line is what keeps that from being
     /// silent.
     pub const UNKNOWN_WINDOW_KIND: &str = "unknown-window-kind";
+    /// A window declared as a surface — an island a host draws into its own
+    /// world (`docs/adr/0076-an-island-is-a-window-the-host-draws.md`) —
+    /// under the windowed runner, which has no world to draw it into: it
+    /// opens nothing, and the rest of the app runs. A surface is for a host
+    /// that drives kui itself (a game on its own window and GPU device);
+    /// under the runner, a float or a normal window is what shows the
+    /// subtree.
+    pub const SURFACE_WITHOUT_HOST: &str = "surface-without-host";
+    /// The system has no font the shaper can read — a container with no
+    /// fonts installed, a minimal Linux image — so every text is drawn in
+    /// kui's last-resort face, each character a box half an em wide: it
+    /// measures and lays out, and reads as nothing. Install a font
+    /// (`fonts-dejavu-core` on Debian and Ubuntu), or register one with
+    /// `add_font` / `load_fonts_dir` and name its family.
+    pub const NO_SYSTEM_FONTS: &str = "no-system-fonts";
 
     /// A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a
     /// key or a label, the text was held for the frame that would declare
@@ -1053,6 +1068,31 @@ pub fn window_declared_while_closed(name: &str) -> Warning {
     }
 }
 
+/// The [`NO_SYSTEM_FONTS`] warning: one a session, under the root's key.
+pub fn no_system_fonts() -> Warning {
+    Warning {
+        code: NO_SYSTEM_FONTS,
+        key: Key::ROOT.str(NO_SYSTEM_FONTS),
+        message: "this system has no font kui can read, so text is drawn in kui's last-resort \
+                  face, every character a box: install a font (`fonts-dejavu-core` on Debian and \
+                  Ubuntu), or register one and name its family"
+            .to_string(),
+    }
+}
+
+/// The [`SURFACE_WITHOUT_HOST`] warning for one surface, keyed by its name.
+pub fn surface_without_host(name: &str) -> Warning {
+    Warning {
+        code: SURFACE_WITHOUT_HOST,
+        key: Key::ROOT.str(SURFACE_WITHOUT_HOST).str(name),
+        message: format!(
+            "window `{name}` is a surface, which a host draws into its own world, and the windowed \
+             runner has none: it opened nothing. Under the runner, show the subtree as a float or \
+             a normal window"
+        ),
+    }
+}
+
 /// The [`UNKNOWN_WINDOW_KIND`] warning for one declaration. Keyed by the
 /// window name and the kind, the way the other two window codes are keyed by
 /// a name and not a node: a declaration is not a node, and one line per
@@ -1066,8 +1106,8 @@ pub fn unknown_window_kind(name: &str, kind: u32) -> Warning {
             .index(kind as u64),
         message: format!(
             "window `{name}` was declared with kind {kind}, which this build does not have; \
-             `KUI_WINDOW_KIND_NORMAL` (0) and `KUI_WINDOW_KIND_POPUP` (1) are the ones there \
-             are, so it opened as a normal window"
+             `KUI_WINDOW_KIND_NORMAL` (0), `KUI_WINDOW_KIND_POPUP` (1) and \
+             `KUI_WINDOW_KIND_SURFACE` (2) are the ones there are, so it opened as a normal window"
         ),
     }
 }

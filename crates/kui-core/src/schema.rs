@@ -207,6 +207,7 @@ pub const P_ON_ITEM_KEY: u32 = 155;
 pub const P_TEXT_COLOR: u32 = 156;
 pub const P_SCALE_X: u32 = 157;
 pub const P_SCALE_Y: u32 = 158;
+pub const P_HOST_HIT: u32 = 159;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -232,6 +233,9 @@ pub const SCROLLBARS: &[&str] = &["visible", "hidden", "auto"];
 /// around it, or stays. C spells it as the index plus one
 /// (`KUI_OVERSCROLL_*`), a zeroed field being `auto`.
 pub const OVERSCROLLS: &[&str] = &["auto", "contain"];
+/// What a host's hit query counts a box as (`crate::spec::HostHit::ALL`
+/// order); `auto`, the default, is derived from the box.
+pub const HOST_HITS: &[&str] = &["auto", "block", "pass"];
 /// The `scrollAxes` row, in `ScrollAxes::ALL`'s order: the
 /// axes an `onScroll` node takes. C spells it as the index plus one
 /// (`KUI_SCROLL_AXES_*`), a zeroed field being `both`.
@@ -890,6 +894,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Enum(OVERSCROLLS),
         apply: Apply::SpecEnum(|s, i| s.overscroll(crate::spec::Overscroll::ALL[i])),
         doc: "What a scroll gesture that starts over this scroller does when it is already at its limit that way (backlog F107, CSS's `overscroll-behavior`): `auto` (the default) passes the gesture on to the scroller around it, `contain` keeps it here, moving nothing until it turns back. A gesture picks its target once, when it starts — the innermost scroller under the pointer that can still move the way it goes — and keeps it until it ends, wherever the pointer or the content has gone; one that reaches a limit midway stops there, whatever this says. Only on the axes the node scrolls: a `scrollY` list that contains still passes a sideways swipe to the strip around it. For a panel or a popup's list whose scrolling must never move what is behind it.",
+    },
+    PropDef {
+        name: "hostHit",
+        id: P_HOST_HIT,
+        kind: Kind::Enum(HOST_HITS),
+        apply: Apply::SpecEnum(|s, i| s.host_hit(crate::spec::HostHit::ALL[i])),
+        doc: "What a host that draws the UI over a world of its own — a game, a map, a 3D view — counts this box as when it asks whether the pointer is over the UI (`Core::hit` / `pointer_wants`, `kui_hit` / `kui_pointer_wants`, `Ctx.hit` / `pointerWants`; backlog F233): `auto` (the default) blocks the world where kui takes the pointer (a click, a hover, a drag, an editor) or where the box paints — a background, a border, an image — and lets it through over bare text and a box that paints nothing; `block` blocks wherever the box is, painted or not, a transparent catcher over a minimap; `pass` lets the pointer through a painted box to the world, a damage flash or a vignette over the whole window. A node kui takes the pointer on blocks whatever this says, so a click is never both kui's and the world's. kui's own hit testing is unchanged: only the host's question reads it.",
     },
     PropDef {
         name: "disabled",
@@ -1828,7 +1839,7 @@ pub const CUSTOM: &[CustomProp] = &[
         lua: "`windows = { { name=, kind=, anchor=, width=, height=, activates=, on_window=, on_dismiss= } }` (root table)",
         c: "`kui_window_declare`, `kui_window_declare_with`",
         odin: "`kui.window_declare`, `kui.window_declare_with`",
-        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the entry's `onWindow` message hears both edges as `window: {phase: \"opened\" | \"closed\", id}` (ADR 0048) — read on every declaration, unlike the config, and for a window that closed the last one declared. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: \"popup\"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape arrives as the entry's `onDismiss` message with `dismiss: {reason, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface.",
+        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the entry's `onWindow` message hears both edges as `window: {phase: \"opened\" | \"closed\", id}` (ADR 0048) — read on every declaration, unlike the config, and for a window that closed the last one declared. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: \"popup\"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape arrives as the entry's `onDismiss` message with `dismiss: {reason, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface. `kind: \"surface\"` is an island a host draws into its own world (`docs/adr/0076-an-island-is-a-window-the-host-draws.md`): never an OS window; the host runs it as a context of its own, its size follows its declaration on every frame (a `SetSize` when it changes), and it closes with the window that declared it. The windowed runner has no world to draw one into, so it warns `surface-without-host` and opens nothing.",
     },
     CustomProp {
         name: "windowEvents",

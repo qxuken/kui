@@ -1844,6 +1844,87 @@ static int surface(void) {
         kui_ctx_free(why);
     }
 
+    /* kui.h's scoped openers (backlog F261): a box nested in a box, both
+     * closed by their blocks, so a sibling after the first lands below it
+     * rather than inside it; KUI_BOX_KEY writes the key out. */
+    {
+        KuiCtx *sc = kui_ctx_new();
+        uint64_t outer = 0, inner = 0, after = 0;
+        KUI_FRAME(sc, 200, 200, 1) {
+            KUI_BOX_KEY(sc, &outer, "outer", .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 50},
+                        .pad_l = 10, .pad_t = 10, .bg = 0x202020ffu) {
+                KUI_BOX_KEY(sc, &inner, "inner", .width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 20},
+                            .bg = 0xff0000ffu) {}
+                KUI_BOX(sc, 0) {}
+            }
+            KUI_BOX_KEY(sc, &after, "after", .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
+                        .bg = 0x00ff00ffu) {}
+        }
+        check(outer != 0 && outer == kui_key_of(sc, KUI_STR("outer")), "KUI_BOX_KEY writes the node's key");
+        check(kui_hit(sc, 15, 15) == inner, "KUI_BOX: the inner box inside the outer one");
+        check(kui_hit(sc, 80, 40) == outer, "and the outer around it");
+        check(kui_hit(sc, 50, 60) == after, "KUI_BOX closes: the sibling after it lands below");
+        kui_ctx_free(sc);
+    }
+
+    /* A host's questions about the pointer and the keyboard (backlog
+     * F233), on a context of its own: a painted panel blocks the world, a
+     * box that paints nothing does not unless it says KUI_HOST_HIT_BLOCK,
+     * a painted one KUI_HOST_HIT_PASS lets it through; nothing is focused,
+     * so the keyboard is the world's. */
+    {
+        KuiCtx *host = kui_ctx_new();
+        kui_frame_begin(host, 320, 240, 1);
+        KuiSpec panel = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 80},
+                         .bg = 0x202020ccu};
+        uint64_t panel_key = kui_open_keyed(host, KUI_STR("panel"), &panel, NULL);
+        kui_close(host);
+        KuiSpec plain = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 40}};
+        kui_open_keyed(host, KUI_STR("plain"), &plain, NULL);
+        kui_close(host);
+        KuiSpec catcher = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 40},
+                           .host_hit = KUI_HOST_HIT_BLOCK};
+        uint64_t catcher_key = kui_open_keyed(host, KUI_STR("catcher"), &catcher, NULL);
+        kui_close(host);
+        KuiSpec flash = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 40},
+                         .bg = 0xff000040u, .host_hit = KUI_HOST_HIT_PASS};
+        kui_open_keyed(host, KUI_STR("flash"), &flash, NULL);
+        kui_close(host);
+        kui_frame_finish(host);
+        check(kui_hit(host, 50, 40) == panel_key, "kui_hit: the painted panel");
+        check(kui_hit(host, 50, 100) == 0, "a box that paints nothing is the world's");
+        check(kui_hit(host, 50, 140) == catcher_key, "KUI_HOST_HIT_BLOCK takes it unpainted");
+        check(kui_hit(host, 50, 180) == 0, "KUI_HOST_HIT_PASS lets a painted box through");
+        check(kui_hit(host, 300, 20) == 0, "and the root paints nothing");
+        check(!kui_pointer_wants(host), "kui_pointer_wants: no cursor yet");
+        kui_input_cursor(host, 50, 40);
+        check(kui_pointer_wants(host), "over the panel");
+        kui_input_cursor(host, 300, 20);
+        check(!kui_pointer_wants(host), "over the world");
+        check(!kui_keyboard_wants(host), "kui_keyboard_wants: nothing has focus");
+        /* A second HUD in the first one's session (backlog F237): what
+         * the first registered, the second draws. */
+        uint8_t white[4 * 4 * 4];
+        memset(white, 255, sizeof white);
+        uint64_t img = kui_image_add(host, 4, 4, white);
+        KuiCtx *hud = kui_ctx_new_in(host);
+        check(hud != NULL && kui_ctx_new_in(NULL) == NULL, "kui_ctx_new_in: a context in the session");
+        kui_ctx_free(host);
+        kui_frame_begin(hud, 100, 100, 1);
+        KuiSpec pic = {.width = {KUI_FIXED, 4}, .height = {KUI_FIXED, 4}};
+        kui_image(hud, img, &pic);
+        kui_frame_finish(hud);
+        KuiDrawData dd = KUI_DRAW_DATA_INIT;
+        bool drew = false;
+        if (kui_draw_data(hud, &dd)) {
+            for (size_t i = 0; i < dd.quad_count; i++) {
+                drew |= dd.quads[i].kind == KUI_QUAD_IMAGE;
+            }
+        }
+        check(drew, "and draws the image the first registered, the first freed");
+        kui_ctx_free(hud);
+    }
+
     /* The recording (ADR 0058), on a context of its own: off, a span's id
      * is 0 and nothing is kept; recording, the spans and the rest land in
      * kui-trace bytes. A standalone context has no waker - its host wakes

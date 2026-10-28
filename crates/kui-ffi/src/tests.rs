@@ -836,7 +836,7 @@ mod window_commands_headless {
         let ctx = kui_ctx_new();
         kui_set_diagnostics(ctx, true);
         let cfg = KuiWindowConfig {
-            kind: KUI_WINDOW_KIND_POPUP + 1,
+            kind: KUI_WINDOW_KIND_SURFACE + 1,
             width: 320.0,
             height: 240.0,
             activates: 1,
@@ -893,6 +893,13 @@ mod window_commands_headless {
         kui_window_declare(ctx, ks("palette"), &cfg);
         kui_window_declare(ctx, ks("menu"), &popup);
         kui_window_declare(ctx, ks("tools"), std::ptr::null());
+        let ring = KuiWindowConfig {
+            kind: KUI_WINDOW_KIND_SURFACE,
+            width: 200.0,
+            height: 100.0,
+            ..Default::default()
+        };
+        kui_window_declare(ctx, ks("ring"), &ring);
         kui_frame_finish(ctx);
         let mut out = [KuiWarning {
             code: KuiStr {
@@ -906,6 +913,34 @@ mod window_commands_headless {
             },
         }; 4];
         assert_eq!(kui_take_warnings(ctx, out.as_mut_ptr(), out.len()), 0);
+        kui_ctx_free(ctx);
+    }
+
+    /// A surface (ADR 0076) crosses as its kind and its size, and a new
+    /// size in its declaration arrives as KUI_CMD_SET_SIZE.
+    #[test]
+    fn a_surface_opens_with_its_kind_and_resizes_by_its_declaration() {
+        let ctx = kui_ctx_new();
+        let declare = |w: f32| {
+            let ring = KuiWindowConfig {
+                kind: KUI_WINDOW_KIND_SURFACE,
+                width: w,
+                height: 100.0,
+                ..Default::default()
+            };
+            kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+            kui_window_declare(ctx, ks("ring"), &ring);
+            kui_frame_finish(ctx);
+        };
+        declare(200.0);
+        let mut cmd = KuiWindowCommand::default();
+        assert!(kui_take_window_command(ctx, &raw mut cmd));
+        assert_eq!(cmd.kind, KUI_CMD_OPEN);
+        assert_eq!(cmd.config.kind, KUI_WINDOW_KIND_SURFACE);
+        assert_eq!((cmd.config.width, cmd.config.height), (200.0, 100.0));
+        let id = cmd.window;
+        declare(260.0);
+        assert_eq!(drain(ctx), [(KUI_CMD_SET_SIZE, id, 260.0, 100.0)]);
         kui_ctx_free(ctx);
     }
 
@@ -3961,6 +3996,82 @@ mod borrows {
         assert!(d.atlas_dirty && d.atlas_epoch == epoch);
         let [_, _, w, h] = d.atlas_dirty_rect;
         assert!(w > 0 && h > 0 && w * h < d.atlas_size * d.atlas_size);
+        kui_ctx_free(ctx);
+    }
+
+    /// A context made in another's session draws what the first
+    /// registered (backlog F237): an image added to `a` is an image quad
+    /// in `b`'s frame, and outlives `a` being freed first.
+    #[test]
+    fn a_context_in_another_s_session_draws_what_the_first_registered() {
+        let a = kui_ctx_new();
+        let px = [255u8; 4 * 4 * 4];
+        let id = kui_image_add(a, 4, 4, px.as_ptr());
+        assert_ne!(id, 0);
+        assert!(kui_ctx_new_in(std::ptr::null_mut()).is_null());
+        let b = kui_ctx_new_in(a);
+        assert!(!b.is_null());
+        kui_ctx_free(a);
+        kui_frame_begin(b, 100.0, 100.0, 1.0);
+        kui_root(b, &zspec());
+        let spec = KuiSpec {
+            width: KuiSizing { tag: 2, value: 4.0 },
+            height: KuiSizing { tag: 2, value: 4.0 },
+            ..zspec()
+        };
+        kui_image(b, id, &spec);
+        kui_frame_finish(b);
+        let mut d = KuiDrawData::default();
+        assert!(kui_draw_data(b, &mut d));
+        let quads = unsafe { std::slice::from_raw_parts(d.quads, d.quad_count) };
+        assert!(
+            quads
+                .iter()
+                .any(|q| q.kind == kui_core::QuadKind::Image as u32),
+            "the image a drew is b's"
+        );
+        kui_ctx_free(b);
+    }
+
+    /// The draw data says where the frame drew (backlog F235): a 40×10
+    /// tag at (20, 30) on a transparent root at scale 2 is (40, 60, 80,
+    /// 20), and a frame that draws nothing is zero.
+    #[test]
+    fn draw_data_says_where_the_frame_drew() {
+        let ctx = kui_ctx_new();
+        let mut d = KuiDrawData::default();
+        kui_frame_begin(ctx, 200.0, 100.0, 2.0);
+        kui_root(ctx, &zspec());
+        kui_frame_finish(ctx);
+        assert!(kui_draw_data(ctx, &mut d));
+        assert_eq!(d.bounds, [0; 4], "nothing drawn");
+
+        kui_frame_begin(ctx, 200.0, 100.0, 2.0);
+        kui_root(
+            ctx,
+            &KuiSpec {
+                pad_l: 20.0,
+                pad_t: 30.0,
+                ..zspec()
+            },
+        );
+        let tag = KuiSpec {
+            width: KuiSizing {
+                tag: 2,
+                value: 40.0,
+            },
+            height: KuiSizing {
+                tag: 2,
+                value: 10.0,
+            },
+            bg: 0xffffffff,
+            ..zspec()
+        };
+        kui_open(ctx, &tag, NONE);
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+        assert!(kui_draw_data(ctx, &mut d));
+        assert_eq!(d.bounds, [40, 60, 80, 20]);
         kui_ctx_free(ctx);
     }
 

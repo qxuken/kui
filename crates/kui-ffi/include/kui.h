@@ -494,8 +494,18 @@ extern "C" {
  * embedded twice in KuiSpec, which moves every field after enter - and
  * KuiSpec appends scale_x and scale_y (912 bytes on 64-bit, from 888).
  * Recompile; zeroed, nothing stretches.
+ *
+ * ABI 42 is for a host that draws the UI over a world of its own (the
+ * Replicator Bloom wishlist, backlog F233-F239). KuiSpec appends host_hit
+ * with KUI_HOST_HIT_AUTO / _BLOCK / _PASS (920 bytes on 64-bit, from
+ * 912), what kui_hit and kui_pointer_wants count the box as; and
+ * kui_hit, kui_pointer_wants and kui_keyboard_wants are new functions.
+ * KuiDrawData appends bounds (152 bytes on 64-bit, from 136), where the
+ * frame drew. kui_ctx_new_in, a context in another's session, is new
+ * (backlog F237). Recompile; zeroed, a box counts as derived, and a caller
+ * that reserved the old size is filled to it.
  */
-#define KUI_ABI_VERSION 41u
+#define KUI_ABI_VERSION 42u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1619,6 +1629,15 @@ typedef struct KuiSpec {
      * stroke inside is stretched with it. 0 is 1, as scale's is. ABI 41,
      * appended (912 bytes on 64-bit). */
     float scale_x, scale_y;
+    /* What a host's kui_hit and kui_pointer_wants count this box as
+     * (hostHit, backlog F233): 0 (the zeroed field) or KUI_HOST_HIT_AUTO
+     * blocks the world where kui takes the pointer or the box paints (a
+     * background, a border, an image); KUI_HOST_HIT_BLOCK blocks wherever
+     * the box is, painted or not; KUI_HOST_HIT_PASS lets the pointer
+     * through a painted box - a damage flash, a vignette. A node kui takes
+     * the pointer on blocks whatever this says. kui's own hit testing is
+     * unchanged. ABI 42, appended (920 bytes on 64-bit). */
+    uint32_t host_hit;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
@@ -1677,6 +1696,12 @@ enum {
     KUI_SCROLL_AXES_BOTH = 1,
     KUI_SCROLL_AXES_X = 2,
     KUI_SCROLL_AXES_Y = 3,
+};
+/* KuiSpec.host_hit: the schema index plus one, so zero is auto. ABI 42. */
+enum {
+    KUI_HOST_HIT_AUTO = 1,
+    KUI_HOST_HIT_BLOCK = 2,
+    KUI_HOST_HIT_PASS = 3,
 };
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -2286,11 +2311,26 @@ typedef struct KuiSpan {
  * make: a list taller than the window, a menu near an edge with nowhere
  * in-window to go, a panel beside the app.
  *
+ * KUI_WINDOW_KIND_SURFACE is an island you draw (ADR 0076,
+ * docs/adr/0076-an-island-is-a-window-the-host-draws.md): never an OS
+ * window. On its KUI_CMD_OPEN, make a context for it with
+ * kui_ctx_new_in(main) and kui_env_set_window(that, cmd.window, ...), build
+ * the view into it each turn at cmd.config's size and a scale of your own
+ * (your texture's pixels per logical px), draw its draw data into your
+ * texture (kui.h's "Drawing it yourself") and map that into your world.
+ * Its size follows its declaration every frame: a change arrives as
+ * KUI_CMD_SET_SIZE. Feed it input in its own logical px once you have
+ * un-projected the pointer onto it, kui_input_cursor_left when the ray
+ * misses; send keys to the context the last press landed in. It closes
+ * with the window that declared it. kui_run opens nothing for one and
+ * warns surface-without-host.
+ *
  * Any other value opens a normal window - so a host built against a later
  * header degrades to a window rather than to nothing - and raises the
  * unknown-window-kind warning saying so. */
 #define KUI_WINDOW_KIND_NORMAL 0u
 #define KUI_WINDOW_KIND_POPUP 1u
+#define KUI_WINDOW_KIND_SURFACE 2u
 
 /* Why a window was asked to go away (kui_window_dismissed). */
 #define KUI_DISMISS_OUTSIDE 0u
@@ -2552,8 +2592,58 @@ typedef struct KuiDrawData {
      * moved it is the whole page; zero with atlas_dirty clear. Added in
      * ABI 40 (backlog F228). */
     uint32_t atlas_dirty_rect[4];
+    /* Where the frame drew, x, y, w, h in whole physical px inside the
+     * viewport: the union of every quad's footprint (a shadow's blur, a
+     * stroke's width, a turned node where it is drawn), cut by its clip.
+     * Scissor the clear, the draw and the composite to it, so a
+     * full-window overlay that drew two tags pays for two tags. Zero on a
+     * frame that drew nothing. Added in ABI 42 (backlog F235). */
+    uint32_t bounds[4];
 } KuiDrawData;
 #define KUI_DRAW_DATA_INIT ((KuiDrawData){ .size = sizeof(KuiDrawData) })
+
+/* -- Drawing it yourself ---------------------------------------------------
+ *
+ * A host with its own GPU device draws KuiDrawData with kui's own shader
+ * and instance packing, so a release that moves either moves every
+ * renderer with it (backlog F234; kui-wgpu draws through the same):
+ *
+ *   - kui_renderer_wgsl(KUI_WGSL_SINGLE or _DUAL): the WGSL, entry points
+ *     vs_main and fs_main. Group 0: binding 0 a uniform of eight floats -
+ *     viewport w, h (physical px, the draw data's), atlas size twice, the
+ *     frame clock, the scale, two of padding; binding 1 the atlas texture
+ *     (RGBA8, atlas_pixels; atlas_dirty_rect says what to upload); 2 a
+ *     linear sampler; 3 a nearest one, both clamped to the edge. Blend:
+ *     the SINGLE variant writes straight colour with its coverage as alpha
+ *     - colour src SrcAlpha, dst OneMinusSrcAlpha; alpha src One, dst
+ *     OneMinusSrcAlpha - and the DUAL one premultiplied colour with a
+ *     per-channel coverage - colour src One, dst OneMinusSrc1; alpha src
+ *     One, dst OneMinusSrc1Alpha. Into an Unorm target (RGBA8Unorm,
+ *     BGRA8Unorm): the colours are kui's as written, no sRGB encode.
+ *   - kui_instance_stride() and kui_instance_attributes(): the vertex
+ *     buffer's layout, stepped per instance - each attribute a float32x2
+ *     or float32x4 at its shader location and byte offset. Build the
+ *     pipeline from these and a later library's layout needs no change.
+ *   - kui_pack_instances(ctx, bytes, len): the finished frame's quads as
+ *     those instances. Draw a triangle list, six vertices an instance, in
+ *     one pass over a cleared target.
+ *
+ * What the instances leave out are passes: a backdrop blur (an empty
+ * instance), an opacity group's picture (none unless
+ * kui_set_opacity_groups), a texture-backed image (KUI_QUAD_TEXTURE: kind 3
+ * drawn with that image's texture bound in the atlas's place, a run of its
+ * own) and a registered fragment (its own pipeline). The reference hosts
+ * are examples/c/tools/wgpu_host.c (wgpu-native's C API, offscreen, its
+ * pixels checked) and examples/odin/tools/wgpu_host.odin (vendor:wgpu, the
+ * same offscreen, and --window on GLFW with kui over a world). */
+enum {
+    KUI_WGSL_SINGLE = 0,
+    KUI_WGSL_DUAL = 1,
+};
+KuiStr kui_renderer_wgsl(uint32_t variant);
+uint32_t kui_instance_stride(void);
+uint32_t kui_instance_attributes(uint32_t *out, uint32_t cap);
+size_t kui_pack_instances(KuiCtx *ctx, uint8_t *out, size_t len);
 
 /* -- The host loop --------------------------------------------------------
  *
@@ -2587,6 +2677,10 @@ typedef struct KuiDrawData {
  * A view that declares none of the handlers above has nothing to drain
  * there.
  *
+ * Keys from GLFW or SDL3: kui_glfw.h and kui_sdl3.h beside this header
+ * (header-only, backlog F239) map their keys to kui's names and send them
+ * through the right halves; Odin has kui/glfw and kui/sdl3.
+ *
  * When to run a turn at all: on input, while kui_owed(ctx) is non-zero
  * (a transition, an autoscroll), and when your model changed. Between
  * those the window can sleep.
@@ -2596,7 +2690,17 @@ typedef struct KuiDrawData {
  * clear drew exactly what the one before it drew, so a host that keeps
  * last frame's target (an overlay texture, say) skips its render pass and
  * composites what it has. The trace keeps a digest of every frame, a cost
- * only a host that skips draws needs.
+ * only a host that skips draws needs. When it does draw, the draw data's
+ * bounds is where the frame drew: scissor the clear, the draw and the
+ * composite to it (backlog F235).
+ *
+ * The UI over a world of its own (a game, a map, a 3D view): before step
+ * 1 hands an input to the world as well, kui_pointer_wants and
+ * kui_keyboard_wants say whether it is the UI's (backlog F233), and
+ * kui_hit names the node at a point; feed kui every event either way. A
+ * transparent root paints nothing, so only what the view paints - and
+ * what kui takes the pointer on - blocks the world; KuiSpec.host_hit
+ * moves a box either way.
  *
  * Text on a renderer without dual-source blending: subpixel glyphs
  * (KUI_QUAD_GLYPH_SUBPIXEL) need per-channel blending, and are off unless
@@ -2605,6 +2709,15 @@ typedef struct KuiDrawData {
 
 /* -- Context ------------------------------------------------------------- */
 KuiCtx *kui_ctx_new(void);
+/* A context that joins `other`'s session (backlog F237): the same
+ * registered fonts, images and sounds, the same installed families and
+ * shaping caches, the same audio device - so a second HUD, or an island
+ * drawn into a target of its own, loads and shapes nothing twice. Its
+ * tree, focus, scroll, viewport, events and glyph atlas are its own (each
+ * context's draw data carries its own atlas). The session lives while any
+ * of its contexts does, so free them in any order; they all belong to the
+ * thread that made the first. NULL for a NULL `other`. */
+KuiCtx *kui_ctx_new_in(KuiCtx *other);
 void kui_ctx_free(KuiCtx *ctx);
 
 /* -- Input (logical coordinates) + events -------------------------------- */
@@ -2787,6 +2900,32 @@ void kui_release_held_keys(KuiCtx *ctx);
  * declares none hears nothing. */
 void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
+/* A host that draws the UI over a world of its own - a game, a map, a 3D
+ * view - asks these before it decides whose an input is (backlog F233;
+ * Dear ImGui's WantCaptureMouse and WantCaptureKeyboard). Each answers as
+ * of the last finished frame and the input fed since; feed kui every event
+ * either way.
+ *
+ * kui_hit: the topmost node at (x, y), logical px, that blocks the world,
+ * as a key; 0 for the world. A node kui takes the pointer on (a click, a
+ * hover, a drag, an editor) blocks, and so does a box that paints - a
+ * background, a border, an image - unless its host_hit is
+ * KUI_HOST_HIT_PASS; any box whose host_hit is KUI_HOST_HIT_BLOCK does,
+ * painted or not. Bare text and a box that paints nothing do not.
+ *
+ * kui_pointer_wants: whether the pointer is the UI's - over a node kui_hit
+ * answers for, or held by something kui started (a press, a drag, a
+ * slider, a scrollbar's thumb, a selection) whose release is kui's
+ * wherever it lands; and everywhere while a menu is open or a modal is in
+ * effect. Ask it before handing a press, a drag or a wheel to the world.
+ *
+ * kui_keyboard_wants: whether the keyboard is the UI's - an editor has
+ * focus, the focused node is a key sink (on_key), or a menu is open. Keep
+ * movement and hotkeys while it is false; a focused button still takes
+ * Tab, Enter and Space. */
+uint64_t kui_hit(KuiCtx *ctx, float x, float y);
+bool kui_pointer_wants(KuiCtx *ctx);
+bool kui_keyboard_wants(KuiCtx *ctx);
 
 /* -- Host environment ---------------------------------------------------- */
 /* These setters are the whole of C's `env`: the fields of kui_core's Env,
@@ -4230,6 +4369,49 @@ void kui_path_d(KuiCtx *ctx, KuiStr label, KuiStr d, uint32_t fill_rule,
                 const float *dash, const KuiSpec *spec, KuiValue *on_click,
                 KuiValue *on_drag, KuiValue *on_hover);
 void kui_close(KuiCtx *ctx);
+
+/* Scoped openers (backlog F261): a block that opens a frame or a node and
+ * closes it at the block's end, as Odin's `if kui.box(...) {}` does, at no
+ * run-time cost - each is a for loop that runs its body once:
+ *
+ *     KUI_FRAME(ctx, w, h, scale) {
+ *         KUI_BOX(ctx, .width = {KUI_GROW, 1}, .bg = 0x202020ffu) {
+ *             kui_text(ctx, KUI_STR("Hello from C"), &big);
+ *         }
+ *     }
+ *
+ * The spec is a KuiSpec's designated initializers; KUI_BOX(ctx, 0) is an
+ * empty one. KUI_BOX_KEYED keys the node by a label, KUI_BOX_KEY also
+ * writes the key kui_open_keyed returns into *key_out, and KUI_BOX_CLICK
+ * gives it a click message - a fresh string value each frame, since
+ * kui_open* keeps the one it is handed.
+ *
+ * Never break, return or goto out of one: that skips its close. Out of a
+ * KUI_BOX it leaves the node open, which the unclosed-node warning names
+ * when the frame finishes; out of a KUI_FRAME it leaves the frame
+ * unfinished. `continue` is fine. C only: a compound literal from
+ * designated initializers is not C++ (C++20's are order-bound); MSVC
+ * needs /std:c11. */
+#ifndef __cplusplus
+#define KUI__CAT2(a, b) a##b
+#define KUI__CAT(a, b) KUI__CAT2(a, b)
+#define KUI__SCOPE_N(v, open, close) for (int v = ((open), 0); !v; v = 1, (close))
+#define KUI__SCOPE(open, close) KUI__SCOPE_N(KUI__CAT(kui__once_, __COUNTER__), open, close)
+#define KUI_FRAME(ctx, w, h, scale) \
+    KUI__SCOPE(kui_frame_begin((ctx), (w), (h), (scale)), kui_frame_finish(ctx))
+#define KUI_BOX(ctx, ...) \
+    KUI__SCOPE(kui_open((ctx), &(KuiSpec){__VA_ARGS__}, NULL), kui_close(ctx))
+#define KUI_BOX_KEYED(ctx, label, ...) \
+    KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, NULL), kui_close(ctx))
+#define KUI_BOX_KEY(ctx, key_out, label, ...) \
+    KUI__SCOPE(*(key_out) = kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, NULL), \
+               kui_close(ctx))
+#define KUI_BOX_CLICK(ctx, label, message, ...) \
+    KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, \
+                              kui_value_str(KUI_STR(message))), \
+               kui_close(ctx))
+#endif
+
 /* A lazy branch's builder (kui_lazy): your `user`, and the context to
  * build the branch's nodes through. */
 typedef void (*KuiLazyFn)(void *user, KuiCtx *ctx);
