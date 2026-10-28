@@ -757,7 +757,7 @@ Lua `kit.histogram(props)` · Node `<Histogram />`
 
 ## kit.waterfall
 
-A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and a drag on the time axis selects a range to zoom to.
+A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag anywhere in it pans — over a span too, which a click picks and a double click makes the range — and a drag on the time axis selects a range to zoom to.
 
 Lua `kit.waterfall(props)` · Node `<Waterfall />`
 
@@ -777,7 +777,7 @@ Lua `kit.waterfall(props)` · Node `<Waterfall />`
 | event | Node | carries | description |
 |---|---|---|---|
 | `on_select` | `onSelect` | `select` = { `row`: integer — Its row. } | A span was clicked. |
-| `on_range` | `onRange` | `range` = { `start`: number — Its start in ms.; `length`: number — Its length in ms; 0 when cleared. } | A drag on the time axis selected a range, or a click there or the range's × cleared it. |
+| `on_range` | `onRange` | `range` = { `start`: number — Its start in ms.; `length`: number — Its length in ms; 0 when cleared. } | A drag on the time axis selected a range, a double click on a span made its span the range, or a click on the axis or the range's × cleared it. |
 | `on_zoom` | `onZoom` | `zoom` = { `start`: number — Its start in ms.; `length`: number — Its length in ms. } | The wheel, a pinch, a drag, a tool or zooming to the range asks for another window. |
 
 ## Types

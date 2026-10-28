@@ -88,6 +88,7 @@ local function set_window(st: Inspector, v0: number, v1: number)
   if v0 + len > hi then v0 = hi - len end
   st.v0, st.v1 = v0, v0 + len
   st.stale = true
+  st.moves = (st.moves or 0) + 1
 end
 
 local function apply_filter(st: Inspector)
@@ -401,8 +402,12 @@ end
 function inspector.update(st: Inspector, msg: Msg): boolean
   local k = msg.kind
   if k == "ins_restat" then
+    -- Read only once the window has been still since it was asked for:
+    -- a pan or a zoom that goes on asks again, so a whole long
+    -- recording's tables (300 ms over 72,000 frames) are not read every
+    -- 150 ms of it.
     st.restat_due = false
-    if st.stale then inspector.restat(st) end
+    if st.stale and msg.value == st.moves then inspector.restat(st) end
   elseif k == "ins_zoom" then
     -- Zooming to the range spends it.
     local z = msg.zoom
@@ -419,6 +424,31 @@ function inspector.update(st: Inspector, msg: Msg): boolean
   elseif k == "ins_frame" then
     local _, order = shown(st, "frames", st.rec.frames)
     select_frame(st, order and order[msg.select.row + 1] or msg.select.row)
+  elseif k == "ins_activate" then
+    -- A double click (or Enter) on a frame or a burn: its time is the
+    -- range, the window moved to show it.
+    local tab = msg.name
+    local a, b: number, number
+    local f = st.rec.frames
+    if tab == "frames" then
+      local _, order = shown(st, "frames", f)
+      local row = order and order[msg.activate.row + 1] or msg.activate.row
+      a, b = f:get(row, "begin") as number, f:get(row, "end") as number
+      st.frame = row
+    elseif tab == "burns" then
+      local burns = shown(st, "burns", st.tables.burns)
+      local first = first_at(f, "index", burns:get(msg.activate.row, "first") as integer)
+      local last = first_at(f, "index", burns:get(msg.activate.row, "last") as integer)
+      a, b = f:get(first, "begin") as number, f:get(math.min(last, #f - 1), "end") as number
+    end
+    if a and b and b > a then
+      st.r0, st.r1 = a, b
+      if a < st.v0 or b > st.v1 then
+        local len = math.max(st.v1 - st.v0, (b - a) * 1.5)
+        set_window(st, (a + b) / 2 - len / 2, (a + b) / 2 + len / 2)
+        st.follow = false
+      end
+    end
   elseif k == "ins_burn" then
     local burns = shown(st, "burns", st.tables.burns)
     local first = burns:get(msg.select.row, "first") as integer
@@ -644,7 +674,8 @@ local function table_for(st: Inspector, tab: string): kui.Node
     local rows = shown(st, "frames", st.rec.frames)
     local sel = st.frame >= 0 and place_of(st, "frames", st.frame) or nil
     return kit.table({ key = "t-frames", rows = rows, selected = sel, sort = sort or "frame", descending = desc,
-      on_sort = on_sort, on_select = { kind = "ins_frame" }, grow = true, columns = {
+      on_sort = on_sort, on_select = { kind = "ins_frame" }, on_activate = { kind = "ins_activate", name = "frames" },
+      grow = true, columns = {
         col("frame", "frame", 70, true), col("work", "work", 70, true), col("build", "build", 70, true),
         col("layout", "layout", 70, true), col("render", "render", 70, true), col("verdict", "verdict", 80),
         col("causes", "why it ran"),
@@ -662,6 +693,7 @@ local function table_for(st: Inspector, tab: string): kui.Node
   if not ch then return kit.empty({ key = "t-none", title = "Counting…" }) end
   local cols: {kit.Column}
   local on_select: any = nil
+  local on_activate: any = nil
   if tab == "spans" then
     cols = { col("name", "span"), col("origin", "origin", 90), col("calls", "calls", 70, true),
       col("per_frame", "per frame", 80, true), col("worst", "worst", 70, true), col("self", "self", 80, true) }
@@ -675,9 +707,10 @@ local function table_for(st: Inspector, tab: string): kui.Node
   elseif tab == "burns" then
     cols = { col("first", "first frame", 100, true), col("last", "last frame", 100, true), col("frames", "frames", 80, true) }
     on_select = { kind = "ins_burn" }
+    on_activate = { kind = "ins_activate", name = "burns" }
   end
   return kit.table({ key = "t-" .. tab, rows = shown(st, tab, ch), columns = cols, grow = true, on_select = on_select,
-    sort = sort, descending = desc, on_sort = on_sort })
+    on_activate = on_activate, sort = sort, descending = desc, on_sort = on_sort })
 end
 
 local function tables(st: Inspector, with_detail: boolean): kui.Node
@@ -738,7 +771,8 @@ function inspector.view(st: Inspector, env: kui.Env): kui.Node
   -- a pan or a zoom draws its frames without reading them each step.
   if st.stale and not st.restat_due then
     st.restat_due = true
-    kui.timer.after(150, function() kui.dispatch({ kind = "ins_restat" }) end)
+    local moves = st.moves
+    kui.timer.after(150, function() kui.dispatch({ kind = "ins_restat", value = moves }) end)
   end
   -- The bands (decision 9) by the body's own width, a container query
   -- (ADR 0069): wide, the detail beside the tables in the dock; narrower,

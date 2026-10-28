@@ -723,7 +723,7 @@
 ---@field range_start? number The range selected on the axis, in ms, held by the host: with `on_range`, the range drawn is this one, and a drag on the axis proposes another. Kit's own otherwise.
 ---@field range_length? number The selected range's length in ms; none selected when left out or 0.
 ---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.WaterfallSelect). A span was clicked.
----@field on_range? any The message it arrives as: yours, with `range = {…}` in it (kit.WaterfallRange). A drag on the time axis selected a range, or a click there or the range's × cleared it.
+---@field on_range? any The message it arrives as: yours, with `range = {…}` in it (kit.WaterfallRange). A drag on the time axis selected a range, a double click on a span made its span the range, or a click on the axis or the range's × cleared it.
 ---@field on_zoom? any The message it arrives as: yours, with `zoom = {…}` in it (kit.WaterfallZoom). The wheel, a pinch, a drag, a tool or zooming to the range asks for another window.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -1117,8 +1117,9 @@ local function make(namespace)
 
   ---A trace waterfall: spans as bars on a time axis, nested by depth,
   ---coloured by group. The wheel and a pinch zoom about the pointer, a
-  ---sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and
-  ---a drag on the time axis selects a range to zoom to.
+  ---sideways swipe or Shift and the wheel pans, a drag anywhere in it pans
+  ---— over a span too, which a click picks and a double click makes the
+  ---range — and a drag on the time axis selects a range to zoom to.
   ---@param props kit.WaterfallProps
   ---@return kui.Node
   function M.waterfall(props)

@@ -19,8 +19,10 @@ kui run tools/kui-perf -- session.kuitrace
   lanes under it taking the rest, their plots starting where its lanes do. The wheel
   or a pinch — over the waterfall, a graph lane or the overview — zooms about the
   pointer, a sideways swipe or ⇧ and the wheel pans,
-  a drag on the lanes pans, and a drag along the time axis selects a range —
-  its length beside the title, zoomed to by its button or `z`.
+  a drag anywhere on it pans — over a span too, which a click picks — and a drag
+  along the time axis selects a range, its length beside the title, zoomed to by
+  its button or `z`; a double click on a span, a frame's row or a burn's makes its
+  time the range.
 - **The frame or span selected**: its verdict, phases, input path, holders,
   components drawn fresh and why, notes and counters.
 - **Tables over the window**: frames, spans, origins, components, counters and

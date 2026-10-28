@@ -153,6 +153,19 @@ local v0 = st.v0
 update({ kind = "ins_overview_wheel", value = { x = 0, w = 1000 }, scroll = { x = 500, y = 0, dx = -40, dy = 0 } })
 check(st.v0 > v0, "a sideways swipe over the overview pans")
 
+-- A double click on a frame's row: its time is the range.
+update({ kind = "ins_activate", name = "frames", activate = { row = 0 } })
+local fr = st.sorts.frames and st.shown.frames.order[1] or 0
+check(st.r0 == st.rec.frames:get(fr, "begin") and st.r1 == st.rec.frames:get(fr, "end"), "a double-clicked frame is the range")
+key("escape")
+
+-- The tables read once the window holds still.
+key("d")
+update({ kind = "ins_restat", value = st.moves - 1 })
+check(st.stale, "a read asked for before the last move waits")
+update({ kind = "ins_restat", value = st.moves })
+check(not st.stale, "and one asked for after it reads")
+
 -- The dock.
 update({ kind = "ins_dock", resize = { fraction = 0.7 } })
 check(st.dock == 0.7, "the dock's rule moves")
@@ -172,6 +185,12 @@ if rest then
   update({ kind = "refresh" })
   check(m.waiting == 0, "and refresh takes them in")
 end
+
+-- A file dragged over the window opens only when it is let go.
+update({ kind = "dropped", drop = { phase = "enter", paths = { "/nowhere/else.kuitrace" } } })
+check(m.error == nil, "a file passing over opens nothing")
+update({ kind = "dropped", drop = { phase = "drop", paths = { "/nowhere/else.kuitrace" } } })
+check(m.error ~= nil, "a file let go is opened")
 
 kui.fs.try_remove(kui.data_dir .. "/prefs.json")
 kui.fs.try_remove(kui.data_dir)

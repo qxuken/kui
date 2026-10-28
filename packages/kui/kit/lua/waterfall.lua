@@ -161,6 +161,10 @@ local function lane_row(c, lane, st, v0, v1, width, selected, picks)
                role = picks and "listItem" or nil,
                focusable = picks or nil,
                on_click = picks and act(c, "waterfall.pick", { row = r }) or nil,
+
+
+
+               on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
             }
 
 
@@ -340,6 +344,16 @@ function M.event(m, kit)
    if not st then return nil end
    local v0, v1
    if kit == "waterfall.pick" then
+
+
+      local click = m.click
+      if click and ((click.clicks or 1)) >= 2 then
+         local bars = st.index.bars
+         local s0 = num(bars:get(m.row, "start"))
+         local len = num(bars:get(m.row, "len"))
+         st.r0, st.r1 = s0, s0 + len
+         return emit("on_range", { start = s0, length = len })
+      end
       return emit("on_select", { row = m.row })
    elseif kit == "waterfall.pan" then
       local d = m.drag

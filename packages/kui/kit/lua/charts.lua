@@ -598,6 +598,14 @@ local function glide(c, lo, hi, h)
       local e = 1 - (1 - k) ^ 3
       st.ga0, st.gb0 = st.ga0 + (st.ga - st.ga0) * e, st.gb0 + (st.gb - st.gb0) * e
       st.ga, st.gb, st.t0, st.ygen = a, b, now, st.ygen + 1
+
+
+
+      local ratio = st.ga0 / st.ga
+      if not (ratio >= 0.5 and ratio <= 2) then
+         st.ga0, st.gb0, st.t0 = a, b, -math.huge
+         return "glide" .. st.ygen, nil, h
+      end
    end
    local key = "glide" .. st.ygen
    if (now - st.t0) * 1000 >= GLIDE_MS then return key, nil, h end

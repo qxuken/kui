@@ -160,6 +160,10 @@ local function lane_row(c: Ctx, lane: integer, st: State, v0: number, v1: number
           role = picks and "listItem" or nil,
           focusable = picks or nil,
           on_click = picks and act(c, "waterfall.pick", { row = r }) or nil,
+          -- A drag that starts on a bar pans as one on the lanes does: the
+          -- bar took the press, and the window would not move from it.
+          -- A press that does not travel past the slop is still the click.
+          on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
         }
         -- Each group's fill reads at 3:1 on the panel and its label on it
         -- at 4.5:1 (`$kitGroupFg<n>`, skin.tl). The selected bar is the
@@ -339,6 +343,16 @@ function M.event(m: P, kit: string): any
   if not st then return nil end
   local v0, v1: number, number
   if kit == "waterfall.pick" then
+    -- A double click selects the bar's span as the range, a single one
+    -- the span.
+    local click = m.click as P
+    if click and ((click.clicks or 1) as integer) >= 2 then
+      local bars = st.index.bars
+      local s0 = num(bars:get(m.row as integer, "start"))
+      local len = num(bars:get(m.row as integer, "len"))
+      st.r0, st.r1 = s0, s0 + len
+      return emit("on_range", { start = s0, length = len })
+    end
     return emit("on_select", { row = m.row })
   elseif kit == "waterfall.pan" then
     local d = m.drag as P

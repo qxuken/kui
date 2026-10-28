@@ -112,3 +112,65 @@ fn nothing_animating_keeps_nothing() {
     frame(&mut core);
     assert!(!core.reframe(view(), 1.0));
 }
+
+#[test]
+fn a_frame_built_again_reports_no_layout_or_range_that_did_not_move() {
+    // A frame built again lays out under the number of the build it
+    // repeats, and every `on_layout` and `on_range` node was reported
+    // again as new on it (backlog F259): a Kit chart hearing its own
+    // layout drew fresh on every view after a glide frame.
+    use kui_core::{EventKind, Value};
+    let build = |core: &mut Core, now: f64| {
+        core.set_time(now);
+        let mut ui = core.frame(view(), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.leaf_keyed(
+            "pulse",
+            NodeSpec::column()
+                .size(40.0, 40.0)
+                .bg(Color::hex(0x000000ff))
+                .transition_with(Transition::ms(1000.0))
+                .keyframes(vec![Keyframe::default().at(0.5).bg(Color::hex(0xffffffff))]),
+        );
+        ui.with_keyed(
+            "rows",
+            NodeSpec::column()
+                .size(100.0, 40.0)
+                .on_range(Value::str("rows"))
+                .on_layout("laid"),
+            |ui| {
+                for i in 0..2u64 {
+                    ui.open_indexed(i, NodeSpec::row().size(100.0, 20.0));
+                    ui.close();
+                }
+            },
+        );
+        ui.finish();
+    };
+    let heard = |core: &mut Core| -> usize {
+        core.take_pending_events()
+            .iter()
+            .filter(|e| e.event == EventKind::Layout || e.event == EventKind::Range)
+            .count()
+    };
+    let mut core = Core::new();
+    build(&mut core, 0.0);
+    assert_eq!(heard(&mut core), 2, "the first frame reports both");
+    assert!(!core.reframe(view(), 1.0));
+    build(&mut core, 0.05);
+    assert_eq!(
+        heard(&mut core),
+        0,
+        "a build that moved nothing reports nothing"
+    );
+    core.set_time(0.5);
+    assert!(
+        core.reframe(view(), 1.0),
+        "only the cycle asks: built again"
+    );
+    assert_eq!(heard(&mut core), 0, "nor does a frame built again");
+    core.set_time(0.6);
+    assert!(core.reframe(view(), 1.0));
+    build(&mut core, 0.7);
+    assert_eq!(heard(&mut core), 0, "nor the build after it");
+}

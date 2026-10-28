@@ -597,6 +597,14 @@ local function glide(c: Ctx, lo: number, hi: number, h: number): string, {string
     local e = 1 - (1 - k) ^ 3
     st.ga0, st.gb0 = st.ga0 + (st.ga - st.ga0) * e, st.gb0 + (st.gb - st.gb0) * e
     st.ga, st.gb, st.t0, st.ygen = a, b, now, st.ygen + 1
+    -- A range that grew or shrank past twice over jumps: the stroke is
+    -- drawn through the stretch, and a line glided from a range a
+    -- hundredth of the new one was a smeared band for the whole glide.
+    local ratio = st.ga0 / st.ga
+    if not (ratio >= 0.5 and ratio <= 2) then
+      st.ga0, st.gb0, st.t0 = a, b, -math.huge
+      return "glide" .. st.ygen, nil, h
+    end
   end
   local key = "glide" .. st.ygen
   if (now - st.t0) * 1000 >= GLIDE_MS then return key, nil, h end

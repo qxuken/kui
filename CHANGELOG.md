@@ -160,6 +160,19 @@ and its tables sort and filter them.
   past a hundredth of a millisecond its axis reads in as many places as
   its step needs, where every tick read alike.
 
+- **Layout and range events on a frame built again** (backlog F259): a
+  frame `Core::reframe` builds (a glide's, a pulse's) lays out under the
+  number of the build it repeats, and reported every `onLayout` and
+  `onRange` node again as new, so each Kit component hearing its own
+  layout or rows drew fresh on every view after one — kui-perf's frames
+  table on every step of a zoom. They report only what moved.
+
+- **Punctuation on a list's row bubbles** (backlog F259): a list's or a
+  table's type-ahead starts at a letter or a digit and goes on through
+  anything, so a `?`, `/`, `[` or `{` pressed on a focused row reaches the
+  `onKey` sink above it — kui-perf's keys card opened from its tables —
+  where every character was the list's search.
+
 - **Kit's line chart zoomed in** (backlog F258): a window between two
   samples draws its line whole, cut a plot's width either side, where a
   line from millions of pixels away was drawn broken; a step far under
@@ -167,7 +180,10 @@ and its tables sort and filter them.
   `36k ms`), and the readout's x in enough places; a plot under 96 px
   steps its y range fewer than four times, so its labels no longer
   overlap; and the lines run a pixel in from the plot's top and foot, so
-  a value on the range's edge is not cut in half.
+  a value on the range's edge is not cut in half. A y range that grows or
+  shrinks past twice over jumps rather than glides: the stroke is drawn
+  through the stretch, and a gauge whose range went from one to 250 was a
+  smeared band for the glide.
 
 - **kui-perf: the keys' card, the dock, the range** (backlog F258): `?`,
   Help ▸ Keys and gestures or the toolbar's ⓘ shows every key and
@@ -183,7 +199,12 @@ and its tables sort and filter them.
   the wheel and a pinch zoom over every graph lane and over the overview,
   a sideways swipe panning; every table's header sorts it — a number's
   greatest first, again the other way — in Rust (`Channel:sort`, `take`),
-  a row picked in a sorted table the frame it shows. Its headless test keeps its
+  a row picked in a sorted table the frame it shows; a drag over a span
+  pans (the span took the press), a double click on a span, a frame's row
+  or a burn's makes its time the range; a file dragged over the window
+  opens when it is let go, not as it comes in; the tables are read once
+  the window has held still 150 ms, where a long recording's whole-window
+  read (300 ms over 72,000 frames) ran every 150 ms of a pan. Its headless test keeps its
   preferences in a folder of its own, where it removed the app's.
 
 - **`kui.trace`'s filter hides span names whole**: `hide_names = {

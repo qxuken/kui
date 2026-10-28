@@ -6682,8 +6682,9 @@ impl Histogram {
 
 /// A trace waterfall: spans as bars on a time axis, nested by depth, coloured
 /// by group. The wheel and a pinch zoom about the pointer, a sideways swipe or
-/// Shift and the wheel pans, a drag on the lanes pans, and a drag on the time
-/// axis selects a range to zoom to.
+/// Shift and the wheel pans, a drag anywhere in it pans — over a span too,
+/// which a click picks and a double click makes the range — and a drag on the
+/// time axis selects a range to zoom to.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Waterfall {
     /// The spans: fields `name`, `start`, `len` (ms), `depth`, `group`, and
@@ -6715,8 +6716,8 @@ pub struct Waterfall {
     /// span was clicked.
     pub on_select: Option<Value>,
     /// The message `range` arrives as, with `range: WaterfallRange` in it. A
-    /// drag on the time axis selected a range, or a click there or the range's
-    /// × cleared it.
+    /// drag on the time axis selected a range, a double click on a span made
+    /// its span the range, or a click on the axis or the range's × cleared it.
     pub on_range: Option<Value>,
     /// The message `zoom` arrives as, with `zoom: WaterfallZoom` in it. The
     /// wheel, a pinch, a drag, a tool or zooming to the range asks for another
@@ -6815,7 +6816,8 @@ impl Waterfall {
     }
 
     /// The message `range` arrives as. A drag on the time axis selected a
-    /// range, or a click there or the range's × cleared it.
+    /// range, a double click on a span made its span the range, or a click on
+    /// the axis or the range's × cleared it.
     pub fn on_range(mut self, msg: impl Into<Value>) -> Self {
         self.on_range = Some(msg.into());
         self
