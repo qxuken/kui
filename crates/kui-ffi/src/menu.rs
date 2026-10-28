@@ -342,6 +342,33 @@ pub extern "C" fn kui_set_clipboard_image(
     })
 }
 
+/// Puts files on the system clipboard, as a file manager's Copy does —
+/// `count` paths read from `paths`, copied — as a
+/// `KUI_MENU_ACTION_SET_CLIPBOARD_FILES` the host drains (the paths in its
+/// `text`, a line each) and writes as the platform's file list:
+/// `Core::set_clipboard_files` (backlog F247). Under `kui_run` the runner
+/// writes it. False, and nothing queued, for no paths; an empty one is
+/// dropped. `paths`, when not NULL, points at `count` `KuiStr`s.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_clipboard_files(
+    ptr: *mut KuiCtx,
+    paths: *const KuiStr,
+    count: usize,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        if paths.is_null() || count == 0 {
+            return false;
+        }
+        // SAFETY: the caller's promise, `count` strings.
+        let paths = unsafe { std::slice::from_raw_parts(paths, count) };
+        c.core()
+            .set_clipboard_files(paths.iter().map(|p| kstr(*p).into_owned()))
+    })
+}
+
 /// Asks for what is on the clipboard, as a `KUI_MENU_ACTION_PASTE` the
 /// host drains and answers with [`kui_input_paste`] (the text and the
 /// pasteboard's `KUI_PASTE_*` markers) or [`kui_input_commit`]: a focused
@@ -433,6 +460,11 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
             }
             kui_core::MenuAction::ShowInFolder { path } => {
                 (KUI_MENU_ACTION_SHOW_IN_FOLDER, path, None)
+            }
+            // A line each: no struct moved, and a path holds no line break
+            // any app names a file with.
+            kui_core::MenuAction::SetClipboardFiles { paths } => {
+                (KUI_MENU_ACTION_SET_CLIPBOARD_FILES, paths.join("\n"), None)
             }
         };
         c.menu_text = text;

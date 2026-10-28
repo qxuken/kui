@@ -1496,6 +1496,13 @@ static int surface(void) {
         check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE
                   && act.width == 2 && act.height == 1 && act.rgba && act.rgba[6] == 255,
               "the picture comes out as its own kind");
+        /* Files, their paths a line each (backlog F247). */
+        KuiStr files[] = {KUI_STR("C:\\notes\\a.pdf"), KUI_STR("/tmp/b c.png")};
+        check(!kui_set_clipboard_files(ui, files, 0), "no files, nothing queued");
+        check(kui_set_clipboard_files(ui, files, 2), "kui_set_clipboard_files takes two");
+        check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_SET_CLIPBOARD_FILES
+                  && has(act.text, "a.pdf\n/tmp/b c.png"),
+              "the files come out as their own kind, a line each");
         kui_request_paste(ui);
         check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_PASTE, "asked again");
         kui_input_paste(ui, KUI_STR("s3cret"), KUI_PASTE_CONCEALED | KUI_PASTE_TRANSIENT);

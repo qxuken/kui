@@ -1399,6 +1399,26 @@ fn set_clipboard_image(
     }
 }
 
+/// Puts files on the system clipboard (`Core::set_clipboard_files`), as a
+/// file manager's Copy does: arboard writes them as `CF_HDROP` on Windows
+/// (which Explorer pastes as a copy), file URLs on the macOS pasteboard,
+/// and a `text/uri-list` offer on Linux, X11 and Wayland alike — what
+/// Dolphin, Thunar and a mail client take. Each path made absolute first,
+/// its separators the platform's (backlog F247).
+fn set_clipboard_files(clipboard: Option<&mut arboard::Clipboard>, paths: &[String]) {
+    let Some(cb) = clipboard else { return };
+    let paths: Vec<std::path::PathBuf> = paths
+        .iter()
+        .map(|p| {
+            let p = std::path::Path::new(p);
+            std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf())
+        })
+        .collect();
+    if let Err(e) = cb.set().file_list(&paths) {
+        eprintln!("kui: putting {} file(s) on the clipboard: {e}", paths.len());
+    }
+}
+
 fn input_completes(ev: &InputEvent) -> bool {
     match ev {
         InputEvent::MouseDown { .. }
@@ -2390,6 +2410,10 @@ impl DynShell<'_> {
         // on every path here: a process that ends from `exiting` never
         // drops the runner (backlog F85).
         self.secure_input.set(false);
+        // And off the screen before the app's teardown: a Quit from the OS
+        // and a pumped runner's retirement come here without `exit_main`
+        // (backlog F246).
+        self.hide_windows();
         if !self.torn_down {
             self.torn_down = true;
             self.app.teardown();
@@ -2411,8 +2435,23 @@ impl DynShell<'_> {
     /// the flag (see `PARKED_LOOP`).
     fn exit_main(&mut self, event_loop: &ActiveEventLoop) {
         self.exit_requested = true;
+        self.hide_windows();
         if !self.pumped {
             event_loop.exit();
+        }
+    }
+
+    /// Takes every window off the screen the moment the close is
+    /// accepted, before the app's `teardown` runs and the surfaces go:
+    /// left up, a window whose swapchain was dropped showed the OS's
+    /// empty surface — white on Windows — for as long as the teardown
+    /// took, which in an app that saves its documents on the way out was
+    /// long enough to see (backlog F246, from Carnet). Hidden, not
+    /// closed: the windows and their cores live until the runner ends, as
+    /// before. Once, and harmless again.
+    fn hide_windows(&mut self) {
+        for p in &self.panes {
+            p.window.set_visible(false);
         }
     }
 

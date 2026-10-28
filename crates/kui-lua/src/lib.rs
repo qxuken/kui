@@ -2036,6 +2036,15 @@ fn env_table(
             Ok(())
         })?,
     )?;
+    // Files, a list of paths, which the host writes as the platform's file
+    // list so they paste into a file manager or a mail as the files: "Copy
+    // file" (backlog F247). False, and nothing queued, for none.
+    t.set(
+        "set_clipboard_files",
+        lua.create_function(move |_, paths: Vec<String>| {
+            Ok(ui.borrow_mut()?.set_clipboard_files(paths))
+        })?,
+    )?;
     t.set(
         "request_paste",
         lua.create_function(move |_, ()| {
@@ -10316,6 +10325,36 @@ mod tests {
             .filter(|q| q.kind == kui_core::QuadKind::Solid)
             .count();
         assert_eq!(solids, 2, "a background and an underline");
+    }
+
+    /// `env.set_clipboard_files` queues the paths for the host (backlog
+    /// F247), and an empty list queues nothing.
+    #[test]
+    fn scripts_put_files_on_the_clipboard() {
+        let mut ext = LuaExtension::from_source(
+            "files",
+            r#"
+                function view(env)
+                  copied = env.set_clipboard_files({ "C:/notes/a.pdf", "/tmp/b c.png" })
+                  none = env.set_clipboard_files({})
+                  return row {}
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Instance::root(), &mut ui).unwrap();
+        ui.finish();
+        assert!(ext.lua.globals().get::<bool>("copied").unwrap());
+        assert!(!ext.lua.globals().get::<bool>("none").unwrap());
+        assert_eq!(
+            core.take_menu_actions(),
+            [kui_core::MenuAction::SetClipboardFiles {
+                paths: vec!["C:/notes/a.pdf".into(), "/tmp/b c.png".into()],
+            }]
+        );
     }
 
     /// A span's `bg_pad` reaches the core (backlog F227): its background

@@ -1625,6 +1625,8 @@ global type kui = record
     set_clipboard: function(text: string, html?: string)
     -- Posts a secret for the clipboard, which the host writes marked concealed and transient the way a password manager does, so no clipboard manager shows or keeps it (backlog F84).
     set_clipboard_secret: function(text: string)
+    -- Posts files for the clipboard, which the host writes as the platform's file list — CF_HDROP, file URLs, text/uri-list — so they paste into a file manager or a mail as the files: "Copy file" (backlog F247).
+    set_clipboard_files: function(paths: {string}): boolean
     -- A key sink's own Ctrl-V: the clipboard comes back as a commit, marked `concealed` / `transient` when the pasteboard said so (backlog F84). One ask at a time — a second while one is unanswered is dropped.
     request_paste: function()
     -- Whether a paste asked for is still unanswered (backlog AR34).

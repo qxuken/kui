@@ -122,6 +122,7 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("set_rules_appearance", "appearance?: string", ""),
     ("set_clipboard", "text: string, html?: string", ""),
     ("set_clipboard_secret", "text: string", ""),
+    ("set_clipboard_files", "paths: {string}", "boolean"),
     ("request_paste", "", ""),
     ("awaiting_paste", "", "boolean"),
     ("request_files", "opts?: any", "boolean"),

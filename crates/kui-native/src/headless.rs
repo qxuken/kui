@@ -645,6 +645,9 @@ impl DynHeadless<'_> {
             match action {
                 MenuAction::SetClipboard { text, .. } => self.clipboard = text,
                 MenuAction::SetClipboardSecret { text } => self.clipboard = text,
+                // The run's clipboard is text: files are their paths, a
+                // line each, as pasting files into a text field gives them.
+                MenuAction::SetClipboardFiles { paths } => self.clipboard = paths.join("\n"),
                 MenuAction::SetClipboardImage { .. }
                 | MenuAction::LookUp { .. }
                 | MenuAction::ShowInFolder { .. } => {}

@@ -646,6 +646,9 @@ impl DynShell<'_> {
             && !self.panes[i].activates
             && self.panes[i].os_focused)
             .then_some(self.panes[i].owner);
+        // Off the screen first, so the frames between here and the window
+        // being destroyed never show its empty surface (backlog F246).
+        self.panes[i].window.set_visible(false);
         self.panes[i].core.window_closed(id);
         let events = self.panes[i].core.take_pending_events();
         let cmds = self.panes[i].core.take_window_commands();

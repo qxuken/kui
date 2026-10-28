@@ -493,6 +493,7 @@ Menu_Action_Kind :: enum u32 {
 	Set_Clipboard_Secret = 3, // KUI_MENU_ACTION_SET_CLIPBOARD_SECRET
 	Set_Clipboard_Image = 4, // KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE
 	Show_In_Folder = 5, // KUI_MENU_ACTION_SHOW_IN_FOLDER
+	Set_Clipboard_Files = 6, // KUI_MENU_ACTION_SET_CLIPBOARD_FILES
 }
 
 Copy_Answer :: enum u32 {
@@ -3824,6 +3825,14 @@ set_clipboard_secret :: proc(ui: ^Ui, text: string) {
 set_clipboard_image :: proc(ui: ^Ui, rgba: []u8, width: u32, height: u32) -> bool {
 	assert(rgba == nil || len(rgba) >= int(width) * int(height) * 4, "set_clipboard_image: rgba holds fewer bytes than int(width) * int(height) * 4")
 	return c.set_clipboard_image(ui, raw_data(rgba), width, height)
+}
+
+// Posts files for the clipboard, which the host writes as the platform's file
+// list — CF_HDROP, file URLs, text/uri-list — so they paste into a file
+// manager or a mail as the files: "Copy file" (backlog F247).
+// Rust: Ui::set_clipboard_files.
+set_clipboard_files :: proc(ui: ^Ui, paths: []string) -> bool {
+	return c.set_clipboard_files(ui, ([^]string)(raw_data(paths)), uint(len(paths)))
 }
 
 // A key sink's own Ctrl-V: the clipboard comes back as a commit, marked

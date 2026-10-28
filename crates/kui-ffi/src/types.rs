@@ -2804,6 +2804,9 @@ pub const KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE: u32 = 4;
 /// `KUI_MENU_ACTION_SHOW_IN_FOLDER`: the file at `text` to show in the
 /// system's file manager — the devtools' "open folder" (backlog F203).
 pub const KUI_MENU_ACTION_SHOW_IN_FOLDER: u32 = 5;
+/// `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`: files for the clipboard, their
+/// paths in `text` a line each (`kui_set_clipboard_files`, backlog F247).
+pub const KUI_MENU_ACTION_SET_CLIPBOARD_FILES: u32 = 6;
 
 /// `KUI_PASTE_*`: the pasteboard's markers on a paste's answer
 /// (`kui_input_paste`).
