@@ -1526,10 +1526,13 @@ export function decodeClips(buffer) {
       // 0043): angle in radians, scale, tx, ty — `[0, 1, 0, 0]`, the
       // identity, on a frame that turns nothing.
       transform: [f[8], f[9], f[10], f[11]],
+      // The stretch before the turn (`scaleX` / `scaleY`, backlog C149):
+      // sx, sy, shear — `[1, 1, 0]` on an entry that stretches nothing.
+      stretch: [f[12], f[13], f[14]],
       // A second clip in the quad's own space, before the turn, and its
       // radii: from clipping nodes inside a turned subtree.
-      inner: [f[12], f[13], f[14], f[15]],
-      innerRadii: [f[16], f[17], f[18], f[19]],
+      inner: [f[15], f[16], f[17], f[18]],
+      innerRadii: [f[19], f[20], f[21], f[22]],
     });
   }
   return clips;

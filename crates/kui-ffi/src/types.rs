@@ -386,6 +386,10 @@ pub const KUI_KF_OPACITY: u32 = 1 << 5;
 pub const KUI_KF_ROTATE: u32 = 1 << 6;
 pub const KUI_KF_SCALE: u32 = 1 << 7;
 pub const KUI_KF_OFFSET: u32 = 1 << 8;
+/// `scale_x` holds (`scaleX`, backlog C149). ABI 41.
+pub const KUI_KF_SCALE_X: u32 = 1 << 9;
+/// `scale_y` holds (`scaleY`, backlog C149). ABI 41.
+pub const KUI_KF_SCALE_Y: u32 = 1 << 10;
 
 /// One keyframe stop (`KuiSpec.keyframes`): a zeroed stop sets nothing.
 /// `set` says which fields count, so 0 stays a legal value for each.
@@ -410,6 +414,10 @@ pub struct KuiKeyframe {
     /// together; backlog F132). ABI 27.
     pub dx: f32,
     pub dy: f32,
+    /// A stretch across (KUI_KF_SCALE_X) and down (KUI_KF_SCALE_Y) about
+    /// the node's pivot (backlog C149). ABI 41.
+    pub scale_x: f32,
+    pub scale_y: f32,
 }
 
 /// `KuiGradient.kind`: along a line, or out from a centre.
@@ -463,6 +471,10 @@ pub const KUI_ENTER_SCALE: u32 = 1 << 7;
 /// On an exit only: the node keeps its room until its exit ends (backlog
 /// C110). A flag, with no field. ABI 39.
 pub const KUI_ENTER_KEEP_ROOM: u32 = 1 << 8;
+/// `scale_x` holds (`scaleX`, backlog C149). ABI 41.
+pub const KUI_ENTER_SCALE_X: u32 = 1 << 9;
+/// `scale_y` holds (`scaleY`, backlog C149). ABI 41.
+pub const KUI_ENTER_SCALE_Y: u32 = 1 << 10;
 
 /// Where a node starts the first frame it is seen (`KuiSpec.enter`): the
 /// slots `set` names ease in from these values over `transition_ms`
@@ -486,6 +498,11 @@ pub struct KuiEnter {
     /// A uniform scale (KUI_ENTER_SCALE); 0 scales the subtree in from
     /// nothing. ABI 27.
     pub scale: f32,
+    /// A stretch across (KUI_ENTER_SCALE_X) and down (KUI_ENTER_SCALE_Y)
+    /// about the node's pivot: a chart's lines entering where the old
+    /// range drew them (backlog C149). ABI 41.
+    pub scale_x: f32,
+    pub scale_y: f32,
 }
 
 /// Everything a box node is built from: size, layout, paint, behaviour
@@ -990,6 +1007,11 @@ pub struct KuiSpec {
     /// where a child of its parent would be. ABI 39, appended into the
     /// tail padding.
     pub float_escape: u32,
+    /// The stretch across and down about the pivot, multiplying `scale`
+    /// (`scaleX` / `scaleY`, backlog C149); 0 is 1, as `scale`'s is. ABI
+    /// 41, appended.
+    pub scale_x: f32,
+    pub scale_y: f32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.
@@ -2289,6 +2311,12 @@ pub struct KuiClip {
     /// quad's own rect. `{0, 1, 0, 0}`, the identity, on every entry of a
     /// frame that turns nothing. ABI 27.
     pub transform: [f32; 4],
+    /// The stretch before the turn (`scaleX` / `scaleY`, backlog C149):
+    /// sx, sy, shear — the point `p` becomes `(sx·x + shear·y, sy·y)`
+    /// before `transform` applies. A shear is never declared; it is what a
+    /// turn inside a stretch composes to. `{1, 1, 0}` on every entry that
+    /// stretches nothing. ABI 41.
+    pub stretch: [f32; 3],
     /// A second clip in the quad's own space, before the turn: x, y, w,
     /// h, from clipping nodes inside a turned subtree. The clip that clips
     /// nothing (a rect past any pixel) when nothing inside a turn clips.

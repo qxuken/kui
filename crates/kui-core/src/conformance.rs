@@ -1312,14 +1312,14 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "transform",
-        doc: "A node turned about its pivot (ADR 0043): a rounded, clipping               card tilted an eighth of a turn about its top-left corner,               holding a child wider than itself, which the card cuts in its               own turned space, and a badge floating with it; beside it a               box scaled half again about its centre. Layout is the upright               one — the quads' rects are where the boxes were laid out — and               the clip entries carry the turn, the scale and the inner clip,               so the digest moves if any of the three does. A binding that               drops `rotate`, `scale` or `pivot` interns the identity entries.",
+        doc: "A node turned about its pivot (ADR 0043): a rounded, clipping               card tilted an eighth of a turn about its top-left corner,               holding a child wider than itself, which the card cuts in its               own turned space, and a badge floating with it; beside it a               box scaled half again about its centre, and a box stretched half again across and halved down about its foot (`scaleX` / `scaleY`), holding a box turned a sixteenth, whose turn inside the stretch composes to a sheared one. Layout is the upright               one — the quads' rects are where the boxes were laid out — and               the clip entries carry the turn, the scale, the stretch and the               inner clip, so the digest moves if any of them does. A binding               that drops `rotate`, `scale`, `scaleX`, `scaleY` or `pivot`               interns the identity entries.",
         custom: &["dir", "overflow", "float"],
         elements: &["box"],
         build: build_transform,
         env: NATIVE_CHROME,
         steps: &[],
         expect: Expect {
-            solid: 4,
+            solid: 6,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -7054,13 +7054,17 @@ pub fn quad_digest(quads: &[Quad], clips: &[Clip]) -> u64 {
             clip.radius[1],
             clip.radius[2],
             clip.radius[3],
-            // The entry's space (ADR 0043): its transform and inner clip,
-            // in the struct's word order — twenty words a clip, where it
-            // was eight — so a turn that moved is a report that moved.
+            // The entry's space (ADR 0043): its transform, its stretch
+            // (C149) and inner clip, in the struct's word order —
+            // twenty-three words a clip, where it was eight — so a turn
+            // or a stretch that moved is a report that moved.
             clip.transform.angle,
             clip.transform.scale,
             clip.transform.tx,
             clip.transform.ty,
+            clip.transform.sx,
+            clip.transform.sy,
+            clip.transform.shear,
             clip.inner.x,
             clip.inner.y,
             clip.inner.w,
@@ -8044,6 +8048,26 @@ fn build_transform(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .size(40.0, 40.0)
                 .bg(Color::hex(0x73d98cff))
                 .scale(1.5),
+        );
+        // A stretch about the foot (C149), holding a turned box: the turn
+        // inside the stretch composes to a sheared stretch.
+        ui.with_keyed(
+            "squat",
+            NodeSpec::column()
+                .size(40.0, 40.0)
+                .bg(Color::hex(0x8c73d9ff))
+                .scale_x(1.5)
+                .scale_y(0.5)
+                .pivot(0.5, 1.0),
+            |ui| {
+                ui.leaf_keyed(
+                    "tilt",
+                    NodeSpec::column()
+                        .size(20.0, 20.0)
+                        .bg(Color::hex(0xd9d973ff))
+                        .rotate(0.0625),
+                );
+            },
         );
     });
 }

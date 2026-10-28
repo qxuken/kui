@@ -272,7 +272,8 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         .to_string(),
         // ADR 0043: a rounded, clipping card tilted an eighth of a turn
         // about its top-left corner, holding a child wider than itself and
-        // a badge floating with it; beside it a box scaled half again.
+        // a badge floating with it; beside it a box scaled half again, and
+        // a box stretched about its foot holding a turned one (C149).
         "transform" => r#"
             return row {
               column { key = "card", width = 60, height = 40, radius = 8, clip = true,
@@ -281,6 +282,10 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                        column { key = "badge", width = 12, height = 12, bg = 0xf6d55cff,
                                 float = { anchor = "parent", dx = 54, dy = -6 } } },
               column { key = "big", width = 40, height = 40, bg = 0x73d98cff, scale = 1.5 },
+              column { key = "squat", width = 40, height = 40, bg = 0x8c73d9ff,
+                       scale_x = 1.5, scale_y = 0.5, pivot_x = 0.5, pivot_y = 1,
+                       column { key = "tilt", width = 20, height = 20, bg = 0xd9d973ff,
+                                rotate = 0.0625 } },
             }
         "#
         .to_string(),

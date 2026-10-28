@@ -482,8 +482,20 @@ extern "C" {
  * _extent and _window, and KUI_CHANNEL_RUN (ADR 0075); and
  * kui_open_recording with KUI_MENU_ACTION_OPEN_RECORDING, a recording
  * opened in kui-perf (backlog F253).
+ *
+ * ABI 41 is a stretch (scaleX / scaleY, backlog C149; the 2026-10-28
+ * amendment of docs/adr/0043-a-node-turns-about-its-pivot.md). KuiClip
+ * inserts stretch[3] - sx, sy, shear - after transform: twenty-three
+ * words where it was twenty, a [lib] array element, so a host that
+ * strides KuiDrawData.clips reads the new stride; a renderer that ignores
+ * the new words draws a stretched subtree unstretched. KuiKeyframe and
+ * KuiEnter append scale_x and scale_y with KUI_KF_SCALE_X / _Y and
+ * KUI_ENTER_SCALE_X / _Y - KuiKeyframe an array element, KuiEnter
+ * embedded twice in KuiSpec, which moves every field after enter - and
+ * KuiSpec appends scale_x and scale_y (912 bytes on 64-bit, from 888).
+ * Recompile; zeroed, nothing stretches.
  */
-#define KUI_ABI_VERSION 40u
+#define KUI_ABI_VERSION 41u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -849,6 +861,8 @@ enum {
     KUI_KF_ROTATE = 1u << 6, /* ABI 27 */
     KUI_KF_SCALE = 1u << 7,  /* ABI 27 */
     KUI_KF_OFFSET = 1u << 8, /* dx and dy, together; ABI 27 */
+    KUI_KF_SCALE_X = 1u << 9, /* ABI 41 */
+    KUI_KF_SCALE_Y = 1u << 10, /* ABI 41 */
 };
 
 /* One CSS-style keyframe stop. A zeroed stop sets nothing: `set` says which
@@ -870,6 +884,9 @@ typedef struct KuiKeyframe {
      * together): the node and its subtree are drawn and hit that far away
      * at this stop - a bob, a drift, a shake. ABI 27 (backlog F132). */
     float dx, dy;
+    /* A stretch across (KUI_KF_SCALE_X) and down (KUI_KF_SCALE_Y) about
+     * the pivot, multiplying scale. ABI 41 (backlog C149). */
+    float scale_x, scale_y;
 } KuiKeyframe;
 
 /* A box's gradient (KuiSpec.gradient,
@@ -917,6 +934,8 @@ enum {
      * layout until its exit ends, so what follows moves in after it has
      * gone (backlog C110). ABI 39. */
     KUI_ENTER_KEEP_ROOM = 1u << 8,
+    KUI_ENTER_SCALE_X = 1u << 9, /* ABI 41 */
+    KUI_ENTER_SCALE_Y = 1u << 10, /* ABI 41 */
 };
 
 /* Where a node starts the first frame it is seen (KuiSpec.enter): the slots
@@ -935,6 +954,10 @@ typedef struct KuiEnter {
     float rotate;  /* turns clockwise (KUI_ENTER_ROTATE), ADR 0043; ABI 27 */
     float scale;   /* a uniform scale (KUI_ENTER_SCALE): 0 grows the
                       subtree in from nothing; ABI 27 */
+    /* A stretch across (KUI_ENTER_SCALE_X) and down (KUI_ENTER_SCALE_Y)
+     * about the pivot: a chart's lines entering where the old range drew
+     * them, settling to 1. ABI 41 (backlog C149). */
+    float scale_x, scale_y;
 } KuiEnter;
 
 /* [in] Zero-initialized KuiSpec is a fit-sized transparent column. Colors
@@ -1589,6 +1612,12 @@ typedef struct KuiSpec {
      * fields. ABI 39, appended into the tail padding (888 bytes on
      * 64-bit). */
     uint32_t float_escape;
+    /* A stretch across and down along the node's own axes, before its
+     * turn, about its pivot, multiplying scale (scaleX / scaleY, backlog
+     * C149): paint-only as scale is, eased by transition_ms. A glyph or a
+     * stroke inside is stretched with it. 0 is 1, as scale's is. ABI 41,
+     * appended (912 bytes on 64-bit). */
+    float scale_x, scale_y;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
@@ -2432,6 +2461,13 @@ typedef struct KuiClip {
      * shader in crates/kui-wgpu/src/shader.wgsl is the reference. ABI
      * 27. */
     float transform[4];
+    /* The stretch before the turn (scaleX / scaleY, backlog C149): sx, sy,
+     * shear - a pixel of the quad's own rect at p is first taken to
+     * (sx * p.x + shear * p.y, sy * p.y), then through transform. {1, 1,
+     * 0} on every entry that stretches nothing, so a renderer that ignores
+     * it draws a stretched subtree unstretched. A shear is never declared:
+     * it is what a turn inside a stretch composes to. ABI 41. */
+    float stretch[3];
     /* A second clip in the quad's own space, before the turn: x, y, w, h
      * (physical px), from clipping nodes inside a turned subtree - test
      * it against the pixel's position before the turn. A rect past any

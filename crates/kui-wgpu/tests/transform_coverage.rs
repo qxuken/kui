@@ -180,3 +180,59 @@ fn a_square_clip_inside_a_turn_ramps_its_edge() {
     none.inner = kui_core::NO_CLIP;
     assert_eq!(inside_inner(&none, 37.0, -512.0), 1.0, "no inner clip");
 }
+
+/// A stretch (`scaleX` / `scaleY`, backlog C149), and a turn inside one,
+/// whose composition carries a shear: `vs_main` puts every corner where
+/// the core's own transform does.
+#[test]
+fn a_stretched_box_and_a_turn_inside_it_land_where_the_core_says() {
+    for scale in [1.0, 2.0] {
+        let qs = solids(
+            |ui| {
+                ui.with_keyed(
+                    "squat",
+                    NodeSpec::column()
+                        .size(100.0, 100.0)
+                        .bg(Color::WHITE)
+                        .scale_x(1.5)
+                        .scale_y(0.5)
+                        .pivot(0.0, 1.0),
+                    |ui| {
+                        ui.leaf_keyed(
+                            "tilt",
+                            NodeSpec::column()
+                                .size(40.0, 20.0)
+                                .bg(Color::WHITE)
+                                .rotate(0.125),
+                        );
+                    },
+                );
+            },
+            scale,
+        );
+        assert_eq!(qs.len(), 2);
+        assert!(qs[1].1.transform.shear.abs() > 1e-3, "{:?}", qs[1].1);
+        for (q, clip) in &qs {
+            for (px, py) in [
+                (q.rect.x, q.rect.y),
+                (q.rect.x + q.rect.w, q.rect.y),
+                (q.rect.x, q.rect.y + q.rect.h),
+                (q.rect.x + q.rect.w, q.rect.y + q.rect.h),
+            ] {
+                let (x, y) = turned(clip, px, py);
+                let want = clip.transform.apply(kui_core::Vec2::new(px, py));
+                assert!(
+                    (x - want.x).abs() < 1e-2 && (y - want.y).abs() < 1e-2,
+                    "{x} {y} vs {want:?} at {scale}"
+                );
+            }
+        }
+        // The squat box's foot stays at 120 logical; its top comes down
+        // to halfway, 70.
+        let (q, clip) = qs[0];
+        let (_, top) = turned(&clip, q.rect.x, q.rect.y);
+        let (_, foot) = turned(&clip, q.rect.x, q.rect.y + q.rect.h);
+        assert!(near(top, 70.0 * scale), "{top} at {scale}");
+        assert!(near(foot, 120.0 * scale), "{foot} at {scale}");
+    }
+}

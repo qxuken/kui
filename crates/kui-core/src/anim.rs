@@ -558,6 +558,11 @@ pub struct AnimStore {
     /// turn: kept apart from `tweens` so the nodes that do not — almost
     /// all of them — carry nothing for it.
     turns: FxHashMap<Key, Option<Tween>>,
+    /// The stretch's tweens (`scaleX` / `scaleY`, lanes `[sx, sy, 0, 0]`,
+    /// ADR 0043's 2026-10-28 amendment), by node, for the nodes that
+    /// stretch: a second leg of the transform slot, kept apart again so a
+    /// node that only turns carries nothing for it.
+    stretches: FxHashMap<Key, Option<Tween>>,
     /// When a finite keyframe cycle began (backlog F133), by node, with
     /// the last frame that sampled it: a cycle of `iterations` plays from
     /// the first frame its node is declared with them, where an infinite
@@ -646,6 +651,12 @@ impl AnimStore {
             self.turns
                 .retain(|_, t| t.is_some_and(|t| t.last_used >= cutoff));
         }
+        if !self.stretches.is_empty()
+            && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
+        {
+            self.stretches
+                .retain(|_, t| t.is_some_and(|t| t.last_used >= cutoff));
+        }
         if !self.pos_frames.is_empty()
             && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
         {
@@ -681,6 +692,16 @@ impl AnimStore {
         }
         for (&key, tw) in &self.turns {
             if tw.as_ref().is_some_and(moving) {
+                each(key, Slot::Transform);
+            }
+        }
+        for (&key, tw) in &self.stretches {
+            if tw.as_ref().is_some_and(moving)
+                && !self
+                    .turns
+                    .get(&key)
+                    .is_some_and(|t| t.as_ref().is_some_and(moving))
+            {
                 each(key, Slot::Transform);
             }
         }
@@ -794,17 +815,12 @@ impl AnimStore {
 
     /// [`NodeAnim::drive`] for the transform slot, whose tweens are kept
     /// apart (`turns`): the same leg, the same rules.
-    /// Whether `key` has a turn tween the last frame drove: a node that
-    /// stops declaring its turn eases back to upright on it rather than
-    /// snapping. One branch while nothing anywhere turns.
+    /// Whether `key` has a turn or a stretch tween the last frame drove: a
+    /// node that stops declaring its turn eases back to upright on it
+    /// rather than snapping. One branch while nothing anywhere turns.
     #[inline]
     pub(crate) fn turn_live(&self, key: Key) -> bool {
-        !self.turns.is_empty()
-            && self
-                .turns
-                .get(&key)
-                .and_then(Option::as_ref)
-                .is_some_and(|t| t.last_used + 1 >= self.frame_no)
+        live_in(&self.turns, key, self.frame_no) || live_in(&self.stretches, key, self.frame_no)
     }
 
     /// Whether `key` was drawn transitioning last frame with no live turn:
@@ -812,12 +828,29 @@ impl AnimStore {
     /// declaring eases from the one it had, rather than appearing at once.
     /// Read before this frame drives the node's other slots.
     pub(crate) fn turn_starts_upright(&self, key: Key) -> bool {
+        !live_in(&self.turns, key, self.frame_no) && self.drawn_last_frame(key)
+    }
+
+    /// [`Self::turn_starts_upright`] for the stretch: drawn transitioning
+    /// last frame — its other slots, or its turn — with no live stretch, so
+    /// a stretch it declares now eases in from none.
+    pub(crate) fn stretch_starts_unstretched(&self, key: Key) -> bool {
         let prev = self.frame_no.wrapping_sub(1);
-        !self.turn_live(key)
-            && self
-                .tweens
-                .get(&key)
-                .is_some_and(|s| s.iter().flatten().any(|t| t.last_used == prev))
+        !self.stretch_live(key)
+            && (self.drawn_last_frame(key)
+                || self
+                    .turns
+                    .get(&key)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|t| t.last_used == prev))
+    }
+
+    /// Whether any of `key`'s slots was driven by the last frame.
+    fn drawn_last_frame(&self, key: Key) -> bool {
+        let prev = self.frame_no.wrapping_sub(1);
+        self.tweens
+            .get(&key)
+            .is_some_and(|s| s.iter().flatten().any(|t| t.last_used == prev))
     }
 
     /// Drops `key`'s turn tween once it has come to rest upright on a node
@@ -830,6 +863,46 @@ impl AnimStore {
         {
             self.turns.remove(&key);
         }
+    }
+
+    /// Whether `key` has a stretch tween the last frame drove: a node that
+    /// stops declaring its stretch eases back on it.
+    #[inline]
+    pub(crate) fn stretch_live(&self, key: Key) -> bool {
+        live_in(&self.stretches, key, self.frame_no)
+    }
+
+    /// [`Self::forget_settled_turn`] for the stretch's tween.
+    pub(crate) fn forget_settled_stretch(&mut self, key: Key, identity: [f32; 4]) {
+        if let Some(Some(t)) = self.stretches.get(&key)
+            && t.value == identity
+            && t.to == identity
+            && t.velocity == [0.0; 4]
+        {
+            self.stretches.remove(&key);
+        }
+    }
+
+    /// [`Self::drive_turn`] for the stretch (`[sx, sy, 0, 0]`), the
+    /// transform slot's second leg.
+    pub(crate) fn drive_stretch(
+        &mut self,
+        key: Key,
+        enter_from: Option<[f32; 4]>,
+        target: [f32; 4],
+        transition: Transition,
+    ) -> [f32; 4] {
+        let entry = self.stretches.entry(key).or_default();
+        drive_entry(
+            entry,
+            self.now,
+            self.frame_no,
+            &mut self.owes_transition,
+            enter_from,
+            target,
+            transition,
+            true,
+        )
     }
 
     pub(crate) fn drive_turn(
@@ -883,6 +956,17 @@ impl AnimStore {
             self.owes_cycle = self.cycled.iter().any(|&k| drawn(k));
         }
     }
+}
+
+/// Whether `map` holds a tween for `key` that the last frame (or this
+/// one) drove.
+#[inline]
+fn live_in(map: &FxHashMap<Key, Option<Tween>>, key: Key, frame_no: u64) -> bool {
+    !map.is_empty()
+        && map
+            .get(&key)
+            .and_then(Option::as_ref)
+            .is_some_and(|t| t.last_used + 1 >= frame_no)
 }
 
 /// `key` among the nodes whose cycle ran this frame, once: a node samples

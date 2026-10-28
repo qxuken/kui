@@ -37,11 +37,26 @@ was the first bare bump to break an app in five releases).
   host that drains `kui_take_menu_action` sees the new kind,
   `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`, and one that does not know it
   drops it.
+- The C ABI is 41 (backlog C149): `KuiClip` takes `stretch[3]` after
+  `transform`, 23 words where it was 20; `KuiKeyframe` and `KuiEnter`
+  append `scale_x` and `scale_y` (60 and 56 bytes), and `KuiSpec` appends
+  them too and grows with its two `KuiEnter`s (912 bytes on 64-bit).
+  Recompile; a renderer that strides `KuiDrawData.clips` by its own
+  `sizeof` reads the new stride, and one that ignores the new words draws
+  a stretched box unstretched. Node's `clips()` is 92 bytes an entry, and
+  `decodeClips` reads `stretch` before `inner`.
+- `kui_core::Transform` has three more fields, `sx`, `sy` and `shear`,
+  and `TransformSpec` one, `stretch`: a struct literal of either names
+  them or takes `..Transform::IDENTITY` / `..TransformSpec::NONE`.
+- Kit's line chart draws a new y range at once, its lines gliding to it
+  in a box and its gridlines and labels sliding there (backlog C149),
+  where it drew every frame of the glide at a range part of the way: a
+  test that read a label in the middle of a glide reads the new range's.
 
 Nothing else breaks: two crates split out of `kui-core` and re-exported
-where they were, four channel doors added in every binding (the C ABI at
-40), and the recording's reader, its made-up sessions and its Lua module
-added beside the format.
+where they were, four channel doors added in every binding, and the
+recording's reader, its made-up sessions and its Lua module added beside
+the format.
 
 The first step of [ADR 0075](docs/adr/0075-kui-perf-reads-a-recording-in-kit.md),
 `kui-perf`, the trace inspector: the recording's reader needs to hand a
@@ -51,6 +66,28 @@ entries with it — the inspector's Live view appends to a million spans,
 and its tables sort and filter them.
 
 ### Added
+
+- **A stretch: `scaleX` / `scaleY`** (backlog C149; the 2026-10-28
+  amendment of [ADR 0043](docs/adr/0043-a-node-turns-about-its-pivot.md)).
+  A node and its subtree stretched across and down by their own factors,
+  along the node's axes before its turn and about its pivot, multiplying
+  `scale` — paint-only as `scale` is: layout, the room taken and
+  `onLayout` are the unstretched node's, while what it draws, clips and
+  hits stretches and the access rect is the bounding box. It tweens with
+  `transition`, and an entrance, an exit or a keyframe stop may name it
+  (`enter: { scaleY: 2, dy: 40 }`). The clip entry carries a stretch —
+  `sx`, `sy` and a `shear`, which only a turn nested inside a stretch
+  composes to — so nesting stays exact. What is inside is drawn through
+  it: a stroke widens across, a glyph is drawn wide, resampled as a
+  turned one is, so keep text outside a box you stretch or settle it
+  back to 1. Rust `NodeSpec::scale_x` / `scale_y` and `Enter` /
+  `Keyframe` `scale_x` / `scale_y`; JSX `scaleX` / `scaleY` (and in
+  `enter`, `exit`, `keyframes`); Lua `scale_x` / `scale_y`; C
+  `KuiSpec.scale_x` / `scale_y` (0 is 1), `KuiEnter` / `KuiKeyframe`
+  with `KUI_ENTER_SCALE_X` / `_Y` and `KUI_KF_SCALE_X` / `_Y`; Odin the
+  generated `Spec`, `Enter` and `Keyframe` fields with `.Scale_X` /
+  `.Scale_Y`. The devtools' facts and `Core::nodes` show it beside
+  `rotate` and `scale`.
 
 - **kui-perf, the trace inspector** (ADR 0075, backlog F200, F254):
   `kui perf session.kuitrace` opens a recording — from the devtools' Perf
@@ -196,6 +233,18 @@ and its tables sort and filter them.
 
 ### Changed
 
+- **Kit's line chart glides its y range on the core's clock** (backlog
+  C149). When the rounded range changed it asked for a frame every frame
+  for 240 ms and ran the view in each. The lines are drawn for the new
+  range at once, in a box keyed by the glide that enters stretched and
+  moved to where the old range had them (`scale_y` and `dy`) and settles
+  out of a cubic; the gridlines and their labels are keyed by value and
+  slide to their places, fading in and out where the ranges differ. The
+  frames of the glide are built from the kept tree (`Core::reframe`):
+  two view runs for a change (the frame that sees it and the next, the
+  first to keep what building again needs), where it was fifteen at 60
+  Hz. Under reduced motion it jumps, as it did.
+
 - **Kit's waterfall costs its width, not its spans** (ADR 0075): it reads
   its bars from the channel's lanes, a window at a time, and the names
   and groups of the bars it draws — where it made a Lua table of every
@@ -220,6 +269,10 @@ and its tables sort and filter them.
 
 **What you can delete.**
 
+- A range eased by hand in a view — a frame asked for every frame and
+  everything drawn again at the range part of the way — kept only so a
+  chart's lines did not jump: draw them for the new range in a box that
+  enters at `{ scaleY, dy }` from where the old one had them.
 - Platform clipboard code of an app's own (`CF_HDROP`, `NSPasteboard`
   file URLs, `text/uri-list`), kept only to copy a file.
 - A hidden-window dance or a quick exit in an app's close path, kept

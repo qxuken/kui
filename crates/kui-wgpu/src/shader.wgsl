@@ -53,6 +53,10 @@ struct Instance {
     @location(10) inner: vec4<f32>,
     // its radii, as clip_radii are the outer clip's
     @location(11) inner_radii: vec4<f32>,
+    // the stretch before the turn (ADR 0043's 2026-10-28 amendment, scaleX /
+    // scaleY): sx, sy, shear, unused - p becomes (sx·x + shear·y, sy·y);
+    // the identity (1, 1, 0, 0) on a frame that stretches nothing
+    @location(12) stretch: vec4<f32>,
 };
 
 struct VsOut {
@@ -104,14 +108,19 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
         px = inst.pos + inst.size * 0.5
             + vec2<f32>(rel.x * cs.x - rel.y * cs.y, rel.x * cs.y + rel.y * cs.x);
     }
-    // Then the node's turn (ADR 0043): the clip entry's similarity,
-    // `R(angle) · scale · p + t`, over the corner the path's own turn
-    // left. Branchless — the identity is cos 0, sin 0, a scale of 1 and
-    // no move — so a frame that turns nothing pays six multiplies a
-    // vertex and no divergence. `pre` keeps the corner before the turn.
+    // Then the node's turn (ADR 0043): the clip entry's transform,
+    // `R(angle) · scale · U · p + t` with `U` its stretch, over the corner
+    // the path's own turn left. Branchless — the identity is no stretch,
+    // cos 0, sin 0, a scale of 1 and no move — so a frame that turns
+    // nothing pays nine multiplies a vertex and no divergence. `pre` keeps
+    // the corner before the turn.
     let pre = px;
     let xs = vec2<f32>(cos(inst.xform.x), sin(inst.xform.x));
-    let sp = pre * inst.xform.y;
+    let st = vec2<f32>(
+        pre.x * inst.stretch.x + pre.y * inst.stretch.z,
+        pre.y * inst.stretch.y,
+    );
+    let sp = st * inst.xform.y;
     px = vec2<f32>(sp.x * xs.x - sp.y * xs.y, sp.x * xs.y + sp.y * xs.x) + inst.xform.zw;
     let ndc = vec2<f32>(
         px.x / globals.viewport.x * 2.0 - 1.0,

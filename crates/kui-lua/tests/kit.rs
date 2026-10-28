@@ -3247,16 +3247,39 @@ fn a_line_chart_glides_to_a_new_range_and_jumps_under_reduced_motion() {
         r.frames(1);
         r.core.set_time(1.1);
         r.frames(1);
-        let mid = top(&mut r);
+        // The labels name the new range at once and slide to their places;
+        // the lines are drawn for it too, in a box that glides from where
+        // the old range had them (C149): its stretch down, as drawn.
+        assert_eq!(top(&mut r), 100.0, "the labels name the new range");
+        let stretch = |r: &mut LuaRig| {
+            let (dl, _) = r.core.output();
+            dl.quads
+                .iter()
+                .filter(|q| q.kind == kui_core::QuadKind::Segment)
+                .map(|q| dl.clip_of(q).transform.sy)
+                .fold(1.0f32, |a, b| {
+                    if (b - 1.0).abs() > (a - 1.0).abs() {
+                        b
+                    } else {
+                        a
+                    }
+                })
+        };
+        let mid = stretch(&mut r);
         if reduced {
-            assert_eq!(mid, 100.0, "under reduced motion the range jumps");
+            assert_eq!(mid, 1.0, "under reduced motion the range jumps");
         } else {
-            assert!(mid > 10.0 && mid < 100.0, "on its way: {mid}");
-            assert!(r.core.animating(), "a frame is asked for while it glides");
+            assert!(
+                mid > 1.0 && mid < 10.0,
+                "on its way from ten times as tall: {mid}"
+            );
+            assert!(r.core.animating(), "the core owes frames while it glides");
+            assert_eq!(r.core.next_frame_at(), None, "and the view asks for none");
         }
         r.core.set_time(1.6);
         r.frames(2);
         assert_eq!(top(&mut r), 100.0, "there in the end (reduced {reduced})");
+        assert_eq!(stretch(&mut r), 1.0);
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }
 }
@@ -6491,4 +6514,117 @@ fn a_chart_is_a_tab_stop_only_when_the_app_asks() {
     assert_eq!(names[3], "After", "every other chart passed over: {seen:?}");
     assert_eq!(&names[4..], &names[..2], "and round again: {seen:?}");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+/// A table of sixty rows of `t` and `cpu`, a wave between 10 and 70
+/// scaled by `k`.
+fn wave(ch: Option<&Channel>, k: f64) -> Channel {
+    let n = 60;
+    let t: Vec<f64> = (0..n).map(|i| i as f64).collect();
+    let cpu: Vec<f64> = (0..n)
+        .map(|i| k * (40.0 + 30.0 * (i as f64 * 0.3).sin()))
+        .collect();
+    let cols = vec![
+        ("t".into(), Column::F64(t)),
+        ("cpu".into(), Column::F64(cpu)),
+    ];
+    match ch {
+        Some(ch) => ch.publish(cols).unwrap(),
+        None => Channel::table(cols).unwrap(),
+    }
+}
+
+#[test]
+fn a_line_charts_range_change_glides_on_the_cores_clock_with_no_view_run_between() {
+    // C149: a range that changed glided by asking for a frame every frame
+    // for 240 ms, each running the view. The lines are drawn for the new
+    // range at once, in a box that enters stretched and moved to where the
+    // old range had them and settles on the core's clock: the frames
+    // between are built from the kept tree (`Core::reframe`, as the
+    // runner builds them) and nothing asks the view for one.
+    let red = kui_core::Color::hex(0xff0000ff);
+    let mut r = rig();
+    let frame = |r: &mut Rig, ch: &Channel, t: f64| {
+        r.core.set_time(t);
+        let mut ui = r.core.frame_with(VIEW, 1.0, &mut r.exts);
+        ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(6.0));
+        ui.with(NodeSpec::column().size(700.0, 300.0), |ui| {
+            kit::LineChart::new(
+                ch.clone(),
+                "t",
+                vec![kit::Series::new("cpu", "CPU").color(0xff0000ffu32)],
+            )
+            .area(true)
+            .place(ui);
+        });
+        ui.finish();
+        let ev = r.core.take_pending_events();
+        r.exts.route(ev, |_| {});
+    };
+    // The line's stretch down, as drawn: 1 at rest.
+    let stretch = |r: &mut Rig| {
+        let (dl, _) = r.core.output();
+        let q = dl
+            .quads
+            .iter()
+            .find(|q| q.kind == kui_core::QuadKind::Segment && q.color == red)
+            .copied()
+            .expect("the line");
+        dl.clip_of(&q).transform.sy
+    };
+    let ch = wave(None, 1.0);
+    // A driver that builds again asks from its first frame on; the first
+    // ask is refused, and has a build keep what building again needs.
+    assert!(!r.core.reframe(VIEW, 1.0));
+    for t in [1.0, 1.1, 1.2] {
+        frame(&mut r, &ch, t);
+    }
+    assert!(!r.core.animating(), "settled on 0..80: {:?}", r.core.owed());
+    assert!((stretch(&mut r) - 1.0).abs() < 1e-4);
+    // Half the wave: the range goes to 0..40, the gutter as wide as it
+    // was (a gutter that eases moves the plot, which the view reads).
+    let ch = wave(Some(&ch), 0.5);
+    frame(&mut r, &ch, 2.0);
+    let at_start = stretch(&mut r);
+    assert!(
+        (at_start - 0.5).abs() < 1e-3,
+        "it starts where 0..80 drew it: {at_start}"
+    );
+    assert!(r.core.animating(), "the glide owes frames");
+    assert_eq!(
+        r.core.next_frame_at(),
+        None,
+        "nothing asks for a frame at a time"
+    );
+    // The frame after the change is the view's, as the runner draws it:
+    // the build before it owed nothing, so kept nothing to build again
+    // from (C138). From then on the core builds the glide's frames alone.
+    r.core.set_time(2.04);
+    if !r.core.reframe(VIEW, 1.0) {
+        frame(&mut r, &ch, 2.04);
+    }
+    let mut last = stretch(&mut r);
+    assert!(last > at_start && last < 1.0, "{last}");
+    for t in [2.08, 2.12, 2.2] {
+        r.core.set_time(t);
+        assert!(
+            r.core.reframe(VIEW, 1.0),
+            "the frame at {t} is built from the kept tree, no view run"
+        );
+        assert_eq!(r.core.next_frame_at(), None);
+        let now = stretch(&mut r);
+        assert!(
+            now > last && now < 1.0,
+            "it settles: {last} then {now} at {t}"
+        );
+        if t == 2.12 {
+            // Halfway in time, an ease-out cubic is seven eighths there.
+            assert!((now - (0.5 + 0.5 * 0.875)).abs() < 1e-2, "{now}");
+        }
+        last = now;
+    }
+    r.core.set_time(2.3);
+    assert!(r.core.reframe(VIEW, 1.0));
+    assert!((stretch(&mut r) - 1.0).abs() < 1e-4);
+    assert!(!r.core.animating(), "and owes nothing once there");
 }

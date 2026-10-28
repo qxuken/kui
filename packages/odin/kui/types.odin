@@ -138,6 +138,8 @@ Keyframe :: struct {
 	rotate:        f32, // turns clockwise (ADR 0043)
 	scale:         f32, // a uniform scale about the pivot
 	dx, dy:        f32, // px from the node's place, with .Offset (backlog F132)
+	scale_x:       f32, // a stretch across, with .Scale_X (backlog C149)
+	scale_y:       f32, // a stretch down, with .Scale_Y
 }
 
 // Where an entering node starts from, or a leaving one ends at; `set` names
@@ -151,6 +153,8 @@ Enter :: struct {
 	opacity:       f32,
 	rotate:        f32, // turns clockwise (ADR 0043)
 	scale:         f32, // a uniform scale; 0 grows the subtree in from nothing
+	scale_x:       f32, // a stretch across, with .Scale_X (backlog C149)
+	scale_y:       f32, // a stretch down, with .Scale_Y
 }
 
 // -- Text and cells ---------------------------------------------------------
@@ -354,6 +358,8 @@ lower_gradient :: proc(g: Gradient) -> ^c.Gradient {
 #assert(offset_of(Keyframe, scale) == offset_of(c.Keyframe, scale))
 #assert(offset_of(Keyframe, dx) == offset_of(c.Keyframe, dx))
 #assert(offset_of(Keyframe, dy) == offset_of(c.Keyframe, dy))
+#assert(offset_of(Keyframe, scale_x) == offset_of(c.Keyframe, scale_x))
+#assert(offset_of(Keyframe, scale_y) == offset_of(c.Keyframe, scale_y))
 
 #assert(size_of(Enter) == size_of(c.Enter))
 #assert(offset_of(Enter, dx) == offset_of(c.Enter, dx))
@@ -365,6 +371,8 @@ lower_gradient :: proc(g: Gradient) -> ^c.Gradient {
 #assert(offset_of(Enter, opacity) == offset_of(c.Enter, opacity))
 #assert(offset_of(Enter, rotate) == offset_of(c.Enter, rotate))
 #assert(offset_of(Enter, scale) == offset_of(c.Enter, scale))
+#assert(offset_of(Enter, scale_x) == offset_of(c.Enter, scale_x))
+#assert(offset_of(Enter, scale_y) == offset_of(c.Enter, scale_y))
 
 #assert(size_of(Gradient_Stop) == size_of(c.GradientStop))
 #assert(offset_of(Gradient_Stop, at) == offset_of(c.GradientStop, at))

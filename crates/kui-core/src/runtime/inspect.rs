@@ -115,6 +115,10 @@ pub struct NodeInfo {
     /// eased.
     pub rotate: f32,
     pub scale: f32,
+    /// Its stretch across and down (`scaleX` / `scaleY`, ADR 0043's
+    /// 2026-10-28 amendment): `1.0` each for a node that declares none.
+    pub scale_x: f32,
+    pub scale_y: f32,
     /// A scroller's offset, `None` for a node that does not scroll.
     pub scroll: Option<Vec2>,
     /// Every handler it declared, with the payload it would post:
@@ -525,6 +529,8 @@ impl NodeInfo {
             ("backdrop_blur", Value::float(self.backdrop_blur)),
             ("rotate", Value::float(self.rotate)),
             ("scale", Value::float(self.scale)),
+            ("scale_x", Value::float(self.scale_x)),
+            ("scale_y", Value::float(self.scale_y)),
             ("scroll", Value::opt(self.scroll, Vec2::to_value)),
             (
                 "events",
@@ -745,6 +751,8 @@ impl Core {
                 backdrop_blur: spec.interact().backdrop_blur,
                 rotate: spec.transform_spec().map_or(0.0, |t| t.rotate),
                 scale: spec.transform_spec().map_or(1.0, |t| t.scale),
+                scale_x: spec.transform_spec().map_or(1.0, |t| t.stretch.x),
+                scale_y: spec.transform_spec().map_or(1.0, |t| t.stretch.y),
                 scroll: (l.scroll_x || l.scroll_y).then(|| self.scroll.drawn(tree.keys[i])),
                 events,
                 detail: if Some(tree.keys[i]) == detail_for {

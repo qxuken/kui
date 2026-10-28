@@ -1918,6 +1918,10 @@ export interface NodeInfo {
    *  0043): 0 and 1 for a node that declares none. */
   rotate: number;
   scale: number;
+  /** Its stretch across and down as drawn this frame (`scaleX` /
+   *  `scaleY`, backlog C149): 1 each for a node that declares none. */
+  scaleX: number;
+  scaleY: number;
   /** A scroller's offset; `null` for a node that does not scroll. */
   scroll: { x: number; y: number } | null;
   /** Every handler it declared with the message it would post: `click`,
@@ -6786,6 +6790,16 @@ export interface Clip {
   /** Corner radii, clockwise from the top-left: a clipping node with a
    *  radius rounds what it clips. All zero = a plain rect clip. */
   radii: [number, number, number, number];
+  /** The turn every quad naming this entry is drawn through (ADR 0043):
+   *  angle in radians, scale, tx, ty. `[0, 1, 0, 0]` when nothing turns. */
+  transform: [number, number, number, number];
+  /** The stretch before the turn (`scaleX` / `scaleY`, backlog C149): sx,
+   *  sy, shear. `[1, 1, 0]` when nothing stretches. */
+  stretch: [number, number, number];
+  /** A second clip in the quad's own space, before the turn, and its
+   *  radii: from clipping nodes inside a turned subtree. */
+  inner: [number, number, number, number];
+  innerRadii: [number, number, number, number];
 }
 
 /** The container `uniformList` declares: every `<box>` prop, plus what it

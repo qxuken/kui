@@ -621,3 +621,254 @@ fn a_path_s_own_turn_composes_under_the_node_s() {
     assert!(near(mask.blur, TAU / 4.0), "{}", mask.blur);
     assert!(near(dl.clip_of(mask).transform.angle, TAU / 4.0));
 }
+
+// -- The stretch (`scaleX` / `scaleY`, backlog C149) ----------------------------
+
+#[test]
+fn a_stretch_is_about_the_pivot_along_the_box_s_own_axes() {
+    let mut core = Core::new();
+    frame(&mut core, |ui| {
+        ui.configure_root(NodeSpec::column().pad(20.0));
+        // 100 × 50 at (20, 20), halved down about its top edge.
+        ui.leaf_keyed("plot", card().scale_y(0.5).pivot(0.5, 0.0));
+    });
+    let (q, clip) = solids_with_clips(&mut core)[0];
+    assert_eq!(
+        q.rect,
+        Rect::new(20.0, 20.0, 100.0, 50.0),
+        "layout is untouched"
+    );
+    let t = clip.transform;
+    assert!(
+        near(t.sx, 1.0) && near(t.sy, 0.5) && near(t.shear, 0.0),
+        "{t:?}"
+    );
+    assert!(near(t.angle, 0.0) && near(t.scale, 1.0), "{t:?}");
+    // The top edge stays; the foot rises halfway.
+    let top = t.apply(Vec2::new(20.0, 20.0));
+    assert!(near(top.x, 20.0) && near(top.y, 20.0), "{top:?}");
+    let foot = t.apply(Vec2::new(120.0, 70.0));
+    assert!(near(foot.x, 120.0) && near(foot.y, 45.0), "{foot:?}");
+    // A stretch multiplies the uniform scale, and is undone exactly.
+    frame(&mut core, |ui| {
+        ui.configure_root(NodeSpec::column().pad(20.0));
+        ui.leaf_keyed("plot", card().scale(2.0).scale_x(0.5).rotate(0.25));
+    });
+    let t = solids_with_clips(&mut core)[0].1.transform;
+    let p = Vec2::new(33.0, 61.0);
+    let back = t.unapply(t.apply(p));
+    assert!(near(back.x, p.x) && near(back.y, p.y), "{back:?}");
+    // Across, 2 × 0.5 = 1 and turned a quarter: the box's width runs
+    // down. Down, 2: its height runs across, twice as long.
+    let b = t.bounds(Rect::new(20.0, 20.0, 100.0, 50.0));
+    assert!(near(b.w, 100.0) && near(b.h, 100.0), "{b:?}");
+}
+
+#[test]
+fn a_frame_that_stretches_nothing_interns_no_entry_for_a_stretch_of_one() {
+    let mut core = Core::new();
+    frame(&mut core, |ui| {
+        ui.configure_root(NodeSpec::column().pad(20.0));
+        ui.leaf_keyed("card", card().scale_x(1.0).scale_y(1.0));
+    });
+    let (dl, _) = core.output();
+    assert_eq!(dl.clips.len(), 1, "entry zero and nothing else");
+    assert_eq!(dl.clips[0], Clip::NONE);
+}
+
+#[test]
+fn a_turn_inside_a_stretch_composes_exactly() {
+    let mut core = Core::new();
+    frame(&mut core, |ui| {
+        ui.configure_root(NodeSpec::column().pad(20.0));
+        ui.with_keyed(
+            "squat",
+            NodeSpec::column()
+                .size(100.0, 100.0)
+                .scale_x(2.0)
+                .scale_y(0.5)
+                .pivot(0.0, 0.0),
+            |ui| {
+                ui.leaf_keyed(
+                    "tilt",
+                    NodeSpec::column()
+                        .size(40.0, 20.0)
+                        .bg(Color::WHITE)
+                        .rotate(0.125),
+                );
+            },
+        );
+    });
+    let (q, clip) = solids_with_clips(&mut core)[0];
+    // Each corner of the child goes through its own turn, then the
+    // parent's stretch, whatever the entry's split into a turn, a scale
+    // and a sheared stretch.
+    let outer = Transform::about_stretched(Vec2::new(20.0, 20.0), 0.0, 1.0, 2.0, 0.5);
+    let own = Transform::about(q.rect.center(), 0.125, 1.0);
+    for p in [
+        Vec2::new(q.rect.x, q.rect.y),
+        Vec2::new(q.rect.x + q.rect.w, q.rect.y),
+        Vec2::new(q.rect.x, q.rect.y + q.rect.h),
+    ] {
+        let want = outer.apply(own.apply(p));
+        let got = clip.transform.apply(p);
+        assert!(
+            near(got.x, want.x) && near(got.y, want.y),
+            "{p:?}: {got:?} vs {want:?}"
+        );
+    }
+    assert!(clip.transform.shear.abs() > 1e-3, "{:?}", clip.transform);
+}
+
+#[test]
+fn a_stretched_box_is_hit_where_it_is_drawn() {
+    let mut core = Core::new();
+    frame(&mut core, |ui| {
+        ui.configure_root(NodeSpec::column().pad(20.0));
+        // 100 × 50 at (20, 20), twice as wide about its left edge: drawn
+        // over x 20..220.
+        ui.leaf_keyed(
+            "bar",
+            card()
+                .scale_x(2.0)
+                .pivot(0.0, 0.5)
+                .on_click("bar")
+                .label("Bar"),
+        );
+    });
+    assert_eq!(messages(&click_at(&mut core, 200.0, 45.0)), vec!["bar"]);
+    // Halved down, the foot of its layout rect is off what is drawn.
+    frame(&mut core, |ui| {
+        ui.configure_root(NodeSpec::column().pad(20.0));
+        ui.leaf_keyed(
+            "bar",
+            card()
+                .scale_y(0.5)
+                .pivot(0.5, 0.0)
+                .on_click("bar")
+                .label("Bar"),
+        );
+    });
+    assert!(click_at(&mut core, 70.0, 60.0).is_empty());
+    assert_eq!(messages(&click_at(&mut core, 70.0, 40.0)), vec!["bar"]);
+    // The access rect is the drawn box.
+    let key = core.key_of("bar").unwrap();
+    let r = core.access_tree().get(key).expect("an access node").rect;
+    assert!(near(r.y, 20.0) && near(r.h, 25.0), "{r:?}");
+}
+
+#[test]
+fn a_stretch_tweens_with_transition_and_eases_back_when_dropped() {
+    let mut core = Core::new();
+    let sy = |core: &mut Core, now: f64, stretch: Option<f32>| {
+        core.set_time(now);
+        frame(core, |ui| {
+            ui.configure_root(NodeSpec::column().pad(20.0));
+            let mut spec = card().transition_with(Transition::ms(100.0).easing(Easing::Linear));
+            if let Some(s) = stretch {
+                spec = spec.scale_y(s);
+            }
+            ui.leaf_keyed("plot", spec);
+        });
+        solids_with_clips(core)[0].1.transform.sy
+    };
+    assert!(near(sy(&mut core, 0.0, Some(1.0)), 1.0));
+    assert!(
+        near(sy(&mut core, 0.0, Some(2.0)), 1.0),
+        "a retarget starts where it was"
+    );
+    assert!(core.animating());
+    assert!(near(sy(&mut core, 0.05, Some(2.0)), 1.5), "halfway");
+    assert!(near(sy(&mut core, 0.1, Some(2.0)), 2.0));
+    assert!(!core.animating());
+    assert!(
+        near(sy(&mut core, 0.1, None), 2.0),
+        "dropped, it starts where it was"
+    );
+    assert!(core.animating());
+    assert!(near(sy(&mut core, 0.15, None), 1.5), "halfway back");
+    assert!(near(sy(&mut core, 0.3, None), 1.0));
+    assert!(!core.animating());
+}
+
+/// What Kit's line chart does when its range changes (backlog C149): the
+/// plot's lines are drawn for the new range in a box keyed by the glide,
+/// which enters stretched and moved to where the old lines were and
+/// settles — with no view run between, the frames the core owes built from
+/// the tree it has.
+#[test]
+fn an_entrance_glides_a_stretch_and_a_move_together() {
+    let mut core = Core::new();
+    let glide = |core: &mut Core, now: f64| {
+        core.set_time(now);
+        frame(core, |ui| {
+            ui.configure_root(NodeSpec::column().pad(20.0));
+            ui.leaf_keyed(
+                "lines",
+                card()
+                    .pivot(0.5, 0.0)
+                    .transition_with(Transition::ms(100.0).easing(Easing::Linear))
+                    .enter(Enter::from(0.0, 10.0).scale_y(2.0)),
+            );
+        });
+        let (q, clip) = solids_with_clips(core)[0];
+        // Where the box's foot is drawn.
+        clip.transform
+            .apply(Vec2::new(q.rect.x, q.rect.y + q.rect.h))
+            .y
+    };
+    // At rest the foot is at 70; entering, the top is 10 lower (30) and
+    // the box twice as tall: 130.
+    assert!(near(glide(&mut core, 0.0), 130.0));
+    assert!(core.animating());
+    assert!(near(glide(&mut core, 0.05), 100.0), "halfway: 25 + 75");
+    assert!(near(glide(&mut core, 0.1), 70.0));
+    assert!(!core.animating());
+}
+
+#[test]
+fn a_keyframe_stop_stretches_and_a_ghost_keeps_its_stretch() {
+    let mut core = Core::new();
+    core.set_time(0.25);
+    frame(&mut core, |ui| {
+        ui.configure_root(NodeSpec::column().pad(20.0));
+        ui.leaf_keyed(
+            "pulse",
+            card()
+                .rotate(0.25)
+                .transition_with(Transition::ms(1000.0).easing(Easing::Linear))
+                .keyframes(vec![
+                    Keyframe::default().scale_x(1.0),
+                    Keyframe::default().scale_x(3.0),
+                ]),
+        );
+    });
+    let t = solids_with_clips(&mut core)[0].1.transform;
+    assert!(near(t.sx, 1.5) && near(t.sy, 1.0), "{t:?}");
+    assert!(
+        near(t.angle, TAU / 4.0),
+        "the turn the stops did not name: {t:?}"
+    );
+
+    let mut core = Core::new();
+    let frame_at = |core: &mut Core, now: f64, show: bool| {
+        core.set_time(now);
+        frame(core, |ui| {
+            ui.configure_root(NodeSpec::column().pad(20.0));
+            if show {
+                ui.leaf_keyed(
+                    "card",
+                    card()
+                        .scale_y(2.0)
+                        .transition_with(Transition::ms(100.0).easing(Easing::Linear))
+                        .exit(Enter::default().scale_y(0.0)),
+                );
+            }
+        });
+    };
+    frame_at(&mut core, 0.0, true);
+    frame_at(&mut core, 0.0, false);
+    assert!(near(solids_with_clips(&mut core)[0].1.transform.sy, 2.0));
+    frame_at(&mut core, 0.05, false);
+    assert!(near(solids_with_clips(&mut core)[0].1.transform.sy, 1.0));
+}

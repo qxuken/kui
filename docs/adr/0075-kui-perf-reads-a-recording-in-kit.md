@@ -342,7 +342,8 @@ next, with these numbers: the runner is fast enough to carry it.
   `update` and `view` over a recording — that the shell composes; a
   devtools-tab extension mounts the same module when the tab is built,
   with the read door it needs.
-- **C149** (the line chart's y glide as a transition) waits on a
-  non-uniform scale in the core; C102 (type-ahead over a channel column)
+- **C149** (the line chart's y glide as a transition) waited on a
+  non-uniform scale in the core, and was built the same day with one
+  (`scaleX` / `scaleY`, ADR 0043's 2026-10-28 amendment); C102 (type-ahead over a channel column)
   is left for a table that needs it more than the frames table does.
 
