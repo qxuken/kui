@@ -4128,27 +4128,18 @@ it; focus, atlas and fonts shared because it is one context. Decide with
 F237: islands done in one context are most of what several contexts
 were wanted for.
 
-### `.` F237 — Contexts cannot share their fonts, images or atlas
 
-**Found** in the wishlist's item 6. Every `kui_ctx_new` brings its own
-font system and glyph atlas, so several HUDs or islands (F236 the hard
-way) load fonts and raster glyphs again, and upload an atlas each. The
-core already shares a `Session` — fonts, images, sounds — between cores
-(`Core::new_in`), which kui-native's windows use; no binding reaches it.
-The atlas stays per core: `Core::output` and `CachedText`'s atlas epoch
-pin it there (ADR 0004 step 1, "three of four hoisted"). **Do.** First
-the door: `kui_ctx_new_in(other)` (and Node's, Lua's, Odin's) joining
-another context's session. Then the atlas, which is ADR 0004's step 2 and
-F236's question too.
-
-**Door built** 2026-10-28: `kui_ctx_new_in(other)` (C), `new_ui_in`
-(Odin, beside `new_ui`), `Ctx.sibling()` (Node), over `Core::new_in`, one
-DOORS row; Lua is a guest and makes no context. A sibling draws what the
-first registered and outlives it (kui-ffi's
-`a_context_in_another_s_session_draws_what_the_first_registered`, the C
-surface walk, Node's F237 test). `Core::new_in`'s doc no longer claims
-the atlas is shared. **Left:** the atlas, decided with F236.
-
+**Decided** 2026-10-28 with the user:
+[ADR 0076](adr/0076-an-island-is-a-window-the-host-draws.md) (proposed).
+An island is a declared window of a new kind, `KUI_WINDOW_KIND_SURFACE`,
+never an OS window: the host runs it as a context in the main one's
+session (`kui_ctx_new_in`), at the size its declaration says — re-read
+every frame, a change arriving as `KUI_CMD_SET_SIZE` — and a scale of
+its own, draws its draw data into its texture (F234), and feeds it input
+in its own coordinates after un-projecting; keys go to the context the
+last press landed in; the windowed runner warns `surface-without-host`
+and opens nothing. No row on a subtree, no ranges in `KuiDrawData`.
+**Do.** Build ADR 0076.
 ### Theirs, not ours
 
 - **Item 11, "tell a single-blend host to turn subpixel text off".** It
@@ -6258,8 +6249,8 @@ move.
 - `.` **F233** — [A host cannot ask whether the pointer is over the UI](backlog/closed-2026-09.md#-f233--a-host-cannot-ask-whether-the-pointer-is-over-the-ui--done-2026-10-28) — done (2026-10-28) — painted boxes block, `hostHit` moves one either way; `hit`, `pointer_wants`, `keyboard_wants` in C, Odin and Node (ABI 42)
 - `~` **F234** — [A host's renderer copies kui-wgpu's shader and its instance packing](#-f234--a-hosts-renderer-copies-kui-wgpus-shader-and-its-instance-packing) — open — the shader and the instance packing in the core with C doors, and a reference C or Odin host
 - `.` **F235** — [The draw data has no bounds](backlog/closed-2026-09.md#-f235--the-draw-data-has-no-bounds--done-2026-10-28) — done (2026-10-28) — `DisplayList::bounds`, `KuiDrawData.bounds` (ABI 42); per-layer rects wait for F236's surfaces
-- `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — open — an ADR for a `surface` row, decided with F237
-- `.` **F237** — [Contexts cannot share their fonts, images or atlas](#-f237--contexts-cannot-share-their-fonts-images-or-atlas) — door built (2026-10-28), atlas open — `kui_ctx_new_in` / `new_ui_in` / `Ctx.sibling` over `Core::new_in`; the atlas (ADR 0004 step 2) with F236
+- `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — decided (2026-10-28), not built — ADR 0076: an island is a declared window of kind `surface`, drawn by the host
+- `.` **F237** — [Contexts cannot share their fonts, images or atlas](backlog/closed-2026-09.md#-f237--contexts-cannot-share-their-fonts-images-or-atlas--done-2026-10-28) — done (2026-10-28) — `kui_ctx_new_in` / `new_ui_in` / `Ctx.sibling` over `Core::new_in`; the atlas stays per context (ADR 0076, decision 7)
 - `.` **F238** — [The release packs carry no library without the runner](backlog/closed-2026-09.md#-f238--the-release-packs-carry-no-library-without-the-runner--done-2026-10-28) — done (2026-10-28) — `lib/<platform>/core/` in both tarballs, `KUI_CORE` in Odin, pkg-config files in the C pack, `host_loop` verified against it
 - `.` **F239** — [Every host maps its window library's keys to kui's by hand](backlog/closed-2026-09.md#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand--done-2026-10-28) — done (2026-10-28) — `kui_glfw.h` / `kui_sdl3.h` and Odin's `kui/glfw` / `kui/sdl3`, generated from one table checked against `KeyCode::from_name`
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
