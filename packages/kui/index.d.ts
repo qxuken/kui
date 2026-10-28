@@ -1140,7 +1140,10 @@ export type MenuAction =
   | { kind: 'lookUp'; text: string; x: number; y: number }
   /** A file to show in the system's file manager: the devtools' "open
    *  folder" (backlog F203). Apply it with `showInFolder(path)`. */
-  | { kind: 'showInFolder'; path: string };
+  | { kind: 'showInFolder'; path: string }
+  /** Files for the clipboard, as a file manager's Copy puts them there
+   *  (`setClipboardFiles`, backlog F247): a window writes them itself. */
+  | { kind: 'setClipboardFiles'; paths: string[] };
 
 /** What text measures (`measureText`): logical px at the scale of the
  *  current or last frame; `lines` after wrapping. The same numbers layout
@@ -4434,6 +4437,18 @@ export declare class Ctx {
    */
   setClipboardSecret(text: string): void
   /**
+   * Puts files on the system clipboard, as a file manager's
+   * Copy does — "Copy file" on an attachment: a window writes
+   * them as the platform's file list (`CF_HDROP` on Windows,
+   * file URLs on macOS, `text/uri-list` on Linux), so they paste
+   * into a file manager or a mail as the files. The paths as the
+   * app names them; the window makes them absolute. False, and
+   * nothing queued, for none. A headless `Ctx` hands it out
+   * through `takeMenuActions()` as
+   * `{kind:"setClipboardFiles", paths}` (backlog F247).
+   */
+  setClipboardFiles(paths: Array<string>): boolean
+  /**
    * Puts a picture on the system clipboard — `width` by `height`
    * straight RGBA, what `capture()` and `decodeImage` hand out,
    * copied — as the platform's image type: "Copy image". A
@@ -6167,6 +6182,18 @@ export declare class KuiWindow {
    * `{kind:"setClipboardSecret", text}`.
    */
   setClipboardSecret(text: string): void
+  /**
+   * Puts files on the system clipboard, as a file manager's
+   * Copy does — "Copy file" on an attachment: a window writes
+   * them as the platform's file list (`CF_HDROP` on Windows,
+   * file URLs on macOS, `text/uri-list` on Linux), so they paste
+   * into a file manager or a mail as the files. The paths as the
+   * app names them; the window makes them absolute. False, and
+   * nothing queued, for none. A headless `Ctx` hands it out
+   * through `takeMenuActions()` as
+   * `{kind:"setClipboardFiles", paths}` (backlog F247).
+   */
+  setClipboardFiles(paths: Array<string>): boolean
   /**
    * Puts a picture on the system clipboard — `width` by `height`
    * straight RGBA, what `capture()` and `decodeImage` hand out,

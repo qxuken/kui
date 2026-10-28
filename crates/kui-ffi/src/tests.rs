@@ -3165,6 +3165,26 @@ mod follow_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `kui_set_clipboard_files` queues the paths as their own kind, a line
+    /// each in `text`, and refuses none (backlog F247).
+    #[test]
+    fn files_for_the_clipboard_cross_the_boundary_a_line_each() {
+        let ctx = kui_ctx_new();
+        let files = [ks("C:\\notes\\a.pdf"), ks("/tmp/b c.png")];
+        assert!(!kui_set_clipboard_files(ctx, files.as_ptr(), 0));
+        assert!(!kui_set_clipboard_files(ctx, std::ptr::null(), 2));
+        assert!(kui_set_clipboard_files(ctx, files.as_ptr(), 2));
+        let mut action = KuiMenuAction {
+            size: std::mem::size_of::<KuiMenuAction>() as u32,
+            ..unsafe { std::mem::zeroed() }
+        };
+        assert!(kui_take_menu_action(ctx, &mut action));
+        assert_eq!(action.kind, KUI_MENU_ACTION_SET_CLIPBOARD_FILES);
+        assert_eq!(kstr(action.text).as_ref(), "C:\\notes\\a.pdf\n/tmp/b c.png");
+        assert!(!kui_take_menu_action(ctx, &mut action), "one action");
+        kui_ctx_free(ctx);
+    }
+
     /// `KuiSpan.bg_pad` crosses the boundary (backlog F227): the span's
     /// background is wider by the padding at each end; zeroed, it is flush
     /// with its glyphs.
@@ -3926,6 +3946,10 @@ mod borrows {
         assert!(x + w <= d.atlas_size && y + h <= d.atlas_size);
         assert!(w * h < d.atlas_size * d.atlas_size, "a rect, not the page");
         let epoch = d.atlas_epoch;
+        // Never 0, or a host whose "epoch I uploaded" starts zeroed takes
+        // the first page for one it has and skips its new-page branch -
+        // where it makes the texture and uploads it whole (backlog F245).
+        assert_ne!(epoch, 0);
 
         frame("Hi");
         assert!(kui_draw_data(ctx, &mut d));

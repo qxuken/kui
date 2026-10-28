@@ -252,6 +252,9 @@ impl DynShell<'_> {
                 } => {
                     set_clipboard_image(self.clipboard.as_mut(), width, height, &rgba);
                 }
+                MenuAction::SetClipboardFiles { paths } => {
+                    set_clipboard_files(self.clipboard.as_mut(), &paths);
+                }
                 MenuAction::Paste => {
                     // Every ask is answered, an empty clipboard with an
                     // empty paste: the answer is what clears the core's

@@ -242,7 +242,9 @@
 ///   56; spans travel as an array, so the stride moved): a background's
 ///   padding past its glyphs (backlog F227). And `kui_open_menu_with` with
 ///   `KUI_MENU_IN_WINDOW` (backlog F210), a new function, which came
-///   after alpha.68 at 39.
+///   after alpha.68 at 39. And `kui_set_clipboard_files` with
+///   `KUI_MENU_ACTION_SET_CLIPBOARD_FILES` (backlog F247), moving no
+///   struct.
 pub const KUI_ABI_VERSION: u32 = 40;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

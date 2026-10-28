@@ -15,8 +15,9 @@
 //! let v: mlua::Value = state.load(r#"{ kind = "toggle", index = 2 }"#).eval()?;
 //! let payload = lua::from_lua(&v)?;
 //! assert_eq!(payload.get_str("kind"), Some("toggle"));
-//! let back = lua::to_lua(&state, &payload)?;
-//! assert_eq!(lua::from_lua(&back)?, payload);
+//! // A table's keys come back in Lua's order, not the map's.
+//! let back = lua::from_lua(&lua::to_lua(&state, &payload)?)?;
+//! assert_eq!((back.get_str("kind"), back.get_int("index")), (Some("toggle"), Some(2)));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

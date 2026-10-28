@@ -3518,6 +3518,14 @@ height limit with scrolling for every menu the core draws, and the
 native runner's popup window for a context menu that does not fit —
 **built 2026-10-27**, the day it was filed, and in the archive.
 
+## From Carnet on alpha.69 (2026-10-28)
+
+On Windows, Carnet's window flashed white as it closed, through its
+teardown, and it wanted a "Copy file" kui had no clipboard write for.
+Two entries, F246 — every window hidden the moment the close is
+accepted — and F247 — `set_clipboard_files` — **built 2026-10-28**, the
+day they were filed, and in the archive.
+
 ## From Carnet's selection and file links (2026-10-27)
 
 Carnet, testing on Windows, drew its selection as span backgrounds and
@@ -6299,7 +6307,7 @@ move.
 - `.` **F226** — [`open_external` and `show_in_folder` on Windows take a `/` as no path at all](backlog/closed-2026-09.md#-f226--open_external-and-show_in_folder-on-windows-take-a--as-no-path-at-all--done-2026-10-27) — done (2026-10-27) — every `/` made `\` before `explorer` is asked, a URL left alone
 - `.` **F227** — [A span's background sits flush on its first and last letters](backlog/closed-2026-09.md#-f227--a-spans-background-sits-flush-on-its-first-and-last-letters--done-2026-10-27) — done (2026-10-27) — `Span::bg_pad` widens the rect's two ends, stopping at another background's edge and sharing a narrow gap; in every binding, C at ABI 40
 
-**From Replicator Bloom's wishlist (2026-10-27)** — F228–F232 filed and built the same day; F233–F239 open; F240, found by the round's test run, built
+**From Replicator Bloom's wishlist (2026-10-27)** — F228–F232 filed and built the same day; F233–F239 open; F240, found by the round's test run, built; F245, found adopting F228, built (2026-10-28)
 
 - `.` **F228** — [The atlas is uploaded whole for every new glyph](backlog/closed-2026-09.md#-f228--the-atlas-is-uploaded-whole-for-every-new-glyph--done-2026-10-27) — done (2026-10-27) — `GlyphAtlas::dirty_rect` and `mark_uploaded`; kui-wgpu uploads the rect; `KuiDrawData.atlas_dirty_rect` (ABI 40)
 - `.` **F229** — [Nothing says how a host's loop runs, or when its draw can be skipped](backlog/closed-2026-09.md#-f229--nothing-says-how-a-hosts-loop-runs-or-when-its-draw-can-be-skipped--done-2026-10-27) — done (2026-10-27) — kui.h's "The host loop": input, drain, build, drain, draw; what only the second drain sees; `kui_frame_unchanged` as "skip the draw"
@@ -6314,6 +6322,12 @@ move.
 - `.` **F238** — [The release packs carry no library without the runner](#-f238--the-release-packs-carry-no-library-without-the-runner) — open — a no-runner library in both tarballs, verified, after a release dry run
 - `.` **F239** — [Every host maps its window library's keys to kui's by hand](#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand) — open — header-only GLFW and SDL tables for C, files for Odin, from one table
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
+- `.` **F245** — [The atlas epoch starts at 0, so a zeroed host takes the first page for one it has](backlog/closed-2026-09.md#-f245--the-atlas-epoch-starts-at-0-so-a-zeroed-host-takes-the-first-page-for-one-it-has--done-2026-10-28) — done (2026-10-28) — `GlyphAtlas::epoch` starts at 1 and is never 0; said in kui.h
+
+**From Carnet on alpha.69 (2026-10-28)** — F246 and F247, filed and built the same day
+
+- `.` **F246** — [A window shows white as it closes, for as long as the app's teardown takes](backlog/closed-2026-09.md#-f246--a-window-shows-white-as-it-closes-for-as-long-as-the-apps-teardown-takes--done-2026-10-28) — done (2026-10-28) — every window hidden the moment the close is accepted, before `teardown`; a pane before it is destroyed
+- `.` **F247** — [An app cannot put a file on the clipboard](backlog/closed-2026-09.md#-f247--an-app-cannot-put-a-file-on-the-clipboard--done-2026-10-28) — done (2026-10-28) — `set_clipboard_files`: `CF_HDROP`, file URLs, `text/uri-list` through arboard; in every binding
 
 **From the alpha.69 pre-tag round (2026-10-27)** — F241–F243, FZ16 and FZ17, filed and built the same day; FZ18 and F244 open; smoke.yml blocks a release from here on
 

@@ -472,12 +472,14 @@ extern "C" {
  * [out] struct, so a host that reserved the shorter one is written no
  * further than its size and uploads the page whole, as it did.
  * New with it, moving no struct: kui_perf_note (backlog F216), and
- * kui_thread_span_begin and kui_thread_span_end (backlog F215); after
- * alpha.69, kui_channel_append (backlog C147), and kui_channel_filter_f64,
+ * kui_thread_span_begin and kui_thread_span_end (backlog F215); and
+ * kui_set_clipboard_files with KUI_MENU_ACTION_SET_CLIPBOARD_FILES, files
+ * for the clipboard, their paths in the action's text (backlog F247); and
+ * kui_channel_append (backlog C147), kui_channel_filter_f64,
  * kui_channel_filter_str, kui_channel_sort and kui_channel_take with the
- * KUI_CHANNEL_EQUAL / _CONTAINS / _CONTAINS_ANY_CASE ways (backlog C148);
- * the opaque KuiChannelLanes with kui_channel_lanes, _free, _count, _extent
- * and _window, and KUI_CHANNEL_RUN (ADR 0075).
+ * KUI_CHANNEL_EQUAL / _CONTAINS / _CONTAINS_ANY_CASE ways (backlog C148),
+ * and the opaque KuiChannelLanes with kui_channel_lanes, _free, _count,
+ * _extent and _window, and KUI_CHANNEL_RUN (ADR 0075).
  */
 #define KUI_ABI_VERSION 40u
 uint32_t kui_abi_version(void);
@@ -2034,6 +2036,10 @@ enum {
      * devtools' "open folder" under a file the Perf tab saved. Apply it
      * with kui_show_in_folder; a host that cannot drops it. */
     KUI_MENU_ACTION_SHOW_IN_FOLDER = 5,
+    /* Files for the clipboard, their paths in 	ext a line each, to
+     * write as the platform's file list - what a file manager's Copy
+     * puts there (kui_set_clipboard_files); a host that cannot drops it. */
+    KUI_MENU_ACTION_SET_CLIPBOARD_FILES = 6,
 };
 
 /* kui_input_paste's markers: what the pasteboard said about the text a
@@ -2477,7 +2483,9 @@ typedef struct KuiDrawData {
                                    * texture to it, not to the largest seen */
     bool atlas_dirty;             /* re-upload when set or epoch changed;
                                    * atlas_dirty_rect says which part */
-    uint64_t atlas_epoch;
+    uint64_t atlas_epoch;         /* never 0: a zeroed "epoch I uploaded"
+                                   * differs from the first page's, so the
+                                   * first upload is whole */
     /* One per KUI_QUAD_FRAGMENT quad, indexed by its uv[0]; NULL and 0 on a
      * frame that draws none. Added in ABI 9. */
     const KuiFragmentDraw *fragments;
@@ -4425,6 +4433,13 @@ void kui_set_clipboard_secret(KuiCtx *ctx, KuiStr text);
  * runner writes it as the platform's image type. False, and nothing
  * queued, for NULL pixels or a size of zero. ABI 37. */
 bool kui_set_clipboard_image(KuiCtx *ctx, const uint8_t *rgba, uint32_t width, uint32_t height);
+/* Files for the clipboard, as a file manager's Copy puts them there -
+ * "Copy file" on an attachment - count paths read from paths,
+ * copied, queued as a KUI_MENU_ACTION_SET_CLIPBOARD_FILES with the paths
+ * in its 	ext a line each. Under kui_run the runner writes them as the
+ * platform's file list. False, and nothing queued, for no paths; an empty
+ * one is dropped. A new function of ABI 40 (backlog F247). */
+bool kui_set_clipboard_files(KuiCtx *ctx, const KuiStr *paths, size_t count);
 /* kui_request_paste's answer is kui_input_paste - the text and the
  * pasteboard's KUI_PASTE_* markers - or kui_input_commit, a paste nothing
  * marked. */

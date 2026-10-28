@@ -23,10 +23,22 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.70 (unreleased)
 
-**What breaks.** Nothing: two crates split out of `kui-core` and
-re-exported where they were, four channel doors added in every binding
-(the C ABI at 40), and the recording's reader, its made-up sessions and
-its Lua module added beside the format.
+**What breaks.**
+
+- A `kui-native` window leaves the screen when its close is accepted —
+  every window, before `App::teardown` runs — where it stayed up through
+  the teardown (backlog F246). A teardown that draws into a window, or
+  shows a dialog over it, finds it hidden.
+- `MenuAction` has a seventh variant, `SetClipboardFiles { paths }`: a
+  Rust host that matches the enum whole adds an arm (backlog F247). A C
+  host that drains `kui_take_menu_action` sees the new kind,
+  `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`, and one that does not know it
+  drops it.
+
+Nothing else breaks: two crates split out of `kui-core` and re-exported
+where they were, four channel doors added in every binding (the C ABI at
+40), and the recording's reader, its made-up sessions and its Lua module
+added beside the format.
 
 The first step of [ADR 0075](docs/adr/0075-kui-perf-reads-a-recording-in-kit.md),
 `kui-perf`, the trace inspector: the recording's reader needs to hand a
@@ -36,6 +48,18 @@ entries with it — the inspector's Live view appends to a million spans,
 and its tables sort and filter them.
 
 ### Added
+
+- **Files on the clipboard** (backlog F247, from Carnet's "Copy file"):
+  `Ui::set_clipboard_files(paths)` puts files there as a file manager's
+  Copy does, so they paste into Explorer, Finder, a mail or a chat as the
+  files. The window writes them as `CF_HDROP` on Windows (pasted as a
+  copy), file URLs on the macOS pasteboard, and a `text/uri-list` offer on
+  Linux, X11 and Wayland alike, each path made absolute first; a headless
+  run keeps the paths as its clipboard's text, a line each. C
+  `kui_set_clipboard_files` (a `KUI_MENU_ACTION_SET_CLIPBOARD_FILES` with
+  the paths in its `text`, a line each), Odin `set_clipboard_files`, Node
+  `setClipboardFiles(paths)` (`{kind: "setClipboardFiles", paths}` from
+  `takeMenuActions()`), Lua `env.set_clipboard_files({...})`.
 
 - **`kui-value` and `kui-channel`, crates of their own** (backlog F248):
   `Value`, `json` and the message traits, with `lua` (`kui_value::lua`,
@@ -147,6 +171,26 @@ and its tables sort and filter them.
   it drew each. Over 936,723 spans: the first frame 4.6 s → 0.1 s past
   the open, a frame showing the whole recording 50 → 0.4 ms, zooming out
   520 → 3.5 ms at its worst.
+
+### Fixed
+
+- **A window no longer flashes white as it closes** (backlog F246, from
+  Carnet). The main window stayed on screen from the close until the
+  process ended, through the app's `teardown` and the surfaces being let
+  go; on Windows its empty surface showed white for as long as that
+  took — long enough to see in an app that saves its documents on the way
+  out. Every window is hidden the moment the close is accepted (the close
+  button, `WindowCommand::Close` of the main window, an OS Quit, a pumped
+  runner's retirement), and a closing pane before it is destroyed.
+  Measured on Windows 11 with a 1.5 s teardown: off the screen 7–16 ms
+  after the close, where it stayed for the whole 1.6 s.
+
+**What you can delete.**
+
+- Platform clipboard code of an app's own (`CF_HDROP`, `NSPasteboard`
+  file URLs, `text/uri-list`), kept only to copy a file.
+- A hidden-window dance or a quick exit in an app's close path, kept
+  only so the window did not flash as it went.
 
 ## 0.1.0-alpha.69 (2026-10-28)
 

@@ -2367,6 +2367,8 @@ pub struct KuiDrawData {
     pub atlas_size: u32,
     /// Re-upload the atlas texture when either of these changes/sets.
     pub atlas_dirty: bool,
+    /// Never 0, so a host's zeroed copy of the last epoch it uploaded
+    /// differs from the first page's (backlog F245).
     pub atlas_epoch: u64,
     /// One per `KUI_QUAD_FRAGMENT` quad, indexed by its `uv[0]`; null and
     /// zero on a frame that draws none. Added in ABI 9.
@@ -2802,6 +2804,9 @@ pub const KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE: u32 = 4;
 /// `KUI_MENU_ACTION_SHOW_IN_FOLDER`: the file at `text` to show in the
 /// system's file manager — the devtools' "open folder" (backlog F203).
 pub const KUI_MENU_ACTION_SHOW_IN_FOLDER: u32 = 5;
+/// `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`: files for the clipboard, their
+/// paths in `text` a line each (`kui_set_clipboard_files`, backlog F247).
+pub const KUI_MENU_ACTION_SET_CLIPBOARD_FILES: u32 = 6;
 
 /// `KUI_PASTE_*`: the pasteboard's markers on a paste's answer
 /// (`kui_input_paste`).

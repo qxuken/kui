@@ -2294,10 +2294,14 @@ test('a press in a sink names the line, the byte and the click count, and the si
   // A picture goes out by its size; only one whose bytes are that size.
   assert.equal(ctx.setClipboardImage(2, 1, new Uint8Array(4)), false);
   assert.equal(ctx.setClipboardImage(1, 1, new Uint8Array([9, 8, 7, 255])), true);
+  // Files go out by their paths; none is refused (backlog F247).
+  assert.equal(ctx.setClipboardFiles([]), false);
+  assert.equal(ctx.setClipboardFiles(['C:\\notes\\a.pdf', '/tmp/b c.png']), true);
   ctx.requestPaste();
   assert.deepEqual(ctx.takeMenuActions(), [
     { kind: 'setClipboardSecret', text: 'hunter2' },
     { kind: 'setClipboardImage', width: 1, height: 1 },
+    { kind: 'setClipboardFiles', paths: ['C:\\notes\\a.pdf', '/tmp/b c.png'] },
     { kind: 'paste' },
   ]);
   ctx.paste('s3cret', { concealed: true, transient: true });

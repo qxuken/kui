@@ -721,6 +721,32 @@ impl Core {
             .push(crate::menu::MenuAction::SetClipboardSecret { text: text.into() });
     }
 
+    /// Puts files on the system clipboard, as a file manager's Copy does —
+    /// "Copy file" on an attachment, pasted into Explorer, Finder or a
+    /// mail as the files themselves — queued as
+    /// [`MenuAction::SetClipboardFiles`](crate::menu::MenuAction::SetClipboardFiles)
+    /// for the host to apply, as text is (backlog F247). The paths as the
+    /// app names them: the host makes them absolute, and the core reads no
+    /// disk. False, and nothing queued, for no paths; an empty one is
+    /// dropped.
+    pub fn set_clipboard_files<I, P>(&mut self, paths: I) -> bool
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<String>,
+    {
+        let paths: Vec<String> = paths
+            .into_iter()
+            .map(Into::into)
+            .filter(|p| !p.is_empty())
+            .collect();
+        if paths.is_empty() {
+            return false;
+        }
+        self.menu_actions
+            .push(crate::menu::MenuAction::SetClipboardFiles { paths });
+        true
+    }
+
     /// Asks for what is on the clipboard — queued as the
     /// `MenuAction::Paste` a menu's Paste produces. The host reads the
     /// clipboard and hands the text back as `InputEvent::Paste` (or a
