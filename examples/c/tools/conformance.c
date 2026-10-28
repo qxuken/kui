@@ -54,13 +54,13 @@ static void repf(Rep *r, const char *fmt, ...) {
 /* FNV-1a over each quad's words 0..18 - KuiQuad without its uv, which
  * follows glyph insertion order, and without the clip index - plus the uv
  * of a KUI_QUAD_SEGMENT, where it is the endpoints, or of a
- * KUI_QUAD_TEXTURE, where it is the side-list index, and then the twenty
- * words of the clip that index names (its rect, radii, transform, inner
- * clip and its radii, ABI 27). The clip is digested resolved, not
+ * KUI_QUAD_TEXTURE, where it is the side-list index, and then the
+ * twenty-three words of the clip that index names (its rect, radii,
+ * transform, ABI 27, stretch, ABI 41, inner clip and its radii). The clip is digested resolved, not
  * as the index, so the number says what a backend clips by and not how the
  * frame interned it. Mirrors conformance::quad_digest. */
 _Static_assert(sizeof(KuiQuad) == 24 * sizeof(uint32_t), "KuiQuad is not 24 words");
-_Static_assert(sizeof(KuiClip) == 20 * sizeof(uint32_t), "KuiClip is not 20 words");
+_Static_assert(sizeof(KuiClip) == 23 * sizeof(uint32_t), "KuiClip is not 23 words");
 
 static void digest_words(uint64_t *h, const uint32_t *w, int n) {
     for (int j = 0; j < n; j++) {
@@ -83,9 +83,9 @@ static uint64_t quad_digest(const KuiQuad *quads, size_t count,
         if (quads[i].kind == KUI_QUAD_SEGMENT || quads[i].kind == KUI_QUAD_TEXTURE) {
             digest_words(&h, w + 20, 4);
         }
-        uint32_t c[20] = {0};
+        uint32_t c[23] = {0};
         if (quads[i].clip < clip_count) memcpy(c, &clips[quads[i].clip], sizeof c);
-        digest_words(&h, c, 20);
+        digest_words(&h, c, 23);
     }
     return h;
 }
@@ -677,7 +677,9 @@ static void conf_float(KuiCtx *ui, const Fixtures *f, int phase) {
 /* conformance::build_transform (ADR 0043): a rounded, clipping card tilted an
  * eighth of a turn about its top-left corner (rotate, pivot_x/pivot_y with
  * KUI_PIVOT_X | KUI_PIVOT_Y; ABI 27), holding a child wider than itself and
- * a badge floating with it, and beside it a box scaled half again. */
+ * a badge floating with it, and beside it a box scaled half again, and a
+ * box stretched about its foot (scale_x / scale_y; ABI 41) holding a box
+ * turned a sixteenth. */
 static void conf_transform(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -699,6 +701,15 @@ static void conf_transform(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiSpec big = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 40}, .bg = 0x73d98cff,
                    .scale = 1.5f};
     kui_open_keyed(ui, KUI_STR("big"), &big, NULL);
+    kui_close(ui);
+    KuiSpec squat = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 40}, .bg = 0x8c73d9ff,
+                     .scale_x = 1.5f, .scale_y = 0.5f,
+                     .pivot_set = KUI_PIVOT_X | KUI_PIVOT_Y, .pivot_x = 0.5f, .pivot_y = 1};
+    kui_open_keyed(ui, KUI_STR("squat"), &squat, NULL);
+    KuiSpec tilt = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 20}, .bg = 0xd9d973ff,
+                    .rotate = 0.0625f};
+    kui_open_keyed(ui, KUI_STR("tilt"), &tilt, NULL);
+    kui_close(ui);
     kui_close(ui);
     kui_close(ui);
 }

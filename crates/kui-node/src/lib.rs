@@ -6092,6 +6092,8 @@ mod readback_pins {
                 "[].backdropBlur",
                 "[].rotate",
                 "[].scale",
+                "[].scaleX",
+                "[].scaleY",
                 "[].scroll",
                 "[].scroll.x",
                 "[].scroll.y",

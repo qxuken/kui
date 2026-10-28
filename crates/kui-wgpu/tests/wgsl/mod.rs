@@ -107,11 +107,13 @@ pub fn inside(clip: &kui_core::Clip, x: f32, y: f32) -> f32 {
 }
 
 /// `vs_main`'s turn (ADR 0043): where a point of a quad's own rect lands
-/// on screen, through its clip entry's transform — `R(angle) · scale · p
-/// + t`, y down. The identity on a frame that turns nothing.
+/// on screen, through its clip entry's transform — `R(angle) · scale · U ·
+/// p + t`, `U` the stretch, y down. The identity on a frame that turns
+/// nothing.
 pub fn turned(clip: &kui_core::Clip, x: f32, y: f32) -> (f32, f32) {
     let t = clip.transform;
     let (s, c) = t.angle.sin_cos();
+    let (x, y) = (x * t.sx + y * t.shear, y * t.sy);
     let (sx, sy) = (x * t.scale, y * t.scale);
     (sx * c - sy * s + t.tx, sx * s + sy * c + t.ty)
 }

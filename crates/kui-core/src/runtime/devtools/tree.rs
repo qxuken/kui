@@ -816,7 +816,12 @@ fn inspector(
                 ),
                 (
                     "transform",
-                    if n.rotate != 0.0 || n.scale != 1.0 {
+                    if n.scale_x != 1.0 || n.scale_y != 1.0 {
+                        format!(
+                            "{:+.3} turn × {:.2} ({:.2} × {:.2})",
+                            n.rotate, n.scale, n.scale_x, n.scale_y
+                        )
+                    } else if n.rotate != 0.0 || n.scale != 1.0 {
                         format!("{:+.3} turn × {:.2}", n.rotate, n.scale)
                     } else {
                         "—".into()

@@ -62,6 +62,12 @@ pub(crate) fn enter_of(e: &KuiEnter) -> Enter {
     if e.set & KUI_ENTER_SCALE != 0 {
         en = en.scale(e.scale);
     }
+    if e.set & KUI_ENTER_SCALE_X != 0 {
+        en = en.scale_x(e.scale_x);
+    }
+    if e.set & KUI_ENTER_SCALE_Y != 0 {
+        en = en.scale_y(e.scale_y);
+    }
     if e.set & KUI_ENTER_KEEP_ROOM != 0 {
         en = en.keep_room();
     }
@@ -93,6 +99,12 @@ pub(crate) fn keyframe_of(k: &KuiKeyframe) -> Keyframe {
     }
     if k.set & KUI_KF_SCALE != 0 {
         kf = kf.scale(k.scale);
+    }
+    if k.set & KUI_KF_SCALE_X != 0 {
+        kf = kf.scale_x(k.scale_x);
+    }
+    if k.set & KUI_KF_SCALE_Y != 0 {
+        kf = kf.scale_y(k.scale_y);
     }
     if k.set & KUI_KF_OFFSET != 0 {
         kf = kf.offset(k.dx, k.dy);
@@ -363,6 +375,12 @@ pub(crate) fn spec_of(
     }
     if s.scale != 0.0 && s.scale != 1.0 {
         spec = spec.scale(s.scale);
+    }
+    if s.scale_x != 0.0 && s.scale_x != 1.0 {
+        spec = spec.scale_x(s.scale_x);
+    }
+    if s.scale_y != 0.0 && s.scale_y != 1.0 {
+        spec = spec.scale_y(s.scale_y);
     }
     if s.pivot_set & KUI_PIVOT_X != 0 {
         let fy = spec.transform_spec().map_or(0.5, |t| t.pivot.y);

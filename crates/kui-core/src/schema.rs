@@ -205,6 +205,8 @@ pub const P_DY: u32 = 153;
 pub const P_OPENS_ON_PRESS: u32 = 154;
 pub const P_ON_ITEM_KEY: u32 = 155;
 pub const P_TEXT_COLOR: u32 = 156;
+pub const P_SCALE_X: u32 = 157;
+pub const P_SCALE_Y: u32 = 158;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -932,6 +934,20 @@ pub const PROPS: &[PropDef] = &[
         doc: "Scales this node and everything under it by this factor, uniformly, about its pivot, after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`); 1 is none. 0 draws nothing in Rust, Node and Lua; in C and Odin, where a zeroed field is unset, 0 is 1. Paint-only, as `rotate` is: layout, the room taken and `onLayout` are the upright node's; what it draws, clips and hits scales. Tweens with `transition` as one slot with `rotate`; `enter: { scale: 0.8 }` settles a chip in, `keyframes: [{ scale: 1.05, at: 0.5 }]` pulses. The edge ramps scale with the box, so a box scaled far up reads soft.",
     },
     PropDef {
+        name: "scaleX",
+        id: P_SCALE_X,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.scale_x(v)),
+        doc: "Stretches this node and everything under it across by this factor, along its own axes before its turn, about its pivot, after layout (ADR 0043's 2026-10-28 amendment, backlog C149); multiplies `scale`, 1 is none, -1 mirrors it. 0 draws nothing in Rust, Node and Lua; in C and Odin, where a zeroed field is unset, 0 is 1. Paint-only, as `scale` is: layout, the room taken and `onLayout` are the unstretched node's; what it draws, clips and hits stretches, and the access rect is the bounding box. Tweens with `transition` (with `scaleY`, a leg of the transform slot), and an entrance, an exit or a keyframe stop may name it (`enter: { scaleX: 0 }` grows a bar in from its pivot). What is inside stretches with it: a stroke is drawn wider across, a glyph wide — resampled from its upright raster, as a turned one is — so stretch a box of lines or shapes and keep text outside it, or settle back to 1 (a chart's plot gliding to a new range).",
+    },
+    PropDef {
+        name: "scaleY",
+        id: P_SCALE_Y,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.scale_y(v)),
+        doc: "Stretches this node and everything under it down by this factor, about its pivot, after layout; see `scaleX`, which it pairs with. A chart's plot whose range doubled draws its new lines and enters at `{ scaleY: 2, dy: … }` from where the old ones were, settling to 1 with no view run between: `pivotY: 0` keeps the top still.",
+    },
+    PropDef {
         name: "pivotX",
         id: P_PIVOT_X,
         kind: Kind::F32,
@@ -939,7 +955,7 @@ pub const PROPS: &[PropDef] = &[
             let fy = s.transform_spec().map_or(0.5, |t| t.pivot.y);
             s.pivot(v, fy)
         }),
-        doc: "Where across the box `rotate` and `scale` are about, as a fraction of its width: 0 the left edge, 0.5 (the default) the middle, 1 the right edge; outside 0..1 is a point past the box. C: `pivot_x` with `pivot_set`.",
+        doc: "Where across the box `rotate`, `scale`, `scaleX` and `scaleY` are about, as a fraction of its width: 0 the left edge, 0.5 (the default) the middle, 1 the right edge; outside 0..1 is a point past the box. C: `pivot_x` with `pivot_set`.",
     },
     PropDef {
         name: "pivotY",
@@ -949,7 +965,7 @@ pub const PROPS: &[PropDef] = &[
             let fx = s.transform_spec().map_or(0.5, |t| t.pivot.x);
             s.pivot(fx, v)
         }),
-        doc: "Where down the box `rotate` and `scale` are about, as a fraction of its height: 0 the top, 0.5 (the default) the middle, 1 the bottom. C: `pivot_y` with `pivot_set`.",
+        doc: "Where down the box `rotate`, `scale`, `scaleX` and `scaleY` are about, as a fraction of its height: 0 the top, 0.5 (the default) the middle, 1 the bottom. C: `pivot_y` with `pivot_set`.",
     },
     PropDef {
         name: "dx",
@@ -1285,21 +1301,21 @@ pub const PROPS: &[PropDef] = &[
         id: P_KEYFRAMES,
         kind: Kind::Keyframes,
         apply: Apply::SpecKeyframes(|s, k| s.keyframes(k)),
-        doc: "CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`: the slots they name cycle through them over `transition` ms, for ever unless `iterations` says how many times, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. `dx` / `dy` are logical px from where layout put the node (backlog F132), as an entrance's are: the node and its subtree are drawn and hit that far away at the stop, a lane a stop leaves out is 0, and the offset adds to a `slide`'s, so `[{ dy: 0 }, { dy: -6 }]` with `repeat: 'alternate'` bobs a box and a sparkle drifts up its stops. Paint, hit and access only: layout and the room the node takes are its own place's, and an `onLayout` node reports its layout rect, not the cycle, which would post an event every frame it runs. The `easing` applies to each step between two stops, as CSS applies its timing function per keyframe; a spring easing there is drawn as `easeOut` and `bounce` does nothing, since a cycle is sampled off the clock and a spring has to be integrated (backlog F141) — an overshoot in a cycle is a stop past the target, `[{ scale: 1 }, { scale: 1.15, at: 0.6 }, { scale: 1 }]`. A running cycle asks for frames while the frame draws its node: one the frame culled — scrolled out of its scroller, clipped away, off the window — owes none, and is sampled again at the clock on the frame that brings it back (backlog C137); a cycle that moves its node is measured over the reach of its stops, and one of a `width` or a `height` always runs, since it moves what is laid out beside it.",
+        doc: "CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale?, scaleX?, scaleY? }, …]`: the slots they name cycle through them over `transition` ms, for ever unless `iterations` says how many times, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. `dx` / `dy` are logical px from where layout put the node (backlog F132), as an entrance's are: the node and its subtree are drawn and hit that far away at the stop, a lane a stop leaves out is 0, and the offset adds to a `slide`'s, so `[{ dy: 0 }, { dy: -6 }]` with `repeat: 'alternate'` bobs a box and a sparkle drifts up its stops. Paint, hit and access only: layout and the room the node takes are its own place's, and an `onLayout` node reports its layout rect, not the cycle, which would post an event every frame it runs. The `easing` applies to each step between two stops, as CSS applies its timing function per keyframe; a spring easing there is drawn as `easeOut` and `bounce` does nothing, since a cycle is sampled off the clock and a spring has to be integrated (backlog F141) — an overshoot in a cycle is a stop past the target, `[{ scale: 1 }, { scale: 1.15, at: 0.6 }, { scale: 1 }]`. A running cycle asks for frames while the frame draws its node: one the frame culled — scrolled out of its scroller, clipped away, off the window — owes none, and is sampled again at the clock on the frame that brings it back (backlog C137); a cycle that moves its node is measured over the reach of its stops, and one of a `width` or a `height` always runs, since it moves what is laid out beside it.",
     },
     PropDef {
         name: "enter",
         id: P_ENTER,
         kind: Kind::Enter,
         apply: Apply::SpecEnter(|s, e| s.enter(e)),
-        doc: "Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in, `scale: 0.8` settles it in).",
+        doc: "Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale?, scaleX?, scaleY? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in, `scale: 0.8` settles it in).",
     },
     PropDef {
         name: "exit",
         id: P_EXIT,
         kind: Kind::Enter,
         apply: Apply::SpecEnter(|s, e| s.exit(e)),
-        doc: "Where the node ends the frame after the view stops declaring it `{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }` — an `enter` read the other way. It plays when the node itself is removed, its parent still declared; a node that goes because an ancestor went — a tab switched away, a panel closed around it — goes at once with it, unless that ancestor has an `exit` of its own, whose picture carries it (backlog DX19; React's `AnimatePresence` rule). With a `transition`, the departing subtree is copied out of the last frame that had it and replayed frozen, in its place (the pass it painted in, just under the node that painted after it — a panel under a HUD leaves under it) and inert (no clicks, no Tab stop, no access row) while those slots ease from where they were, then dropped; without one it vanishes at once as it always did. `width`/`height` resize the departing node's own box only — the subtree inside it is a picture and is not laid out again. The exit read is the one the last frame that had the node declared, unless `exit_with` named another for the frame it went in: a card a button throws left or right is aimed by the handler that removes it, with no frame drawn first to point it. Needs a stable key across frames. `keepRoom: true` (`keep_room`) keeps the departing node's room in the layout until its exit ends and gives it up then, so what follows it moves in after it has gone rather than while it goes — a toast leaving a stack, the others closing up behind it, gliding where they `slide` (backlog C110); an in-flow node's only, a float taking no room.",
+        doc: "Where the node ends the frame after the view stops declaring it `{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale?, scaleX?, scaleY? }` — an `enter` read the other way. It plays when the node itself is removed, its parent still declared; a node that goes because an ancestor went — a tab switched away, a panel closed around it — goes at once with it, unless that ancestor has an `exit` of its own, whose picture carries it (backlog DX19; React's `AnimatePresence` rule). With a `transition`, the departing subtree is copied out of the last frame that had it and replayed frozen, in its place (the pass it painted in, just under the node that painted after it — a panel under a HUD leaves under it) and inert (no clicks, no Tab stop, no access row) while those slots ease from where they were, then dropped; without one it vanishes at once as it always did. `width`/`height` resize the departing node's own box only — the subtree inside it is a picture and is not laid out again. The exit read is the one the last frame that had the node declared, unless `exit_with` named another for the frame it went in: a card a button throws left or right is aimed by the handler that removes it, with no frame drawn first to point it. Needs a stable key across frames. `keepRoom: true` (`keep_room`) keeps the departing node's room in the layout until its exit ends and gives it up then, so what follows it moves in after it has gone rather than while it goes — a toast leaving a stack, the others closing up behind it, gliding where they `slide` (backlog C110); an in-flow node's only, a float taking no room.",
     },
     PropDef {
         name: "repeat",
@@ -1859,6 +1875,8 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("exit", "`exit` (`KuiEnter`, with `set` bits)"),
     ("opacity", "`opacity` with `opacity_set`"),
     ("scale", "`scale` (0 is 1)"),
+    ("scaleX", "`scale_x` (0 is 1)"),
+    ("scaleY", "`scale_y` (0 is 1)"),
     ("pivotX", "`pivot_x` with `pivot_set`"),
     ("pivotY", "`pivot_y` with `pivot_set`"),
     ("radiusTL", "`radius_tl` with `per_corner`"),

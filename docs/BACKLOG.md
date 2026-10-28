@@ -3640,9 +3640,10 @@ What ADR 0075's building order needs beside the app (F200), filed the
 day it was written. Seven entries, F248–F254, all **built 2026-10-28**
 and in the archive with the app itself, F200 (the spike accepting ADR
 0075); one found building the app, F255, and F258 from using it, built
-the same day and in the archive; and four open entries it
-builds on the way — C147 and C148 in step 1, **built 2026-10-28** and in
-the archive, C149 and C102 in step 4.
+the same day and in the archive; and four entries it builds on the way —
+C147 and C148 in step 1 and C149 in step 4, **built 2026-10-28** and in
+the archive (C149 with `scaleX` / `scaleY`, a stretch in the core and
+every binding), and C102 in step 4, open.
 
 ## From Kit's M0 spike (2026-10-25)
 
@@ -3741,6 +3742,7 @@ filed the same day for the round that builds them.
 - `.` **C143** — [A channel made or published from Lua makes a `Value` a cell](backlog/closed-2026-09.md#-c143--a-channel-made-or-published-from-lua-makes-a-value-a-cell--done-2026-10-26) — done (2026-10-26) — a column is built straight from the Lua values, no `Value` a cell: the 9,000-line log publishes in 1.62 ms, not 2.31
 - `.` **C147** — [A channel cannot be appended to](backlog/closed-2026-09.md#-c147--a-channel-cannot-be-appended-to--done-2026-10-28) — done (2026-10-28) — `append(rows, cap)`, a revision's rows shared with the next in runs that merge as they grow; in every binding
 - `.` **C148** — [A channel has no filter, sort or take](backlog/closed-2026-09.md#-c148--a-channel-has-no-filter-sort-or-take--done-2026-10-28) — done (2026-10-28) — `filter` (value, part of a string, range), `sort`, `take`, in Rust and every binding
+- `.` **C149** — [The line chart's y glide runs the view each frame](backlog/closed-2026-09.md#-c149--the-line-charts-y-glide-runs-the-view-each-frame--done-2026-10-28) — done (2026-10-28) — `scaleX` / `scaleY` in the core and every binding (C ABI 41); the chart's lines enter stretched in a box keyed by the glide, gridlines and labels slide by value, no frame asked for
 - `.` **C150** — [The runner's heap fragments under the system allocator](backlog/closed-2026-09.md#-c150--the-runners-heap-fragments-under-the-system-allocator--done-2026-10-27) — done (2026-10-27) — mimalloc as the runner's allocator, purging at once: the Kit gallery 103 → 66 MB on Charts, 84 → 69 on Overview, Watchtower 51 → 44, Tasks 13 → 16; frames unchanged
 - `.` **C151** — [A float anchored to its parent escapes every clip unless it says so](backlog/closed-2026-09.md#-c151--a-float-anchored-to-its-parent-escapes-every-clip-unless-it-says-so--done-2026-10-27) — done (2026-10-27) — ADR 0074: what a node paints is cut by the nearest box that clips or scrolls it, unless it says `escape` (or floats on the viewport); an exit keeps the clip it left from; doors in every binding, `float_escape` in ABI 39, bit 4 in protocol 27
 - `.` **C152** — [Nothing checks that a node's paint stays in its box](backlog/closed-2026-09.md#-c152--nothing-checks-that-a-nodes-paint-stays-in-its-box--done-2026-10-27) — done (2026-10-27) — the paint audit (`Core::set_paint_audit`, `KUI_PAINT_AUDIT=1`, `paint-escape`); the Kit gallery walked under it at scale 1 and 1.5, failing on the old rule; `kui run --scale`
@@ -3944,23 +3946,6 @@ run with `MallocStackLogging=1`, which this round could not start.
 **Do.** That run, by hand (`MallocStackLogging=1 kui run …`, then
 `malloc_history <pid> -allBySize`), and then a look at what churns the
 small blocks enough to leave a third of the zone empty.
-
-### `.` C149 — The line chart's y glide runs the view each frame
-
-**Found** checking Kit for clock reads (C138): when the rounded y range
-changes, the chart asks for a frame every frame for 240 ms, and each runs
-the view. **Do.** The glide as a transition on the plot's vertical scale
-and offset, gridlines and labels keyed by value, so a reframe carries it.
-
-**Planned** in
-[ADR 0075](adr/0075-kui-perf-reads-a-recording-in-kit.md)'s
-building order, step 4: the inspector needs it.
-
-**Not built with kui-perf (2026-10-28)**: a box scales only uniformly
-(`scale`, ADR 0043), so the plot's vertical scale cannot ride a
-transition as this asks; it needs a `scale_y` (a non-uniform scale) in the
-core and every binding first. kui-perf's lanes reframe only when the
-window moves, which runs the view anyway.
 
 ### `.` C159 — A component cannot schedule a message to itself
 

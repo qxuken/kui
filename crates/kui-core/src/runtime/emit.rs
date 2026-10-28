@@ -690,8 +690,14 @@ impl Core {
             let mut r = r
                 .max(k.dx.unwrap_or(0.0).abs())
                 .max(k.dy.unwrap_or(0.0).abs());
-            if k.slots.rotate.is_some() || k.slots.scale.is_some() {
-                let grow = k.slots.scale.unwrap_or(1.0).abs().max(1.0);
+            if k.slots.turns() {
+                let stretch = k
+                    .slots
+                    .scale_x
+                    .unwrap_or(1.0)
+                    .abs()
+                    .max(k.slots.scale_y.unwrap_or(1.0).abs());
+                let grow = (k.slots.scale.unwrap_or(1.0).abs() * stretch.max(1.0)).max(1.0);
                 r = r.max(size.w.max(size.h) * grow);
             }
             r
@@ -2023,9 +2029,10 @@ impl Core {
             // own, and the root's eased toward the exit's.
             let own = if node.parent == NIL {
                 play.transform
-                    .map(|(rotate, scale)| crate::spec::TransformSpec {
+                    .map(|[rotate, scale, sx, sy]| crate::spec::TransformSpec {
                         rotate,
                         scale,
+                        stretch: crate::geom::Vec2::new(sx, sy),
                         pivot: node
                             .spec
                             .transform_spec()
@@ -3269,7 +3276,7 @@ impl Painter<'_> {
             Size::new(entry.width as f32, entry.height as f32),
             [0, 0, entry.width, entry.height],
         );
-        let k = scale * self.clip_px(clip_id).transform.scale.abs();
+        let k = scale * self.clip_px(clip_id).transform.max_factor();
         let n = crate::mip::level_for(
             (texels[2] as f32, texels[3] as f32),
             (drawn.w * k, drawn.h * k),

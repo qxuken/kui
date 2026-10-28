@@ -34,6 +34,8 @@ struct Instance {
     xform: [f32; 4],
     inner: [f32; 4],
     inner_radii: [f32; 4],
+    /// The stretch before the turn: sx, sy, shear, unused.
+    stretch: [f32; 4],
 }
 
 impl Default for Instance {
@@ -41,12 +43,13 @@ impl Default for Instance {
         Self {
             xform: [0.0, 1.0, 0.0, 0.0],
             inner: [-1e9, -1e9, 2e9, 2e9],
+            stretch: [1.0, 1.0, 0.0, 0.0],
             ..bytemuck::Zeroable::zeroed()
         }
     }
 }
 
-const _: () = assert!(std::mem::size_of::<Instance>() == 176);
+const _: () = assert!(std::mem::size_of::<Instance>() == 192);
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -307,6 +310,7 @@ impl Rig {
             3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
             6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
             9 => Float32x4, 10 => Float32x4, 11 => Float32x4,
+            12 => Float32x4,
         ];
         let vbuf = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Instance>() as u64,

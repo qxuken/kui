@@ -193,15 +193,22 @@ impl Rect {
     }
 }
 
-/// A similarity transform — a turn and a uniform scale about the origin,
-/// then a move: `p' = R(angle) · scale · p + t`, y down, so a positive
-/// angle turns clockwise on screen. What a node's `rotate`, `scale` and
-/// `pivot` compose to (ADR 0043), carried by the clip entry its quads
-/// name (`display::Clip::transform`) in the same units as the entry's
-/// rect.
+/// An affine transform kept as a turn, a uniform scale and a stretch, then
+/// a move: `p' = R(angle) · scale · U · p + t`, where `U` is the stretch
+/// `[[sx, shear], [0, sy]]`, y down, so a positive angle turns clockwise on
+/// screen. What a node's `rotate`, `scale`, `scaleX` / `scaleY` and
+/// `pivot` compose to (ADR 0043 and its 2026-10-28 amendment), carried by
+/// the clip entry its quads name (`display::Clip::transform`) in the same
+/// units as the entry's rect.
 ///
-/// `#[repr(C)]`: four floats, which is how `KuiClip` and the Node
-/// `clips()` buffer read it.
+/// Without a stretch (`sx = sy = 1`, `shear = 0`) it is the similarity ADR
+/// 0043 built, and every operation reads as it did. A stretch comes from
+/// `scaleX` / `scaleY`, along the node's own axes before its turn; `shear`
+/// is never declared — it is what a turned node inside a stretched one
+/// composes to, so that nesting stays exact.
+///
+/// `#[repr(C)]`: seven floats, which is how `KuiClip` (`transform` then
+/// `stretch`) and the Node `clips()` buffer read it.
 ///
 /// ```rust
 /// use kui_core::{Rect, Transform, Vec2};
@@ -214,6 +221,10 @@ impl Rect {
 /// // Its bounding box is the box turned: 50 wide, 100 tall, same centre.
 /// let b = t.bounds(Rect::new(10.0, 10.0, 100.0, 50.0));
 /// assert!((b.w - 50.0).abs() < 1e-3 && (b.h - 100.0).abs() < 1e-3);
+/// // Half as tall about its top edge: the top stays, the foot rises.
+/// let s = Transform::about_stretched(Vec2::new(60.0, 10.0), 0.0, 1.0, 1.0, 0.5);
+/// let foot = s.apply(Vec2::new(10.0, 60.0));
+/// assert!((foot.x - 10.0).abs() < 1e-4 && (foot.y - 35.0).abs() < 1e-4);
 /// ```
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -225,6 +236,13 @@ pub struct Transform {
     /// The move after the turn and the scale.
     pub tx: f32,
     pub ty: f32,
+    /// The stretch across, before the turn: `scaleX`; 1 for none.
+    pub sx: f32,
+    /// The stretch down, before the turn: `scaleY`; 1 for none.
+    pub sy: f32,
+    /// How far across a point moves per px down, before the turn and
+    /// after `sx`: 0 unless a turn is nested inside a stretch.
+    pub shear: f32,
 }
 
 impl Default for Transform {
@@ -234,104 +252,201 @@ impl Default for Transform {
 }
 
 impl Transform {
-    /// No turn, no scale, no move.
+    /// No turn, no scale, no stretch, no move.
     pub const IDENTITY: Transform = Transform {
         angle: 0.0,
         scale: 1.0,
         tx: 0.0,
         ty: 0.0,
+        sx: 1.0,
+        sy: 1.0,
+        shear: 0.0,
     };
 
     /// A turn of `turns` (clockwise, y down) and a scale of `scale` about
     /// `pivot`, which stays where it is.
     pub fn about(pivot: Vec2, turns: f32, scale: f32) -> Self {
+        Self::about_stretched(pivot, turns, scale, 1.0, 1.0)
+    }
+
+    /// [`Self::about`] with the box stretched `sx` across and `sy` down
+    /// along its own axes first: `scaleX` / `scaleY`. The pivot stays put.
+    pub fn about_stretched(pivot: Vec2, turns: f32, scale: f32, sx: f32, sy: f32) -> Self {
         let angle = turns * std::f32::consts::TAU;
         let (s, c) = angle.sin_cos();
-        // t = pivot − R·s·pivot
-        let rx = (pivot.x * c - pivot.y * s) * scale;
-        let ry = (pivot.x * s + pivot.y * c) * scale;
+        // t = pivot − R·s·U·pivot, U the stretch.
+        let (px, py) = (pivot.x * sx, pivot.y * sy);
+        let rx = (px * c - py * s) * scale;
+        let ry = (px * s + py * c) * scale;
         Transform {
             angle,
             scale,
             tx: pivot.x - rx,
             ty: pivot.y - ry,
+            sx,
+            sy,
+            shear: 0.0,
         }
     }
 
     pub fn is_identity(&self) -> bool {
-        self.angle == 0.0 && self.scale == 1.0 && self.tx == 0.0 && self.ty == 0.0
+        self.angle == 0.0
+            && self.scale == 1.0
+            && self.tx == 0.0
+            && self.ty == 0.0
+            && !self.stretched()
+    }
+
+    /// Whether this stretches: `sx` or `sy` other than 1, or a shear.
+    #[inline]
+    pub fn stretched(&self) -> bool {
+        self.sx != 1.0 || self.sy != 1.0 || self.shear != 0.0
+    }
+
+    /// The linear part as a matrix, `[a, b, c, d]` row by row: `p' =
+    /// (a·x + b·y, c·x + d·y) + t`.
+    pub fn matrix(&self) -> [f32; 4] {
+        let (s, c) = self.angle.sin_cos();
+        let (u00, u01, u11) = (
+            self.sx * self.scale,
+            self.shear * self.scale,
+            self.sy * self.scale,
+        );
+        [c * u00, c * u01 - s * u11, s * u00, s * u01 + c * u11]
+    }
+
+    /// The most a unit length is drawn at, along any direction: the
+    /// factor a mip level reads (`|scale|` without a stretch).
+    pub fn max_factor(&self) -> f32 {
+        if !self.stretched() {
+            return self.scale.abs();
+        }
+        // The larger singular value of the linear part.
+        let [a, b, c, d] = self.matrix();
+        let p = a * a + b * b + c * c + d * d;
+        let q = (a * d - b * c).abs();
+        ((p + (p * p - 4.0 * q * q).max(0.0).sqrt()) * 0.5).sqrt()
     }
 
     /// `p` through this transform.
     pub fn apply(&self, p: Vec2) -> Vec2 {
         let (s, c) = self.angle.sin_cos();
-        let x = p.x * self.scale;
-        let y = p.y * self.scale;
+        let (x, y) = if self.stretched() {
+            (p.x * self.sx + p.y * self.shear, p.y * self.sy)
+        } else {
+            (p.x, p.y)
+        };
+        let x = x * self.scale;
+        let y = y * self.scale;
         Vec2 {
             x: x * c - y * s + self.tx,
             y: x * s + y * c + self.ty,
         }
     }
 
-    /// The point that maps to `p`: the inverse. A scale of zero has no
-    /// inverse; the answer is then NaN, which no rect contains, so nothing
-    /// is hit, as nothing is drawn.
+    /// The point that maps to `p`: the inverse. A scale or a stretch of
+    /// zero has no inverse; the answer is then NaN, which no rect
+    /// contains, so nothing is hit, as nothing is drawn.
     pub fn unapply(&self, p: Vec2) -> Vec2 {
-        if self.scale == 0.0 {
+        if self.scale == 0.0 || self.sx == 0.0 || self.sy == 0.0 {
             return Vec2::new(f32::NAN, f32::NAN);
         }
         let (s, c) = (-self.angle).sin_cos();
         let x = p.x - self.tx;
         let y = p.y - self.ty;
+        let x0 = (x * c - y * s) / self.scale;
+        let y0 = (x * s + y * c) / self.scale;
+        if !self.stretched() {
+            return Vec2 { x: x0, y: y0 };
+        }
+        let y1 = y0 / self.sy;
         Vec2 {
-            x: (x * c - y * s) / self.scale,
-            y: (x * s + y * c) / self.scale,
+            x: (x0 - self.shear * y1) / self.sx,
+            y: y1,
         }
     }
 
     /// This transform, then `outer`: the composition a nested turn is
     /// (`inner.then(outer)` maps a point as `outer.apply(inner.apply(p))`).
+    /// Exact for any pair: a turn inside a stretch comes out as a turn, a
+    /// scale and a sheared stretch.
     pub fn then(&self, outer: &Transform) -> Transform {
         let t = outer.apply(Vec2::new(self.tx, self.ty));
+        if !outer.stretched() {
+            // R2·s2·R1·s1·U1 = R(a1 + a2)·(s1·s2)·U1: the similarity ADR
+            // 0043 composed, the inner stretch carried as it is.
+            return Transform {
+                angle: self.angle + outer.angle,
+                scale: self.scale * outer.scale,
+                tx: t.x,
+                ty: t.y,
+                ..*self
+            };
+        }
+        if self.angle == 0.0 {
+            // R2·s2·U2·s1·U1 = R2·(s1·s2)·(U2·U1): two upper triangles.
+            return Transform {
+                angle: outer.angle,
+                scale: self.scale * outer.scale,
+                tx: t.x,
+                ty: t.y,
+                sx: outer.sx * self.sx,
+                sy: outer.sy * self.sy,
+                shear: outer.sx * self.shear + outer.shear * self.sy,
+            };
+        }
+        // The general case: multiply, then split the product back into a
+        // turn and an upper triangle (its QR decomposition).
+        let [a2, b2, c2, d2] = outer.matrix();
+        let [a1, b1, c1, d1] = self.matrix();
+        let (a, b) = (a2 * a1 + b2 * c1, a2 * b1 + b2 * d1);
+        let (c, d) = (c2 * a1 + d2 * c1, c2 * b1 + d2 * d1);
+        let angle = c.atan2(a);
+        let scale = self.scale * outer.scale;
+        if scale == 0.0 {
+            return Transform {
+                angle,
+                scale,
+                tx: t.x,
+                ty: t.y,
+                ..Transform::IDENTITY
+            };
+        }
+        let (s, k) = angle.sin_cos();
+        // R(−angle)·M = [[r00, r01], [0, r11]].
+        let r00 = k * a + s * c;
+        let r01 = k * b + s * d;
+        let r11 = -s * b + k * d;
         Transform {
-            angle: self.angle + outer.angle,
-            scale: self.scale * outer.scale,
+            angle,
+            scale,
             tx: t.x,
             ty: t.y,
+            sx: r00 / scale,
+            sy: r11 / scale,
+            shear: r01 / scale,
         }
     }
 
-    /// Logical to physical pixels: the move scales, the turn and the
-    /// factor do not.
+    /// Logical to physical pixels: the move scales, the turn, the factor
+    /// and the stretch do not.
     pub fn scaled(&self, s: f32) -> Transform {
         Transform {
-            angle: self.angle,
-            scale: self.scale,
             tx: self.tx * s,
             ty: self.ty * s,
+            ..*self
         }
     }
 
     /// The smallest axis-aligned rect holding `r` put through this
     /// transform: what an access rect and a cull read.
     pub fn bounds(&self, r: Rect) -> Rect {
-        let corners = [
+        corners_bounds([
             self.apply(Vec2::new(r.x, r.y)),
             self.apply(Vec2::new(r.x + r.w, r.y)),
             self.apply(Vec2::new(r.x + r.w, r.y + r.h)),
             self.apply(Vec2::new(r.x, r.y + r.h)),
-        ];
-        let mut x0 = f32::INFINITY;
-        let mut y0 = f32::INFINITY;
-        let mut x1 = f32::NEG_INFINITY;
-        let mut y1 = f32::NEG_INFINITY;
-        for c in corners {
-            x0 = x0.min(c.x);
-            y0 = y0.min(c.y);
-            x1 = x1.max(c.x);
-            y1 = y1.max(c.y);
-        }
-        Rect::new(x0, y0, x1 - x0, y1 - y0)
+        ])
     }
 
     /// The bounding box of `r` pulled back through this transform: the
@@ -339,14 +454,24 @@ impl Transform {
     /// `r` in its target space — how a clip from outside a turn is
     /// approximated inside it (ADR 0043, decision 4).
     pub fn unbounds(&self, r: Rect) -> Rect {
-        if self.scale == 0.0 {
+        if self.scale == 0.0 || self.sx == 0.0 || self.sy == 0.0 {
             return Rect::new(0.0, 0.0, 0.0, 0.0);
+        }
+        if self.stretched() {
+            // An affine map's inverse takes corners to corners.
+            return corners_bounds([
+                self.unapply(Vec2::new(r.x, r.y)),
+                self.unapply(Vec2::new(r.x + r.w, r.y)),
+                self.unapply(Vec2::new(r.x + r.w, r.y + r.h)),
+                self.unapply(Vec2::new(r.x, r.y + r.h)),
+            ]);
         }
         let inv = Transform {
             angle: -self.angle,
             scale: 1.0 / self.scale,
             tx: 0.0,
             ty: 0.0,
+            ..Transform::IDENTITY
         };
         let o = inv.apply(Vec2::new(-self.tx, -self.ty));
         Transform {
@@ -364,6 +489,21 @@ impl Transform {
     pub(crate) fn lanes(turns: f32, scale: f32) -> [f32; 4] {
         [finite_or(turns, 0.0), finite_or(scale, 1.0), 0.0, 0.0]
     }
+}
+
+/// The smallest axis-aligned rect holding four points.
+fn corners_bounds(corners: [Vec2; 4]) -> Rect {
+    let mut x0 = f32::INFINITY;
+    let mut y0 = f32::INFINITY;
+    let mut x1 = f32::NEG_INFINITY;
+    let mut y1 = f32::NEG_INFINITY;
+    for c in corners {
+        x0 = x0.min(c.x);
+        y0 = y0.min(c.y);
+        x1 = x1.max(c.x);
+        y1 = y1.max(c.y);
+    }
+    Rect::new(x0, y0, x1 - x0, y1 - y0)
 }
 
 /// Per-side lengths: padding, borders.

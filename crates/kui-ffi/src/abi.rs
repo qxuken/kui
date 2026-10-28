@@ -245,7 +245,14 @@
 ///   after alpha.68 at 39. And `kui_set_clipboard_files` with
 ///   `KUI_MENU_ACTION_SET_CLIPBOARD_FILES` (backlog F247), moving no
 ///   struct.
-pub const KUI_ABI_VERSION: u32 = 40;
+/// - ABI 41: a stretch (`scaleX` / `scaleY`, backlog C149; ADR 0043's
+///   2026-10-28 amendment). `KuiClip` inserts `stretch` (sx, sy, shear)
+///   after `transform`, 23 words from 20; `KuiKeyframe` and `KuiEnter`
+///   append `scale_x` and `scale_y` with `KUI_KF_SCALE_X` / `_Y` and
+///   `KUI_ENTER_SCALE_X` / `_Y` (60 and 56 bytes); `KuiSpec` appends
+///   `scale_x` and `scale_y` (912 bytes on 64-bit, from 888, its two
+///   `KuiEnter`s grown by 8 each).
+pub const KUI_ABI_VERSION: u32 = 41;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

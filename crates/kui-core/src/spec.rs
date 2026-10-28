@@ -1766,6 +1766,12 @@ pub struct TransformSpec {
     pub rotate: f32,
     /// The uniform factor; 1 is none.
     pub scale: f32,
+    /// The stretch across and down along the node's own axes, before its
+    /// turn, multiplying `scale` (`scaleX` / `scaleY`, ADR 0043's
+    /// 2026-10-28 amendment); `(1, 1)` is none. What a chart's plot
+    /// glides on when its range changes: a box half as tall is the same
+    /// lines drawn over twice the range.
+    pub stretch: crate::geom::Vec2,
     /// The point the turn and the scale are about, as fractions of the
     /// node's box: `(0.5, 0.5)` is the centre.
     pub pivot: crate::geom::Vec2,
@@ -1789,6 +1795,7 @@ impl TransformSpec {
     pub const NONE: Self = Self {
         rotate: 0.0,
         scale: 1.0,
+        stretch: crate::geom::Vec2 { x: 1.0, y: 1.0 },
         pivot: crate::geom::Vec2 { x: 0.5, y: 0.5 },
         translate: crate::geom::Vec2 { x: 0.0, y: 0.0 },
     };
@@ -1804,12 +1811,21 @@ impl TransformSpec {
         (d.x != 0.0 || d.y != 0.0).then_some(d)
     }
 
-    /// Whether this moves anything: a turn, or a scale that is not 1. A
-    /// turn or a scale that is not a finite number is none.
+    /// Whether this moves anything: a turn, or a scale or a stretch that
+    /// is not 1. A turn or a factor that is not a finite number is none.
     #[inline]
     pub fn active(&self) -> bool {
         (self.rotate != 0.0 && self.rotate.is_finite())
             || (self.scale != 1.0 && self.scale.is_finite())
+            || self.stretched()
+    }
+
+    /// Whether `scaleX` or `scaleY` stretches the node: a factor other
+    /// than 1 that is a finite number.
+    #[inline]
+    pub fn stretched(&self) -> bool {
+        (self.stretch.x != 1.0 && self.stretch.x.is_finite())
+            || (self.stretch.y != 1.0 && self.stretch.y.is_finite())
     }
 
     /// The transform for a node laid out at `rect` (logical px, in the
@@ -1819,10 +1835,12 @@ impl TransformSpec {
             rect.x + rect.w * self.pivot.x,
             rect.y + rect.h * self.pivot.y,
         );
-        crate::geom::Transform::about(
+        crate::geom::Transform::about_stretched(
             pivot,
             crate::geom::finite_or(self.rotate, 0.0),
             crate::geom::finite_or(self.scale, 1.0),
+            crate::geom::finite_or(self.stretch.x, 1.0),
+            crate::geom::finite_or(self.stretch.y, 1.0),
         )
     }
 }
@@ -2637,9 +2655,36 @@ impl NodeSpec {
         self
     }
 
-    /// The point `rotate` and `scale` are about, as fractions of the box:
-    /// `(0.5, 0.5)` — the default — is the centre, `(0.0, 1.0)` the
-    /// bottom-left corner.
+    /// Stretches this node and everything under it by `sx` across, along
+    /// its own axes before its turn, about its pivot (`scaleX`, ADR 0043's
+    /// 2026-10-28 amendment); multiplies `scale`, 1 is none. Paint-only
+    /// and tweened with `transition`, as `scale` is. What it holds
+    /// stretches with it — a stroke widens across, a glyph is drawn wide.
+    pub fn scale_x(mut self, sx: f32) -> Self {
+        self.transform_mut().stretch.x = sx;
+        self
+    }
+
+    /// Stretches this node and everything under it by `sy` down, about its
+    /// pivot; see [`Self::scale_x`]. A plot whose range doubled is its
+    /// new lines entering at `scale_y(2.0)` and settling to 1:
+    ///
+    /// ```
+    /// # use kui_core::{Enter, NodeSpec};
+    /// let plot = NodeSpec::column()
+    ///     .pivot(0.5, 0.0)
+    ///     .transition(240.0)
+    ///     .enter(Enter::default().scale_y(2.0));
+    /// assert_eq!(plot.anim().enter.unwrap().scale_y, Some(2.0));
+    /// ```
+    pub fn scale_y(mut self, sy: f32) -> Self {
+        self.transform_mut().stretch.y = sy;
+        self
+    }
+
+    /// The point `rotate`, `scale` and the stretch are about, as fractions
+    /// of the box: `(0.5, 0.5)` — the default — is the centre, `(0.0,
+    /// 1.0)` the bottom-left corner.
     pub fn pivot(mut self, fx: f32, fy: f32) -> Self {
         self.transform_mut().pivot = crate::geom::Vec2::new(fx, fy);
         self
@@ -2680,8 +2725,8 @@ impl NodeSpec {
             .get_or_insert_with(|| Box::new(TransformSpec::NONE))
     }
 
-    /// The node's `rotate`, `scale` and `pivot` (ADR 0043), when it
-    /// declares any.
+    /// The node's `rotate`, `scale`, `scaleX` / `scaleY`, `pivot` and
+    /// `dx` / `dy` (ADR 0043, backlog C105), when it declares any.
     #[inline]
     pub fn transform_spec(&self) -> Option<TransformSpec> {
         self.interact

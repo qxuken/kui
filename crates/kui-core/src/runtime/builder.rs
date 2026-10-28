@@ -70,11 +70,7 @@ fn turns(spec: &NodeSpec) -> bool {
 /// `open_content`, and every node paid the call (ADR 0043's amendment).
 #[inline(never)]
 fn anim_turns(a: &crate::spec::AnimSpec) -> bool {
-    a.enter
-        .is_some_and(|e| e.rotate.is_some() || e.scale.is_some())
-        || a.keyframes
-            .iter()
-            .any(|k| k.rotate.is_some() || k.scale.is_some())
+    a.enter.is_some_and(|e| e.turns()) || a.keyframes.iter().any(|k| k.turns())
 }
 
 /// The transform slot's lanes a node declares: `[rotate, scale, dx, dy]`,
@@ -86,6 +82,20 @@ fn transform_lanes(spec: &NodeSpec) -> [f32; 4] {
     let [r, s, ..] = crate::geom::Transform::lanes(t.rotate, t.scale);
     let d = t.offset().unwrap_or_default();
     [r, s, d.x, d.y]
+}
+
+/// The stretch's lanes a node declares: `[scaleX, scaleY, 0, 0]`, `[1, 1,
+/// 0, 0]` for a node that declares none (ADR 0043's 2026-10-28
+/// amendment). A factor that is not a finite number is none.
+#[inline]
+fn stretch_lanes(spec: &NodeSpec) -> [f32; 4] {
+    let t = spec.transform_spec().unwrap_or_default();
+    [
+        crate::geom::finite_or(t.stretch.x, 1.0),
+        crate::geom::finite_or(t.stretch.y, 1.0),
+        0.0,
+        0.0,
+    ]
 }
 
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
@@ -177,6 +187,7 @@ impl Core {
             // marks its other slots used this frame.
             let declares = turns(spec);
             let upright = declares && self.anim.turn_starts_upright(key);
+            let unstretched = declares && self.anim.stretch_starts_unstretched(key);
             self.ease_transitioning(key, spec, t);
             // The turn and the scale (ADR 0043) are eased apart, after the
             // other slots and out of line, so `ease_transitioning` is the
@@ -185,7 +196,7 @@ impl Core {
             // A turn the node stops declaring eases back to upright on the
             // tween it had.
             if declares || self.anim.turn_live(key) {
-                self.ease_transform(key, spec, t, upright);
+                self.ease_transform(key, spec, t, upright, unstretched);
             }
         }
     }
@@ -231,10 +242,12 @@ impl Core {
     }
 
     /// The transform slot of a transitioning node that turns
-    /// ([`turns`]): sampled from its stops when they name `rotate` or
-    /// `scale`, else tweened from where its entrance says. The eased
-    /// lanes land on the spec's transform, allocated for an entrance or a
-    /// cycle that turns a node declaring none.
+    /// ([`turns`]): sampled from its stops when they name `rotate`,
+    /// `scale` or a stretch, else tweened from where its entrance says.
+    /// Two legs, each eased the same way: the turn, the scale and the move
+    /// (`[rotate, scale, dx, dy]`), and the stretch (`[scaleX, scaleY]`).
+    /// The eased lanes land on the spec's transform, allocated for an
+    /// entrance or a cycle that turns a node declaring none.
     #[cold]
     #[inline(never)]
     fn ease_transform(
@@ -243,35 +256,41 @@ impl Core {
         spec: &mut NodeSpec,
         t: crate::anim::Transition,
         upright: bool,
+        unstretched: bool,
     ) {
+        // Already drawn upright, the turn eases in from there; a node new
+        // this frame enters as its `enter` says.
+        const UPRIGHT: [f32; 4] = [0.0, 1.0, 0.0, 0.0];
+        const UNSTRETCHED: [f32; 4] = [1.0, 1.0, 0.0, 0.0];
         let declared = spec.interact().transform.is_some();
         let base = transform_lanes(spec);
+        let sbase = stretch_lanes(spec);
         let frames = &spec.anim().keyframes;
         // A stop's lanes are filled from the node's own transform, so a
         // stop naming only `rotate` keeps the scale.
-        let track = if frames.is_empty() {
-            None
+        let (track, strack) = if frames.is_empty() {
+            (None, None)
         } else {
-            keyframes::track(frames, &keyframes::offsets(frames), base, |k| {
-                k.transform_lanes(base)
-            })
+            let offsets = keyframes::offsets(frames);
+            (
+                keyframes::track(frames, &offsets, base, |k| k.transform_lanes(base)),
+                keyframes::track(frames, &offsets, sbase, |k| k.stretch_lanes(sbase)),
+            )
         };
+        let held = self.holds_cycles(spec);
+        let iterations = spec.anim().iterations;
+        let enter = spec.anim().enter;
         let v = match track {
-            Some(track) if self.holds_cycles(spec) => {
-                crate::anim::held_still(&track, t, spec.anim().iterations).unwrap_or(base)
-            }
+            Some(track) if held => crate::anim::held_still(&track, t, iterations).unwrap_or(base),
             Some(track) => self
                 .anim
-                .sample_cycle(key, &track, t, spec.anim().iterations)
+                .sample_cycle(key, &track, t, iterations)
                 .unwrap_or(base),
             None => {
-                // Already drawn upright, the turn eases in from there; a
-                // node new this frame enters as its `enter` says.
-                const UPRIGHT: [f32; 4] = [0.0, 1.0, 0.0, 0.0];
                 let from = if upright {
                     Some(UPRIGHT)
                 } else {
-                    spec.anim().enter.and_then(|e| e.transform_lanes(base))
+                    enter.and_then(|e| e.transform_lanes(base))
                 };
                 let v = self.anim.drive_turn(key, from, base, t);
                 if !declared && v == UPRIGHT {
@@ -280,11 +299,38 @@ impl Core {
                 v
             }
         };
-        if declared || v != base {
+        let sv = match strack {
+            Some(track) if held => crate::anim::held_still(&track, t, iterations).unwrap_or(sbase),
+            Some(track) => self
+                .anim
+                .sample_cycle(key, &track, t, iterations)
+                .unwrap_or(sbase),
+            // Nothing stretches, nor did: no tween to keep.
+            None if sbase == UNSTRETCHED
+                && !enter.is_some_and(|e| e.scale_x.is_some() || e.scale_y.is_some())
+                && !self.anim.stretch_live(key) =>
+            {
+                UNSTRETCHED
+            }
+            None => {
+                let from = if unstretched {
+                    Some(UNSTRETCHED)
+                } else {
+                    enter.and_then(|e| e.stretch_lanes(sbase))
+                };
+                let v = self.anim.drive_stretch(key, from, sbase, t);
+                if sbase == UNSTRETCHED && v == UNSTRETCHED {
+                    self.anim.forget_settled_stretch(key, UNSTRETCHED);
+                }
+                v
+            }
+        };
+        if declared || v != base || sv != sbase {
             let tr = spec.transform_mut();
             tr.rotate = v[0];
             tr.scale = v[1];
             tr.translate = crate::geom::Vec2::new(v[2], v[3]);
+            tr.stretch = crate::geom::Vec2::new(sv[0], sv[1]);
         }
     }
 

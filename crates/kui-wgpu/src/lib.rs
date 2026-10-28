@@ -128,6 +128,9 @@ struct Instance {
     inner: [f32; 4],
     /// Its radii, as `clip_radii` are the outer clip's.
     inner_radii: [f32; 4],
+    /// The stretch before the turn (`scaleX` / `scaleY`): sx, sy, shear,
+    /// unused — the clip entry's. `[1, 1, 0, 0]` when nothing stretches.
+    stretch: [f32; 4],
 }
 
 /// The frame's own numbers, at group 0 binding 0 for both pipelines.
@@ -229,6 +232,7 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
             xform: [0.0, 1.0, 0.0, 0.0],
             inner: [0.0; 4],
             inner_radii: [0.0; 4],
+            stretch: [1.0, 1.0, 0.0, 0.0],
         };
     }
     Instance {
@@ -249,6 +253,12 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
         ],
         inner: [clip.inner.x, clip.inner.y, clip.inner.w, clip.inner.h],
         inner_radii: clip.inner_radius,
+        stretch: [
+            clip.transform.sx,
+            clip.transform.sy,
+            clip.transform.shear,
+            0.0,
+        ],
     }
 }
 
@@ -836,11 +846,12 @@ struct FragmentLayouts {
 
 /// The instance attributes both pipelines read; one array so the vertex
 /// layout cannot differ between them.
-const INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_array![
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 13] = wgpu::vertex_attr_array![
     0 => Float32x2, 1 => Float32x2, 2 => Float32x4,
     3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
     6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
     9 => Float32x4, 10 => Float32x4, 11 => Float32x4,
+    12 => Float32x4,
 ];
 
 /// The quad pipeline over `module` — the shader with per-channel blending
