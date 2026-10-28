@@ -3052,6 +3052,13 @@ typedef struct KitLineChart {
     double x_max;
     bool x_max_set;
     /*
+     * The y labels' column in px, held: charts stacked under one another, or
+     * under a waterfall with the same `gutter`, share their plot's left edge.
+     * As wide as the widest label when left out.
+     */
+    double gutter;
+    bool gutter_set;
+    /*
      * With it, only the last `window` of x is shown: a live chart. While
      * samples come in it scrolls smoothly between them, drawn one sample behind
      * and slid left over the time samples take to come (a keyframe cycle the
@@ -3115,6 +3122,7 @@ static inline KuiValue *kit_line_chart_props(const KitLineChart *p) {
     if (p->area_set) kui_value_map_set(m, KUI_STR("area"), kui_value_bool(p->area));
     if (p->x_min_set) kui_value_map_set(m, KUI_STR("x_min"), kui_value_float(p->x_min));
     if (p->x_max_set) kui_value_map_set(m, KUI_STR("x_max"), kui_value_float(p->x_max));
+    if (p->gutter_set) kui_value_map_set(m, KUI_STR("gutter"), kui_value_float(p->gutter));
     if (p->window_set) kui_value_map_set(m, KUI_STR("window"), kui_value_float(p->window));
     if (p->x_format != 0) kui_value_map_set(m, KUI_STR("x_format"), kui_value_str(kit_x_format_name(p->x_format)));
     if (p->x_unit.len > 0) kui_value_map_set(m, KUI_STR("x_unit"), kui_value_str(p->x_unit));
@@ -3260,7 +3268,9 @@ static inline int32_t kit_histogram(KuiCtx *ctx, const KitHistogram *p) {
 
 /*
  * A trace waterfall: spans as bars on a time axis, nested by depth, coloured by
- * group, zoomed and panned by the wheel and a drag.
+ * group. The wheel and a pinch zoom about the pointer, a sideways swipe or
+ * Shift and the wheel pans, a drag on the lanes pans, and a drag on the time
+ * axis selects a range to zoom to.
  */
 typedef struct KitWaterfall {
     /*
@@ -3293,13 +3303,37 @@ typedef struct KitWaterfall {
     bool grow;
     bool grow_set;
     /*
+     * An empty column in px left of the axis and the lanes, so they line up
+     * with charts under them that hold the same `gutter`.
+     */
+    double gutter;
+    bool gutter_set;
+    /*
+     * The range selected on the axis, in ms, held by the host: with `on_range`,
+     * the range drawn is this one, and a drag on the axis proposes another.
+     * Kit's own otherwise.
+     */
+    double range_start;
+    bool range_start_set;
+    /*
+     * The selected range's length in ms; none selected when left out or 0.
+     */
+    double range_length;
+    bool range_length_set;
+    /*
      * The message `select` arrives as, consumed; NULL for none. A span was
      * clicked.
      */
     KuiValue *on_select;
     /*
-     * The message `zoom` arrives as, consumed; NULL for none. The wheel or a
-     * drag asks for another window.
+     * The message `range` arrives as, consumed; NULL for none. A drag on the
+     * time axis selected a range, or a click there or the range's × cleared
+     * it.
+     */
+    KuiValue *on_range;
+    /*
+     * The message `zoom` arrives as, consumed; NULL for none. The wheel, a
+     * pinch, a drag, a tool or zooming to the range asks for another window.
      */
     KuiValue *on_zoom;
     /* Keys the instance (empty: where it is placed); fresh asks the
@@ -3316,7 +3350,11 @@ static inline KuiValue *kit_waterfall_props(const KitWaterfall *p) {
     if (p->length_set) kui_value_map_set(m, KUI_STR("length"), kui_value_float(p->length));
     if (p->selected_set) kui_value_map_set(m, KUI_STR("selected"), kui_value_int(p->selected));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
+    if (p->gutter_set) kui_value_map_set(m, KUI_STR("gutter"), kui_value_float(p->gutter));
+    if (p->range_start_set) kui_value_map_set(m, KUI_STR("range_start"), kui_value_float(p->range_start));
+    if (p->range_length_set) kui_value_map_set(m, KUI_STR("range_length"), kui_value_float(p->range_length));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
+    if (p->on_range != NULL) kui_value_map_set(m, KUI_STR("on_range"), p->on_range);
     if (p->on_zoom != NULL) kui_value_map_set(m, KUI_STR("on_zoom"), p->on_zoom);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));

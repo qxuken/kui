@@ -733,7 +733,8 @@ on_layout = act(c, "line_chart.layout"), }
          v = v + step
       end
    end
-   gutter = math.ceil(gutter) + 2
+
+   gutter = p.gutter ~= nil and p.gutter or (math.ceil(gutter) + 2)
    local labels = { key = "gutter", width = gutter, height = h, transition = 160, when = { ctx.still() } }
    for i, v in ipairs(ys) do
       local y = h - (v - lo) / (hi - lo) * h

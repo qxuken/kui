@@ -1,6 +1,7 @@
 -- Trace waterfall: spans as bars on lanes by depth over a time axis,
--- zoomed by the wheel about the pointer and panned by a drag, a click
--- selecting a span.
+-- zoomed by the wheel or a pinch about the pointer, panned by a sideways
+-- swipe or a drag, a click selecting a span and a drag on the axis a
+-- range to zoom to.
 --
 -- Input is a channel, source-agnostic: each row a span's `start` and `len`
 -- (ms), its `depth` (its lane), `group` (its colour), `name` and `target`.
@@ -43,6 +44,11 @@ local record State
   -- The lanes' rect last frame, for zoom about the pointer.
   x: number
   w: number
+  -- Kit's own range on the axis, while the host keeps none; the time the
+  -- drag that selects it pressed at.
+  r0: number
+  r1: number
+  from: number
 end
 
 local M = {}
@@ -73,6 +79,16 @@ local function state(c: Ctx, p: P): State
     if fresh then st.v0, st.v1 = st.index.lo, st.index.hi end
   end
   return st
+end
+
+-- The range in force, nil for none: the host's when it hears `range`.
+local function range(st: State, p: P): number, number
+  if p.on_range ~= nil then
+    local len = (p.range_length or 0) as number
+    if p.range_start == nil or len <= 0 then return nil, nil end
+    return p.range_start as number, p.range_start as number + len
+  end
+  return st.r0, st.r1
 end
 
 -- The window in force: the host's when it keeps one.
@@ -187,7 +203,10 @@ function M.waterfall(c: Ctx, p: P): kui.Node
 
   -- The axis: a tick about every 100 px at a round step.
   local step = nice(100 / scale)
-  local axis: kui.Props = { height = 18, width = "grow", clip = true, cross_align = "end" }
+  -- A drag on it selects a range, a click clears the one there is.
+  local axis: kui.Props = { key = "axis", height = 18, width = "grow", clip = true, cross_align = "end",
+    cursor = "ewResize", tooltip = "Drag to select a range",
+    on_drag = act(c, "waterfall.range", { v0 = v0, v1 = v1, x = st.x, w = width }) }
   local t0 = math.ceil(v0 / step) * step
   local lead = (t0 - v0) * scale
   if lead > 0 then axis[#axis + 1] = column { width = lead } end
@@ -204,8 +223,6 @@ function M.waterfall(c: Ctx, p: P): kui.Node
     role = picks and "list" or nil,
     label = picks and "spans" or nil,
     width = "grow",
-    height = p.grow == true and "grow" or nil,
-    scroll_y = p.grow == true,
     gap = 2,
     on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
     -- Kept for `layout_of` (the width the window maps onto), and a resize
@@ -217,6 +234,29 @@ function M.waterfall(c: Ctx, p: P): kui.Node
   for lane = 0, n_lanes - 1 do
     lanes[#lanes + 1] = lane_row(c, lane, st, v0, v1, width, selected, picks)
   end
+  -- The range: a band over the lanes and the axis, its edges in the
+  -- accent.
+  local a, b = range(st, p)
+  local band: {kui.Node} = nil
+  if a then
+    local x0 = math.max(-2, (a - v0) * scale)
+    local x1 = math.min(width + 2, (b - v0) * scale)
+    if x1 > x0 then
+      -- The fill faded as a group, so its edges are floats of their own.
+      local function shade(key: string, h: number): {kui.Node}
+        local edge = ref(c, "accent_text")
+        return {
+          column { key = key, float = { anchor = "parent", dx = x0, dy = 0 }, width = math.max(1, x1 - x0),
+            height = h, bg = ref(c, "accent"), opacity = 0.16 },
+          column { key = key .. "-a", float = { anchor = "parent", dx = x0, dy = 0 }, width = 1, height = h, bg = edge },
+          column { key = key .. "-b", float = { anchor = "parent", dx = x1 - 1, dy = 0 }, width = 1, height = h, bg = edge },
+        }
+      end
+      for _, n in ipairs(shade("range", math.max(n_lanes, 1) * (LANE_H + 2))) do lanes[#lanes + 1] = n end
+      band = shade("range-axis", 18)
+    end
+  end
+  for _, n in ipairs(band or {}) do axis[#axis + 1] = n end
   -- Marks: a rule down the lanes, those a pixel apart one rule saying how
   -- many it stands for.
   if st.index.ticks then
@@ -237,25 +277,42 @@ function M.waterfall(c: Ctx, p: P): kui.Node
     end
   end
 
+  -- An empty column left of the axis and the lanes, for charts under
+  -- them that hold the same gutter (their y labels' column and its gap).
+  local gutter = p.gutter as number
+  local function beside(n: kui.Node, grow: boolean): kui.Node
+    if not gutter or gutter <= 0 then return n end
+    return row { width = "grow", height = grow and "grow" or nil, gap = 6, column { width = gutter }, n }
+  end
+  local head: kui.Props = {
+    width = "grow", gap = 8, cross_align = "center",
+    ctx.caption(c, "Trace"),
+    ctx.data(c, string.format("%s – %s · %d spans", fmt(v0, step), fmt(v1, step), st.index.count),
+      { size = "$kitSizeLabel", color = ref(c, "muted") }),
+  }
+  if a then
+    head[#head + 1] = ctx.data(c, string.format("range %s", fmt(b - a, nice((b - a) / 4))),
+      { size = "$kitSizeLabel", color = ref(c, "accent_text") })
+    head[#head + 1] = tool(c, "fit", "Zoom to the range", "to_range", a, b)
+    head[#head + 1] = tool(c, "x", "Clear the range", "clear", v0, v1)
+  end
+  head[#head + 1] = ctx.grow()
+  head[#head + 1] = tool(c, "zoom_out", "Zoom out", "out", v0, v1)
+  head[#head + 1] = tool(c, "zoom_in", "Zoom in", "in", v0, v1)
+  head[#head + 1] = tool(c, "fit", "Fit", "fit", v0, v1)
+  -- The lanes scroll down in a box around them, so the wheel over them is
+  -- theirs whether or not the box can scroll: a zoom, never a scroll.
   return column {
     width = "grow",
     height = p.grow == true and "grow" or nil,
     gap = 4,
     pad = 10,
     bg = ref(c, "panel"),
-    row {
-      width = "grow", gap = 8, cross_align = "center",
-      ctx.caption(c, "Trace"),
-      ctx.data(c, string.format("%s – %s · %d spans", fmt(v0, step), fmt(v1, step), st.index.count),
-        { size = "$kitSizeLabel", color = ref(c, "muted") }),
-      ctx.grow(),
-      tool(c, "zoom_out", "Zoom out", "out", v0, v1),
-      tool(c, "zoom_in", "Zoom in", "in", v0, v1),
-      tool(c, "fit", "Fit", "fit", v0, v1),
-    },
-    row(axis),
+    row(head),
+    beside(row(axis), false),
     ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),
-    column(lanes),
+    beside(column { key = "lanes-box", width = "grow", height = p.grow == true and "grow" or nil,
+      scroll_y = p.grow == true, column(lanes) }, p.grow == true),
   }
 end
 
@@ -280,10 +337,36 @@ function M.event(m: P, kit: string): any
     v0 = (m.v0 as number) - (d.dx as number) * px
     v1 = (m.v1 as number) - (d.dx as number) * px
   elseif kit == "waterfall.wheel" then
+    -- Rolled or swiped up and down, or pinched (`zoom`, a magnification),
+    -- about the pointer; swiped sideways, or Shift and the wheel, panned.
     local s = m.scroll as P
     local a, b = m.v0 as number, m.v1 as number
-    local about = a + ((s.x as number) - (m.x as number)) / math.max(m.w as number, 1) * (b - a)
-    v0, v1 = zoomed(a, b, math.exp(-(s.dy as number) * 0.005), about)
+    local wpx = math.max(m.w as number, 1)
+    local about = a + ((s.x as number) - (m.x as number)) / wpx * (b - a)
+    local factor = math.exp(-((s.dy or 0) as number) * 0.005 - ((s.zoom or 0) as number))
+    v0, v1 = zoomed(a, b, factor, about)
+    local shift = ((s.dx or 0) as number) / wpx * (v1 - v0)
+    v0, v1 = v0 - shift, v1 - shift
+  elseif kit == "waterfall.range" then
+    local d = m.drag as P
+    local a, b = m.v0 as number, m.v1 as number
+    local at = a + ((d.x as number) - (m.x as number)) / math.max(m.w as number, 1) * (b - a)
+    if d.phase == "start" then
+      st.from = at
+      return nil
+    end
+    local from = st.from or at
+    local r0, r1 = math.min(from, at), math.max(from, at)
+    -- A click, no drag: the range is cleared.
+    if d.phase == "end" and math.abs(d.dx as number) < 3 then r0, r1 = nil, nil end
+    st.r0, st.r1 = r0, r1
+    return emit("on_range", { start = r0 or 0, length = r0 and (r1 - r0) or 0 })
+  elseif kit == "waterfall.clear" then
+    st.r0, st.r1 = nil, nil
+    return emit("on_range", { start = 0, length = 0 })
+  elseif kit == "waterfall.to_range" then
+    v0, v1 = m.v0 as number, m.v1 as number
+    st.r0, st.r1 = nil, nil
   elseif kit == "waterfall.in" or kit == "waterfall.out" then
     local a, b = m.v0 as number, m.v1 as number
     v0, v1 = zoomed(a, b, kit == "waterfall.in" and 0.5 or 2, (a + b) / 2)

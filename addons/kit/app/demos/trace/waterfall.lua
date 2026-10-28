@@ -1,6 +1,7 @@
 -- A trace waterfall: 18,000 spans the app's worker built
--- (jobs/generate.lua; main.lua keeps them as `model.spans`). Wheel to
--- zoom about the pointer, drag to pan, click a span or walk them with
+-- (jobs/generate.lua; main.lua keeps them as `model.spans`). Wheel or
+-- pinch to zoom about the pointer, swipe sideways or drag to pan, drag
+-- along the time axis to select a range, click a span or walk them with
 -- the arrows.
 
 -- Source also: jobs/generate.lua
@@ -9,7 +10,7 @@ local kit = require("kit.ui")
 
 local demo = {
   title = "Waterfall",
-  note = "18,000 spans: wheel to zoom about the pointer, drag to pan, click a span or Tab to the spans and use the arrows",
+  note = "18,000 spans: wheel or pinch to zoom about the pointer, swipe sideways or drag to pan, drag along the time axis to select a range, click a span or Tab to the spans and use the arrows",
   call = 'kit.waterfall({ bars = model.spans, start = model.start, length = model.length,\n  on_zoom = { kind = "zoom" }, on_select = { kind = "span" } })',
   state = { trace_start = nil, trace_length = nil, span = nil },
 }

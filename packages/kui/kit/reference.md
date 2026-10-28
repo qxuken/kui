@@ -709,6 +709,7 @@ Lua `kit.line_chart(props)` · Node `<LineChart />`
 | `area` | `area` | boolean? | Filled under the first line. |
 | `x_min` | `xMin` | number? | The x window's start, held by the host: a chart that shares its axis with another view (a timeline's lanes). With `x_max`; the data's own range when left out. |
 | `x_max` | `xMax` | number? | The x window's end, held by the host. |
+| `gutter` | `gutter` | number? | The y labels' column in px, held: charts stacked under one another, or under a waterfall with the same `gutter`, share their plot's left edge. As wide as the widest label when left out. |
 | `window` | `window` | number? | With it, only the last `window` of x is shown: a live chart. While samples come in it scrolls smoothly between them, drawn one sample behind and slid left over the time samples take to come (a keyframe cycle the core runs, so a frame between samples runs no view); under reduced motion, and while the plot is out of the viewport, it steps. |
 | `x_format` | `xFormat` | [XFormat](#xformat)? | How the x ticks read; the number when left out. |
 | `x_unit` | `xUnit` | string? | After each x tick's number: `min`, `s`. |
@@ -756,7 +757,7 @@ Lua `kit.histogram(props)` · Node `<Histogram />`
 
 ## kit.waterfall
 
-A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group, zoomed and panned by the wheel and a drag.
+A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and a drag on the time axis selects a range to zoom to.
 
 Lua `kit.waterfall(props)` · Node `<Waterfall />`
 
@@ -768,11 +769,15 @@ Lua `kit.waterfall(props)` · Node `<Waterfall />`
 | `length` | `length` | number? | The window's length in ms; the whole trace when left out. |
 | `selected` | `selected` | integer? | The selected span (its row). |
 | `grow` | `grow` | boolean? | Takes the room its parent leaves. |
+| `gutter` | `gutter` | number? | An empty column in px left of the axis and the lanes, so they line up with charts under them that hold the same `gutter`. |
+| `range_start` | `rangeStart` | number? | The range selected on the axis, in ms, held by the host: with `on_range`, the range drawn is this one, and a drag on the axis proposes another. Kit's own otherwise. |
+| `range_length` | `rangeLength` | number? | The selected range's length in ms; none selected when left out or 0. |
 
 | event | Node | carries | description |
 |---|---|---|---|
 | `on_select` | `onSelect` | `select` = { `row`: integer — Its row. } | A span was clicked. |
-| `on_zoom` | `onZoom` | `zoom` = { `start`: number — Its start in ms.; `length`: number — Its length in ms. } | The wheel or a drag asks for another window. |
+| `on_range` | `onRange` | `range` = { `start`: number — Its start in ms.; `length`: number — Its length in ms; 0 when cleared. } | A drag on the time axis selected a range, or a click there or the range's × cleared it. |
+| `on_zoom` | `onZoom` | `zoom` = { `start`: number — Its start in ms.; `length`: number — Its length in ms. } | The wheel, a pinch, a drag, a tool or zooming to the range asks for another window. |
 
 ## Types
 

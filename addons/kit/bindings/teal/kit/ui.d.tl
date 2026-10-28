@@ -1127,6 +1127,10 @@ local record kit
     x_min: number
     -- The x window's end, held by the host.
     x_max: number
+    -- The y labels' column in px, held: charts stacked under one another, or
+    -- under a waterfall with the same `gutter`, share their plot's left edge.
+    -- As wide as the widest label when left out.
+    gutter: number
     -- With it, only the last `window` of x is shown: a live chart. While
     -- samples come in it scrolls smoothly between them, drawn one sample
     -- behind and slid left over the time samples take to come (a keyframe
@@ -1222,10 +1226,22 @@ local record kit
     selected: integer
     -- Takes the room its parent leaves.
     grow: boolean
+    -- An empty column in px left of the axis and the lanes, so they line up
+    -- with charts under them that hold the same `gutter`.
+    gutter: number
+    -- The range selected on the axis, in ms, held by the host: with
+    -- `on_range`, the range drawn is this one, and a drag on the axis
+    -- proposes another. Kit's own otherwise.
+    range_start: number
+    -- The selected range's length in ms; none selected when left out or 0.
+    range_length: number
     -- The message `select` arrives as. A span was clicked.
     on_select: any
-    -- The message `zoom` arrives as. The wheel or a drag asks for another
-    -- window.
+    -- The message `range` arrives as. A drag on the time axis selected a
+    -- range, or a click there or the range's × cleared it.
+    on_range: any
+    -- The message `zoom` arrives as. The wheel, a pinch, a drag, a tool or
+    -- zooming to the range asks for another window.
     on_zoom: any
     key: string
     fresh: boolean
@@ -1234,6 +1250,12 @@ local record kit
   -- What `on_select`'s message carries under `select`.
   record WaterfallSelect
     row: integer
+  end
+
+  -- What `on_range`'s message carries under `range`.
+  record WaterfallRange
+    start: number
+    length: number
   end
 
   -- What `on_zoom`'s message carries under `zoom`.
@@ -1400,7 +1422,9 @@ local record kit
   histogram: function(props: HistogramProps): kui.Node
 
   -- A trace waterfall: spans as bars on a time axis, nested by depth,
-  -- coloured by group, zoomed and panned by the wheel and a drag.
+  -- coloured by group. The wheel and a pinch zoom about the pointer, a
+  -- sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and
+  -- a drag on the time axis selects a range to zoom to.
   waterfall: function(props: WaterfallProps): kui.Node
 
   -- The same components under another namespace.

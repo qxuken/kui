@@ -38,6 +38,11 @@ was the first bare bump to break an app in five releases).
   `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`, and one that does not know it
   drops it.
 
+- A lazy branch chosen by a query (`lazy { query = … }`) takes the room
+  its parent offers in the axes the query reads, where it was a column
+  its content's size (backlog F255): a branch that should stay that size
+  says so inside it.
+
 Nothing else breaks: two crates split out of `kui-core` and re-exported
 where they were, four channel doors added in every binding (the C ABI at
 40), and the recording's reader, its made-up sessions and its Lua module
@@ -77,7 +82,29 @@ and its tables sort and filter them.
   `openRecording` and its `{ kind: 'openRecording', path }` action.
 
 - **Kit's line chart takes a host's x window**: `x_min` / `x_max`, for a
-  chart that shares its axis with another view — a timeline's lanes.
+  chart that shares its axis with another view — a timeline's lanes — and
+  a held `gutter`, its y labels' column, so its plot starts where the view
+  over it does.
+
+- **Kit's waterfall selects a range and zooms by any wheel** (backlog
+  F258): a drag along its time axis selects a range, drawn over the lanes
+  and the axis with its length beside the title, zoomed to by its button
+  or cleared by its × or a click on the axis — `on_range`, and
+  `range_start` / `range_length` for a host that keeps it; the wheel zooms
+  about the pointer however deep the trace is (its lanes scroll in a box
+  around them, where they scrolled under the wheel once they overflowed),
+  a sideways swipe or ⇧ and the wheel pans, a pinch zooms (`scroll.zoom`);
+  `gutter` keeps an empty column left of the axis and the lanes, to line
+  them up with charts under them.
+
+- **kui-perf: the keys' card, the dock, the range** (backlog F258): `?`,
+  Help ▸ Keys and gestures or the toolbar's ⓘ shows every key and
+  gesture on a card, open by itself the first time a recording opens; the
+  dock under the timeline is a split whose rule is dragged (neither under
+  140 px), kept with the preferences; the range selected on the axis is
+  zoomed to by `z` (or `f`) and cleared by Esc; the graph lanes' plots
+  start where the waterfall's lanes do. Its headless test keeps its
+  preferences in a folder of its own, where it removed the app's.
 
 - **`kui.trace`'s filter hides span names whole**: `hide_names = {
   "devtools" }`.

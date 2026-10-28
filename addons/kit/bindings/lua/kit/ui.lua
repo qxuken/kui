@@ -668,6 +668,7 @@
 ---@field area? boolean Filled under the first line.
 ---@field x_min? number The x window's start, held by the host: a chart that shares its axis with another view (a timeline's lanes). With `x_max`; the data's own range when left out.
 ---@field x_max? number The x window's end, held by the host.
+---@field gutter? number The y labels' column in px, held: charts stacked under one another, or under a waterfall with the same `gutter`, share their plot's left edge. As wide as the widest label when left out.
 ---@field window? number With it, only the last `window` of x is shown: a live chart. While samples come in it scrolls smoothly between them, drawn one sample behind and slid left over the time samples take to come (a keyframe cycle the core runs, so a frame between samples runs no view); under reduced motion, and while the plot is out of the viewport, it steps.
 ---@field x_format? kit.XFormat How the x ticks read; the number when left out.
 ---@field x_unit? string After each x tick's number: `min`, `s`.
@@ -717,14 +718,23 @@
 ---@field length? number The window's length in ms; the whole trace when left out.
 ---@field selected? integer The selected span (its row).
 ---@field grow? boolean Takes the room its parent leaves.
+---@field gutter? number An empty column in px left of the axis and the lanes, so they line up with charts under them that hold the same `gutter`.
+---@field range_start? number The range selected on the axis, in ms, held by the host: with `on_range`, the range drawn is this one, and a drag on the axis proposes another. Kit's own otherwise.
+---@field range_length? number The selected range's length in ms; none selected when left out or 0.
 ---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.WaterfallSelect). A span was clicked.
----@field on_zoom? any The message it arrives as: yours, with `zoom = {…}` in it (kit.WaterfallZoom). The wheel or a drag asks for another window.
+---@field on_range? any The message it arrives as: yours, with `range = {…}` in it (kit.WaterfallRange). A drag on the time axis selected a range, or a click there or the range's × cleared it.
+---@field on_zoom? any The message it arrives as: yours, with `zoom = {…}` in it (kit.WaterfallZoom). The wheel, a pinch, a drag, a tool or zooming to the range asks for another window.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
 ---What `on_select`'s message carries under `select`.
 ---@class kit.WaterfallSelect
 ---@field row integer Its row.
+
+---What `on_range`'s message carries under `range`.
+---@class kit.WaterfallRange
+---@field start number Its start in ms.
+---@field length number Its length in ms; 0 when cleared.
 
 ---What `on_zoom`'s message carries under `zoom`.
 ---@class kit.WaterfallZoom
@@ -1105,7 +1115,9 @@ local function make(namespace)
   end
 
   ---A trace waterfall: spans as bars on a time axis, nested by depth,
-  ---coloured by group, zoomed and panned by the wheel and a drag.
+  ---coloured by group. The wheel and a pinch zoom about the pointer, a
+  ---sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and
+  ---a drag on the time axis selects a range to zoom to.
   ---@param props kit.WaterfallProps
   ---@return kui.Node
   function M.waterfall(props)

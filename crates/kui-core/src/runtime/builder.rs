@@ -1225,6 +1225,18 @@ impl Core {
         self.note_read(|| replay::Read::Lazy(key, Box::new(spec.clone()), built));
         spec.built = built;
         let mut node = NodeSpec::column();
+        // The branch takes the room its parent offers in the axes the
+        // query reads, as the parent is a container there (backlog F255):
+        // a render that wants the room — a `grow` column, a split — gets
+        // it, not its content's size. A branch by `needs` keeps its fit,
+        // or exactly what it needs once built.
+        let queried = spec.query.is_some();
+        if queried && w {
+            node.layout.width = Sizing::Grow(1.0);
+        }
+        if queried && h {
+            node.layout.height = Sizing::Grow(1.0);
+        }
         if built == Some(true)
             && let Some((nw, nh)) = spec.needs
         {

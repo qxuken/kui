@@ -657,6 +657,7 @@ function make(namespace) {
       if (props.area !== undefined) wire.area = props.area;
       if (props.xMin !== undefined) wire.x_min = props.xMin;
       if (props.xMax !== undefined) wire.x_max = props.xMax;
+      if (props.gutter !== undefined) wire.gutter = props.gutter;
       if (props.window !== undefined) wire.window = props.window;
       if (props.xFormat !== undefined) wire.x_format = props.xFormat;
       if (props.xUnit !== undefined) wire.x_unit = props.xUnit;
@@ -713,7 +714,11 @@ function make(namespace) {
       if (props.length !== undefined) wire.length = props.length;
       if (props.selected !== undefined) wire.selected = props.selected;
       if (props.grow !== undefined) wire.grow = props.grow;
+      if (props.gutter !== undefined) wire.gutter = props.gutter;
+      if (props.rangeStart !== undefined) wire.range_start = props.rangeStart;
+      if (props.rangeLength !== undefined) wire.range_length = props.rangeLength;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
+      if (props.onRange !== undefined) wire.on_range = props.onRange;
       if (props.onZoom !== undefined) wire.on_zoom = props.onZoom;
       const groups = undefined;
       return {

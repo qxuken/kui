@@ -446,6 +446,36 @@ fn a_query_branch_follows_its_parents_width_and_refuses_state() {
     );
 }
 
+#[test]
+fn a_query_branch_takes_the_room_its_parent_offers_in_the_axes_it_reads() {
+    // Backlog F255: the branch was a fit column, so a render that grows
+    // got its content's size — here none.
+    let view = |ui: &mut kui_core::Ui<'_>| {
+        ui.with_keyed("panel", NodeSpec::column().size(500.0, 300.0), |ui| {
+            ui.lazy_query(Cond::width_below(700.0), |ui| {
+                ui.leaf_keyed("narrow", NodeSpec::column().grow_width().grow_height());
+            })
+            .fallback(|ui| {
+                ui.leaf_keyed("wide", NodeSpec::column().grow_width().grow_height());
+            });
+        });
+    };
+    let mut core = Core::new();
+    for _ in 0..2 {
+        frame(&mut core, Size::new(600.0, 400.0), view);
+    }
+    let (nodes, _) = frame(&mut core, Size::new(600.0, 400.0), view);
+    let narrow = node(&nodes, "narrow");
+    assert_eq!(
+        narrow.rect.w, 500.0,
+        "the parent's width, the axis it reads"
+    );
+    assert_eq!(
+        narrow.rect.h, 0.0,
+        "the axis it does not read stays its content's"
+    );
+}
+
 /// A component whose view holds a lazy branch, counting its views.
 struct Lazily {
     views: std::rc::Rc<std::cell::Cell<usize>>,

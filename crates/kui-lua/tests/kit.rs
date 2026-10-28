@@ -2254,6 +2254,80 @@ fn a_bar_charts_bars_are_one_stop_the_arrows_walk_and_look_hovered() {
 }
 
 #[test]
+fn a_waterfall_zooms_by_the_wheel_over_lanes_that_scroll_and_selects_a_range_on_its_axis() {
+    // Its lanes scrolled under the wheel once they were taller than their
+    // box, so the wheel zoomed only a shallow trace; and a drag selected
+    // nothing.
+    let src = r#"
+        local name, start, len, depth, group = {}, {}, {}, {}, {}
+        for d = 0, 14 do
+          name[#name + 1], start[#start + 1], len[#len + 1], depth[#depth + 1], group[#group + 1] = "s" .. d, d, 100 - d, d, d
+        end
+        local ch = channel({ name = name, start = start, len = len, depth = depth, group = group })
+        zoom, range = nil, nil
+        function on_event(ev)
+          if ev.kind == "zoom" then zoom = ev.zoom end
+          if ev.kind == "range" then range = ev.range end
+        end
+        function view(env)
+          return column { width = 600, height = 200,
+            component("kit/waterfall", { bars = ch, start = 0, length = 100, grow = true,
+              on_zoom = { kind = "zoom" }, on_range = { kind = "range" } }) }
+        end
+    "#;
+    let mut r = LuaRig::new(src);
+    r.frames(3);
+    use kui_core::{InputEvent, Vec2};
+    let field = |r: &LuaRig, t: &str, f: &str| -> Option<f64> {
+        let v: mlua::Value = r.app.globals().get(t).unwrap();
+        v.as_table().and_then(|t| t.get::<f64>(f).ok())
+    };
+    // The wheel down over the lanes, which overflow their box: a zoom.
+    let lane = r.named("s0");
+    let (x, y) = (lane.x + 20.0, lane.y + lane.h / 2.0);
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+    r.route(e);
+    let e = r.core.handle_input(InputEvent::ScrollGesture {
+        delta: Vec2::new(0.0, 40.0),
+        begins: true,
+    });
+    r.route(e);
+    r.frames(1);
+    let length = field(&r, "zoom", "length").expect("the wheel zoomed");
+    assert!(length < 100.0, "in: {length}");
+    // A swipe sideways: a pan, as long as it was.
+    let e = r.core.handle_input(InputEvent::ScrollGesture {
+        delta: Vec2::new(-60.0, 0.0),
+        begins: true,
+    });
+    r.route(e);
+    r.frames(1);
+    assert!(field(&r, "zoom", "start").unwrap() > 0.0, "panned later");
+    assert!((field(&r, "zoom", "length").unwrap() - 100.0).abs() < 1e-6);
+    // A drag along the axis: a range.
+    let tick = r.text("0 ms").expect("the axis");
+    let (ax, ay) = (tick.x + 4.0, tick.y + tick.h / 2.0);
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(ax + 60.0, ay)));
+    r.route(e);
+    let e = r.core.handle_input(InputEvent::mouse_down(1));
+    r.route(e);
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(ax + 200.0, ay)));
+    r.route(e);
+    let e = r.core.handle_input(InputEvent::mouse_up());
+    r.route(e);
+    r.frames(1);
+    let range = field(&r, "range", "length").expect("a range");
+    assert!(range > 10.0, "{range}");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
 fn a_waterfalls_spans_are_one_stop_or_none() {
     // Every span bar was a Tab stop, and one that did nothing where the
     // host picks no spans (Relay's trace).

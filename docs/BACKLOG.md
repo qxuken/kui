@@ -3639,22 +3639,10 @@ inspector, which waits on the kui tools design system.
 What ADR 0075's building order needs beside the app (F200), filed the
 day it was written. Seven entries, F248–F254, all **built 2026-10-28**
 and in the archive with the app itself, F200 (the spike accepting ADR
-0075); one found building the app, F255, open; and four open entries it
+0075); one found building the app, F255, and F258 from using it, built
+the same day and in the archive; and four open entries it
 builds on the way — C147 and C148 in step 1, **built 2026-10-28** and in
 the archive, C149 and C102 in step 4.
-
-### `.` F255 — A lazy branch chosen by a query is a fit column with no props
-
-**Found** building kui-perf's bands (2026-10-28): `lazy { query = {…},
-render = …, fallback = … }` opens its branch as a bare `NodeSpec::column()`
-(`lazy_open_key`) and the Lua form reads no layout props, so a branch whose
-render wants the room — a `grow` column, a split — gets its content's fit
-width and height, and everything inside collapsed to a character wide.
-kui-perf took ADR 0069's other half instead, `when` entries on its own
-width hiding the panes that do not apply. **Do.** A query branch takes
-the room its parent offers in the axes it queries (the parent is a
-container there already, decision 8), or `width` / `height` on the lazy
-form in every binding.
 
 ## From Kit's M0 spike (2026-10-25)
 
@@ -6318,7 +6306,7 @@ move.
 - `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
 - `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
 
-**From the kui-perf grilling (2026-10-27)** — F248–F254, built 2026-10-28; F255 open
+**From the kui-perf grilling (2026-10-27)** — F248–F255 and F258, built 2026-10-28
 
 - `.` **F248** — [`kui-trace` cannot make a channel](backlog/closed-2026-09.md#-f248--kui-trace-cannot-make-a-channel--done-2026-10-28) — done (2026-10-28) — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
 - `.` **F249** — [A recording is read only whole, from bytes in memory](backlog/closed-2026-09.md#-f249--a-recording-is-read-only-whole-from-bytes-in-memory--done-2026-10-28) — done (2026-10-28) — a stream decoder, a transport trait, a watched file transport
@@ -6327,7 +6315,8 @@ move.
 - `.` **F252** — [Nobody knows whether Lua draws a million spans in time](backlog/closed-2026-09.md#-f252--nobody-knows-whether-lua-draws-a-million-spans-in-time--done-2026-10-28) — done (2026-10-28) — every budget met once Kit's waterfall read `Channel::lanes`; ADR 0075 accepted
 - `.` **F253** — [The Perf tab cannot hand a recording to the inspector](backlog/closed-2026-09.md#-f253--the-perf-tab-cannot-hand-a-recording-to-the-inspector--done-2026-10-28) — done (2026-10-28) — *open in kui-perf* saves the trace and asks the runner, `kui_native::open_recording` in every binding
 - `.` **F254** — [How kui-perf reaches a machine is not decided](backlog/closed-2026-09.md#-f254--how-kui-perf-reaches-a-machine-is-not-decided--done-2026-10-28) — done (2026-10-28) — `kui perf RECORDING`, the app carried by the runner
-- `.` **F255** — [A lazy branch chosen by a query is a fit column with no props](#-f255--a-lazy-branch-chosen-by-a-query-is-a-fit-column-with-no-props) — open — the branch takes its parent's room in the axes it queries, or `width` / `height` on the lazy form
+- `.` **F255** — [A lazy branch chosen by a query is a fit column with no props](backlog/closed-2026-09.md#-f255--a-lazy-branch-chosen-by-a-query-is-a-fit-column-with-no-props--done-2026-10-28) — done (2026-10-28) — the branch takes its parent's room in the axes its query reads
+- `.` **F258** — [The waterfall's wheel scrolls its lanes once they overflow, and nothing selects a range](backlog/closed-2026-09.md#-f258--the-waterfalls-wheel-scrolls-its-lanes-once-they-overflow-and-nothing-selects-a-range--done-2026-10-28) — done (2026-10-28) — the wheel and a pinch zoom, a drag on the axis selects a range, kui-perf's dock and keys' card
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 

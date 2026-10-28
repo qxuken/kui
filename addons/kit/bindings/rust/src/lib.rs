@@ -6193,6 +6193,10 @@ pub struct LineChart {
     pub x_min: Option<f64>,
     /// The x window's end, held by the host.
     pub x_max: Option<f64>,
+    /// The y labels' column in px, held: charts stacked under one another, or
+    /// under a waterfall with the same `gutter`, share their plot's left edge.
+    /// As wide as the widest label when left out.
+    pub gutter: Option<f64>,
     /// With it, only the last `window` of x is shown: a live chart. While
     /// samples come in it scrolls smoothly between them, drawn one sample
     /// behind and slid left over the time samples take to come (a keyframe
@@ -6238,6 +6242,7 @@ impl LineChart {
             area: None,
             x_min: None,
             x_max: None,
+            gutter: None,
             window: None,
             x_format: None,
             x_unit: None,
@@ -6273,6 +6278,14 @@ impl LineChart {
     /// The x window's end, held by the host.
     pub fn x_max(mut self, v: f64) -> Self {
         self.x_max = Some(v);
+        self
+    }
+
+    /// The y labels' column in px, held: charts stacked under one another, or
+    /// under a waterfall with the same `gutter`, share their plot's left edge.
+    /// As wide as the widest label when left out.
+    pub fn gutter(mut self, v: f64) -> Self {
+        self.gutter = Some(v);
         self
     }
 
@@ -6363,6 +6376,9 @@ impl LineChart {
         }
         if let Some(v) = &self.x_max {
             m.push(("x_max".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.gutter {
+            m.push(("gutter".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.window {
             m.push(("window".into(), Value::Float(*v)));
@@ -6665,7 +6681,9 @@ impl Histogram {
 }
 
 /// A trace waterfall: spans as bars on a time axis, nested by depth, coloured
-/// by group, zoomed and panned by the wheel and a drag.
+/// by group. The wheel and a pinch zoom about the pointer, a sideways swipe or
+/// Shift and the wheel pans, a drag on the lanes pans, and a drag on the time
+/// axis selects a range to zoom to.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Waterfall {
     /// The spans: fields `name`, `start`, `len` (ms), `depth`, `group`, and
@@ -6681,11 +6699,25 @@ pub struct Waterfall {
     pub selected: Option<i64>,
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
+    /// An empty column in px left of the axis and the lanes, so they line up
+    /// with charts under them that hold the same `gutter`.
+    pub gutter: Option<f64>,
+    /// The range selected on the axis, in ms, held by the host: with
+    /// `on_range`, the range drawn is this one, and a drag on the axis proposes
+    /// another. Kit's own otherwise.
+    pub range_start: Option<f64>,
+    /// The selected range's length in ms; none selected when left out or 0.
+    pub range_length: Option<f64>,
     /// The message `select` arrives as, with `select: WaterfallSelect` in it. A
     /// span was clicked.
     pub on_select: Option<Value>,
+    /// The message `range` arrives as, with `range: WaterfallRange` in it. A
+    /// drag on the time axis selected a range, or a click there or the range's
+    /// × cleared it.
+    pub on_range: Option<Value>,
     /// The message `zoom` arrives as, with `zoom: WaterfallZoom` in it. The
-    /// wheel or a drag asks for another window.
+    /// wheel, a pinch, a drag, a tool or zooming to the range asks for another
+    /// window.
     pub on_zoom: Option<Value>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
@@ -6703,7 +6735,11 @@ impl Waterfall {
             length: None,
             selected: None,
             grow: None,
+            gutter: None,
+            range_start: None,
+            range_length: None,
             on_select: None,
+            on_range: None,
             on_zoom: None,
             key: None,
             fresh: false,
@@ -6740,14 +6776,42 @@ impl Waterfall {
         self
     }
 
+    /// An empty column in px left of the axis and the lanes, so they line up
+    /// with charts under them that hold the same `gutter`.
+    pub fn gutter(mut self, v: f64) -> Self {
+        self.gutter = Some(v);
+        self
+    }
+
+    /// The range selected on the axis, in ms, held by the host: with
+    /// `on_range`, the range drawn is this one, and a drag on the axis proposes
+    /// another. Kit's own otherwise.
+    pub fn range_start(mut self, v: f64) -> Self {
+        self.range_start = Some(v);
+        self
+    }
+
+    /// The selected range's length in ms; none selected when left out or 0.
+    pub fn range_length(mut self, v: f64) -> Self {
+        self.range_length = Some(v);
+        self
+    }
+
     /// The message `select` arrives as. A span was clicked.
     pub fn on_select(mut self, msg: impl Into<Value>) -> Self {
         self.on_select = Some(msg.into());
         self
     }
 
-    /// The message `zoom` arrives as. The wheel or a drag asks for another
-    /// window.
+    /// The message `range` arrives as. A drag on the time axis selected a
+    /// range, or a click there or the range's × cleared it.
+    pub fn on_range(mut self, msg: impl Into<Value>) -> Self {
+        self.on_range = Some(msg.into());
+        self
+    }
+
+    /// The message `zoom` arrives as. The wheel, a pinch, a drag, a tool or
+    /// zooming to the range asks for another window.
     pub fn on_zoom(mut self, msg: impl Into<Value>) -> Self {
         self.on_zoom = Some(msg.into());
         self
@@ -6784,8 +6848,20 @@ impl Waterfall {
         if let Some(v) = &self.grow {
             m.push(("grow".into(), Value::Bool(*v)));
         }
+        if let Some(v) = &self.gutter {
+            m.push(("gutter".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.range_start {
+            m.push(("range_start".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.range_length {
+            m.push(("range_length".into(), Value::Float(*v)));
+        }
         if let Some(v) = &self.on_select {
             m.push(("on_select".into(), v.clone()));
+        }
+        if let Some(v) = &self.on_range {
+            m.push(("on_range".into(), v.clone()));
         }
         if let Some(v) = &self.on_zoom {
             m.push(("on_zoom".into(), v.clone()));
@@ -6823,6 +6899,32 @@ impl WaterfallSelect {
         let _d = payload.get("select")?;
         Some(Self {
             row: _d.get("row").and_then(Value::as_int).unwrap_or_default(),
+        })
+    }
+}
+
+/// What `on_range`'s message carries under `range`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WaterfallRange {
+    /// Its start in ms.
+    pub start: f64,
+    /// Its length in ms; 0 when cleared.
+    pub length: f64,
+}
+
+impl WaterfallRange {
+    /// Read off an event's payload: the fields under `range`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("range")?;
+        Some(Self {
+            start: _d
+                .get("start")
+                .and_then(Value::as_float)
+                .unwrap_or_default(),
+            length: _d
+                .get("length")
+                .and_then(Value::as_float)
+                .unwrap_or_default(),
         })
     }
 }
