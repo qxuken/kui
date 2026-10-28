@@ -1911,6 +1911,50 @@ pub const DOORS: &[Door] = &[
         doc: "Buckets a number column's rows `from` up to `to` into at most `n`, each one's least, greatest, first and last value and their rows (backlog C95): a chart's pixel columns of a hundred thousand rows without the rows crossing into the binding.",
     },
     Door {
+        rust: "Channel::append",
+        c: Is("kui_channel_append"),
+        odin: Is("channel_append"),
+        node: As("`channel.append(columns, cap)`"),
+        lua: As("`ch:append(columns, cap)`"),
+        doc: "The next revision with more rows after this one's, the oldest past `cap` dropped (backlog C147): this revision's rows are shared with the next, so a growing log costs its new lines.",
+    },
+    Door {
+        rust: "Channel::filter",
+        c: As(
+            "`kui_channel_filter_f64` (a range, `min == max` for one value) and `kui_channel_filter_str` (equal, contains, contains in any case)",
+        ),
+        odin: As("`channel_filter_f64` and `channel_filter_str`"),
+        node: As(
+            "`channel.filter(col, { eq | contains, caseSensitive | min, max }, rows)`, a `Uint32Array`",
+        ),
+        lua: As("`ch:filter(col, { eq | contains, case | min, max }, rows)`, a list"),
+        doc: "The rows — all, or a given list's — whose cell in a column is a value, holds a string or lies in a range (backlog C148): a view built in Rust, not in the binding.",
+    },
+    Door {
+        rust: "Channel::sort",
+        c: Is("kui_channel_sort"),
+        odin: Is("channel_sort"),
+        node: As("`channel.sort(col, descending, rows)`, a `Uint32Array`"),
+        lua: As("`ch:sort(col, descending, rows)`, a list"),
+        doc: "The rows — all, or a given list's — ordered by a column, ties in order and NaN last (backlog C148).",
+    },
+    Door {
+        rust: "Channel::take",
+        c: Is("kui_channel_take"),
+        odin: Is("channel_take"),
+        node: As("`channel.take(rows)`"),
+        lua: As("`ch:take(rows)`"),
+        doc: "A new channel of the rows given, in that order (backlog C148): a filtered or sorted view to hand a component.",
+    },
+    Door {
+        rust: "Channel::lanes",
+        c: As("`kui_channel_lanes`, read with `kui_channel_lanes_window`, `_count` and `_extent`"),
+        odin: As("`channel_lanes`, read with `channel_lanes_window`, `_count` and `_extent`"),
+        node: As("`channel.lanes(start, len, lane)`, read with `lanes.window(lane, v0, v1, min)`"),
+        lua: As("`ch:lanes(start, len, lane)`, read with `lanes:window(lane, v0, v1, min)`"),
+        doc: "A channel's intervals on lanes, built once in Rust, read a window at a time at a level of detail — about a run a pixel, whatever the rows behind them (ADR 0075): what a waterfall draws a million spans as.",
+    },
+    Door {
         rust: "Launcher::extensions",
         c: As("`kui_ctx_extension_count` / `kui_ctx_extension_namespace`, one at a time"),
         odin: As("`ctx_extension_count` / `ctx_extension_namespace`, one at a time"),
@@ -2280,8 +2324,8 @@ mod tests {
 
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
     /// `Ui::` in `ui.rs` (or an `impl Ui` under `runtime/`), `Core::` under `runtime/`, `SharedResources::`
-    /// in `session.rs`, `Tokens::` in `tokens.rs`, `WheelFeel::` in
-    /// `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` and
+    /// in `session.rs`, `Tokens::` in `tokens.rs`, `Channel::` in the
+    /// `kui-channel` crate, `WheelFeel::` in `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` and
     /// `Waker::` in the
     /// `kui-native` crate, `perf::` (the recording's free functions) under
     /// `runtime/`, `kui_native::` and `Animation::` in its
@@ -2311,7 +2355,9 @@ mod tests {
         let scroll = read(root.join("scroll.rs"));
         let edge = read(root.join("edge_scroll.rs"));
         let slot = read(root.join("slot.rs"));
-        let channel = read(root.join("channel.rs"));
+        // The channel is a crate of its own (ADR 0075), re-exported.
+        let channel = read(root.join("../../kui-channel/src/lib.rs"))
+            + &read(root.join("../../kui-channel/src/lanes.rs"));
         let menu = read(root.join("menu.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))

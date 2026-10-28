@@ -345,3 +345,184 @@ fn placements_group_by_kind_and_answer() {
     );
     assert!(crate::dump::dump(&t).contains("placed ui:chip reads (hover 00000000000000ab) node"));
 }
+
+/// Five frames, each with a parent span written after its child (as a
+/// recorder closes them), and a gauge in each gap.
+fn nested(n: u64) -> Trace {
+    let mut t = frames(n, 1000, "key");
+    let (outer, _) = t.names.get("outer");
+    let (inner, _) = t.names.get("inner");
+    let (mem, _) = t.names.get("memory");
+    for i in 0..n {
+        let at = i * 16_000 + 100;
+        let span = |id: u32, parent: u32, name, start: u64, dur: u64| Span {
+            track: Track::MAIN,
+            id,
+            parent,
+            name,
+            origin: Origin::Host,
+            start,
+            dur,
+            cpu: None,
+            node: 0,
+            cut: false,
+        };
+        let base = 1000 + i as u32 * 2;
+        t.records
+            .push(Record::Span(span(base + 1, base, inner, at + 50, 100)));
+        t.records.push(Record::Span(span(base, 0, outer, at, 400)));
+        t.records.push(Record::Gauge {
+            t: at + 5000,
+            name: mem,
+            value: i as f64,
+        });
+    }
+    t
+}
+
+/// A recording pushed a few bytes at a time reads as the whole file does,
+/// its timeline as the whole one, a cut record waiting for its rest
+/// (backlog F249).
+#[test]
+fn a_stream_pushed_in_pieces_reads_as_the_whole() {
+    let t = nested(5);
+    let bytes = t.to_bytes();
+    let whole = Trace::from_bytes(&bytes).unwrap();
+    for step in [1, 3, 7, 64, bytes.len()] {
+        let mut s = crate::Stream::new();
+        let mut came = 0;
+        for piece in bytes.chunks(step) {
+            came += s.push(piece).unwrap();
+        }
+        let names = whole.names.all().len() - 1;
+        assert_eq!(
+            came,
+            whole.records.len() + names,
+            "step {step}: and the names"
+        );
+        assert_eq!(s.trace().records, whole.records, "step {step}");
+        assert_eq!(*s.timeline(), whole.timeline(), "step {step}");
+        assert_eq!(s.pending(), 0);
+    }
+    let mut s = crate::Stream::new();
+    assert!(s.push(b"KUI").is_ok(), "a header's start waits");
+    assert!(s.push(b"nope, not a trace").is_err());
+}
+
+fn temp(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("kui-trace-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_file(&dir);
+    dir
+}
+
+/// The file as it is written, then written again from the start: what
+/// grew, then a reset with the new recording whole; the file's end idle
+/// while followed and ended when not.
+#[test]
+fn a_file_read_as_it_grows_and_again_when_rewritten() {
+    use std::io::Write;
+    let path = temp("grow.kuitrace");
+    let bytes = nested(4).to_bytes();
+    let half = bytes.len() / 2;
+    std::fs::write(&path, &bytes[..half]).unwrap();
+    let mut file = crate::FileTransport::open(&path, true).unwrap();
+    let mut s = crate::Stream::new();
+    assert!(matches!(s.poll(&mut file).unwrap(), crate::Polled::More(_)));
+    assert_eq!(s.poll(&mut file).unwrap(), crate::Polled::Idle);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap()
+        .write_all(&bytes[half..])
+        .unwrap();
+    assert!(matches!(s.poll(&mut file).unwrap(), crate::Polled::More(_)));
+    assert_eq!(s.timeline().frames.len(), 4);
+
+    let other = nested(2).to_bytes();
+    std::fs::write(&path, &other).unwrap();
+    assert_eq!(s.poll(&mut file).unwrap(), crate::Polled::Reset);
+    assert_eq!(s.timeline().frames.len(), 2);
+
+    let mut once = crate::FileTransport::open(&path, false).unwrap();
+    let mut s = crate::Stream::new();
+    s.poll(&mut once).unwrap();
+    assert_eq!(s.poll(&mut once).unwrap(), crate::Polled::Ended);
+    let _ = std::fs::remove_file(&path);
+}
+
+/// A watch calls back when the file moves, and not while it stands still.
+#[test]
+fn a_watch_says_when_the_file_moved() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let path = temp("watch.kuitrace");
+    std::fs::write(&path, b"KUITRACE").unwrap();
+    let calls = std::sync::Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let watch = crate::Watch::spawn(&path, std::time::Duration::from_millis(10), move || {
+        seen.fetch_add(1, Ordering::Relaxed);
+    })
+    .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(60));
+    assert_eq!(calls.load(Ordering::Relaxed), 0, "still");
+    std::fs::write(&path, b"KUITRACE and more").unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while calls.load(Ordering::Relaxed) == 0 && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    drop(watch);
+    let _ = std::fs::remove_file(&path);
+}
+
+/// A made-up session is the same for a seed, and has what a real one has:
+/// frames a span count apart, children inside their parents, burns,
+/// slow frames, components drawn fresh, a gap the loop slept through
+/// (backlog F250).
+#[test]
+fn a_made_up_session_has_a_sessions_shape() {
+    use crate::synth::Synth;
+    let s = Synth {
+        frames: 3000,
+        ..Default::default()
+    };
+    let t = s.trace();
+    assert_eq!(t.to_bytes(), s.trace().to_bytes(), "the same seed");
+    assert_ne!(
+        t.to_bytes(),
+        Synth { seed: 2, ..s }.trace().to_bytes(),
+        "another seed"
+    );
+    let mut streamed = Vec::new();
+    s.write(&mut streamed).unwrap();
+    assert_eq!(Trace::from_bytes(&streamed).unwrap().records, t.records);
+
+    let tl = t.timeline();
+    assert_eq!(tl.frames.len(), 3000);
+    let per = tl.spans.len() as f64 / 3000.0;
+    assert!((10.0..20.0).contains(&per), "{per} spans a frame");
+    let by_id: std::collections::HashMap<u32, &Span> = tl.spans.iter().map(|s| (s.id, s)).collect();
+    for sp in &tl.spans {
+        if let Some(p) = by_id.get(&sp.parent) {
+            assert!(
+                sp.start >= p.start && sp.end() <= p.end(),
+                "{sp:?} in {p:?}"
+            );
+        }
+    }
+    assert!(!analysis::burns(&tl, &t).is_empty(), "burns");
+    let budget = (1e6 / 120.0) as u64;
+    let verdicts: Vec<Verdict> = (0..tl.frames.len())
+        .map(|i| analysis::verdict(&tl, i, budget, &[], &t))
+        .collect();
+    assert!(
+        verdicts.iter().any(|v| matches!(v, Verdict::Slow { .. })),
+        "slow frames"
+    );
+    assert!(
+        verdicts.iter().any(|v| matches!(v, Verdict::Fine { .. })),
+        "fine ones"
+    );
+    let placed = analysis::placements(&tl, &t);
+    assert!(placed.iter().any(|p| p.replayed > 0 && p.drawn() > 0));
+    assert!(tl.loops.len() > 3000 && tl.inputs.len() > 500 && !tl.gauges.is_empty());
+}

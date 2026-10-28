@@ -5,6 +5,7 @@
 //! kui-trace stats IN
 //! kui-trace convert IN [--to FORMAT] OUT
 //! kui-trace diff A B [--fail-over N%]
+//! kui-trace synth [--frames N] [--spans-per-frame K] [--seed S] [--hz H] OUT
 //! ```
 
 use std::fmt::Write as _;
@@ -19,13 +20,16 @@ usage:
   kui-trace stats IN                        frames, work, burns, the top spans, gaps
   kui-trace convert IN [--to FORMAT] OUT    write IN in another format
   kui-trace diff A B [--fail-over N%]       compare two recordings
+  kui-trace synth [OPTIONS] OUT             write a made-up recording to OUT
 
 IN, A and B are .kuitrace files.
 FORMAT is chrome, perfetto, speedscope, firefox or kuitrace; without --to
 it is OUT's extension: .json chrome, .pftrace / .perfetto-trace perfetto,
 .speedscope.json speedscope, .firefox.json firefox, anything else kuitrace.
 --fail-over exits 1 when a frame's cost grew past N percent (`10%`, `10`
-or `0.1x`), the table printed either way.";
+or `0.1x`), the table printed either way.
+synth's options: --frames N (600), --spans-per-frame K (14), --seed S (1),
+--hz H (120); 72000 frames at 14 is ten minutes at 120 Hz, a million spans.";
 
 /// A command line read.
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +47,10 @@ enum Cmd {
         b: String,
         /// A fraction: `10%` is `0.1`.
         fail_over: Option<f64>,
+    },
+    Synth {
+        output: String,
+        synth: kui_trace::synth::Synth,
     },
 }
 
@@ -69,9 +77,23 @@ fn parse(args: &[String]) -> Result<Cmd, String> {
     let mut rest: Vec<&str> = Vec::new();
     let mut to: Option<&str> = None;
     let mut fail: Option<&str> = None;
+    let mut synth = kui_trace::synth::Synth::default();
+    let mut synthed = false;
     let mut it = args.iter().map(String::as_str);
     while let Some(a) = it.next() {
+        let mut number = |what: &str| -> Result<f64, String> {
+            let v = it.next().ok_or_else(|| format!("{what} wants a number"))?;
+            synthed = true;
+            v.parse::<f64>()
+                .ok()
+                .filter(|v| v.is_finite() && *v >= 0.0)
+                .ok_or_else(|| format!("{what}: not a number: {v}"))
+        };
         match a {
+            "--frames" => synth.frames = number(a)? as u64,
+            "--spans-per-frame" => synth.spans_per_frame = number(a)? as u32,
+            "--seed" => synth.seed = number(a)? as u64,
+            "--hz" => synth.hz = number(a)? as f32,
             "-h" | "--help" | "help" => return Ok(Cmd::Help),
             "--to" => to = Some(it.next().ok_or("--to wants a format")?),
             "--fail-over" => fail = Some(it.next().ok_or("--fail-over wants a percentage")?),
@@ -90,6 +112,9 @@ fn parse(args: &[String]) -> Result<Cmd, String> {
     }
     if fail.is_some() && cmd != "diff" {
         return Err("--fail-over is for diff".into());
+    }
+    if synthed && cmd != "synth" {
+        return Err("--frames, --spans-per-frame, --seed and --hz are for synth".into());
     }
     let s = |i: usize| operands[i].to_string();
     match (cmd, operands.len()) {
@@ -111,7 +136,11 @@ fn parse(args: &[String]) -> Result<Cmd, String> {
             b: s(1),
             fail_over: fail.map(threshold).transpose()?,
         }),
-        ("dump" | "stats" | "convert" | "diff", n) => {
+        ("synth", 1) => Ok(Cmd::Synth {
+            output: s(0),
+            synth,
+        }),
+        ("dump" | "stats" | "convert" | "diff" | "synth", n) => {
             Err(format!("{cmd}: wrong number of operands ({n})"))
         }
         _ => Err(format!("unknown command {cmd}")),
@@ -263,6 +292,15 @@ fn run(cmd: Cmd) -> Result<ExitCode, String> {
             eprintln!("kui-trace: wrote {output} ({})", format.name());
             Ok(ExitCode::SUCCESS)
         }
+        Cmd::Synth { output, synth } => {
+            let f = std::fs::File::create(&output).map_err(|e| format!("{output}: {e}"))?;
+            synth.write(f).map_err(|e| format!("{output}: {e}"))?;
+            eprintln!(
+                "kui-trace: wrote {output} ({} frames, about {} spans each)",
+                synth.frames, synth.spans_per_frame
+            );
+            Ok(ExitCode::SUCCESS)
+        }
         Cmd::Diff { a, b, fail_over } => {
             let r = diff::diff(&read(&a)?, &read(&b)?);
             let mark = fail_over.unwrap_or(diff::MARK);
@@ -370,5 +408,22 @@ mod tests {
         assert!(p("diff a b --fail-over -5%").is_err());
         assert!(p("diff a").is_err());
         assert!(p("stats a --fail-over 10%").is_err());
+    }
+
+    #[test]
+    fn synth_takes_its_sizes() {
+        match p("synth --frames 72000 --spans-per-frame 14 --seed 7 out.kuitrace").unwrap() {
+            Cmd::Synth { output, synth } => {
+                assert_eq!(output, "out.kuitrace");
+                assert_eq!(
+                    (synth.frames, synth.spans_per_frame, synth.seed),
+                    (72000, 14, 7)
+                );
+            }
+            c => panic!("{c:?}"),
+        }
+        assert!(p("synth").is_err());
+        assert!(p("synth --frames lots out").is_err());
+        assert!(p("dump a --frames 3").is_err());
     }
 }

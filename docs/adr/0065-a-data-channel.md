@@ -112,3 +112,24 @@ data does not move.
   0.39 ms a frame; building that channel from nothing — formatting the
   strings included — is 4.0 ms once; M0's conversion of the same rows
   into Lua tables (`handover`) is 103 ms.
+
+## Amendment: a crate, appends and views (2026-10-28)
+
+ADR 0075 (decision 3) moved the channel to a crate of its own,
+`kui-channel`, on `kui-value` alone, re-exported as `kui_core::channel`;
+its Lua userdata came with it behind a `lua` feature. Two of its open
+entries were built on the way:
+
+- **Append** (backlog C147): `append(rows, cap)` is the next revision
+  with more rows, the oldest past `cap` dropped. Revisions stay
+  immutable; a table is now a handful of shared runs — an append adds
+  one, and the last two merge while the newer is as long as the older,
+  so a table appended to a row at a time holds about log₂ of its rows in
+  runs and copies each row about that many times in all. A reader by
+  row finds its run; a reader of a whole column (`column`, `data`,
+  `reduce`) has it put together once a revision.
+- **Views** (backlog C148): `filter` (a value, a string's part, a number
+  range), `sort` (ties in order, NaN last) answering row indices, and
+  `take`, a new channel of rows, so a filtered and sorted view is built
+  in Rust and a component is handed a channel, not a copy.
+

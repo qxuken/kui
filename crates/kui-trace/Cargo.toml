@@ -11,9 +11,16 @@ description = "kui's recording format: a timeline of frames and what happened be
 readme = "README.md"
 publish = ["crates-io"]
 
-# No dependencies: kui-core writes the format, and a tool reads it without
-# kui (ADR 0058, decision 3).
+# No dependencies by default: kui-core writes the format, and a tool reads it
+# without kui (ADR 0058, decision 3). The `lua` feature hands a script the
+# recording as channels (ADR 0075, decision 4).
 [dependencies]
+mlua = { workspace = true, optional = true }
+kui-channel = { workspace = true, optional = true, features = ["lua"] }
+kui-value = { workspace = true, optional = true, features = ["lua"] }
+
+[features]
+lua = ["dep:mlua", "dep:kui-channel", "dep:kui-value"]
 
 [[bin]]
 name = "kui-trace"

@@ -35,6 +35,18 @@ was the first bare bump to break an app in five releases).
   `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`, and one that does not know it
   drops it.
 
+Nothing else breaks: two crates split out of `kui-core` and re-exported
+where they were, four channel doors added in every binding (the C ABI at
+40), and the recording's reader, its made-up sessions and its Lua module
+added beside the format.
+
+The first step of [ADR 0075](docs/adr/0075-kui-perf-reads-a-recording-in-kit.md),
+`kui-perf`, the trace inspector: the recording's reader needs to hand a
+script its columns as channels, and could not reach the channel from
+under `kui-core`. Splitting it out brought two of the channel's open
+entries with it — the inspector's Live view appends to a million spans,
+and its tables sort and filter them.
+
 ### Added
 
 - **Files on the clipboard** (backlog F247, from Carnet's "Copy file"):
@@ -48,6 +60,117 @@ was the first bare bump to break an app in five releases).
   the paths in its `text`, a line each), Odin `set_clipboard_files`, Node
   `setClipboardFiles(paths)` (`{kind: "setClipboardFiles", paths}` from
   `takeMenuActions()`), Lua `env.set_clipboard_files({...})`.
+
+- **`kui-value` and `kui-channel`, crates of their own** (backlog F248):
+  `Value`, `json` and the message traits, with `lua` (`kui_value::lua`,
+  the conversions to and from an `mlua` value) and `derive`
+  (`#[derive(Message)]`, `#[message(crate = "kui_value")]` for a crate
+  with no core) features; and the data channel, with a `lua` feature for
+  the userdata a script holds. Neither depends on another kui crate, so
+  what has no core — the recording's reader next — speaks values and
+  makes channels. `kui-core` re-exports both where they were
+  (`kui_core::Value`, `kui_core::json`, `kui_core::message`,
+  `kui_core::channel`), and kui-lua's `lua_to_value`, `value_to_lua` and
+  `mark_array` are the new crates' with a channel crossing as its handle.
+
+- **A recording read as it arrives** (backlog F249): `kui_trace::Stream`
+  decodes bytes pushed in as they come, keeping a record cut between
+  pushes for the next, and grows its timeline in place
+  (`Timeline::extend`, which sorts only the end the new records reach
+  into); a `Transport` trait says what a source had — `More`, `Idle`,
+  `Ended`, or `Reset` for one that began again — and `FileTransport`
+  reads what a file grew by, or the whole again when it was rewritten;
+  `Watch` checks a file on a thread of its own and calls back only when
+  its size or time moved. `Trace::slice` is the frames-range cut the Perf
+  tab's range reads, now the crate's.
+
+- **`kui-trace synth`** (backlog F250): a made-up session by frames,
+  spans a frame, seed and Hz, in the shape a recorder writes — gaps
+  asleep and woken, input and handlers, the app's spans nested under
+  `build`, an extension's fill and its placements, burns, slow frames,
+  a parse on a track of its own, gauges, marks and notes — streamed to a
+  `.kuitrace`, or `kui_trace::synth::Synth::trace()` in memory. 72,000
+  frames, about 937,000 spans, are 27 MB written in 0.3 s.
+
+- **`kui.trace`, a recording for a script** (backlog F251, ADR 0075):
+  `kui-trace`'s `lua` feature, which the runner turns on. `kui.trace.open
+  (path, { message })` reads a `.kuitrace` into channels — `rec.spans` in
+  Kit's waterfall's shape, `rec.frames` a row a finished frame with its
+  phases and verdict, `rec.instants` the waterfall's marks — and answers
+  `rec:frame(row)`, `rec:span(row)`, `rec:stats(first, last)` and
+  `rec:series(name)` as small tables and channels, all read in Rust.
+  `rec:filter{ origins, name, min_us, verdicts, hide_unchanged }` shows
+  what it keeps under the same handles. The file is watched: as it
+  grows `update` is handed `message`, and `rec:poll()` appends what came
+  (`"reset"` for a file written again). The 72,000-frame recording opens
+  into channels in 0.57 s and filters by name in 53 ms. `try_open` and
+  `try_read` as the runner's other calls have them; typed for Teal.
+  `kui_channel::Channel::publish_from` is new beside it: the next
+  revision of a view's identity holding another channel's rows, shared.
+
+- **A channel's intervals on lanes** (ADR 0075): `Channel::lanes(start,
+  len, lane)` sorts each lane's intervals once in Rust and makes its
+  levels as they are first asked for; `Lanes::window(lane, v0, v1, min)`
+  answers the runs reaching into a window — an interval at least `min`
+  long its own, shorter ones a gap under it apart merged into a strip
+  that counts them — so a window costs about a run a pixel, whatever the
+  rows behind it. A million intervals zoomed fully out are about 1,200
+  runs. In every binding: Lua `ch:lanes(...)` and `lanes:window(...)` (a
+  list per field), Node `channel.lanes(...)` and `ChannelLanes.window`
+  (typed arrays), C `kui_channel_lanes`, `_window`, `_count`, `_extent`,
+  `_free` and `KUI_CHANNEL_RUN`, Odin's.
+
+- **`where` in `kui.trace`'s filter**: `rec:filter { where = function(s)
+  return s.len > 0.5 and s.name:find("fill") end }`, called from Rust
+  with one table a span; 200 ms over 937,000 spans.
+
+- **kui-perf's spike** (backlog F252, `tools/kui-perf/spike`): a bare Lua
+  app — Kit's waterfall and table over `kui.trace` — that measures
+  itself phase by phase over a long recording, and the script that reads
+  its recording back. ADR 0075 holds the numbers and is accepted with
+  them.
+
+- **A channel appended to** (backlog C147): `Channel::append(rows, cap)`
+  is the next revision with `rows` after this one's — each column named,
+  of its kind, integers widening into a number column — the oldest past
+  `cap` dropped. A revision's rows are shared with the next, not copied:
+  a table is a few runs that merge as they grow, so a log appended to a
+  line at a time costs about its new lines and a reader by row looks
+  through a dozen runs at most; a reader of a whole column has it put
+  together once a revision. In every binding: Lua `ch:append(columns,
+  cap)`, Node `channel.append(columns, cap)`, C `kui_channel_append(ch,
+  builder, cap)`, Odin `channel_append`.
+
+  *What you can delete:* a log's cap kept low because every line
+  republished the lot — the Kit gallery's 500.
+
+- **A channel's filter, sort and take** (backlog C148): `filter(col,
+  match, within)` — a value (`Match::Eq`), a string's part with or
+  without its letters' case (`Match::Contains`), a number range
+  (`Match::Range`) — `sort(col, descending, within)`, ties in order and
+  NaN last, both answering row indices, and `take(rows)`, a new channel
+  of those rows in order (`take_columns` for publishing them as the next
+  revision of a view's own). In every binding: Lua `ch:filter(col, {
+  eq | contains, case | min, max }, rows)` / `ch:sort` / `ch:take`, Node
+  `channel.filter` / `sort` (a `Uint32Array`) / `take`, C
+  `kui_channel_filter_f64` (a range, `min == max` for one value),
+  `kui_channel_filter_str` (`KUI_CHANNEL_EQUAL`, `_CONTAINS`,
+  `_CONTAINS_ANY_CASE`), `kui_channel_sort` and `kui_channel_take`, and
+  Odin's.
+
+  *What you can delete:* a worker's copy of its rows in Lua kept only to
+  filter and sort them — the gallery's 21 MB.
+
+### Changed
+
+- **Kit's waterfall costs its width, not its spans** (ADR 0075): it reads
+  its bars from the channel's lanes, a window at a time, and the names
+  and groups of the bars it draws — where it made a Lua table of every
+  row and nineteen levels of every lane on each new revision — and draws
+  marks closer than a pixel as one rule whose tooltip counts them, where
+  it drew each. Over 936,723 spans: the first frame 4.6 s → 0.1 s past
+  the open, a frame showing the whole recording 50 → 0.4 ms, zooming out
+  520 → 3.5 ms at its worst.
 
 ### Fixed
 

@@ -143,6 +143,7 @@ c_type! {
     ViewFn => "KuiViewFn",
     KuiChannelBuilder => "KuiChannelBuilder",
     KuiChannel => "KuiChannel",
+    KuiChannelLanes => "KuiChannelLanes",
     Option<crate::types::ChildrenFn> => "KuiChildrenFn",
     Option<crate::types::LazyFn> => "KuiLazyFn",
 }

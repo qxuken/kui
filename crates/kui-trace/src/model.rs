@@ -102,6 +102,37 @@ impl Trace {
         }
     }
 
+    /// The records of frames `first..=last` of `tl` (this recording's
+    /// timeline) and their gaps, up to the last one's present: what a range
+    /// dragged across the bars reads, the session, names and tracks kept.
+    pub fn slice(&self, tl: &Timeline, first: usize, last: usize) -> Trace {
+        let f0 = &tl.frames[first];
+        let f1 = &tl.frames[last];
+        let from = f0.gap_from;
+        let to = f1
+            .present
+            .map_or(f1.end_or_begin(), |p| p.t.max(f1.end_or_begin()))
+            + 1;
+        let frames: std::collections::HashSet<u64> =
+            tl.frames[first..=last].iter().map(|f| f.frame).collect();
+        let records = self
+            .records
+            .iter()
+            .filter(|r| match (r.t(), r) {
+                (Some(t), _) => t >= from && t < to,
+                (None, Record::Holder { frame, .. }) => frames.contains(frame),
+                (None, _) => true,
+            })
+            .cloned()
+            .collect();
+        Trace {
+            session: self.session.clone(),
+            names: self.names.clone(),
+            tracks: self.tracks.clone(),
+            records,
+        }
+    }
+
     /// A name's string.
     pub fn name(&self, id: NameId) -> &str {
         self.names.text(id)
@@ -280,14 +311,52 @@ pub struct Timeline {
     /// The first and the last time any record is placed at.
     pub start: u64,
     pub end: u64,
+    /// Each open frame's index by its number, for the records after its
+    /// begin; and whether any record has a time yet.
+    open: HashMap<u64, usize>,
+    placed: bool,
+}
+
+/// Sorts `v` from the first of its first `old` items that one after them
+/// goes before, stably, by `key`.
+fn sort_tail<T, K: Ord>(v: &mut [T], old: usize, key: impl Fn(&T) -> K) {
+    let Some(least) = v[old..].iter().map(&key).min() else {
+        return;
+    };
+    let from = v[..old].partition_point(|x| key(x) <= least);
+    v[from..].sort_by_key(key);
 }
 
 impl Timeline {
     pub fn of(records: &[Record]) -> Timeline {
         let mut tl = Timeline::default();
-        let mut open: HashMap<u64, usize> = HashMap::new();
-        let mut first = u64::MAX;
-        let mut last = 0u64;
+        tl.extend(records);
+        tl
+    }
+
+    /// Places more records, written after those it holds: what a stream
+    /// read as it arrives (backlog F249) grows its timeline by, sorting
+    /// only the end of each list the new records reach into.
+    pub fn extend(&mut self, records: &[Record]) {
+        let tl = self;
+        let was = [
+            tl.spans.len(),
+            tl.inputs.len(),
+            tl.events.len(),
+            tl.wakes.len(),
+            tl.requests.len(),
+            tl.loops.len(),
+            tl.gauges.len(),
+            tl.marks.len(),
+            tl.notes.len(),
+            tl.placements.len(),
+        ];
+        let open = &mut tl.open;
+        let (mut first, mut last) = if tl.placed {
+            (tl.start, tl.end)
+        } else {
+            (u64::MAX, 0)
+        };
         for r in records {
             if let Some(t) = r.t() {
                 first = first.min(t);
@@ -416,22 +485,26 @@ impl Timeline {
                 Record::Session(_) | Record::Name { .. } | Record::Track { .. } => {}
             }
         }
-        tl.spans
-            .sort_by(|a, b| a.start.cmp(&b.start).then(b.dur.cmp(&a.dur)));
-        tl.inputs.sort_by_key(|i| i.t);
-        tl.events.sort_by_key(|e| e.t);
-        tl.wakes.sort_by_key(|w| w.0);
-        tl.requests.sort_by_key(|r| r.t);
-        tl.loops.sort_by_key(|l| l.0);
-        tl.gauges.sort_by_key(|g| g.t);
-        tl.marks.sort_by_key(|m| m.t);
-        tl.notes.sort_by_key(|n| n.0);
-        tl.placements.sort_by_key(|p| p.t);
+        // Each list sorted again from the first of what was there that a
+        // new record goes before: for records written in time, the new
+        // ones alone, and a span closed late reaching back to its start.
+        sort_tail(&mut tl.spans, was[0], |s| {
+            (s.start, std::cmp::Reverse(s.dur))
+        });
+        sort_tail(&mut tl.inputs, was[1], |i| i.t);
+        sort_tail(&mut tl.events, was[2], |e| e.t);
+        sort_tail(&mut tl.wakes, was[3], |w| w.0);
+        sort_tail(&mut tl.requests, was[4], |r| r.t);
+        sort_tail(&mut tl.loops, was[5], |l| l.0);
+        sort_tail(&mut tl.gauges, was[6], |g| g.t);
+        sort_tail(&mut tl.marks, was[7], |m| m.t);
+        sort_tail(&mut tl.notes, was[8], |n| n.0);
+        sort_tail(&mut tl.placements, was[9], |p| p.t);
         if first != u64::MAX {
             tl.start = first;
             tl.end = last;
+            tl.placed = true;
         }
-        tl
     }
 
     /// The spans that start in `[from, to)`.

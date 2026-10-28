@@ -434,6 +434,27 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     input::install(lua, &kui)?;
     sqlite::install(lua, &kui)?;
     worker::install(lua, &kui)?;
+    // `kui.trace` (ADR 0075): a recording as channels; a watched file's
+    // move hands `update` the message `open` was given, or rings the loop.
+    let ops = shared.ops.clone();
+    let wake: kui_trace::lua::Wake = Arc::new(move |msg| match msg {
+        Some(m) => ops.send(crate::ops::Inbound::Dispatch {
+            from: None,
+            msg: m.clone(),
+        }),
+        None => ops.poke(),
+    });
+    let trace = kui_trace::lua::register(lua, Some(wake))?;
+    for name in ["open", "read"] {
+        let f: mlua::Function = trace.get(name)?;
+        trace.set(
+            format!("try_{name}"),
+            try_fn(lua, move |_, args: mlua::MultiValue| {
+                f.call::<mlua::Value>(args)
+            })?,
+        )?;
+    }
+    kui.set("trace", trace)?;
     lua.globals().set("kui", kui.clone())?;
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("kui", kui)?;

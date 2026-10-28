@@ -216,6 +216,59 @@ fn a_worker_hands_back_a_channel_and_teal_runs_as_it_is() {
     assert!(out(&c).contains("ok: 1 file(s) checked"), "{}", out(&c));
 }
 
+/// `kui.trace` (ADR 0075): a recording opened as channels, filtered, a
+/// frame's detail read; then the file grows, `update` is handed the
+/// message `open` was given, and a poll appends what came — all in Teal,
+/// which `kui check` takes as it is.
+#[test]
+fn a_recording_opens_as_channels_and_its_growth_reaches_update() {
+    let bytes = kui_trace::synth::Synth {
+        frames: 300,
+        ..Default::default()
+    }
+    .trace()
+    .to_bytes();
+    let half = bytes.len() / 2;
+    let dir = app(
+        "trace",
+        &[(
+            "main.tl",
+            r#"
+            local rec = kui.trace.open("a.kuitrace", { message = { kind = "moved" } })
+            local first = #rec.frames
+            print("opened", first > 50, #rec.spans > 500, rec.spans.names[1])
+            local f = rec:frame(3)
+            print("frame", f.verdict.kind ~= nil, f.phases.build > 0)
+            local kept = rec:filter { origins = { "host" } }
+            print("filtered", kept > 0, kept < #rec.spans + 1, rec.filtered)
+            rec:filter()
+            local ok, err = kui.trace.try_open("missing.kuitrace")
+            print("missing", ok, (err as string):find("missing") ~= nil)
+            global function update(m: any)
+              local msg = m as {string:any}
+              if msg.kind == "moved" then
+                local state = rec:poll()
+                print("grew", state, #rec.frames > first)
+                kui.exit(0)
+              end
+            end
+            kui.fs.append("a.kuitrace", kui.fs.read("rest.bin"))
+            "#,
+        )],
+    );
+    std::fs::write(dir.join("a.kuitrace"), &bytes[..half]).unwrap();
+    std::fs::write(dir.join("rest.bin"), &bytes[half..]).unwrap();
+    let o = kui(&dir, &["run", "--headless"], 30);
+    let s = out(&o);
+    assert!(s.contains("opened\ttrue\ttrue\tname"), "{s}");
+    assert!(s.contains("frame\ttrue\ttrue"), "{s}");
+    assert!(s.contains("filtered\ttrue\ttrue\ttrue"), "{s}");
+    assert!(s.contains("missing\tfalse\ttrue"), "{s}");
+    assert!(s.contains("grew\tmore\ttrue"), "{s}");
+    let c = kui(&dir, &["check"], 60);
+    assert!(out(&c).contains("ok: 1 file(s) checked"), "{}", out(&c));
+}
+
 #[test]
 fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
     let dir = app(

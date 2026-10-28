@@ -105,3 +105,91 @@ channel_reduce :: proc(ch: ^c.Channel, col, from, to: int, out: []f64) -> (count
 	count = int(n)
 	return
 }
+
+// The next revision of ch's identity: its rows, then the builder's (backlog
+// C147), each of ch's columns named, of its kind and all of one length; with
+// cap above 0 the oldest rows past it go. The builder is consumed either way;
+// ch is untouched. nil on a mismatch, the reason in channel_error.
+// Rust: Channel::append.
+channel_append :: proc(ch: ^c.Channel, rows: ^c.ChannelBuilder, cap := 0) -> ^c.Channel {
+	return c.channel_append(ch, rows, uint(cap))
+}
+
+// A string filter's way: the cell is the text, or holds it (its letters'
+// case as given, or any).
+Channel_Match :: enum i32 {
+	Equal         = c.CHANNEL_EQUAL,
+	Contains      = c.CHANNEL_CONTAINS,
+	Contains_Any_Case = c.CHANNEL_CONTAINS_ANY_CASE,
+}
+
+// The rows - all, or within's in its order - whose number in column col is
+// at least min and at most max (min == max for one value, math.INF_F64 for an
+// open end; NaN is in no range), written into out, which has room for the
+// channel's length or len(within) (backlog C148). ok is false for no column
+// col, a column that is not numbers, or a row past the end.
+// Rust: Channel::filter.
+channel_filter_f64 :: proc(ch: ^c.Channel, col: int, min, max: f64, out: []uint, within: []uint = nil) -> (rows: []uint, ok: bool) {
+	n: uint
+	ok = c.channel_filter_f64(ch, uint(col), min, max, raw_data(within), uint(len(within)), raw_data(out), &n)
+	return out[:n] if ok else nil, ok
+}
+
+// channel_filter_f64 for a string column: the rows whose cell is text, or
+// holds it.
+channel_filter_str :: proc(ch: ^c.Channel, col: int, text: string, how: Channel_Match, out: []uint, within: []uint = nil) -> (rows: []uint, ok: bool) {
+	n: uint
+	ok = c.channel_filter_str(ch, uint(col), text, i32(how), raw_data(within), uint(len(within)), raw_data(out), &n)
+	return out[:n] if ok else nil, ok
+}
+
+// The rows - all, or within's - ordered by column col, least first or
+// greatest with descending; ties keep their order, NaN goes last.
+// Rust: Channel::sort.
+channel_sort :: proc(ch: ^c.Channel, col: int, out: []uint, descending := false, within: []uint = nil) -> (rows: []uint, ok: bool) {
+	n: uint
+	ok = c.channel_sort(ch, uint(col), descending, raw_data(within), uint(len(within)), raw_data(out), &n)
+	return out[:n] if ok else nil, ok
+}
+
+// A new channel of rows, in that order, yours until channel_free; nil for a
+// row past the end.
+// Rust: Channel::take.
+channel_take :: proc(ch: ^c.Channel, rows: []uint) -> ^c.Channel {
+	return c.channel_take(ch, raw_data(rows), uint(len(rows)))
+}
+
+// Doubles a run of channel_lanes_window takes: its start, end, row (-1 for a
+// strip of several) and how many intervals it holds.
+CHANNEL_RUN :: c.CHANNEL_RUN
+
+// A channel's intervals on lanes (ADR 0075): column start to start + len
+// (len -1: points) on the lanes column lane names (-1: one lane), built once;
+// nil for a column that is not numbers. Free it with channel_lanes_free.
+// Rust: Channel::lanes.
+channel_lanes :: proc(ch: ^c.Channel, start: int, len := -1, lane := -1) -> ^c.ChannelLanes {
+	return c.channel_lanes(ch, uint(start), i32(len), i32(lane))
+}
+
+channel_lanes_free :: proc(l: ^c.ChannelLanes) {
+	c.channel_lanes_free(l)
+}
+
+channel_lanes_count :: proc(l: ^c.ChannelLanes) -> int {
+	return int(c.channel_lanes_count(l))
+}
+
+channel_lanes_extent :: proc(l: ^c.ChannelLanes) -> (lo, hi: f64, ok: bool) {
+	ok = c.channel_lanes_extent(l, &lo, &hi)
+	return
+}
+
+// Lane lane's runs reaching into [v0, v1] at the detail where an interval at
+// least min long is a run of its own, CHANNEL_RUN doubles each, as many as
+// out has room for; count is how many were written.
+channel_lanes_window :: proc(l: ^c.ChannelLanes, lane: int, v0, v1, min: f64, out: []f64) -> (count: int, ok: bool) {
+	n: uint
+	ok = c.channel_lanes_window(l, uint(lane), v0, v1, min, (^f64)(raw_data(out)), uint(len(out) / CHANNEL_RUN), &n)
+	count = int(n)
+	return
+}

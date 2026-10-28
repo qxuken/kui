@@ -435,35 +435,7 @@ impl PerfView {
     /// Frames `first..=last` read whole on their own: the records from the
     /// first one's gap to the last one's present, its holders by frame.
     pub(crate) fn slice(&self, first: usize, last: usize) -> PerfView {
-        use kui_trace::Record;
-        let f0 = &self.tl.frames[first];
-        let f1 = &self.tl.frames[last];
-        let from = f0.gap_from;
-        let to = f1
-            .present
-            .map_or(f1.end_or_begin(), |p| p.t.max(f1.end_or_begin()))
-            + 1;
-        let frames: rustc_hash::FxHashSet<u64> = self.tl.frames[first..=last]
-            .iter()
-            .map(|f| f.frame)
-            .collect();
-        let records = self
-            .trace
-            .records
-            .iter()
-            .filter(|r| match (r.t(), r) {
-                (Some(t), _) => t >= from && t < to,
-                (None, Record::Holder { frame, .. }) => frames.contains(frame),
-                (None, _) => true,
-            })
-            .cloned()
-            .collect();
-        let trace = kui_trace::Trace {
-            session: self.trace.session.clone(),
-            names: self.trace.names.clone(),
-            tracks: self.trace.tracks.clone(),
-            records,
-        };
+        let trace = self.trace.slice(&self.tl, first, last);
         PerfView::of(trace, self.budget as f32 / 1000.0)
     }
 }

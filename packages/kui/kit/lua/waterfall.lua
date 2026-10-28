@@ -14,6 +14,9 @@
 
 
 
+
+
+
 local ctx = require("ctx")
 local data = require("data")
 local icons = require("icons")
@@ -43,110 +46,17 @@ local ref, act = ctx.ref, ctx.act
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 local M = {}
 
 local LANE_H = 20
 local MIN_BAR = 2
-
-
-local COARSEST, FINEST = 4, 22
-
-
-
-local function level(bars, thr)
-   local lv = { thr = thr, s = {}, e = {}, one = {} }
-   local n = 0
-   local i = 1
-   while i <= #bars do
-      local b = bars[i]
-      if b.l >= thr then
-         n = n + 1
-         lv.s[n], lv.e[n], lv.one[n] = b.s, b.s + b.l, i
-         i = i + 1
-      else
-         local s, e = b.s, b.s + b.l
-         local j = i + 1
-         while j <= #bars and bars[j].l < thr and bars[j].s - e < thr do
-            local ej = bars[j].s + bars[j].l
-            if ej > e then e = ej end
-            j = j + 1
-         end
-         n = n + 1
-         lv.s[n], lv.e[n], lv.one[n] = s, e, (j == i + 1) and i or 0
-         i = j
-      end
-   end
-   return lv
-end
-
-local function num(v)
-   return type(v) == "number" and v or (tonumber(v) or 0)
-end
-
 local function build(bars, marks, key)
-   local lanes = {}
-   local lo, hi = math.huge, -math.huge
-   local n = bars and #bars or 0
-   for r = 0, n - 1 do
-      local row_t = bars:row(r)
-      local b = {
-         s = num(row_t.start), l = num(row_t.len), d = math.floor(num(row_t.depth)),
-         g = math.floor(num(row_t.group)) % 6 + 1, row = r, n = tostring(row_t.name or ""),
-      }
-      local k = b.d + 1
-      if k < 1 then k = 1 end
-      local lane = lanes[k]
-      if not lane then
-         for m = #lanes + 1, k do lanes[m] = { bars = {}, s = {}, e = {}, levels = {} } end
-         lane = lanes[k]
-      end
-      lane.bars[#lane.bars + 1] = b
-      if b.s < lo then lo = b.s end
-      if b.s + b.l > hi then hi = b.s + b.l end
-   end
-   if lo > hi then lo, hi = 0, 1 end
-   local extent = hi - lo
-   for _, lane in ipairs(lanes) do
-      table.sort(lane.bars, function(a, b) return a.s < b.s end)
-      for i, b in ipairs(lane.bars) do lane.s[i], lane.e[i] = b.s, b.s + b.l end
-      for k = COARSEST, FINEST do
-         lane.levels[#lane.levels + 1] = level(lane.bars, extent / (2 ^ k))
-      end
-   end
-   local ms = {}
-   for r = 0, (marks and #marks or 0) - 1 do
-      ms[#ms + 1] = { at = num(marks:get(r, "at")), label = data.cell_text(marks:get(r, "label")) }
-   end
-   return { key = key, lanes = lanes, marks = ms, lo = lo, hi = hi, count = n }
+   local lanes = bars and bars:lanes("start", "len", "depth") or nil
+   local ticks = (marks and #marks > 0) and marks:lanes("at") or nil
+   local lo, hi = 0.0, 1.0
+   if lanes and lanes.len > 0 then lo, hi = lanes.lo, lanes.hi end
+   return { key = key, bars = bars, marks = marks, lanes = lanes, ticks = ticks,
+lo = lo, hi = hi, count = lanes and lanes.len or 0, }
 end
 
 local function key_of(ch)
@@ -176,18 +86,6 @@ local function window(st, p)
    return st.v0, st.v1
 end
 
-
-
-
-local function first_at(s, e, t)
-   local lo, hi = 1, #s
-   while lo < hi do
-      local mid = (lo + hi) // 2
-      if e[mid] < t then lo = mid + 1 else hi = mid end
-   end
-   return lo
-end
-
 local function fmt(ms, step)
    if step >= 1000 then return string.format("%.1f s", ms / 1000) end
    if step >= 1 then return string.format("%.0f ms", ms) end
@@ -202,41 +100,36 @@ local function nice(raw)
    return 10 * p
 end
 
+local function num(v)
+   return type(v) == "number" and v or (tonumber(v) or 0)
+end
+
 local function lane_row(c, lane, st, v0, v1, width, selected, picks)
    local scale = width / (v1 - v0)
    local px = 1 / scale
-   local extent = st.index.hi - st.index.lo
-
-
-   local lv = nil
-   local kk = math.floor(math.log(extent / (px * MIN_BAR), 2))
-   if kk <= FINEST then
-      lv = lane.levels[math.max(kk, COARSEST) - COARSEST + 1]
-   end
-   local ss = lv and lv.s or lane.s
-   local ee = lv and lv.e or lane.e
    local t = { height = LANE_H, width = "grow", cross_align = "center", clip = true }
-   if #ss == 0 then return row(t) end
+   local runs = st.index.lanes:window(lane, v0, v1, px * MIN_BAR)
+   local bars = st.index.bars
    local cursor = 0.0
-   local i = first_at(ss, ee, v0)
-   while i <= #ss and ss[i] <= v1 do
-      local x0 = math.max(0, (ss[i] - v0) * scale)
-      local x1 = math.min(width, (ee[i] - v0) * scale)
+   for i = 1, #runs.s do
+      local x0 = math.max(0, (runs.s[i] - v0) * scale)
+      local x1 = math.min(width, (runs.e[i] - v0) * scale)
       local w = x1 - x0
       if w > 0 then
          if x0 > cursor then
             t[#t + 1] = column({ width = x0 - cursor })
          end
-         local one = lv and lv.one[i] or i
-         if one ~= 0 and w >= MIN_BAR then
-            local b = lane.bars[one]
-            local sel = selected == b.row
+         local r = runs.row[i]
+         if r >= 0 and w >= MIN_BAR then
+            local name = data.cell_text(bars:get(r, "name"))
+            local g = math.floor(num(bars:get(r, "group"))) % 6 + 1
+            local sel = selected == r
             local bar = {
 
-               label = b.n,
+               label = name,
                width = w,
                height = LANE_H - 4,
-               bg = sel and ref(c, "sel") or ("$kitGroup" .. b.g),
+               bg = sel and ref(c, "sel") or ("$kitGroup" .. g),
                clip = true,
                pad = { x = 4 },
                cross_align = "center",
@@ -244,10 +137,10 @@ local function lane_row(c, lane, st, v0, v1, width, selected, picks)
 
 
 
-               key = picks and ("span" .. b.row) or nil,
+               key = picks and ("span" .. r) or nil,
                role = picks and "listItem" or nil,
                focusable = picks or nil,
-               on_click = picks and act(c, "waterfall.pick", { row = b.row }) or nil,
+               on_click = picks and act(c, "waterfall.pick", { row = r }) or nil,
             }
 
 
@@ -259,8 +152,8 @@ local function lane_row(c, lane, st, v0, v1, width, selected, picks)
                bar.border = { w = 1, color = ref(c, "panel") }
             end
             if w >= 48 then
-               bar[#bar + 1] = text(b.n, { size = 11, max_lines = 1, ellipsis = true, family = "$kitData",
-color = sel and ref(c, "sel_fg") or ("$kitGroupFg" .. b.g), })
+               bar[#bar + 1] = text(name, { size = 11, max_lines = 1, ellipsis = true, family = "$kitData",
+color = sel and ref(c, "sel_fg") or ("$kitGroupFg" .. g), })
             end
             t[#t + 1] = row(bar)
          else
@@ -268,7 +161,6 @@ color = sel and ref(c, "sel_fg") or ("$kitGroupFg" .. b.g), })
          end
          cursor = x0 + math.max(w, 1)
       end
-      i = i + 1
    end
    return row(t)
 end
@@ -322,20 +214,26 @@ ctx.data(c, fmt(tick, step), { size = 10.5, color = ref(c, "muted") }), })
       on_layout = act(c, "waterfall.layout"),
       on_scroll = act(c, "waterfall.wheel", { v0 = v0, v1 = v1, x = st.x, w = width }),
    }
-   for _, lane in ipairs(st.index.lanes) do
+   local n_lanes = st.index.lanes and #st.index.lanes or 0
+   for lane = 0, n_lanes - 1 do
       lanes[#lanes + 1] = lane_row(c, lane, st, v0, v1, width, selected, picks)
    end
 
-   for i, m in ipairs(st.index.marks) do
-      if m.at >= v0 and m.at <= v1 then
-         local x = (m.at - v0) * scale
+
+   if st.index.ticks then
+      local runs = st.index.ticks:window(0, v0, v1, 1 / scale)
+      for i = 1, #runs.s do
+         local x = (runs.s[i] - v0) * scale
+         local r = runs.row[i]
+         local label = r >= 0 and data.cell_text(st.index.marks:get(r, "label")) or
+         string.format("%d marks", runs.n[i])
          lanes[#lanes + 1] = column({
-            key = "m" .. i,
+            key = "m" .. math.floor(runs.s[i] * 1000),
             float = { anchor = "parent", dx = x, dy = 0 },
 
 
-            width = 1, height = #st.index.lanes * (LANE_H + 2), bg = ref(c, "accent_text"),
-            tooltip = m.label,
+            width = 1, height = n_lanes * (LANE_H + 2), bg = ref(c, "accent_text"),
+            tooltip = label,
          })
       end
    end

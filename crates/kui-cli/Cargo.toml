@@ -16,6 +16,7 @@ path = "src/main.rs"
 kui-core.workspace = true
 kui-native.workspace = true
 kui-lua.workspace = true
+kui-trace = { workspace = true, features = ["lua"] }
 mlua.workspace = true
 toml = "0.9"
 yaml-rust2 = "0.10"

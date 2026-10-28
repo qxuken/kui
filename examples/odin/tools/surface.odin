@@ -20,6 +20,7 @@
 package surface
 
 import "core:fmt"
+import "core:math"
 import "core:os"
 import "core:strings"
 import kui "../../../packages/odin/kui"
@@ -366,6 +367,32 @@ surface :: proc() -> bool {
 		check(out[kui.CHANNEL_BUCKET] == 4 && out[kui.CHANNEL_BUCKET + 1] == 30 && out[kui.CHANNEL_BUCKET + 4] == 2, "a bucket's least, greatest and the least's row")
 		_, none := kui.channel_reduce(ch, 5, 0, 3, out[:])
 		check(!none, "no column 5")
+		// Backlog C147, C148: a row appended under a cap, a view filtered,
+		// sorted and taken in Rust.
+		more_ms := [1]f64{9}
+		m := kui.channel_new()
+		kui.channel_add_f64(m, "ms", more_ms[:])
+		grown := kui.channel_append(ch, m, 3)
+		defer kui.channel_free(grown)
+		check(kui.channel_len(grown) == 3 && kui.channel_get_f64(grown, 0, 0) == 30, "channel_append")
+		buf: [3]uint
+		low, low_ok := kui.channel_filter_f64(grown, 0, -math.INF_F64, 5, buf[:])
+		check(low_ok && len(low) == 1 && low[0] == 1, "channel_filter_f64")
+		by, by_ok := kui.channel_sort(grown, 0, buf[:], descending = true)
+		check(by_ok && by[0] == 0 && by[2] == 1, "channel_sort")
+		view := kui.channel_take(grown, by[:1])
+		defer kui.channel_free(view)
+		check(kui.channel_len(view) == 1, "channel_take")
+		_, str_ok := kui.channel_filter_str(grown, 0, "x", .Contains, buf[:])
+		check(!str_ok, "a string search over numbers is refused")
+		// ADR 0075: the rows' ms as points, a run each.
+		lanes := kui.channel_lanes(grown, 0)
+		defer kui.channel_lanes_free(lanes)
+		lo, hi, ext_ok := kui.channel_lanes_extent(lanes)
+		check(ext_ok && kui.channel_lanes_count(lanes) == 1 && lo == 4 && hi == 30, "channel_lanes_extent")
+		runs: [3 * kui.CHANNEL_RUN]f64
+		n_runs, win_ok := kui.channel_lanes_window(lanes, 0, 0, 40, 0.001, runs[:])
+		check(win_ok && n_runs == 3 && runs[0] == 4 && runs[3] == 1, "channel_lanes_window: a run a point")
 	}
 
 	// Resources. Unusable input is a 0 handle, not a crash.

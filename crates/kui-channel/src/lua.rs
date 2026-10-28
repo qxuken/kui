@@ -3,16 +3,23 @@
 //! userdata, and a script reads it by index — `#ch`, `ch:get(i, "ms")`,
 //! `ch:row(i)` — without the rows ever becoming Lua tables, and
 //! `ch:reduce(col, from, to, n)` buckets a range for a chart in Rust
-//! (backlog C95). Row indices are 0-based, as a list's `index` and an
-//! `on_range` event's are.
+//! (backlog C95), `ch:append(spec, cap)` the next revision with more
+//! rows (backlog C147), and `ch:filter(col, match, rows)`, `ch:sort(col,
+//! descending, rows)` and `ch:take(rows)` a view built in Rust (backlog
+//! C148). Row indices are 0-based, as a list's `index` and an `on_range`
+//! event's are.
+//!
+//! [`from_lua`] and [`to_lua`] are `kui_value::lua`'s conversions with a
+//! channel crossing as its handle, both ways.
 
-use kui_core::Value as KValue;
-use kui_core::channel::{self, Cell, Channel, Column};
+use kui_value::Value as KValue;
+
+use crate::{self as channel, Cell, Channel, Column};
 use mlua::{Lua, MetaMethod, Table, UserData, UserDataFields, UserDataMethods, Value};
 
 /// The userdata: one revision of a channel, held.
 #[derive(Clone)]
-pub(crate) struct LuaChannel(pub(crate) Channel);
+pub struct LuaChannel(pub Channel);
 
 fn cell_to_lua(lua: &Lua, c: Cell<'_>) -> mlua::Result<Value> {
     Ok(match c {
@@ -102,6 +109,61 @@ impl UserData for LuaChannel {
                 reduction_to_lua(lua, &buckets)
             },
         );
+        m.add_method(
+            "lanes",
+            |_, this, (start, len, lane): (Value, Value, Option<Value>)| {
+                let s = column_index(&this.0, &start)?;
+                let l = (!len.is_nil())
+                    .then(|| column_index(&this.0, &len))
+                    .transpose()?;
+                let d = lane
+                    .filter(|v| !v.is_nil())
+                    .map(|c| column_index(&this.0, &c))
+                    .transpose()?;
+                this.0
+                    .lanes(s, l, d)
+                    .map(|lanes| LuaLanes(lanes, std::cell::RefCell::new(Vec::new())))
+                    .map_err(|e| mlua::Error::runtime(format!("lanes: {e}")))
+            },
+        );
+        m.add_method("append", |_, this, (spec, cap): (Table, Option<usize>)| {
+            let cols = columns_of(&spec)?;
+            this.0
+                .append(cols, cap)
+                .map(LuaChannel)
+                .map_err(|e| mlua::Error::runtime(format!("append: {e}")))
+        });
+        m.add_method(
+            "filter",
+            |lua, this, (col, m, within): (Value, Table, Option<Table>)| {
+                let c = column_index(&this.0, &col)?;
+                let m = match_of(&m)?;
+                let within = within.map(|t| rows_of(&t)).transpose()?;
+                let rows = this
+                    .0
+                    .filter(c, &m, within.as_deref())
+                    .map_err(|e| mlua::Error::runtime(format!("filter: {e}")))?;
+                lua.create_sequence_from(rows)
+            },
+        );
+        m.add_method(
+            "sort",
+            |lua, this, (col, descending, within): (Value, Option<bool>, Option<Table>)| {
+                let c = column_index(&this.0, &col)?;
+                let within = within.map(|t| rows_of(&t)).transpose()?;
+                let rows = this
+                    .0
+                    .sort(c, descending.unwrap_or(false), within.as_deref())
+                    .map_err(|e| mlua::Error::runtime(format!("sort: {e}")))?;
+                lua.create_sequence_from(rows)
+            },
+        );
+        m.add_method("take", |_, this, rows: Table| {
+            this.0
+                .take(&rows_of(&rows)?)
+                .map(LuaChannel)
+                .map_err(|e| mlua::Error::runtime(format!("take: {e}")))
+        });
         m.add_method("publish", |_, this, spec: Table| {
             let cols = columns_of(&spec)?;
             this.0
@@ -110,6 +172,74 @@ impl UserData for LuaChannel {
                 .map_err(|e| mlua::Error::runtime(format!("publish: {e}")))
         });
     }
+}
+
+/// A channel's intervals on lanes (`ch:lanes(start, len, lane)`, ADR
+/// 0075): `#lanes` lanes, `lanes.lo` / `lanes.hi` / `lanes.len`, and
+/// `lanes:window(lane, v0, v1, min)` the runs of a 0-based lane reaching
+/// into the window at the detail where `min` is a run's least width — a
+/// list per field, a run per index: `s`, `e`, `row` (0-based; -1 for a
+/// strip of several) and `n`.
+pub struct LuaLanes(pub crate::Lanes, std::cell::RefCell<Vec<crate::Run>>);
+
+impl UserData for LuaLanes {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("lo", |_, this| Ok(this.0.extent().0));
+        f.add_field_method_get("hi", |_, this| Ok(this.0.extent().1));
+        f.add_field_method_get("len", |_, this| Ok(this.0.len()));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_meta_method(MetaMethod::Len, |_, this, ()| Ok(this.0.count()));
+        m.add_method(
+            "window",
+            |lua, this, (lane, v0, v1, min): (usize, f64, f64, f64)| {
+                let mut runs = this.1.borrow_mut();
+                this.0.window(lane, v0, v1, min, &mut runs);
+                let t = lua.create_table_with_capacity(0, 4)?;
+                let list =
+                    |f: &dyn Fn(&crate::Run) -> Value| lua.create_sequence_from(runs.iter().map(f));
+                t.raw_set("s", list(&|r| Value::Number(r.start))?)?;
+                t.raw_set("e", list(&|r| Value::Number(r.end))?)?;
+                t.raw_set(
+                    "row",
+                    list(&|r| Value::Integer(r.row.map_or(-1, |x| x as i64)))?,
+                )?;
+                t.raw_set("n", list(&|r| Value::Integer(r.count as i64))?)?;
+                Ok(t)
+            },
+        );
+    }
+}
+
+/// A list of 0-based rows, as `filter` and `sort` hand them out.
+fn rows_of(t: &Table) -> mlua::Result<Vec<usize>> {
+    t.sequence_values::<Value>()
+        .map(|v| row_index(&v?))
+        .collect()
+}
+
+/// A filter's match as a script spells it (backlog C148): `{ eq = v }`,
+/// `{ contains = "api", case = true }`, or `{ min = 1, max = 5 }` with
+/// either end left out.
+fn match_of(t: &Table) -> mlua::Result<channel::Match> {
+    if let Some(text) = t.get::<Option<String>>("contains")? {
+        return Ok(channel::Match::Contains {
+            text,
+            case: t.get::<Option<bool>>("case")?.unwrap_or(false),
+        });
+    }
+    let eq: Value = t.get("eq")?;
+    if !eq.is_nil() {
+        return Ok(channel::Match::Eq(kui_value::lua::from_lua(&eq)?));
+    }
+    let (min, max) = (t.get::<Option<f64>>("min")?, t.get::<Option<f64>>("max")?);
+    if min.is_some() || max.is_some() {
+        return Ok(channel::Match::Range { min, max });
+    }
+    Err(mlua::Error::runtime(
+        "a filter is { eq = v }, { contains = text, case = bool } or { min = a, max = b }",
+    ))
 }
 
 /// A reduction as a script reads it (backlog C95): one flat list per
@@ -227,7 +357,7 @@ fn column_from(list: &Table) -> mlua::Result<Result<Column, channel::ChannelErro
 }
 
 /// Registers `channel(spec)` in a script's globals.
-pub(crate) fn register(lua: &Lua) -> mlua::Result<()> {
+pub fn register(lua: &Lua) -> mlua::Result<()> {
     let make = lua.create_function(|_, spec: Table| {
         Channel::table(columns_of(&spec)?)
             .map(LuaChannel)
@@ -238,7 +368,7 @@ pub(crate) fn register(lua: &Lua) -> mlua::Result<()> {
 
 /// A handle as the script sees it: the channel when someone holds it,
 /// nil when nobody does.
-pub(crate) fn handle_to_lua(lua: &Lua, v: &KValue) -> Option<mlua::Result<Value>> {
+pub fn handle_to_lua(lua: &Lua, v: &KValue) -> Option<mlua::Result<Value>> {
     if !channel::is_handle(v) {
         return None;
     }
@@ -246,4 +376,22 @@ pub(crate) fn handle_to_lua(lua: &Lua, v: &KValue) -> Option<mlua::Result<Value>
         Some(ch) => lua.create_userdata(LuaChannel(ch)).map(Value::UserData),
         None => Ok(Value::Nil),
     })
+}
+
+/// A userdata as a value, when it is a channel: its handle.
+pub fn userdata_value(ud: &mlua::AnyUserData) -> Option<mlua::Result<KValue>> {
+    ud.is::<LuaChannel>()
+        .then(|| ud.borrow::<LuaChannel>().map(|c| c.0.handle()))
+}
+
+/// A Lua value as a [`KValue`], a channel as its handle
+/// ([`kui_value::lua::from_lua`] with [`userdata_value`]).
+pub fn from_lua(v: &Value) -> mlua::Result<KValue> {
+    kui_value::lua::from_lua_with(v, &userdata_value)
+}
+
+/// A [`KValue`] as a Lua value, a channel's handle as the channel
+/// ([`kui_value::lua::to_lua`] with [`handle_to_lua`]).
+pub fn to_lua(lua: &Lua, v: &KValue) -> mlua::Result<Value> {
+    kui_value::lua::to_lua_with(lua, v, &handle_to_lua)
 }

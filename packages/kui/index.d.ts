@@ -2771,6 +2771,38 @@ export declare class Channel {
    */
   publish(columns: object): Channel
   /**
+   * The next revision under the same identity: this one's rows and
+   * `columns`' after them, each column of this channel named, of its
+   * kind and all of one length (backlog C147). With `cap`, the oldest
+   * rows go past it. This revision's rows are shared with the next, not
+   * copied, so a growing log costs its new lines.
+   */
+  append(columns: object, cap?: number | undefined | null): Channel
+  /**
+   * The rows — all, or those of `rows` in its order — whose cell in
+   * column `col` matches, 0-based (backlog C148). Throws for a match of
+   * the wrong kind for the column, or a row past the end.
+   */
+  filter(col: string | number, matching: ChannelMatch, rows?: Uint32Array | Array<number> | undefined | null): Uint32Array
+  /**
+   * The rows — all, or `rows` — ordered by column `col`, least first or
+   * greatest with `descending`; ties keep their order, NaN goes last
+   * (backlog C148).
+   */
+  sort(col: string | number, descending?: boolean | undefined | null, rows?: Uint32Array | Array<number> | undefined | null): Uint32Array
+  /**
+   * A new channel of `rows`, in that order (backlog C148): a filtered
+   * or sorted view, made in Rust.
+   */
+  take(rows: Uint32Array | Array<number>): Channel
+  /**
+   * The intervals `start .. start + len` (`len` left out: points) on
+   * the lanes column `lane` names (one lane without it), built once in
+   * Rust for `ChannelLanes.window` (ADR 0075): what a waterfall draws a
+   * million spans as, a window at a level of detail.
+   */
+  lanes(start: string | number, len?: string | number | undefined | null, lane?: string | number | undefined | null): ChannelLanes
+  /**
    * The handle: `{ $channel, rev }`, a value that rides in props, in
    * messages and to a worker.
    */
@@ -2796,6 +2828,51 @@ export interface ChannelReduction {
   maxRow: Uint32Array
   firstRow: Uint32Array
   lastRow: Uint32Array
+}
+
+/** A channel's intervals on lanes (`channel.lanes`, ADR 0075). */
+export declare class ChannelLanes {
+  /** How many lanes. */
+  get count(): number
+  /** How many intervals. */
+  get length(): number
+  /** The earliest start. */
+  get lo(): number
+  /** The latest end. */
+  get hi(): number
+  /**
+   * Lane `lane`'s runs reaching into `v0 .. v1`, at the detail where
+   * an interval at least `min` long is a run of its own and shorter
+   * ones a gap under it apart merge into a strip: about a run a pixel
+   * with `min` a pixel's width.
+   */
+  window(lane: number, v0: number, v1: number, min: number): ChannelRuns
+}
+
+/**
+ * What `lanes.window` answers: a typed array per field, a run per index —
+ * its start, end, row (0-based; -1 for a strip of several) and how many
+ * intervals it holds.
+ */
+export interface ChannelRuns {
+  s: Float64Array
+  e: Float64Array
+  row: Int32Array
+  n: Uint32Array
+}
+
+/**
+ * What `channel.filter` keeps a row for (backlog C148): `eq`, a cell
+ * equal to it; `contains`, a string cell holding it (`caseSensitive` to
+ * match its letters' case); `min` / `max`, a number cell in that range,
+ * either end left open.
+ */
+export interface ChannelMatch {
+  eq?: any
+  contains?: string
+  caseSensitive?: boolean
+  min?: number
+  max?: number
 }
 
 /**

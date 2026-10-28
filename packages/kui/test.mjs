@@ -10429,6 +10429,41 @@ test('channel.reduce buckets a range into its extremes and ends (backlog C95)', 
   assert.throws(() => ch.reduce('s', 0, 10, 2), /strings/);
 });
 
+// Backlog C147, C148: a log appended to under a cap, and a view
+// filtered, sorted and taken in Rust.
+test('a channel appends under a cap, filters, sorts, takes, and lays its intervals on lanes (backlog C147, C148, ADR 0075)', () => {
+  let log = new Channel({ line: ['a'], ms: [1] });
+  for (let i = 2; i <= 10; i++) log = log.append({ line: [`l${i}`], ms: [i] }, 4);
+  assert.deepEqual([log.length, log.get(0, 'line'), log.get(3, 'ms'), log.rev], [4, 'l7', 10, 10]);
+  assert.throws(() => log.append({ line: ['x'] }), /1 columns/);
+
+  const jobs = new Channel({ name: ['api/get', 'db', 'API/put', 'api/del'], ms: Float64Array.of(5, 1, 7, 2) });
+  const api = jobs.filter('name', { contains: 'api' });
+  assert.ok(api instanceof Uint32Array);
+  assert.deepEqual([...api], [0, 2, 3]);
+  assert.deepEqual([...jobs.filter('ms', { max: 5 }, api)], [0, 3]);
+  assert.deepEqual([...jobs.filter('name', { contains: 'API', caseSensitive: true })], [2]);
+  assert.deepEqual([...jobs.filter('ms', { eq: 7 })], [2]);
+  const by = jobs.sort('ms', true, api);
+  assert.deepEqual([...by], [2, 0, 3]);
+  const view = jobs.take(by);
+  assert.equal(view.get(0, 'name'), 'API/put');
+  assert.equal(jobs.take([1]).get(0, 'ms'), 1);
+  assert.throws(() => jobs.filter('ms', { contains: 'x' }), /string search/);
+
+  // ADR 0075: a million points on a lane, zoomed out, a run a pixel.
+  const n = 1_000_000;
+  const pts = new Channel({ at: Float64Array.from({ length: n }, (_, i) => i) });
+  const lanes = pts.lanes('at');
+  assert.deepEqual([lanes.count, lanes.length, lanes.lo, lanes.hi], [1, n, 0, n - 1]);
+  const runs = lanes.window(0, 0, n, n / 1200);
+  assert.ok(runs.s instanceof Float64Array && runs.row instanceof Int32Array);
+  assert.ok(runs.s.length <= 1300, `${runs.s.length} runs`);
+  assert.equal(runs.n.reduce((a, b) => a + b, 0), n);
+  const close = lanes.window(0, 10, 12, 0.001);
+  assert.deepEqual([...close.row], [10, 11, 12]);
+});
+
 // A component is replayed by default (ADR 0067): the same props and
 // nothing it read changed, and last frame's nodes are pushed again without
 // calling the script; `fresh` asks for a fill every frame.
