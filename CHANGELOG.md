@@ -471,6 +471,29 @@ and its tables sort and filter them.
   `kui-value` and `kui-channel`, new in this release, were published once
   by hand.
 
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): `test.nu --node` (3331
+tests over 247 suites and Node's; one timing test, a headless capture
+answered within 5 s, missed under the parallel run and passed 5 of 5
+alone), clippy with `-D warnings`, `release-prep.nu` with Odin's
+generator and check (every generated file current), the windowed round
+with the Node windows (all 58 examples on both bases), the accessibility
+audit (106/106), and `bench-check.nu` against alpha.69: every guarded row
+even or faster, worst spread 1.9% (`frame_1k_rules` −5.3%,
+`replay_a_full_depart_store` −17%, `frame_1k_turned_rects` even, after
+the speed-ups above took back C149's and F220's cost). Three read-only
+reviews of the 82 commits since alpha.69 — the core and the recording's
+crates, the bindings and the platform, the docs and the packaging — found
+what the backlog's alpha.70 pre-tag section lists: fixed before the tag,
+folded into the entries above, and RG171–RG173 open.
+
+Not verified natively this release: Windows and Linux on a machine
+(smoke.yml's Windows round and ci.yml's Linux check run on GitHub's
+runners, and both block the release), the
+trusted-publishing token step, which only a tag's `publish` runs, and
+Live in kui-perf over a growing file (RG171, RG172).
+
 ## 0.1.0-alpha.69 (2026-10-28)
 
 **What breaks.**
