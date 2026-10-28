@@ -15,6 +15,9 @@
 //!     surface          the header walk, every prototype called once
 //!     host_loop        kui.h's host loop with nothing from the runner
 //!     keys             the GLFW and SDL3 key tables (kui_glfw.h, kui_sdl3.h)
+//!     wgpu_host        kui's frame drawn on a wgpu-native device of its own,
+//!                      offscreen, and its pixels checked (where a
+//!                      wgpu-native is found: see `wgpu_native`)
 //!     conformance      the C adapter over the scene corpus
 //!     host             C as the host of a C *extension* (ADR 0014's C half)
 //!     panel.so/.dll    the panel, which either host loads
@@ -333,7 +336,10 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
     // file under the hosts. On Windows the link is against the import
     // library.
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-    let exe_with = |src: &str, out: &str, extra: &[String]| -> Result<(), String> {
+    // `extra` are compile flags, before the source; `ld` is what the link
+    // takes after it - where a static archive has to be for a unix linker
+    // to pull from it.
+    let exe_with = |src: &str, out: &str, extra: &[String], ld: &[String]| -> Result<(), String> {
         let out_path = if cc.msvc {
             format!("{bin}/{out}.exe")
         } else {
@@ -349,7 +355,9 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
                 s("/link"),
                 ffi_lib.clone(),
             ]);
+            args.extend(ld.iter().cloned());
         } else {
+            args.extend(ld.iter().cloned());
             args.extend([
                 s("-L"),
                 bin.clone(),
@@ -368,7 +376,7 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
     // C on both sides — a C host that loads the same panel through
     // kui_ctx_add_extension / kui_run_with (ADR 0014's C half, ABI 10). It
     // links kui_ffi like counter.c does: a host is a host.
-    let exe = |src: &str, out: &str| exe_with(src, out, &[]);
+    let exe = |src: &str, out: &str| exe_with(src, out, &[], &[]);
     exe("examples/c/apps/counter.c", "counter")?;
     exe("examples/c/tools/surface.c", "surface")?;
     // The host loop with nothing from the runner: what the release's
@@ -388,7 +396,26 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
         })
         .flat_map(|d| [s("-I"), s(d)])
         .collect();
-    exe_with("examples/c/tools/keys.c", "keys", &brew)?;
+    exe_with("examples/c/tools/keys.c", "keys", &brew, &[])?;
+    // A host drawing kui's frame on a wgpu device of its own (backlog
+    // F234), built only where a wgpu-native is: it is not a dependency of
+    // anything else here.
+    let wgpu = match wgpu_native(cc.msvc) {
+        Ok(found) => {
+            exe_with(
+                "examples/c/tools/wgpu_host.c",
+                "wgpu_host",
+                &found.cflags,
+                &found.libs,
+            )?;
+            println!("  (wgpu-native from {})", found.dir.display());
+            true
+        }
+        Err(why) => {
+            println!("skipped wgpu_host: {why}");
+            false
+        }
+    };
 
     // --- the panel --------------------------------------------------------
     // The other direction: C as an extension inside a host that already
@@ -507,6 +534,17 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
             must_fail: None,
         },
     ];
+    if wgpu {
+        round.insert(
+            4,
+            Step {
+                exe: format!("{bin}/{}", exe_name("wgpu_host")),
+                args: vec![],
+                note: "kui's frame drawn on a wgpu device of the host's own, read back and checked",
+                must_fail: None,
+            },
+        );
+    }
     if cc.msvc {
         round.push(Step {
             exe: format!("{ex}/{}", exe_name("c_panel")),
@@ -571,4 +609,118 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
         round.len()
     );
     Ok(())
+}
+
+/// A wgpu-native to build `wgpu_host.c` against, and how.
+struct WgpuNative {
+    dir: PathBuf,
+    cflags: Vec<String>,
+    libs: Vec<String>,
+}
+
+/// Where a wgpu-native release is unpacked (`include/webgpu/webgpu.h`,
+/// `lib/`): `WGPU_NATIVE_DIR` when set - what CI points at a pinned
+/// release - else the one the Odin compiler ships for its `vendor:wgpu`,
+/// `<odin root>/vendor/wgpu/lib/wgpu-<os>-<arch>-release`, the root from
+/// `ODIN_ROOT`, the `ODIN` compiler's directory, or `odin root`. Linked
+/// statically, as Odin links it, so the program runs from anywhere; the
+/// system libraries are the ones Odin's vendor:wgpu names. Odin's Windows
+/// copy carries no headers, so there it takes `WGPU_NATIVE_DIR`.
+fn wgpu_native(msvc: bool) -> Result<WgpuNative, String> {
+    let dir = match std::env::var_os("WGPU_NATIVE_DIR").filter(|d| !d.is_empty()) {
+        Some(d) => PathBuf::from(d),
+        None => {
+            let root = odin_root().ok_or(
+                "no wgpu-native: set WGPU_NATIVE_DIR to an unpacked release, or ODIN to an Odin compiler",
+            )?;
+            let os = match std::env::consts::OS {
+                "macos" => "macos",
+                "windows" => "windows",
+                _ => "linux",
+            };
+            let arch = match std::env::consts::ARCH {
+                "aarch64" => "aarch64",
+                _ => "x86_64",
+            };
+            let abi = if msvc { "-msvc" } else { "" };
+            root.join(format!("vendor/wgpu/lib/wgpu-{os}-{arch}{abi}-release"))
+        }
+    };
+    let header = dir.join("include/webgpu/webgpu.h");
+    if !header.exists() {
+        return Err(format!("no {}", header.display()));
+    }
+    let lib = dir.join("lib").join(if msvc {
+        "wgpu_native.lib"
+    } else {
+        "libwgpu_native.a"
+    });
+    if !lib.exists() {
+        return Err(format!("no {}", lib.display()));
+    }
+    let include = dir.join("include").display().to_string();
+    let lib = lib.display().to_string();
+    let (cflags, libs) = if msvc {
+        let system = [
+            "d3dcompiler",
+            "ws2_32",
+            "userenv",
+            "bcrypt",
+            "ntdll",
+            "opengl32",
+            "advapi32",
+            "user32",
+            "gdi32",
+            "ole32",
+            "oleaut32",
+            "propsys",
+            "runtimeobject",
+        ];
+        let mut libs = vec![lib];
+        libs.extend(system.iter().map(|l| format!("{l}.lib")));
+        (vec![s("/I"), include], libs)
+    } else if cfg!(target_os = "macos") {
+        let mut libs = vec![lib];
+        for f in [
+            "Metal",
+            "QuartzCore",
+            "CoreGraphics",
+            "Foundation",
+            "CoreFoundation",
+        ] {
+            libs.extend([s("-framework"), s(f)]);
+        }
+        (vec![s("-I"), include], libs)
+    } else {
+        (
+            vec![s("-I"), include],
+            vec![lib, s("-lm"), s("-ldl"), s("-lpthread")],
+        )
+    };
+    Ok(WgpuNative { dir, cflags, libs })
+}
+
+/// The Odin compiler's root: `ODIN_ROOT`, else the directory of `ODIN`
+/// when that is a path, else what `odin root` (or `$ODIN root`) prints.
+fn odin_root() -> Option<PathBuf> {
+    if let Some(r) = std::env::var_os("ODIN_ROOT").filter(|r| !r.is_empty()) {
+        return Some(PathBuf::from(r));
+    }
+    let odin = std::env::var("ODIN").unwrap_or_else(|_| s("odin"));
+    let odin = match odin.strip_prefix("~/") {
+        Some(rest) => std::env::var_os("HOME")
+            .map(|h| Path::new(&h).join(rest).display().to_string())
+            .unwrap_or(odin),
+        None => odin,
+    };
+    if odin.contains('/') || odin.contains('\\') {
+        return Path::new(&odin).parent().map(Path::to_path_buf);
+    }
+    let out = Command::new(&odin)
+        .arg("root")
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let root = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !root.is_empty()).then(|| PathBuf::from(root))
 }

@@ -106,6 +106,19 @@ Nothing else breaks.
   `lib/<platform>/pkgconfig/`, but on Windows), so a link line is
   `$(pkg-config --cflags --libs kui-static)`.
 
+- **A host's renderer draws with kui's own shader and instances**
+  (backlog F234). A game drawing `KuiDrawData` with its own wgpu device
+  copied kui-wgpu's shader and its private instance packing, and the copy
+  drifted (Replicator Bloom's lacked alpha.70's stretch). Rust
+  `kui_core::gpu` (`Instance`, `instance_of`, the attribute table,
+  `Globals`, `shader(dual)`), which kui-wgpu now draws through; C
+  `kui_renderer_wgsl`, `kui_instance_stride`, `kui_instance_attributes`
+  and `kui_pack_instances` — the layout read at run time, so a pipeline
+  built from it follows a later library — and Odin's four. Reference
+  hosts in C and Odin (`examples/*/tools/wgpu_host`) draw a frame
+  offscreen through wgpu-native and check it; Odin's also runs in a GLFW
+  window over a "world". kui.h's "Drawing it yourself" says the rest.
+
 ## 0.1.0-alpha.70 (2026-10-28)
 
 **What breaks.**

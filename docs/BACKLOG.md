@@ -4078,40 +4078,6 @@ is a door in every binding or a design of its own. F240, F224's part
 file shared by two threads, was what the round's test run found, built
 the same day and in the archive.
 
-### `~` F234 — A host's renderer copies kui-wgpu's shader and its instance packing
-
-**Found** in the wishlist's item 2. Drawing `KuiDrawData` meant copying
-`crates/kui-wgpu/src/shader.wgsl` by hand and stripping its `//DUAL:` /
-`//SINGLE:` lines (`preprocess_shader`, private), and rewriting
-`instance_of` (private): the clip resolved against `clips`, a segment's
-ends and a shadow's knock-out as float bits with `border_w` moved into
-`border_color.a`, the kinds as the shader's numbers (texture → 3, group
-end → 8). Every release can move any of it, and nothing tells the copy.
-No C or Odin example draws `kui_draw_data`; the only renderer is the Rust
-one. **Do.** The instance layout and `instance_of` in kui-core (no wgpu
-needed), the shader text beside it; `kui_renderer_wgsl(variant)` for
-`SINGLE` and `DUAL`, and `kui_pack_instances(ctx, out, cap)` writing the
-frame's quads as the shader's instance bytes at a fixed, documented
-stride (176 today), so a host's renderer is "upload these bytes, draw 6 ×
-n". Then a reference host under `examples/` — C or Odin on wgpu-native —
-drawing through `kui_draw_data`, built in CI. What it leaves out: the
-opacity groups' and backdrops' passes, which are passes and not
-instances; the reference host says so, or draws them.
-
-
-**Part one built** 2026-10-28: `kui_core::gpu` holds the instance
-(`Instance`, now 192 bytes: ABI 41's `stretch` was what Replicator
-Bloom's copy had already missed), `instance_of`, `INSTANCE_STRIDE`,
-`INSTANCE_ATTRIBUTES`, `Globals` and the WGSL template with `shader(dual)`;
-kui-wgpu draws through them. C: `kui_renderer_wgsl`, `kui_instance_stride`,
-`kui_instance_attributes` and `kui_pack_instances` — the layout read at
-run time rather than a typed struct, so a host that builds its pipeline
-from it follows a later library unchanged; kui.h's "Drawing it
-yourself". Odin's `renderer_wgsl`, `instance_stride`,
-`instance_attributes`, `pack_instances` (hand-written, render.odin). Four
-DOORS rows. **Left:** the reference hosts — decided with the user: C and
-Odin each render offscreen through wgpu-native and check the pixels (run
-in CI), Odin also with a `--window` mode on GLFW.
 ### `~` F236 — A subtree cannot be drawn into a target of its own
 
 **Found** in the wishlist's item 5. To put UI in the world — on the gate
@@ -6247,7 +6213,7 @@ move.
 - `.` **F231** — [`layout_of` answers nothing for a node without `on_layout`, without a word](backlog/closed-2026-09.md#-f231--layout_of-answers-nothing-for-a-node-without-on_layout-without-a-word--done-2026-10-27) — done (2026-10-27) — `layout-of-without-handler` when the frame finishes; the Odin README points at `set_inspect` and `nodes`
 - `.` **F232** — [Linking kui's archive beside another Rust archive fails, and nothing says to link the shared one](backlog/closed-2026-09.md#-f232--linking-kuis-archive-beside-another-rust-archive-fails-and-nothing-says-to-link-the-shared-one--done-2026-10-27) — done (2026-10-27) — the pack README, the Odin README and kui-ffi's README say so, and why
 - `.` **F233** — [A host cannot ask whether the pointer is over the UI](backlog/closed-2026-09.md#-f233--a-host-cannot-ask-whether-the-pointer-is-over-the-ui--done-2026-10-28) — done (2026-10-28) — painted boxes block, `hostHit` moves one either way; `hit`, `pointer_wants`, `keyboard_wants` in C, Odin and Node (ABI 42)
-- `~` **F234** — [A host's renderer copies kui-wgpu's shader and its instance packing](#-f234--a-hosts-renderer-copies-kui-wgpus-shader-and-its-instance-packing) — open — the shader and the instance packing in the core with C doors, and a reference C or Odin host
+- `~` **F234** — [A host's renderer copies kui-wgpu's shader and its instance packing](backlog/closed-2026-09.md#-f234--a-hosts-renderer-copies-kui-wgpus-shader-and-its-instance-packing--done-2026-10-28) — done (2026-10-28) — `kui_core::gpu`; `kui_renderer_wgsl`, `kui_instance_stride`, `kui_instance_attributes`, `kui_pack_instances`; reference hosts `wgpu_host.c` and `wgpu_host.odin`
 - `.` **F235** — [The draw data has no bounds](backlog/closed-2026-09.md#-f235--the-draw-data-has-no-bounds--done-2026-10-28) — done (2026-10-28) — `DisplayList::bounds`, `KuiDrawData.bounds` (ABI 42); per-layer rects wait for F236's surfaces
 - `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — decided (2026-10-28), not built — ADR 0076: an island is a declared window of kind `surface`, drawn by the host
 - `.` **F237** — [Contexts cannot share their fonts, images or atlas](backlog/closed-2026-09.md#-f237--contexts-cannot-share-their-fonts-images-or-atlas--done-2026-10-28) — done (2026-10-28) — `kui_ctx_new_in` / `new_ui_in` / `Ctx.sibling` over `Core::new_in`; the atlas stays per context (ADR 0076, decision 7)

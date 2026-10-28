@@ -2598,8 +2598,13 @@ typedef struct KuiDrawData {
  *     viewport w, h (physical px, the draw data's), atlas size twice, the
  *     frame clock, the scale, two of padding; binding 1 the atlas texture
  *     (RGBA8, atlas_pixels; atlas_dirty_rect says what to upload); 2 a
- *     linear sampler; 3 a nearest one. Premultiplied alpha: blend src One,
- *     dst OneMinusSrcAlpha (the DUAL variant: dst OneMinusSrc1).
+ *     linear sampler; 3 a nearest one, both clamped to the edge. Blend:
+ *     the SINGLE variant writes straight colour with its coverage as alpha
+ *     - colour src SrcAlpha, dst OneMinusSrcAlpha; alpha src One, dst
+ *     OneMinusSrcAlpha - and the DUAL one premultiplied colour with a
+ *     per-channel coverage - colour src One, dst OneMinusSrc1; alpha src
+ *     One, dst OneMinusSrc1Alpha. Into an Unorm target (RGBA8Unorm,
+ *     BGRA8Unorm): the colours are kui's as written, no sRGB encode.
  *   - kui_instance_stride() and kui_instance_attributes(): the vertex
  *     buffer's layout, stepped per instance - each attribute a float32x2
  *     or float32x4 at its shader location and byte offset. Build the
@@ -2612,8 +2617,10 @@ typedef struct KuiDrawData {
  * instance), an opacity group's picture (none unless
  * kui_set_opacity_groups), a texture-backed image (KUI_QUAD_TEXTURE: kind 3
  * drawn with that image's texture bound in the atlas's place, a run of its
- * own) and a registered fragment (its own pipeline). examples/c/tools and
- * examples/odin/tools carry a reference host, on wgpu-native and GLFW. */
+ * own) and a registered fragment (its own pipeline). The reference hosts
+ * are examples/c/tools/wgpu_host.c (wgpu-native's C API, offscreen, its
+ * pixels checked) and examples/odin/tools/wgpu_host.odin (vendor:wgpu, the
+ * same offscreen, and --window on GLFW with kui over a world). */
 enum {
     KUI_WGSL_SINGLE = 0,
     KUI_WGSL_DUAL = 1,
