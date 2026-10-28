@@ -418,8 +418,9 @@ static int headless(void) {
     /* The file manager and default apps: a path that does not exist is
      * refused, naming why on stderr, and nothing is started. */
     if (kui_show_in_folder(KUI_STR("/no/such/kui/file.png")) ||
+        kui_open_recording(KUI_STR("/no/such/kui/file.kuitrace")) ||
         kui_open_external(KUI_STR("/no/such/kui/file.png")) || kui_open_external(KUI_STR(""))) {
-        fprintf(stderr, "FAIL: kui_show_in_folder / kui_open_external took a missing path\n");
+        fprintf(stderr, "FAIL: kui_show_in_folder / kui_open_recording / kui_open_external took a missing path\n");
         kui_ctx_free(ctx);
         return 1;
     }

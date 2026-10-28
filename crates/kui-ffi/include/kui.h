@@ -479,7 +479,9 @@ extern "C" {
  * kui_channel_filter_str, kui_channel_sort and kui_channel_take with the
  * KUI_CHANNEL_EQUAL / _CONTAINS / _CONTAINS_ANY_CASE ways (backlog C148),
  * and the opaque KuiChannelLanes with kui_channel_lanes, _free, _count,
- * _extent and _window, and KUI_CHANNEL_RUN (ADR 0075).
+ * _extent and _window, and KUI_CHANNEL_RUN (ADR 0075); and
+ * kui_open_recording with KUI_MENU_ACTION_OPEN_RECORDING, a recording
+ * opened in kui-perf (backlog F253).
  */
 #define KUI_ABI_VERSION 40u
 uint32_t kui_abi_version(void);
@@ -2036,10 +2038,15 @@ enum {
      * devtools' "open folder" under a file the Perf tab saved. Apply it
      * with kui_show_in_folder; a host that cannot drops it. */
     KUI_MENU_ACTION_SHOW_IN_FOLDER = 5,
-    /* Files for the clipboard, their paths in 	ext a line each, to
+    /* Files for the clipboard, their paths in `text` a line each, to
      * write as the platform's file list - what a file manager's Copy
      * puts there (kui_set_clipboard_files); a host that cannot drops it. */
     KUI_MENU_ACTION_SET_CLIPBOARD_FILES = 6,
+    /* The recording at `text` to open in kui-perf, the trace inspector -
+     * the devtools' "open in kui-perf" once the Perf tab saved it. Apply it
+     * with kui_open_recording, and show the file in its folder when that
+     * fails; a host that cannot drops it. */
+    KUI_MENU_ACTION_OPEN_RECORDING = 7,
 };
 
 /* kui_input_paste's markers: what the pasteboard said about the text a
@@ -5149,6 +5156,11 @@ uint8_t *kui_encode_image(uint32_t format, const uint8_t *rgba, uint32_t width, 
  * for a path that does not exist or a tool that would not start. What a
  * host applies a KUI_MENU_ACTION_SHOW_IN_FOLDER with. */
 bool kui_show_in_folder(KuiStr path);
+/* Opens the recording at path in kui-perf, the trace inspector: `kui perf
+ * path` with the runner's kui, else the kui on PATH (backlog F253). False,
+ * with the reason on stderr, for a file that does not exist or no kui that
+ * would start. */
+bool kui_open_recording(KuiStr path);
 /* Opens `target` with what the system opens it with: a file in its app,
  * a folder in the file manager, a URL (https:, mailto:, ...) in the
  * browser or mail client. Returns once that has started; false, with the

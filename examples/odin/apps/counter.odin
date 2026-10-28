@@ -258,7 +258,7 @@ headless :: proc() -> bool {
 	if !again_ok || pw != 2 || ph != 1 || again[7] != 128 || again[6] != 255 do return fail("encode_image round trip")
 	// The file manager and default apps: a missing path is refused and
 	// nothing is started.
-	if kui.show_in_folder("/no/such/kui/file.png") || kui.open_external("/no/such/kui/file.png") do return fail("show_in_folder / open_external took a missing path")
+	if kui.show_in_folder("/no/such/kui/file.png") || kui.open_recording("/no/such/kui/file.kuitrace") || kui.open_external("/no/such/kui/file.png") do return fail("show_in_folder / open_recording / open_external took a missing path")
 	red := []u8{255, 0, 0, 255, 255, 0, 0, 255}
 	blue := []u8{0, 0, 255, 255, 0, 0, 255, 255}
 	enc, enc_ok := kui.animation_encoder_new(.Gif, 2, 1)

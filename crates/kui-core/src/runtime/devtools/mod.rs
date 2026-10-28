@@ -345,8 +345,9 @@ enum CaptureAsk {
     Still(String),
     Record(String),
     Stop,
-    /// The recording, as a `.kuitrace` at this path.
-    Trace(String),
+    /// The recording, as a `.kuitrace` at this path; then opened in
+    /// kui-perf when asked (`true`).
+    Trace(String, bool),
     /// What has been kept dropped: clear.
     Clear,
 }
@@ -946,7 +947,11 @@ impl State {
             "perf-range-clear" => self.perf.range = None,
             "perf-save" => {
                 let path = capture_path("kuitrace");
-                self.perf.asks.push(CaptureAsk::Trace(path));
+                self.perf.asks.push(CaptureAsk::Trace(path, false));
+            }
+            "perf-inspect" => {
+                let path = capture_path("kuitrace");
+                self.perf.asks.push(CaptureAsk::Trace(path, true));
             }
             "screenshot" => {
                 let path = capture_path("png");
@@ -1117,12 +1122,23 @@ impl State {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    // Where a test's captures go: never the desktop of whoever runs it.
+    pub(crate) static TEST_CAPTURE_DIR: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 /// Where a capture the panel asks for is written: `KUI_CAPTURE_DIR`, else
 /// the desktop when there is one, else the system's temporary directory —
 /// named for the moment, `kui-2026-10-24-221530.png`.
 fn capture_path(ext: &str) -> String {
-    let dir = std::env::var_os("KUI_CAPTURE_DIR")
-        .map(std::path::PathBuf::from)
+    #[cfg(test)]
+    let test_dir = TEST_CAPTURE_DIR.with_borrow(Clone::clone);
+    #[cfg(not(test))]
+    let test_dir: Option<std::path::PathBuf> = None;
+    let dir = test_dir
+        .or_else(|| std::env::var_os("KUI_CAPTURE_DIR").map(std::path::PathBuf::from))
         .or_else(|| {
             std::env::var_os("HOME")
                 .or_else(|| std::env::var_os("USERPROFILE"))
@@ -2172,7 +2188,7 @@ impl Core {
                 }
                 CaptureAsk::Stop => self.stop_recording(),
                 CaptureAsk::Clear => self.perf_clear_kept(),
-                CaptureAsk::Trace(path) => {
+                CaptureAsk::Trace(path, inspect) => {
                     // The recording the tab shows, not what has been kept
                     // since.
                     let bytes = match &view {
@@ -2181,6 +2197,15 @@ impl Core {
                     };
                     let written = std::fs::write(&path, bytes);
                     let note = match &written {
+                        Ok(()) if inspect => {
+                            // The core starts no process: the runner opens
+                            // it (backlog F253).
+                            self.menu_actions
+                                .push(crate::menu::MenuAction::OpenRecording {
+                                    path: path.clone(),
+                                });
+                            format!("trace saved, opening in kui-perf: {path}")
+                        }
                         Ok(()) => format!("trace saved: {path}"),
                         Err(e) => format!("trace not saved: {path}: {e}"),
                     };

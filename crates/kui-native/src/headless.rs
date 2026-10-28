@@ -650,7 +650,8 @@ impl DynHeadless<'_> {
                 MenuAction::SetClipboardFiles { paths } => self.clipboard = paths.join("\n"),
                 MenuAction::SetClipboardImage { .. }
                 | MenuAction::LookUp { .. }
-                | MenuAction::ShowInFolder { .. } => {}
+                | MenuAction::ShowInFolder { .. }
+                | MenuAction::OpenRecording { .. } => {}
                 MenuAction::Paste => {
                     let text = self.clipboard.clone();
                     self.dispatch(InputEvent::Paste {

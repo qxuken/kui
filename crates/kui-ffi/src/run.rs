@@ -680,6 +680,17 @@ pub extern "C" fn kui_show_in_folder(path: KuiStr) -> bool {
     })
 }
 
+/// Opens the recording at `path` in kui-perf:
+/// `kui_native::open_recording`. False, with the reason on stderr.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_open_recording(path: KuiStr) -> bool {
+    guard(false, || {
+        kui_native::open_recording(&kstr(path))
+            .map_err(|e| eprintln!("kui: kui_open_recording: {e}"))
+            .is_ok()
+    })
+}
+
 /// Opens `target` with what the system opens it with:
 /// `kui_native::open_external`. False, with the reason on stderr.
 #[unsafe(no_mangle)]

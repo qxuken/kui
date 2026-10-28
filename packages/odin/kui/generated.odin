@@ -494,6 +494,7 @@ Menu_Action_Kind :: enum u32 {
 	Set_Clipboard_Image = 4, // KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE
 	Show_In_Folder = 5, // KUI_MENU_ACTION_SHOW_IN_FOLDER
 	Set_Clipboard_Files = 6, // KUI_MENU_ACTION_SET_CLIPBOARD_FILES
+	Open_Recording = 7, // KUI_MENU_ACTION_OPEN_RECORDING
 }
 
 Copy_Answer :: enum u32 {
@@ -4534,6 +4535,15 @@ serve_captures :: proc(ui: ^Ui) {
 // Rust: kui_native::show_in_folder.
 show_in_folder :: proc(path: string) -> bool {
 	return c.show_in_folder(path)
+}
+
+// Opens a recording in kui-perf, the trace inspector — `kui perf <path>`
+// with the runner's kui, else the one on `PATH` — and returns once it has
+// started (backlog F253): what a host applies the devtools' `OpenRecording`
+// menu action with, showing the file in its folder should it fail.
+// Rust: kui_native::open_recording.
+open_recording :: proc(path: string) -> bool {
+	return c.open_recording(path)
 }
 
 // Opens a file, a folder or a URL (`https:`, `mailto:`, …) with what the

@@ -2221,6 +2221,14 @@ pub const DOORS: &[Door] = &[
         doc: "Straight RGBA as a file's bytes with the runner's encoders: PNG (lossless, fast), JPEG (a quality; alpha dropped), WebP (lossless) or GIF (256 colours) — a capture or a decoded image kept as a file by a test or a probe with no encoder of its own (ADR 0054). C's frees with `kui_pixels_free`.",
     },
     Door {
+        rust: "kui_native::open_recording",
+        c: Is("kui_open_recording"),
+        odin: Is("open_recording"),
+        node: Is("kui.openRecording"),
+        lua: No(GUEST),
+        doc: "Opens a recording in kui-perf, the trace inspector — `kui perf <path>` with the runner's kui, else the one on `PATH` — and returns once it has started (backlog F253): what a host applies the devtools' `OpenRecording` menu action with, showing the file in its folder should it fail.",
+    },
+    Door {
         rust: "kui_native::show_in_folder",
         c: Is("kui_show_in_folder"),
         odin: Is("show_in_folder"),

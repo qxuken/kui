@@ -2807,6 +2807,9 @@ pub const KUI_MENU_ACTION_SHOW_IN_FOLDER: u32 = 5;
 /// `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`: files for the clipboard, their
 /// paths in `text` a line each (`kui_set_clipboard_files`, backlog F247).
 pub const KUI_MENU_ACTION_SET_CLIPBOARD_FILES: u32 = 6;
+/// `KUI_MENU_ACTION_OPEN_RECORDING`: the recording at `text` to open in
+/// kui-perf — the devtools' "open in kui-perf" (backlog F253).
+pub const KUI_MENU_ACTION_OPEN_RECORDING: u32 = 7;
 
 /// `KUI_PASTE_*`: the pasteboard's markers on a paste's answer
 /// (`kui_input_paste`).

@@ -746,6 +746,14 @@ pub enum MenuAction {
     /// Windows, file URLs on macOS and `text/uri-list` on Linux (backlog
     /// F247).
     SetClipboardFiles { paths: Vec<String> },
+    /// Open the recording at `path` in kui-perf, the trace inspector (ADR
+    /// 0075): queued by the devtools' *open in kui-perf* once the Perf tab
+    /// saved the trace there, never by a menu row — the core starts no
+    /// process, so it asks. The runner applies it with
+    /// `kui_native::open_recording`, `kui perf <path>` (backlog F253), and
+    /// shows the file in its folder when no `kui` would start; a host
+    /// that cannot drops it.
+    OpenRecording { path: String },
 }
 
 // -- The application menu bar -----------------------------------------------
