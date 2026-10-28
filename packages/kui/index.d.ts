@@ -1143,7 +1143,11 @@ export type MenuAction =
   | { kind: 'showInFolder'; path: string }
   /** Files for the clipboard, as a file manager's Copy puts them there
    *  (`setClipboardFiles`, backlog F247): a window writes them itself. */
-  | { kind: 'setClipboardFiles'; paths: string[] };
+  | { kind: 'setClipboardFiles'; paths: string[] }
+  /** A recording to open in kui-perf, the trace inspector — the devtools'
+   *  "open in kui-perf" once the Perf tab saved it (backlog F253). Apply it
+   *  with `openRecording(path)`, and `showInFolder(path)` should that throw. */
+  | { kind: 'openRecording'; path: string };
 
 /** What text measures (`measureText`): logical px at the scale of the
  *  current or last frame; `lines` after wrapping. The same numbers layout
@@ -4832,6 +4836,15 @@ export declare function encodeImage(format: 'png' | 'jpeg' | 'webp' | 'gif', wid
  * or a file manager that would not start.
  */
 export declare function showInFolder(path: string): void
+
+/**
+ * Opens the recording at `path` in kui-perf, the trace inspector — `kui
+ * perf <path>`, the `kui` on `PATH` — and returns once that has started
+ * (backlog F253): what applies the devtools' `openRecording` action.
+ * Throws, naming why, for a file that does not exist or no `kui` that
+ * would start.
+ */
+export declare function openRecording(path: string): void
 
 /**
  * Opens `target` with what the system opens it with — a file in its

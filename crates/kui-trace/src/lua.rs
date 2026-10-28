@@ -108,6 +108,9 @@ struct Row {
 struct Filter {
     origins: Option<Vec<String>>,
     name: Option<String>,
+    /// Span names hidden whole: the devtools' own (`devtools`), off by
+    /// default in an inspector (ADR 0075, decision 8).
+    hide_names: Vec<String>,
     min_us: u64,
     verdicts: Option<Vec<String>>,
     hide_unchanged: bool,
@@ -148,6 +151,7 @@ impl Predicate {
 impl Filter {
     fn is_empty(&self) -> bool {
         self.predicate.is_none()
+            && self.hide_names.is_empty()
             && self.origins.is_none()
             && self.name.is_none()
             && self.min_us == 0
@@ -663,6 +667,9 @@ impl Recording {
             return Ok(false);
         }
         let trace = self.stream.trace();
+        if !f.hide_names.is_empty() && f.hide_names.iter().any(|n| n == trace.name(s.name)) {
+            return Ok(false);
+        }
         if let Some(name) = &f.name {
             let n = trace.name(s.name).to_lowercase();
             if !n.contains(&name.to_lowercase()) {
@@ -800,6 +807,7 @@ fn filter_of(lua: &Lua, t: &Table) -> mlua::Result<Filter> {
     Ok(Filter {
         origins: list("origins")?,
         name: t.get::<Option<String>>("name")?.filter(|n| !n.is_empty()),
+        hide_names: list("hide_names")?.unwrap_or_default(),
         min_us: t.get::<Option<f64>>("min_us")?.unwrap_or(0.0).max(0.0) as u64,
         verdicts: list("verdicts")?,
         hide_unchanged: t.get::<Option<bool>>("hide_unchanged")?.unwrap_or(false),

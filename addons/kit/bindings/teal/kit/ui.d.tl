@@ -1121,6 +1121,12 @@ local record kit
     height: number
     -- Filled under the first line.
     area: boolean
+    -- The x window's start, held by the host: a chart that shares its axis
+    -- with another view (a timeline's lanes). With `x_max`; the data's own
+    -- range when left out.
+    x_min: number
+    -- The x window's end, held by the host.
+    x_max: number
     -- With it, only the last `window` of x is shown: a live chart. While
     -- samples come in it scrolls smoothly between them, drawn one sample
     -- behind and slid left over the time samples take to come (a keyframe

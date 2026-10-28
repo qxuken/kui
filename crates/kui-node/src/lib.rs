@@ -2049,6 +2049,17 @@ pub fn show_in_folder(path: String) -> Result<()> {
         .map_err(|e| napi::Error::from_reason(format!("showInFolder: {e}")))
 }
 
+/// Opens the recording at `path` in kui-perf, the trace inspector — `kui
+/// perf <path>`, the `kui` on `PATH` — and returns once that has started
+/// (backlog F253): what applies the devtools' `openRecording` action.
+/// Throws, naming why, for a file that does not exist or no `kui` that
+/// would start.
+#[napi]
+pub fn open_recording(path: String) -> Result<()> {
+    kui_native::open_recording(&path)
+        .map_err(|e| napi::Error::from_reason(format!("openRecording: {e}")))
+}
+
 /// Opens `target` with what the system opens it with — a file in its
 /// app, a folder in the file manager, a URL (`https:`, `mailto:`, …) in
 /// the browser or mail client — and returns once that has started
@@ -4724,6 +4735,10 @@ macro_rules! core_methods {
                             kui_core::MenuAction::SetClipboardFiles { paths } => {
                                 o.insert("kind".into(), Json::from("setClipboardFiles"));
                                 o.insert("paths".into(), Json::from(paths));
+                            }
+                            kui_core::MenuAction::OpenRecording { path } => {
+                                o.insert("kind".into(), Json::from("openRecording"));
+                                o.insert("path".into(), Json::from(path));
                             }
                             kui_core::MenuAction::LookUp { text, at } => {
                                 o.insert("kind".into(), Json::from("lookUp"));

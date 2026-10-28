@@ -603,6 +603,15 @@ function M.line_chart(c, p)
       x0 = x1 - (p.window)
       from = lower_row(ch, xf, 0, n, x0)
    end
+
+
+
+   if (p.x_min ~= nil or p.x_max ~= nil) and n > 0 then
+      x0 = (p.x_min or x0)
+      x1 = (p.x_max or x1)
+      from = math.max(0, lower_row(ch, xf, 0, n, x0) - 1)
+      to = math.min(n, lower_row(ch, xf, from, n, x1) + 1)
+   end
    if x1 <= x0 then x1 = x0 + 1 end
    local st = ctx.state(c, function() return {} end)
 

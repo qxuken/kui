@@ -2800,6 +2800,12 @@ LineChart :: struct {
 	height: Maybe(f64),
 	// Filled under the first line.
 	area: Maybe(bool),
+	// The x window's start, held by the host: a chart that shares its axis with
+	// another view (a timeline's lanes). With `x_max`; the data's own range when
+	// left out.
+	x_min: Maybe(f64),
+	// The x window's end, held by the host.
+	x_max: Maybe(f64),
 	// With it, only the last `window` of x is shown: a live chart. While samples
 	// come in it scrolls smoothly between them, drawn one sample behind and slid
 	// left over the time samples take to come (a keyframe cycle the core runs, so
@@ -2850,6 +2856,8 @@ line_chart_props :: proc(p: LineChart) -> ^c.Value {
 	c.value_map_set(m, "series", kit_list(p.series, proc(x: Series) -> ^c.Value { return series_value(x) }))
 	if x, ok := p.height.?; ok do c.value_map_set(m, "height", c.value_float(x))
 	if x, ok := p.area.?; ok do c.value_map_set(m, "area", c.value_bool(x))
+	if x, ok := p.x_min.?; ok do c.value_map_set(m, "x_min", c.value_float(x))
+	if x, ok := p.x_max.?; ok do c.value_map_set(m, "x_max", c.value_float(x))
 	if x, ok := p.window.?; ok do c.value_map_set(m, "window", c.value_float(x))
 	if x, ok := p.x_format.?; ok do c.value_map_set(m, "x_format", c.value_str(X_FORMAT_NAMES[x]))
 	if p.x_unit != "" do c.value_map_set(m, "x_unit", c.value_str(p.x_unit))

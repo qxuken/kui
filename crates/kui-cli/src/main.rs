@@ -26,6 +26,7 @@ mod pack;
 mod packed;
 mod paths;
 mod pe;
+mod perf;
 mod project;
 mod release;
 mod rename;
@@ -70,6 +71,7 @@ usage:
   kui check [path]           type-check the app's .tl files
   kui new <dir>              start an app in dir
   kui types [path]           write editor declarations (LuaLS, Teal) into path/.kui/types
+  kui perf [recording]       open a .kuitrace in kui-perf, the trace inspector (run options apply)
   kui docs [query]           search this kui's docs; alone, open the book (see kui docs --help)
   kui pack [path] [options]  build the app for any platform (see kui pack --help)
   kui upgrade [version]      replace this kui with the release's (default: the latest)
@@ -140,7 +142,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
         tooling: project::Tooling::default(),
     };
     match it.peek().map(String::as_str) {
-        Some("run" | "check" | "new" | "types") => a.cmd = it.next().unwrap(),
+        Some("run" | "check" | "new" | "types" | "perf") => a.cmd = it.next().unwrap(),
         Some("-h" | "--help" | "help") => {
             it.next();
             a.cmd = "help".into();
@@ -265,6 +267,16 @@ fn main() -> ExitCode {
         "check" => check(&args),
         "new" => new(&args),
         "types" => types(&args.path, args.tooling).map(|()| 0),
+        // The inspector the runner carries, the recording its argument.
+        "perf" => perf::folder().and_then(|dir| {
+            let mut a = args;
+            if a.path.as_os_str() != "." {
+                let rec = std::path::absolute(&a.path).unwrap_or(a.path.clone());
+                a.rest.insert(0, rec.to_string_lossy().into_owned());
+            }
+            a.path = dir;
+            run(&a, None)
+        }),
         // `kui run app.kui`: an archive `kui pack` wrote, run as packed.
         _ if args.path.extension().is_some_and(|e| e == "kui") && args.path.is_file() => {
             packed::from_file(&args.path).and_then(|p| {

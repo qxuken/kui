@@ -3040,6 +3040,18 @@ typedef struct KitLineChart {
     bool area;
     bool area_set;
     /*
+     * The x window's start, held by the host: a chart that shares its axis with
+     * another view (a timeline's lanes). With `x_max`; the data's own range
+     * when left out.
+     */
+    double x_min;
+    bool x_min_set;
+    /*
+     * The x window's end, held by the host.
+     */
+    double x_max;
+    bool x_max_set;
+    /*
      * With it, only the last `window` of x is shown: a live chart. While
      * samples come in it scrolls smoothly between them, drawn one sample behind
      * and slid left over the time samples take to come (a keyframe cycle the
@@ -3101,6 +3113,8 @@ static inline KuiValue *kit_line_chart_props(const KitLineChart *p) {
     }
     if (p->height_set) kui_value_map_set(m, KUI_STR("height"), kui_value_float(p->height));
     if (p->area_set) kui_value_map_set(m, KUI_STR("area"), kui_value_bool(p->area));
+    if (p->x_min_set) kui_value_map_set(m, KUI_STR("x_min"), kui_value_float(p->x_min));
+    if (p->x_max_set) kui_value_map_set(m, KUI_STR("x_max"), kui_value_float(p->x_max));
     if (p->window_set) kui_value_map_set(m, KUI_STR("window"), kui_value_float(p->window));
     if (p->x_format != 0) kui_value_map_set(m, KUI_STR("x_format"), kui_value_str(kit_x_format_name(p->x_format)));
     if (p->x_unit.len > 0) kui_value_map_set(m, KUI_STR("x_unit"), kui_value_str(p->x_unit));

@@ -275,6 +275,13 @@ impl DynShell<'_> {
                         eprintln!("kui: show in folder: {e}");
                     }
                 }
+                MenuAction::OpenRecording { path } => {
+                    // No kui to open it with: the file, in its folder.
+                    if let Err(e) = crate::open_recording(&path) {
+                        eprintln!("kui: open in kui-perf: {e}");
+                        let _ = crate::show_in_folder(&path);
+                    }
+                }
                 MenuAction::LookUp { text, at } => {
                     // Only macOS has a panel to show. Everywhere else the
                     // core never offers the row and never asks, so this is

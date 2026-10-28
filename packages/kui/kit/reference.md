@@ -707,6 +707,8 @@ Lua `kit.line_chart(props)` · Node `<LineChart />`
 | `series` | `series` | {[Series](#series)} | The lines. |
 | `height` | `height` | number? | In px; 160 when left out. |
 | `area` | `area` | boolean? | Filled under the first line. |
+| `x_min` | `xMin` | number? | The x window's start, held by the host: a chart that shares its axis with another view (a timeline's lanes). With `x_max`; the data's own range when left out. |
+| `x_max` | `xMax` | number? | The x window's end, held by the host. |
 | `window` | `window` | number? | With it, only the last `window` of x is shown: a live chart. While samples come in it scrolls smoothly between them, drawn one sample behind and slid left over the time samples take to come (a keyframe cycle the core runs, so a frame between samples runs no view); under reduced motion, and while the plot is out of the viewport, it steps. |
 | `x_format` | `xFormat` | [XFormat](#xformat)? | How the x ticks read; the number when left out. |
 | `x_unit` | `xUnit` | string? | After each x tick's number: `min`, `s`. |

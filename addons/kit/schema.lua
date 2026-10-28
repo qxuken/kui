@@ -559,6 +559,8 @@ return {
         { "series", "{Series}", doc = "The lines." },
         { "height", "number?", doc = "In px; 160 when left out." },
         { "area", "boolean?", doc = "Filled under the first line." },
+        { "x_min", "number?", doc = "The x window's start, held by the host: a chart that shares its axis with another view (a timeline's lanes). With `x_max`; the data's own range when left out." },
+        { "x_max", "number?", doc = "The x window's end, held by the host." },
         { "window", "number?", doc = "With it, only the last `window` of x is shown: a live chart. While samples come in it scrolls smoothly between them, drawn one sample behind and slid left over the time samples take to come (a keyframe cycle the core runs, so a frame between samples runs no view); under reduced motion, and while the plot is out of the viewport, it steps." },
         { "x_format", "XFormat?", doc = "How the x ticks read; the number when left out." },
         { "x_unit", "string?", doc = "After each x tick's number: `min`, `s`." },

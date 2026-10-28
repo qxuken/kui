@@ -466,6 +466,9 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
             kui_core::MenuAction::SetClipboardFiles { paths } => {
                 (KUI_MENU_ACTION_SET_CLIPBOARD_FILES, paths.join("\n"), None)
             }
+            kui_core::MenuAction::OpenRecording { path } => {
+                (KUI_MENU_ACTION_OPEN_RECORDING, path, None)
+            }
         };
         c.menu_text = text;
         c.menu_html = html.unwrap_or_default();

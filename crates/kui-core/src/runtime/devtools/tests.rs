@@ -3045,3 +3045,54 @@ fn the_menu_holds_the_placements_and_an_overflowing_strip_scrolls() {
     busy(&mut core);
     assert!(!state(&core, |s| s.more_open), "a press outside closes it");
 }
+
+/// *open in kui-perf* saves the recording the tab shows and asks the runner
+/// to open it in the inspector, as *open folder* asks for the folder: the
+/// core starts no process (backlog F253).
+#[test]
+fn open_in_kui_perf_saves_the_trace_and_asks_the_runner() {
+    let dir = std::env::temp_dir().join(format!("kui-f253-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    super::TEST_CAPTURE_DIR.with_borrow_mut(|d| *d = Some(dir.clone()));
+    let busy = |core: &mut Core| {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui, None);
+        ui.request_frame();
+        ui.finish();
+    };
+    let mut core = on();
+    core.set_inspect(true);
+    core.devtools_act("tab:perf");
+    core.devtools_act("perf-record");
+    for _ in 0..5 {
+        busy(&mut core);
+    }
+    core.devtools_act("perf-record");
+    busy(&mut core);
+    let button = core
+        .key_of("kui-devtools/perf-inspect")
+        .expect("the button");
+    let _ = core.take_menu_actions();
+    access_click(&mut core, button);
+    busy(&mut core);
+    let asked: Vec<String> = core
+        .take_menu_actions()
+        .into_iter()
+        .filter_map(|a| match a {
+            crate::menu::MenuAction::OpenRecording { path } => Some(path),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(asked.len(), 1, "the runner is asked once");
+    let bytes = std::fs::read(&asked[0]).expect("saved first");
+    assert!(
+        kui_trace::Trace::from_bytes(&bytes)
+            .unwrap()
+            .timeline()
+            .frames
+            .len()
+            >= 5
+    );
+    super::TEST_CAPTURE_DIR.with_borrow_mut(|d| *d = None);
+    let _ = std::fs::remove_dir_all(&dir);
+}

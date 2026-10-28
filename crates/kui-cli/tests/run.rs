@@ -269,6 +269,43 @@ fn a_recording_opens_as_channels_and_its_growth_reaches_update() {
     assert!(out(&c).contains("ok: 1 file(s) checked"), "{}", out(&c));
 }
 
+/// kui-perf (ADR 0075): its own headless test over a made-up recording —
+/// the keys, the filters, the lanes, Live — passes, and the app type-checks
+/// as `kui check` reads it.
+#[test]
+fn kui_perf_drives_and_checks() {
+    let bytes = kui_trace::synth::Synth {
+        frames: 1200,
+        ..Default::default()
+    }
+    .trace()
+    .to_bytes();
+    let dir = app("kui-perf", &[]);
+    std::fs::create_dir_all(&dir).unwrap();
+    let half = bytes.len() / 2;
+    let a = dir.join("a.kuitrace");
+    let rest = dir.join("rest.bin");
+    std::fs::write(&a, &bytes[..half]).unwrap();
+    std::fs::write(&rest, &bytes[half..]).unwrap();
+    let tool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/kui-perf");
+    let o = kui(
+        &tool,
+        &[
+            "run",
+            "test",
+            "--headless",
+            "--",
+            a.to_str().unwrap(),
+            rest.to_str().unwrap(),
+        ],
+        60,
+    );
+    let s = out(&o);
+    assert!(s.contains("all passed"), "{s}");
+    let c = kui(&tool, &["check"], 60);
+    assert!(out(&c).contains("ok: 3 file(s) checked"), "{}", out(&c));
+}
+
 #[test]
 fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
     let dir = app(

@@ -6187,6 +6187,12 @@ pub struct LineChart {
     pub height: Option<f64>,
     /// Filled under the first line.
     pub area: Option<bool>,
+    /// The x window's start, held by the host: a chart that shares its axis
+    /// with another view (a timeline's lanes). With `x_max`; the data's own
+    /// range when left out.
+    pub x_min: Option<f64>,
+    /// The x window's end, held by the host.
+    pub x_max: Option<f64>,
     /// With it, only the last `window` of x is shown: a live chart. While
     /// samples come in it scrolls smoothly between them, drawn one sample
     /// behind and slid left over the time samples take to come (a keyframe
@@ -6230,6 +6236,8 @@ impl LineChart {
             series,
             height: None,
             area: None,
+            x_min: None,
+            x_max: None,
             window: None,
             x_format: None,
             x_unit: None,
@@ -6251,6 +6259,20 @@ impl LineChart {
     /// Filled under the first line.
     pub fn area(mut self, v: bool) -> Self {
         self.area = Some(v);
+        self
+    }
+
+    /// The x window's start, held by the host: a chart that shares its axis
+    /// with another view (a timeline's lanes). With `x_max`; the data's own
+    /// range when left out.
+    pub fn x_min(mut self, v: f64) -> Self {
+        self.x_min = Some(v);
+        self
+    }
+
+    /// The x window's end, held by the host.
+    pub fn x_max(mut self, v: f64) -> Self {
+        self.x_max = Some(v);
         self
     }
 
@@ -6335,6 +6357,12 @@ impl LineChart {
         }
         if let Some(v) = &self.area {
             m.push(("area".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.x_min {
+            m.push(("x_min".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.x_max {
+            m.push(("x_max".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.window {
             m.push(("window".into(), Value::Float(*v)));

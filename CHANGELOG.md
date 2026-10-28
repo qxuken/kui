@@ -29,6 +29,9 @@ was the first bare bump to break an app in five releases).
   every window, before `App::teardown` runs — where it stayed up through
   the teardown (backlog F246). A teardown that draws into a window, or
   shows a dialog over it, finds it hidden.
+- `MenuAction` has an eighth variant, `OpenRecording { path }` (backlog
+  F253), the same way: a Rust host that matches it whole adds an arm, and
+  a C host that does not know `KUI_MENU_ACTION_OPEN_RECORDING` drops it.
 - `MenuAction` has a seventh variant, `SetClipboardFiles { paths }`: a
   Rust host that matches the enum whole adds an arm (backlog F247). A C
   host that drains `kui_take_menu_action` sees the new kind,
@@ -48,6 +51,36 @@ entries with it — the inspector's Live view appends to a million spans,
 and its tables sort and filter them.
 
 ### Added
+
+- **kui-perf, the trace inspector** (ADR 0075, backlog F200, F254):
+  `kui perf session.kuitrace` opens a recording — from the devtools' Perf
+  tab, `KUI_PERF_TRACE` or `kui-trace synth` — in a Teal app the runner
+  carries (`tools/kui-perf`), built from Kit over `kui.trace`: the frames
+  as an overview, the spans in Kit's waterfall with counters and gauges as
+  graph lanes on the same window, the frame or span selected with its
+  verdict, phases, input path and the components drawn fresh, tables over
+  the window, filters, three bands by the inspector's own width, the keys
+  (← → / h l, [ ] slow frames, { } burns, w a s d, f, 0, /), Phosphor in
+  yellow, and the file watched: Live brings what it gains, or a refresh
+  button counts it. A 72,000-frame recording is on screen 0.82 s after
+  the process starts.
+
+  *What you can delete:* a trace converted for Perfetto or speedscope
+  only to look at it — they draw no verdicts, burns or causes.
+
+- **Open in kui-perf** (backlog F253): the devtools' Perf tab saves the
+  recording and asks the runner to open it, as
+  `MenuAction::OpenRecording { path }`; `kui_native::open_recording` starts
+  `kui perf` with the runner's kui or the one on `PATH`, the file shown in
+  its folder when neither starts. C `kui_open_recording` and
+  `KUI_MENU_ACTION_OPEN_RECORDING`, Odin `open_recording`, Node
+  `openRecording` and its `{ kind: 'openRecording', path }` action.
+
+- **Kit's line chart takes a host's x window**: `x_min` / `x_max`, for a
+  chart that shares its axis with another view — a timeline's lanes.
+
+- **`kui.trace`'s filter hides span names whole**: `hide_names = {
+  "devtools" }`.
 
 - **Files on the clipboard** (backlog F247, from Carnet's "Copy file"):
   `Ui::set_clipboard_files(paths)` puts files there as a file manager's

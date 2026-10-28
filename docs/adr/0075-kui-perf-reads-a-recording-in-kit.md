@@ -318,3 +318,31 @@ name and origin, the numbers in Rust.
 How `kui-perf` reaches a machine (decision 1, backlog F254) is decided
 next, with these numbers: the runner is fast enough to carry it.
 
+## Amendment: what building it settled (2026-10-28)
+
+`tools/kui-perf` built (backlog F200), with F253 and F254:
+
+- **How it ships** (decision 1): `kui perf [recording]` — the runner
+  carries the app's files as it carries Kit's, writes them into its cache
+  for its version, and runs them; chosen over a packed binary, so the
+  inspector always reads the format the kui beside it writes.
+- **The bands** (decision 9) are container queries on the inspector's own
+  width — `when` entries hiding the panes a band does not use — not lazy
+  branches: a branch chosen by a query is a bare fit column that takes no
+  props, and everything in it collapsed (filed, backlog F255).
+- **The tables** are read in Rust once the window has been still 150 ms,
+  and after the first frame: the whole recording's readings take 165 ms
+  over 937,000 spans, and a pan should not pay them a step.
+- **The graph lanes** are Kit's line charts on the timeline's window, which
+  needed `x_min` / `x_max` on the chart; their y labels' gutter puts them a
+  little off the waterfall's x, which is left for Kit.
+- **The devtools' own spans** are off by default through `hide_names` on
+  `kui.trace`'s filter, not a `where`, which costs a call a span.
+- **The inspector as a component** (decision 13) is a module — its state,
+  `update` and `view` over a recording — that the shell composes; a
+  devtools-tab extension mounts the same module when the tab is built,
+  with the read door it needs.
+- **C149** (the line chart's y glide as a transition) waits on a
+  non-uniform scale in the core; C102 (type-ahead over a channel column)
+  is left for a table that needs it more than the frames table does.
+

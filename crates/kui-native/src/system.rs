@@ -47,6 +47,38 @@ pub fn open_external(target: &str) -> Result<(), String> {
     spawn(open_command(target)?)
 }
 
+/// Opens the recording at `path` in kui-perf, the trace inspector (ADR
+/// 0075): `kui perf <path>`, with the kui this process is when it is the
+/// runner, else the `kui` on `PATH` (backlog F253). An error, naming why,
+/// when the file does not exist or no kui would start — a host that
+/// falls back shows the file with [`show_in_folder`].
+pub fn open_recording(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if !p.exists() {
+        return Err(format!("{path}: no such file"));
+    }
+    let p = std::path::absolute(p).map_err(|e| e.to_string())?;
+    spawn_steps(recording_steps(&p))
+}
+
+/// The kuis that may open a recording, the running one first.
+fn recording_steps(path: &Path) -> Vec<Step> {
+    let mut kuis = Vec::new();
+    if let Ok(me) = std::env::current_exe()
+        && me.file_stem().is_some_and(|s| s == "kui")
+    {
+        kuis.push(me);
+    }
+    kuis.push(std::path::PathBuf::from("kui"));
+    kuis.into_iter()
+        .map(|k| {
+            let mut c = Command::new(k);
+            c.arg("perf").arg(not_an_option(path));
+            plain(c)
+        })
+        .collect()
+}
+
 /// A scheme before a colon (`https:`, `mailto:`, `file:`): a URL, not a
 /// path. A Windows drive (`C:`) is one letter, so a path.
 fn is_url(target: &str) -> bool {
@@ -420,6 +452,19 @@ mod tests {
         assert_eq!(seen.first().map(String::as_str), Some(first), "{seen:?}");
         assert!(seen.len() >= 2, "{seen:?}");
         let _ = std::fs::remove_file(&file);
+    }
+
+    /// `kui perf <path>`: the running kui when this is the runner, else
+    /// the one on `PATH` — a test binary is not `kui`, so that one alone.
+    #[test]
+    fn a_recording_opens_with_kui_perf() {
+        let path = std::path::absolute("a.kuitrace").unwrap();
+        let steps = recording_steps(&path);
+        assert_eq!(steps.len(), 1);
+        let (p, a) = args(&steps[0].command);
+        assert_eq!(p, "kui");
+        assert_eq!(a, ["perf".to_string(), path.to_string_lossy().into_owned()]);
+        assert!(open_recording("/no/such/kui/file.kuitrace").is_err());
     }
 
     #[test]

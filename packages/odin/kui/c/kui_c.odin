@@ -407,6 +407,7 @@ MENU_ACTION_SET_CLIPBOARD_SECRET :: 3
 MENU_ACTION_SET_CLIPBOARD_IMAGE :: 4
 MENU_ACTION_SHOW_IN_FOLDER :: 5
 MENU_ACTION_SET_CLIPBOARD_FILES :: 6
+MENU_ACTION_OPEN_RECORDING :: 7
 
 PASTE_CONCEALED :: 1
 PASTE_TRANSIENT :: 2
@@ -1572,6 +1573,7 @@ foreign lib {
 	serve_captures :: proc(ctx: ^Ctx) ---
 	encode_image :: proc(format: u32, rgba: [^]u8, width: u32, height: u32, quality: u32, len: ^uint) -> [^]u8 ---
 	show_in_folder :: proc(path: string) -> bool ---
+	open_recording :: proc(path: string) -> bool ---
 	open_external :: proc(target: string) -> bool ---
 	animation_encoder_new :: proc(format: u32, width: u32, height: u32, loops: u32) -> ^AnimationEncoder ---
 	animation_encoder_add :: proc(enc: ^AnimationEncoder, rgba: [^]u8, seconds: f64) -> bool ---

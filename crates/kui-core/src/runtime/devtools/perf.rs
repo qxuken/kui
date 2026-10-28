@@ -233,6 +233,14 @@ fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             );
             if !p.recording && p.view.is_some() {
                 small_button(ui, t, "perf-save", "save trace", "save as .kuitrace", false);
+                small_button(
+                    ui,
+                    t,
+                    "perf-inspect",
+                    "open in kui-perf",
+                    "save it, then open it in the inspector",
+                    false,
+                );
                 small_button(ui, t, "perf-clear", "clear", "drop the recording", false);
             }
             ui.leaf(NodeSpec::row().grow_width());
