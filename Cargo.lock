@@ -1719,6 +1719,7 @@ dependencies = [
  "kui-core",
  "kui-lua",
  "kui-native",
+ "kui-trace",
  "libc",
  "libmimalloc-sys",
  "mimalloc",
@@ -1867,6 +1868,11 @@ dependencies = [
 [[package]]
 name = "kui-trace"
 version = "0.1.0-alpha.69"
+dependencies = [
+ "kui-channel",
+ "kui-value",
+ "mlua",
+]
 
 [[package]]
 name = "kui-value"

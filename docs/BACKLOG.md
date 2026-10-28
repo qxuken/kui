@@ -3657,38 +3657,10 @@ building order step 4.
 ## From the kui-perf grilling (2026-10-27)
 
 What ADR 0075's building order needs beside the app (F200), filed the
-day it was written. Seven entries, F245–F251 — F245 **built
+day it was written. Seven entries, F245–F251 — F245–F248 **built
 2026-10-28** and in the archive, the rest open; and four open entries it
 builds on the way — C147 and C148 in step 1, **built 2026-10-28** and in
 the archive, C149 and C102 in step 4.
-
-### `.` F246 — A recording is read only whole, from bytes in memory
-
-**Found** in the grilling: `Trace::from_bytes` takes a whole file, so a
-`KUI_PERF_TRACE` still being written is read once, and nothing reads
-one from a pipe or a socket. **Do.** ADR 0075, decisions 5 and 6:
-`Stream::push(&[u8])`, keeping a cut record between pushes; a
-`Transport` trait (`More`, `Idle`, `Ended`); a file transport that
-checks size and modification time every 250 ms on a thread and wakes
-its reader only when one moved, a file that shrank or whose head
-changed read again whole.
-
-### `.` F247 — Nothing writes a recording the size of a long session
-
-**Found** in the grilling: the largest recordings at hand are the Perf
-tab's minute; ten minutes at 120 Hz is about 72,000 frames and up to a
-million spans. **Do.** ADR 0075, decision 12: `kui-trace synth` by
-frames, spans a frame and a seed, with every record kind a session
-writes — the spike's recording, a bench's, the tests'.
-
-### `.` F248 — A Lua app cannot read a recording
-
-**Do.** ADR 0075, decisions 4 and 8: `kui-trace`'s `lua` feature, a
-module the runner registers — `trace.open(path)` and the transports —
-handing channels of typed columns (spans, frames, the lanes' instants,
-counters, gauges), a frame's or a span's detail as a small table, and a
-filter value that publishes new revisions; no dependency without the
-feature.
 
 ### `.` F249 — Nobody knows whether Lua draws a million spans in time
 
@@ -6361,12 +6333,12 @@ move.
 - `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
 - `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
 
-**From the kui-perf grilling (2026-10-27)** — F245–F251; F245 built 2026-10-28, the rest open
+**From the kui-perf grilling (2026-10-27)** — F245–F251; F245–F248 built 2026-10-28, the rest open
 
 - `.` **F245** — [`kui-trace` cannot make a channel](backlog/closed-2026-09.md#-f245--kui-trace-cannot-make-a-channel--done-2026-10-28) — done (2026-10-28) — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
-- `.` **F246** — [A recording is read only whole, from bytes in memory](#-f246--a-recording-is-read-only-whole-from-bytes-in-memory) — open — a stream decoder, a transport trait, a watched file transport
-- `.` **F247** — [Nothing writes a recording the size of a long session](#-f247--nothing-writes-a-recording-the-size-of-a-long-session) — open — `kui-trace synth`
-- `.` **F248** — [A Lua app cannot read a recording](#-f248--a-lua-app-cannot-read-a-recording) — open — `kui-trace`'s `lua` feature: channels of columns, detail on request, a filter value
+- `.` **F246** — [A recording is read only whole, from bytes in memory](backlog/closed-2026-09.md#-f246--a-recording-is-read-only-whole-from-bytes-in-memory--done-2026-10-28) — done (2026-10-28) — a stream decoder, a transport trait, a watched file transport
+- `.` **F247** — [Nothing writes a recording the size of a long session](backlog/closed-2026-09.md#-f247--nothing-writes-a-recording-the-size-of-a-long-session--done-2026-10-28) — done (2026-10-28) — `kui-trace synth`
+- `.` **F248** — [A Lua app cannot read a recording](backlog/closed-2026-09.md#-f248--a-lua-app-cannot-read-a-recording--done-2026-10-28) — done (2026-10-28) — `kui-trace`'s `lua` feature: channels of columns, detail on request, a filter value
 - `.` **F249** — [Nobody knows whether Lua draws a million spans in time](#-f249--nobody-knows-whether-lua-draws-a-million-spans-in-time) — open — the spike, four budgets and a predicate's measure
 - `.` **F250** — [The Perf tab cannot hand a recording to the inspector](#-f250--the-perf-tab-cannot-hand-a-recording-to-the-inspector) — open — *open in kui-perf*
 - `.` **F251** — [How kui-perf reaches a machine is not decided](#-f251--how-kui-perf-reaches-a-machine-is-not-decided) — open — decided with F249's numbers

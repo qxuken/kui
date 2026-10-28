@@ -48,6 +48,8 @@ mod codec;
 pub mod diff;
 pub mod dump;
 mod file;
+#[cfg(feature = "lua")]
+pub mod lua;
 mod model;
 mod record;
 mod stream;

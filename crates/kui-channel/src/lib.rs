@@ -550,6 +550,22 @@ impl Channel {
         ))
     }
 
+    /// The next revision under this identity, holding `source`'s rows as
+    /// they stand — shared, not copied: a view showing what it views
+    /// unfiltered, its handle staying the view's.
+    pub fn publish_from(&self, source: &Channel) -> Channel {
+        let body = match &source.0.body {
+            Body::Table { names, chunks, .. } => Body::Table {
+                names: names.clone(),
+                chunks: chunks.clone(),
+                flat: OnceLock::new(),
+                data: OnceLock::new(),
+            },
+            Body::Bytes(d) => Body::Bytes(d.clone()),
+        };
+        Self::register(self.0.id, self.0.rev + 1, body, source.0.len)
+    }
+
     pub fn id(&self) -> u64 {
         self.0.id
     }
@@ -1412,5 +1428,10 @@ mod tests {
         assert_eq!(view.get(0, 0), Cell::Str("api/del"));
         assert_eq!(view.get(1, 2), Cell::I64(1));
         assert!(ch.take(&[5]).is_err());
+
+        // A view of the whole, its rows shared and its identity its own.
+        let shown = view.publish_from(&ch);
+        assert_eq!((shown.id(), shown.rev(), shown.len()), (view.id(), 2, 5));
+        assert_eq!(shown.get(2, 0), Cell::Str("API/put"));
     }
 }

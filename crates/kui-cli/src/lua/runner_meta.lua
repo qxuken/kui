@@ -495,5 +495,43 @@ function kui.sqlite.open(path) end
 ---@return kui.Db|string db_or_err
 function kui.sqlite.try_open(path) end
 
+---A recording (ADR 0075): Rust reads and analyses it, a script draws its channels — `spans` in Kit's waterfall's shape, `frames` a row a finished frame, `instants` the waterfall's marks. Times are ms; rows 0-based.
+---@class kui.Recording
+---@field spans kui.Channel
+---@field frames kui.Channel
+---@field instants kui.Channel
+---@field moved boolean The watched file moved since the last poll.
+---@field ended boolean
+---@field budget number The frame budget, ms.
+---@field filtered boolean
+---@field poll fun(self: kui.Recording): string, integer "more" and how many records, "idle", "ended", or "reset".
+---@field session fun(self: kui.Recording): table<string, any>
+---@field frame fun(self: kui.Recording, row: integer): table<string, any>
+---@field span fun(self: kui.Recording, row: integer): table<string, any>
+---@field stats fun(self: kui.Recording, first?: integer, last?: integer): table<string, any>
+---@field series fun(self: kui.Recording, name: string): kui.Channel?
+---@field series_names fun(self: kui.Recording): string[]
+---@field filter fun(self: kui.Recording, f?: { origins?: string[], name?: string, min_us?: number, verdicts?: string[], hide_unchanged?: boolean }): integer, integer
+
+kui.trace = {}
+---A recording read whole, then watched: `{ watch = false }` reads it once; `message` is what `update` gets when the file moves.
+---@param path string
+---@param opts? { watch?: boolean, message?: any }
+---@return kui.Recording
+function kui.trace.open(path, opts) end
+---@param path string
+---@param opts? { watch?: boolean, message?: any }
+---@return boolean ok
+---@return kui.Recording|string rec_or_err
+function kui.trace.try_open(path, opts) end
+---A recording from its bytes.
+---@param bytes string
+---@return kui.Recording
+function kui.trace.read(bytes) end
+---@param bytes string
+---@return boolean ok
+---@return kui.Recording|string rec_or_err
+function kui.trace.try_read(bytes) end
+
 ---@type any The app's state: `init()`'s result, kept across a --watch reload.
 model = nil

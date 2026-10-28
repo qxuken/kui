@@ -24,8 +24,9 @@ was the first bare bump to break an app in five releases).
 ## 0.1.0-alpha.70 (unreleased)
 
 **What breaks.** Nothing: two crates split out of `kui-core` and
-re-exported where they were, and four channel doors added in every
-binding, the C ABI at 40.
+re-exported where they were, four channel doors added in every binding
+(the C ABI at 40), and the recording's reader, its made-up sessions and
+its Lua module added beside the format.
 
 The first step of [ADR 0075](docs/adr/0075-kui-perf-reads-a-recording-in-kit.md),
 `kui-perf`, the trace inspector: the recording's reader needs to hand a
@@ -47,6 +48,41 @@ and its tables sort and filter them.
   (`kui_core::Value`, `kui_core::json`, `kui_core::message`,
   `kui_core::channel`), and kui-lua's `lua_to_value`, `value_to_lua` and
   `mark_array` are the new crates' with a channel crossing as its handle.
+
+- **A recording read as it arrives** (backlog F246): `kui_trace::Stream`
+  decodes bytes pushed in as they come, keeping a record cut between
+  pushes for the next, and grows its timeline in place
+  (`Timeline::extend`, which sorts only the end the new records reach
+  into); a `Transport` trait says what a source had — `More`, `Idle`,
+  `Ended`, or `Reset` for one that began again — and `FileTransport`
+  reads what a file grew by, or the whole again when it was rewritten;
+  `Watch` checks a file on a thread of its own and calls back only when
+  its size or time moved. `Trace::slice` is the frames-range cut the Perf
+  tab's range reads, now the crate's.
+
+- **`kui-trace synth`** (backlog F247): a made-up session by frames,
+  spans a frame, seed and Hz, in the shape a recorder writes — gaps
+  asleep and woken, input and handlers, the app's spans nested under
+  `build`, an extension's fill and its placements, burns, slow frames,
+  a parse on a track of its own, gauges, marks and notes — streamed to a
+  `.kuitrace`, or `kui_trace::synth::Synth::trace()` in memory. 72,000
+  frames, about 937,000 spans, are 27 MB written in 0.3 s.
+
+- **`kui.trace`, a recording for a script** (backlog F248, ADR 0075):
+  `kui-trace`'s `lua` feature, which the runner turns on. `kui.trace.open
+  (path, { message })` reads a `.kuitrace` into channels — `rec.spans` in
+  Kit's waterfall's shape, `rec.frames` a row a finished frame with its
+  phases and verdict, `rec.instants` the waterfall's marks — and answers
+  `rec:frame(row)`, `rec:span(row)`, `rec:stats(first, last)` and
+  `rec:series(name)` as small tables and channels, all read in Rust.
+  `rec:filter{ origins, name, min_us, verdicts, hide_unchanged }` shows
+  what it keeps under the same handles. The file is watched: as it
+  grows `update` is handed `message`, and `rec:poll()` appends what came
+  (`"reset"` for a file written again). The 72,000-frame recording opens
+  into channels in 0.57 s and filters by name in 53 ms. `try_open` and
+  `try_read` as the runner's other calls have them; typed for Teal.
+  `kui_channel::Channel::publish_from` is new beside it: the next
+  revision of a view's identity holding another channel's rows, shared.
 
 - **A channel appended to** (backlog C147): `Channel::append(rows, cap)`
   is the next revision with `rows` after this one's — each column named,

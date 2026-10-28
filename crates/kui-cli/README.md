@@ -99,7 +99,8 @@ is a response, a refused connection is `false`. The `try_` forms:
 `remove`, `rename`; `kui.process.run` and `spawn`, and a process's
 `read_line`, `write`, `wait`; every `kui.http` request and `serve`;
 `kui.sqlite.open` and a database's `query`, `first`, `exec`,
-`transaction`; `kui.worker` and a worker's `dispatch`.
+`transaction`; `kui.trace.open` and `read`; `kui.worker` and a worker's
+`dispatch`.
 
 | | |
 | --- | --- |
@@ -122,6 +123,7 @@ is a response, a refused connection is `false`. The `try_` forms:
 | `kui.http.get/post/...(url, opts)` *waits* | `{ status, ok, headers, body, json }`; `opts` takes `headers`, `json` or `body`, and `timeout` in milliseconds (30,000 by default) for the whole request. |
 | `kui.http.serve{ port, static }` | `s:get("/api/items/:id", function(req) ... end)`; each request is a task. |
 | `kui.sqlite.open(path)` | `db:query`, `db:first`, `db:exec` *wait*; `db:transaction(fn)`. |
+| `kui.trace.open(path, { message })` | A recording (`.kuitrace`, ADR 0075) as channels: `rec.spans` (Kit's waterfall's `bars`), `rec.frames`, `rec.instants` (its `marks`); `rec:frame(row)`, `rec:span(row)`, `rec:stats(first, last)`, `rec:series(name)`; `rec:filter{ origins, name, min_us, verdicts, hide_unchanged }`. The file is watched: as it grows, `update` gets `message`, and `rec:poll()` appends what came. |
 | `kui.worker(path, handler)` | A module on a thread of its own: `w:dispatch(msg)` reaches its `on_message`; what it dispatches reaches `handler` (or `update`). A channel in a message crosses without a copy. |
 | `kui.next_frame(fn)` | Runs `fn(env)` before the next `view`: `env.set_clipboard`, `env.set_focus`, `env.measure_text` from `update`, a task or a timer. |
 | `kui.exit(code)` | Ends the app: the window closes, then `on_exit()` runs, then what it spawned is ended. Ctrl-C, `SIGTERM` and `SIGHUP` do the same. |

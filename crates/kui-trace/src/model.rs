@@ -102,6 +102,37 @@ impl Trace {
         }
     }
 
+    /// The records of frames `first..=last` of `tl` (this recording's
+    /// timeline) and their gaps, up to the last one's present: what a range
+    /// dragged across the bars reads, the session, names and tracks kept.
+    pub fn slice(&self, tl: &Timeline, first: usize, last: usize) -> Trace {
+        let f0 = &tl.frames[first];
+        let f1 = &tl.frames[last];
+        let from = f0.gap_from;
+        let to = f1
+            .present
+            .map_or(f1.end_or_begin(), |p| p.t.max(f1.end_or_begin()))
+            + 1;
+        let frames: std::collections::HashSet<u64> =
+            tl.frames[first..=last].iter().map(|f| f.frame).collect();
+        let records = self
+            .records
+            .iter()
+            .filter(|r| match (r.t(), r) {
+                (Some(t), _) => t >= from && t < to,
+                (None, Record::Holder { frame, .. }) => frames.contains(frame),
+                (None, _) => true,
+            })
+            .cloned()
+            .collect();
+        Trace {
+            session: self.session.clone(),
+            names: self.names.clone(),
+            tracks: self.tracks.clone(),
+            records,
+        }
+    }
+
     /// A name's string.
     pub fn name(&self, id: NameId) -> &str {
         self.names.text(id)

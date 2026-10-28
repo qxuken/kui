@@ -341,6 +341,138 @@
     try_open: function(path?: string): boolean, Db | string
   end
 
+  -- A recording (ADR 0075): Rust reads and analyses it, a script draws
+  -- its channels — `spans` in Kit's waterfall's shape, `frames` a row a
+  -- finished frame, `instants` the waterfall's marks — and asks about one
+  -- frame, one span or a range. Times are ms on the recording's clock;
+  -- rows are 0-based.
+  record TraceOpenOpts
+    -- Watch the file and read what is added (on by default).
+    watch: boolean
+    -- What `update` is handed when the watched file moves: then poll.
+    message: any
+  end
+  record TraceFilter
+    -- Span origins kept: "kui", "host", an extension's namespace.
+    origins: {string}
+    -- A span name's part, any case.
+    name: string
+    -- Spans shorter than this many µs are hidden.
+    min_us: number
+    -- Frame verdicts kept: "late", "blocked", "slow", "waited",
+    -- "wasted", "burn", "fine".
+    verdicts: {string}
+    -- Frames that drew what the one before drew are hidden.
+    hide_unchanged: boolean
+  end
+  -- Why a frame lagged (`kind`), and what its kind says: `late` wait,
+  -- slept; `blocked` busy; `slow` work, phase, phase_ms, span, span_ms;
+  -- `waited` wall, cpu; `burn` k of `of`; `fine` share of the budget.
+  record TraceVerdict
+    kind: string
+    wait: number
+    slept: boolean
+    busy: number
+    work: number
+    phase: string
+    phase_ms: number
+    span: string
+    span_ms: number
+    wall: number
+    cpu: number
+    k: integer
+    of: integer
+    share: number
+  end
+  record TraceLeg
+    what: string
+    ms: number
+  end
+  record TracePath
+    input: string
+    total: number
+    legs: {TraceLeg}
+  end
+  record TraceHolder
+    what: string
+    name: string
+    node: string
+  end
+  record TraceFresh
+    component: string
+    answer: string
+    why: string
+    node: string
+  end
+  -- A frame opened: what the Perf tab's detail shows.
+  record TraceFrame
+    frame: integer
+    index: integer
+    begin: number
+    finish: number
+    gap: number
+    work: number
+    nodes: integer
+    unchanged: boolean
+    -- handler, build, devtools, layout, emit, render, "vsync wait".
+    phases: {string:number}
+    verdict: TraceVerdict
+    causes: {string}
+    holders: {TraceHolder}
+    path: TracePath
+    fresh: {TraceFresh}
+    notes: {string}
+    counters: {string:integer}
+  end
+  record TraceSpan
+    name: string
+    origin: string
+    start: number
+    len: number
+    self: number
+    cpu: number
+    node: string
+    cut: boolean
+    track: string
+    depth: integer
+    frame: integer
+  end
+  record Recording
+    spans: Channel
+    frames: Channel
+    instants: Channel
+    -- The watched file moved since the last poll.
+    moved: boolean
+    -- The file will grow no more.
+    ended: boolean
+    -- The frame budget, ms.
+    budget: number
+    filtered: boolean
+    -- Reads what the file has: "more" and how many records, "idle",
+    -- "ended", or "reset" for a file written again from its start.
+    poll: function(self: Recording): string, integer
+    session: function(self: Recording): {string:any}
+    -- A row of `frames`: its verdict, phases, input path, holders,
+    -- components drawn fresh, notes and counters.
+    frame: function(self: Recording, row: integer): TraceFrame
+    -- A row of `spans`.
+    span: function(self: Recording, row: integer): TraceSpan
+    -- The tables over frames `first..last` (the timeline's), or all.
+    stats: function(self: Recording, first?: integer, last?: integer): {string:any}
+    -- A counter's per-frame totals or a gauge's readings: `at`, `value`.
+    series: function(self: Recording, name: string): Channel
+    series_names: function(self: Recording): {string}
+    -- Shows what the filter keeps (nothing: everything): the rows of
+    -- `spans` and `frames` now.
+    filter: function(self: Recording, f?: TraceFilter): integer, integer
+  end
+  record trace
+    open: function(path: string, opts?: TraceOpenOpts): Recording
+    read: function(bytes: string): Recording
+    try_open: function(path: string, opts?: TraceOpenOpts): boolean, Recording | string
+    try_read: function(bytes: string): boolean, Recording | string
+  end
+
   record Worker
     id: integer
     path: string

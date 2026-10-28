@@ -435,3 +435,4 @@ plain(kui.fs, { "read", "write", "append", "create", "list", "lines", "walk", "m
 plain(kui.process, { "run", "spawn" })
 plain(kui.http, { "request", "get", "post", "put", "patch", "delete", "head", "serve" })
 plain(kui.sqlite, { "open" })
+plain(kui.trace, { "open", "read" })
