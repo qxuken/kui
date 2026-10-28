@@ -3634,54 +3634,27 @@ first two for itself, over two tabs and some 2,300 lines. F199 — [ADR
 2026-10-25** but for the inspector, and in the archive — and F200, the
 inspector, which waits on the kui tools design system.
 
-### `~` F200 — A recording made where the panel is not has nothing to read it in
-
-**Found.** Building F199: a `.kuitrace` from `KUI_PERF_TRACE`, a CI run,
-a Node app or a long session opens in Perfetto, speedscope or the Firefox
-Profiler through `kui-trace convert`, which draw spans and counters and
-know nothing of a frame's causes, holders, verdict or burns; and the
-devtools' Perf tab reads only the recording of the app it is docked in,
-280 px wide at its narrowest.
-
-**Do.** [ADR 0058](adr/0058-a-recording-is-a-timeline.md), decision 13:
-`kui-perf`, a tool built on the kui tools design system — its tables,
-tabs, toolbar, panes, key-value detail, stats and status bar the design
-system's v1 components, its timeline and flame chart the design
-system's trace waterfall (shared with the BFF testing tool's request
-inspector) — opening a `.kuitrace` whole, zoomed and panned across frames
-and gaps, and two side by side (`kui-trace diff` drawn); as an app, and
-as an extension that mounts as a devtools tab, with the read door that
-form needs. **Waits on** the design system's v1, its trace waterfall,
-and the core changes it rests on (a `.lua` extension in every host, a
-slot that carries the host's children, cheap instances).
-
-**Now** [ADR 0075](adr/0075-kui-perf-reads-a-recording-in-kit.md),
-written 2026-10-27 after a grilling round once Kit was on main and
-accepted 2026-10-28 when its spike (F252) met every budget: a Lua/Teal
-app on the runner, built from Kit, over columns `kui-trace` keeps in
-Rust. Its pieces are
-F248–F254 below; this entry is the app, `tools/kui-perf`, ADR 0075's
-building order step 4.
-
 ## From the kui-perf grilling (2026-10-27)
 
 What ADR 0075's building order needs beside the app (F200), filed the
-day it was written. Seven entries, F248–F254 — F248–F252 **built
-2026-10-28** and in the archive (the spike accepting ADR 0075), the rest
-open; and four open entries it
+day it was written. Seven entries, F248–F254, all **built 2026-10-28**
+and in the archive with the app itself, F200 (the spike accepting ADR
+0075); one found building the app, F255, open; and four open entries it
 builds on the way — C147 and C148 in step 1, **built 2026-10-28** and in
 the archive, C149 and C102 in step 4.
 
-### `.` F253 — The Perf tab cannot hand a recording to the inspector
+### `.` F255 — A lazy branch chosen by a query is a fit column with no props
 
-**Do.** ADR 0075, decision 10: *open in kui-perf* beside *save trace*,
-which saves the recording and starts the inspector on it.
-
-### `.` F254 — How kui-perf reaches a machine is not decided
-
-**Do.** ADR 0075, decision 1: once F252 reports — an app the runner
-carries (`kui perf`, ADR 0068's packing) or a binary of its own —
-released with kui's tags beside `kui-trace`.
+**Found** building kui-perf's bands (2026-10-28): `lazy { query = {…},
+render = …, fallback = … }` opens its branch as a bare `NodeSpec::column()`
+(`lazy_open_key`) and the Lua form reads no layout props, so a branch whose
+render wants the room — a `grow` column, a split — gets its content's fit
+width and height, and everything inside collapsed to a character wide.
+kui-perf took ADR 0069's other half instead, `when` entries on its own
+width hiding the panes that do not apply. **Do.** A query branch takes
+the room its parent offers in the axes it queries (the parent is a
+container there already, decision 8), or `width` / `height` on the lazy
+form in every binding.
 
 ## From Kit's M0 spike (2026-10-25)
 
@@ -3994,6 +3967,12 @@ and offset, gridlines and labels keyed by value, so a reframe carries it.
 **Planned** in
 [ADR 0075](adr/0075-kui-perf-reads-a-recording-in-kit.md)'s
 building order, step 4: the inspector needs it.
+
+**Not built with kui-perf (2026-10-28)**: a box scales only uniformly
+(`scale`, ADR 0043), so the plot's vertical scale cannot ride a
+transition as this asks; it needs a `scale_y` (a non-uniform scale) in the
+core and every binding first. kui-perf's lanes reframe only when the
+window moves, which runs the view anyway.
 
 ### `.` C159 — A component cannot schedule a message to itself
 
@@ -6253,7 +6232,7 @@ move.
 **From the Perf tab (2026-10-25)** — F199, filed and built the same day with ADR 0058; F200 open; F201 built the same day
 
 - `~` **F199** — [A frame's time is one number a phase, the time between frames is not recorded, and an app cannot add its own](backlog/closed-2026-09.md#-f199--a-frames-time-is-one-number-a-phase-the-time-between-frames-is-not-recorded-and-an-app-cannot-add-its-own--done-2026-10-25) — done (2026-10-25) — [ADR 0058](adr/0058-a-recording-is-a-timeline.md): `kui-trace` (format, timeline, analysis, Chrome/Perfetto/speedscope/Firefox adapters, `diff`, CLI), the core's recorder and the runners' loop records, the doors in five bindings with `KuiWaker` for C and Odin, the Perf tab on the timeline
-- `~` **F200** — [A recording made where the panel is not has nothing to read it in](#-f200--a-recording-made-where-the-panel-is-not-has-nothing-to-read-it-in) — open — `kui-perf`, ADR 0075 (accepted): a Lua/Teal app on the runner built from Kit, over columns `kui-trace` keeps in Rust
+- `~` **F200** — [A recording made where the panel is not has nothing to read it in](backlog/closed-2026-09.md#-f200--a-recording-made-where-the-panel-is-not-has-nothing-to-read-it-in--done-2026-10-28) — done (2026-10-28) — `kui-perf` (`tools/kui-perf`, `kui perf`), a Teal app on the runner built from Kit over `kui.trace`
 - `.` **F201** — [The tree's arrows only move a cursor, the inspector shows only the snapshot's columns, the live graph is not full width, and a recording reads only whole](backlog/closed-2026-09.md#-f201--the-trees-arrows-only-move-a-cursor-the-inspector-shows-only-the-snapshots-columns-the-live-graph-is-not-full-width-and-a-recording-reads-only-whole--done-2026-10-25) — done (2026-10-25) — arrows select, a row click focuses the list; the selection's whole spec with a changed-only switch; bars share the chart's width; a range by drag or shift-click
 
 **From the Perf tab on Windows (2026-10-25)** — F202, filed and built the same day
@@ -6339,15 +6318,16 @@ move.
 - `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
 - `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
 
-**From the kui-perf grilling (2026-10-27)** — F248–F254; F248–F252 built 2026-10-28, the rest open
+**From the kui-perf grilling (2026-10-27)** — F248–F254, built 2026-10-28; F255 open
 
 - `.` **F248** — [`kui-trace` cannot make a channel](backlog/closed-2026-09.md#-f248--kui-trace-cannot-make-a-channel--done-2026-10-28) — done (2026-10-28) — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
 - `.` **F249** — [A recording is read only whole, from bytes in memory](backlog/closed-2026-09.md#-f249--a-recording-is-read-only-whole-from-bytes-in-memory--done-2026-10-28) — done (2026-10-28) — a stream decoder, a transport trait, a watched file transport
 - `.` **F250** — [Nothing writes a recording the size of a long session](backlog/closed-2026-09.md#-f250--nothing-writes-a-recording-the-size-of-a-long-session--done-2026-10-28) — done (2026-10-28) — `kui-trace synth`
 - `.` **F251** — [A Lua app cannot read a recording](backlog/closed-2026-09.md#-f251--a-lua-app-cannot-read-a-recording--done-2026-10-28) — done (2026-10-28) — `kui-trace`'s `lua` feature: channels of columns, detail on request, a filter value
 - `.` **F252** — [Nobody knows whether Lua draws a million spans in time](backlog/closed-2026-09.md#-f252--nobody-knows-whether-lua-draws-a-million-spans-in-time--done-2026-10-28) — done (2026-10-28) — every budget met once Kit's waterfall read `Channel::lanes`; ADR 0075 accepted
-- `.` **F253** — [The Perf tab cannot hand a recording to the inspector](#-f253--the-perf-tab-cannot-hand-a-recording-to-the-inspector) — open — *open in kui-perf*
-- `.` **F254** — [How kui-perf reaches a machine is not decided](#-f254--how-kui-perf-reaches-a-machine-is-not-decided) — open — decided with F252's numbers
+- `.` **F253** — [The Perf tab cannot hand a recording to the inspector](backlog/closed-2026-09.md#-f253--the-perf-tab-cannot-hand-a-recording-to-the-inspector--done-2026-10-28) — done (2026-10-28) — *open in kui-perf* saves the trace and asks the runner, `kui_native::open_recording` in every binding
+- `.` **F254** — [How kui-perf reaches a machine is not decided](backlog/closed-2026-09.md#-f254--how-kui-perf-reaches-a-machine-is-not-decided--done-2026-10-28) — done (2026-10-28) — `kui perf RECORDING`, the app carried by the runner
+- `.` **F255** — [A lazy branch chosen by a query is a fit column with no props](#-f255--a-lazy-branch-chosen-by-a-query-is-a-fit-column-with-no-props) — open — the branch takes its parent's room in the axes it queries, or `width` / `height` on the lazy form
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 
