@@ -1490,6 +1490,7 @@ fn every_entry_point_is_called() {
         include_str!("../../../examples/c/common.h"),
         include_str!("../../../examples/c/tools/surface.c"),
         include_str!("../../../examples/c/tools/conformance.c"),
+        include_str!("../../../examples/c/tools/host_loop.c"),
         include_str!("../../../examples/c/apps/counter.c"),
         include_str!("../../../examples/c/features/slots/host.c"),
         include_str!("../../../examples/c/features/slots/panel.c"),

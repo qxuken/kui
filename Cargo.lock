@@ -1737,6 +1737,7 @@ dependencies = [
 name = "kui-core"
 version = "0.1.0-alpha.70"
 dependencies = [
+ "bytemuck",
  "cosmic-text",
  "divan",
  "kui-channel",
@@ -1781,6 +1782,7 @@ dependencies = [
 name = "kui-ffi"
 version = "0.1.0-alpha.70"
 dependencies = [
+ "bytemuck",
  "kui-core",
  "kui-devtools",
  "kui-lua",

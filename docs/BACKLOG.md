@@ -4098,6 +4098,20 @@ drawing through `kui_draw_data`, built in CI. What it leaves out: the
 opacity groups' and backdrops' passes, which are passes and not
 instances; the reference host says so, or draws them.
 
+
+**Part one built** 2026-10-28: `kui_core::gpu` holds the instance
+(`Instance`, now 192 bytes: ABI 41's `stretch` was what Replicator
+Bloom's copy had already missed), `instance_of`, `INSTANCE_STRIDE`,
+`INSTANCE_ATTRIBUTES`, `Globals` and the WGSL template with `shader(dual)`;
+kui-wgpu draws through them. C: `kui_renderer_wgsl`, `kui_instance_stride`,
+`kui_instance_attributes` and `kui_pack_instances` — the layout read at
+run time rather than a typed struct, so a host that builds its pipeline
+from it follows a later library unchanged; kui.h's "Drawing it
+yourself". Odin's `renderer_wgsl`, `instance_stride`,
+`instance_attributes`, `pack_instances` (hand-written, render.odin). Four
+DOORS rows. **Left:** the reference hosts — decided with the user: C and
+Odin each render offscreen through wgpu-native and check the pixels (run
+in CI), Odin also with a `--window` mode on GLFW.
 ### `~` F236 — A subtree cannot be drawn into a target of its own
 
 **Found** in the wishlist's item 5. To put UI in the world — on the gate

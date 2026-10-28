@@ -2587,6 +2587,42 @@ typedef struct KuiDrawData {
 } KuiDrawData;
 #define KUI_DRAW_DATA_INIT ((KuiDrawData){ .size = sizeof(KuiDrawData) })
 
+/* -- Drawing it yourself ---------------------------------------------------
+ *
+ * A host with its own GPU device draws KuiDrawData with kui's own shader
+ * and instance packing, so a release that moves either moves every
+ * renderer with it (backlog F234; kui-wgpu draws through the same):
+ *
+ *   - kui_renderer_wgsl(KUI_WGSL_SINGLE or _DUAL): the WGSL, entry points
+ *     vs_main and fs_main. Group 0: binding 0 a uniform of eight floats -
+ *     viewport w, h (physical px, the draw data's), atlas size twice, the
+ *     frame clock, the scale, two of padding; binding 1 the atlas texture
+ *     (RGBA8, atlas_pixels; atlas_dirty_rect says what to upload); 2 a
+ *     linear sampler; 3 a nearest one. Premultiplied alpha: blend src One,
+ *     dst OneMinusSrcAlpha (the DUAL variant: dst OneMinusSrc1).
+ *   - kui_instance_stride() and kui_instance_attributes(): the vertex
+ *     buffer's layout, stepped per instance - each attribute a float32x2
+ *     or float32x4 at its shader location and byte offset. Build the
+ *     pipeline from these and a later library's layout needs no change.
+ *   - kui_pack_instances(ctx, bytes, len): the finished frame's quads as
+ *     those instances. Draw a triangle list, six vertices an instance, in
+ *     one pass over a cleared target.
+ *
+ * What the instances leave out are passes: a backdrop blur (an empty
+ * instance), an opacity group's picture (none unless
+ * kui_set_opacity_groups), a texture-backed image (KUI_QUAD_TEXTURE: kind 3
+ * drawn with that image's texture bound in the atlas's place, a run of its
+ * own) and a registered fragment (its own pipeline). examples/c/tools and
+ * examples/odin/tools carry a reference host, on wgpu-native and GLFW. */
+enum {
+    KUI_WGSL_SINGLE = 0,
+    KUI_WGSL_DUAL = 1,
+};
+KuiStr kui_renderer_wgsl(uint32_t variant);
+uint32_t kui_instance_stride(void);
+uint32_t kui_instance_attributes(uint32_t *out, uint32_t cap);
+size_t kui_pack_instances(KuiCtx *ctx, uint8_t *out, size_t len);
+
 /* -- The host loop --------------------------------------------------------
  *
  * A host with its own window (no kui_run) runs one turn per frame, in this

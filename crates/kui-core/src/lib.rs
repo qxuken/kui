@@ -125,6 +125,7 @@ pub mod env;
 pub mod event;
 pub mod fragment;
 pub mod geom;
+pub mod gpu;
 pub mod gradient;
 pub(crate) mod initial;
 pub mod input;

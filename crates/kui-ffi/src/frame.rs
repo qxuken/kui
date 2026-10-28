@@ -1513,6 +1513,76 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
     })
 }
 
+/// The bytes one instance takes in what [`kui_pack_instances`] writes:
+/// the vertex buffer's stride (backlog F234).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_instance_stride() -> u32 {
+    kui_core::gpu::INSTANCE_STRIDE as u32
+}
+
+/// The instance's attributes, as `(shader location, float count, byte
+/// offset)` triples into `out`, at most `cap` of them; how many there are.
+/// NULL `out` (or `cap` 0) only counts.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_instance_attributes(out: *mut u32, cap: u32) -> u32 {
+    guard(0, || {
+        let attrs = &kui_core::gpu::INSTANCE_ATTRIBUTES;
+        if !out.is_null() {
+            for (i, (loc, n, at)) in attrs.iter().take(cap as usize).enumerate() {
+                unsafe {
+                    out.add(i * 3).write(*loc);
+                    out.add(i * 3 + 1).write(*n);
+                    out.add(i * 3 + 2).write(*at as u32);
+                }
+            }
+        }
+        attrs.len() as u32
+    })
+}
+
+/// The finished frame's quads as the shader's instances, into `out`: as
+/// many whole instances as fit in `len` bytes, at
+/// [`kui_instance_stride`] each. Returns how many the frame has, so NULL
+/// and 0 size the buffer. Draw `kui_renderer_wgsl`'s shader over them, six
+/// vertices an instance.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_pack_instances(ptr: *mut KuiCtx, out: *mut u8, len: usize) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let (dl, _) = c.core().output();
+        let stride = kui_core::gpu::INSTANCE_STRIDE;
+        let fit = if out.is_null() { 0 } else { len / stride };
+        for (i, q) in dl.quads.iter().take(fit).enumerate() {
+            let inst = kui_core::gpu::instance_of(q, &dl.clips, &dl.textures);
+            let bytes = bytemuck::bytes_of(&inst);
+            unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out.add(i * stride), stride) };
+        }
+        dl.quads.len()
+    })
+}
+
+/// The shader that draws [`kui_pack_instances`]'s instances, WGSL:
+/// `KUI_WGSL_SINGLE` for a device without dual-source blending (subpixel
+/// text drawn as a mask), `KUI_WGSL_DUAL` for one with it. The library's
+/// own text, valid for as long as the library is loaded; another
+/// `variant` is the single one.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_renderer_wgsl(variant: u32) -> KuiStr {
+    static SINGLE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    static DUAL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let s = if variant == KUI_WGSL_DUAL {
+        DUAL.get_or_init(|| kui_core::gpu::shader(true))
+    } else {
+        SINGLE.get_or_init(|| kui_core::gpu::shader(false))
+    };
+    KuiStr {
+        ptr: s.as_ptr(),
+        len: s.len(),
+    }
+}
+
 const _: () = {
     // KuiQuad and KuiClip must mirror kui_core::Quad and kui_core::Clip
     // field-for-field for the casts above.

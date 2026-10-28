@@ -11,6 +11,7 @@ package host_loop
 
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import kui "../../../packages/odin/kui"
 
 Go :: struct {}
@@ -60,6 +61,15 @@ main :: proc() {
 	dd, ok := kui.draw_data(ui)
 	check(ok && len(dd.quads) > 0, "the frame drew")
 	check(dd.bounds == {0, 0, 320, 160}, "the bounds are the panel's, in physical px")
+
+	// Draw it with kui's own shader and packing (backlog F234): the layout
+	// read at run time, the frame packed as instances.
+	attrs := kui.instance_attributes()
+	last := attrs[len(attrs) - 1]
+	check(len(attrs) == 13 && last.offset + last.floats * 4 == kui.instance_stride(), "the last attribute ends at the stride")
+	packed := kui.pack_instances(ui)
+	check(len(packed) == len(dd.quads) * int(kui.instance_stride()), "an instance a quad")
+	check(strings.contains(kui.renderer_wgsl(), "fn vs_main") && strings.contains(kui.renderer_wgsl(dual = true), "dual_source_blending"), "both shaders")
 
 	// Input: the pointer over the button is the UI's, then a click.
 	kui.input_cursor(ui, 38, 20)

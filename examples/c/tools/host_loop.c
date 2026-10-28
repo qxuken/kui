@@ -7,6 +7,7 @@
  *
  *     cargo run -p kui-devtools --bin cbuild -- --run   builds and runs it
  */
+#include <stdlib.h>
 #include "../common.h"
 
 /* A panel holding a button, on a transparent root. */
@@ -50,6 +51,25 @@ int main(void) {
     check(dd.atlas_dirty && dd.atlas_dirty_rect[2] > 0, "and its glyphs are an atlas rect to upload");
     check(dd.bounds[0] == 0 && dd.bounds[2] == 320 && dd.bounds[3] == 160,
           "the bounds are the panel's, in physical px");
+
+    /* Draw it with kui's own shader and packing (backlog F234): the
+     * layout read at run time, the frame packed as instances. */
+    uint32_t attrs[13 * 3];
+    uint32_t stride = kui_instance_stride();
+    uint32_t n_attrs = kui_instance_attributes(attrs, 13);
+    check(n_attrs == 13 && attrs[(n_attrs - 1) * 3 + 2] + attrs[(n_attrs - 1) * 3 + 1] * 4 == stride,
+          "kui_instance_attributes: the last attribute ends at the stride");
+    size_t count = kui_pack_instances(ui, NULL, 0);
+    uint8_t *instances = malloc(count * stride);
+    check(count == dd.quad_count && kui_pack_instances(ui, instances, count * stride) == count,
+          "kui_pack_instances: an instance a quad");
+    float pos[2];
+    memcpy(pos, instances + attrs[2], sizeof pos);
+    check(pos[0] == dd.quads[0].x && pos[1] == dd.quads[0].y, "the first instance is where the first quad is");
+    free(instances);
+    KuiStr wgsl = kui_renderer_wgsl(KUI_WGSL_SINGLE);
+    check(has(wgsl, "fn vs_main") && !has(wgsl, "dual_source_blending"), "kui_renderer_wgsl: the single variant");
+    check(has(kui_renderer_wgsl(KUI_WGSL_DUAL), "dual_source_blending"), "and the dual one");
 
     /* Input: the pointer over the button is the UI's, then a click. */
     kui_input_cursor(ui, 38, 20);

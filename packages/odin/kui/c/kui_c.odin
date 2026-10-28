@@ -432,6 +432,9 @@ FRAGMENT_IMAGE_NONE :: 0
 FRAGMENT_IMAGE_ATLAS :: 1
 FRAGMENT_IMAGE_TEXTURE :: 2
 
+WGSL_SINGLE :: 0
+WGSL_DUAL :: 1
+
 MOUSE_PRIMARY :: 0
 MOUSE_SECONDARY :: 1
 MOUSE_MIDDLE :: 2
@@ -1211,6 +1214,10 @@ foreign lib {
 	size_max :: proc(args: [^]Sizing, n: uint) -> Sizing ---
 	size_clamp :: proc(lo: Sizing, target: Sizing, hi: Sizing) -> Sizing ---
 	size_parse :: proc(s: string, out: ^Sizing) -> bool ---
+	renderer_wgsl :: proc(variant: u32) -> string ---
+	instance_stride :: proc() -> u32 ---
+	instance_attributes :: proc(out: ^u32, cap: u32) -> u32 ---
+	pack_instances :: proc(ctx: ^Ctx, out: [^]u8, len: uint) -> uint ---
 	ctx_new :: proc() -> ^Ctx ---
 	ctx_new_in :: proc(other: ^Ctx) -> ^Ctx ---
 	ctx_free :: proc(ctx: ^Ctx) ---

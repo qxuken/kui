@@ -920,6 +920,8 @@ package kui_c
 #assert(FRAGMENT_IMAGE_NONE == 0)
 #assert(FRAGMENT_IMAGE_ATLAS == 1)
 #assert(FRAGMENT_IMAGE_TEXTURE == 2)
+#assert(WGSL_SINGLE == 0)
+#assert(WGSL_DUAL == 1)
 #assert(MOUSE_PRIMARY == 0)
 #assert(MOUSE_SECONDARY == 1)
 #assert(MOUSE_MIDDLE == 2)

@@ -1193,6 +1193,10 @@ pub const KUI_SCROLLBAR_AUTO: u32 = 3;
 pub const KUI_OVERSCROLL_AUTO: u32 = 1;
 pub const KUI_OVERSCROLL_CONTAIN: u32 = 2;
 
+/// `kui_renderer_wgsl`'s variants (backlog F234).
+pub const KUI_WGSL_SINGLE: u32 = 0;
+pub const KUI_WGSL_DUAL: u32 = 1;
+
 /// KUI_HOST_HIT_* is the position in `schema::HOST_HITS` plus one (0 =
 /// unset, which is `auto`).
 pub const KUI_HOST_HIT_AUTO: u32 = 1;

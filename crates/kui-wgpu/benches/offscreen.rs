@@ -231,7 +231,7 @@ impl Rig {
         let quad_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kui"),
             source: wgpu::ShaderSource::Wgsl(
-                preprocess_shader(include_str!("../src/shader.wgsl"), dual).into(),
+                preprocess_shader(kui_core::gpu::SHADER_TEMPLATE, dual).into(),
             ),
         });
         let comp_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
