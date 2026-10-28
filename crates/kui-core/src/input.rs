@@ -98,6 +98,25 @@ pub enum InputEvent {
         lines: Vec2,
         begins: bool,
     },
+    /// A trackpad's pinch, as part of a pinch gesture (backlog F256):
+    /// `delta` the magnification since the last event as the platform
+    /// reports it (positive = zoom in, macOS's `magnification`), `begins`
+    /// true on the gesture's first event. It is no scroll: no container
+    /// moves for it. The gesture's first event picks the innermost node
+    /// around the pointer that declared `on_scroll`, whatever its
+    /// `scroll_axes` — one that names `scroll_mods` is passed by, as by a
+    /// gesture begun with nothing held — and the rest of the gesture goes
+    /// to it (*latched*) wherever the pointer goes, as its `on_scroll`
+    /// message with `zoom` in the `scroll` data (`dx`/`dy` 0, `lines`
+    /// null, `x`/`y` the pointer). A pinch begun over no such node is
+    /// nobody's to its end; a latched node that is gone, or behind a
+    /// modal, is picked again. A delta of 0 (the beginning macOS reports)
+    /// latches and is heard by nobody. What the native runner sends for
+    /// winit's `PinchGesture` (`kui_input_pinch`, Node's `pinch`).
+    Pinch {
+        delta: f32,
+        begins: bool,
+    },
     /// Committed text (typing, paste). Routed to the focused editor; with
     /// none, a printable character presses or searches the focused
     /// control. Never delivered to an `onKey` sink: the raw press already
@@ -3020,6 +3039,7 @@ impl Interaction {
             InputEvent::Scroll(_)
             | InputEvent::ScrollGesture { .. }
             | InputEvent::Wheel { .. }
+            | InputEvent::Pinch { .. }
             | InputEvent::Text(_)
             | InputEvent::Commit(_)
             | InputEvent::Paste { .. }

@@ -1056,7 +1056,7 @@ pub enum Handler {
     /// event arriving as the field alone.
     Button,
     /// Scroll events: the wheel over this node emits this message with
-    /// `scroll: {x, y, dx, dy, lines}` in it — the delta
+    /// `scroll: {x, y, dx, dy, lines, zoom?}` in it — the delta
     /// in logical px as the driver reported it (positive `dy` is the wheel
     /// rolling up, toward earlier content), the pointer's position, and
     /// on a `cells` grid the whole lines the delta covers (`null` on any
@@ -3178,7 +3178,9 @@ impl NodeSpec {
     }
 
     /// Asks for the wheel over this node as events (see the `on_scroll`
-    /// field): this message with `scroll: {x, y, dx, dy, lines}` in it.
+    /// field): this message with `scroll: {x, y, dx, dy, lines}` in it,
+    /// and a trackpad's pinch the same with `zoom`, the magnification
+    /// (backlog F256).
     pub fn on_scroll(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().set(Handler::Scroll, tag.into());
         self

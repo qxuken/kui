@@ -387,6 +387,7 @@ pub(crate) const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
                 false,
                 "{ shift: boolean, ctrl: boolean, alt: boolean, super: boolean }",
             ),
+            ("zoom", false, "number"),
         ],
     ),
     (

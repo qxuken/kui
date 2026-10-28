@@ -636,6 +636,8 @@ pub struct Core {
     line_carry: Option<(Key, f32)>,
     /// The targets the scroll gesture under way latched, per axis.
     scroll_latch: gesture::ScrollLatch,
+    /// The node the pinch under way latched (backlog F256).
+    pinch_latch: gesture::PinchLatch,
     /// Whether a wheel's notch glides on a scroll container (ADR 0050).
     smooth_wheel: bool,
     /// How a held drag scrolls a container at its edge (ADR 0029,
@@ -1533,6 +1535,7 @@ impl Core {
             last_frame_time: None,
             line_carry: None,
             scroll_latch: Default::default(),
+            pinch_latch: Default::default(),
             smooth_wheel: true,
             edge_feel: crate::edge_scroll::EdgeScrollFeel::STANDARD,
             edge_ramps: Vec::new(),

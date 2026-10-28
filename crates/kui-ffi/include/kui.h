@@ -1277,7 +1277,7 @@ typedef struct KuiSpec {
      * it then stood (see the ABI block). */
     uint32_t anchor;
     /* Scroll message: the wheel over this node emits it with scroll:{x, y,
-     * dx, dy, lines} in it instead of scrolling anything - dx/dy the
+     * dx, dy, lines, zoom?} in it instead of scrolling anything - dx/dy the
      * delta in logical px as the driver reported it (positive dy is the
      * wheel rolling up), x/y the pointer, lines the whole lines a `cells`
      * grid's delta covers (positive = later history, the sign origin_line
@@ -1286,7 +1286,8 @@ typedef struct KuiSpec {
      * above it, and a scroller inside it still wins. The core moves
      * nothing - a grid re-declares origin_line, a canvas zooms. A
      * drag-select held past a grid's top or bottom edge arrives here too,
-     * once a frame with the lines that frame scrolled by. Borrowed while
+     * once a frame with the lines that frame scrolled by, and a trackpad's
+     * pinch with zoom, the magnification (kui_input_pinch). Borrowed while
      * the node opens. */
     const KuiValue *on_scroll;
     /* Drop-zone message: files dragged in from the OS over this node emit
@@ -2619,6 +2620,15 @@ void kui_input_scroll_gesture(KuiCtx *ctx, float dx, float dy, bool begins);
  * that off or the system asks for reduced motion; a fraction of a line is
  * applied as it comes. What kui_run sends for a mouse wheel. */
 void kui_input_wheel(KuiCtx *ctx, float lx, float ly, bool begins);
+/* A trackpad's pinch, as part of a pinch gesture (backlog F256): delta the
+ * magnification since the last event (+ = zoom in), `begins` on its first.
+ * The first event picks the innermost on_scroll node around the pointer -
+ * whatever its scroll_axes, passing by one that names scroll_mods - and
+ * the rest go to it wherever the pointer goes, as its on_scroll message
+ * with scroll:{x, y, dx:0, dy:0, lines:null, zoom} in it. Nothing scrolls
+ * for it; with no such node it is dropped. What kui_run sends for a macOS
+ * trackpad's pinch. */
+void kui_input_pinch(KuiCtx *ctx, float delta, bool begins);
 void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
 /* Text an IME committed at the end of a composition: a focused editor takes
  * it as kui_input_text would; otherwise the focused on_key sink hears a

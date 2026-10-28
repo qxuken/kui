@@ -3518,6 +3518,15 @@ height limit with scrolling for every menu the core draws, and the
 native runner's popup window for a context menu that does not fit —
 **built 2026-10-27**, the day it was filed, and in the archive.
 
+## From a pinch that zoomed nothing (2026-10-28)
+
+kui-perf's waterfall, and every canvas or timeline that zooms on
+`onScroll`, could not be pinched: the native runner dropped winit's
+`PinchGesture`, and no binding had a door for one. One entry, F256 — a
+pinch as the `onScroll` node's `scroll` with `zoom` in it, latched for
+the gesture, in every binding — **built 2026-10-28**, the day it was
+filed, and in the archive.
+
 ## From Carnet on alpha.69 (2026-10-28)
 
 On Windows, Carnet's window flashed white as it closed, through its
@@ -6302,6 +6311,10 @@ move.
 - `.` **F239** — [Every host maps its window library's keys to kui's by hand](#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand) — open — header-only GLFW and SDL tables for C, files for Odin, from one table
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
 - `.` **F245** — [The atlas epoch starts at 0, so a zeroed host takes the first page for one it has](backlog/closed-2026-09.md#-f245--the-atlas-epoch-starts-at-0-so-a-zeroed-host-takes-the-first-page-for-one-it-has--done-2026-10-28) — done (2026-10-28) — `GlyphAtlas::epoch` starts at 1 and is never 0; said in kui.h
+
+**From a pinch that zoomed nothing (2026-10-28)** — F256, filed and built the same day
+
+- `.` **F256** — [A trackpad's pinch reaches no app](backlog/closed-2026-09.md#-f256--a-trackpads-pinch-reaches-no-app--done-2026-10-28) — done (2026-10-28) — `InputEvent::Pinch`, heard by the innermost `onScroll` node as `zoom` and latched; `kui_input_pinch` and its doors
 
 **From Carnet on alpha.69 (2026-10-28)** — F246 and F247, filed and built the same day
 

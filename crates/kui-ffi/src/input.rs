@@ -94,6 +94,19 @@ pub extern "C" fn kui_input_wheel(ptr: *mut KuiCtx, lx: f32, ly: f32, begins: bo
     );
 }
 
+/// A trackpad's pinch, as part of a pinch gesture (backlog F256): `delta`
+/// the magnification since the last event (positive = zoom in), `begins`
+/// on its first. The first event picks the innermost `on_scroll` node
+/// around the pointer — whatever its `scroll_axes`, passing by one that
+/// names `scroll_mods` — and the rest go to it wherever the pointer goes,
+/// as its `on_scroll` message with `zoom` in the `scroll` data (`dx`/`dy`
+/// 0, `lines` null). Nothing scrolls for it; with no such node it is
+/// dropped. What `kui_run` sends for a macOS trackpad's pinch.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_pinch(ptr: *mut KuiCtx, delta: f32, begins: bool) {
+    push_input(ptr, InputEvent::Pinch { delta, begins });
+}
+
 /// Committed text input (typing, paste); routed to the focused editor.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_text(ptr: *mut KuiCtx, text: KuiStr) {

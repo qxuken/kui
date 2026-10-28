@@ -1203,6 +1203,7 @@ foreign lib {
 	input_scroll :: proc(ctx: ^Ctx, dx: f32, dy: f32) ---
 	input_scroll_gesture :: proc(ctx: ^Ctx, dx: f32, dy: f32, begins: bool) ---
 	input_wheel :: proc(ctx: ^Ctx, lx: f32, ly: f32, begins: bool) ---
+	input_pinch :: proc(ctx: ^Ctx, delta: f32, begins: bool) ---
 	input_text :: proc(ctx: ^Ctx, text: string) ---
 	input_commit :: proc(ctx: ^Ctx, text: string) ---
 	input_paste :: proc(ctx: ^Ctx, text: string, marks: u32) ---

@@ -37,6 +37,10 @@ was the first bare bump to break an app in five releases).
   host that drains `kui_take_menu_action` sees the new kind,
   `KUI_MENU_ACTION_SET_CLIPBOARD_FILES`, and one that does not know it
   drops it.
+- `InputEvent` has a variant `Pinch { delta, begins }` and
+  `kui_core::event::Scroll` a field `zoom: Option<f32>` (backlog F256): a
+  Rust host that matches `InputEvent` whole adds an arm, and one that
+  builds a `Scroll` by its fields adds `zoom: None`.
 
 Nothing else breaks: two crates split out of `kui-core` and re-exported
 where they were, four channel doors added in every binding (the C ABI at
@@ -52,6 +56,17 @@ and its tables sort and filter them.
 
 ### Added
 
+- **A trackpad's pinch** (backlog F256): a macOS trackpad's pinch reaches
+  the innermost `onScroll` node under the pointer as its message with
+  `scroll: {x, y, dx: 0, dy: 0, lines: null, zoom}` in it — `zoom` the
+  magnification since the last event, positive zooming in — and stays
+  that node's until the fingers lift, wherever the pointer goes. Its
+  `scrollAxes` are not asked; a node that names `scrollMods` is passed
+  by; no scroll container moves for it, and one begun over no `onScroll`
+  node is nobody's. A canvas or a timeline that zooms on the wheel zooms
+  on a pinch by reading `zoom`. Headless, `InputEvent::Pinch`,
+  `kui_input_pinch`, Odin `input_pinch`, Node `ctx.pinch(delta,
+  begins)`. Windows and Linux report no pinch through winit.
 - **kui-perf, the trace inspector** (ADR 0075, backlog F200, F254):
   `kui perf session.kuitrace` opens a recording — from the devtools' Perf
   tab, `KUI_PERF_TRACE` or `kui-trace synth` — in a Teal app the runner
