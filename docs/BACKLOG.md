@@ -4090,6 +4090,45 @@ the archive.
   dual-source blending). The game, or a probe, turned it on. F229's host
   loop section says to leave it off on a single-blend renderer.
 
+## From the alpha.71 pre-tag round (2026-10-28)
+
+The bench guard against alpha.70 passed, and every frame row read slower
+in both of its passes all the same. A bisect put all of it at F233, and
+the fix (`6f32c553`) records nothing until a host asks. One entry stays
+open for the hosts that do.
+
+### `.` C160 — An armed host still pays for every painted box, every frame, and no bench watches it
+
+**Found** 2026-10-28 by the alpha.71 bench guard. F233 (`dcedabad`) made
+emission push a `Blocker` for every painted box that is no hit region,
+every frame, for every window: about 72 B each, with a `Box<HitTurn>`
+for a turned node, the shape `HitRegion` already had. Against alpha.70,
+`frame_1k_rects` was +6%, `frame_1k_turned_rects` +14% (the box),
+`deep_nesting_64_levels` +5% and `frame_10k_rects_all_transitioning` up
+to +50%; nothing after F233 moved them. `6f32c553` records blockers only
+once the core is armed: by the first `hit` or `pointer_wants`, by
+`Core::arm_host_hit`, or at creation for C's, Odin's and Node's contexts
+(`kui_ctx_new`, `kui_ctx_new_in`, `new Ctx()`, `ctx.sibling()`). Every
+window that never asks is back at alpha.70's numbers. **An armed host
+still pays the old cost**: about 5 ns per painted, non-interactive node,
+about 20 ns per turned one. A 300-node HUD pays about 1.5 µs a frame, so
+it is not worth doing now. But no bench row runs armed, so the bench
+guard cannot see this cost grow.
+
+**Do, if it shows.** Do this when a host's profile shows the blocker
+list (`push_blocker`, or the `Blocker` and `HitTurn` allocations), or
+when a host reports a slowdown with a large painted HUD. First add
+`frame_1k_rects_host_armed` and a turned twin, then:
+- make the turn an index into the turn table emission already builds
+  for clips, not a `Box`, which drops the allocation;
+- shrink the record to about the key, the count of hit regions painted
+  before it, and that index, reading the rect, the clip and the radius
+  back when a query runs, since queries are rare and frames are not;
+- give `HitRegion`'s boxed turn the same treatment.
+
+The armed rows reading even with the unarmed ones is the measure.
+Guarding the new row in `bench-check.nu` is part of the entry.
+
 ## From the alpha.69 pre-tag round (2026-10-27)
 
 The round on the release machines — Windows on an RTX 5080, WSL Linux,
