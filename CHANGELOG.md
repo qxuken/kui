@@ -25,6 +25,11 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.**
 
+- A float anchored to its parent that does not `escape` opens just above
+  the floats its layer holds already, where it opened on top of every
+  float (backlog F257): one that opens inside a page while a toast, a HUD
+  or a dialog is up now paints under it. A menu or a popover that relied
+  on opening over those says `escape`.
 - A `kui-native` window leaves the screen when its close is accepted —
   every window, before `App::teardown` runs — where it stayed up through
   the teardown (backlog F246). A teardown that draws into a window, or
@@ -282,6 +287,17 @@ and its tables sort and filter them.
   520 → 3.5 ms at its worst.
 
 ### Fixed
+
+- **A float that opens inside a box no longer draws over a dialog**
+  (backlog F257): Kit's line chart lays out more x tick labels once its
+  plot is measured, a frame after a dialog over it opened, and those
+  labels — floats held by the axis — went on top of the stack, over the
+  dialog's panel, while the rest stayed under it; a live chart's slide,
+  under a fresh key each sample, did the same. A float anchored to its
+  parent that does not escape is its box's content (ADR 0074) and now
+  opens with the layer that holds it (ADR 0023, amended); one that
+  escapes, or is placed against the viewport or a node, opens on top as
+  before.
 
 - **A window no longer flashes white as it closes** (backlog F246, from
   Carnet). The main window stayed on screen from the close until the

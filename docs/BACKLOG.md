@@ -3518,6 +3518,14 @@ height limit with scrolling for every menu the core draws, and the
 native runner's popup window for a context menu that does not fit —
 **built 2026-10-27**, the day it was filed, and in the archive.
 
+## From Kit's line chart under a dialog (2026-10-28)
+
+Kit's line chart under a Kit dialog drew some of its x tick labels over
+the dialog's panel and the rest under it. One entry, F257 — a float
+anchored to its parent that does not escape opens with the layer that
+holds it, not on top of the stack (an amendment to ADR 0023) — **built
+2026-10-28**, the day it was filed, and in the archive.
+
 ## From Carnet on alpha.69 (2026-10-28)
 
 On Windows, Carnet's window flashed white as it closed, through its
@@ -6302,6 +6310,10 @@ move.
 - `.` **F254** — [How kui-perf reaches a machine is not decided](backlog/closed-2026-09.md#-f254--how-kui-perf-reaches-a-machine-is-not-decided--done-2026-10-28) — done (2026-10-28) — `kui perf RECORDING`, the app carried by the runner
 - `.` **F255** — [A lazy branch chosen by a query is a fit column with no props](backlog/closed-2026-09.md#-f255--a-lazy-branch-chosen-by-a-query-is-a-fit-column-with-no-props--done-2026-10-28) — done (2026-10-28) — the branch takes its parent's room in the axes its query reads
 - `.` **F258** — [The waterfall's wheel scrolls its lanes once they overflow, and nothing selects a range](backlog/closed-2026-09.md#-f258--the-waterfalls-wheel-scrolls-its-lanes-once-they-overflow-and-nothing-selects-a-range--done-2026-10-28) — done (2026-10-28) — the wheel and a pinch zoom, a drag on the axis selects a range, kui-perf's dock and keys' card
+
+**From Kit's line chart under a dialog (2026-10-28)** — F257, filed and built the same day
+
+- `.` **F257** — [A float that opens inside a box draws over a dialog that opened before it](backlog/closed-2026-09.md#-f257--a-float-that-opens-inside-a-box-draws-over-a-dialog-that-opened-before-it--done-2026-10-28) — done (2026-10-28) — a held float opens just above the floats its layer holds, not on top (ADR 0023 amended)
 
 **From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 and C66 built in Kit's M2 with ADRs 0060 and 0065, and C62–C65 beside them; C67 built in Kit's M3 with ADR 0066, and C68–C72, what building it found; C61 built in Kit's M4 with ADR 0064, and C73–C74, what the runner found; C75–C77 from Kit's M5 (a real Node app migrated onto Kit), C78 built in the next round; C79–C80, then C81–C85, from the same app rebuilt on the runner; C86 from the grilling round that followed, with ADR 0067, and C87, its open question
 
