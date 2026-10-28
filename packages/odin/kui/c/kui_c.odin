@@ -1212,6 +1212,7 @@ foreign lib {
 	size_clamp :: proc(lo: Sizing, target: Sizing, hi: Sizing) -> Sizing ---
 	size_parse :: proc(s: string, out: ^Sizing) -> bool ---
 	ctx_new :: proc() -> ^Ctx ---
+	ctx_new_in :: proc(other: ^Ctx) -> ^Ctx ---
 	ctx_free :: proc(ctx: ^Ctx) ---
 	input_cursor :: proc(ctx: ^Ctx, x: f32, y: f32) ---
 	input_cursor_left :: proc(ctx: ^Ctx) ---

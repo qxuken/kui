@@ -255,8 +255,31 @@ use kui_core::{
 /// the core cannot be created.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
+    guard(std::ptr::null_mut(), || ctx_around(Box::new(Core::new())))
+}
+
+/// Creates a context that joins `other`'s session (backlog F237): it
+/// draws with the same registered fonts, images and sounds, the same
+/// installed families and shaping caches, and plays through the same
+/// audio device, so a second HUD or an island loads and shapes nothing
+/// twice. Its tree, focus, scroll, viewport, events and glyph atlas are
+/// its own. The session lives while any context in it does, so either may
+/// be freed first; all of them belong to the thread that made the first.
+/// NULL `other` (or a bad one) is NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_ctx_new_in(other: *mut KuiCtx) -> *mut KuiCtx {
     guard(std::ptr::null_mut(), || {
-        let mut owned = Box::new(Core::new());
+        let Some(o) = (unsafe { ctx(other) }) else {
+            return std::ptr::null_mut();
+        };
+        let session = o.core().session().clone();
+        ctx_around(Box::new(Core::new_in(&session)))
+    })
+}
+
+/// A context owning `owned`, with everything else empty.
+fn ctx_around(mut owned: Box<Core>) -> *mut KuiCtx {
+    {
         // A host driving its own frames opts into diagnostics explicitly,
         // like everything else it drains; kui_run follows the runner's
         // debug-build default.
@@ -310,7 +333,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             perf_trace: Vec::new(),
             waker: std::ptr::null(),
         }))
-    })
+    }
 }
 
 /// Frees a context from [`kui_ctx_new`], its queued events, every string

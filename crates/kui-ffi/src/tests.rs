@@ -3964,6 +3964,40 @@ mod borrows {
         kui_ctx_free(ctx);
     }
 
+    /// A context made in another's session draws what the first
+    /// registered (backlog F237): an image added to `a` is an image quad
+    /// in `b`'s frame, and outlives `a` being freed first.
+    #[test]
+    fn a_context_in_another_s_session_draws_what_the_first_registered() {
+        let a = kui_ctx_new();
+        let px = [255u8; 4 * 4 * 4];
+        let id = kui_image_add(a, 4, 4, px.as_ptr());
+        assert_ne!(id, 0);
+        assert!(kui_ctx_new_in(std::ptr::null_mut()).is_null());
+        let b = kui_ctx_new_in(a);
+        assert!(!b.is_null());
+        kui_ctx_free(a);
+        kui_frame_begin(b, 100.0, 100.0, 1.0);
+        kui_root(b, &zspec());
+        let spec = KuiSpec {
+            width: KuiSizing { tag: 2, value: 4.0 },
+            height: KuiSizing { tag: 2, value: 4.0 },
+            ..zspec()
+        };
+        kui_image(b, id, &spec);
+        kui_frame_finish(b);
+        let mut d = KuiDrawData::default();
+        assert!(kui_draw_data(b, &mut d));
+        let quads = unsafe { std::slice::from_raw_parts(d.quads, d.quad_count) };
+        assert!(
+            quads
+                .iter()
+                .any(|q| q.kind == kui_core::QuadKind::Image as u32),
+            "the image a drew is b's"
+        );
+        kui_ctx_free(b);
+    }
+
     /// The draw data says where the frame drew (backlog F235): a 40×10
     /// tag at (20, 30) on a transparent root at scale 2 is (40, 60, 80,
     /// 20), and a frame that draws nothing is zero.

@@ -81,6 +81,13 @@ Nothing else breaks.
   turned node where it is drawn, each cut by its clip — in whole physical
   px, and C's `KuiDrawData.bounds` carries it: scissor to it.
 
+- **A context can join another's session** (backlog F237): C
+  `kui_ctx_new_in(other)`, Odin `new_ui_in(other)`, Node `ctx.sibling()`,
+  over `Core::new_in`. Several HUDs, or islands drawn into targets of
+  their own, share the registered fonts, images and sounds and the
+  shaping caches, so nothing is loaded or shaped twice; each keeps its own
+  tree, focus, events and glyph atlas. They belong to one thread.
+
 ## 0.1.0-alpha.70 (2026-10-28)
 
 **What breaks.**

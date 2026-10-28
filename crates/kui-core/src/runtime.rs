@@ -1396,10 +1396,11 @@ impl Core {
     }
 
     /// A core joining an existing session: it draws with the same fonts,
-    /// images, sounds, shaping caches and glyph atlas as every other core
-    /// constructed against `session`, and plays through the same audio
-    /// device. Everything else — tree, focus, scroll, viewport — is this
-    /// window's alone.
+    /// images, sounds and shaping caches as every other core constructed
+    /// against `session`, and plays through the same audio device.
+    /// Everything else — tree, focus, scroll, viewport, and the glyph
+    /// atlas, which `output` hands out beside the list it was drawn for
+    /// (ADR 0004 step 1) — is this window's alone.
     pub fn new_in(session: &Session) -> Self {
         let mut core = Self {
             session: session.clone(),

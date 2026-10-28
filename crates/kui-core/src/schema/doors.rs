@@ -802,6 +802,14 @@ pub const DOORS: &[Door] = &[
         doc: "Whether the last finished frame drew exactly what the one before drew, traced (backlog F111).",
     },
     Door {
+        rust: "Core::new_in",
+        c: Is("kui_ctx_new_in"),
+        odin: Is("new_ui_in"),
+        node: Is("Ctx.sibling"),
+        lua: No(GUEST),
+        doc: "A context in another's session (backlog F237): the same registered fonts, images and sounds and the same shaping caches, so several HUDs or islands load and shape nothing twice; tree, focus, events and glyph atlas are its own. One thread's, as the first is. Node's `KuiWindow`s share theirs through the runner already.",
+    },
+    Door {
         rust: "Core::hit",
         c: Is("kui_hit"),
         odin: Is("hit"),

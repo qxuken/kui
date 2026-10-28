@@ -501,7 +501,8 @@ extern "C" {
  * 912), what kui_hit and kui_pointer_wants count the box as; and
  * kui_hit, kui_pointer_wants and kui_keyboard_wants are new functions.
  * KuiDrawData appends bounds (152 bytes on 64-bit, from 136), where the
- * frame drew. Recompile; zeroed, a box counts as derived, and a caller
+ * frame drew. kui_ctx_new_in, a context in another's session, is new
+ * (backlog F237). Recompile; zeroed, a box counts as derived, and a caller
  * that reserved the old size is filled to it.
  */
 #define KUI_ABI_VERSION 42u
@@ -2646,6 +2647,15 @@ typedef struct KuiDrawData {
 
 /* -- Context ------------------------------------------------------------- */
 KuiCtx *kui_ctx_new(void);
+/* A context that joins `other`'s session (backlog F237): the same
+ * registered fonts, images and sounds, the same installed families and
+ * shaping caches, the same audio device - so a second HUD, or an island
+ * drawn into a target of its own, loads and shapes nothing twice. Its
+ * tree, focus, scroll, viewport, events and glyph atlas are its own (each
+ * context's draw data carries its own atlas). The session lives while any
+ * of its contexts does, so free them in any order; they all belong to the
+ * thread that made the first. NULL for a NULL `other`. */
+KuiCtx *kui_ctx_new_in(KuiCtx *other);
 void kui_ctx_free(KuiCtx *ctx);
 
 /* -- Input (logical coordinates) + events -------------------------------- */

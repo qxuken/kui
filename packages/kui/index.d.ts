@@ -2969,6 +2969,13 @@ export declare function protocol(): Protocol
 export declare class Ctx {
   constructor()
   /**
+   * A new context in this one's session (backlog F237): the same
+   * registered fonts, images and sounds and the same shaping caches,
+   * so a second HUD loads and shapes nothing twice. Its tree, focus,
+   * events and glyph atlas are its own.
+   */
+  sibling(): Ctx
+  /**
    * `frame` from an already-encoded binary instruction stream, for
    * callers that own their encoder (`createEncoder(protocol())`) — the
    * fastest path, and what the JS drivers use. Buffers are read

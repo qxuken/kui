@@ -1879,7 +1879,27 @@ static int surface(void) {
         kui_input_cursor(host, 300, 20);
         check(!kui_pointer_wants(host), "over the world");
         check(!kui_keyboard_wants(host), "kui_keyboard_wants: nothing has focus");
+        /* A second HUD in the first one's session (backlog F237): what
+         * the first registered, the second draws. */
+        uint8_t white[4 * 4 * 4];
+        memset(white, 255, sizeof white);
+        uint64_t img = kui_image_add(host, 4, 4, white);
+        KuiCtx *hud = kui_ctx_new_in(host);
+        check(hud != NULL && kui_ctx_new_in(NULL) == NULL, "kui_ctx_new_in: a context in the session");
         kui_ctx_free(host);
+        kui_frame_begin(hud, 100, 100, 1);
+        KuiSpec pic = {.width = {KUI_FIXED, 4}, .height = {KUI_FIXED, 4}};
+        kui_image(hud, img, &pic);
+        kui_frame_finish(hud);
+        KuiDrawData dd = KUI_DRAW_DATA_INIT;
+        bool drew = false;
+        if (kui_draw_data(hud, &dd)) {
+            for (size_t i = 0; i < dd.quad_count; i++) {
+                drew |= dd.quads[i].kind == KUI_QUAD_IMAGE;
+            }
+        }
+        check(drew, "and draws the image the first registered, the first freed");
+        kui_ctx_free(hud);
     }
 
     /* The recording (ADR 0058), on a context of its own: off, a span's id

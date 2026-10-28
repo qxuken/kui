@@ -4127,6 +4127,14 @@ the door: `kui_ctx_new_in(other)` (and Node's, Lua's, Odin's) joining
 another context's session. Then the atlas, which is ADR 0004's step 2 and
 F236's question too.
 
+**Door built** 2026-10-28: `kui_ctx_new_in(other)` (C), `new_ui_in`
+(Odin, beside `new_ui`), `Ctx.sibling()` (Node), over `Core::new_in`, one
+DOORS row; Lua is a guest and makes no context. A sibling draws what the
+first registered and outlives it (kui-ffi's
+`a_context_in_another_s_session_draws_what_the_first_registered`, the C
+surface walk, Node's F237 test). `Core::new_in`'s doc no longer claims
+the atlas is shared. **Left:** the atlas, decided with F236.
+
 ### `.` F238 — The release packs carry no library without the runner
 
 **Found** in the wishlist's item 1, with F232. `pack-ffi.nu --no-runner`
@@ -6263,7 +6271,7 @@ move.
 - `~` **F234** — [A host's renderer copies kui-wgpu's shader and its instance packing](#-f234--a-hosts-renderer-copies-kui-wgpus-shader-and-its-instance-packing) — open — the shader and the instance packing in the core with C doors, and a reference C or Odin host
 - `.` **F235** — [The draw data has no bounds](backlog/closed-2026-09.md#-f235--the-draw-data-has-no-bounds--done-2026-10-28) — done (2026-10-28) — `DisplayList::bounds`, `KuiDrawData.bounds` (ABI 42); per-layer rects wait for F236's surfaces
 - `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — open — an ADR for a `surface` row, decided with F237
-- `.` **F237** — [Contexts cannot share their fonts, images or atlas](#-f237--contexts-cannot-share-their-fonts-images-or-atlas) — open — `kui_ctx_new_in` over `Core::new_in`, then the atlas (ADR 0004 step 2)
+- `.` **F237** — [Contexts cannot share their fonts, images or atlas](#-f237--contexts-cannot-share-their-fonts-images-or-atlas) — door built (2026-10-28), atlas open — `kui_ctx_new_in` / `new_ui_in` / `Ctx.sibling` over `Core::new_in`; the atlas (ADR 0004 step 2) with F236
 - `.` **F238** — [The release packs carry no library without the runner](#-f238--the-release-packs-carry-no-library-without-the-runner) — open — a no-runner library in both tarballs, verified, after a release dry run
 - `.` **F239** — [Every host maps its window library's keys to kui's by hand](#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand) — open — header-only GLFW and SDL tables for C, files for Odin, from one table
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id

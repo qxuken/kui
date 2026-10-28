@@ -3234,6 +3234,20 @@ test('a host asks whether the pointer and the keyboard are the UI\'s: hit, point
   assert.equal(app.ctx.keyboardWants(), false, 'nothing has focus');
 });
 
+test('a sibling context draws what the first registered (F237)', () => {
+  const a = new Ctx();
+  const img = a.addImage(4, 4, Buffer.alloc(4 * 4 * 4, 0xff));
+  const b = a.sibling();
+  b.frame(100, 100, 1, box({}, [el('image', { src: img, width: 4, height: 4 })]));
+  const quads = Buffer.from(b.quads());
+  const stride = quads.byteLength / b.stats().quadCount;
+  let images = 0;
+  for (let off = 0; off < quads.byteLength; off += stride) {
+    if (quads.readUInt32LE(off + KIND_WORD * 4) === 3) images++;
+  }
+  assert.equal(images, 1, 'the image a registered is an image quad in b');
+});
+
 test('a view reads the frame it is for: frameCause and owedBy from inside createApp\'s view (RG81)', () => {
   // A view runs before its frame begins — it returns the tree the frame is
   // handed — so it read the frame before: `[]` on the key's frame, `key`
