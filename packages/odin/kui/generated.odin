@@ -974,13 +974,13 @@ Spec :: struct {
 	// commas — `"middle"`, `"secondary middle"`.
 	buttons: Mouse_Buttons,
 	// Scroll handler: the wheel over this node arrives on it as this message with
-	// `scroll: {x, y, dx, dy, lines}` in it (ADR 0047) instead of scrolling
-	// anything — `dx`/`dy` the delta in logical px as the driver reported it
-	// (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y`
-	// the pointer, and `lines` on a `cells` grid the whole lines the delta covers
-	// (positive = later history, the sign `originLine` grows in; the fraction is
-	// carried to the next notch so a trackpad's small steps add up) and null on
-	// any other node.
+	// `scroll: {x, y, dx, dy, lines, zoom?}` in it (ADR 0047) instead of
+	// scrolling anything — `dx`/`dy` the delta in logical px as the driver
+	// reported it (positive `dy` is the wheel rolling up, toward earlier
+	// content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole
+	// lines the delta covers (positive = later history, the sign `originLine`
+	// grows in; the fraction is carried to the next notch so a trackpad's small
+	// steps add up) and null on any other node.
 	on_scroll: any,
 	// Which axes `onScroll` takes (backlog F107): `both` (the default), `x` or
 	// `y`.
@@ -2402,6 +2402,11 @@ input_scroll_gesture :: proc(ui: ^Ui, dx: f32, dy: f32, begins: bool) {
 // kui_input_wheel (kui.h).
 input_wheel :: proc(ui: ^Ui, lx: f32, ly: f32, begins: bool) {
 	c.input_wheel(ui, lx, ly, begins)
+}
+
+// kui_input_pinch (kui.h).
+input_pinch :: proc(ui: ^Ui, delta: f32, begins: bool) {
+	c.input_pinch(ui, delta, begins)
 }
 
 // kui_input_text (kui.h).

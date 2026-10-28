@@ -554,4 +554,28 @@ impl Core {
         ]);
         Some(UiEvent::declared(EventKind::Scroll, origin, key, tag, data))
     }
+
+    /// The `scroll` a pinch is on `key`'s `on_scroll` (backlog F256): the
+    /// pointer, no delta, no lines — a grid's carried fraction stays as
+    /// it was — and the magnification as `zoom`.
+    pub(crate) fn pinch_event(&self, key: Key, p: Vec2, zoom: f32) -> Option<UiEvent> {
+        let i = self.tree.index_of(key)?;
+        let tag = self.tree.specs[i].events().on_scroll();
+        tag?;
+        let data = Value::map([
+            ("x", Value::Float(p.x as f64)),
+            ("y", Value::Float(p.y as f64)),
+            ("dx", Value::Float(0.0)),
+            ("dy", Value::Float(0.0)),
+            ("lines", Value::Null),
+            ("zoom", Value::Float(zoom as f64)),
+        ]);
+        Some(UiEvent::declared(
+            EventKind::Scroll,
+            self.tree.origins[i],
+            key,
+            tag,
+            data,
+        ))
+    }
 }

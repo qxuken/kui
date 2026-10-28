@@ -1444,6 +1444,7 @@ fn input_completes(ev: &InputEvent) -> bool {
         | InputEvent::Scroll(_)
         | InputEvent::ScrollGesture { .. }
         | InputEvent::Wheel { .. }
+        | InputEvent::Pinch { .. }
         | InputEvent::Preedit(..)
         | InputEvent::Modifiers(_)
         // Files moving over the window is the pointer moving.
@@ -3709,6 +3710,18 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     self.dispatch(event_loop, i, ev);
                 } else {
                     pane.scroll_gesture.note(kind, started, now);
+                }
+            }
+            // A trackpad's pinch (backlog F256): the magnification as
+            // winit reports it, a gesture from its `Started` on. macOS
+            // and iOS only — no other winit backend reports one. The
+            // pointer it zooms about is the pane's cursor, which the
+            // core already has.
+            WinitWindowEvent::PinchGesture { delta, phase, .. } => {
+                let begins = phase == winit::event::TouchPhase::Started;
+                let delta = delta as f32;
+                if begins || (delta != 0.0 && delta.is_finite()) {
+                    self.dispatch(event_loop, i, InputEvent::Pinch { delta, begins });
                 }
             }
             WinitWindowEvent::MouseInput { state, button, .. } => {

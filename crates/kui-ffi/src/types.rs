@@ -803,8 +803,9 @@ pub struct KuiSpec {
     /// `scroll: {x, y, dx, dy, lines}` in it instead of
     /// scrolling anything (`lines` the whole lines a `cells` grid's delta
     /// covers, null elsewhere), and a drag-select held past a grid's edge
-    /// arrives the same way once a frame. Borrowed while the node opens,
-    /// like every other message.
+    /// arrives the same way once a frame; a trackpad's pinch adds `zoom`,
+    /// the magnification (`kui_input_pinch`, backlog F256). Borrowed while
+    /// the node opens, like every other message.
     pub on_scroll: *const KuiValue,
     /// Drop-zone message (`on_drop`): files dragged in from the OS over this
     /// node emit it with `drop: {phase, paths, x, y}` in it, `phase`

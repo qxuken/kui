@@ -699,9 +699,10 @@ fn cause_of(ev: &InputEvent) -> FrameCause {
         InputEvent::CursorMoved(_) => FrameCause::POINTER_MOVE,
         InputEvent::CursorLeft => FrameCause::POINTER_LEAVE,
         InputEvent::MouseDown { .. } | InputEvent::MouseUp { .. } => FrameCause::BUTTON,
-        InputEvent::Scroll(_) | InputEvent::ScrollGesture { .. } | InputEvent::Wheel { .. } => {
-            FrameCause::WHEEL
-        }
+        InputEvent::Scroll(_)
+        | InputEvent::ScrollGesture { .. }
+        | InputEvent::Wheel { .. }
+        | InputEvent::Pinch { .. } => FrameCause::WHEEL,
         InputEvent::Text(_) | InputEvent::Commit(_) | InputEvent::Paste { .. } => FrameCause::TEXT,
         InputEvent::Preedit(..) => FrameCause::PREEDIT,
         InputEvent::Modifiers(_) => FrameCause::MODIFIERS,

@@ -2063,7 +2063,7 @@ pub const DOORS: &[Door] = &[
             "`Ctx.cursor` … `Ctx.access`, one per `InputEvent`; a `KuiWindow` refuses injection",
         ),
         lua: No(GUEST),
-        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; a wheel gesture's latching is `scroll_gesture` (`kui_input_scroll_gesture`, `Ctx.scrollGesture`, backlog F107), and a wheel's notches, which glide, are `InputEvent::Wheel` in lines (`kui_input_wheel`, `Ctx.wheel`, ADR 0050); `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031); a file dialog's answer is `answer_files` (`kui_input_files`, `Ctx.answerFiles`, backlog C51); the documents the OS asked the app to open are `InputEvent::Open` (`kui_input_open`, `Ctx.openDocuments`, backlog F124).",
+        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; a wheel gesture's latching is `scroll_gesture` (`kui_input_scroll_gesture`, `Ctx.scrollGesture`, backlog F107), and a wheel's notches, which glide, are `InputEvent::Wheel` in lines (`kui_input_wheel`, `Ctx.wheel`, ADR 0050); a trackpad's pinch, heard by an `onScroll` node as `zoom`, is `InputEvent::Pinch` (`kui_input_pinch`, `Ctx.pinch`, backlog F256); `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031); a file dialog's answer is `answer_files` (`kui_input_files`, `Ctx.answerFiles`, backlog C51); the documents the OS asked the app to open are `InputEvent::Open` (`kui_input_open`, `Ctx.openDocuments`, backlog F124).",
     },
     Door {
         rust: "Core::modifiers",

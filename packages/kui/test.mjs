@@ -2716,6 +2716,32 @@ test('scrollGesture latches: a swipe that moved the strip keeps it past a termin
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['term']);
 });
 
+// A trackpad's pinch (backlog F256): `pinch` reaches the `onScroll` node
+// under the pointer as its message with `zoom` in the scroll data, stays
+// its own to the gesture's end, and scrolls nothing.
+test('pinch: the onScroll node under the pointer hears zoom, latched', () => {
+  const ctx = new Ctx();
+  const tree = box({ width: 'grow', height: 'grow' }, [
+    box({ width: 'grow', height: 100, onScroll: { kind: 'zoom' }, scrollAxes: 'y' }, [], 'canvas'),
+    box({ width: 'grow', height: 100, scrollY: true }, [box({ width: 'grow', height: 900 })], 'list'),
+  ]);
+  ctx.frame(400, 200, 1, tree);
+  ctx.frame(400, 200, 1, tree);
+  ctx.cursor(50, 20);
+  ctx.pinch(0, true);
+  ctx.pinch(0.25, false);
+  ctx.cursor(50, 150);
+  ctx.pinch(-0.5, false);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
+    { kind: 'zoom', scroll: { x: 50, y: 20, dx: 0, dy: 0, lines: null, zoom: 0.25 } },
+    { kind: 'zoom', scroll: { x: 50, y: 150, dx: 0, dy: 0, lines: null, zoom: -0.5 } },
+  ]);
+  ctx.pinch(0.25, true);
+  assert.deepEqual(ctx.pollEvents(), [], 'begun over the list: nobody\'s');
+  ctx.frame(400, 200, 1, tree);
+  assert.equal(ctx.scrollOffset('list').y, 0);
+});
+
 // A wheel's notch glides (ADR 0050): `wheel` takes lines, a whole one
 // eases toward its 40 px over a few frames of the clock, and
 // `setSmoothWheel(false)` makes it jump as pixels do.

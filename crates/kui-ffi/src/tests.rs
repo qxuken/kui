@@ -4812,6 +4812,67 @@ mod wheel_headless {
         );
         kui_ctx_free(ctx);
     }
+
+    /// A trackpad's pinch through C (backlog F256): `kui_input_pinch`
+    /// reaches the `on_scroll` node under the pointer as its message
+    /// with `zoom` in the `scroll` data, `dx`/`dy` 0 and `lines` null, and
+    /// stays that node's to the gesture's end wherever the pointer goes.
+    #[test]
+    fn a_pinch_is_heard_with_its_zoom_and_latched() {
+        let ctx = kui_ctx_new();
+        let tag = kui_value_map();
+        kui_value_map_set(tag, ks("kind"), kui_value_str(ks("zoom")));
+        let frame = |ctx: *mut KuiCtx| {
+            kui_frame_begin(ctx, 300.0, 200.0, 1.0);
+            let mut canvas = unsafe { std::mem::zeroed::<KuiSpec>() };
+            canvas.width = KuiSizing {
+                tag: 2,
+                value: 300.0,
+            };
+            canvas.height = KuiSizing {
+                tag: 2,
+                value: 100.0,
+            };
+            canvas.on_scroll = tag;
+            kui_open_keyed(ctx, ks("canvas"), &canvas, std::ptr::null_mut());
+            kui_close(ctx);
+            kui_frame_finish(ctx);
+        };
+        let zooms = |ctx: *mut KuiCtx| {
+            let mut ev = KuiEvent::default();
+            let mut out = Vec::new();
+            while kui_poll_event(ctx, &mut ev) {
+                if ev_kind(&ev) != "scroll" {
+                    continue;
+                }
+                let scroll = kui_value_get(ev.payload, ks("scroll"));
+                let read = |name: &str| {
+                    let mut f = f64::NAN;
+                    assert!(kui_value_as_float(kui_value_get(scroll, ks(name)), &mut f));
+                    f
+                };
+                assert_eq!((read("dx"), read("dy")), (0.0, 0.0));
+                assert!(kui_value_is_null(kui_value_get(scroll, ks("lines"))));
+                out.push((read("x"), read("y"), read("zoom")));
+            }
+            out
+        };
+        frame(ctx);
+        frame(ctx);
+        kui_input_cursor(ctx, 150.0, 50.0);
+        kui_input_pinch(ctx, 0.0, true);
+        kui_input_pinch(ctx, 0.25, false);
+        // Off the canvas: still its pinch.
+        kui_input_cursor(ctx, 150.0, 150.0);
+        kui_input_pinch(ctx, -0.5, false);
+        assert_eq!(zooms(ctx), [(150.0, 50.0, 0.25), (150.0, 150.0, -0.5)]);
+        // A pinch begun off it is nobody's.
+        kui_input_pinch(ctx, 0.25, true);
+        assert_eq!(zooms(ctx), []);
+        kui_input_pinch(std::ptr::null_mut(), 0.25, true);
+        kui_value_free(tag);
+        kui_ctx_free(ctx);
+    }
 }
 
 /// On Windows a plugin's `kui_ffi.dll` and the host's own copy of this
