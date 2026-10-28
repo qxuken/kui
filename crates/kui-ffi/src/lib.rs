@@ -284,6 +284,9 @@ fn ctx_around(mut owned: Box<Core>) -> *mut KuiCtx {
         // like everything else it drains; kui_run follows the runner's
         // debug-build default.
         owned.set_diagnostics(false);
+        // A host driving its own frames is the one that asks `kui_hit`
+        // and `kui_pointer_wants` (backlog F233), from its first frame.
+        owned.arm_host_hit();
         let core: *mut Core = &mut *owned;
         Box::into_raw(Box::new(KuiCtx {
             core,

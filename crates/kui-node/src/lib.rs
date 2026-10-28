@@ -529,8 +529,16 @@ impl Ctx {
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        Ctx::around(Core::new())
+    }
+
+    /// A context owning `core`. Armed for `hit` and `pointerWants` from
+    /// its first frame, as C's are: a headless `Ctx` is what a host with a
+    /// world of its own drives (backlog F233); a `KuiWindow` is not.
+    fn around(core: Core) -> Self {
+        core.arm_host_hit();
         Ctx {
-            core: Core::new(),
+            core,
             events: Vec::new(),
             captures: kui_native::Captures::new(),
             extensions: Default::default(),
@@ -543,12 +551,7 @@ impl Ctx {
     /// events and glyph atlas are its own.
     #[napi]
     pub fn sibling(&self) -> Ctx {
-        Ctx {
-            core: Core::new_in(self.core.session()),
-            events: Vec::new(),
-            captures: kui_native::Captures::new(),
-            extensions: Default::default(),
-        }
+        Ctx::around(Core::new_in(self.core.session()))
     }
 
     /// `frame` from an already-encoded binary instruction stream, for

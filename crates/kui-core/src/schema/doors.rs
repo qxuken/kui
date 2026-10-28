@@ -848,7 +848,7 @@ pub const DOORS: &[Door] = &[
         odin: Is("hit"),
         node: Is("Ctx.hit"),
         lua: No(GUEST),
-        doc: "The topmost node at a point that blocks a host's world — a node kui takes the pointer on, or a box that paints unless it says `hostHit: pass`, or one that says `hostHit: block` — as of the last finished frame; none for the world (backlog F233). For a game, a map or a 3D view drawing the UI over a world of its own. Node's `KuiWindow` has no world under it.",
+        doc: "The topmost node at a point that blocks a host's world — a node kui takes the pointer on, or a box that paints unless it says `hostHit: pass`, or one that says `hostHit: block` — as of the last finished frame; none for the world (backlog F233). For a game, a map or a 3D view drawing the UI over a world of its own. Node's `KuiWindow` has no world under it. The painted boxes are recorded only once something asks: C's, Odin's and Node's contexts from their creation, a Rust `Core` from its first ask (which owes the frame that records them) or `Core::arm_host_hit`.",
     },
     Door {
         rust: "Core::pointer_wants",

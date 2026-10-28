@@ -80,7 +80,13 @@ Nothing else breaks.
   through. C `kui_hit`, `kui_pointer_wants`, `kui_keyboard_wants` and
   `KuiSpec.host_hit` (`KUI_HOST_HIT_*`); Odin `hit`, `pointer_wants`,
   `keyboard_wants`; Node `Ctx.hit`, `pointerWants`, `keyboardWants`; JSX
-  `hostHit`, Lua `host_hit`. kui's own hit testing is unchanged.
+  `hostHit`, Lua `host_hit`. kui's own hit testing is unchanged. The
+  painted boxes are recorded only once a host asks, so a window nobody
+  asks about pays nothing (they had cost the frame benches 5–14%): C's,
+  Odin's and Node's own contexts (`kui_ctx_new`, `new_ui`, `new Ctx()`,
+  and their siblings) are armed from the start; a Rust `Core` is armed by
+  its first `hit` or `pointer_wants`, which owes the frame that records
+  them, or before its first frame by `Core::arm_host_hit`.
 
 - **The draw data says where the frame drew** (backlog F235). A
   full-window overlay that draws two small tags paid for a clear, a draw

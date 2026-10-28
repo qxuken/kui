@@ -28,6 +28,14 @@ fn at(x: f32, y: f32, w: f32, h: f32) -> NodeSpec {
     )
 }
 
+/// A core armed for a host's asks, as C's and Odin's contexts are, so
+/// its first frame records the painted boxes.
+fn host() -> Core {
+    let core = Core::new();
+    core.arm_host_hit();
+    core
+}
+
 /// One frame of a transparent root holding what `f` declares.
 fn frame(core: &mut Core, f: impl FnOnce(&mut kui_core::Ui<'_>)) {
     let mut ui = core.frame(VIEW, 1.0);
@@ -38,7 +46,7 @@ fn frame(core: &mut Core, f: impl FnOnce(&mut kui_core::Ui<'_>)) {
 
 #[test]
 fn a_painted_panel_blocks_and_the_world_around_it_does_not() {
-    let mut core = Core::new();
+    let mut core = host();
     let mut panel = Key::ROOT;
     frame(&mut core, |ui| {
         panel = ui.leaf_keyed("panel", at(20.0, 20.0, 100.0, 80.0).bg(PANEL));
@@ -52,9 +60,31 @@ fn a_painted_panel_blocks_and_the_world_around_it_does_not() {
     assert_eq!(core.hit(-5.0, 50.0), None, "outside the window");
 }
 
+/// A core nobody asked about records no blockers, so a window with no
+/// host under it pays nothing for them (the frame benches paid 5-14%
+/// before). The first ask arms the core and owes a frame; until that
+/// frame only hit regions block, and from it on the answer is whole.
+#[test]
+fn the_first_ask_arms_the_core_and_owes_the_frame_that_answers_it() {
+    let mut core = Core::new();
+    let mut panel = Key::ROOT;
+    let draw = |core: &mut Core, panel: &mut Key| {
+        frame(core, |ui| {
+            *panel = ui.leaf_keyed("panel", at(20.0, 20.0, 100.0, 80.0).bg(PANEL));
+        })
+    };
+    draw(&mut core, &mut panel);
+    assert!(!core.owed().any(), "nothing owed before anyone asks");
+    assert_eq!(core.hit(50.0, 50.0), None, "not recorded before the ask");
+    assert!(core.owed().requested, "the ask owes the frame that records");
+    draw(&mut core, &mut panel);
+    assert_eq!(core.hit(50.0, 50.0), Some(panel), "recorded since");
+    assert!(!core.owed().any(), "and nothing more is owed");
+}
+
 #[test]
 fn the_topmost_answers_a_button_over_a_panel_and_a_panel_over_a_button() {
-    let mut core = Core::new();
+    let mut core = host();
     let (mut panel, mut button, mut cover) = (Key::ROOT, Key::ROOT, Key::ROOT);
     frame(&mut core, |ui| {
         panel = ui.with_keyed("panel", at(20.0, 20.0, 200.0, 120.0).bg(PANEL), |ui| {
@@ -78,7 +108,7 @@ fn the_topmost_answers_a_button_over_a_panel_and_a_panel_over_a_button() {
 
 #[test]
 fn pass_lets_a_painted_box_through_and_never_a_hit_region() {
-    let mut core = Core::new();
+    let mut core = host();
     let mut button = Key::ROOT;
     frame(&mut core, |ui| {
         button = ui.leaf_keyed("go", at(20.0, 20.0, 60.0, 30.0).bg(PANEL).on_click("go"));
@@ -123,7 +153,7 @@ fn pass_lets_a_painted_box_through_and_never_a_hit_region() {
 
 #[test]
 fn block_takes_the_pointer_where_nothing_paints() {
-    let mut core = Core::new();
+    let mut core = host();
     let mut catcher = Key::ROOT;
     frame(&mut core, |ui| {
         catcher = ui.leaf_keyed(
@@ -138,7 +168,7 @@ fn block_takes_the_pointer_where_nothing_paints() {
 
 #[test]
 fn a_rounded_panel_lets_its_corners_through_and_a_clip_cuts_it() {
-    let mut core = Core::new();
+    let mut core = host();
     let mut inner = Key::ROOT;
     frame(&mut core, |ui| {
         ui.leaf_keyed("pill", at(20.0, 20.0, 100.0, 40.0).bg(PANEL).radius(20.0));
@@ -155,7 +185,7 @@ fn a_rounded_panel_lets_its_corners_through_and_a_clip_cuts_it() {
 
 #[test]
 fn the_pointer_is_the_ui_s_over_it_and_while_a_press_holds_it() {
-    let mut core = Core::new();
+    let mut core = host();
     let build = |core: &mut Core| {
         frame(core, |ui| {
             ui.leaf_keyed("panel", at(20.0, 20.0, 100.0, 80.0).bg(PANEL));
@@ -185,7 +215,7 @@ fn items() -> Vec<MenuItem> {
 
 #[test]
 fn an_open_menu_and_a_modal_take_the_pointer_everywhere() {
-    let mut core = Core::new();
+    let mut core = host();
     let mut card = Key::ROOT;
     frame(&mut core, |ui| {
         card = ui.leaf_keyed("card", at(20.0, 20.0, 100.0, 80.0).bg(PANEL));
@@ -211,7 +241,7 @@ fn an_open_menu_and_a_modal_take_the_pointer_everywhere() {
 
 #[test]
 fn the_keyboard_is_the_ui_s_while_an_editor_or_a_sink_has_focus() {
-    let mut core = Core::new();
+    let mut core = host();
     let build = |core: &mut Core, sink: bool| {
         frame(core, |ui| {
             ui.text_edit(

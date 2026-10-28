@@ -468,8 +468,19 @@ pub struct Core {
     /// emission; the previous frame's buffers, cleared, in between.
     pub(crate) hit_shapes: crate::input::HitShapes,
     /// The painted boxes that are no hit region, filled by emission and
-    /// installed with the hits (backlog F233).
+    /// installed with the hits (backlog F233) — only once a host has
+    /// asked (`host_asked`), so a window nobody asks about pays nothing.
     pub(crate) blockers: Vec<crate::input::Blocker>,
+    /// A host has asked `hit` or `pointer_wants`, or armed them
+    /// ([`Core::arm_host_hit`]): emission records the blockers from the
+    /// next frame on. Atomic since the asks take `&self`.
+    pub(crate) host_asked: std::sync::atomic::AtomicBool,
+    /// The frame being emitted records blockers: `host_asked`, read once
+    /// as emission starts.
+    pub(crate) record_blockers: bool,
+    /// A frame has recorded them, so `hit` answers in full; until then an
+    /// armed core owes a frame.
+    pub(crate) blockers_live: bool,
     /// The session's scan found no font the shaper can read, so text is
     /// drawn in the last-resort face (`no-system-fonts`): read when the
     /// core joins the session.
@@ -1495,6 +1506,9 @@ impl Core {
             stock_polygon: None,
             hit_shapes: Default::default(),
             blockers: Vec::new(),
+            host_asked: Default::default(),
+            record_blockers: false,
+            blockers_live: false,
             no_system_fonts: session.state().system.last_resort,
             display: DisplayList::default(),
             viewport: Size::ZERO,
@@ -2082,7 +2096,8 @@ impl Core {
             requested: self.frame_requested
                 || self.tree.any_animate
                 || self.fonts_moved()
-                || self.submenu_waiting(),
+                || self.submenu_waiting()
+                || self.host_hit_pending(),
             autoscroll: self.autoscrolling(),
             scroll: self.scroll.animating(),
         }

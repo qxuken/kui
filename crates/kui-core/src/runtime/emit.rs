@@ -384,7 +384,9 @@ impl Core {
         let tracked = spec.hover_tracked() && interactive;
         if tracked {
             self.push_hit(i, rect, clip_rect, turn, drop.clone(), hits);
-        } else if !(interactive && matches!(self.tree.content[i], NodeContent::Edit(_))) {
+        } else if self.record_blockers
+            && !(interactive && matches!(self.tree.content[i], NodeContent::Edit(_)))
+        {
             // What blocks a host's world without being a hit region
             // (backlog F233): a box that paints, or one that says so. An
             // editor's own region is pushed below.
@@ -1111,6 +1113,7 @@ impl Core {
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
         self.hit_shapes = self.interaction.take_shape_buffer();
         self.blockers = self.interaction.take_blocker_buffer();
+        self.record_blockers = self.host_asked.load(std::sync::atomic::Ordering::Relaxed);
         let mut scroll_regions: Vec<ScrollRegion> = Vec::new();
         self.display.viewport = Size::new(self.viewport.w * scale, self.viewport.h * scale);
         self.display.scale = scale;
@@ -1678,6 +1681,7 @@ impl Core {
         self.interaction.set_hits_shaped(hits, shapes);
         self.interaction
             .set_blockers(std::mem::take(&mut self.blockers));
+        self.blockers_live |= self.record_blockers;
         // A button held on a node this frame no longer declares has no one
         // to hear its release (backlog F105).
         let tree = &self.tree;

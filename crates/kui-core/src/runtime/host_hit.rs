@@ -15,8 +15,31 @@ impl Core {
     /// that says `host_hit: block` (see [`crate::spec::HostHit`]). `None`
     /// over bare text, over a box that paints nothing, and outside the
     /// window: the world's.
+    ///
+    /// The painted boxes are recorded only once a host has asked (this or
+    /// [`Core::pointer_wants`]) or armed them ([`Core::arm_host_hit`]),
+    /// so a window nobody asks about pays nothing for them. The first ask
+    /// arms them and owes a frame; until that frame, only the nodes kui
+    /// takes the pointer on block. C's and Odin's own contexts
+    /// (`kui_ctx_new`, `kui_ctx_new_in`) are armed from the start.
     pub fn hit(&self, x: f32, y: f32) -> Option<Key> {
+        self.arm_host_hit();
         self.interaction.host_hit_at(Vec2::new(x, y))
+    }
+
+    /// Records, from the next frame on, the painted boxes [`Core::hit`]
+    /// and [`Core::pointer_wants`] count as blocking — what their first
+    /// call does. A host that asks about its very first frame arms before
+    /// drawing it.
+    pub fn arm_host_hit(&self) {
+        self.host_asked
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Armed with no frame recorded since: the frame [`Core::owed`] owes
+    /// so the next answer is whole.
+    pub(crate) fn host_hit_pending(&self) -> bool {
+        !self.blockers_live && self.host_asked.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Whether the pointer is the UI's now: over a node [`Core::hit`]
@@ -27,6 +50,7 @@ impl Core {
     /// asks before it hands a press, a drag or a wheel to its world, and
     /// feeds kui every pointer event either way.
     pub fn pointer_wants(&self) -> bool {
+        self.arm_host_hit();
         self.menu.is_some()
             || self.menu_bar_open.is_some()
             || self.modal.is_some()
