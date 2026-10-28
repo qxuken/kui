@@ -246,7 +246,7 @@ local KEYS: {{string}} = {
   { "↑ k", "the selected span's parent" },
   { "Esc", "clear the range, then the selection" },
   { "The window", "" },
-  { "wheel · pinch", "zoom about the pointer" },
+  { "wheel · pinch", "zoom about the pointer, over the timeline, a lane or the overview" },
   { "swipe sideways · ⇧ wheel", "pan" },
   { "drag the lanes", "pan" },
   { "w s", "zoom in, out" },
@@ -258,6 +258,7 @@ local KEYS: {{string}} = {
   { "0", "the whole recording" },
   { "Elsewhere", "" },
   { "/", "filter spans by name" },
+  { "a table's header", "sort by it; again, the other way" },
   { "⌘O", "open a recording" },
   { "?", "this card" },
 }

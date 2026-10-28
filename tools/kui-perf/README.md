@@ -17,13 +17,15 @@ kui run tools/kui-perf -- session.kuitrace
   at a time in Rust, so a million spans pan as a hundred do), marks for input,
   events, notes and the components drawn fresh; counters and gauges as graph
   lanes under it taking the rest, their plots starting where its lanes do. The wheel
-  or a pinch zooms about the pointer, a sideways swipe or ⇧ and the wheel pans,
+  or a pinch — over the waterfall, a graph lane or the overview — zooms about the
+  pointer, a sideways swipe or ⇧ and the wheel pans,
   a drag on the lanes pans, and a drag along the time axis selects a range —
   its length beside the title, zoomed to by its button or `z`.
 - **The frame or span selected**: its verdict, phases, input path, holders,
   components drawn fresh and why, notes and counters.
 - **Tables over the window**: frames, spans, origins, components, counters and
-  gauges, burns, gaps — read once the window is still.
+  gauges, burns, gaps — read once the window is still; a header sorts its table
+  (a number's greatest first, again the other way).
 - **Filters**: a span name, a shortest span, only slow frames or no unchanged
   ones, origins; the devtools' own spans off unless asked for.
 - **Live**: the file is watched; what it gains comes in, the window riding the

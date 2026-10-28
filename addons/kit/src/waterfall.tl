@@ -101,10 +101,14 @@ local function window(st: State, p: P): number, number
   return st.v0, st.v1
 end
 
+-- A time on an axis ticking every `step` ms, in as many places as the
+-- step needs: zoomed in past a hundredth, "%.2f" read every tick alike.
 local function fmt(ms: number, step: number): string
   if step >= 1000 then return string.format("%.1f s", ms / 1000) end
   if step >= 1 then return string.format("%.0f ms", ms) end
-  return string.format("%.2f ms", ms)
+  local d = math.min(6, math.max(1, math.ceil(-math.log(step, 10) - 1e-9)))
+  if step * 10 ^ d % 1 > 1e-6 then d = math.min(6, d + 1) end
+  return string.format("%." .. d .. "f ms", ms)
 end
 
 local function nice(raw: number): number
@@ -309,6 +313,10 @@ function M.waterfall(c: Ctx, p: P): kui.Node
     gap = 4,
     pad = 10,
     bg = ref(c, "panel"),
+    -- The whole box zooms and pans as its lanes do: the padding under
+    -- the last lane, the head and the gutter answered nothing.
+    on_scroll = act(c, "waterfall.wheel", { v0 = v0, v1 = v1, x = st.x, w = width }),
+    on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
     row(head),
     beside(row(axis), false),
     ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),

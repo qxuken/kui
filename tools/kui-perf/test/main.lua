@@ -125,6 +125,34 @@ check(#st.rec.spans < spans, "an origin hidden")
 update({ kind = "ins_origin", name = "host" })
 check(#st.rec.spans == spans, "and shown again")
 
+-- The headers sort.
+update({ kind = "ins_tab", change = { value = "frames" } })
+update({ kind = "ins_sort", name = "frames", sort = { field = "work" } })
+local by = st.shown.frames and st.shown.frames.ch
+check(by and by:get(0, "work") >= by:get(1, "work"), "a number's header sorts the frames greatest first")
+local first = st.shown.frames.order[1]
+update({ kind = "ins_frame", select = { row = 0 } })
+check(st.frame == first, "a row picked in the sorted table is that frame")
+update({ kind = "ins_sort", name = "frames", sort = { field = "work" } })
+by = st.shown.frames.ch
+check(by:get(0, "work") <= by:get(1, "work"), "again, least first")
+update({ kind = "ins_sort", name = "frames", sort = { field = "frame" } })
+update({ kind = "ins_sort", name = "frames", sort = { field = "frame" } })
+check(st.sorts.frames == nil, "by number, as they came, is no sort")
+
+-- The wheel over a graph lane and the overview.
+key("0")
+local whole = st.v1 - st.v0
+update({ kind = "ins_wheel", value = { x = 0, w = 1000 }, scroll = { x = 500, y = 0, dx = 0, dy = 100 } })
+check(st.v1 - st.v0 < whole, "the wheel over a lane zooms in")
+local zoomed = st.v1 - st.v0
+update({ kind = "ins_wheel", value = { x = 0, w = 1000 }, scroll = { x = 500, y = 0, dx = 0, dy = 0, zoom = -0.5 } })
+check(st.v1 - st.v0 > zoomed, "a pinch out zooms out")
+update({ kind = "ins_wheel", value = { x = 0, w = 1000 }, scroll = { x = 500, y = 0, dx = 0, dy = 300 } })
+local v0 = st.v0
+update({ kind = "ins_overview_wheel", value = { x = 0, w = 1000 }, scroll = { x = 500, y = 0, dx = -40, dy = 0 } })
+check(st.v0 > v0, "a sideways swipe over the overview pans")
+
 -- The dock.
 update({ kind = "ins_dock", resize = { fraction = 0.7 } })
 check(st.dock == 0.7, "the dock's rule moves")

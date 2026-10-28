@@ -2,6 +2,18 @@
 -- inspector's (inspector.tl), and the messages both hear.
 
 local record state
+  record Sort
+    field: string
+    desc: boolean
+  end
+
+  record Shown
+    key: string
+    ch: kui.Channel
+    order: {integer}
+    inv: {integer:integer}
+  end
+
   -- What the inspector keeps of one recording.
   record Inspector
     rec: kui.Recording
@@ -38,6 +50,9 @@ local record state
     stale: boolean
     restat_due: boolean
     tables: {string:kui.Channel}
+    -- Each table's order by its header, and its rows taken in it.
+    sorts: {string:Sort}
+    shown: {string:Shown}
     search_focus: integer
   end
 
@@ -74,6 +89,8 @@ local record state
     zoom: {string:number}
     resize: {string:number}
     range: {string:number}
+    sort: {string:any}
+    scroll: {string:any}
     toggle: {string:any}
     key: {string:any}
     menu: {string:any}

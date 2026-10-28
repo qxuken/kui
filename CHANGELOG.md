@@ -155,7 +155,19 @@ and its tables sort and filter them.
   a sideways swipe or ⇧ and the wheel pans, a pinch zooms (`scroll.zoom`);
   `gutter` keeps an empty column left of the axis and the lanes, to line
   them up with charts under them; `max_height`, the most its lanes take
-  before they scroll, for one as tall as its lanes.
+  before they scroll, for one as tall as its lanes. Its whole box takes
+  the wheel and a drag, the padding under its last lane too; zoomed in
+  past a hundredth of a millisecond its axis reads in as many places as
+  its step needs, where every tick read alike.
+
+- **Kit's line chart zoomed in** (backlog F258): a window between two
+  samples draws its line whole, cut a plot's width either side, where a
+  line from millions of pixels away was drawn broken; a step far under
+  the values reads in whole digits (`35702.222 ms`, where every tick read
+  `36k ms`), and the readout's x in enough places; a plot under 96 px
+  steps its y range fewer than four times, so its labels no longer
+  overlap; and the lines run a pixel in from the plot's top and foot, so
+  a value on the range's edge is not cut in half.
 
 - **kui-perf: the keys' card, the dock, the range** (backlog F258): `?`,
   Help ▸ Keys and gestures or the toolbar's ⓘ shows every key and
@@ -167,7 +179,11 @@ and its tables sort and filter them.
   they walked the frames as ← → do; the waterfall is as tall as its lanes
   (twelve at most), the graph lanes taking the rest; the overview's window
   is drawn in the ink with what lies outside it dimmed, never narrower
-  than 8 px; the graph lanes' plots start where the waterfall's lanes do. Its headless test keeps its
+  than 8 px; the graph lanes' plots start where the waterfall's lanes do;
+  the wheel and a pinch zoom over every graph lane and over the overview,
+  a sideways swipe panning; every table's header sorts it — a number's
+  greatest first, again the other way — in Rust (`Channel:sort`, `take`),
+  a row picked in a sorted table the frame it shows. Its headless test keeps its
   preferences in a folder of its own, where it removed the app's.
 
 - **`kui.trace`'s filter hides span names whole**: `hide_names = {

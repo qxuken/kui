@@ -102,10 +102,14 @@ local function window(st, p)
    return st.v0, st.v1
 end
 
+
+
 local function fmt(ms, step)
    if step >= 1000 then return string.format("%.1f s", ms / 1000) end
    if step >= 1 then return string.format("%.0f ms", ms) end
-   return string.format("%.2f ms", ms)
+   local d = math.min(6, math.max(1, math.ceil(-math.log(step, 10) - 1e-9)))
+   if step * 10 ^ d % 1 > 1e-6 then d = math.min(6, d + 1) end
+   return string.format("%." .. d .. "f ms", ms)
 end
 
 local function nice(raw)
@@ -310,6 +314,10 @@ height = h, bg = ref(c, "accent"), opacity = 0.16, }),
       gap = 4,
       pad = 10,
       bg = ref(c, "panel"),
+
+
+      on_scroll = act(c, "waterfall.wheel", { v0 = v0, v1 = v1, x = st.x, w = width }),
+      on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
       row(head),
       beside(row(axis), false),
       ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),
