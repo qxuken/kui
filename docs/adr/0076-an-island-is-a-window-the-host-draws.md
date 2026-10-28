@@ -1,15 +1,16 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-28
 ---
 
 # An island is a window the host draws
 
-> **Proposed (2026-10-28), not built.** Settled by a grilling round with
-> the user on backlog F236 (with F237), after F233–F235, F237's door,
-> F238 and F239 were built for Replicator Bloom. It answers F236 with a
-> kind of declared window rather than a row on a subtree, and closes
-> F237's atlas half.
+> **Accepted and built (2026-10-28), backlog F236.** Settled by a
+> grilling round with the user on F236 (with F237), after F233–F235,
+> F237's door, F238 and F239 were built for Replicator Bloom. It answers
+> F236 with a kind of declared window rather than a row on a subtree, and
+> closes F237's atlas half. Built the same day as written: decisions 1–7
+> needed no change.
 
 ## Context
 

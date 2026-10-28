@@ -226,6 +226,9 @@ impl Core {
                         self.diag.raise(crate::diag::duplicate_window_config(&name));
                     }
                 }
+                WindowChange::Resized { id, size } => {
+                    self.set_window_size(id, size);
+                }
                 WindowChange::Closed { id, messages } => {
                     self.interaction
                         .window_commands

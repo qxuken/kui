@@ -649,7 +649,7 @@ pub(crate) const WINDOW_EVENTS: &[(&str, &str, &str)] = &[
 /// and `WindowLifecycle::from_entry` read, typed.
 pub(crate) const WINDOW_ENTRY: Fields = &[
     ("name", true, "string"),
-    ("kind", false, "\"normal\"|\"popup\""),
+    ("kind", false, "\"normal\"|\"popup\"|\"surface\""),
     ("width", false, "number"),
     ("height", false, "number"),
     ("activates", false, "boolean"),

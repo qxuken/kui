@@ -600,6 +600,7 @@ package kui_c
 #assert(WINDOW_MAIN == 0)
 #assert(WINDOW_KIND_NORMAL == 0)
 #assert(WINDOW_KIND_POPUP == 1)
+#assert(WINDOW_KIND_SURFACE == 2)
 #assert(DISMISS_OUTSIDE == 0)
 #assert(DISMISS_ESCAPE == 1)
 #assert(CHANNEL_BUCKET == 8)

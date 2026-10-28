@@ -4077,38 +4077,10 @@ and in the archive. F233–F239, the rest, filed and not built then: each
 a door in every binding or a design of its own. F233–F235, F237–F239
 were **built 2026-10-28** and are in the archive; F236 was decided with
 the user the same day as [ADR 0076](adr/0076-an-island-is-a-window-the-host-draws.md)
-and is the one left to build. F240, F224's part file shared by two
+and built after it, so the whole wishlist is in the archive. F240, F224's part file shared by two
 threads, was what the round's test run found, built the same day and in
 the archive.
 
-### `~` F236 — A subtree cannot be drawn into a target of its own
-
-**Found** in the wishlist's item 5. To put UI in the world — on the gate
-ring, warped by perspective, behind the swarm — the host needs that
-subtree's quads apart, and `KuiDrawData` does not say which node a quad
-came from. Today: a `KuiCtx` per island (fonts and atlas of its own, no
-shared focus, the host routing input and inverting its own transforms),
-or opacity groups abused for begin/end markers (`opacity = 0.999` and
-`kui_set_opacity_groups`). **Do.** An ADR for a `surface` row: the
-subtree laid out at its own size, its quads a separate range with its
-own origin and bounds, `kui_input_cursor_in(ctx, surface, x, y)` taking
-the pointer in the surface's coordinates once the host has un-projected
-it; focus, atlas and fonts shared because it is one context. Decide with
-F237: islands done in one context are most of what several contexts
-were wanted for.
-
-
-**Decided** 2026-10-28 with the user:
-[ADR 0076](adr/0076-an-island-is-a-window-the-host-draws.md) (proposed).
-An island is a declared window of a new kind, `KUI_WINDOW_KIND_SURFACE`,
-never an OS window: the host runs it as a context in the main one's
-session (`kui_ctx_new_in`), at the size its declaration says — re-read
-every frame, a change arriving as `KUI_CMD_SET_SIZE` — and a scale of
-its own, draws its draw data into its texture (F234), and feeds it input
-in its own coordinates after un-projecting; keys go to the context the
-last press landed in; the windowed runner warns `surface-without-host`
-and opens nothing. No row on a subtree, no ranges in `KuiDrawData`.
-**Do.** Build ADR 0076.
 ### Theirs, not ours
 
 - **Item 11, "tell a single-blend host to turn subpixel text off".** It
@@ -6208,7 +6180,7 @@ move.
 - `.` **F226** — [`open_external` and `show_in_folder` on Windows take a `/` as no path at all](backlog/closed-2026-09.md#-f226--open_external-and-show_in_folder-on-windows-take-a--as-no-path-at-all--done-2026-10-27) — done (2026-10-27) — every `/` made `\` before `explorer` is asked, a URL left alone
 - `.` **F227** — [A span's background sits flush on its first and last letters](backlog/closed-2026-09.md#-f227--a-spans-background-sits-flush-on-its-first-and-last-letters--done-2026-10-27) — done (2026-10-27) — `Span::bg_pad` widens the rect's two ends, stopping at another background's edge and sharing a narrow gap; in every binding, C at ABI 40
 
-**From Replicator Bloom's wishlist (2026-10-27)** — F228–F232 filed and built the same day; F233–F235 and F237–F239 built 2026-10-28, F236 decided (ADR 0076) and open; F240, found by the round's test run, built; F245, found adopting F228, built (2026-10-28)
+**From Replicator Bloom's wishlist (2026-10-27)** — F228–F232 filed and built the same day; F233–F239 built 2026-10-28 (F236 as ADR 0076); F240, found by the round's test run, built; F245, found adopting F228, built (2026-10-28)
 
 - `.` **F228** — [The atlas is uploaded whole for every new glyph](backlog/closed-2026-09.md#-f228--the-atlas-is-uploaded-whole-for-every-new-glyph--done-2026-10-27) — done (2026-10-27) — `GlyphAtlas::dirty_rect` and `mark_uploaded`; kui-wgpu uploads the rect; `KuiDrawData.atlas_dirty_rect` (ABI 40)
 - `.` **F229** — [Nothing says how a host's loop runs, or when its draw can be skipped](backlog/closed-2026-09.md#-f229--nothing-says-how-a-hosts-loop-runs-or-when-its-draw-can-be-skipped--done-2026-10-27) — done (2026-10-27) — kui.h's "The host loop": input, drain, build, drain, draw; what only the second drain sees; `kui_frame_unchanged` as "skip the draw"
@@ -6218,7 +6190,7 @@ move.
 - `.` **F233** — [A host cannot ask whether the pointer is over the UI](backlog/closed-2026-09.md#-f233--a-host-cannot-ask-whether-the-pointer-is-over-the-ui--done-2026-10-28) — done (2026-10-28) — painted boxes block, `hostHit` moves one either way; `hit`, `pointer_wants`, `keyboard_wants` in C, Odin and Node (ABI 42)
 - `~` **F234** — [A host's renderer copies kui-wgpu's shader and its instance packing](backlog/closed-2026-09.md#-f234--a-hosts-renderer-copies-kui-wgpus-shader-and-its-instance-packing--done-2026-10-28) — done (2026-10-28) — `kui_core::gpu`; `kui_renderer_wgsl`, `kui_instance_stride`, `kui_instance_attributes`, `kui_pack_instances`; reference hosts `wgpu_host.c` and `wgpu_host.odin`
 - `.` **F235** — [The draw data has no bounds](backlog/closed-2026-09.md#-f235--the-draw-data-has-no-bounds--done-2026-10-28) — done (2026-10-28) — `DisplayList::bounds`, `KuiDrawData.bounds` (ABI 42); per-layer rects wait for F236's surfaces
-- `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — decided (2026-10-28), not built — ADR 0076: an island is a declared window of kind `surface`, drawn by the host
+- `~` **F236** — [A subtree cannot be drawn into a target of its own](backlog/closed-2026-09.md#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own--done-2026-10-28) — done (2026-10-28) — ADR 0076: `WindowKind::Surface` / `KUI_WINDOW_KIND_SURFACE` / `kind: "surface"`, a declared window the host draws
 - `.` **F237** — [Contexts cannot share their fonts, images or atlas](backlog/closed-2026-09.md#-f237--contexts-cannot-share-their-fonts-images-or-atlas--done-2026-10-28) — done (2026-10-28) — `kui_ctx_new_in` / `new_ui_in` / `Ctx.sibling` over `Core::new_in`; the atlas stays per context (ADR 0076, decision 7)
 - `.` **F238** — [The release packs carry no library without the runner](backlog/closed-2026-09.md#-f238--the-release-packs-carry-no-library-without-the-runner--done-2026-10-28) — done (2026-10-28) — `lib/<platform>/core/` in both tarballs, `KUI_CORE` in Odin, pkg-config files in the C pack, `host_loop` verified against it
 - `.` **F239** — [Every host maps its window library's keys to kui's by hand](backlog/closed-2026-09.md#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand--done-2026-10-28) — done (2026-10-28) — `kui_glfw.h` / `kui_sdl3.h` and Odin's `kui/glfw` / `kui/sdl3`, generated from one table checked against `KeyCode::from_name`

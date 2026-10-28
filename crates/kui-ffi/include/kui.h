@@ -2311,11 +2311,26 @@ typedef struct KuiSpan {
  * make: a list taller than the window, a menu near an edge with nowhere
  * in-window to go, a panel beside the app.
  *
+ * KUI_WINDOW_KIND_SURFACE is an island you draw (ADR 0076,
+ * docs/adr/0076-an-island-is-a-window-the-host-draws.md): never an OS
+ * window. On its KUI_CMD_OPEN, make a context for it with
+ * kui_ctx_new_in(main) and kui_env_set_window(that, cmd.window, ...), build
+ * the view into it each turn at cmd.config's size and a scale of your own
+ * (your texture's pixels per logical px), draw its draw data into your
+ * texture (kui.h's "Drawing it yourself") and map that into your world.
+ * Its size follows its declaration every frame: a change arrives as
+ * KUI_CMD_SET_SIZE. Feed it input in its own logical px once you have
+ * un-projected the pointer onto it, kui_input_cursor_left when the ray
+ * misses; send keys to the context the last press landed in. It closes
+ * with the window that declared it. kui_run opens nothing for one and
+ * warns surface-without-host.
+ *
  * Any other value opens a normal window - so a host built against a later
  * header degrades to a window rather than to nothing - and raises the
  * unknown-window-kind warning saying so. */
 #define KUI_WINDOW_KIND_NORMAL 0u
 #define KUI_WINDOW_KIND_POPUP 1u
+#define KUI_WINDOW_KIND_SURFACE 2u
 
 /* Why a window was asked to go away (kui_window_dismissed). */
 #define KUI_DISMISS_OUTSIDE 0u

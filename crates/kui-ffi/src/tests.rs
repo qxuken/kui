@@ -836,7 +836,7 @@ mod window_commands_headless {
         let ctx = kui_ctx_new();
         kui_set_diagnostics(ctx, true);
         let cfg = KuiWindowConfig {
-            kind: KUI_WINDOW_KIND_POPUP + 1,
+            kind: KUI_WINDOW_KIND_SURFACE + 1,
             width: 320.0,
             height: 240.0,
             activates: 1,
@@ -893,6 +893,13 @@ mod window_commands_headless {
         kui_window_declare(ctx, ks("palette"), &cfg);
         kui_window_declare(ctx, ks("menu"), &popup);
         kui_window_declare(ctx, ks("tools"), std::ptr::null());
+        let ring = KuiWindowConfig {
+            kind: KUI_WINDOW_KIND_SURFACE,
+            width: 200.0,
+            height: 100.0,
+            ..Default::default()
+        };
+        kui_window_declare(ctx, ks("ring"), &ring);
         kui_frame_finish(ctx);
         let mut out = [KuiWarning {
             code: KuiStr {
@@ -906,6 +913,34 @@ mod window_commands_headless {
             },
         }; 4];
         assert_eq!(kui_take_warnings(ctx, out.as_mut_ptr(), out.len()), 0);
+        kui_ctx_free(ctx);
+    }
+
+    /// A surface (ADR 0076) crosses as its kind and its size, and a new
+    /// size in its declaration arrives as KUI_CMD_SET_SIZE.
+    #[test]
+    fn a_surface_opens_with_its_kind_and_resizes_by_its_declaration() {
+        let ctx = kui_ctx_new();
+        let declare = |w: f32| {
+            let ring = KuiWindowConfig {
+                kind: KUI_WINDOW_KIND_SURFACE,
+                width: w,
+                height: 100.0,
+                ..Default::default()
+            };
+            kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+            kui_window_declare(ctx, ks("ring"), &ring);
+            kui_frame_finish(ctx);
+        };
+        declare(200.0);
+        let mut cmd = KuiWindowCommand::default();
+        assert!(kui_take_window_command(ctx, &raw mut cmd));
+        assert_eq!(cmd.kind, KUI_CMD_OPEN);
+        assert_eq!(cmd.config.kind, KUI_WINDOW_KIND_SURFACE);
+        assert_eq!((cmd.config.width, cmd.config.height), (200.0, 100.0));
+        let id = cmd.window;
+        declare(260.0);
+        assert_eq!(drain(ctx), [(KUI_CMD_SET_SIZE, id, 260.0, 100.0)]);
         kui_ctx_free(ctx);
     }
 

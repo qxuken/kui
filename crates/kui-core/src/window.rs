@@ -108,18 +108,30 @@ pub enum WindowKind {
     /// float ([`crate::spec::FloatConfig::fit`]): a float costs one tree
     /// and one draw call, a popup an OS surface, a swapchain and a `Core`.
     Popup,
+    /// An island the host draws: never an OS window
+    /// (`docs/adr/0076-an-island-is-a-window-the-host-draws.md`). A game
+    /// runs it as a context of its own in the main one's session, draws
+    /// its draw data into a texture of its own and maps that into its
+    /// world — UI on a gate ring, warped by the camera. Owned by the
+    /// window that declares it and closed with it, as a popup is. Its
+    /// size follows its declaration, read every frame
+    /// ([`WindowCommand::SetSize`] when it changes), since nobody drags
+    /// it; its scale is the host's. The windowed runner has no world to
+    /// draw one into: it warns `surface-without-host` and opens nothing.
+    Surface,
 }
 
 impl WindowKind {
     /// Every kind, in wire order: the index a binding that spells kinds
     /// as numbers sends. Append-only.
-    pub const ALL: [WindowKind; 2] = [WindowKind::Normal, WindowKind::Popup];
+    pub const ALL: [WindowKind; 3] = [WindowKind::Normal, WindowKind::Popup, WindowKind::Surface];
 
     /// The wire name, for the bindings and the report.
     pub fn name(self) -> &'static str {
         match self {
             WindowKind::Normal => "normal",
             WindowKind::Popup => "popup",
+            WindowKind::Surface => "surface",
         }
     }
 

@@ -424,6 +424,7 @@ Audio_Cmd :: enum u32 {
 Window_Kind :: enum u32 {
 	Normal = 0, // KUI_WINDOW_KIND_NORMAL
 	Popup = 1, // KUI_WINDOW_KIND_POPUP
+	Surface = 2, // KUI_WINDOW_KIND_SURFACE
 }
 
 Window_Cmd :: enum u32 {

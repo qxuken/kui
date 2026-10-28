@@ -1390,13 +1390,21 @@ export type WarningCode =
    *  again to reopen. */
   | 'window-declared-while-closed'
   /** A window declared with a `KUI_WINDOW_KIND_*` this build does not have —
-   *  `KUI_WINDOW_KIND_NORMAL` and `KUI_WINDOW_KIND_POPUP` are the two there
-   *  are. Only a C host can reach this: JSX and Lua name a kind by string, so
-   *  an unknown one is refused where it is written rather than reported a frame
-   *  later. The window still opens, as a normal one, so a host built against a
-   *  later header degrades to a window rather than to nothing; this line is
-   *  what keeps that from being silent. */
+   *  `KUI_WINDOW_KIND_NORMAL`, `KUI_WINDOW_KIND_POPUP` and
+   *  `KUI_WINDOW_KIND_SURFACE` are the three there are. Only a C host can reach
+   *  this: JSX and Lua name a kind by string, so an unknown one is refused
+   *  where it is written rather than reported a frame later. The window still
+   *  opens, as a normal one, so a host built against a later header degrades to
+   *  a window rather than to nothing; this line is what keeps that from being
+   *  silent. */
   | 'unknown-window-kind'
+  /** A window declared as a surface — an island a host draws into its own world
+   *  (`docs/adr/0076-an-island-is-a-window-the-host-draws.md`) — under the
+   *  windowed runner, which has no world to draw it into: it opens nothing, and
+   *  the rest of the app runs. A surface is for a host that drives kui itself
+   *  (a game on its own window and GPU device); under the runner, a float or a
+   *  normal window is what shows the subtree. */
+  | 'surface-without-host'
   /** A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a key
    *  or a label, the text was held for the frame that would declare it, and the
    *  frame after the call declared no editor under that name — so nothing was

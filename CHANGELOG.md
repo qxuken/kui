@@ -126,6 +126,18 @@ Nothing else breaks.
   `KUI_BOX_CLICK` (a click message). Macros in kui.h, C only; never
   `break` or `return` out of one.
 
+- **Islands: a window the host draws** (backlog F236, [ADR
+  0076](docs/adr/0076-an-island-is-a-window-the-host-draws.md)). A game
+  that wants UI *in* its world — on a gate ring, under the camera's
+  perspective — declares a window of the new kind `surface` (Rust
+  `WindowKind::Surface`, C `KUI_WINDOW_KIND_SURFACE`, `kind: "surface"`
+  in JSX and Lua). It is never an OS window: the host runs it as a context
+  in the main one's session (`kui_ctx_new_in`), at the size its
+  declaration says — a new size arrives as `SetSize` — and a scale of its
+  own, draws it into its own texture (F234) and feeds it input in its own
+  coordinates. It closes with the window that declared it. The windowed
+  runner opens nothing for one and warns `surface-without-host`.
+
 ## 0.1.0-alpha.70 (2026-10-28)
 
 **What breaks.**

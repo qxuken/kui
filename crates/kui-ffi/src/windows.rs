@@ -127,10 +127,14 @@ fn declare(
     // A kind this build does not have degrades to `Normal` (see
     // `window_config_of`) — but silently it would read as the popup
     // having shipped, so the degradation says so.
-    if let Some(k) = raw
-        .map(|c| c.kind)
-        .filter(|k| *k != KUI_WINDOW_KIND_NORMAL && *k != KUI_WINDOW_KIND_POPUP)
-    {
+    if let Some(k) = raw.map(|c| c.kind).filter(|k| {
+        ![
+            KUI_WINDOW_KIND_NORMAL,
+            KUI_WINDOW_KIND_POPUP,
+            KUI_WINDOW_KIND_SURFACE,
+        ]
+        .contains(k)
+    }) {
         c.core().warn(kui_core::diag::unknown_window_kind(&name, k));
     }
     c.core().declare_window_with(&name, cfg, lifecycle);

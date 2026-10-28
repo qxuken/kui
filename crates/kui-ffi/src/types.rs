@@ -1912,6 +1912,9 @@ pub const KUI_WINDOW_KIND_NORMAL: u32 = 0;
 /// by the window that declared it, placed against `anchor_*` in screen
 /// coordinates and closed when its owner closes.
 pub const KUI_WINDOW_KIND_POPUP: u32 = 1;
+/// `KUI_WINDOW_KIND_SURFACE`: an island the host draws, never an OS window
+/// (ADR 0076).
+pub const KUI_WINDOW_KIND_SURFACE: u32 = 2;
 
 pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
     let Some(c) = c else {
@@ -1929,6 +1932,7 @@ pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
         // on the way past, so the degradation is reported and not silent.
         kind: match c.kind {
             KUI_WINDOW_KIND_POPUP => WindowKind::Popup,
+            KUI_WINDOW_KIND_SURFACE => WindowKind::Surface,
             _ => WindowKind::Normal,
         },
         size,
@@ -2134,6 +2138,7 @@ fn window_config_to_c(c: WindowConfig) -> KuiWindowConfig {
         kind: match c.kind {
             WindowKind::Normal => KUI_WINDOW_KIND_NORMAL,
             WindowKind::Popup => KUI_WINDOW_KIND_POPUP,
+            WindowKind::Surface => KUI_WINDOW_KIND_SURFACE,
         },
         width: c.size.w,
         height: c.size.h,
