@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.71 (unreleased)
+## 0.1.0-alpha.71 (2026-10-28)
 
 **What breaks.**
 
@@ -151,6 +151,31 @@ Nothing else breaks.
   own, draws it into its own texture (F234) and feeds it input in its own
   coordinates. It closes with the window that declared it. The windowed
   runner opens nothing for one and warns `surface-without-host`.
+
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): `test.nu --node` (3358
+tests over 251 suites and Node's; on the first run one timing test, the
+devtools perf recording's verdict, missed its budget under the parallel
+run and passed 5 of 5 alone), clippy with `-D warnings` on the crates the
+fix touched, `release-prep.nu` with Odin's generator (every generated file
+current), the windowed round with the Node windows (all 58 examples on
+both bases), the accessibility audit (106/106), and `bench-check.nu`
+against alpha.70. The guard passed, but every frame row read slower in
+both passes, and a bisect over the core's seven commits put all of it at
+F233: emission recorded a blocker for every painted box for every
+window, asked about or not (`frame_1k_rects` +6%, `frame_1k_turned_rects`
++14%, `deep_nesting_64_levels` +5%). Recorded only once a host asks now
+(above), the same rows read even with alpha.70 (`frame_1k_rects` 82.4–83.8
+against 82.2–83.0 µs, turned 155.0 against 153.1–153.7 µs). Five minutes
+each of the `scenes` and `events` fuzz targets after.
+
+Not verified natively this release: Windows and Linux on a machine
+(smoke.yml's Windows round and ci.yml's Linux check run on GitHub's
+runners, and both block the release); the reference wgpu hosts and the
+GLFW and SDL3 key headers on Linux beyond PR #19's and PR #20's CI and the
+Docker verify of the packs; no read-only review round over the
+release's commits.
 
 ## 0.1.0-alpha.70 (2026-10-28)
 

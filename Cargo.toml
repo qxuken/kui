@@ -26,7 +26,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.70"
+version = "0.1.0-alpha.71"
 edition = "2024"
 license = "MIT"
 # `homepage` is the book (docs/book), which is what a reader arriving from
@@ -40,17 +40,17 @@ categories = ["gui"]
 # No `registry` key: the kui crates resolve from crates.io, which is where
 # they publish (scripts/publish-crates.nu), and crates.io refuses a
 # dependency from any other registry.
-kui-value = { path = "crates/kui-value", version = "0.1.0-alpha.70" }
-kui-channel = { path = "crates/kui-channel", version = "0.1.0-alpha.70" }
-kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.70" }
-kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.70" }
-kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.70" }
-kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.70" }
-kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.70" }
+kui-value = { path = "crates/kui-value", version = "0.1.0-alpha.71" }
+kui-channel = { path = "crates/kui-channel", version = "0.1.0-alpha.71" }
+kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.71" }
+kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.71" }
+kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.71" }
+kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.71" }
+kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.71" }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
-kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.70", default-features = false }
-kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.70" }
+kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.71", default-features = false }
+kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.71" }
 kui-devtools = { path = "examples/devtools" }
 # Kit's generated Rust wrappers and the generator itself (ADR 0066); never
 # published yet.
