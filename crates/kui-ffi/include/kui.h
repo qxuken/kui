@@ -2619,6 +2619,10 @@ typedef struct KuiDrawData {
  * A view that declares none of the handlers above has nothing to drain
  * there.
  *
+ * Keys from GLFW or SDL3: kui_glfw.h and kui_sdl3.h beside this header
+ * (header-only, backlog F239) map their keys to kui's names and send them
+ * through the right halves; Odin has kui/glfw and kui/sdl3.
+ *
  * When to run a turn at all: on input, while kui_owed(ctx) is non-zero
  * (a transition, an autoscroll), and when your model changed. Between
  * those the window can sleep.

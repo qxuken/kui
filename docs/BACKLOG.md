@@ -4149,18 +4149,6 @@ release dry run before the tag, as alpha.68 taught. It does not solve
 F232's collision — the standard library is still in the archive — so the
 shared kind stays the advice beside another Rust library.
 
-### `.` F239 — Every host maps its window library's keys to kui's by hand
-
-**Found** in the wishlist's item 9. Forwarding keys means mapping GLFW or
-SDL key codes to kui's `code` / `physical` names (`"escape"`, `"a"`,
-`"left"`) and their modifiers to `KUI_KMOD_*`. The game skipped it, so
-kui hears no keys and Tab and Enter on its HUD's buttons do nothing.
-**Do.** Tables for the common libraries — GLFW and SDL3 to begin with —
-outside the C library, which knows no window library: a header-only
-`kui_glfw.h` / `kui_sdl.h` in the C pack, and `kui/glfw.odin` and
-`kui/sdl.odin` over `vendor:glfw` and `vendor:sdl3` in Odin, generated
-from one table so the names match `KeyCode::named()`.
-
 ### Theirs, not ours
 
 - **Item 11, "tell a single-blend host to turn subpixel text off".** It
@@ -6273,7 +6261,7 @@ move.
 - `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — open — an ADR for a `surface` row, decided with F237
 - `.` **F237** — [Contexts cannot share their fonts, images or atlas](#-f237--contexts-cannot-share-their-fonts-images-or-atlas) — door built (2026-10-28), atlas open — `kui_ctx_new_in` / `new_ui_in` / `Ctx.sibling` over `Core::new_in`; the atlas (ADR 0004 step 2) with F236
 - `.` **F238** — [The release packs carry no library without the runner](#-f238--the-release-packs-carry-no-library-without-the-runner) — open — a no-runner library in both tarballs, verified, after a release dry run
-- `.` **F239** — [Every host maps its window library's keys to kui's by hand](#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand) — open — header-only GLFW and SDL tables for C, files for Odin, from one table
+- `.` **F239** — [Every host maps its window library's keys to kui's by hand](backlog/closed-2026-09.md#-f239--every-host-maps-its-window-librarys-keys-to-kuis-by-hand--done-2026-10-28) — done (2026-10-28) — `kui_glfw.h` / `kui_sdl3.h` and Odin's `kui/glfw` / `kui/sdl3`, generated from one table checked against `KeyCode::from_name`
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
 - `.` **F245** — [The atlas epoch starts at 0, so a zeroed host takes the first page for one it has](backlog/closed-2026-09.md#-f245--the-atlas-epoch-starts-at-0-so-a-zeroed-host-takes-the-first-page-for-one-it-has--done-2026-10-28) — done (2026-10-28) — `GlyphAtlas::epoch` starts at 1 and is never 0; said in kui.h
 

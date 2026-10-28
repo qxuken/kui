@@ -331,13 +331,14 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
     // file under the hosts. On Windows the link is against the import
     // library.
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-    let exe = |src: &str, out: &str| -> Result<(), String> {
+    let exe_with = |src: &str, out: &str, extra: &[String]| -> Result<(), String> {
         let out_path = if cc.msvc {
             format!("{bin}/{out}.exe")
         } else {
             format!("{bin}/{out}")
         };
         let mut args = cflags.clone();
+        args.extend(extra.iter().cloned());
         args.push(s(src));
         if cc.msvc {
             args.extend([
@@ -365,12 +366,24 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
     // C on both sides — a C host that loads the same panel through
     // kui_ctx_add_extension / kui_run_with (ADR 0014's C half, ABI 10). It
     // links kui_ffi like counter.c does: a host is a host.
+    let exe = |src: &str, out: &str| exe_with(src, out, &[]);
     exe("examples/c/apps/counter.c", "counter")?;
     exe("examples/c/tools/surface.c", "surface")?;
     exe("examples/c/tools/conformance.c", "conformance")?;
     exe("examples/c/features/slots/host.c", "host")?;
     // Kit through the header its schema generates (docs/adr/0066).
     exe("examples/c/features/kit/kit.c", "kit")?;
+    // The GLFW and SDL3 key tables (backlog F239), against whichever of the
+    // two libraries' headers are installed: Homebrew's prefix is not on
+    // Apple clang's search path, so it is added where it exists.
+    let brew: Vec<String> = ["/opt/homebrew/include", "/usr/local/include"]
+        .iter()
+        .filter(|d| {
+            !cc.msvc && (Path::new(d).join("SDL3").exists() || Path::new(d).join("GLFW").exists())
+        })
+        .flat_map(|d| [s("-I"), s(d)])
+        .collect();
+    exe_with("examples/c/tools/keys.c", "keys", &brew)?;
 
     // --- the panel --------------------------------------------------------
     // The other direction: C as an extension inside a host that already
@@ -456,6 +469,12 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
             exe: format!("{bin}/{}", exe_name("surface")),
             args: vec![],
             note: "the header walk: every prototype in kui.h called once",
+            must_fail: None,
+        },
+        Step {
+            exe: format!("{bin}/{}", exe_name("keys")),
+            args: vec![],
+            note: "the GLFW and SDL3 key tables, for each library whose headers are installed",
             must_fail: None,
         },
         Step {

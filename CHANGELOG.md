@@ -88,6 +88,15 @@ Nothing else breaks.
   shaping caches, so nothing is loaded or shaped twice; each keeps its own
   tree, focus, events and glyph atlas. They belong to one thread.
 
+- **GLFW's and SDL3's keys as kui's** (backlog F239). A host with its own
+  window no longer maps key codes by hand: `kui_glfw.h` and `kui_sdl3.h`
+  beside `kui.h` (header-only, in the C pack) and Odin's `kui/glfw` and
+  `kui/sdl3` packages forward a key callback or event and the library's
+  text event in one call each — `physical` from the key's place, `code`
+  from the layout, the keypad and the modifiers' twins by location, and
+  typed text once. Generated from one table checked against kui's key
+  names.
+
 ## 0.1.0-alpha.70 (2026-10-28)
 
 **What breaks.**

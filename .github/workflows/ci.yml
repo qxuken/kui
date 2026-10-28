@@ -134,13 +134,16 @@ jobs:
       # opens it through; its Wayland probe prints "XDG_RUNTIME_DIR is
       # invalid" for every device a test opens unless the dir exists, and an
       # empty one quiets it. clang is what Odin links with on Linux, and
-      # what parses the header for the Odin generator.
+      # what parses the header for the Odin generator. GLFW's headers are
+      # what kui_glfw.h is compiled against in the C round (backlog F239);
+      # the runner image has no SDL3 package, so kui_sdl3.h is checked on
+      # a machine that has one and by the Odin step over vendor:sdl3.
       - name: Install system deps
         run: |
           set -eu
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config \
-            libasound2-dev mesa-vulkan-drivers libvulkan1 clang
+            libasound2-dev mesa-vulkan-drivers libvulkan1 clang libglfw3-dev
           mkdir -p -m 700 /tmp/xdg
           echo "XDG_RUNTIME_DIR=/tmp/xdg" >> "$GITHUB_ENV"
           rustup update --no-self-update stable
@@ -235,6 +238,7 @@ jobs:
       # the round that needs a report built by another step.
       - name: C examples (header ABI check + the header walk + the C round)
         run: |
+          cargo run -p kui-devtools --bin keytables -- --check
           cargo run -p kui-devtools --bin cbuild -- --run
           ./target/debug/conformance target/conformance.txt
 

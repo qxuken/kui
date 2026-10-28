@@ -14,7 +14,7 @@
 # What lands in target/pack/, per platform:
 #
 #   kui-ffi-<version>-<platform>/
-#     include/kui.h
+#     include/kui.h, and kui_glfw.h and kui_sdl3.h (header-only key tables)
 #     lib/        libkui_ffi.so / .dylib / kui_ffi.dll + kui_ffi.dll.lib   dynamic
 #                 libkui_ffi.a / kui_ffi.lib                               static
 #                 windows.0.5x.0.lib (Windows): windows-targets' import
@@ -330,7 +330,11 @@ def stage [row: record, built: record, feature_note: string, no_runner: bool] {
     mkdir ($dir | path join include) ($dir | path join lib)
     # With LF line ends whatever the checkout has: a CRLF one (Git for
     # Windows' autocrlf) would otherwise ship a header that differs by host.
-    open --raw ($ROOT | path join crates kui-ffi include kui.h) | str replace -a "\r\n" "\n" | save -f --raw ($dir | path join include kui.h)
+    # kui_glfw.h and kui_sdl3.h ride beside it: header-only, a window
+    # library's keys as kui's (backlog F239).
+    for h in [kui.h kui_glfw.h kui_sdl3.h] {
+        open --raw ($ROOT | path join crates kui-ffi include $h) | str replace -a "\r\n" "\n" | save -f --raw ($dir | path join include $h)
+    }
     for f in (libraries $row.target) {
         let src = $built.dir | path join $f
         if not ($src | path exists) {
@@ -421,7 +425,9 @@ def "main bundle" [
                 lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)") ($dir | path join lib $p)
             }
             mkdir ($dir | path join include)
-            cp ($OUT | path join $"kui-ffi-($v)-($have | first)" include kui.h) ($dir | path join include)
+            for h in [kui.h kui_glfw.h kui_sdl3.h] {
+                cp ($OUT | path join $"kui-ffi-($v)-($have | first)" include $h) ($dir | path join include)
+            }
         } else {
             # The libraries inside the package, beside the file that links
             # them, as vendor:raylib carries its own: `import "kui"` is the
@@ -560,9 +566,9 @@ when KUI_PLUGIN && ODIN_OS == .Darwin {
 # the platforms it holds.
 def readme [kind: string, v: string, platforms: list<string>] {
     let what = if $kind == "c" {
-        "the C library: `include/kui.h`, and `libkui_ffi` for each platform"
+        "the C library: `include/kui.h`, and `libkui_ffi` for each platform; `include/kui_glfw.h` and `include/kui_sdl3.h` forward GLFW's or SDL3's keys, header-only"
     } else {
-        "the Odin binding: the `kui` package, and `libkui_ffi` for each platform it links"
+        "the Odin binding: the `kui` package, and `libkui_ffi` for each platform it links; `kui/glfw` and `kui/sdl3` forward vendor:glfw's or vendor:sdl3's keys"
     }
     let use = if $kind == "c" {
         $"```sh
