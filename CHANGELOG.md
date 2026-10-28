@@ -379,6 +379,18 @@ and its tables sort and filter them.
 
 ### Changed
 
+- **Faster `when` entries, a full exit store and turned boxes.** Each
+  `when` entry is read off its closure on every frame by building two
+  specs; the two copies kept only to compare against are gone
+  (`frame_1k_rules` 745 → 660 µs on an M3 Pro, 11% under alpha.69). A
+  store of departing nodes at its 4096-node budget hashed every key into
+  a new set on each frame the tree moved; the exit diff reads the
+  store's own (`replay_a_full_depart_store` 175 → 145 µs). And a turned
+  node under nothing turned composes without trigonometry and its box
+  is bounded with one `sin_cos` where it took four, which takes back
+  what the stretch (C149) had cost `frame_1k_turned_rects` (+7%, now
+  even with alpha.69).
+
 - **Kit's line chart glides its y range on the core's clock** (backlog
   C149). When the rounded range changed it asked for a frame every frame
   for 240 ms and ran the view in each. The lines are drawn for the new

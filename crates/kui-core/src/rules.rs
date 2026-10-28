@@ -797,9 +797,13 @@ impl Patch {
     /// the name of what it set that no entry may — a handler, an access
     /// prop, a key — if it set any.
     pub fn capture(f: &dyn Fn(NodeSpec) -> NodeSpec) -> (Patch, Option<&'static str>) {
-        let base_a = NodeSpec::default();
+        // The two bases are read from statics, so each capture clones a
+        // spec once a base, for `f` to take, rather than twice: every
+        // `when` entry is captured on every frame, and these clones were
+        // most of what one cost.
+        static DEFAULT: std::sync::LazyLock<NodeSpec> = std::sync::LazyLock::new(NodeSpec::default);
         static SENTINEL: std::sync::LazyLock<NodeSpec> = std::sync::LazyLock::new(sentinel);
-        let base_b = SENTINEL.clone();
+        let (base_a, base_b): (&NodeSpec, &NodeSpec) = (&DEFAULT, &SENTINEL);
         let out_a = f(base_a.clone());
         let out_b = f(base_b.clone());
         let mut patch = Patch {
@@ -911,7 +915,7 @@ impl Patch {
                 "an access prop",
             ),
             (
-                interact_moved(&out_a, &base_a) || interact_moved(&out_b, &base_b),
+                interact_moved(&out_a, base_a) || interact_moved(&out_b, base_b),
                 "an interaction prop",
             ),
             (
