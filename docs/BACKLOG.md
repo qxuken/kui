@@ -4098,18 +4098,6 @@ drawing through `kui_draw_data`, built in CI. What it leaves out: the
 opacity groups' and backdrops' passes, which are passes and not
 instances; the reference host says so, or draws them.
 
-### `.` F235 — The draw data has no bounds
-
-**Found** in the wishlist's item 4. A transparent full-window layer that
-draws two small tags still costs the host a 2560×1600 clear, draw and
-composite every frame: nothing says only two small floats were drawn.
-**Do.** `KuiDrawData.bounds`, the union of the frame's quads in physical
-px — through each clip's turn (ADR 0043), with a shadow's blur and a
-segment's width — so a host scissors the clear and the composite.
-Per-layer or per-float rects would serve an overlay better still; the
-union first. (The other half of the item, `kui_frame_unchanged` as "skip
-your render pass", is F229's, built.)
-
 ### `~` F236 — A subtree cannot be drawn into a target of its own
 
 **Found** in the wishlist's item 5. To put UI in the world — on the gate
@@ -6273,7 +6261,7 @@ move.
 - `.` **F232** — [Linking kui's archive beside another Rust archive fails, and nothing says to link the shared one](backlog/closed-2026-09.md#-f232--linking-kuis-archive-beside-another-rust-archive-fails-and-nothing-says-to-link-the-shared-one--done-2026-10-27) — done (2026-10-27) — the pack README, the Odin README and kui-ffi's README say so, and why
 - `.` **F233** — [A host cannot ask whether the pointer is over the UI](backlog/closed-2026-09.md#-f233--a-host-cannot-ask-whether-the-pointer-is-over-the-ui--done-2026-10-28) — done (2026-10-28) — painted boxes block, `hostHit` moves one either way; `hit`, `pointer_wants`, `keyboard_wants` in C, Odin and Node (ABI 42)
 - `~` **F234** — [A host's renderer copies kui-wgpu's shader and its instance packing](#-f234--a-hosts-renderer-copies-kui-wgpus-shader-and-its-instance-packing) — open — the shader and the instance packing in the core with C doors, and a reference C or Odin host
-- `.` **F235** — [The draw data has no bounds](#-f235--the-draw-data-has-no-bounds) — open — `KuiDrawData.bounds`, then per-layer rects
+- `.` **F235** — [The draw data has no bounds](backlog/closed-2026-09.md#-f235--the-draw-data-has-no-bounds--done-2026-10-28) — done (2026-10-28) — `DisplayList::bounds`, `KuiDrawData.bounds` (ABI 42); per-layer rects wait for F236's surfaces
 - `~` **F236** — [A subtree cannot be drawn into a target of its own](#-f236--a-subtree-cannot-be-drawn-into-a-target-of-its-own) — open — an ADR for a `surface` row, decided with F237
 - `.` **F237** — [Contexts cannot share their fonts, images or atlas](#-f237--contexts-cannot-share-their-fonts-images-or-atlas) — open — `kui_ctx_new_in` over `Core::new_in`, then the atlas (ADR 0004 step 2)
 - `.` **F238** — [The release packs carry no library without the runner](#-f238--the-release-packs-carry-no-library-without-the-runner) — open — a no-runner library in both tarballs, verified, after a release dry run

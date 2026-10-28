@@ -500,7 +500,9 @@ extern "C" {
  * with KUI_HOST_HIT_AUTO / _BLOCK / _PASS (920 bytes on 64-bit, from
  * 912), what kui_hit and kui_pointer_wants count the box as; and
  * kui_hit, kui_pointer_wants and kui_keyboard_wants are new functions.
- * Recompile; zeroed, a box counts as derived.
+ * KuiDrawData appends bounds (152 bytes on 64-bit, from 136), where the
+ * frame drew. Recompile; zeroed, a box counts as derived, and a caller
+ * that reserved the old size is filled to it.
  */
 #define KUI_ABI_VERSION 42u
 uint32_t kui_abi_version(void);
@@ -2574,6 +2576,13 @@ typedef struct KuiDrawData {
      * moved it is the whole page; zero with atlas_dirty clear. Added in
      * ABI 40 (backlog F228). */
     uint32_t atlas_dirty_rect[4];
+    /* Where the frame drew, x, y, w, h in whole physical px inside the
+     * viewport: the union of every quad's footprint (a shadow's blur, a
+     * stroke's width, a turned node where it is drawn), cut by its clip.
+     * Scissor the clear, the draw and the composite to it, so a
+     * full-window overlay that drew two tags pays for two tags. Zero on a
+     * frame that drew nothing. Added in ABI 42 (backlog F235). */
+    uint32_t bounds[4];
 } KuiDrawData;
 #define KUI_DRAW_DATA_INIT ((KuiDrawData){ .size = sizeof(KuiDrawData) })
 
@@ -2618,7 +2627,9 @@ typedef struct KuiDrawData {
  * clear drew exactly what the one before it drew, so a host that keeps
  * last frame's target (an overlay texture, say) skips its render pass and
  * composites what it has. The trace keeps a digest of every frame, a cost
- * only a host that skips draws needs.
+ * only a host that skips draws needs. When it does draw, the draw data's
+ * bounds is where the frame drew: scissor the clear, the draw and the
+ * composite to it (backlog F235).
  *
  * The UI over a world of its own (a game, a map, a 3D view): before step
  * 1 hands an input to the world as well, kui_pointer_wants and

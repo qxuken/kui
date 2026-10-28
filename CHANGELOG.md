@@ -31,8 +31,8 @@ was the first bare bump to break an app in five releases).
   before keep their integers. A reader that matched `Column::I64` on a
   column a log appends to meets `Column::F64` once a fraction comes.
 - ABI 42 (C and Odin): `KuiSpec` appends `host_hit` (backlog F233), 920
-  bytes on 64-bit. Recompile against the new `kui.h`; zeroed, nothing
-  changes.
+  bytes on 64-bit, and `KuiDrawData` appends `bounds` (backlog F235), 152.
+  Recompile against the new `kui.h`; zeroed, nothing changes.
 
 Nothing else breaks.
 
@@ -73,6 +73,13 @@ Nothing else breaks.
   `KuiSpec.host_hit` (`KUI_HOST_HIT_*`); Odin `hit`, `pointer_wants`,
   `keyboard_wants`; Node `Ctx.hit`, `pointerWants`, `keyboardWants`; JSX
   `hostHit`, Lua `host_hit`. kui's own hit testing is unchanged.
+
+- **The draw data says where the frame drew** (backlog F235). A
+  full-window overlay that draws two small tags paid for a clear, a draw
+  and a composite of the whole window. `DisplayList::bounds()` is the
+  union of the quads' footprints — a shadow's blur, a stroke's width, a
+  turned node where it is drawn, each cut by its clip — in whole physical
+  px, and C's `KuiDrawData.bounds` carries it: scissor to it.
 
 ## 0.1.0-alpha.70 (2026-10-28)
 

@@ -3964,6 +3964,48 @@ mod borrows {
         kui_ctx_free(ctx);
     }
 
+    /// The draw data says where the frame drew (backlog F235): a 40×10
+    /// tag at (20, 30) on a transparent root at scale 2 is (40, 60, 80,
+    /// 20), and a frame that draws nothing is zero.
+    #[test]
+    fn draw_data_says_where_the_frame_drew() {
+        let ctx = kui_ctx_new();
+        let mut d = KuiDrawData::default();
+        kui_frame_begin(ctx, 200.0, 100.0, 2.0);
+        kui_root(ctx, &zspec());
+        kui_frame_finish(ctx);
+        assert!(kui_draw_data(ctx, &mut d));
+        assert_eq!(d.bounds, [0; 4], "nothing drawn");
+
+        kui_frame_begin(ctx, 200.0, 100.0, 2.0);
+        kui_root(
+            ctx,
+            &KuiSpec {
+                pad_l: 20.0,
+                pad_t: 30.0,
+                ..zspec()
+            },
+        );
+        let tag = KuiSpec {
+            width: KuiSizing {
+                tag: 2,
+                value: 40.0,
+            },
+            height: KuiSizing {
+                tag: 2,
+                value: 10.0,
+            },
+            bg: 0xffffffff,
+            ..zspec()
+        };
+        kui_open(ctx, &tag, NONE);
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+        assert!(kui_draw_data(ctx, &mut d));
+        assert_eq!(d.bounds, [40, 60, 80, 20]);
+        kui_ctx_free(ctx);
+    }
+
     /// A `kui_draw_data` while the frame builds reads the list
     /// `kui_frame_begin` emptied; the one after `kui_frame_finish` reads
     /// what the frame drew, its fragment draws with it, where it handed

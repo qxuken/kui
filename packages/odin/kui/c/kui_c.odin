@@ -1066,6 +1066,7 @@ DrawData :: struct {
 	textures: [^]TextureDraw,
 	texture_count: uint,
 	atlas_dirty_rect: [4]u32,
+	bounds: [4]u32,
 }
 
 Theme :: struct {

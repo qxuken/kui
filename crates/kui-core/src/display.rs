@@ -626,6 +626,42 @@ impl DisplayList {
     pub fn intern_clip(&mut self, clip: Clip) -> ClipId {
         intern_clip(&mut self.clips, clip)
     }
+
+    /// Where the frame drew, in physical px: the union of every quad's
+    /// footprint — its rect (a shadow's already holds its blur, a
+    /// segment's its width and caps) through its clip's turn, cut by its
+    /// clip — rounded out to whole pixels and cut to the viewport. `None`
+    /// on a frame that drew nothing. What a host that composites the UI
+    /// over something of its own scissors its clear, its draw and its
+    /// composite to (backlog F235): a full-window layer that draws two
+    /// tags pays for two tags.
+    pub fn bounds(&self) -> Option<Rect> {
+        let view = Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h);
+        let mut out: Option<Rect> = None;
+        for q in &self.quads {
+            // A begin marker draws nothing; its group's quads are counted
+            // as themselves, and its end's rect is their picture.
+            if q.kind == QuadKind::GroupBegin {
+                continue;
+            }
+            let clip = self.clip_of(q);
+            let r = if clip.turned() {
+                clip.transform.bounds(q.rect.intersect(&clip.inner))
+            } else {
+                q.rect
+            };
+            let r = r.intersect(&clip.rect).intersect(&view);
+            if r.w <= 0.0 || r.h <= 0.0 {
+                continue;
+            }
+            out = Some(out.map_or(r, |o| o.union(&r)));
+        }
+        out.map(|r| {
+            let (x0, y0) = (r.x.floor(), r.y.floor());
+            let (x1, y1) = ((r.x + r.w).ceil(), (r.y + r.h).ceil());
+            Rect::new(x0, y0, x1 - x0, y1 - y0).intersect(&view)
+        })
+    }
 }
 
 /// Interns a clip into a frame's table and returns the index a quad names.

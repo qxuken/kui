@@ -1503,6 +1503,9 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
             textures: texture_draws,
             texture_count,
             atlas_dirty_rect: atlas.dirty_rect().unwrap_or_default(),
+            bounds: dl
+                .bounds()
+                .map_or([0; 4], |r| [r.x as u32, r.y as u32, r.w as u32, r.h as u32]),
             ..Default::default()
         };
         atlas.mark_uploaded();

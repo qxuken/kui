@@ -2430,6 +2430,11 @@ pub struct KuiDrawData {
     /// whole page when the epoch moved; zero with `atlas_dirty` clear.
     /// Added in ABI 40 (backlog F228).
     pub atlas_dirty_rect: [u32; 4],
+    /// Where the frame drew, `[x, y, w, h]` in whole physical px inside
+    /// the viewport (`DisplayList::bounds`): what to scissor the clear,
+    /// the draw and the composite to. Zero on a frame that drew nothing.
+    /// Added in ABI 42 (backlog F235).
+    pub bounds: [u32; 4],
 }
 
 impl Default for KuiDrawData {
@@ -2453,6 +2458,7 @@ impl Default for KuiDrawData {
             textures: std::ptr::null(),
             texture_count: 0,
             atlas_dirty_rect: [0; 4],
+            bounds: [0; 4],
         }
     }
 }
