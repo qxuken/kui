@@ -738,6 +738,14 @@ pub enum MenuAction {
     /// applies it with `kui_native::show_in_folder` (backlog F203); a host
     /// that cannot drops it.
     ShowInFolder { path: String },
+    /// Put these files on the system clipboard, as the file manager's
+    /// Copy does: pasted into Explorer, Finder, a mail or a chat, they are
+    /// the files, not their names. Queued by `Core::set_clipboard_files`,
+    /// never by a menu row; the paths as the app named them, which the
+    /// host makes absolute. The runner applies it as `CF_HDROP` on
+    /// Windows, file URLs on macOS and `text/uri-list` on Linux (backlog
+    /// F247).
+    SetClipboardFiles { paths: Vec<String> },
 }
 
 // -- The application menu bar -----------------------------------------------

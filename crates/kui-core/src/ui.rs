@@ -1024,6 +1024,16 @@ impl<'a> Ui<'a> {
         self.core.set_clipboard_image(width, height, rgba)
     }
 
+    /// Puts files on the system clipboard, as a file manager's Copy does;
+    /// see `Core::set_clipboard_files`.
+    pub fn set_clipboard_files<I, P>(&mut self, paths: I) -> bool
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<String>,
+    {
+        self.core.set_clipboard_files(paths)
+    }
+
     /// Puts a secret on the system clipboard marked concealed and
     /// transient, the way a password manager does; see
     /// `Core::set_clipboard_secret`.

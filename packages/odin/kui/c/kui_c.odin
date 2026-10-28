@@ -399,6 +399,7 @@ MENU_ACTION_LOOK_UP :: 2
 MENU_ACTION_SET_CLIPBOARD_SECRET :: 3
 MENU_ACTION_SET_CLIPBOARD_IMAGE :: 4
 MENU_ACTION_SHOW_IN_FOLDER :: 5
+MENU_ACTION_SET_CLIPBOARD_FILES :: 6
 
 PASTE_CONCEALED :: 1
 PASTE_TRANSIENT :: 2
@@ -1412,6 +1413,7 @@ foreign lib {
 	set_clipboard :: proc(ctx: ^Ctx, text: string, html: string) ---
 	set_clipboard_secret :: proc(ctx: ^Ctx, text: string) ---
 	set_clipboard_image :: proc(ctx: ^Ctx, rgba: [^]u8, width: u32, height: u32) -> bool ---
+	set_clipboard_files :: proc(ctx: ^Ctx, paths: [^]string, count: uint) -> bool ---
 	request_paste :: proc(ctx: ^Ctx) ---
 	awaiting_paste :: proc(ctx: ^Ctx) -> bool ---
 	set_native_menus :: proc(ctx: ^Ctx, on: bool) ---

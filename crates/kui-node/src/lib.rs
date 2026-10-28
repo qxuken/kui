@@ -4721,6 +4721,10 @@ macro_rules! core_methods {
                                 o.insert("kind".into(), Json::from("showInFolder"));
                                 o.insert("path".into(), Json::from(path));
                             }
+                            kui_core::MenuAction::SetClipboardFiles { paths } => {
+                                o.insert("kind".into(), Json::from("setClipboardFiles"));
+                                o.insert("paths".into(), Json::from(paths));
+                            }
                             kui_core::MenuAction::LookUp { text, at } => {
                                 o.insert("kind".into(), Json::from("lookUp"));
                                 o.insert("text".into(), Json::from(text));
@@ -4756,6 +4760,20 @@ macro_rules! core_methods {
             #[napi]
             pub fn set_clipboard_secret(&mut self, text: String) {
                 self.$core().set_clipboard_secret(text);
+            }
+
+            /// Puts files on the system clipboard, as a file manager's
+            /// Copy does — "Copy file" on an attachment: a window writes
+            /// them as the platform's file list (`CF_HDROP` on Windows,
+            /// file URLs on macOS, `text/uri-list` on Linux), so they paste
+            /// into a file manager or a mail as the files. The paths as the
+            /// app names them; the window makes them absolute. False, and
+            /// nothing queued, for none. A headless `Ctx` hands it out
+            /// through `takeMenuActions()` as
+            /// `{kind:"setClipboardFiles", paths}` (backlog F247).
+            #[napi]
+            pub fn set_clipboard_files(&mut self, paths: Vec<String>) -> bool {
+                self.$core().set_clipboard_files(paths)
             }
 
             /// Puts a picture on the system clipboard — `width` by `height`

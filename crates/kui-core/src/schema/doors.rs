@@ -901,6 +901,14 @@ pub const DOORS: &[Door] = &[
         doc: "Posts a secret for the clipboard, which the host writes marked concealed and transient the way a password manager does, so no clipboard manager shows or keeps it (backlog F84).",
     },
     Door {
+        rust: "Ui::set_clipboard_files",
+        c: Is("kui_set_clipboard_files"),
+        odin: Is("set_clipboard_files"),
+        node: Is("setClipboardFiles"),
+        lua: Is("set_clipboard_files"),
+        doc: "Posts files for the clipboard, which the host writes as the platform's file list — CF_HDROP, file URLs, text/uri-list — so they paste into a file manager or a mail as the files: \"Copy file\" (backlog F247).",
+    },
+    Door {
         rust: "Ui::set_clipboard_image",
         c: Is("kui_set_clipboard_image"),
         odin: Is("set_clipboard_image"),
