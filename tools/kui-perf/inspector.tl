@@ -31,6 +31,8 @@ local GUTTER = 44
 local PAD = 10
 -- The least the timeline and the dock under it are, in px.
 local DOCK_MIN = 140
+-- The most the waterfall's lanes take before they scroll: twelve lanes.
+local WF_MAX = 12 * 22
 local TABS = {
   { value = "frames", label = "Frames" },
   { value = "spans", label = "Spans" },
@@ -241,6 +243,73 @@ local function select_frame(st: Inspector, row: integer)
   end
 end
 
+-- Up and down the waterfall's lanes: the span selected's parent, and its
+-- first child — or, with none selected, the first span of the top lane in
+-- the window. The spans are in tree order, each one's subtree in the rows
+-- right after it: its parent is the nearest row before it a lane up on
+-- its track, its children the rows a lane down until one is back at its
+-- own lane. A walk stops at `REACH` rows.
+local REACH = 200000
+
+local function span_at(st: Inspector, row: integer): number, integer, integer
+  local sp = st.rec.spans
+  return sp:get(row, "start") as number, math.floor(sp:get(row, "depth") as number),
+    math.floor(sp:get(row, "track") as number)
+end
+
+local function parent(st: Inspector): integer
+  if st.span < 0 then return nil end
+  local _, d, t = span_at(st, st.span)
+  if d <= 0 then return nil end
+  local i = st.span - 1
+  while i >= 0 and st.span - i <= REACH do
+    local _, pd, pt = span_at(st, i)
+    if pd == d - 1 and pt == t then return i end
+    i = i - 1
+  end
+  return nil
+end
+
+local function child(st: Inspector): integer
+  local sp = st.rec.spans
+  if st.span < 0 then
+    -- The window's first span on the top lane, from the channel's lanes
+    -- (Rust keeps them per revision, as the waterfall's).
+    -- Zoomed out, the first is a strip of spans merged; its first span
+    -- is the first of a window of that strip alone, merging nothing.
+    local lanes = sp:lanes("start", "len", "depth")
+    local runs = lanes:window(0, st.v0, st.v1, (st.v1 - st.v0) * 1e-4)
+    if #runs.s == 0 then return nil end
+    if runs.row[1] >= 0 then return runs.row[1] end
+    local inner = lanes:window(0, runs.s[1], runs.e[1], 0)
+    return #inner.s > 0 and inner.row[1] >= 0 and inner.row[1] or nil
+  end
+  local _, d, t = span_at(st, st.span)
+  local best, best_s: integer, number = nil, nil
+  local i = st.span + 1
+  while i < #sp and i - st.span <= REACH do
+    local cs, cd, ct = span_at(st, i)
+    if ct == t and cd <= d then break end
+    -- The earliest of them: siblings are kept latest first.
+    if cd == d + 1 and ct == t and (not best_s or cs < best_s) then best, best_s = i, cs end
+    i = i + 1
+  end
+  return best
+end
+
+-- Selects span row `row`, the window moved to show it when it is out.
+local function select_span(st: Inspector, row: integer)
+  if not row then return end
+  st.span = row
+  local s = span_at(st, row)
+  local l = st.rec.spans:get(row, "len") as number
+  if s + l < st.v0 or s > st.v1 then
+    local len = st.v1 - st.v0
+    set_window(st, s + l / 2 - len / 2, s + l / 2 + len / 2)
+    st.follow = false
+  end
+end
+
 local function fit(st: Inspector)
   if st.r0 then
     set_window(st, st.r0, st.r1)
@@ -265,8 +334,8 @@ function inspector.key(st: Inspector, key: {string:any}): boolean
   local mid = (st.v0 + st.v1) / 2
   if c == "right" or c == "l" then select_frame(st, math.max(st.frame, -1) + 1)
   elseif c == "left" or c == "h" then select_frame(st, math.max(st.frame - 1, 0))
-  elseif c == "down" or c == "j" then select_frame(st, math.max(st.frame, -1) + 1)
-  elseif c == "up" or c == "k" then select_frame(st, math.max(st.frame - 1, 0))
+  elseif c == "down" or c == "j" then select_span(st, child(st))
+  elseif c == "up" or c == "k" then select_span(st, parent(st))
   elseif c == "]" or c == "[" then
     local i = seek(st, st.frame, c == "]" and 1 or -1, "verdict", "slow", false)
     if i then select_frame(st, i) end
@@ -359,23 +428,34 @@ local function overview(st: Inspector, env: kui.Env): kui.Node
   local lo, hi = extent(st)
   local x0 = (st.v0 - lo) / math.max(hi - lo, 1e-9) * w
   local x1 = (st.v1 - lo) / math.max(hi - lo, 1e-9) * w
+  -- The window at least 8 px wide about its middle, so a zoomed-in one is
+  -- still seen; what lies outside it dimmed, its edge in the ink, not the
+  -- accent the frames are drawn in.
+  local ww = math.max(8, x1 - x0)
+  local bx = math.max(0, math.min(w - ww, (x0 + x1) / 2 - ww / 2))
+  local function dim(key: string, from: number, to: number): kui.Node
+    if to - from < 0.5 then return nil end
+    return column { key = key, float = { anchor = "parent", dx = from, dy = 0 }, width = to - from, height = 40,
+      bg = "$kitBg", opacity = 0.7 }
+  end
   return column { key = "overview", width = "grow", height = 40, clip = true,
     on_layout = { kind = "ins_layout" },
     on_drag = { kind = "ins_overview", value = r and { x = r.x, w = r.w } or nil },
     label = "Overview: the work of every frame; drag to move the window",
     #st.rec.frames > 0 and kit.sparkline({ key = "ov-line", data = st.rec.frames, field = "work",
       width = w, height = 40, unit = "ms" }) or nil,
-    column { key = "ov-window", float = { anchor = "parent", dx = x0, dy = 0 },
-      width = math.max(2, x1 - x0), height = 40, bg = "$kitHover", border = { w = 1, color = "$kitAccent" } },
+    dim("ov-before", 0, bx),
+    dim("ov-after", bx + ww, w),
+    column { key = "ov-window", float = { anchor = "parent", dx = bx, dy = 0 },
+      width = ww, height = 40, border = { w = 2, color = "$kitFg" } },
   }
 end
 
 local function lanes(st: Inspector): kui.Node
-  -- The lanes scroll in at most two lanes' height, so the waterfall keeps
-  -- its room whatever lanes are shown.
+  -- The lanes take what the waterfall leaves, and scroll past it.
   -- Padded as the waterfall is, and their y labels as wide as its gutter,
   -- so a lane's plot runs under its lanes at the same x.
-  local rows: kui.Props = { key = "lanes", width = "grow", gap = 6, max_height = 2 * (LANE_H + 60), scroll_y = true,
+  local rows: kui.Props = { key = "lanes", width = "grow", height = "grow", gap = 6, scroll_y = true,
     pad = { x = PAD } }
   for _, name in ipairs(st.lanes) do
     local ch = st.series[name]
@@ -550,12 +630,14 @@ end
 
 local function timeline(st: Inspector): kui.Node
   local span_count = #st.rec.spans
+  -- The waterfall as tall as its lanes, up to WF_MAX: under its last
+  -- lane there is nothing to pan or zoom, so the graph lanes take the rest.
   return column { key = "timeline", width = "grow", height = "grow", gap = 6,
-    column { key = "wf", width = "grow", height = "grow", min_height = 160,
+    column { key = "wf", width = "grow",
       kit.waterfall({ key = "waterfall", bars = st.rec.spans, marks = st.rec.instants,
         start = st.v0, length = st.v1 - st.v0, selected = st.span >= 0 and st.span or nil,
         range_start = st.r0, range_length = st.r0 and (st.r1 - st.r0) or nil, gutter = GUTTER,
-        grow = true, on_select = { kind = "ins_span" }, on_zoom = { kind = "ins_zoom" },
+        max_height = WF_MAX, on_select = { kind = "ins_span" }, on_zoom = { kind = "ins_zoom" },
         on_range = { kind = "ins_range" } }) },
     #st.lanes > 0 and lanes(st) or nil,
     span_count == 0 and muted("No span is kept by the filter.") or nil,

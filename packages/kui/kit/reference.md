@@ -769,6 +769,7 @@ Lua `kit.waterfall(props)` · Node `<Waterfall />`
 | `length` | `length` | number? | The window's length in ms; the whole trace when left out. |
 | `selected` | `selected` | integer? | The selected span (its row). |
 | `grow` | `grow` | boolean? | Takes the room its parent leaves. |
+| `max_height` | `maxHeight` | number? | The most the lanes take in px before they scroll, when it does not `grow`: as tall as its lanes up to that. |
 | `gutter` | `gutter` | number? | An empty column in px left of the axis and the lanes, so they line up with charts under them that hold the same `gutter`. |
 | `range_start` | `rangeStart` | number? | The range selected on the axis, in ms, held by the host: with `on_range`, the range drawn is this one, and a drag on the axis proposes another. Kit's own otherwise. |
 | `range_length` | `rangeLength` | number? | The selected range's length in ms; none selected when left out or 0. |

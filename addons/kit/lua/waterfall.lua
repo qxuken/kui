@@ -303,6 +303,7 @@ height = h, bg = ref(c, "accent"), opacity = 0.16, }),
    head[#head + 1] = tool(c, "fit", "Fit", "fit", v0, v1)
 
 
+
    return column({
       width = "grow",
       height = p.grow == true and "grow" or nil,
@@ -313,7 +314,8 @@ height = h, bg = ref(c, "accent"), opacity = 0.16, }),
       beside(row(axis), false),
       ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),
       beside(column({ key = "lanes-box", width = "grow", height = p.grow == true and "grow" or nil,
-scroll_y = p.grow == true, column(lanes), }), p.grow == true),
+max_height = p.max_height, scroll_y = p.grow == true or p.max_height ~= nil,
+column(lanes), }), p.grow == true),
    })
 end
 

@@ -300,8 +300,9 @@ function M.waterfall(c: Ctx, p: P): kui.Node
   head[#head + 1] = tool(c, "zoom_out", "Zoom out", "out", v0, v1)
   head[#head + 1] = tool(c, "zoom_in", "Zoom in", "in", v0, v1)
   head[#head + 1] = tool(c, "fit", "Fit", "fit", v0, v1)
-  -- The lanes scroll down in a box around them, so the wheel over them is
-  -- theirs whether or not the box can scroll: a zoom, never a scroll.
+  -- The lanes scroll down in a box around them — the room left when it
+  -- grows, or up to `max_height` — so the wheel over them is theirs
+  -- whether or not the box can scroll: a zoom, never a scroll.
   return column {
     width = "grow",
     height = p.grow == true and "grow" or nil,
@@ -312,7 +313,8 @@ function M.waterfall(c: Ctx, p: P): kui.Node
     beside(row(axis), false),
     ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),
     beside(column { key = "lanes-box", width = "grow", height = p.grow == true and "grow" or nil,
-      scroll_y = p.grow == true, column(lanes) }, p.grow == true),
+      max_height = p.max_height as number, scroll_y = p.grow == true or p.max_height ~= nil,
+      column(lanes) }, p.grow == true),
   }
 end
 

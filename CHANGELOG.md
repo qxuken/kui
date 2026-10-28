@@ -154,15 +154,20 @@ and its tables sort and filter them.
   around them, where they scrolled under the wheel once they overflowed),
   a sideways swipe or ⇧ and the wheel pans, a pinch zooms (`scroll.zoom`);
   `gutter` keeps an empty column left of the axis and the lanes, to line
-  them up with charts under them.
+  them up with charts under them; `max_height`, the most its lanes take
+  before they scroll, for one as tall as its lanes.
 
 - **kui-perf: the keys' card, the dock, the range** (backlog F258): `?`,
   Help ▸ Keys and gestures or the toolbar's ⓘ shows every key and
   gesture on a card, open by itself the first time a recording opens; the
   dock under the timeline is a split whose rule is dragged (neither under
   140 px), kept with the preferences; the range selected on the axis is
-  zoomed to by `z` (or `f`) and cleared by Esc; the graph lanes' plots
-  start where the waterfall's lanes do. Its headless test keeps its
+  zoomed to by `z` (or `f`) and cleared by Esc; ↓ / `j` and ↑ / `k` walk
+  the spans' lanes — the selected span's first child and its parent — where
+  they walked the frames as ← → do; the waterfall is as tall as its lanes
+  (twelve at most), the graph lanes taking the rest; the overview's window
+  is drawn in the ink with what lies outside it dimmed, never narrower
+  than 8 px; the graph lanes' plots start where the waterfall's lanes do. Its headless test keeps its
   preferences in a folder of its own, where it removed the app's.
 
 - **`kui.trace`'s filter hides span names whole**: `hide_names = {

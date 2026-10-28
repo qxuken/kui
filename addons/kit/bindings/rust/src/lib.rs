@@ -6699,6 +6699,9 @@ pub struct Waterfall {
     pub selected: Option<i64>,
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
+    /// The most the lanes take in px before they scroll, when it does not
+    /// `grow`: as tall as its lanes up to that.
+    pub max_height: Option<f64>,
     /// An empty column in px left of the axis and the lanes, so they line up
     /// with charts under them that hold the same `gutter`.
     pub gutter: Option<f64>,
@@ -6735,6 +6738,7 @@ impl Waterfall {
             length: None,
             selected: None,
             grow: None,
+            max_height: None,
             gutter: None,
             range_start: None,
             range_length: None,
@@ -6773,6 +6777,13 @@ impl Waterfall {
     /// Takes the room its parent leaves.
     pub fn grow(mut self, v: bool) -> Self {
         self.grow = Some(v);
+        self
+    }
+
+    /// The most the lanes take in px before they scroll, when it does not
+    /// `grow`: as tall as its lanes up to that.
+    pub fn max_height(mut self, v: f64) -> Self {
+        self.max_height = Some(v);
         self
     }
 
@@ -6847,6 +6858,9 @@ impl Waterfall {
         }
         if let Some(v) = &self.grow {
             m.push(("grow".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.max_height {
+            m.push(("max_height".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.gutter {
             m.push(("gutter".into(), Value::Float(*v)));

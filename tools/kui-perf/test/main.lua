@@ -88,6 +88,19 @@ update({ kind = "ins_range", range = { start = 0, length = 0 } })
 check(st.r0 == nil, "a click on the axis clears it")
 key("escape")
 check(st.frame == -1 and st.span == -1, "Esc clears the selection")
+
+-- Up and down the lanes.
+key("0")
+key("j")
+local top = st.span
+check(top >= 0 and st.rec.spans:get(top, "depth") == 0, "j with nothing selected: the top lane's first span")
+key("down")
+check(st.span ~= top and st.rec.spans:get(st.span, "depth") == 1, "↓ its first child")
+key("k")
+check(st.span == top, "k its parent")
+key("up")
+check(st.span == top, "↑ at the top lane stays")
+key("escape")
 local before = st.search_focus
 key("/")
 check(st.search_focus == before + 1, "/ asks the search for the keyboard")
