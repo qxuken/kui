@@ -569,7 +569,10 @@ paints as a layer of its own: above the in-flow
 tree and every float that opened before it, under every float that opened
 after — a tooltip that appears over an open menu is over it, a menu that opens
 while a tooltip shows is over that — and it hit-tests in the same order, so a
-popover over a scroller's bar takes the press there. A scroller's bars and
+popover over a scroller's bar takes the press there. One anchored to its
+parent that does not escape is its box's content, and opens just above the
+floats its layer holds already rather than over every float — a chart's
+tick labels laid out after a dialog opened stay under the dialog. A scroller's bars and
 the focus ring are the chrome of the layer that owns them, above its content
 and under the layers over it; there is no `zIndex`, and re-keying a float
 reopens it on top

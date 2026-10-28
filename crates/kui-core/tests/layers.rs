@@ -30,6 +30,12 @@ const BLUE: Color = Color {
     b: 1.0,
     a: 1.0,
 };
+const YELLOW: Color = Color {
+    r: 1.0,
+    g: 1.0,
+    b: 0.0,
+    a: 1.0,
+};
 const GREY: Color = Color {
     r: 0.2,
     g: 0.2,
@@ -48,6 +54,8 @@ fn painted(core: &mut Core) -> Vec<&'static str> {
         .map(|q| {
             if q.color == RED {
                 "red"
+            } else if q.color == YELLOW {
+                "yellow"
             } else if q.color == GREEN {
                 "green"
             } else if q.color == BLUE {
@@ -906,4 +914,84 @@ fn an_images_border_is_drawn_over_the_picture() {
     );
     let bg = dl.quads.iter().position(|q| q.color == GREY).unwrap();
     assert!(bg < image.unwrap(), "the background stays under it");
+}
+
+/// A float anchored to its parent that does not escape is its box's
+/// content (ADR 0074), so it stacks with the layer it is held by rather
+/// than on top of everything that opened before it: Kit's line chart
+/// measures its plot on the first frame and lays out more x tick labels
+/// on the next — floats held by the axis' float — and a sample's slide
+/// opens a box under a fresh key, and each of them went over a dialog
+/// that had opened the frame before (backlog F257). A float that
+/// escapes — a menu, a popover — still opens on top.
+#[test]
+fn a_held_float_that_opens_later_stays_under_a_dialog_opened_before_it() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, ticks: usize, slide: u32, menu: bool| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed("chart", NodeSpec::column().size(300.0, 120.0), |ui| {
+            ui.leaf_keyed(
+                &format!("slide{slide}"),
+                NodeSpec::column()
+                    .size(300.0, 80.0)
+                    .bg(GREY)
+                    .float(FloatConfig::parent()),
+            );
+            ui.with_keyed(
+                "axis",
+                NodeSpec::column()
+                    .size(300.0, 14.0)
+                    .bg(GREEN)
+                    .float(FloatConfig::parent().offset(0.0, 80.0)),
+                |ui| {
+                    for i in 0..ticks {
+                        ui.leaf_keyed(
+                            &format!("x{i}"),
+                            NodeSpec::row()
+                                .size(20.0, 10.0)
+                                .bg(BLUE)
+                                .float(FloatConfig::parent().offset(i as f32 * 40.0, 0.0)),
+                        );
+                    }
+                    if menu {
+                        ui.leaf_keyed(
+                            "menu",
+                            NodeSpec::column()
+                                .size(60.0, 40.0)
+                                .bg(YELLOW)
+                                .float(FloatConfig::below().escaping()),
+                        );
+                    }
+                },
+            );
+        });
+        ui.leaf_keyed("dialog", float_at(50.0, RED));
+        ui.finish();
+    };
+    build(&mut core, 2, 1, false);
+    assert_eq!(painted(&mut core), ["grey", "green", "blue", "blue", "red"]);
+    // The plot measured: two more ticks, and a slide under a new key.
+    build(&mut core, 4, 2, false);
+    assert_eq!(
+        painted(&mut core),
+        ["green", "blue", "blue", "blue", "blue", "grey", "red"],
+        "the ticks and the slide that opened after the dialog are under it"
+    );
+    build(&mut core, 4, 2, false);
+    assert_eq!(
+        painted(&mut core),
+        ["green", "blue", "blue", "blue", "blue", "grey", "red"],
+        "and stay there"
+    );
+    // A menu that escapes the axis opens over everything, the dialog too;
+    // the next sample's slide still opens under the dialog.
+    build(&mut core, 4, 3, true);
+    assert_eq!(
+        painted(&mut core),
+        [
+            "green", "blue", "blue", "blue", "blue", "grey", "red", "yellow"
+        ],
+        "an escaping float opens on top"
+    );
 }

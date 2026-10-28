@@ -343,7 +343,10 @@ pub enum FloatAnchor {
 /// sizes Grow/Percent against its anchor, and is positioned by attach
 /// points. It paints as a layer of its own, above the in-flow tree and
 /// every float that opened before it and under every one that opened
-/// after, and takes input in the same order.
+/// after, and takes input in the same order. One anchored to its parent
+/// that does not [`FloatConfig::escape`] is its box's content: it opens
+/// just above the floats the same layer holds already, not over a dialog
+/// that opened before it (backlog F257).
 ///
 /// What it paints is cut where its parent's content is (ADR 0074): one
 /// anchored to its parent is held by the nearest box above it that clips

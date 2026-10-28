@@ -2571,8 +2571,9 @@ impl Core {
     /// This frame's float layers in paint order, from `roots` (the float
     /// roots in tree order) and the stack the last frame left: a root the
     /// stack knows keeps its place, one it does not is appended, in tree
-    /// order, and a root the frame no longer declares is dropped. Writes
-    /// the stack back for the next frame.
+    /// order — or, held by its parent's box, put just above the floats its
+    /// layer holds (backlog F257) — and a root the frame no longer declares
+    /// is dropped. Writes the stack back for the next frame.
     ///
     /// The steady state — the same roots as last frame — is one pass over
     /// the stack and no allocation beyond the order itself: each entry
@@ -2580,6 +2581,7 @@ impl Core {
     /// answer are the same read.
     fn stack_floats(&mut self, roots: &[u32]) -> Vec<u32> {
         let keys = &self.tree.keys;
+        let specs = &self.tree.specs;
         let parent = &self.tree.parent;
         let float_root = &self.float_root;
         // The float a root is in, or NIL for one in the flow.
@@ -2632,9 +2634,46 @@ impl Core {
                     next.push((k, rank));
                 }
             }
+            // A float anchored to its parent that does not escape is its
+            // box's content (ADR 0074): it opens just above the last float
+            // held by the same layer — the in-flow tree, or the float it is
+            // in — not over every float that opened before it. Kit's line
+            // chart lays out more x tick labels once its plot is measured
+            // and slides each sample in under a fresh key, and each one
+            // went over a dialog opened before it (backlog F257). One that
+            // escapes, or is placed against the viewport or a node, opens
+            // on top.
+            let held = |r: u32| {
+                specs[r as usize]
+                    .layout
+                    .float
+                    .is_some_and(|f| f.clipped_by_parent())
+            };
+            // Whether root `e` is held, through floats that are held in
+            // turn, by `host` (a float root, or NIL for the in-flow tree).
+            let held_by = |mut e: u32, host: u32| loop {
+                if e == host {
+                    return true;
+                }
+                if e == NIL || !held(e) {
+                    return false;
+                }
+                e = outer_of(e);
+            };
             for (rank, &r) in roots.iter().enumerate() {
-                if !placed[rank] {
-                    next.push((keys[r as usize], rank as u32));
+                if placed[rank] {
+                    continue;
+                }
+                let entry = (keys[r as usize], rank as u32);
+                if held(r) {
+                    let host = outer_of(r);
+                    let at = next
+                        .iter()
+                        .rposition(|&(_, m)| held_by(roots[m as usize], host))
+                        .map_or(0, |i| i + 1);
+                    next.insert(at, entry);
+                } else {
+                    next.push(entry);
                 }
             }
             // A box that kept its key while it became a float is new here,
