@@ -1,6 +1,6 @@
 # kui-perf's spike
 
-ADR 0075, decision 11 (backlog F249): before `kui-perf` is built, a bare Lua
+ADR 0075, decision 11 (backlog F252): before `kui-perf` is built, a bare Lua
 app on the `kui` runner — Kit's waterfall over a recording's spans and its
 table over its frames, from `kui.trace` — is measured over a recording the
 size of a long session, against the budgets the decision names.

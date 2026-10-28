@@ -5,7 +5,7 @@ date: 2026-10-27
 
 # kui-perf reads a recording in Kit, over columns Rust keeps
 
-> **Accepted (2026-10-28) after its spike; backlog F200, F245–F251, and
+> **Accepted (2026-10-28) after its spike; backlog F200, F248–F254, and
 > C147, C148, C149 and C102 built on the way.** Settled by a grilling round
 > with the user, after Kit landed on main. It replaces ADR 0058's decision
 > 13 with what `kui-perf`, the trace inspector, is and how it is built.
@@ -271,7 +271,7 @@ date: 2026-10-27
 
 ## Amendment: the spike (2026-10-28)
 
-Run as decision 11 says (backlog F249, `tools/kui-perf/spike`): a bare Lua
+Run as decision 11 says (backlog F252, `tools/kui-perf/spike`): a bare Lua
 app on the runner, Kit's waterfall over `rec.spans` and `rec.instants`
 and its table over `rec.frames`, over a recording `kui-trace synth` made
 of 72,000 frames and 936,723 spans (27.5 MB); release builds, an M3 Pro;
@@ -315,6 +315,6 @@ enough to run when the query changes, on this machine; on a slower one
 it is the fallback the decision names — the function once a distinct
 name and origin, the numbers in Rust.
 
-How `kui-perf` reaches a machine (decision 1, backlog F251) is decided
+How `kui-perf` reaches a machine (decision 1, backlog F254) is decided
 next, with these numbers: the runner is fast enough to carry it.
 

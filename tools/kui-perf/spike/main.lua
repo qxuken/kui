@@ -1,4 +1,4 @@
--- kui-perf's spike (ADR 0075, decision 11; backlog F249): Kit's waterfall
+-- kui-perf's spike (ADR 0075, decision 11; backlog F252): Kit's waterfall
 -- and table over a long recording, driven a step a tick through one phase,
 -- the runner recording itself (KUI_PERF_TRACE) for `analyze.lua` to read.
 --

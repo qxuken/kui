@@ -1,4 +1,4 @@
-//! A recording for a Lua script, with the `lua` feature (backlog F248, ADR
+//! A recording for a Lua script, with the `lua` feature (backlog F251, ADR
 //! 0075 decisions 2, 4 and 8): Rust reads, keeps and analyses it; the script
 //! is handed channels to draw from and small tables when it asks about one
 //! frame, one span, or a range.

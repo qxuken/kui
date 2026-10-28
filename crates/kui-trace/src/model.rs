@@ -335,7 +335,7 @@ impl Timeline {
     }
 
     /// Places more records, written after those it holds: what a stream
-    /// read as it arrives (backlog F246) grows its timeline by, sorting
+    /// read as it arrives (backlog F249) grows its timeline by, sorting
     /// only the end of each list the new records reach into.
     pub fn extend(&mut self, records: &[Record]) {
         let tl = self;

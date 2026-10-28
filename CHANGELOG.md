@@ -37,7 +37,7 @@ and its tables sort and filter them.
 
 ### Added
 
-- **`kui-value` and `kui-channel`, crates of their own** (backlog F245):
+- **`kui-value` and `kui-channel`, crates of their own** (backlog F248):
   `Value`, `json` and the message traits, with `lua` (`kui_value::lua`,
   the conversions to and from an `mlua` value) and `derive`
   (`#[derive(Message)]`, `#[message(crate = "kui_value")]` for a crate
@@ -49,7 +49,7 @@ and its tables sort and filter them.
   `kui_core::channel`), and kui-lua's `lua_to_value`, `value_to_lua` and
   `mark_array` are the new crates' with a channel crossing as its handle.
 
-- **A recording read as it arrives** (backlog F246): `kui_trace::Stream`
+- **A recording read as it arrives** (backlog F249): `kui_trace::Stream`
   decodes bytes pushed in as they come, keeping a record cut between
   pushes for the next, and grows its timeline in place
   (`Timeline::extend`, which sorts only the end the new records reach
@@ -60,7 +60,7 @@ and its tables sort and filter them.
   its size or time moved. `Trace::slice` is the frames-range cut the Perf
   tab's range reads, now the crate's.
 
-- **`kui-trace synth`** (backlog F247): a made-up session by frames,
+- **`kui-trace synth`** (backlog F250): a made-up session by frames,
   spans a frame, seed and Hz, in the shape a recorder writes — gaps
   asleep and woken, input and handlers, the app's spans nested under
   `build`, an extension's fill and its placements, burns, slow frames,
@@ -68,7 +68,7 @@ and its tables sort and filter them.
   `.kuitrace`, or `kui_trace::synth::Synth::trace()` in memory. 72,000
   frames, about 937,000 spans, are 27 MB written in 0.3 s.
 
-- **`kui.trace`, a recording for a script** (backlog F248, ADR 0075):
+- **`kui.trace`, a recording for a script** (backlog F251, ADR 0075):
   `kui-trace`'s `lua` feature, which the runner turns on. `kui.trace.open
   (path, { message })` reads a `.kuitrace` into channels — `rec.spans` in
   Kit's waterfall's shape, `rec.frames` a row a finished frame with its
@@ -100,7 +100,7 @@ and its tables sort and filter them.
   return s.len > 0.5 and s.name:find("fill") end }`, called from Rust
   with one table a span; 200 ms over 937,000 spans.
 
-- **kui-perf's spike** (backlog F249, `tools/kui-perf/spike`): a bare Lua
+- **kui-perf's spike** (backlog F252, `tools/kui-perf/spike`): a bare Lua
   app — Kit's waterfall and table over `kui.trace` — that measures
   itself phase by phase over a long recording, and the script that reads
   its recording back. ADR 0075 holds the numbers and is accepted with

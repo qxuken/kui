@@ -1,4 +1,4 @@
-//! Recordings made up, in the shape a session writes (backlog F247, ADR
+//! Recordings made up, in the shape a session writes (backlog F250, ADR
 //! 0075 decision 12): for a reader's tests, a bench, and the inspector's
 //! spike, which needs ten minutes at 120 Hz — 72,000 frames, a million
 //! spans — that no Perf tab keeps.

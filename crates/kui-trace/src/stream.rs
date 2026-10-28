@@ -1,4 +1,4 @@
-//! A recording read as it arrives (backlog F246, ADR 0075 decision 5):
+//! A recording read as it arrives (backlog F249, ADR 0075 decision 5):
 //! bytes pushed in as a [`Transport`] hands them over — a file still being
 //! written, a pipe, a socket — decoded up to the last whole record, the
 //! cut one kept for the next push, the recording and its timeline grown.

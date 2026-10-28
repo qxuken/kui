@@ -382,7 +382,7 @@ fn nested(n: u64) -> Trace {
 
 /// A recording pushed a few bytes at a time reads as the whole file does,
 /// its timeline as the whole one, a cut record waiting for its rest
-/// (backlog F246).
+/// (backlog F249).
 #[test]
 fn a_stream_pushed_in_pieces_reads_as_the_whole() {
     let t = nested(5);
@@ -477,7 +477,7 @@ fn a_watch_says_when_the_file_moved() {
 /// A made-up session is the same for a seed, and has what a real one has:
 /// frames a span count apart, children inside their parents, burns,
 /// slow frames, components drawn fresh, a gap the loop slept through
-/// (backlog F247).
+/// (backlog F250).
 #[test]
 fn a_made_up_session_has_a_sessions_shape() {
     use crate::synth::Synth;

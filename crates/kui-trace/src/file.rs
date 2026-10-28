@@ -1,4 +1,4 @@
-//! A recording's file as a [`Transport`] (backlog F246, ADR 0075 decisions
+//! A recording's file as a [`Transport`] (backlog F249, ADR 0075 decisions
 //! 5 and 6): what was appended since the last poll, or the whole again when
 //! the file was rewritten — shorter than what was read, or its first bytes
 //! changed; and a [`Watch`] that checks the file every so often on a thread
