@@ -9393,7 +9393,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'frameBinary', 'setViewBinary', 'setView', 'measureTextBinary', 'caretInTextBinary', 'setTokensRaw',
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
-    'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'wheel', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
+    'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'wheel', 'pinch', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
     'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel', 'answerFiles', 'openDocuments',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',
