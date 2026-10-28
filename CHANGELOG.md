@@ -119,6 +119,13 @@ Nothing else breaks.
   offscreen through wgpu-native and check it; Odin's also runs in a GLFW
   window over a "world". kui.h's "Drawing it yourself" says the rest.
 
+- **Scoped openers for C** (backlog F261): `KUI_FRAME(ctx, w, h, scale)
+  { ... }` and `KUI_BOX(ctx, .width = {KUI_GROW, 1}, .bg = ...) { ... }`
+  close what they open at the block's end, as Odin's `if kui.box(...)`
+  does — with `KUI_BOX_KEYED`, `KUI_BOX_KEY` (the key written out) and
+  `KUI_BOX_CLICK` (a click message). Macros in kui.h, C only; never
+  `break` or `return` out of one.
+
 ## 0.1.0-alpha.70 (2026-10-28)
 
 **What breaks.**

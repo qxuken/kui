@@ -10,22 +10,22 @@
 #include <stdlib.h>
 #include "../common.h"
 
-/* A panel holding a button, on a transparent root. */
+/* A panel holding a button, on a transparent root, opened and closed by
+ * kui.h's scoped openers (backlog F261). The click message is the node's
+ * to keep, so KUI_BOX_CLICK makes one a frame. */
 static uint64_t build(KuiCtx *ui) {
-    kui_frame_begin(ui, 320, 200, 2);
-    KuiSpec panel = {.width = {KUI_FIXED, 160}, .height = {KUI_FIXED, 80},
-                     .pad_l = 8, .pad_t = 8, .bg = 0x202020ccu, .radius = 6};
-    uint64_t panel_key = kui_open_keyed(ui, KUI_STR("panel"), &panel, NULL);
-    KuiSpec button = {.width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 24},
-                      .bg = 0x3a6ff0ffu, .radius = 4, .label = KUI_STR("go")};
-    /* The click message is the node's to keep, one a frame. */
-    kui_open_keyed(ui, KUI_STR("go"), &button, kui_value_str(KUI_STR("go")));
+    uint64_t panel = 0;
     KuiTextStyle label = {.size = 13, .color = 0xffffffffu};
-    kui_text(ui, KUI_STR("go"), &label);
-    kui_close(ui);
-    kui_close(ui);
-    kui_frame_finish(ui);
-    return panel_key;
+    KUI_FRAME(ui, 320, 200, 2) {
+        KUI_BOX_KEY(ui, &panel, "panel", .width = {KUI_FIXED, 160}, .height = {KUI_FIXED, 80},
+                    .pad_l = 8, .pad_t = 8, .bg = 0x202020ccu, .radius = 6) {
+            KUI_BOX_CLICK(ui, "go", "go", .width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 24},
+                          .bg = 0x3a6ff0ffu, .radius = 4, .label = KUI_STR("go")) {
+                kui_text(ui, KUI_STR("go"), &label);
+            }
+        }
+    }
+    return panel;
 }
 
 /* Drains the queue; how many clicks said "go". */

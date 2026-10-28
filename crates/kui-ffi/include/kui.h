@@ -4354,6 +4354,49 @@ void kui_path_d(KuiCtx *ctx, KuiStr label, KuiStr d, uint32_t fill_rule,
                 const float *dash, const KuiSpec *spec, KuiValue *on_click,
                 KuiValue *on_drag, KuiValue *on_hover);
 void kui_close(KuiCtx *ctx);
+
+/* Scoped openers (backlog F261): a block that opens a frame or a node and
+ * closes it at the block's end, as Odin's `if kui.box(...) {}` does, at no
+ * run-time cost - each is a for loop that runs its body once:
+ *
+ *     KUI_FRAME(ctx, w, h, scale) {
+ *         KUI_BOX(ctx, .width = {KUI_GROW, 1}, .bg = 0x202020ffu) {
+ *             kui_text(ctx, KUI_STR("Hello from C"), &big);
+ *         }
+ *     }
+ *
+ * The spec is a KuiSpec's designated initializers; KUI_BOX(ctx, 0) is an
+ * empty one. KUI_BOX_KEYED keys the node by a label, KUI_BOX_KEY also
+ * writes the key kui_open_keyed returns into *key_out, and KUI_BOX_CLICK
+ * gives it a click message - a fresh string value each frame, since
+ * kui_open* keeps the one it is handed.
+ *
+ * Never break, return or goto out of one: that skips its close. Out of a
+ * KUI_BOX it leaves the node open, which the unclosed-node warning names
+ * when the frame finishes; out of a KUI_FRAME it leaves the frame
+ * unfinished. `continue` is fine. C only: a compound literal from
+ * designated initializers is not C++ (C++20's are order-bound); MSVC
+ * needs /std:c11. */
+#ifndef __cplusplus
+#define KUI__CAT2(a, b) a##b
+#define KUI__CAT(a, b) KUI__CAT2(a, b)
+#define KUI__SCOPE_N(v, open, close) for (int v = ((open), 0); !v; v = 1, (close))
+#define KUI__SCOPE(open, close) KUI__SCOPE_N(KUI__CAT(kui__once_, __COUNTER__), open, close)
+#define KUI_FRAME(ctx, w, h, scale) \
+    KUI__SCOPE(kui_frame_begin((ctx), (w), (h), (scale)), kui_frame_finish(ctx))
+#define KUI_BOX(ctx, ...) \
+    KUI__SCOPE(kui_open((ctx), &(KuiSpec){__VA_ARGS__}, NULL), kui_close(ctx))
+#define KUI_BOX_KEYED(ctx, label, ...) \
+    KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, NULL), kui_close(ctx))
+#define KUI_BOX_KEY(ctx, key_out, label, ...) \
+    KUI__SCOPE(*(key_out) = kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, NULL), \
+               kui_close(ctx))
+#define KUI_BOX_CLICK(ctx, label, message, ...) \
+    KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, \
+                              kui_value_str(KUI_STR(message))), \
+               kui_close(ctx))
+#endif
+
 /* A lazy branch's builder (kui_lazy): your `user`, and the context to
  * build the branch's nodes through. */
 typedef void (*KuiLazyFn)(void *user, KuiCtx *ctx);

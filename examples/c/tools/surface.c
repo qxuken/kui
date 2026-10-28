@@ -1844,6 +1844,29 @@ static int surface(void) {
         kui_ctx_free(why);
     }
 
+    /* kui.h's scoped openers (backlog F261): a box nested in a box, both
+     * closed by their blocks, so a sibling after the first lands below it
+     * rather than inside it; KUI_BOX_KEY writes the key out. */
+    {
+        KuiCtx *sc = kui_ctx_new();
+        uint64_t outer = 0, inner = 0, after = 0;
+        KUI_FRAME(sc, 200, 200, 1) {
+            KUI_BOX_KEY(sc, &outer, "outer", .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 50},
+                        .pad_l = 10, .pad_t = 10, .bg = 0x202020ffu) {
+                KUI_BOX_KEY(sc, &inner, "inner", .width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 20},
+                            .bg = 0xff0000ffu) {}
+                KUI_BOX(sc, 0) {}
+            }
+            KUI_BOX_KEY(sc, &after, "after", .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
+                        .bg = 0x00ff00ffu) {}
+        }
+        check(outer != 0 && outer == kui_key_of(sc, KUI_STR("outer")), "KUI_BOX_KEY writes the node's key");
+        check(kui_hit(sc, 15, 15) == inner, "KUI_BOX: the inner box inside the outer one");
+        check(kui_hit(sc, 80, 40) == outer, "and the outer around it");
+        check(kui_hit(sc, 50, 60) == after, "KUI_BOX closes: the sibling after it lands below");
+        kui_ctx_free(sc);
+    }
+
     /* A host's questions about the pointer and the keyboard (backlog
      * F233), on a context of its own: a painted panel blocks the world, a
      * box that paints nothing does not unless it says KUI_HOST_HIT_BLOCK,
