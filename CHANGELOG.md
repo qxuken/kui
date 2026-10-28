@@ -67,6 +67,16 @@ was the first bare bump to break an app in five releases).
   `kui_core::event::Scroll` a field `zoom: Option<f32>` (backlog F256): a
   Rust host that matches `InputEvent` whole adds an arm, and one that
   builds a `Scroll` by its fields adds `zoom: None`.
+- A headless run (`Launcher::open_headless`, `kui run --headless` and
+  `--shot`) of an app with `Chrome::Custom` draws its titlebar as a
+  window of its platform does (backlog F220, F221): on macOS
+  `env.window.native_controls` is the traffic lights' room — 78×32, 84×40
+  or 98×52 by the launcher's `titlebar` — where it was none, so
+  `widgets::titlebar` leaves room for them and draws no buttons of its
+  own, and the `titlebar_h` metric is the strip's 32, 40 or 52 where it
+  was 34; off macOS a `Medium` or `Tall` titlebar makes it 40 or 52, as
+  a window does, where the headless run ignored it. A picture of such an
+  app taken headless changes.
 
 Nothing else breaks: two crates split out of `kui-core` and re-exported
 where they were, four channel doors added in every binding, and the
@@ -103,6 +113,30 @@ and its tables sort and filter them.
   generated `Spec`, `Enter` and `Keyframe` fields with `.Scale_X` /
   `.Scale_Y`. The devtools' facts and `Core::nodes` show it beside
   `rotate` and `scale`.
+
+- **A headless run can be pinned to another platform's look** (backlog
+  F220, from Carnet's README pictures): `Launcher::platform(Platform)`,
+  and `kui run --platform macos|windows|linux` with `--headless` or
+  `--shot`, so a picture of the Mac's window taken on Windows is the
+  Mac's. The core is told it runs there (`Core::set_platform`), and every
+  choice it makes by platform now reads that rather than the build: the
+  shortcuts a drawn menu writes (`⌥⌘8` or `Ctrl+Alt+8`, a role's default
+  too), what `mod` in an accelerator and the primary modifier mean (⌘ or
+  Ctrl — to a menu's accelerators, an editor's ⌘⌫ and Ctrl+←), the "Tab
+  moves focus" chord, glyph hinting (off on macOS, on below 1.5×
+  elsewhere), and the `titlebar_h` metric while it is the caption's
+  height; under custom chrome, the titlebar is
+  that platform's (above). A window keeps the build's. Beside it,
+  `Accel::parse_on` / `display_on` / `label_on`, `MenuRole::default_accel_on`,
+  `MenuItem::accel_text_on` / `accel_label_on`, `KeyMods::primary_on`,
+  `KeyPress::edit_event_on`, `metrics::caption_h` and
+  `Titlebar::mac_controls`, each the platform-taking form of the one
+  without.
+
+- **A headless run keeps its `env.window`** (backlog F221): made once at
+  open and kept, where every frame wrote it afresh with no controls.
+  `HeadlessInput::window(WindowEnv)` tells it another — maximized, in
+  fullscreen, other controls — and `HeadlessRunner::window` reads it.
 
 - **A trackpad's pinch** (backlog F256): a macOS trackpad's pinch reaches
   the innermost `onScroll` node under the pointer as its message with
@@ -342,6 +376,9 @@ and its tables sort and filter them.
   file URLs, `text/uri-list`), kept only to copy a file.
 - A hidden-window dance or a quick exit in an app's close path, kept
   only so the window did not flash as it went.
+- Traffic lights painted onto a headless picture, and an app wrapped to
+  set `native_controls` at the top of every `view`, kept only so a
+  picture taken off a Mac looked like one: `.platform(Platform::MacOs)`.
 
 ## 0.1.0-alpha.69 (2026-10-28)
 

@@ -1807,13 +1807,17 @@ impl EditStore {
     }
 
     /// Returns (content_changed, submit) — submit is Enter in single-line.
+    /// What the modifiers mean is `platform`'s: the core's, which a run
+    /// pinned to another platform's look sets (backlog F220).
     pub(crate) fn apply_key(
         &mut self,
         key: Key,
         ek: EditKey,
         mods: Mods,
+        platform: crate::rules::Platform,
         fs: &mut FontSystem,
     ) -> KeyOutcome {
+        let mac = platform == crate::rules::Platform::MacOs;
         let Some(s) = self.states.get_mut(&key) else {
             return KeyOutcome::default();
         };
@@ -1847,7 +1851,6 @@ impl EditStore {
                 // the line's ends, and ⌘↑ ⌘↓ to the text's. Elsewhere Ctrl
                 // moves by words, and Ctrl+↑ Ctrl+↓ by paragraphs; Alt
                 // stays a word, as it was here before.
-                let mac = cfg!(target_os = "macos");
                 let word = mods.word || (!mac && mods.doc);
                 // A secure editor has no words to show: a word's move is
                 // the line's, as a Mac's password field's is.
@@ -1907,7 +1910,7 @@ impl EditStore {
                 // to its end, as AppKit's fields do; elsewhere the primary
                 // modifier is Ctrl, and Ctrl+Backspace takes a word, as
                 // Windows' and GTK's fields do.
-                let (line, word) = if cfg!(target_os = "macos") {
+                let (line, word) = if mac {
                     (mods.doc, mods.word)
                 } else {
                     (false, mods.word || mods.doc)

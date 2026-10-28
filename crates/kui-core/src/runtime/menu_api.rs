@@ -184,7 +184,7 @@ impl Core {
         // (`declare_menu_bar`): a portable `"mod+shift+n"` is drawn `⇧⌘N`
         // or `Ctrl+Shift+N`, and a host that shows the menu itself reads
         // the same string back (backlog F127).
-        MenuItem::normalize_accels(&mut menu.items);
+        MenuItem::normalize_accels(&mut menu.items, self.platform);
         self.menu = Some(menu);
         // A new menu opens with none of its submenus open, drawn here —
         // or, where the host places menus, nowhere until it has said where
@@ -493,7 +493,7 @@ impl Core {
             .menu
             .as_ref()
             .filter(|_| !self.native_menus && self.menu_where == MenuWhere::Window)
-            && let Some(path) = accel_path(&menu.items, kp)
+            && let Some(path) = accel_path(&menu.items, kp, self.platform)
         {
             self.choose_menu_path(&path, out);
             return true;
@@ -501,9 +501,10 @@ impl Core {
         let Some(open) = self.menu_bar_open.filter(|_| !self.native_menu_bar) else {
             return false;
         };
+        let platform = self.platform;
         let Some(item) = self.menu_bar.as_ref().and_then(|b| {
             let items = &b.menus.get(open).filter(|m| m.enabled)?.items;
-            MenuItem::at_path(items, &accel_path(items, kp)?).cloned()
+            MenuItem::at_path(items, &accel_path(items, kp, platform)?).cloned()
         }) else {
             return false;
         };
@@ -590,11 +591,13 @@ impl Core {
                         // `handle_input`: this runs *inside* one already,
                         // and the events the nested call returned were
                         // dropped on the floor.
+                        let platform = self.platform;
                         self.edit_with_fonts(|edit, fs| {
                             edit.apply_key(
                                 key,
                                 crate::input::EditKey::SelectAll,
                                 crate::input::Mods::default(),
+                                platform,
                                 fs,
                             )
                         });
@@ -701,7 +704,7 @@ impl Core {
         }
         out.extend(self.route_input(InputEvent::KeyDown(kp.clone())));
         let letter = match kp.code {
-            KeyCode::Char(c) if kp.mods.primary() => Some(c.to_ascii_lowercase()),
+            KeyCode::Char(c) if kp.mods.primary_on(self.platform) => Some(c.to_ascii_lowercase()),
             _ => None,
         };
         let editor = self.edit.focused();
@@ -726,7 +729,7 @@ impl Core {
             self.perform_role(role, target, out);
         } else if let (Some(ek), Some(_)) = (history, editor) {
             out.extend(self.route_input(InputEvent::Key(ek, Mods::default())));
-        } else if let Some(ev) = kp.edit_event() {
+        } else if let Some(ev) = kp.edit_event_on(self.platform) {
             out.extend(self.route_input(ev));
         }
         out.extend(self.route_input(InputEvent::KeyUp(kp.released())));
@@ -754,23 +757,29 @@ impl Taken {
 /// The path of the first row in `items`, submenus included, that the press
 /// `kp` is the accelerator of and that can be chosen
 /// ([`MenuItem::choosable_at`]): the row's own accelerator or its role's,
-/// in any spelling [`crate::menu::Accel::parse`] reads. A row whose
-/// accelerator kui cannot parse is the app's to match, and is passed.
-fn accel_path(items: &[MenuItem], kp: &crate::input::KeyPress) -> Option<Vec<usize>> {
+/// in any spelling [`crate::menu::Accel::parse`] reads, `mod` and the
+/// roles' defaults by `platform`. A row whose accelerator kui cannot parse
+/// is the app's to match, and is passed.
+fn accel_path(
+    items: &[MenuItem],
+    kp: &crate::input::KeyPress,
+    platform: crate::rules::Platform,
+) -> Option<Vec<usize>> {
     fn walk(
         all: &[MenuItem],
         level: &[MenuItem],
         path: &mut Vec<usize>,
         kp: &crate::input::KeyPress,
+        platform: crate::rules::Platform,
     ) -> bool {
         for (i, item) in level.iter().enumerate() {
             path.push(i);
             let hit = item
-                .accel_text()
-                .and_then(crate::menu::Accel::parse)
+                .accel_text_on(platform)
+                .and_then(|a| crate::menu::Accel::parse_on(a, platform))
                 .is_some_and(|a| a.matches(kp))
                 && MenuItem::choosable_at(all, path);
-            if hit || (item.selectable() && walk(all, &item.submenu, path, kp)) {
+            if hit || (item.selectable() && walk(all, &item.submenu, path, kp, platform)) {
                 return true;
             }
             path.pop();
@@ -778,7 +787,7 @@ fn accel_path(items: &[MenuItem], kp: &crate::input::KeyPress) -> Option<Vec<usi
         false
     }
     let mut path = Vec::new();
-    walk(items, items, &mut path, kp).then_some(path)
+    walk(items, items, &mut path, kp, platform).then_some(path)
 }
 
 /// The `path` a submenu row's tag carries (`widgets::menu_row_tag`);

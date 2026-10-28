@@ -1152,7 +1152,14 @@ impl KeyMods {
     /// The platform primary shortcut modifier: Command on macOS, Control
     /// elsewhere.
     pub fn primary(self) -> bool {
-        if cfg!(target_os = "macos") {
+        self.primary_on(crate::rules::Platform::current())
+    }
+
+    /// [`Self::primary`] on `platform`: what a core told it runs on
+    /// another platform than the build's reads a shortcut by (backlog
+    /// F220).
+    pub fn primary_on(self, platform: crate::rules::Platform) -> bool {
+        if platform == crate::rules::Platform::MacOs {
             self.super_key
         } else {
             self.ctrl
@@ -1405,6 +1412,13 @@ impl KeyPress {
     /// Insert — and for every chord, which carries no `text` because it
     /// inserts nothing. The press still stands on the sink channel.
     pub fn edit_event(&self) -> Option<InputEvent> {
+        self.edit_event_on(crate::rules::Platform::current())
+    }
+
+    /// [`Self::edit_event`] with `doc` read as `platform`'s primary
+    /// modifier (backlog F220): what the core makes of a key, by the
+    /// platform it says it runs on.
+    pub fn edit_event_on(&self, platform: crate::rules::Platform) -> Option<InputEvent> {
         let key = match self.code {
             KeyCode::Left => EditKey::Left,
             KeyCode::Right => EditKey::Right,
@@ -1459,7 +1473,7 @@ impl KeyPress {
             Mods {
                 shift: self.mods.shift,
                 word: self.mods.alt,
-                doc: self.mods.primary(),
+                doc: self.mods.primary_on(platform),
                 ctrl: self.mods.ctrl,
             },
         ))

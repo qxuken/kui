@@ -34,3 +34,31 @@ fn letters_of_one_x_height_share_a_top_at_2x() {
         }
     }
 }
+
+/// Every glyph's bitmap rect in `text` at 1×, drawn by a core told it runs
+/// on `platform` (backlog F220).
+fn rects_on(platform: kui_core::Platform, text: &str) -> Vec<(f32, f32, f32, f32)> {
+    let mut core = Core::new();
+    core.set_platform(platform);
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.text(text, TextStyle::new(13.0));
+    ui.finish();
+    let (list, _) = core.output();
+    list.quads
+        .iter()
+        .filter(|q| matches!(q.kind, QuadKind::GlyphMask | QuadKind::GlyphSubpixel))
+        .map(|q| (q.rect.x, q.rect.y, q.rect.w, q.rect.h))
+        .collect()
+}
+
+/// Hinting is the core's platform's, not the build's: a run pinned to
+/// macOS draws its 1× glyphs unhinted, as a Mac does, on any machine.
+#[test]
+fn hinting_at_1x_is_the_pinned_platform_s() {
+    let text = "Hamburgefonstiv 0123456789";
+    let mac = rects_on(kui_core::Platform::MacOs, text);
+    let win = rects_on(kui_core::Platform::Windows, text);
+    assert_eq!(mac.len(), win.len());
+    assert_ne!(mac, win, "hinted and unhinted glyphs drew alike");
+}

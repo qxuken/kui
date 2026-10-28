@@ -3276,7 +3276,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["platform"],
         lua: &["platform"],
         c: "`kui_platform()`",
-        doc: "The platform the app runs on (backlog C116): `\"macos\"`, `\"windows\"` or `\"linux\"` (every other Unix reads as Linux) — `KUI_PLATFORM_*` in C, where 0 is a bad context. The same fact a `when` entry's `platform` condition reads, so a script that follows a platform's convention in Lua (a select stepping on a bare arrow off macOS) and a rule that follows it in a `when` always agree. Derived from the build, and a Rust test may say another (`Core::set_platform`), which both follow.",
+        doc: "The platform the app runs on (backlog C116): `\"macos\"`, `\"windows\"` or `\"linux\"` (every other Unix reads as Linux) — `KUI_PLATFORM_*` in C, where 0 is a bad context. The same fact a `when` entry's `platform` condition reads, so a script that follows a platform's convention in Lua (a select stepping on a bare arrow off macOS) and a rule that follows it in a `when` always agree. Derived from the build, unless the core is told another (`Core::set_platform`) — a Rust test, or a headless run pinned to another platform's look (`Launcher::platform`, `kui run --platform`) — which both follow.",
     },
 ];
 

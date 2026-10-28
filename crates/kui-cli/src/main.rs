@@ -1,7 +1,7 @@
 //! `kui`: runs a Lua or Teal app with Kit and a standard library, and
 //! nothing else to install (ADR 0064).
 //!
-//!   kui run [path] [--headless] [--watch] [--size WxH] [--appearance light|dark] [-- app args]
+//!   kui run [path] [--headless] [--watch] [--size WxH] [--appearance light|dark] [--platform p] [-- app args]
 //!   kui check [path]
 //!   kui new <dir> [--docs] [--agents]
 //!   kui types [path] [--docs] [--agents]
@@ -91,6 +91,9 @@ run options:
   --record MS    with --shot, record MS of frames into FILE (.gif, .png) instead of one
   --appearance light|dark
                  pin the light or dark appearance over the OS's (headless has none of its own)
+  --platform macos|windows|linux
+                 with --headless or --shot, draw as that platform does: its shortcut labels
+                 and keys, and under custom chrome its titlebar (a Mac's traffic lights)
   -- ARGS        what follows is the app's, in kui.args
 
 new and types options:
@@ -119,6 +122,8 @@ struct Args {
     devtools: bool,
     no_rename: bool,
     appearance: kui_native::Appearance,
+    /// `--platform`: the platform a headless run draws as (backlog F220).
+    platform: Option<kui_native::Platform>,
     /// `kui new` / `kui types`: `--docs` and `--agents` (ADR 0071).
     tooling: project::Tooling,
 }
@@ -139,6 +144,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
         devtools: false,
         no_rename: false,
         appearance: kui_native::Appearance::Unknown,
+        platform: None,
         tooling: project::Tooling::default(),
     };
     match it.peek().map(String::as_str) {
@@ -197,6 +203,14 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
                     _ => return Err("--appearance needs light or dark".into()),
                 };
             }
+            "--platform" => {
+                a.platform = Some(
+                    it.next()
+                        .as_deref()
+                        .and_then(kui_native::Platform::parse)
+                        .ok_or("--platform needs macos, windows or linux")?,
+                );
+            }
             "--scale" => {
                 let v = it.next().ok_or("--scale needs a number, as 1.5")?;
                 a.scale = v
@@ -226,6 +240,9 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
     }
     if let Some(p) = path {
         a.path = p;
+    }
+    if a.platform.is_some() && !a.headless {
+        return Err("--platform is for --headless and --shot: a window is the OS's".into());
     }
     if a.tooling.any() && !matches!(a.cmd.as_str(), "new" | "types") {
         return Err("--docs and --agents are kui new's and kui types' options".into());
@@ -409,6 +426,9 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
         .titlebar(project.titlebar)
         .extension_as("app", ext)
         .extension_as(kit::NAMESPACE, kit);
+    if let Some(platform) = args.platform {
+        launcher = launcher.platform(platform);
+    }
     if args.appearance != kui_native::Appearance::Unknown {
         launcher = launcher.system(kui_native::SystemEnv {
             appearance: args.appearance,

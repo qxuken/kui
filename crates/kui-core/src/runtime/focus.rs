@@ -1099,7 +1099,7 @@ impl Core {
     /// whoever's it always was — a terminal's Return, an app's shortcut.
     pub(crate) fn toggles_tab_focus(&self, kp: &crate::input::KeyPress) -> bool {
         let m = kp.mods;
-        let shift = cfg!(target_os = "macos");
+        let shift = self.platform == crate::rules::Platform::MacOs;
         m.ctrl
             && !m.alt
             && !m.super_key

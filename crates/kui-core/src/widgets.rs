@@ -1741,7 +1741,7 @@ fn menu_level(
             let tail = if opens {
                 Some(std::borrow::Cow::Borrowed(MENU_CHEVRON))
             } else {
-                item.accel_label()
+                item.accel_label_on(ui.platform())
             };
             let row = |ui: &mut Ui<'_>| {
                 let tail_style = TextStyle::new(m.chrome_text).color(t.muted).nowrap();

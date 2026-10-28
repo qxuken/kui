@@ -26,7 +26,7 @@ impl Core {
                 shift: m.shift,
                 ctrl: m.ctrl,
                 alt: false,
-                super_key: m.doc && cfg!(target_os = "macos"),
+                super_key: m.doc && self.platform == crate::rules::Platform::MacOs,
             }),
             _ => self.interaction.modifiers(),
         };
@@ -311,7 +311,7 @@ impl Core {
     pub fn press(&mut self, key: KeyPress) -> Vec<UiEvent> {
         // Read before the move, and before the press: the key's meaning is
         // a property of the key, not of what the first channel did with it.
-        let edit = key.edit_event();
+        let edit = key.edit_event_on(self.platform);
         let mut out = self.handle_input(InputEvent::KeyDown(key));
         if let Some(ev) = edit {
             out.extend(self.handle_input(ev));
@@ -646,7 +646,9 @@ impl Core {
                         self.focus_next(!mods.shift);
                     }
                 } else if let Some(key) = self.edit.focused() {
-                    let done = self.edit_with_fonts(|edit, fs| edit.apply_key(key, ek, mods, fs));
+                    let platform = self.platform;
+                    let done = self
+                        .edit_with_fonts(|edit, fs| edit.apply_key(key, ek, mods, platform, fs));
                     self.editor_took_selection(key);
                     if done.changed {
                         self.push_edit_event(key, EventKind::Change, &mut out);
@@ -805,7 +807,7 @@ impl Core {
                 // lets a key equivalent that is not its own through
                 // (backlog C109): the press goes on below, routed as the
                 // frame without the float will see it.
-                if Self::is_accelerator(&kp) {
+                if self.is_accelerator(&kp) {
                     self.leave_menu_float(DismissReason::Accelerator, &mut out);
                 }
                 // F2 enters a focused table cell's controls (ADR 0070),
@@ -1834,9 +1836,9 @@ impl Core {
     /// modifier and A, Shift allowed — which a composite's `on_item_key`
     /// hears though it is a chord: in a list or a table, select all is the
     /// rows', as it is in every native one (Kit's multiple selection).
-    fn select_all_chord(kp: &KeyPress) -> bool {
+    fn select_all_chord(&self, kp: &KeyPress) -> bool {
         kp.code == KeyCode::Char('a')
-            && kp.mods.primary()
+            && kp.mods.primary_on(self.platform)
             && !kp.mods.alt
             && !(kp.mods.ctrl && kp.mods.super_key)
     }
@@ -1862,7 +1864,7 @@ impl Core {
     /// the focus shows, as a sink's does.
     fn item_key(&mut self, kp: &KeyPress, out: &mut Vec<UiEvent>) -> bool {
         let chord = kp.mods.ctrl || kp.mods.alt || kp.mods.super_key;
-        if self.edit.focused().is_some() || (chord && !Self::select_all_chord(kp)) {
+        if self.edit.focused().is_some() || (chord && !self.select_all_chord(kp)) {
             return false;
         }
         let Some(i) = self.focused_control() else {
@@ -1967,7 +1969,7 @@ impl Core {
         if kp.code == KeyCode::Tab && self.edit.keeps_tab(key) {
             return false;
         }
-        if kp.edit_event().is_some() {
+        if kp.edit_event_on(self.platform).is_some() {
             return true;
         }
         // A function key types nothing and begins no composition, so it is
@@ -1976,7 +1978,7 @@ impl Core {
         if matches!(kp.code, KeyCode::F(_)) {
             return false;
         }
-        let clipboard = kp.mods.primary()
+        let clipboard = kp.mods.primary_on(self.platform)
             && matches!(kp.code, KeyCode::Char(c) if "cxvazy".contains(c.to_ascii_lowercase()));
         clipboard || !(kp.mods.ctrl || kp.mods.super_key)
     }
@@ -2088,8 +2090,8 @@ impl Core {
     /// Whether a key press is an accelerator (backlog C109): a key under
     /// the platform's primary modifier — ⌘ on a Mac, Ctrl elsewhere — and
     /// not the modifier on its own.
-    pub(crate) fn is_accelerator(kp: &crate::input::KeyPress) -> bool {
-        kp.mods.primary() && !kp.code.is_modifier()
+    pub(crate) fn is_accelerator(&self, kp: &crate::input::KeyPress) -> bool {
+        kp.mods.primary_on(self.platform) && !kp.code.is_modifier()
     }
 
     /// Closes the app's own menu float, if one is the modal scope (backlog
