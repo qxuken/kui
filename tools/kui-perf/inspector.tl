@@ -609,14 +609,23 @@ local function detail(st: Inspector): kui.Node
   if st.span >= 0 then
     local s = st.rec:span(st.span)
     if s then
-      return column { key = "detail", width = "grow", gap = 8,
-        text(s.name, { size = "$kitSizeTitle", family = "$kitUi", bold = true, color = "$kitFg" } as kui.text),
-        kit.inspector({ key = "span-entries", key_width = 110, entries = {
+      -- A component's fill first says whether it replayed or drew fresh,
+      -- and why (a prop it was given moved, it heard its own event, it
+      -- read the clock…), and the span it was recorded as.
+      local entries: {kit.Entry} = {}
+      if s.component then
+        entries[#entries + 1] = entry("drawn", (s.answer or "—") .. (s.why and (" · " .. s.why) or "")) as kit.Entry
+        entries[#entries + 1] = entry("recorded as", s.span) as kit.Entry
+      end
+      for _, e in ipairs({
           entry("origin", s.origin), entry("start", ms(s.start), true), entry("length", ms(s.len), true),
           entry("self", ms(s.self), true), entry("cpu", s.cpu and ms(s.cpu) or "—", true),
           entry("track", s.track), entry("depth", tostring(s.depth), true),
           entry("node", s.node ~= "" and s.node or "—", true), entry("cut", s.cut and "yes" or "no"),
-        } as {kit.Entry} }),
+        } as {kit.Entry}) do entries[#entries + 1] = e end
+      return column { key = "detail", width = "grow", gap = 8,
+        text(s.name, { size = "$kitSizeTitle", family = "$kitUi", bold = true, color = "$kitFg" } as kui.text),
+        kit.inspector({ key = "span-entries", key_width = 110, entries = entries }),
       }
     end
   end

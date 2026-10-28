@@ -451,6 +451,13 @@
     track: string
     depth: integer
     frame: integer
+    -- A component's fill: the component (`name` too), whether it
+    -- replayed or drew fresh and why, and the span it was recorded as
+    -- (`fill kit`).
+    component: string
+    answer: string
+    why: string
+    span: string
   end
   record Recording
     spans: Channel

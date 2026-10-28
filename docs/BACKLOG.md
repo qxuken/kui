@@ -6272,7 +6272,7 @@ move.
 - `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
 - `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
 
-**From the kui-perf grilling (2026-10-27)** — F248–F255, F258 and F259, built 2026-10-28
+**From the kui-perf grilling (2026-10-27)** — F248–F255 and F258–F260, built 2026-10-28
 
 - `.` **F248** — [`kui-trace` cannot make a channel](backlog/closed-2026-09.md#-f248--kui-trace-cannot-make-a-channel--done-2026-10-28) — done (2026-10-28) — `kui-value` and `kui-channel` crates, re-exported from `kui-core`
 - `.` **F249** — [A recording is read only whole, from bytes in memory](backlog/closed-2026-09.md#-f249--a-recording-is-read-only-whole-from-bytes-in-memory--done-2026-10-28) — done (2026-10-28) — a stream decoder, a transport trait, a watched file transport
@@ -6282,6 +6282,7 @@ move.
 - `.` **F253** — [The Perf tab cannot hand a recording to the inspector](backlog/closed-2026-09.md#-f253--the-perf-tab-cannot-hand-a-recording-to-the-inspector--done-2026-10-28) — done (2026-10-28) — *open in kui-perf* saves the trace and asks the runner, `kui_native::open_recording` in every binding
 - `.` **F254** — [How kui-perf reaches a machine is not decided](backlog/closed-2026-09.md#-f254--how-kui-perf-reaches-a-machine-is-not-decided--done-2026-10-28) — done (2026-10-28) — `kui perf RECORDING`, the app carried by the runner
 - `.` **F255** — [A lazy branch chosen by a query is a fit column with no props](backlog/closed-2026-09.md#-f255--a-lazy-branch-chosen-by-a-query-is-a-fit-column-with-no-props--done-2026-10-28) — done (2026-10-28) — the branch takes its parent's room in the axes its query reads
+- `.` **F260** — [Every component's fill reads `fill kit`](backlog/closed-2026-09.md#-f260--every-components-fill-reads-fill-kit--done-2026-10-28) — done (2026-10-28) — named by the placement recorded as it ends
 - `.` **F259** — [Kit components draw fresh after every frame built again, and a list's row takes every key](backlog/closed-2026-09.md#-f259--kit-components-draw-fresh-after-every-frame-built-again-and-a-lists-row-takes-every-key--done-2026-10-28) — done (2026-10-28) — layout and range events compare against the frame or the one before; type-ahead starts at a letter or a digit
 - `.` **F258** — [The waterfall's wheel scrolls its lanes once they overflow, and nothing selects a range](backlog/closed-2026-09.md#-f258--the-waterfalls-wheel-scrolls-its-lanes-once-they-overflow-and-nothing-selects-a-range--done-2026-10-28) — done (2026-10-28) — the wheel and a pinch zoom, a drag on the axis selects a range, kui-perf's dock and keys' card
 

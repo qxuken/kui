@@ -96,11 +96,11 @@ const APP_SPANS: &[&str] = &[
     "format",
 ];
 const COMPONENTS: &[&str] = &[
-    "kit:table",
-    "kit:tabs",
-    "kit:button",
-    "kit:chart",
-    "kit:tree",
+    "kit/table",
+    "kit/tabs",
+    "kit/button",
+    "kit/line_chart",
+    "kit/tree",
 ];
 const MOVED: &[&str] = &["hover", "scroll", "layout", "focused", "the clock", "theme"];
 const KEYS: &[&str] = &["key", "button", "wheel", "text"];
@@ -401,11 +401,14 @@ impl Synth {
             }
             spans += made;
             debug_assert!(spans <= per_frame + 8);
-            let fill = g.id();
+            // A fill a component, as the runtime records one: the span,
+            // then its placement as it ends.
             let fill_at = b0 + app_room + 20;
             let fill_len = build_len.saturating_sub(app_room + 40).max(1);
             let kit = g.name("kit")?;
-            for c in 0..g.rng.range(2, 6) {
+            let count = g.rng.range(2, 6);
+            let each = (fill_len / count).max(2);
+            for c in 0..count {
                 let kind = g.rng.pick(COMPONENTS);
                 let component = g.name(kind)?;
                 let fresh = g.rng.chance(if burning { 0.6 } else { 0.15 });
@@ -423,23 +426,18 @@ impl Synth {
                 };
                 let answer = g.name(answer)?;
                 let why = g.name(&why)?;
+                let fill = g.id();
+                let at = fill_at + c * each;
+                let len = each - 1;
+                g.span(fill, build, "fill kit", Origin::Extension(kit), at, len, 0)?;
                 g.sink.put(Record::Placement {
-                    t: fill_at + 5 + c,
+                    t: at + len + 1,
                     node: 0x3000_0000 + c,
                     component,
                     answer,
                     why,
                 })?;
             }
-            g.span(
-                fill,
-                build,
-                "fill kit",
-                Origin::Extension(kit),
-                fill_at,
-                fill_len,
-                0,
-            )?;
             if g.rng.chance(0.01) {
                 g.sink.put(Record::Note {
                     t: fill_at + 2,

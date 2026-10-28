@@ -194,6 +194,15 @@ and its tables sort and filter them.
   past a hundredth of a millisecond its axis reads in as many places as
   its step needs, where every tick read alike.
 
+- **A component's fill by its component** (backlog F260): `kui.trace`
+  names each `fill kit` span after the component it drew — `kit/line_chart`,
+  `kit/table` — from the placement recorded as it ends, in the spans
+  channel, the name filter, a `where` query and the spans table (which
+  summed every component as one `fill kit`); a span's detail gains
+  `component`, `answer` (replayed, or fresh and how), `why` and `span` (what
+  it was recorded as). kui-perf's span detail says how it was drawn.
+  `kui-trace synth` writes a fill a component, as the runtime does.
+
 - **Layout and range events on a frame built again** (backlog F259): a
   frame `Core::reframe` builds (a glide's, a pulse's) lays out under the
   number of the build it repeats, and reported every `onLayout` and
