@@ -46,7 +46,9 @@ use kui_channel::{Channel, Column, Strs};
 use mlua::{Lua, Table, UserData, UserDataFields, UserDataMethods, Value};
 
 use crate::analysis::{self, Verdict};
-use crate::{FileTransport, NameId, Origin, Polled, Record, Span, Stream, Trace, Watch};
+use crate::{
+    FileTransport, NameId, Origin, Placement, Polled, Record, Span, Stream, Timeline, Trace, Watch,
+};
 
 /// What a host hands [`register`] to be woken when a watched file moves:
 /// called on the watch's thread with the message the script gave `open`
@@ -101,6 +103,10 @@ struct Row {
     depth: u32,
     frame: i64,
     self_us: u64,
+    /// The placement a `fill …` span drew — its component, its answer
+    /// (replayed, or fresh and how) and why — what the waterfall and the
+    /// name filter call it, where every component's fill read `fill kit`.
+    component: Option<[NameId; 3]>,
 }
 
 /// What the views keep (decision 8): nothing filtered is everything.
@@ -354,6 +360,7 @@ impl Recording {
             depth: HashMap::new(),
             pending: HashMap::new(),
             groups: Vec::new(),
+
             spans,
             frames,
             instants: Channel::table(instant_columns()).expect("an empty table"),
@@ -472,6 +479,7 @@ impl Recording {
                 depth,
                 frame: -1,
                 self_us: 0,
+                component: None,
             });
         }
     }
@@ -570,11 +578,15 @@ impl Recording {
             row.self_us = tl.self_us(&row.span);
         }
         let trace = self.stream.trace();
+        for row in &mut placed {
+            row.component =
+                placement_of(tl, trace, &row.span).map(|p| [p.component, p.answer, p.why]);
+        }
         for row in &placed {
             let self_us = row.self_us;
             let s = &row.span;
             let group = group(&mut self.groups, s.origin);
-            let name = trace.name(s.name);
+            let name = trace.name(row.component.map_or(s.name, |c| c[0]));
             let origin = origin_of(trace, s.origin);
             cols.s(0, name);
             cols.f(1, ms(s.start));
@@ -671,8 +683,10 @@ impl Recording {
             return Ok(false);
         }
         if let Some(name) = &f.name {
-            let n = trace.name(s.name).to_lowercase();
-            if !n.contains(&name.to_lowercase()) {
+            // The component a fill drew, or the span's own name.
+            let want = name.to_lowercase();
+            let hit = |id: NameId| trace.name(id).to_lowercase().contains(&want);
+            if !hit(s.name) && !row.component.is_some_and(|c| hit(c[0])) {
                 return Ok(false);
             }
         }
@@ -681,7 +695,9 @@ impl Recording {
             let k = &p.keys;
             // Names by their ids from 2; kui's and the app's origins at 0
             // and 1.
-            t.raw_set(&k[0], p.string(s.name as usize + 2, trace.name(s.name))?)?;
+            // A component's fill by its component, as the waterfall names it.
+            let shown = row.component.map_or(s.name, |c| c[0]);
+            t.raw_set(&k[0], p.string(shown as usize + 2, trace.name(shown))?)?;
             let origin = match s.origin {
                 Origin::Kui => p.string(0, "kui")?,
                 Origin::Host => p.string(1, "host")?,
@@ -944,6 +960,28 @@ fn frame_detail(lua: &Lua, r: &Recording, i: usize) -> mlua::Result<Table> {
 
 /// A recording's readings over frames `first..=last`: the Perf tab's
 /// tables.
+/// The placement a component's `fill …` span drew, if it is one: the
+/// placement is recorded as the fill ends, after every fill inside it, so
+/// a fill's is the first at or after its end, a few µs on — and one of its
+/// own origin's (`fill kit` draws a `kit/…` component; an app's view ends
+/// just after the last component placed in it, which is not its). The
+/// span's node is the one it filled under, not the instance's.
+fn placement_of<'t>(tl: &'t Timeline, trace: &Trace, s: &Span) -> Option<&'t Placement> {
+    const PLACED_WITHIN_US: u64 = 50;
+    let ns = trace.name(s.name).strip_prefix("fill ")?;
+    let end = s.start + s.dur;
+    let at = tl.placements.partition_point(|p| p.t < end);
+    tl.placements
+        .get(at)
+        .filter(|p| p.t <= end + PLACED_WITHIN_US)
+        .filter(|p| {
+            trace
+                .name(p.component)
+                .strip_prefix(ns)
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
+}
+
 fn stats(lua: &Lua, r: &Recording, first: usize, last: usize) -> mlua::Result<Table> {
     let full = r.stream.timeline();
     let sliced =
@@ -985,7 +1023,20 @@ fn stats(lua: &Lua, r: &Recording, first: usize, last: usize) -> mlua::Result<Ta
     summary.set("budget", ms(r.budget))?;
     t.set("summary", summary)?;
     let spans = lua.create_table()?;
-    for s in analysis::by_span(tl, &tl.spans).iter().take(40) {
+    // A component's fill under its component's name, as the waterfall
+    // has it: every one of them was `fill kit`.
+    let named: Vec<Span> = tl
+        .spans
+        .iter()
+        .map(|s| match placement_of(tl, trace, s) {
+            Some(p) => Span {
+                name: p.component,
+                ..s.clone()
+            },
+            None => s.clone(),
+        })
+        .collect();
+    for s in analysis::by_span(tl, &named).iter().take(40) {
         let x = lua.create_table()?;
         x.set("name", name(s.name))?;
         x.set("origin", origin(s.origin))?;
@@ -1170,7 +1221,21 @@ impl UserData for Recording {
             };
             let s = &row.span;
             let t = lua.create_table()?;
-            t.set("name", r.trace().name(s.name))?;
+            t.set(
+                "name",
+                r.trace().name(row.component.map_or(s.name, |c| c[0])),
+            )?;
+            if let Some([component, answer, why]) = row.component {
+                // What the fill was, and whether it replayed or drew fresh,
+                // and why.
+                t.set("component", r.trace().name(component))?;
+                t.set("span", r.trace().name(s.name))?;
+                t.set("answer", r.trace().name(answer))?;
+                let why = r.trace().name(why);
+                if !why.is_empty() {
+                    t.set("why", why)?;
+                }
+            }
             t.set("origin", r.origin_name(s.origin))?;
             t.set("start", ms(s.start))?;
             t.set("len", ms(s.dur))?;
@@ -1257,6 +1322,20 @@ mod tests {
             for i = 0, #rec.spans - 1 do
               if rec.spans:get(i, "name") == "build" then build_depth = rec.spans:get(i, "depth") break end
             end
+            -- A component's fill by its component, with how it was drawn.
+            fills_named, fills_raw = 0, 0
+            for i = 0, #rec.spans - 1 do
+              local n = rec.spans:get(i, "name")
+              if n:find("^kit/") then fills_named = fills_named + 1 end
+              if n == "fill kit" then fills_raw = fills_raw + 1 end
+            end
+            for i = 0, #rec.spans - 1 do
+              if rec.spans:get(i, "name"):find("^kit/") then
+                local d = rec:span(i)
+                fill_detail = d.component == d.name and d.span == "fill kit" and d.answer ~= nil
+                break
+              end
+            end
             local f = rec:frame(10)
             verdict = f.verdict.kind
             has_phases = f.phases.build > 0
@@ -1285,6 +1364,18 @@ mod tests {
         .unwrap();
         let g = lua.globals();
         assert_eq!(g.get::<i64>("frames").unwrap(), 400);
+        // Every component's fill by its component: the runtime records
+        // each one as `fill kit`, its placement as it ends.
+        assert!(g.get::<i64>("fills_named").unwrap() > 400);
+        assert_eq!(
+            g.get::<i64>("fills_raw").unwrap(),
+            0,
+            "no fill left unnamed"
+        );
+        assert!(
+            g.get::<bool>("fill_detail").unwrap(),
+            "its detail says how it was drawn"
+        );
         let spans = g.get::<i64>("spans").unwrap();
         assert!(spans > 4000, "{spans}");
         assert!(

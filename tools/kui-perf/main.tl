@@ -131,7 +131,11 @@ global function update(msg: Msg)
     local p = first_path(msg.files)
     if p then open(m, p) end
   elseif k == "dropped" then
-    local p = first_path(msg.files) or first_path(msg.drop)
+    -- Only a file let go over the window: one dragged across it on its
+    -- way elsewhere replaced the recording as it came in.
+    local d = msg.drop as {string:any}
+    if d and d.phase ~= "drop" then return end
+    local p = first_path(msg.files) or first_path(d)
     if p then open(m, p) end
   elseif k == "recent" then open(m, msg.name)
   elseif k == "menu" then
@@ -246,7 +250,7 @@ local KEYS: {{string}} = {
   { "↑ k", "the selected span's parent" },
   { "Esc", "clear the range, then the selection" },
   { "The window", "" },
-  { "wheel · pinch", "zoom about the pointer" },
+  { "wheel · pinch", "zoom about the pointer, over the timeline, a lane or the overview" },
   { "swipe sideways · ⇧ wheel", "pan" },
   { "drag the lanes", "pan" },
   { "w s", "zoom in, out" },
@@ -254,10 +258,12 @@ local KEYS: {{string}} = {
   { "drag the overview", "move the window" },
   { "The range", "" },
   { "drag the time axis", "select a range; a click clears it" },
+  { "double-click", "a span, a frame's row or a burn's: its time is the range" },
   { "f · z", "zoom to the range, or fit the selected frame or span" },
   { "0", "the whole recording" },
   { "Elsewhere", "" },
   { "/", "filter spans by name" },
+  { "a table's header", "sort by it; again, the other way" },
   { "⌘O", "open a recording" },
   { "?", "this card" },
 }

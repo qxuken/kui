@@ -2328,6 +2328,67 @@ fn a_waterfall_zooms_by_the_wheel_over_lanes_that_scroll_and_selects_a_range_on_
 }
 
 #[test]
+fn a_waterfalls_bar_pans_under_a_drag_and_a_double_click_makes_its_span_the_range() {
+    // A drag that began on a bar moved nothing: the bar took the press.
+    let src = r#"
+        local ch = channel({ name = { "load", "parse" }, start = { 0, 10 }, len = { 60, 20 },
+          depth = { 0, 1 }, group = { 0, 1 } })
+        zoom, range, picked = nil, nil, nil
+        function on_event(ev)
+          if ev.kind == "zoom" then zoom = ev.zoom end
+          if ev.kind == "range" then range = ev.range end
+          if ev.kind == "pick" then picked = ev.select.row end
+        end
+        function view(env)
+          return column { width = 600, height = 200,
+            component("kit/waterfall", { bars = ch, start = 0, length = 100,
+              on_zoom = { kind = "zoom" }, on_range = { kind = "range" }, on_select = { kind = "pick" } }) }
+        end
+    "#;
+    let mut r = LuaRig::new(src);
+    r.frames(3);
+    use kui_core::{InputEvent, Vec2};
+    let field = |r: &LuaRig, t: &str, f: &str| -> Option<f64> {
+        let v: mlua::Value = r.app.globals().get(t).unwrap();
+        v.as_table().and_then(|t| t.get::<f64>(f).ok())
+    };
+    let bar = r.named("load");
+    let (x, y) = (bar.x + 20.0, bar.y + bar.h / 2.0);
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+    r.route(e);
+    let e = r.core.handle_input(InputEvent::mouse_down(1));
+    r.route(e);
+    let e = r
+        .core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(x + 120.0, y)));
+    r.route(e);
+    let e = r.core.handle_input(InputEvent::mouse_up());
+    r.route(e);
+    r.frames(1);
+    assert!(
+        field(&r, "zoom", "start").expect("a pan") < 0.0,
+        "dragged right, the window moves earlier"
+    );
+    let picked: Option<i64> = r.app.globals().get("picked").unwrap();
+    assert_eq!(picked, None, "a drag is no click");
+    // A double click on the parse bar: its span is the range.
+    let bar = r.named("parse");
+    let (x, y) = (bar.x + bar.w / 2.0, bar.y + bar.h / 2.0);
+    r.slow_click(x, y);
+    // The second press of a double click, as the OS counts it.
+    let e = r.core.handle_input(InputEvent::mouse_down(2));
+    r.route(e);
+    let e = r.core.handle_input(InputEvent::mouse_up());
+    r.route(e);
+    r.frames(1);
+    assert_eq!(field(&r, "range", "start"), Some(10.0));
+    assert_eq!(field(&r, "range", "length"), Some(20.0));
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
 fn a_waterfalls_spans_are_one_stop_or_none() {
     // Every span bar was a Tab stop, and one that did nothing where the
     // host picks no spans (Relay's trace).
@@ -3279,24 +3340,30 @@ fn a_line_charts_gutter_is_as_wide_as_its_widest_label() {
 
 #[test]
 fn a_line_chart_glides_to_a_new_range_and_jumps_under_reduced_motion() {
-    for reduced in [false, true] {
-        let mut r = LuaRig::new(
+    // A range under twice the last glides; past it, it jumps: the stroke is
+    // drawn through the stretch, and ten times over smeared it into a band.
+    for (reduced, top_of, shown, glides) in [
+        (false, 14, 15.0, true),
+        (true, 14, 15.0, false),
+        (false, 100, 100.0, false),
+    ] {
+        let mut r = LuaRig::new(&format!(
             r#"
             local function make(top)
-              local t, a = {}, {}
+              local t, a = {{}}, {{}}
               for i = 1, 50 do t[i] = i; a[i] = top * i / 50 end
-              return channel({ t = t, a = a })
+              return channel({{ t = t, a = a }})
             end
-            local small, big = make(10), make(100)
+            local small, big = make(10), make({top_of})
             ch = small
             function grow() ch = big end
             function view(env)
-              return column { width = 600, height = "grow",
-                component("kit/line_chart", { data = ch, x = "t", x_unit = "s", height = 160,
-                  series = { { field = "a", name = "A" } } }) }
+              return column {{ width = 600, height = "grow",
+                component("kit/line_chart", {{ data = ch, x = "t", x_unit = "s", height = 160,
+                  series = {{ {{ field = "a", name = "A" }} }} }}) }}
             end
-            "#,
-        );
+            "#
+        ));
         if reduced {
             let mut system = r.core.env.system;
             system.motion = kui_core::MotionPref::Reduced;
@@ -3324,7 +3391,7 @@ fn a_line_chart_glides_to_a_new_range_and_jumps_under_reduced_motion() {
         // The labels name the new range at once and slide to their places;
         // the lines are drawn for it too, in a box that glides from where
         // the old range had them (C149): its stretch down, as drawn.
-        assert_eq!(top(&mut r), 100.0, "the labels name the new range");
+        assert_eq!(top(&mut r), shown, "the labels name the new range");
         let stretch = |r: &mut LuaRig| {
             let (dl, _) = r.core.output();
             dl.quads
@@ -3340,19 +3407,22 @@ fn a_line_chart_glides_to_a_new_range_and_jumps_under_reduced_motion() {
                 })
         };
         let mid = stretch(&mut r);
-        if reduced {
-            assert_eq!(mid, 1.0, "under reduced motion the range jumps");
+        if !glides {
+            assert_eq!(
+                mid, 1.0,
+                "under reduced motion, or past twice over, the range jumps"
+            );
         } else {
             assert!(
-                mid > 1.0 && mid < 10.0,
-                "on its way from ten times as tall: {mid}"
+                mid > 1.0 && mid < 1.5,
+                "on its way from 1.5 times as tall: {mid}"
             );
             assert!(r.core.animating(), "the core owes frames while it glides");
             assert_eq!(r.core.next_frame_at(), None, "and the view asks for none");
         }
         r.core.set_time(1.6);
         r.frames(2);
-        assert_eq!(top(&mut r), 100.0, "there in the end (reduced {reduced})");
+        assert_eq!(top(&mut r), shown, "there in the end (reduced {reduced})");
         assert_eq!(stretch(&mut r), 1.0);
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }

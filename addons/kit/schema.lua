@@ -596,7 +596,7 @@ return {
         { "height", "number?", doc = "In px; 120 when left out." },
       } },
     { "waterfall",
-      doc = "A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and a drag on the time axis selects a range to zoom to.",
+      doc = "A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag anywhere in it pans — over a span too, which a click picks and a double click makes the range — and a drag on the time axis selects a range to zoom to.",
       props = {
         { "bars", "channel", doc = "The spans: fields `name`, `start`, `len` (ms), `depth`, `group`, and `target` (a label)." },
         { "marks", "channel?", doc = "Points in time, fields `at` and `label`: a navigation, a paint." },
@@ -611,7 +611,7 @@ return {
       },
       events = {
         { "select", doc = "A span was clicked.", fields = { { "row", "integer", doc = "Its row." } } },
-        { "range", doc = "A drag on the time axis selected a range, or a click there or the range's × cleared it.", fields = {
+        { "range", doc = "A drag on the time axis selected a range, a double click on a span made its span the range, or a click on the axis or the range's × cleared it.", fields = {
           { "start", "number", doc = "Its start in ms." },
           { "length", "number", doc = "Its length in ms; 0 when cleared." },
         } },

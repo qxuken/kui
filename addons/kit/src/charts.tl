@@ -121,9 +121,13 @@ local function tick_number(v: number, step: number, top: number): string
   if a >= 1e9 then scale, suffix = 1e9, "G"
   elseif a >= 1e6 then scale, suffix = 1e6, "M"
   elseif a >= 1e4 then scale, suffix = 1e3, "k" end
+  -- A step far under the values (a window zoomed in on 35,702 ms) reads
+  -- in whole digits: the suffix's three fewer places left every tick
+  -- "36k".
+  if step / scale < 0.01 then scale, suffix = 1.0, "" end
   local s = step / scale
   local d = 0
-  while d < 6 do
+  while d < 9 do
     local x = s * 10 ^ d
     if math.abs(x - math.floor(x + 0.5)) < 1e-6 * math.max(1, x) then break end
     d = d + 1
@@ -277,6 +281,38 @@ local function points(xs: {number}, ys: {number}, from: integer, to: integer, x0
     if b_i ~= a_i then
       n = n + 1
       out[n] = { (xs[b_i] - x0) * sx, base - b_y * sy }
+    end
+  end
+  return out
+end
+
+-- A run of points cut a plot's width either side of it, the points
+-- further out replaced by where the line crosses that bound: a window
+-- zoomed in between two samples drew a line from millions of pixels left
+-- to millions right, and drew it broken. A live chart's slide reaches a
+-- sample past the left edge, well inside the bound.
+local function clip_run(pts: {{number}}, w: number): {{number}}
+  local n = #pts
+  local lo, hi = -w, 2 * w
+  if n < 2 or (pts[1][1] >= lo and pts[n][1] <= hi) then return pts end
+  local function cross(a: {number}, b: {number}, x: number): {number}
+    local t = (x - a[1]) / (b[1] - a[1])
+    return { x, a[2] + (b[2] - a[2]) * t }
+  end
+  local out: {{number}} = {}
+  for i = 1, n do
+    local p = pts[i]
+    local prev = pts[i - 1]
+    if p[1] < lo then
+      -- Past the left bound: kept only as the crossing into it.
+      if pts[i + 1] and pts[i + 1][1] >= lo then out[#out + 1] = cross(p, pts[i + 1], lo) end
+    elseif p[1] > hi then
+      if prev and prev[1] <= hi then
+        if prev[1] < lo then out[#out + 1] = cross(prev, p, lo) end
+        out[#out + 1] = cross(prev, p, hi)
+      end
+    else
+      out[#out + 1] = p
     end
   end
   return out
@@ -561,6 +597,14 @@ local function glide(c: Ctx, lo: number, hi: number, h: number): string, {string
     local e = 1 - (1 - k) ^ 3
     st.ga0, st.gb0 = st.ga0 + (st.ga - st.ga0) * e, st.gb0 + (st.gb - st.gb0) * e
     st.ga, st.gb, st.t0, st.ygen = a, b, now, st.ygen + 1
+    -- A range that grew or shrank past twice over jumps: the stroke is
+    -- drawn through the stretch, and a line glided from a range a
+    -- hundredth of the new one was a smeared band for the whole glide.
+    local ratio = st.ga0 / st.ga
+    if not (ratio >= 0.5 and ratio <= 2) then
+      st.ga0, st.gb0, st.t0 = a, b, -math.huge
+      return "glide" .. st.ygen, nil, h
+    end
   end
   local key = "glide" .. st.ygen
   if (now - st.t0) * 1000 >= GLIDE_MS then return key, nil, h end
@@ -593,7 +637,9 @@ local function said_of(ch: kui.Channel, xf: string, at: integer, series: {P}, fm
   elseif fmt == "ago" then
     title = math.abs(xv) < 1e-9 and "now" or (with_unit(string.format("%.4g", math.abs(xv)), x_unit) .. " ago")
   else
-    title = with_unit(string.format("%.4g", xv), x_unit)
+    -- Enough places for a window zoomed in on a large x: "%.4g" read
+    -- 35,702.2 as "3.57e+04".
+    title = with_unit(string.format("%.10g", tonumber(string.format("%.4f", xv))), x_unit)
   end
   local said: {string} = { title }
   for _, s in ipairs(series) do
@@ -691,9 +737,13 @@ function M.line_chart(c: Ctx, p: P): kui.Node
   if lo == hi then lo, hi = lo - 1, hi + 1 end
   if lo > hi then lo, hi = 0, 1 end
   if lo > 0 and lo < (hi - lo) then lo = 0 end
-  local step = nice((hi - lo) / 4)
+  -- Four steps, fewer in a short plot: a label a step under the top one
+  -- in a lane 52 px tall was drawn over it.
+  local step = nice((hi - lo) / math.max(1, math.min(4, math.floor(h / 24))))
   lo = math.floor(lo / step) * step
   hi = math.ceil(hi / step) * step
+  -- A pixel of the range, which the lines keep clear of the plot's edges.
+  local inset_v = (hi - lo) / math.max(h - 2, 1)
   local y_unit = str(p.y_unit)
   local faint, rule = ref(c, "faint"), ref(c, "rule")
   -- The gutter is as wide as the widest label of the range.
@@ -831,10 +881,15 @@ function M.line_chart(c: Ctx, p: P): kui.Node
   local legend: kui.Props = { gap = 12, cross_align = "center" }
   -- Buckets on whole multiples of their row count, the x reductions shared by every series.
   local segs = segments(ch, xf, drawn_from, to, w)
+  -- The lines a pixel in from the plot's top and foot: a value on the
+  -- range's edge was drawn on the plot's, and its clip cut the stroke in
+  -- half.
+  local line_lo, line_hi = lo - inset_v, hi + inset_v
   for k, s in ipairs(series) do
     local color: kui.Color = (s.color as kui.Color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
-    local runs = reduced_runs(ch, segs, s.field as string, x0, x1, lo, hi, w, h)
-    for _, pts in ipairs(runs) do
+    local runs = reduced_runs(ch, segs, s.field as string, x0, x1, line_lo, line_hi, w, h)
+    for _, run in ipairs(runs) do
+    local pts = clip_run(run, w)
     if k == 1 and p.area == true and #pts >= 2 then
       -- The series' colour faded: a skin's own as its area token, a
       -- host's integer with the alpha folded in, anything else (a token
@@ -955,7 +1010,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       local v = num(ch:get(at_row, s.field as string))
       local color: kui.Color = (s.color as kui.Color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
       if v and v == v then
-        local py = h - (v - lo) / (hi - lo) * h
+        local py = h - (v - lo + inset_v) / (hi - lo + 2 * inset_v) * h
         pys[#pys + 1] = py
         layer[#layer + 1] = column { float = { anchor = "parent", dx = px - 3.5, dy = py - 3.5 },
           width = 7, height = 7, radius = 3.5, bg = color, border = { w = 1, color = ref(c, "panel") } }

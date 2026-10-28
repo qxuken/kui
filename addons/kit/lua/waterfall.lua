@@ -102,10 +102,14 @@ local function window(st, p)
    return st.v0, st.v1
 end
 
+
+
 local function fmt(ms, step)
    if step >= 1000 then return string.format("%.1f s", ms / 1000) end
    if step >= 1 then return string.format("%.0f ms", ms) end
-   return string.format("%.2f ms", ms)
+   local d = math.min(6, math.max(1, math.ceil(-math.log(step, 10) - 1e-9)))
+   if step * 10 ^ d % 1 > 1e-6 then d = math.min(6, d + 1) end
+   return string.format("%." .. d .. "f ms", ms)
 end
 
 local function nice(raw)
@@ -157,6 +161,10 @@ local function lane_row(c, lane, st, v0, v1, width, selected, picks)
                role = picks and "listItem" or nil,
                focusable = picks or nil,
                on_click = picks and act(c, "waterfall.pick", { row = r }) or nil,
+
+
+
+               on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
             }
 
 
@@ -310,6 +318,10 @@ height = h, bg = ref(c, "accent"), opacity = 0.16, }),
       gap = 4,
       pad = 10,
       bg = ref(c, "panel"),
+
+
+      on_scroll = act(c, "waterfall.wheel", { v0 = v0, v1 = v1, x = st.x, w = width }),
+      on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
       row(head),
       beside(row(axis), false),
       ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),
@@ -332,6 +344,16 @@ function M.event(m, kit)
    if not st then return nil end
    local v0, v1
    if kit == "waterfall.pick" then
+
+
+      local click = m.click
+      if click and ((click.clicks or 1)) >= 2 then
+         local bars = st.index.bars
+         local s0 = num(bars:get(m.row, "start"))
+         local len = num(bars:get(m.row, "len"))
+         st.r0, st.r1 = s0, s0 + len
+         return emit("on_range", { start = s0, length = len })
+      end
       return emit("on_select", { row = m.row })
    elseif kit == "waterfall.pan" then
       local d = m.drag

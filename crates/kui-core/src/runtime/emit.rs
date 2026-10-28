@@ -2378,8 +2378,11 @@ impl Core {
                 continue;
             };
             let key = self.tree.keys[i];
+            // Seen last frame, or this one: a frame built again
+            // (`Core::reframe`) lays out under the number of the build
+            // it repeats, and reported every range again as new (F259).
             let changed = match self.ranges.get(&key) {
-                Some((last, seen)) if *seen + 1 == frame_no => *last != range,
+                Some((last, seen)) if frame_no - *seen <= 1 => *last != range,
                 _ => true,
             };
             self.ranges.insert(key, (range, frame_no));
@@ -2415,8 +2418,9 @@ impl Core {
             };
             let key = self.tree.keys[i];
             let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+            // As for ranges: a frame built again keeps its build's number.
             let changed = match self.layouts.get(&key) {
-                Some((last, seen)) if *seen + 1 == frame_no => *last != rect,
+                Some((last, seen)) if frame_no - *seen <= 1 => *last != rect,
                 _ => true,
             };
             self.layouts.insert(key, (rect, frame_no));

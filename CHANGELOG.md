@@ -189,7 +189,44 @@ and its tables sort and filter them.
   a sideways swipe or ⇧ and the wheel pans, a pinch zooms (`scroll.zoom`);
   `gutter` keeps an empty column left of the axis and the lanes, to line
   them up with charts under them; `max_height`, the most its lanes take
-  before they scroll, for one as tall as its lanes.
+  before they scroll, for one as tall as its lanes. Its whole box takes
+  the wheel and a drag, the padding under its last lane too; zoomed in
+  past a hundredth of a millisecond its axis reads in as many places as
+  its step needs, where every tick read alike.
+
+- **A component's fill by its component** (backlog F260): `kui.trace`
+  names each `fill kit` span after the component it drew — `kit/line_chart`,
+  `kit/table` — from the placement recorded as it ends, in the spans
+  channel, the name filter, a `where` query and the spans table (which
+  summed every component as one `fill kit`); a span's detail gains
+  `component`, `answer` (replayed, or fresh and how), `why` and `span` (what
+  it was recorded as). kui-perf's span detail says how it was drawn.
+  `kui-trace synth` writes a fill a component, as the runtime does.
+
+- **Layout and range events on a frame built again** (backlog F259): a
+  frame `Core::reframe` builds (a glide's, a pulse's) lays out under the
+  number of the build it repeats, and reported every `onLayout` and
+  `onRange` node again as new, so each Kit component hearing its own
+  layout or rows drew fresh on every view after one — kui-perf's frames
+  table on every step of a zoom. They report only what moved.
+
+- **Punctuation on a list's row bubbles** (backlog F259): a list's or a
+  table's type-ahead starts at a letter or a digit and goes on through
+  anything, so a `?`, `/`, `[` or `{` pressed on a focused row reaches the
+  `onKey` sink above it — kui-perf's keys card opened from its tables —
+  where every character was the list's search.
+
+- **Kit's line chart zoomed in** (backlog F258): a window between two
+  samples draws its line whole, cut a plot's width either side, where a
+  line from millions of pixels away was drawn broken; a step far under
+  the values reads in whole digits (`35702.222 ms`, where every tick read
+  `36k ms`), and the readout's x in enough places; a plot under 96 px
+  steps its y range fewer than four times, so its labels no longer
+  overlap; and the lines run a pixel in from the plot's top and foot, so
+  a value on the range's edge is not cut in half. A y range that grows or
+  shrinks past twice over jumps rather than glides: the stroke is drawn
+  through the stretch, and a gauge whose range went from one to 250 was a
+  smeared band for the glide.
 
 - **kui-perf: the keys' card, the dock, the range** (backlog F258): `?`,
   Help ▸ Keys and gestures or the toolbar's ⓘ shows every key and
@@ -201,7 +238,16 @@ and its tables sort and filter them.
   they walked the frames as ← → do; the waterfall is as tall as its lanes
   (twelve at most), the graph lanes taking the rest; the overview's window
   is drawn in the ink with what lies outside it dimmed, never narrower
-  than 8 px; the graph lanes' plots start where the waterfall's lanes do. Its headless test keeps its
+  than 8 px; the graph lanes' plots start where the waterfall's lanes do;
+  the wheel and a pinch zoom over every graph lane and over the overview,
+  a sideways swipe panning; every table's header sorts it — a number's
+  greatest first, again the other way — in Rust (`Channel:sort`, `take`),
+  a row picked in a sorted table the frame it shows; a drag over a span
+  pans (the span took the press), a double click on a span, a frame's row
+  or a burn's makes its time the range; a file dragged over the window
+  opens when it is let go, not as it comes in; the tables are read once
+  the window has held still 150 ms, where a long recording's whole-window
+  read (300 ms over 72,000 frames) ran every 150 ms of a pan. Its headless test keeps its
   preferences in a folder of its own, where it removed the app's.
 
 - **`kui.trace`'s filter hides span names whole**: `hide_names = {

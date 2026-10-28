@@ -88,6 +88,7 @@ local function set_window(st: Inspector, v0: number, v1: number)
   if v0 + len > hi then v0 = hi - len end
   st.v0, st.v1 = v0, v0 + len
   st.stale = true
+  st.moves = (st.moves or 0) + 1
 end
 
 local function apply_filter(st: Inspector)
@@ -187,6 +188,7 @@ function inspector.new(rec: kui.Recording, prefs: state.Prefs): Inspector
     tab = "frames", pane = "detail", split = prefs.split or 0.42, dock = prefs.dock or 0.58,
     lanes = {}, series = {}, origins = {}, name = prefs.name or "", min_us = prefs.min_us or 0,
     frames = prefs.frames or "all", devtools = prefs.devtools == true, search_focus = 0,
+    sorts = {}, shown = {},
   }
   local lo, hi = (s.start or 0) as number, (s.finish or 1) as number
   st.v0, st.v1 = lo, hi
@@ -355,11 +357,57 @@ function inspector.key(st: Inspector, key: {string:any}): boolean
   return true
 end
 
+-- The wheel or a pinch over a view of the window that spans `w` px from
+-- `x0`: rolled up and down or pinched, the window zooms about the time
+-- under the pointer (`at` maps the pointer to it); swiped sideways, it
+-- pans, a pixel the window's width over `w`.
+local function wheel(st: Inspector, s: {string:any}, at: function(number): number, w: number)
+  local a, b = st.v0, st.v1
+  local about = math.max(a, math.min(b, at((s.x or 0) as number)))
+  local factor = math.exp(-((s.dy or 0) as number) * 0.005 - ((s.zoom or 0) as number))
+  local len = math.max((b - a) * factor, 0.01)
+  local v0 = about - (about - a) / (b - a) * len
+  local shift = ((s.dx or 0) as number) / math.max(w, 1) * len
+  set_window(st, v0 - shift, v0 + len - shift)
+  st.follow = false
+end
+
+-- A table's rows in the order its header asks for: its channel taken in
+-- that order in Rust, kept while the channel and the order hold, with
+-- the rows it was taken from.
+local function shown(st: Inspector, tab: string, ch: kui.Channel): kui.Channel, {integer}
+  local by = st.sorts[tab]
+  if not by or not ch then return ch, nil end
+  local key = ("%s@%s/%s/%s"):format(tostring(ch.id), tostring(ch.rev), by.field, tostring(by.desc))
+  local c = st.shown[tab]
+  if not c or c.key ~= key then
+    local order = ch:sort(by.field, by.desc)
+    c = { key = key, ch = ch:take(order), order = order }
+    st.shown[tab] = c
+  end
+  return c.ch, c.order
+end
+
+-- The row of `order` holding `row`, 0-based; nil when it is not there.
+local function place_of(st: Inspector, tab: string, row: integer): integer
+  local c = st.shown[tab]
+  if not c then return row end
+  if not c.inv then
+    c.inv = {}
+    for i, r in ipairs(c.order) do c.inv[r] = i - 1 end
+  end
+  return c.inv[row]
+end
+
 function inspector.update(st: Inspector, msg: Msg): boolean
   local k = msg.kind
   if k == "ins_restat" then
+    -- Read only once the window has been still since it was asked for:
+    -- a pan or a zoom that goes on asks again, so a whole long
+    -- recording's tables (300 ms over 72,000 frames) are not read every
+    -- 150 ms of it.
     st.restat_due = false
-    if st.stale then inspector.restat(st) end
+    if st.stale and msg.value == st.moves then inspector.restat(st) end
   elseif k == "ins_zoom" then
     -- Zooming to the range spends it.
     local z = msg.zoom
@@ -374,13 +422,71 @@ function inspector.update(st: Inspector, msg: Msg): boolean
   elseif k == "ins_span" then
     st.span = msg.select.row
   elseif k == "ins_frame" then
-    select_frame(st, msg.select.row)
+    local _, order = shown(st, "frames", st.rec.frames)
+    select_frame(st, order and order[msg.select.row + 1] or msg.select.row)
+  elseif k == "ins_activate" then
+    -- A double click (or Enter) on a frame or a burn: its time is the
+    -- range, the window moved to show it.
+    local tab = msg.name
+    local a, b: number, number
+    local f = st.rec.frames
+    if tab == "frames" then
+      local _, order = shown(st, "frames", f)
+      local row = order and order[msg.activate.row + 1] or msg.activate.row
+      a, b = f:get(row, "begin") as number, f:get(row, "end") as number
+      st.frame = row
+    elseif tab == "burns" then
+      local burns = shown(st, "burns", st.tables.burns)
+      local first = first_at(f, "index", burns:get(msg.activate.row, "first") as integer)
+      local last = first_at(f, "index", burns:get(msg.activate.row, "last") as integer)
+      a, b = f:get(first, "begin") as number, f:get(math.min(last, #f - 1), "end") as number
+    end
+    if a and b and b > a then
+      st.r0, st.r1 = a, b
+      if a < st.v0 or b > st.v1 then
+        local len = math.max(st.v1 - st.v0, (b - a) * 1.5)
+        set_window(st, (a + b) / 2 - len / 2, (a + b) / 2 + len / 2)
+        st.follow = false
+      end
+    end
   elseif k == "ins_burn" then
-    local first = st.tables.burns:get(msg.select.row, "first") as integer
+    local burns = shown(st, "burns", st.tables.burns)
+    local first = burns:get(msg.select.row, "first") as integer
     -- A burn names the timeline's frame; the frames view's row for it.
     local f = st.rec.frames
     local row = first_at(f, "index", first)
     select_frame(st, row)
+  elseif k == "ins_sort" then
+    -- A header: by it, the greatest first for a number; again, the
+    -- other way; the frames by their number, as they came.
+    local tab, field = msg.name, msg.sort.field as string
+    local by = st.sorts[tab]
+    if by and by.field == field then
+      by.desc = not by.desc
+    else
+      local ch = tab == "frames" and st.rec.frames or (st.tables or {})[tab]
+      local v = ch and #ch > 0 and ch:get(0, field) or nil
+      st.sorts[tab] = { field = field, desc = v is number }
+    end
+    by = st.sorts[tab]
+    if tab == "frames" and field == "frame" and not by.desc then st.sorts[tab] = nil end
+    -- Taken now: the table and a pick in it read it next.
+    shown(st, tab, tab == "frames" and st.rec.frames or (st.tables or {})[tab])
+  elseif k == "ins_wheel" then
+    local r = msg.value as {string:number}
+    if r and r.w and r.w > 0 then
+      local a, b = st.v0, st.v1
+      wheel(st, msg.scroll, function(x: number): number return a + (x - r.x) / r.w * (b - a) end, r.w)
+    end
+  elseif k == "ins_overview_wheel" then
+    -- Over the overview the pointer names a time of the whole recording,
+    -- the window zooming about it once it is in the window.
+    local r = msg.value as {string:number}
+    if r and r.w and r.w > 0 then
+      local lo, hi = extent(st)
+      wheel(st, msg.scroll, function(x: number): number return lo + (x - r.x) / r.w * (hi - lo) end,
+        r.w * (st.v1 - st.v0) / math.max(hi - lo, 1e-9))
+    end
   elseif k == "ins_tab" then st.tab = msg.change.value as string
   elseif k == "ins_pane" then st.pane = msg.change.value as string
   elseif k == "ins_split" then st.split = msg.resize.fraction
@@ -441,6 +547,7 @@ local function overview(st: Inspector, env: kui.Env): kui.Node
   return column { key = "overview", width = "grow", height = 40, clip = true,
     on_layout = { kind = "ins_layout" },
     on_drag = { kind = "ins_overview", value = r and { x = r.x, w = r.w } or nil },
+    on_scroll = { kind = "ins_overview_wheel", value = r and { x = r.x, w = r.w } or nil },
     label = "Overview: the work of every frame; drag to move the window",
     #st.rec.frames > 0 and kit.sparkline({ key = "ov-line", data = st.rec.frames, field = "work",
       width = w, height = 40, unit = "ms" }) or nil,
@@ -451,7 +558,7 @@ local function overview(st: Inspector, env: kui.Env): kui.Node
   }
 end
 
-local function lanes(st: Inspector): kui.Node
+local function lanes(st: Inspector, env: kui.Env): kui.Node
   -- The lanes take what the waterfall leaves, and scroll past it.
   -- Padded as the waterfall is, and their y labels as wide as its gutter,
   -- so a lane's plot runs under its lanes at the same x.
@@ -464,7 +571,12 @@ local function lanes(st: Inspector): kui.Node
       st.series[name] = ch
     end
     if ch then
+      -- Its plot starts past the gutter and its gap; the wheel and a pinch
+      -- over it zoom the window as over the waterfall.
+      local r = env.layout_of("lane-" .. name)
+      local plot = r and { x = r.x + GUTTER + 6, w = r.w - GUTTER - 6 } or nil
       rows[#rows + 1] = column { key = "lane-" .. name, width = "grow", gap = 2,
+        on_layout = { kind = "ins_layout" }, on_scroll = { kind = "ins_wheel", value = plot },
         row { width = "grow", cross_align = "center", main_align = "end",
           kit.icon_button({ key = "hide-" .. name, icon = "x", label = "Hide the " .. name .. " lane",
             on_press = { kind = "ins_lane", name = name } }) },
@@ -497,14 +609,23 @@ local function detail(st: Inspector): kui.Node
   if st.span >= 0 then
     local s = st.rec:span(st.span)
     if s then
-      return column { key = "detail", width = "grow", gap = 8,
-        text(s.name, { size = "$kitSizeTitle", family = "$kitUi", bold = true, color = "$kitFg" } as kui.text),
-        kit.inspector({ key = "span-entries", key_width = 110, entries = {
+      -- A component's fill first says whether it replayed or drew fresh,
+      -- and why (a prop it was given moved, it heard its own event, it
+      -- read the clock…), and the span it was recorded as.
+      local entries: {kit.Entry} = {}
+      if s.component then
+        entries[#entries + 1] = entry("drawn", (s.answer or "—") .. (s.why and (" · " .. s.why) or "")) as kit.Entry
+        entries[#entries + 1] = entry("recorded as", s.span) as kit.Entry
+      end
+      for _, e in ipairs({
           entry("origin", s.origin), entry("start", ms(s.start), true), entry("length", ms(s.len), true),
           entry("self", ms(s.self), true), entry("cpu", s.cpu and ms(s.cpu) or "—", true),
           entry("track", s.track), entry("depth", tostring(s.depth), true),
           entry("node", s.node ~= "" and s.node or "—", true), entry("cut", s.cut and "yes" or "no"),
-        } as {kit.Entry} }),
+        } as {kit.Entry}) do entries[#entries + 1] = e end
+      return column { key = "detail", width = "grow", gap = 8,
+        text(s.name, { size = "$kitSizeTitle", family = "$kitUi", bold = true, color = "$kitFg" } as kui.text),
+        kit.inspector({ key = "span-entries", key_width = 110, entries = entries }),
       }
     end
   end
@@ -554,9 +675,16 @@ local function col(field: string, title: string, width?: number, mono?: boolean)
 end
 
 local function table_for(st: Inspector, tab: string): kui.Node
+  local by = st.sorts[tab]
+  local sort = by and by.field or nil
+  local desc = by and by.desc or nil
+  local on_sort = { kind = "ins_sort", name = tab }
   if tab == "frames" then
-    return kit.table({ key = "t-frames", rows = st.rec.frames, selected = st.frame >= 0 and st.frame or nil,
-      on_select = { kind = "ins_frame" }, grow = true, columns = {
+    local rows = shown(st, "frames", st.rec.frames)
+    local sel = st.frame >= 0 and place_of(st, "frames", st.frame) or nil
+    return kit.table({ key = "t-frames", rows = rows, selected = sel, sort = sort or "frame", descending = desc,
+      on_sort = on_sort, on_select = { kind = "ins_frame" }, on_activate = { kind = "ins_activate", name = "frames" },
+      grow = true, columns = {
         col("frame", "frame", 70, true), col("work", "work", 70, true), col("build", "build", 70, true),
         col("layout", "layout", 70, true), col("render", "render", 70, true), col("verdict", "verdict", 80),
         col("causes", "why it ran"),
@@ -574,6 +702,7 @@ local function table_for(st: Inspector, tab: string): kui.Node
   if not ch then return kit.empty({ key = "t-none", title = "Counting…" }) end
   local cols: {kit.Column}
   local on_select: any = nil
+  local on_activate: any = nil
   if tab == "spans" then
     cols = { col("name", "span"), col("origin", "origin", 90), col("calls", "calls", 70, true),
       col("per_frame", "per frame", 80, true), col("worst", "worst", 70, true), col("self", "self", 80, true) }
@@ -587,8 +716,10 @@ local function table_for(st: Inspector, tab: string): kui.Node
   elseif tab == "burns" then
     cols = { col("first", "first frame", 100, true), col("last", "last frame", 100, true), col("frames", "frames", 80, true) }
     on_select = { kind = "ins_burn" }
+    on_activate = { kind = "ins_activate", name = "burns" }
   end
-  return kit.table({ key = "t-" .. tab, rows = ch, columns = cols, grow = true, on_select = on_select })
+  return kit.table({ key = "t-" .. tab, rows = shown(st, tab, ch), columns = cols, grow = true, on_select = on_select,
+    on_activate = on_activate, sort = sort, descending = desc, on_sort = on_sort })
 end
 
 local function tables(st: Inspector, with_detail: boolean): kui.Node
@@ -628,7 +759,7 @@ local function filters(st: Inspector): kui.Node
   }
 end
 
-local function timeline(st: Inspector): kui.Node
+local function timeline(st: Inspector, env: kui.Env): kui.Node
   local span_count = #st.rec.spans
   -- The waterfall as tall as its lanes, up to WF_MAX: under its last
   -- lane there is nothing to pan or zoom, so the graph lanes take the rest.
@@ -639,7 +770,7 @@ local function timeline(st: Inspector): kui.Node
         range_start = st.r0, range_length = st.r0 and (st.r1 - st.r0) or nil, gutter = GUTTER,
         max_height = WF_MAX, on_select = { kind = "ins_span" }, on_zoom = { kind = "ins_zoom" },
         on_range = { kind = "ins_range" } }) },
-    #st.lanes > 0 and lanes(st) or nil,
+    #st.lanes > 0 and lanes(st, env) or nil,
     span_count == 0 and muted("No span is kept by the filter.") or nil,
   }
 end
@@ -649,7 +780,8 @@ function inspector.view(st: Inspector, env: kui.Env): kui.Node
   -- a pan or a zoom draws its frames without reading them each step.
   if st.stale and not st.restat_due then
     st.restat_due = true
-    kui.timer.after(150, function() kui.dispatch({ kind = "ins_restat" }) end)
+    local moves = st.moves
+    kui.timer.after(150, function() kui.dispatch({ kind = "ins_restat", value = moves }) end)
   end
   -- The bands (decision 9) by the body's own width, a container query
   -- (ADR 0069): wide, the detail beside the tables in the dock; narrower,
@@ -665,7 +797,7 @@ function inspector.view(st: Inspector, env: kui.Env): kui.Node
       -- The timeline over the dock, the rule between them dragged.
       kit.split({ key = "dock-split", axis = "column", fraction = st.dock, min = DOCK_MIN,
         on_resize = { kind = "ins_dock" } }, {
-        first = { column { key = "top", width = "grow", height = "grow", timeline(st) } },
+        first = { column { key = "top", width = "grow", height = "grow", timeline(st, env) } },
         -- The dock's own width picks its pane: a `when` reaches only the
         -- nodes of the scope it is declared in, and the split's are Kit's.
         second = { column { key = "dock", width = "grow", height = "grow",

@@ -2991,8 +2991,9 @@ histogram_in :: proc(ui: ^kui.Ui, namespace: string, p: Histogram) -> i32 {
 
 // A trace waterfall: spans as bars on a time axis, nested by depth, coloured by
 // group. The wheel and a pinch zoom about the pointer, a sideways swipe or
-// Shift and the wheel pans, a drag on the lanes pans, and a drag on the time
-// axis selects a range to zoom to.
+// Shift and the wheel pans, a drag anywhere in it pans — over a span too,
+// which a click picks and a double click makes the range — and a drag on the
+// time axis selects a range to zoom to.
 Waterfall :: struct {
 	// The spans: fields `name`, `start`, `len` (ms), `depth`, `group`, and
 	// `target` (a label).
@@ -3021,8 +3022,9 @@ Waterfall :: struct {
 	range_length: Maybe(f64),
 	// The message `select` arrives as. A span was clicked.
 	on_select: any,
-	// The message `range` arrives as. A drag on the time axis selected a range, or
-	// a click there or the range's × cleared it.
+	// The message `range` arrives as. A drag on the time axis selected a range, a
+	// double click on a span made its span the range, or a click on the axis or
+	// the range's × cleared it.
 	on_range: any,
 	// The message `zoom` arrives as. The wheel, a pinch, a drag, a tool or zooming
 	// to the range asks for another window.
@@ -3043,8 +3045,9 @@ With_Waterfall_Select :: struct {
 	select: Waterfall_Select,
 }
 
-// What `range` carries: A drag on the time axis selected a range, or a click
-// there or the range's × cleared it.
+// What `range` carries: A drag on the time axis selected a range, a double
+// click on a span made its span the range, or a click on the axis or the
+// range's × cleared it.
 Waterfall_Range :: struct {
 	// Its start in ms.
 	start: f64,

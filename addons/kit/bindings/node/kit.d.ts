@@ -1323,7 +1323,7 @@ export interface WaterfallProps {
   rangeLength?: number;
   /** The message select arrives as: yours, with `select: WaterfallSelect` in it — register it as `WaterfallSelectMsg<…>`. A span was clicked. */
   onSelect?: HandlerMsg<{ select: WaterfallSelect }>;
-  /** The message range arrives as: yours, with `range: WaterfallRange` in it — register it as `WaterfallRangeMsg<…>`. A drag on the time axis selected a range, or a click there or the range's × cleared it. */
+  /** The message range arrives as: yours, with `range: WaterfallRange` in it — register it as `WaterfallRangeMsg<…>`. A drag on the time axis selected a range, a double click on a span made its span the range, or a click on the axis or the range's × cleared it. */
   onRange?: HandlerMsg<{ range: WaterfallRange }>;
   /** The message zoom arrives as: yours, with `zoom: WaterfallZoom` in it — register it as `WaterfallZoomMsg<…>`. The wheel, a pinch, a drag, a tool or zooming to the range asks for another window. */
   onZoom?: HandlerMsg<{ zoom: WaterfallZoom }>;
@@ -1487,7 +1487,7 @@ export declare function BarChart(props: BarChartProps, children?: KuiNode): KuiN
 /** How a column's values fall into bins. */
 export declare function Histogram(props: HistogramProps, children?: KuiNode): KuiNode;
 
-/** A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and a drag on the time axis selects a range to zoom to. */
+/** A trace waterfall: spans as bars on a time axis, nested by depth, coloured by group. The wheel and a pinch zoom about the pointer, a sideways swipe or Shift and the wheel pans, a drag anywhere in it pans — over a span too, which a click picks and a double click makes the range — and a drag on the time axis selects a range to zoom to. */
 export declare function Waterfall(props: WaterfallProps, children?: KuiNode): KuiNode;
 
 export interface Kit {

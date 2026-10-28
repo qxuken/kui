@@ -3269,8 +3269,9 @@ static inline int32_t kit_histogram(KuiCtx *ctx, const KitHistogram *p) {
 /*
  * A trace waterfall: spans as bars on a time axis, nested by depth, coloured by
  * group. The wheel and a pinch zoom about the pointer, a sideways swipe or
- * Shift and the wheel pans, a drag on the lanes pans, and a drag on the time
- * axis selects a range to zoom to.
+ * Shift and the wheel pans, a drag anywhere in it pans — over a span too,
+ * which a click picks and a double click makes the range — and a drag on the
+ * time axis selects a range to zoom to.
  */
 typedef struct KitWaterfall {
     /*
@@ -3333,8 +3334,8 @@ typedef struct KitWaterfall {
     KuiValue *on_select;
     /*
      * The message `range` arrives as, consumed; NULL for none. A drag on the
-     * time axis selected a range, or a click there or the range's × cleared
-     * it.
+     * time axis selected a range, a double click on a span made its span the
+     * range, or a click on the axis or the range's × cleared it.
      */
     KuiValue *on_range;
     /*

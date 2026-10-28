@@ -101,10 +101,14 @@ local function window(st: State, p: P): number, number
   return st.v0, st.v1
 end
 
+-- A time on an axis ticking every `step` ms, in as many places as the
+-- step needs: zoomed in past a hundredth, "%.2f" read every tick alike.
 local function fmt(ms: number, step: number): string
   if step >= 1000 then return string.format("%.1f s", ms / 1000) end
   if step >= 1 then return string.format("%.0f ms", ms) end
-  return string.format("%.2f ms", ms)
+  local d = math.min(6, math.max(1, math.ceil(-math.log(step, 10) - 1e-9)))
+  if step * 10 ^ d % 1 > 1e-6 then d = math.min(6, d + 1) end
+  return string.format("%." .. d .. "f ms", ms)
 end
 
 local function nice(raw: number): number
@@ -156,6 +160,10 @@ local function lane_row(c: Ctx, lane: integer, st: State, v0: number, v1: number
           role = picks and "listItem" or nil,
           focusable = picks or nil,
           on_click = picks and act(c, "waterfall.pick", { row = r }) or nil,
+          -- A drag that starts on a bar pans as one on the lanes does: the
+          -- bar took the press, and the window would not move from it.
+          -- A press that does not travel past the slop is still the click.
+          on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
         }
         -- Each group's fill reads at 3:1 on the panel and its label on it
         -- at 4.5:1 (`$kitGroupFg<n>`, skin.tl). The selected bar is the
@@ -309,6 +317,10 @@ function M.waterfall(c: Ctx, p: P): kui.Node
     gap = 4,
     pad = 10,
     bg = ref(c, "panel"),
+    -- The whole box zooms and pans as its lanes do: the padding under
+    -- the last lane, the head and the gutter answered nothing.
+    on_scroll = act(c, "waterfall.wheel", { v0 = v0, v1 = v1, x = st.x, w = width }),
+    on_drag = act(c, "waterfall.pan", { v0 = v0, v1 = v1, w = width }),
     row(head),
     beside(row(axis), false),
     ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),
@@ -331,6 +343,16 @@ function M.event(m: P, kit: string): any
   if not st then return nil end
   local v0, v1: number, number
   if kit == "waterfall.pick" then
+    -- A double click selects the bar's span as the range, a single one
+    -- the span.
+    local click = m.click as P
+    if click and ((click.clicks or 1) as integer) >= 2 then
+      local bars = st.index.bars
+      local s0 = num(bars:get(m.row as integer, "start"))
+      local len = num(bars:get(m.row as integer, "len"))
+      st.r0, st.r1 = s0, s0 + len
+      return emit("on_range", { start = s0, length = len })
+    end
     return emit("on_select", { row = m.row })
   elseif kit == "waterfall.pan" then
     local d = m.drag as P

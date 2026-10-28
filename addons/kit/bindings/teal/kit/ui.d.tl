@@ -1241,7 +1241,8 @@ local record kit
     -- The message `select` arrives as. A span was clicked.
     on_select: any
     -- The message `range` arrives as. A drag on the time axis selected a
-    -- range, or a click there or the range's × cleared it.
+    -- range, a double click on a span made its span the range, or a click on
+    -- the axis or the range's × cleared it.
     on_range: any
     -- The message `zoom` arrives as. The wheel, a pinch, a drag, a tool or
     -- zooming to the range asks for another window.
@@ -1426,8 +1427,9 @@ local record kit
 
   -- A trace waterfall: spans as bars on a time axis, nested by depth,
   -- coloured by group. The wheel and a pinch zoom about the pointer, a
-  -- sideways swipe or Shift and the wheel pans, a drag on the lanes pans, and
-  -- a drag on the time axis selects a range to zoom to.
+  -- sideways swipe or Shift and the wheel pans, a drag anywhere in it pans
+  -- — over a span too, which a click picks and a double click makes the
+  -- range — and a drag on the time axis selects a range to zoom to.
   waterfall: function(props: WaterfallProps): kui.Node
 
   -- The same components under another namespace.

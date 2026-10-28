@@ -1948,8 +1948,12 @@ impl Core {
             KeyCode::Home | KeyCode::End => item || changes,
             // A list and a table page (ADR 0070).
             KeyCode::PageUp | KeyCode::PageDown => changes || item,
-            // Type-ahead inside a composite; nothing anywhere else.
-            KeyCode::Char(_) => item,
+            // Type-ahead inside a composite; nothing anywhere else. A
+            // search starts at a letter or a digit — a name's first
+            // character — and goes on through anything: punctuation
+            // nobody is typing a name with bubbles to a sink above, where
+            // an app's `?` or `[` is a key of its own (backlog F259).
+            KeyCode::Char(c) => item && (c.is_alphanumeric() || !self.type_ahead.is_empty()),
             _ => false,
         }
     }
