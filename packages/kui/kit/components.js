@@ -655,6 +655,8 @@ function make(namespace) {
       if (props.series !== undefined) wire.series = props.series;
       if (props.height !== undefined) wire.height = props.height;
       if (props.area !== undefined) wire.area = props.area;
+      if (props.xMin !== undefined) wire.x_min = props.xMin;
+      if (props.xMax !== undefined) wire.x_max = props.xMax;
       if (props.window !== undefined) wire.window = props.window;
       if (props.xFormat !== undefined) wire.x_format = props.xFormat;
       if (props.xUnit !== undefined) wire.x_unit = props.xUnit;

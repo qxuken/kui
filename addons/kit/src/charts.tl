@@ -602,6 +602,15 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     x0 = x1 - (p.window as number)
     from = lower_row(ch, xf, 0, n, x0)
   end
+  -- A window the host holds, shared with another view's axis (a
+  -- timeline's): the rows in it, and the one either side so the line
+  -- runs to the edges.
+  if (p.x_min ~= nil or p.x_max ~= nil) and n > 0 then
+    x0 = (p.x_min or x0) as number
+    x1 = (p.x_max or x1) as number
+    from = math.max(0, lower_row(ch, xf, 0, n, x0) - 1)
+    to = math.min(n, lower_row(ch, xf, from, n, x1) + 1)
+  end
   if x1 <= x0 then x1 = x0 + 1 end
   local st = ctx.state(c, function(): Glide return {} end)
   -- The glide (a live window's): drawn one sample behind and slid left

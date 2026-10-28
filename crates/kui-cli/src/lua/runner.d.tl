@@ -357,6 +357,8 @@
     origins: {string}
     -- A span name's part, any case.
     name: string
+    -- Span names hidden whole: `{ "devtools" }`.
+    hide_names: {string}
     -- Spans shorter than this many µs are hidden.
     min_us: number
     -- Frame verdicts kept: "late", "blocked", "slow", "waited",

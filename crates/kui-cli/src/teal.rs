@@ -109,7 +109,7 @@ pub fn write_types(dir: &Path) -> std::io::Result<()> {
 /// renamed over it: a reader sees the file before or the file after.
 /// Nothing written when it holds the text already, as a second check of
 /// one version finds it.
-fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
+pub(crate) fn write_whole(path: &Path, text: &str) -> std::io::Result<()> {
     if std::fs::read(path).is_ok_and(|b| b == text.as_bytes()) {
         return Ok(());
     }
