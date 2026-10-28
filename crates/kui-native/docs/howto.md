@@ -717,7 +717,7 @@ scroller inside it at its limit comes to it; a `cells` grid gets its
 edge drag the same way, since its history is yours. A trackpad's pinch
 comes to the innermost `onScroll` node under the pointer as the same
 message with `zoom` in it (the magnification, positive zooming in),
-and stays that node's until the fingers lift (backlog F256).
+and stays that node's until the fingers lift.
 
 The numbers are the edge scroll's feel, the app's like the wheel's:
 presets `gentle`, `standard` (the default) and `brisk`, or
