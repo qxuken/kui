@@ -3007,6 +3007,9 @@ Waterfall :: struct {
 	selected: Maybe(i64),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
+	// The most the lanes take in px before they scroll, when it does not `grow`:
+	// as tall as its lanes up to that.
+	max_height: Maybe(f64),
 	// An empty column in px left of the axis and the lanes, so they line up with
 	// charts under them that hold the same `gutter`.
 	gutter: Maybe(f64),
@@ -3077,6 +3080,7 @@ waterfall_props :: proc(p: Waterfall) -> ^c.Value {
 	if x, ok := p.length.?; ok do c.value_map_set(m, "length", c.value_float(x))
 	if x, ok := p.selected.?; ok do c.value_map_set(m, "selected", c.value_int(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
+	if x, ok := p.max_height.?; ok do c.value_map_set(m, "max_height", c.value_float(x))
 	if x, ok := p.gutter.?; ok do c.value_map_set(m, "gutter", c.value_float(x))
 	if x, ok := p.range_start.?; ok do c.value_map_set(m, "range_start", c.value_float(x))
 	if x, ok := p.range_length.?; ok do c.value_map_set(m, "range_length", c.value_float(x))

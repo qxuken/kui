@@ -3303,6 +3303,12 @@ typedef struct KitWaterfall {
     bool grow;
     bool grow_set;
     /*
+     * The most the lanes take in px before they scroll, when it does not
+     * `grow`: as tall as its lanes up to that.
+     */
+    double max_height;
+    bool max_height_set;
+    /*
      * An empty column in px left of the axis and the lanes, so they line up
      * with charts under them that hold the same `gutter`.
      */
@@ -3350,6 +3356,7 @@ static inline KuiValue *kit_waterfall_props(const KitWaterfall *p) {
     if (p->length_set) kui_value_map_set(m, KUI_STR("length"), kui_value_float(p->length));
     if (p->selected_set) kui_value_map_set(m, KUI_STR("selected"), kui_value_int(p->selected));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
+    if (p->max_height_set) kui_value_map_set(m, KUI_STR("max_height"), kui_value_float(p->max_height));
     if (p->gutter_set) kui_value_map_set(m, KUI_STR("gutter"), kui_value_float(p->gutter));
     if (p->range_start_set) kui_value_map_set(m, KUI_STR("range_start"), kui_value_float(p->range_start));
     if (p->range_length_set) kui_value_map_set(m, KUI_STR("range_length"), kui_value_float(p->range_length));
