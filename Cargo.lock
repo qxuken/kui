@@ -1696,14 +1696,14 @@ dependencies = [
 
 [[package]]
 name = "kui-addon-schema"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "mlua",
 ]
 
 [[package]]
 name = "kui-channel"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "kui-value",
  "mlua",
@@ -1712,7 +1712,7 @@ dependencies = [
 
 [[package]]
 name = "kui-cli"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "crc32fast",
  "flate2",
@@ -1735,7 +1735,7 @@ dependencies = [
 
 [[package]]
 name = "kui-core"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "cosmic-text",
  "divan",
@@ -1761,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "kui-derive"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "kui-core",
  "proc-macro2",
@@ -1771,7 +1771,7 @@ dependencies = [
 
 [[package]]
 name = "kui-devtools"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "cc",
  "kui-native",
@@ -1779,7 +1779,7 @@ dependencies = [
 
 [[package]]
 name = "kui-ffi"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "kui-core",
  "kui-devtools",
@@ -1789,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "kui-fuzz"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "arbitrary",
  "kui-core",
@@ -1799,14 +1799,14 @@ dependencies = [
 
 [[package]]
 name = "kui-kit"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "kui-core",
 ]
 
 [[package]]
 name = "kui-lua"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "divan",
  "kui-addon-schema",
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "kui-native"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -1854,7 +1854,7 @@ dependencies = [
 
 [[package]]
 name = "kui-node"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "kui-core",
  "kui-ffi",
@@ -1867,7 +1867,7 @@ dependencies = [
 
 [[package]]
 name = "kui-trace"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "kui-channel",
  "kui-value",
@@ -1876,7 +1876,7 @@ dependencies = [
 
 [[package]]
 name = "kui-value"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "kui-derive",
  "mlua",
@@ -1884,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "kui-wgpu"
-version = "0.1.0-alpha.69"
+version = "0.1.0-alpha.70"
 dependencies = [
  "bytemuck",
  "kui-core",
