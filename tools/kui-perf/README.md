@@ -12,10 +12,11 @@ kui run tools/kui-perf -- session.kuitrace
 
 - **The frames** as an overview a frame a sample, the window the timeline shows
   marked on it (drag there to move it).
-- **The timeline**: Kit's waterfall over the spans (their lanes read a window
+- **The timeline**: Kit's waterfall over the spans, as tall as its lanes up to
+  twelve (their lanes read a window
   at a time in Rust, so a million spans pan as a hundred do), marks for input,
   events, notes and the components drawn fresh; counters and gauges as graph
-  lanes on the same window, their plots starting where its lanes do. The wheel
+  lanes under it taking the rest, their plots starting where its lanes do. The wheel
   or a pinch zooms about the pointer, a sideways swipe or ⇧ and the wheel pans,
   a drag on the lanes pans, and a drag along the time axis selects a range —
   its length beside the title, zoomed to by its button or `z`.
@@ -32,7 +33,8 @@ kui run tools/kui-perf -- session.kuitrace
   it, by its own width (a container query), the detail beside the tables at
   1180 px and over, one pane of tabs under that; under 700 px no lane picker.
 
-Keys: ← → or `h` `l` the frame before and after, ↑ ↓ or `j` `k` too; `[` `]`
+Keys: ← → or `h` `l` the frame before and after; ↓ `j` the selected span's
+first child (or the top lane's first span in the window), ↑ `k` its parent; `[` `]`
 the slow frame, `{` `}` the burn; `w` `s` zoom, `a` `d` pan; `f` or `z` zoom to
 the range, or fit the selection; `0` the whole recording; `/` the span search;
 Esc clears the range, then the selection. ⌘O (Ctrl+O) opens, and `?` (Help ▸

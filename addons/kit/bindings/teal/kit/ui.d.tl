@@ -1226,6 +1226,9 @@ local record kit
     selected: integer
     -- Takes the room its parent leaves.
     grow: boolean
+    -- The most the lanes take in px before they scroll, when it does not
+    -- `grow`: as tall as its lanes up to that.
+    max_height: number
     -- An empty column in px left of the axis and the lanes, so they line up
     -- with charts under them that hold the same `gutter`.
     gutter: number

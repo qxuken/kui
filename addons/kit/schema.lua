@@ -604,6 +604,7 @@ return {
         { "length", "number?", doc = "The window's length in ms; the whole trace when left out." },
         { "selected", "integer?", doc = "The selected span (its row)." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+        { "max_height", "number?", doc = "The most the lanes take in px before they scroll, when it does not `grow`: as tall as its lanes up to that." },
         { "gutter", "number?", doc = "An empty column in px left of the axis and the lanes, so they line up with charts under them that hold the same `gutter`." },
         { "range_start", "number?", doc = "The range selected on the axis, in ms, held by the host: with `on_range`, the range drawn is this one, and a drag on the axis proposes another. Kit's own otherwise." },
         { "range_length", "number?", doc = "The selected range's length in ms; none selected when left out or 0." },
