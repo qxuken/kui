@@ -1405,6 +1405,13 @@ export type WarningCode =
    *  (a game on its own window and GPU device); under the runner, a float or a
    *  normal window is what shows the subtree. */
   | 'surface-without-host'
+  /** The system has no font the shaper can read — a container with no fonts
+   *  installed, a minimal Linux image — so every text is drawn in kui's
+   *  last-resort face, each character a box half an em wide: it measures and
+   *  lays out, and reads as nothing. Install a font (`fonts-dejavu-core` on
+   *  Debian and Ubuntu), or register one with `add_font` / `load_fonts_dir` and
+   *  name its family. */
+  | 'no-system-fonts'
   /** A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a key
    *  or a label, the text was held for the frame that would declare it, and the
    *  frame after the call declared no editor under that name — so nothing was

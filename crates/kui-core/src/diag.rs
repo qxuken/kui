@@ -355,6 +355,13 @@ warnings! {
     /// under the runner, a float or a normal window is what shows the
     /// subtree.
     pub const SURFACE_WITHOUT_HOST: &str = "surface-without-host";
+    /// The system has no font the shaper can read — a container with no
+    /// fonts installed, a minimal Linux image — so every text is drawn in
+    /// kui's last-resort face, each character a box half an em wide: it
+    /// measures and lays out, and reads as nothing. Install a font
+    /// (`fonts-dejavu-core` on Debian and Ubuntu), or register one with
+    /// `add_font` / `load_fonts_dir` and name its family.
+    pub const NO_SYSTEM_FONTS: &str = "no-system-fonts";
 
     /// A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a
     /// key or a label, the text was held for the frame that would declare
@@ -1058,6 +1065,18 @@ pub fn window_declared_while_closed(name: &str) -> Warning {
              message (`window: {{phase: \"closed\"}}`), stop declaring `{name}`, and declare it \
              again to reopen"
         ),
+    }
+}
+
+/// The [`NO_SYSTEM_FONTS`] warning: one a session, under the root's key.
+pub fn no_system_fonts() -> Warning {
+    Warning {
+        code: NO_SYSTEM_FONTS,
+        key: Key::ROOT.str(NO_SYSTEM_FONTS),
+        message: "this system has no font kui can read, so text is drawn in kui's last-resort \
+                  face, every character a box: install a font (`fonts-dejavu-core` on Debian and \
+                  Ubuntu), or register one and name its family"
+            .to_string(),
     }
 }
 

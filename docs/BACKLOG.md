@@ -6198,6 +6198,10 @@ move.
 - `!` **F240** — [Two threads of one process write the same declarations part file](backlog/closed-2026-09.md#-f240--two-threads-of-one-process-write-the-same-declarations-part-file--done-2026-10-27) — done (2026-10-27) — the part's name carries a count beside the process id
 - `.` **F245** — [The atlas epoch starts at 0, so a zeroed host takes the first page for one it has](backlog/closed-2026-09.md#-f245--the-atlas-epoch-starts-at-0-so-a-zeroed-host-takes-the-first-page-for-one-it-has--done-2026-10-28) — done (2026-10-28) — `GlyphAtlas::epoch` starts at 1 and is never 0; said in kui.h
 
+**From verifying the Linux packs in Docker (2026-10-28)** — F262, filed and built the same day
+
+- `!` **F262** — [On a system with no fonts, text panics in cosmic-text](backlog/closed-2026-09.md#-f262--on-a-system-with-no-fonts-text-panics-in-cosmic-text--done-2026-10-28) — done (2026-10-28) — a generated last-resort face when the scan finds none, and `no-system-fonts`
+
 **From a pinch that zoomed nothing (2026-10-28)** — F256, filed and built the same day
 
 - `.` **F256** — [A trackpad's pinch reaches no app](backlog/closed-2026-09.md#-f256--a-trackpads-pinch-reaches-no-app--done-2026-10-28) — done (2026-10-28) — `InputEvent::Pinch`, heard by the innermost `onScroll` node as `zoom` and latched; `kui_input_pinch` and its doors

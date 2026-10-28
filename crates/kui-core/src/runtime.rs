@@ -470,6 +470,10 @@ pub struct Core {
     /// The painted boxes that are no hit region, filled by emission and
     /// installed with the hits (backlog F233).
     pub(crate) blockers: Vec<crate::input::Blocker>,
+    /// The session's scan found no font the shaper can read, so text is
+    /// drawn in the last-resort face (`no-system-fonts`): read when the
+    /// core joins the session.
+    no_system_fonts: bool,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -1491,6 +1495,7 @@ impl Core {
             stock_polygon: None,
             hit_shapes: Default::default(),
             blockers: Vec::new(),
+            no_system_fonts: session.state().system.last_resort,
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,

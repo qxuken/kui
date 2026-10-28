@@ -1443,7 +1443,18 @@ pub(crate) struct SystemFonts {
     db: cosmic_text::fontdb::Database,
     /// Each face the scan kept, by its file and its index in the file.
     pub(crate) faces: rustc_hash::FxHashSet<(std::path::PathBuf, u32)>,
+    /// The scan found no face the shaper can read, so the database holds
+    /// [`LAST_RESORT_FAMILY`] alone and text draws as boxes
+    /// (`no-system-fonts`).
+    pub(crate) last_resort: bool,
 }
+
+/// The family of the face a session falls back to when the system has no
+/// font the shaper can read: a container with no fonts installed, a
+/// minimal Linux image. Its every printable ASCII character is a square
+/// half an em wide, so text measures and lays out, and draws as boxes,
+/// where cosmic-text found no default font and panicked.
+pub const LAST_RESORT_FAMILY: &str = "kui last resort";
 
 /// The process's scan; `None` until the first session asks.
 static SYSTEM: std::sync::Mutex<Option<std::sync::Arc<SystemFonts>>> = std::sync::Mutex::new(None);
@@ -1478,7 +1489,22 @@ impl SystemFonts {
         keep_measurable(&mut db, all);
         pin_default_families(&mut db);
         let faces = db.faces().filter_map(face_file).collect();
-        Self { locale, db, faces }
+        let last_resort = db.faces().next().is_none();
+        if last_resort {
+            db.load_font_data(crate::stock_face::build(&crate::stock_face::Face {
+                family: LAST_RESORT_FAMILY,
+                ..crate::stock_face::Face::LIGA
+            }));
+            db.set_sans_serif_family(LAST_RESORT_FAMILY);
+            db.set_serif_family(LAST_RESORT_FAMILY);
+            db.set_monospace_family(LAST_RESORT_FAMILY);
+        }
+        Self {
+            locale,
+            db,
+            faces,
+            last_resort,
+        }
     }
 
     /// This scan's database, to build a test's own scan from.
@@ -5956,5 +5982,57 @@ mod scans {
                 }
             }
         }
+    }
+}
+
+/// A system with no font the shaper can read — a container with nothing
+/// installed — gets the last-resort face, so text shapes instead of
+/// cosmic-text panicking for want of a default font.
+#[cfg(test)]
+mod no_system_fonts {
+    use super::*;
+    use cosmic_text::Family;
+    use cosmic_text::fontdb::Database;
+
+    #[test]
+    fn an_empty_system_shapes_text_in_the_last_resort_face() {
+        let system = SystemFonts::from_db("en-US".into(), Database::new());
+        assert!(system.last_resort);
+        let families: Vec<String> = system.db.faces().map(|f| f.families[0].0.clone()).collect();
+        assert_eq!(families, [LAST_RESORT_FAMILY]);
+        let mut fs = FontSystem::new_with_locale_and_db(system.locale, system.db);
+        for family in [Family::SansSerif, Family::Serif, Family::Monospace] {
+            let mut buffer = Buffer::new(&mut fs, Metrics::new(14.0, 21.0));
+            buffer.set_text(
+                "Hi, café 字",
+                &Attrs::new().family(family),
+                Shaping::Advanced,
+                None,
+            );
+            buffer.shape_until_scroll(&mut fs, false);
+            let run = buffer.layout_runs().next().expect("one line");
+            for g in run.glyphs {
+                assert!(g.x.is_finite() && g.w.is_finite(), "{family:?}: {g:?}");
+            }
+            // The face's ASCII advance is half an em: `H` is 7 px at 14.
+            assert_eq!(run.glyphs[0].w, 7.0, "{family:?}");
+        }
+    }
+
+    #[test]
+    fn a_system_with_a_face_does_not_need_it() {
+        let mut db = Database::new();
+        db.load_font_data(crate::stock_face::build(&crate::stock_face::Face {
+            family: "Installed",
+            ..crate::stock_face::Face::LIGA
+        }));
+        let system = SystemFonts::from_db("en-US".into(), db);
+        assert!(!system.last_resort);
+        assert!(
+            system
+                .db
+                .faces()
+                .all(|f| f.families[0].0 != LAST_RESORT_FAMILY)
+        );
     }
 }

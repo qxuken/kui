@@ -676,6 +676,10 @@ impl Core {
         self.span_end(span);
         // A cycle whose node the frame culled owes no frame (backlog C137).
         self.settle_cycles();
+        // Text in boxes says why, once (the diag dedups by code and key).
+        if self.no_system_fonts {
+            self.diag.raise(crate::diag::no_system_fonts());
+        }
         self.building = false;
         // This frame's departures are ghosts now: the rooms the next build
         // keeps for them, and for whatever may depart next (backlog C110).

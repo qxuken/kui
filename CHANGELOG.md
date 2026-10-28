@@ -38,6 +38,14 @@ Nothing else breaks.
 
 ### Fixed
 
+- **Text on a system with no fonts** (backlog F262). A container or a
+  minimal Linux image with no font installed made every shape panic
+  inside cosmic-text, which the bindings caught, leaving an app with no
+  text and its layout moved. kui now falls back to a face it generates,
+  every character a box half an em wide, so text measures and lays out,
+  and raises `no-system-fonts` saying to install a font
+  (`fonts-dejavu-core` on Debian and Ubuntu) or register one.
+
 - **A channel's readers no longer copy the table** (backlog RG172).
   After a few appends a revision is several runs, and every `filter`,
   `sort`, `take`, `reduce` and `lanes` read through the columns joined
