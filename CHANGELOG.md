@@ -21,6 +21,35 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.71 (unreleased)
+
+**What breaks.**
+
+- Numbers appended to a channel's column of integers widen it (backlog
+  RG173), where the append was refused: from that revision on its rows
+  read as numbers (`Cell::F64`, a float in Lua and Node), the revisions
+  before keep their integers. A reader that matched `Column::I64` on a
+  column a log appends to meets `Column::F64` once a fraction comes.
+
+Nothing else breaks.
+
+### Fixed
+
+- **A channel's readers no longer copy the table** (backlog RG172).
+  After a few appends a revision is several runs, and every `filter`,
+  `sort`, `take`, `reduce` and `lanes` read through the columns joined
+  whole — every column, strings too, once a revision. They read run by
+  run now, and a column read whole (`column`, `data`) joins that column
+  alone. kui-perf's Live view over a million spans, a poll's append and
+  the take of its filtered rows: 11.6 → 0.32 ms, with no second copy of
+  the table kept.
+
+- **A log that began on whole numbers takes a fraction** (backlog RG173):
+  a column made from `{1, 2, 3}` is integers, in Lua and from Node's
+  whole numbers alike, and `ch:append{ t = { 2.5 } }` was refused with
+  "holds integers; numbers were appended". The column widens, its runs so
+  far made again as numbers once.
+
 ## 0.1.0-alpha.70 (2026-10-28)
 
 **What breaks.**

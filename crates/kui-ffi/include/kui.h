@@ -3260,7 +3260,9 @@ bool kui_channel_reduce(const KuiChannel *ch, size_t col, size_t from, size_t to
                         double *out, size_t *count);
 /* The next revision of ch's identity: its rows, then the builder's
  * (backlog C147) - each of ch's columns named, of its kind (integers widen
- * into a number column), all of one length - with the oldest rows past cap
+ * into a number column, and numbers widen a column of integers, its rows so
+ * far read as numbers from the new revision on), all of one length - with
+ * the oldest rows past cap
  * gone when cap is above 0. ch's rows are shared with it, not copied, so a
  * growing log costs its new lines. The builder is consumed either way; ch
  * is untouched and still yours. NULL on a mismatch, the reason in

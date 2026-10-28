@@ -107,8 +107,9 @@ channel_reduce :: proc(ch: ^c.Channel, col, from, to: int, out: []f64) -> (count
 }
 
 // The next revision of ch's identity: its rows, then the builder's (backlog
-// C147), each of ch's columns named, of its kind and all of one length; with
-// cap above 0 the oldest rows past it go. The builder is consumed either way;
+// C147), each of ch's columns named, of its kind (numbers widen a column of
+// integers) and all of one length; with cap above 0 the oldest rows past it
+// go. The builder is consumed either way;
 // ch is untouched. nil on a mismatch, the reason in channel_error.
 // Rust: Channel::append.
 channel_append :: proc(ch: ^c.Channel, rows: ^c.ChannelBuilder, cap := 0) -> ^c.Channel {

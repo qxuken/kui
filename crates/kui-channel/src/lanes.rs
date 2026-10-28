@@ -182,14 +182,14 @@ impl Lanes {
 }
 
 fn numbers(ch: &Channel, col: usize, what: &str) -> Result<Vec<f64>, ChannelError> {
-    match ch.column(col) {
-        Some(Column::F64(v)) => Ok(v.clone()),
-        Some(Column::I64(v)) => Ok(v.iter().map(|&x| x as f64).collect()),
-        Some(other) => Err(ChannelError(format!(
+    // Read from the runs, not the column joined whole (backlog RG172).
+    match ch.column_index(col) {
+        Ok(Column::F64(_) | Column::I64(_)) => Ok(ch.numbers_in(col, 0, ch.len())),
+        Ok(other) => Err(ChannelError(format!(
             "the {what} column holds {}s; lanes read numbers",
             other.kind()
         ))),
-        None => Err(ChannelError(format!("the channel has no column {col}"))),
+        Err(_) => Err(ChannelError(format!("the channel has no column {col}"))),
     }
 }
 

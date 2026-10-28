@@ -4279,23 +4279,8 @@ is read as none (`fuzz/regressions/trace/fz19-name-past-the-table`).
 RG171 was built the same day, before the tag, and is in the archive.
 RG172 and RG173 were built the same day too, after `kui-channel`
 0.1.0-alpha.70 had gone to crates.io from the commit before them, so
-they ship in alpha.71 (the tag holds what crates.io holds). FZ20 stays
-open.
-
-### `.` RG172 — A table read whole after appends is copied whole, at every revision — built for alpha.71
-
-**Found** 2026-10-28 by the alpha.70 review of `kui-channel`: `Inner::flat`
-joins every column of a revision held in more than one run into a copy,
-once per revision, and `column()` — so `filter`, `sort`, `take_columns`,
-`reduce` and `lanes` — reads through it; only `get` reads run by run.
-After a few appends a revision is several runs, so Live with any filter
-copies every column of the span table (strings too, up to a million
-rows) at each 250 ms poll and keeps it beside the runs for as long as
-the revision lives: what C147 made an append cost, its own rows, is
-undone at the first read. **Do.** Measure Live over a big recording
-first (`kui-trace synth` and a growing file); then the readers run by
-run (a filter and a sort over runs, a take that copies the rows it
-takes), or `settle` joining runs as they are read rather than at a cap.
+they ship in alpha.71 (the tag holds what crates.io holds); both are in
+the archive. FZ20 stays open.
 
 ### `.` FZ20 — A composition a press ends leaves the editor off the value the app declared
 
@@ -4315,20 +4300,6 @@ empty preedit. The minimized input (217 bytes, base64), for
 **Do.** Reproduce it in a kui-core test (a value-declared field, a
 selection, a preedit, a press), fix where the press ends the
 composition, and keep the input.
-
-### `.` RG173 — Numbers with a fraction appended to a column of integers are refused — built for alpha.71
-
-**Found** 2026-10-28 by the alpha.70 review of `Channel::append`: a
-column built from whole numbers is integers (`column_of`, and Node's
-values, which carry whole numbers as `Int`), and an append widens
-integers into a number column but not the other way, so
-`ch:append{ t = {2.5} }` onto a channel made from `{1, 2, 3}` errors with
-"holds integers; numbers were appended". An app that logs times in
-milliseconds meets it at the first fractional sample. **Do.** Widen the
-column: the earlier runs' integers read as numbers (the revision's kind
-changes, so the column's kind is per revision, said where `kind` is
-read), or a channel's column kind declared at its making — decide which
-with the bindings' readers in view.
 
 ## From the core impurities audit (2026-10-25)
 

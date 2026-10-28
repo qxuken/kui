@@ -241,13 +241,15 @@ impl Chunk {
 }
 
 enum Body {
-    /// The columns' names, the runs of rows, and the columns whole, made
-    /// once when a reader asks for one whole and there is more than one
-    /// run (or the first is cut).
+    /// The columns' names, the runs of rows, and each column whole, made
+    /// once a revision when a reader asks for that one whole and there is
+    /// more than one run (or the first is cut). One at a time: a table's
+    /// filters, sorts and takes read run by run and join none (backlog
+    /// RG172), so a column read whole costs that column, not the table.
     Table {
         names: Vec<String>,
         chunks: Vec<Chunk>,
-        flat: OnceLock<Vec<Column>>,
+        flat: Vec<OnceLock<Column>>,
         data: OnceLock<Data>,
     },
     Bytes(Data),
@@ -261,34 +263,68 @@ struct Inner {
 }
 
 impl Inner {
-    /// The table's columns whole.
-    fn flat(&self) -> Option<&[Column]> {
-        let Body::Table {
-            names,
-            chunks,
-            flat,
-            ..
-        } = &self.body
-        else {
+    /// Column `c` whole.
+    fn whole(&self, c: usize) -> Option<&Column> {
+        let Body::Table { chunks, flat, .. } = &self.body else {
             return None;
         };
+        let slot = flat.get(c)?;
         if let [one] = chunks.as_slice()
             && one.skip == 0
         {
-            return Some(&one.cols);
+            return one.cols.get(c);
         }
-        Some(flat.get_or_init(|| {
-            (0..names.len())
-                .map(|c| {
-                    let mut out = chunks[0].cols[c].empty_like();
-                    for ch in chunks {
-                        out.extend_rows(&ch.cols[c], ch.skip..ch.skip + ch.rows());
-                    }
-                    out
-                })
-                .collect()
+        Some(slot.get_or_init(|| {
+            let mut out = chunks[0].cols[c].empty_like();
+            for ch in chunks {
+                out.extend_rows(&ch.cols[c], ch.skip..ch.skip + ch.rows());
+            }
+            out
         }))
     }
+
+    /// The runs a table's rows are in, empty for bytes.
+    fn chunks(&self) -> &[Chunk] {
+        match &self.body {
+            Body::Table { chunks, .. } => chunks,
+            Body::Bytes(_) => &[],
+        }
+    }
+
+    /// Row `row`'s run and its index in that run's columns.
+    fn locate(&self, row: usize) -> (usize, usize) {
+        let chunks = self.chunks();
+        let k = match chunks {
+            [_] => 0,
+            many => many.partition_point(|c| c.start <= row) - 1,
+        };
+        (k, row - chunks[k].start + chunks[k].skip)
+    }
+
+    /// Calls `f` with each row's run and index — of `within`, in its order,
+    /// or of every row in row order, a run at a time with no search.
+    fn each_row(&self, within: Option<&[usize]>, mut f: impl FnMut(usize, usize, usize)) {
+        match within {
+            Some(rows) => {
+                for &r in rows {
+                    let (k, i) = self.locate(r);
+                    f(r, k, i);
+                }
+            }
+            None => {
+                for (k, ch) in self.chunks().iter().enumerate() {
+                    for i in ch.skip..ch.skip + ch.rows() {
+                        f(ch.start + i - ch.skip, k, i);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A slot a revision fills when column `c` is first read whole.
+fn whole_slots(n: usize) -> Vec<OnceLock<Column>> {
+    (0..n).map(|_| OnceLock::new()).collect()
 }
 
 /// One revision of a channel, held: cheap to clone, and the data stays as
@@ -396,13 +432,13 @@ impl Channel {
 
     fn table_body(names: Vec<String>, cols: Vec<Column>) -> Body {
         Body::Table {
+            flat: whole_slots(names.len()),
             names,
             chunks: vec![Chunk {
                 start: 0,
                 skip: 0,
                 cols: Arc::new(cols),
             }],
-            flat: OnceLock::new(),
             data: OnceLock::new(),
         }
     }
@@ -449,8 +485,11 @@ impl Channel {
 
     /// The next revision under this identity: this one's rows and `rows`
     /// after them (backlog C147). `rows` names every column this table
-    /// has, each of the same kind (integers widen into a number column),
-    /// all of one length. With `cap`, the oldest rows go past it, so a log
+    /// has, each of the same kind — integers widen into a number column,
+    /// and numbers appended to a column of integers widen the column, its
+    /// rows so far read as numbers from this revision on (backlog RG173):
+    /// a log of milliseconds that began on whole ones takes its first
+    /// fraction — all of one length. With `cap`, the oldest rows go past it, so a log
     /// keeps its last `cap` lines. The rows this revision holds are shared
     /// with the next, not copied: an append costs its own rows.
     pub fn append(
@@ -470,6 +509,7 @@ impl Channel {
             )));
         }
         let mut given: Vec<Option<Column>> = vec![None; names.len()];
+        let mut widen = vec![false; names.len()];
         let mut n = None;
         for (name, col) in rows {
             let Some(i) = names.iter().position(|x| *x == name) else {
@@ -485,6 +525,10 @@ impl Channel {
             let col = match (have, col) {
                 (Column::F64(_), Column::I64(v)) => {
                     Column::F64(v.into_iter().map(|x| x as f64).collect())
+                }
+                (Column::I64(_), c @ Column::F64(_)) if !c.is_empty() => {
+                    widen[i] = true;
+                    c
                 }
                 (h, c) if h.kind() == c.kind() => c,
                 // No rows have no kind: a binding's empty list reads as
@@ -512,6 +556,19 @@ impl Channel {
         }
         let added = n.unwrap_or(0);
         let mut chunks = chunks.clone();
+        // The runs so far, their widened columns as numbers: new runs,
+        // since the old revision keeps its integers. Once a column's life.
+        if widen.contains(&true) {
+            for ch in &mut chunks {
+                let mut cols = (*ch.cols).clone();
+                for (c, w) in cols.iter_mut().zip(&widen) {
+                    if *w && let Column::I64(v) = c {
+                        *c = Column::F64(v.iter().map(|&x| x as f64).collect());
+                    }
+                }
+                ch.cols = Arc::new(cols);
+            }
+        }
         let mut len = self.0.len;
         if added > 0 {
             chunks.push(Chunk {
@@ -549,7 +606,7 @@ impl Channel {
             Body::Table {
                 names: names.clone(),
                 chunks,
-                flat: OnceLock::new(),
+                flat: whole_slots(names.len()),
                 data: OnceLock::new(),
             },
             len,
@@ -564,7 +621,7 @@ impl Channel {
             Body::Table { names, chunks, .. } => Body::Table {
                 names: names.clone(),
                 chunks: chunks.clone(),
-                flat: OnceLock::new(),
+                flat: whole_slots(names.len()),
                 data: OnceLock::new(),
             },
             Body::Bytes(d) => Body::Bytes(d.clone()),
@@ -596,7 +653,9 @@ impl Channel {
             Body::Bytes(d) => d,
             Body::Table { names, data, .. } => data.get_or_init(|| Data::Table {
                 names: names.clone(),
-                cols: self.0.flat().unwrap_or_default().to_vec(),
+                cols: (0..names.len())
+                    .map(|c| self.0.whole(c).cloned().expect("a named column"))
+                    .collect(),
             }),
         }
     }
@@ -614,10 +673,12 @@ impl Channel {
         self.names().iter().position(|n| n == name)
     }
 
-    /// The column at `i`, whole: a table appended to is put together once
-    /// a revision, on the first ask; [`Self::get`] reads a row without.
+    /// The column at `i`, whole: a table appended to puts it together
+    /// once a revision, on the first ask — that column alone;
+    /// [`Self::get`] reads a row without, and the filters, sorts, takes
+    /// and reductions read run by run.
     pub fn column(&self, i: usize) -> Option<&Column> {
-        self.0.flat()?.get(i)
+        self.0.whole(i)
     }
 
     /// The column called `name`.
@@ -686,31 +747,66 @@ fn contains_ascii_blind(hay: &str, needle: &str) -> bool {
 }
 
 impl Channel {
-    fn column_index(&self, col: usize) -> Result<&Column, ChannelError> {
-        self.column(col).ok_or_else(|| {
-            ChannelError(format!(
-                "the channel has no column {col}; it has {}",
-                self.names().len()
-            ))
-        })
+    /// Column `col` of the first run: the column's kind, and its rows
+    /// when the table is one run. No column `col` is an error.
+    pub(crate) fn column_index(&self, col: usize) -> Result<&Column, ChannelError> {
+        self.0
+            .chunks()
+            .first()
+            .and_then(|ch| ch.cols.get(col))
+            .ok_or_else(|| {
+                ChannelError(format!(
+                    "the channel has no column {col}; it has {}",
+                    self.names().len()
+                ))
+            })
     }
 
-    fn rows_in<'a>(
-        &self,
-        within: Option<&'a [usize]>,
-    ) -> Result<Box<dyn Iterator<Item = usize> + 'a>, ChannelError> {
-        let len = self.len();
-        Ok(match within {
-            Some(rows) => {
-                if let Some(r) = rows.iter().find(|&&r| r >= len) {
-                    return Err(ChannelError(format!(
-                        "row {r} is past the channel's {len} rows"
-                    )));
-                }
-                Box::new(rows.iter().copied())
+    /// Column `col`'s numbers over rows `from..to`, integers widened,
+    /// read from the runs that hold them: what a reduction or the lanes
+    /// read without the column joined whole. Column `col` is numbers or
+    /// integers.
+    pub(crate) fn numbers_in(&self, col: usize, from: usize, to: usize) -> Vec<f64> {
+        let mut out = Vec::with_capacity(to.saturating_sub(from));
+        for ch in self.0.chunks() {
+            let (a, z) = (from.max(ch.start), to.min(ch.start + ch.rows()));
+            if a >= z {
+                continue;
             }
-            None => Box::new(0..len),
-        })
+            let (i, j) = (a - ch.start + ch.skip, z - ch.start + ch.skip);
+            match &ch.cols[col] {
+                Column::F64(v) => out.extend_from_slice(&v[i..j]),
+                Column::I64(v) => out.extend(v[i..j].iter().map(|&x| x as f64)),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Each row's cell `f` reads from its run's column `col` — of
+    /// `within`, or every row — with the row: what a sort orders.
+    fn keyed<'a, T>(
+        &'a self,
+        col: usize,
+        within: Option<&[usize]>,
+        f: impl Fn(&'a Column, usize) -> T,
+    ) -> Vec<(T, usize)> {
+        let chunks = self.0.chunks();
+        let mut out = Vec::with_capacity(within.map_or(self.len(), <[usize]>::len));
+        self.0
+            .each_row(within, |r, k, i| out.push((f(&chunks[k].cols[col], i), r)));
+        out
+    }
+
+    /// `within`, when given, holds rows of this channel.
+    fn check_rows(&self, within: Option<&[usize]>) -> Result<(), ChannelError> {
+        let len = self.len();
+        match within.and_then(|rows| rows.iter().find(|&&r| r >= len)) {
+            Some(r) => Err(ChannelError(format!(
+                "row {r} is past the channel's {len} rows"
+            ))),
+            None => Ok(()),
+        }
     }
 
     /// The rows whose cell in column `col` matches `m`, in row order —
@@ -724,55 +820,37 @@ impl Channel {
         m: &Match,
         within: Option<&[usize]>,
     ) -> Result<Vec<usize>, ChannelError> {
-        let column = self.column_index(col)?;
-        let name = &self.names()[col];
-        let rows = self.rows_in(within)?;
-        let wrong = |what: &str| {
-            Err(ChannelError(format!(
-                "column `{name}` holds {}s; {what} matches none",
-                column.kind()
-            )))
+        let kind = self.column_index(col)?;
+        self.check_rows(within)?;
+        let lower = match m {
+            Match::Contains { text, case: false } if !text.is_ascii() => Some(text.to_lowercase()),
+            _ => None,
         };
-        Ok(match (column, m) {
-            (Column::F64(v), Match::Eq(x)) => match x.as_float() {
-                Some(x) => rows.filter(|&r| v[r] == x).collect(),
-                None => return wrong("that value"),
-            },
-            (Column::I64(v), Match::Eq(Value::Int(x))) => rows.filter(|&r| v[r] == *x).collect(),
-            (Column::I64(v), Match::Eq(Value::Float(x))) => {
-                rows.filter(|&r| v[r] as f64 == *x).collect()
+        // A test a run: the runs of one column are of one kind, so the
+        // first decides whether the match is one this column takes.
+        let mut tests = Vec::with_capacity(self.0.chunks().len());
+        for ch in self.0.chunks() {
+            let Some(t) = matcher(&ch.cols[col], m, lower.as_deref()) else {
+                let what = match m {
+                    Match::Eq(_) => "that value",
+                    Match::Contains { .. } => "a string search",
+                    Match::Range { .. } => "a range",
+                };
+                return Err(ChannelError(format!(
+                    "column `{}` holds {}s; {what} matches none",
+                    self.names()[col],
+                    kind.kind()
+                )));
+            };
+            tests.push(t);
+        }
+        let mut out = Vec::new();
+        self.0.each_row(within, |r, k, i| {
+            if tests[k](i) {
+                out.push(r);
             }
-            (Column::Bool(v), Match::Eq(Value::Bool(x))) => rows.filter(|&r| v[r] == *x).collect(),
-            (Column::Str(v), Match::Eq(Value::Str(x))) => {
-                rows.filter(|&r| v.get(r) == Some(x.as_str())).collect()
-            }
-            (Column::Str(v), Match::Contains { text, case: true }) => rows
-                .filter(|&r| v.get(r).is_some_and(|s| s.contains(text.as_str())))
-                .collect(),
-            (Column::Str(v), Match::Contains { text, case: false }) if text.is_ascii() => rows
-                .filter(|&r| v.get(r).is_some_and(|s| contains_ascii_blind(s, text)))
-                .collect(),
-            (Column::Str(v), Match::Contains { text, case: false }) => {
-                let text = text.to_lowercase();
-                rows.filter(|&r| v.get(r).is_some_and(|s| s.to_lowercase().contains(&text)))
-                    .collect()
-            }
-            (Column::F64(_) | Column::I64(_), Match::Range { min, max }) => {
-                let (lo, hi) = (
-                    min.unwrap_or(f64::NEG_INFINITY),
-                    max.unwrap_or(f64::INFINITY),
-                );
-                let at = |r| column.get(r).as_f64().unwrap_or(f64::NAN);
-                rows.filter(|&r| {
-                    let x = at(r);
-                    x >= lo && x <= hi
-                })
-                .collect()
-            }
-            (_, Match::Eq(_)) => return wrong("that value"),
-            (_, Match::Contains { .. }) => return wrong("a string search"),
-            (_, Match::Range { .. }) => return wrong("a range"),
-        })
+        });
+        Ok(out)
     }
 
     /// The rows — all, or `within`'s — ordered by column `col`, least
@@ -786,44 +864,98 @@ impl Channel {
         within: Option<&[usize]>,
     ) -> Result<Vec<usize>, ChannelError> {
         use std::cmp::Ordering as O;
-        let column = self.column_index(col)?;
-        let mut rows: Vec<usize> = self.rows_in(within)?.collect();
+        let kind = self.column_index(col)?;
+        self.check_rows(within)?;
         let flip = |o: O| if descending { o.reverse() } else { o };
-        match column {
-            Column::F64(v) => rows.sort_by(|&a, &b| match (v[a].is_nan(), v[b].is_nan()) {
-                (false, false) => flip(v[a].total_cmp(&v[b])),
-                (a, b) => a.cmp(&b),
-            }),
-            Column::I64(v) => rows.sort_by(|&a, &b| flip(v[a].cmp(&v[b]))),
-            Column::Bool(v) => rows.sort_by(|&a, &b| flip(v[a].cmp(&v[b]))),
-            Column::Str(v) => rows.sort_by(|&a, &b| flip(v.get(a).cmp(&v.get(b)))),
+        // Each row's key read from its run, then a stable sort of the
+        // keys: the rows of one value keep the order they came in.
+        fn rows<T>(keyed: Vec<(T, usize)>) -> Vec<usize> {
+            keyed.into_iter().map(|(_, r)| r).collect()
         }
-        Ok(rows)
+        Ok(match kind {
+            Column::F64(_) => {
+                let mut k = self.keyed(col, within, |c, i| match c {
+                    Column::F64(v) => v[i],
+                    _ => f64::NAN,
+                });
+                k.sort_by(|a, b| match (a.0.is_nan(), b.0.is_nan()) {
+                    (false, false) => flip(a.0.total_cmp(&b.0)),
+                    (x, y) => x.cmp(&y),
+                });
+                rows(k)
+            }
+            Column::I64(_) => {
+                let mut k = self.keyed(col, within, |c, i| match c {
+                    Column::I64(v) => v[i],
+                    _ => 0,
+                });
+                k.sort_by(|a, b| flip(a.0.cmp(&b.0)));
+                rows(k)
+            }
+            Column::Bool(_) => {
+                let mut k = self.keyed(col, within, |c, i| match c {
+                    Column::Bool(v) => v[i],
+                    _ => false,
+                });
+                k.sort_by(|a, b| flip(a.0.cmp(&b.0)));
+                rows(k)
+            }
+            Column::Str(_) => {
+                let mut k = self.keyed(col, within, |c, i| match c {
+                    Column::Str(v) => v.get(i),
+                    _ => None,
+                });
+                k.sort_by(|a, b| flip(a.0.cmp(&b.0)));
+                rows(k)
+            }
+        })
     }
 
     /// The columns of `rows`, in that order, under this channel's names:
     /// what [`Self::take`] makes a channel of, and what a view publishes
     /// as the next revision of its own.
     pub fn take_columns(&self, rows: &[usize]) -> Result<Vec<(String, Column)>, ChannelError> {
-        let len = self.len();
-        if let Some(r) = rows.iter().find(|&&r| r >= len) {
-            return Err(ChannelError(format!(
-                "row {r} is past the channel's {len} rows"
-            )));
+        self.check_rows(Some(rows))?;
+        if self.names().is_empty() {
+            return Ok(Vec::new());
         }
+        // Each row found in its run once, for every column: the rows taken
+        // are copied, the table is not joined (backlog RG172).
+        let at: Vec<(usize, usize)> = rows.iter().map(|&r| self.0.locate(r)).collect();
+        let chunks = self.0.chunks();
         Ok(self
             .names()
             .iter()
             .enumerate()
             .map(|(c, name)| {
-                let have = self.column(c).expect("a named column");
-                let col = match have {
-                    Column::F64(v) => Column::F64(rows.iter().map(|&r| v[r]).collect()),
-                    Column::I64(v) => Column::I64(rows.iter().map(|&r| v[r]).collect()),
-                    Column::Bool(v) => Column::Bool(rows.iter().map(|&r| v[r]).collect()),
-                    Column::Str(v) => {
-                        Column::Str(rows.iter().map(|&r| v.get(r).unwrap_or_default()).collect())
-                    }
+                let cell = |&(k, i): &(usize, usize)| chunks[k].cols[c].get(i);
+                let col = match &chunks[0].cols[c] {
+                    Column::F64(_) => Column::F64(
+                        at.iter()
+                            .map(|p| cell(p).as_f64().unwrap_or(f64::NAN))
+                            .collect(),
+                    ),
+                    Column::I64(_) => Column::I64(
+                        at.iter()
+                            .map(|p| match cell(p) {
+                                Cell::I64(x) => x,
+                                _ => 0,
+                            })
+                            .collect(),
+                    ),
+                    Column::Bool(_) => Column::Bool(
+                        at.iter()
+                            .map(|p| matches!(cell(p), Cell::Bool(true)))
+                            .collect(),
+                    ),
+                    Column::Str(_) => Column::Str(
+                        at.iter()
+                            .map(|p| match cell(p) {
+                                Cell::Str(s) => s,
+                                _ => "",
+                            })
+                            .collect(),
+                    ),
                 };
                 (name.clone(), col)
             })
@@ -840,6 +972,54 @@ impl Channel {
         }
         Channel::table(self.take_columns(rows)?)
     }
+}
+
+/// A filter's test of one run's column `column` by its index there;
+/// `None` for a match of a kind the column is not. `lower` is a
+/// case-blind search's text lowercased, when it is not ASCII.
+type Test<'a> = Box<dyn Fn(usize) -> bool + 'a>;
+
+fn matcher<'a>(column: &'a Column, m: &'a Match, lower: Option<&'a str>) -> Option<Test<'a>> {
+    Some(match (column, m) {
+        (Column::F64(v), Match::Eq(x)) => {
+            let x = x.as_float()?;
+            Box::new(move |i| v[i] == x)
+        }
+        (Column::I64(v), Match::Eq(Value::Int(x))) => Box::new(move |i| v[i] == *x),
+        (Column::I64(v), Match::Eq(Value::Float(x))) => Box::new(move |i| v[i] as f64 == *x),
+        (Column::Bool(v), Match::Eq(Value::Bool(x))) => Box::new(move |i| v[i] == *x),
+        (Column::Str(v), Match::Eq(Value::Str(x))) => {
+            Box::new(move |i| v.get(i) == Some(x.as_str()))
+        }
+        (Column::Str(v), Match::Contains { text, case: true }) => {
+            Box::new(move |i| v.get(i).is_some_and(|s| s.contains(text.as_str())))
+        }
+        (Column::Str(v), Match::Contains { text, case: false }) if text.is_ascii() => {
+            Box::new(move |i| v.get(i).is_some_and(|s| contains_ascii_blind(s, text)))
+        }
+        (Column::Str(v), Match::Contains { case: false, .. }) => {
+            let text = lower?;
+            Box::new(move |i| v.get(i).is_some_and(|s| s.to_lowercase().contains(text)))
+        }
+        (Column::F64(v), Match::Range { min, max }) => {
+            let (lo, hi) = (
+                min.unwrap_or(f64::NEG_INFINITY),
+                max.unwrap_or(f64::INFINITY),
+            );
+            Box::new(move |i| v[i] >= lo && v[i] <= hi)
+        }
+        (Column::I64(v), Match::Range { min, max }) => {
+            let (lo, hi) = (
+                min.unwrap_or(f64::NEG_INFINITY),
+                max.unwrap_or(f64::INFINITY),
+            );
+            Box::new(move |i| {
+                let x = v[i] as f64;
+                x >= lo && x <= hi
+            })
+        }
+        _ => return None,
+    })
 }
 
 /// One bucket of a [`Channel::reduce`]: the least and greatest value
@@ -894,12 +1074,7 @@ impl Channel {
         out: &mut Vec<Bucket>,
     ) -> Result<(), ChannelError> {
         out.clear();
-        let column = self.column(col).ok_or_else(|| {
-            ChannelError(format!(
-                "the channel has no column {col}; it has {}",
-                self.names().len()
-            ))
-        })?;
+        let column = self.column_index(col)?;
         let to = to.min(self.len());
         let n = to.saturating_sub(from);
         let k = buckets.min(n);
@@ -907,8 +1082,26 @@ impl Channel {
             // Checked before the range, so a mistake does not wait for
             // the data to show.
             Column::F64(_) | Column::I64(_) if k == 0 => {}
-            Column::F64(v) => reduce_rows(&v[from..to], from, k, out, |x| x),
-            Column::I64(v) => reduce_rows(&v[from..to], from, k, out, |x| x as f64),
+            Column::F64(_) | Column::I64(_) => {
+                // A range inside one run reads in place; one across runs
+                // reads its own rows out of them, not the column whole.
+                let (r, i) = self.0.locate(from);
+                let ch = &self.0.chunks()[r];
+                let one = to <= ch.start + ch.rows();
+                let read;
+                let v: &[f64] = match &ch.cols[col] {
+                    Column::F64(v) if one => &v[i..i + n],
+                    Column::I64(v) if one => {
+                        reduce_rows(&v[i..i + n], from, k, out, |x| x as f64);
+                        return Ok(());
+                    }
+                    _ => {
+                        read = self.numbers_in(col, from, to);
+                        &read
+                    }
+                };
+                reduce_rows(v, from, k, out, |x| x)
+            }
             other => return Err(not_numbers(&self.names()[col], other)),
         }
         Ok(())
@@ -1376,6 +1569,26 @@ mod tests {
             ("line".into(), Column::strs(["x"])),
         ];
         assert!(e(a.append(bools, None)).contains("booleans"));
+        // Numbers onto a column of integers widen it, the rows so far read
+        // as numbers in the new revision and as integers in the old one
+        // (RG173); an append of integers after reads as numbers too.
+        let ints = Channel::table(vec![("t".into(), Column::I64(vec![1, 2]))]).unwrap();
+        let wide = ints
+            .append(vec![("t".into(), Column::F64(vec![2.5]))], None)
+            .unwrap();
+        assert_eq!(
+            (wide.get(0, 0), wide.get(2, 0)),
+            (Cell::F64(1.0), Cell::F64(2.5))
+        );
+        assert_eq!(
+            ints.get(0, 0),
+            Cell::I64(1),
+            "the old revision keeps its own"
+        );
+        let more = wide
+            .append(vec![("t".into(), Column::I64(vec![4]))], None)
+            .unwrap();
+        assert_eq!(more.column(0), Some(&Column::F64(vec![1.0, 2.0, 2.5, 4.0])));
         // No rows have no kind: an empty list, numbers to a binding, is
         // taken by the string column.
         let none = vec![
@@ -1389,6 +1602,76 @@ mod tests {
                 .append(rows(&["x"], &[1]), None)
                 .is_err()
         );
+    }
+
+    /// A revision of several runs is read run by run: every filter, sort,
+    /// take, reduction and lane reads what the same rows in one run read,
+    /// and none of them joins a column whole (backlog RG172) — Live's
+    /// filtered view took every column of a million spans at each poll.
+    #[test]
+    fn readers_go_run_by_run_and_join_nothing() {
+        let mut ch = log(3);
+        for i in 0..40i64 {
+            let names: Vec<String> = (0..=i % 3).map(|k| format!("l{i}-{k}")).collect();
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            let ms: Vec<i64> = (0..names.len() as i64)
+                .map(|k| (i * 7 + k * 13) % 50)
+                .collect();
+            ch = ch.append(rows(&names, &ms), Some(70)).unwrap();
+        }
+        let runs = match &ch.0.body {
+            Body::Table { chunks, .. } => chunks.len(),
+            Body::Bytes(_) => 0,
+        };
+        assert!(runs > 1, "{runs} runs");
+        let one = Channel::table(
+            ch.names()
+                .iter()
+                .enumerate()
+                .map(|(c, n)| {
+                    (n.clone(), {
+                        let mut out = ch.0.chunks()[0].cols[c].empty_like();
+                        for k in ch.0.chunks() {
+                            out.extend_rows(&k.cols[c], k.skip..k.skip + k.rows());
+                        }
+                        out
+                    })
+                })
+                .collect(),
+        )
+        .unwrap();
+        let range = Match::Range {
+            min: Some(10.0),
+            max: Some(30.0),
+        };
+        let text = Match::Contains {
+            text: "L1".into(),
+            case: false,
+        };
+        let within: Vec<usize> = (0..ch.len()).rev().step_by(3).collect();
+        for w in [None, Some(within.as_slice())] {
+            assert_eq!(ch.filter(1, &range, w), one.filter(1, &range, w));
+            assert_eq!(ch.filter(0, &text, w), one.filter(0, &text, w));
+            assert_eq!(ch.sort(1, true, w), one.sort(1, true, w));
+            assert_eq!(ch.sort(0, false, w), one.sort(0, false, w));
+        }
+        let picked = ch.sort(1, false, None).unwrap();
+        assert_eq!(ch.take_columns(&picked), one.take_columns(&picked));
+        assert_eq!(ch.reduce(1, 5, 66, 7), one.reduce(1, 5, 66, 7));
+        let (a, b) = (
+            ch.lanes(1, None, None).unwrap(),
+            one.lanes(1, None, None).unwrap(),
+        );
+        assert_eq!(
+            (a.count(), a.len(), a.extent()),
+            (b.count(), b.len(), b.extent())
+        );
+        if let Body::Table { flat, .. } = &ch.0.body {
+            assert!(
+                flat.iter().all(|s| s.get().is_none()),
+                "a column was joined whole"
+            );
+        }
     }
 
     /// Filters by value, by a string's part and by a range, chained
