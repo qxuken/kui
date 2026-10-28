@@ -88,6 +88,16 @@ pub struct Globals {
     pub _pad: [f32; 2],
 }
 
+/// [`INSTANCE_STRIDE`], for a host that asks.
+pub fn instance_stride() -> usize {
+    INSTANCE_STRIDE
+}
+
+/// [`INSTANCE_ATTRIBUTES`], for a host that asks.
+pub fn instance_attributes() -> &'static [(u32, u32, usize)] {
+    &INSTANCE_ATTRIBUTES
+}
+
 /// The shader for a device with dual-source blending (`dual`) or without.
 pub fn shader(dual: bool) -> String {
     preprocess(SHADER_TEMPLATE, dual)

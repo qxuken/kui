@@ -7074,6 +7074,7 @@ test('every corpus scene lowers the way kui-core does', (t) => {
 // a scene is for. Not a claim list: the source is what the scene declares.
 const UNCOVERED_PROPS = {
   font: 'a registered font is a file, and the corpus carries no font bytes (backlog AR48 files the fixture)',
+  hostHit: 'changes no pixel and no event, only what a host\'s hit query answers, which no scene report reads; the F233 test reads it through the wire (backlog F233)',
 };
 // `index.d.ts`'s `Theme`, `ThemeOverrides` and `Metrics` are generated
 // from the role tables now (backlog AR44). `Env` and `NodeInfo` cannot be —

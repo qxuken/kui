@@ -41,7 +41,8 @@ pub enum Cell {
 pub struct Door {
     /// The Rust spelling: `Ui::x` (view-time), `Core::x` (a host between
     /// frames), `SharedResources::x` (the session's registry, reached as
-    /// `core.resources`), `Tokens::x` (a table), `Launcher::x` (the runner).
+    /// `core.resources`), `Tokens::x` (a table), `Launcher::x` (the runner),
+    /// `gpu::x` (the renderer's pieces, `kui_core::gpu`).
     pub rust: &'static str,
     pub c: Cell,
     /// A procedure in the Odin binding's package `kui` (packages/odin),
@@ -810,7 +811,7 @@ pub const DOORS: &[Door] = &[
         doc: "The WGSL that draws the display list, with or without dual-source blending: what kui-wgpu compiles, for a host with its own device (backlog F234).",
     },
     Door {
-        rust: "gpu::INSTANCE_STRIDE",
+        rust: "gpu::instance_stride",
         c: Is("kui_instance_stride"),
         odin: Is("instance_stride"),
         node: No(NEVER_PAINTS),
@@ -818,7 +819,7 @@ pub const DOORS: &[Door] = &[
         doc: "The bytes one packed instance takes: the vertex buffer's stride (backlog F234).",
     },
     Door {
-        rust: "gpu::INSTANCE_ATTRIBUTES",
+        rust: "gpu::instance_attributes",
         c: Is("kui_instance_attributes"),
         odin: Is("instance_attributes"),
         node: No(NEVER_PAINTS),
@@ -2431,6 +2432,7 @@ mod tests {
         let channel = read(root.join("../../kui-channel/src/lib.rs"))
             + &read(root.join("../../kui-channel/src/lanes.rs"));
         let menu = read(root.join("menu.rs"));
+        let gpu = read(root.join("gpu.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
@@ -2453,6 +2455,7 @@ mod tests {
                 "slot" => &slot,
                 "Channel" => &channel,
                 "Menu" => &menu,
+                "gpu" => &gpu,
                 "WheelFeel" => &scroll,
                 "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,

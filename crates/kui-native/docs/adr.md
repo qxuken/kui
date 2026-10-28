@@ -83,3 +83,4 @@ reference and the task index this crate carries (ADR 0071).
 - [0073 The runner carries a playground](https://github.com/qxuken/kui/blob/main/docs/adr/0073-the-runner-carries-a-playground.md)
 - [0074 Paint stays in the box it is in](https://github.com/qxuken/kui/blob/main/docs/adr/0074-paint-stays-in-the-box-it-is-in.md)
 - [0075 kui-perf reads a recording in Kit, over columns Rust keeps](https://github.com/qxuken/kui/blob/main/docs/adr/0075-kui-perf-reads-a-recording-in-kit.md)
+- [0076 An island is a window the host draws](https://github.com/qxuken/kui/blob/main/docs/adr/0076-an-island-is-a-window-the-host-draws.md)
