@@ -210,7 +210,7 @@ mod secure_input;
 pub mod spawn;
 mod system;
 pub use spawn::set_spawner;
-pub use system::{open_external, open_recording, show_in_folder};
+pub use system::{open_external, open_recording, set_runner, show_in_folder};
 pub mod testing;
 mod unseen;
 mod windows;

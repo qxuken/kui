@@ -14,8 +14,22 @@
 //! not born close-on-exec, or the host's way where it has one (backlog
 //! F222, F223).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
+
+/// The runner's own binary, when this process is the kui runner.
+static RUNNER: OnceLock<PathBuf> = OnceLock::new();
+
+/// Says this process is the kui runner, at `exe`, so
+/// [`open_recording`] starts `exe perf` before the `kui` on `PATH`. The
+/// runner says so as it starts: on macOS a windowed run is a clone named
+/// after its app, so the binary's own name cannot tell (backlog F253). A
+/// second call is ignored.
+#[doc(hidden)]
+pub fn set_runner(exe: PathBuf) {
+    let _ = RUNNER.set(exe);
+}
 
 /// Shows `path` in the system's file manager, selected: in Finder, in
 /// Explorer, and on a Linux desktop in the file manager that answers
@@ -49,7 +63,7 @@ pub fn open_external(target: &str) -> Result<(), String> {
 
 /// Opens the recording at `path` in kui-perf, the trace inspector (ADR
 /// 0075): `kui perf <path>`, with the kui this process is when it is the
-/// runner, else the `kui` on `PATH` (backlog F253). An error, naming why,
+/// runner ([`set_runner`]), else the `kui` on `PATH` (backlog F253). An error, naming why,
 /// when the file does not exist or no kui would start — a host that
 /// falls back shows the file with [`show_in_folder`].
 pub fn open_recording(path: &str) -> Result<(), String> {
@@ -58,18 +72,13 @@ pub fn open_recording(path: &str) -> Result<(), String> {
         return Err(format!("{path}: no such file"));
     }
     let p = std::path::absolute(p).map_err(|e| e.to_string())?;
-    spawn_steps(recording_steps(&p))
+    spawn_steps(recording_steps(&p, RUNNER.get().map(PathBuf::as_path)))
 }
 
 /// The kuis that may open a recording, the running one first.
-fn recording_steps(path: &Path) -> Vec<Step> {
-    let mut kuis = Vec::new();
-    if let Ok(me) = std::env::current_exe()
-        && me.file_stem().is_some_and(|s| s == "kui")
-    {
-        kuis.push(me);
-    }
-    kuis.push(std::path::PathBuf::from("kui"));
+fn recording_steps(path: &Path, runner: Option<&Path>) -> Vec<Step> {
+    let mut kuis: Vec<PathBuf> = runner.map(Path::to_path_buf).into_iter().collect();
+    kuis.push(PathBuf::from("kui"));
     kuis.into_iter()
         .map(|k| {
             let mut c = Command::new(k);
@@ -454,16 +463,26 @@ mod tests {
         let _ = std::fs::remove_file(&file);
     }
 
-    /// `kui perf <path>`: the running kui when this is the runner, else
-    /// the one on `PATH` — a test binary is not `kui`, so that one alone.
+    /// `kui perf <path>`: the running kui when this is the runner, under
+    /// whatever name it runs as (a macOS clone is named after its app),
+    /// then the one on `PATH`.
     #[test]
     fn a_recording_opens_with_kui_perf() {
         let path = std::path::absolute("a.kuitrace").unwrap();
-        let steps = recording_steps(&path);
+        let want = ["perf".to_string(), path.to_string_lossy().into_owned()];
+        let steps = recording_steps(&path, None);
         assert_eq!(steps.len(), 1);
         let (p, a) = args(&steps[0].command);
         assert_eq!(p, "kui");
-        assert_eq!(a, ["perf".to_string(), path.to_string_lossy().into_owned()]);
+        assert_eq!(a, want);
+        let clone = Path::new("/Users/me/Library/Caches/kui/apps/0123/Notes");
+        let steps = recording_steps(&path, Some(clone));
+        assert_eq!(steps.len(), 2);
+        assert_eq!(
+            args(&steps[0].command),
+            (clone.to_string_lossy().into_owned(), want.to_vec())
+        );
+        assert_eq!(args(&steps[1].command).0, "kui");
         assert!(open_recording("/no/such/kui/file.kuitrace").is_err());
     }
 

@@ -487,6 +487,9 @@ impl Channel {
                     Column::F64(v.into_iter().map(|x| x as f64).collect())
                 }
                 (h, c) if h.kind() == c.kind() => c,
+                // No rows have no kind: a binding's empty list reads as
+                // numbers, which a string column takes as none of its own.
+                (h, c) if c.is_empty() => h.empty_like(),
                 (h, c) => {
                     return Err(ChannelError(format!(
                         "column `{name}` holds {}s; {}s were appended to it",
@@ -1373,6 +1376,14 @@ mod tests {
             ("line".into(), Column::strs(["x"])),
         ];
         assert!(e(a.append(bools, None)).contains("booleans"));
+        // No rows have no kind: an empty list, numbers to a binding, is
+        // taken by the string column.
+        let none = vec![
+            ("ms".into(), Column::F64(Vec::new())),
+            ("line".into(), Column::F64(Vec::new())),
+        ];
+        let same = a.append(none, None).unwrap();
+        assert_eq!((same.len(), same.get(0, 0)), (1, a.get(0, 0)));
         assert!(
             Channel::bytes(vec![1])
                 .append(rows(&["x"], &[1]), None)

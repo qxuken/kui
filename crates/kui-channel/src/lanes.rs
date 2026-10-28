@@ -33,6 +33,9 @@ use crate::{Channel, ChannelError, Column};
 const COARSEST: u32 = 4;
 const FINEST: u32 = 22;
 const LEVELS: usize = (FINEST - COARSEST + 1) as usize;
+/// The deepest lane `Channel::lanes` lays out: past it a lane number is an
+/// id, and as many lanes would be gigabytes of nothing.
+pub const MAX_LANE: usize = 1 << 16;
 
 /// One run in a window: a single interval (its `row` in the channel), or a
 /// strip of `count` of them merged.
@@ -210,6 +213,13 @@ impl Channel {
             Some(c) => numbers(self, c, "lane")?,
             None => vec![0.0; s.len()],
         };
+        // A lane is a depth, laid out one above the next: a number past
+        // the most is an id in the wrong column, not that many lanes.
+        if let Some(&x) = d.iter().find(|&&x| x > MAX_LANE as f64) {
+            return Err(ChannelError(format!(
+                "lane {x} is past the most a channel lays out ({MAX_LANE})"
+            )));
+        }
         let n = d
             .iter()
             .map(|&x| x.max(0.0) as usize + 1)
@@ -286,6 +296,21 @@ mod tests {
         assert!(out.is_empty(), "an empty lane");
         l.window(7, 0.0, 10.0, 1e-9, &mut out);
         assert!(out.is_empty(), "past the last lane");
+    }
+
+    /// A lane number past the deepest is refused, not laid out as that
+    /// many empty lanes: an id in the lane column, or one that saturates.
+    #[test]
+    fn a_lane_past_the_deepest_is_refused() {
+        for far in [3e9 as i64, i64::MAX] {
+            let c = ch(vec![0.0, 1.0], vec![1.0, 1.0], vec![0, far]);
+            let Err(e) = c.lanes(0, Some(1), Some(2)) else {
+                panic!("lane {far} laid out");
+            };
+            assert!(e.0.contains("past the most"), "{}", e.0);
+        }
+        let c = ch(vec![0.0, 1.0], vec![1.0, 1.0], vec![0, MAX_LANE as i64]);
+        assert_eq!(c.lanes(0, Some(1), Some(2)).unwrap().count(), MAX_LANE + 1);
     }
 
     /// A million intervals a lane, zoomed fully out at a pixel's detail:

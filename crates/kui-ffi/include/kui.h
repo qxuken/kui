@@ -4489,7 +4489,7 @@ bool kui_set_clipboard_image(KuiCtx *ctx, const uint8_t *rgba, uint32_t width, u
 /* Files for the clipboard, as a file manager's Copy puts them there -
  * "Copy file" on an attachment - count paths read from paths,
  * copied, queued as a KUI_MENU_ACTION_SET_CLIPBOARD_FILES with the paths
- * in its 	ext a line each. Under kui_run the runner writes them as the
+ * in its text a line each. Under kui_run the runner writes them as the
  * platform's file list. False, and nothing queued, for no paths; an empty
  * one is dropped. A new function of ABI 40 (backlog F247). */
 bool kui_set_clipboard_files(KuiCtx *ctx, const KuiStr *paths, size_t count);

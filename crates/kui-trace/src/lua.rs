@@ -459,6 +459,11 @@ impl Recording {
         self.spans_view.shown = sv.publish_from(&self.spans);
         self.frames_view.shown = fv.publish_from(&self.frames);
         self.filter = filter;
+        // The `where`'s strings were the old recording's names, by its
+        // name table's numbers: the new one numbers its own.
+        if let Some(p) = &self.filter.predicate {
+            p.strings.borrow_mut().clear();
+        }
     }
 
     fn origin_name(&self, o: Origin) -> &str {

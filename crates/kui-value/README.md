@@ -10,5 +10,5 @@ It depends on no other kui crate, so what has no kui core — the data
 channel (`kui-channel`), the recording's reader (`kui-trace`) — speaks
 the same values. `kui-core` re-exports all of it where it always was:
 `kui_core::Value`, `kui_core::json`, `kui_core::message`. See
-[ADR 0075](../../docs/adr/0075-kui-perf-reads-a-recording-in-kit.md),
+[ADR 0075](https://github.com/qxuken/kui/blob/main/docs/adr/0075-kui-perf-reads-a-recording-in-kit.md),
 decision 3.

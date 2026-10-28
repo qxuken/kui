@@ -1953,7 +1953,7 @@ impl Core {
             // character — and goes on through anything: punctuation
             // nobody is typing a name with bubbles to a sink above, where
             // an app's `?` or `[` is a key of its own (backlog F259).
-            KeyCode::Char(c) => item && (c.is_alphanumeric() || !self.type_ahead.is_empty()),
+            KeyCode::Char(c) => item && (c.is_alphanumeric() || self.type_ahead_live()),
             _ => false,
         }
     }

@@ -127,9 +127,10 @@ Channel_Match :: enum i32 {
 // at least min and at most max (min == max for one value, math.INF_F64 for an
 // open end; NaN is in no range), written into out, which has room for the
 // channel's length or len(within) (backlog C148). ok is false for no column
-// col, a column that is not numbers, or a row past the end.
+// col, a column that is not numbers, a row past the end, or an out too short.
 // Rust: Channel::filter.
 channel_filter_f64 :: proc(ch: ^c.Channel, col: int, min, max: f64, out: []uint, within: []uint = nil) -> (rows: []uint, ok: bool) {
+	if !channel_room(ch, out, within) do return nil, false
 	n: uint
 	ok = c.channel_filter_f64(ch, uint(col), min, max, raw_data(within), uint(len(within)), raw_data(out), &n)
 	return out[:n] if ok else nil, ok
@@ -138,6 +139,7 @@ channel_filter_f64 :: proc(ch: ^c.Channel, col: int, min, max: f64, out: []uint,
 // channel_filter_f64 for a string column: the rows whose cell is text, or
 // holds it.
 channel_filter_str :: proc(ch: ^c.Channel, col: int, text: string, how: Channel_Match, out: []uint, within: []uint = nil) -> (rows: []uint, ok: bool) {
+	if !channel_room(ch, out, within) do return nil, false
 	n: uint
 	ok = c.channel_filter_str(ch, uint(col), text, i32(how), raw_data(within), uint(len(within)), raw_data(out), &n)
 	return out[:n] if ok else nil, ok
@@ -147,9 +149,18 @@ channel_filter_str :: proc(ch: ^c.Channel, col: int, text: string, how: Channel_
 // greatest with descending; ties keep their order, NaN goes last.
 // Rust: Channel::sort.
 channel_sort :: proc(ch: ^c.Channel, col: int, out: []uint, descending := false, within: []uint = nil) -> (rows: []uint, ok: bool) {
+	if !channel_room(ch, out, within) do return nil, false
 	n: uint
 	ok = c.channel_sort(ch, uint(col), descending, raw_data(within), uint(len(within)), raw_data(out), &n)
 	return out[:n] if ok else nil, ok
+}
+
+// Whether out has room for every row a filter or a sort may write - the
+// channel's length, or len(within) - which C takes on trust.
+@(private)
+channel_room :: proc(ch: ^c.Channel, out: []uint, within: []uint) -> bool {
+	need := len(within) if within != nil else channel_len(ch)
+	return len(out) >= need
 }
 
 // A new channel of rows, in that order, yours until channel_free; nil for a

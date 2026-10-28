@@ -62,3 +62,22 @@ fn punctuation_on_a_focused_row_bubbles_and_a_letter_searches() {
     assert!(!typed(&mut core, 'g'), "a letter is the list's search");
     assert_eq!(focused(&mut core).as_deref(), Some("Gamma"));
 }
+
+/// A search gone stale is no search: a window parked since the last
+/// letter gets no frame to age the buffer, and punctuation after the
+/// pause still bubbles.
+#[test]
+fn punctuation_after_a_pause_bubbles_with_no_frame_between() {
+    let mut core = Core::new();
+    core.set_time(1.0);
+    frame(&mut core);
+    tab(&mut core, false);
+    frame(&mut core);
+    assert!(!typed(&mut core, 'g'), "a letter is the list's search");
+    core.set_time(5.0);
+    assert!(
+        typed(&mut core, '?'),
+        "the shell hears `?` once the search is stale"
+    );
+    assert_eq!(focused(&mut core).as_deref(), Some("Gamma"));
+}

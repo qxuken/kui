@@ -4251,6 +4251,67 @@ machine and another Windows one with Vulkan; then the platform's,
 said in `docs/`, or a lock around every Vulkan entry kui-wgpu makes, if
 that is what it takes and is worth it.
 
+## From the alpha.70 pre-tag round (2026-10-28)
+
+Three read-only reviews of the 82 commits since alpha.69 (the core and
+the recording's crates, the bindings and the platform, the docs and the
+packaging), beside the workspace's tests and the round on a Mac. Fixed
+the same day, folded into the entries they fix: a type-ahead search gone
+stale in a parked window still claimed punctuation (F259 — `claims` now
+asks `type_ahead_live`, which ages it as `type_ahead` does); an append of
+no rows to a string column was refused, an empty list reading as numbers
+(C147); the `where` filter kept the old recording's strings across a
+rewritten file (F248); a lane number past 65 536 laid out that many lanes
+or overflowed (F249 — refused, `MAX_LANE`); "open in kui-perf" never
+started the running kui on macOS, whose windowed run is a clone named
+after the app (F253 — the runner says so, `kui_native::set_runner`);
+Odin's `channel_filter_f64`, `channel_filter_str` and `channel_sort` wrote
+past a short `out` (refused now, as `channel_reduce` bounds by it); a tab
+byte in `kui.h`; changelog, README and crate-docs drift. Three stay open.
+
+### `.` RG171 — Live: a burn's first frames keep the verdict they had before it was one
+
+**Found** 2026-10-28 by the alpha.70 review of `kui-trace/src/lua.rs`'s
+`absorb`: a poll writes `burn`, the verdict column and `frame_verdict`
+for the frames new in that poll alone, from `analysis::burns` over the
+timeline so far. A burn is `BURN_FRAMES` frames in a row, so the frames
+that arrived before the run reached that length keep `burn = false` and
+a verdict that is not a burn for good, and the `verdicts` filter goes by
+those. A whole file is read until it is idle before its frames are
+placed, so only Live (a watched file growing) meets it. **Do.** Hold the
+last frames back until no burn can still take them in (the tail of
+`BURN_FRAMES - 1`), or rewrite the rows of a burn that grew past the
+poll's first new frame — the channel's revision either way.
+
+### `.` RG172 — A table read whole after appends is copied whole, at every revision
+
+**Found** 2026-10-28 by the alpha.70 review of `kui-channel`: `Inner::flat`
+joins every column of a revision held in more than one run into a copy,
+once per revision, and `column()` — so `filter`, `sort`, `take_columns`,
+`reduce` and `lanes` — reads through it; only `get` reads run by run.
+After a few appends a revision is several runs, so Live with any filter
+copies every column of the span table (strings too, up to a million
+rows) at each 250 ms poll and keeps it beside the runs for as long as
+the revision lives: what C147 made an append cost, its own rows, is
+undone at the first read. **Do.** Measure Live over a big recording
+first (`kui-trace synth` and a growing file); then the readers run by
+run (a filter and a sort over runs, a take that copies the rows it
+takes), or `settle` joining runs as they are read rather than at a cap.
+
+### `.` RG173 — Numbers with a fraction appended to a column of integers are refused
+
+**Found** 2026-10-28 by the alpha.70 review of `Channel::append`: a
+column built from whole numbers is integers (`column_of`, and Node's
+values, which carry whole numbers as `Int`), and an append widens
+integers into a number column but not the other way, so
+`ch:append{ t = {2.5} }` onto a channel made from `{1, 2, 3}` errors with
+"holds integers; numbers were appended". An app that logs times in
+milliseconds meets it at the first fractional sample. **Do.** Widen the
+column: the earlier runs' integers read as numbers (the revision's kind
+changes, so the column's kind is per revision, said where `kind` is
+read), or a channel's column kind declared at its making — decide which
+with the bindings' readers in view.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go

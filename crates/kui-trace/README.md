@@ -9,8 +9,11 @@ share, and adapters out to Chrome's trace viewer, Perfetto, speedscope
 and the Firefox Profiler.
 
 `kui-core` writes it: the devtools' Perf tab records it, and
-`KUI_PERF_TRACE=path` streams a session to a file. This crate has no
-dependencies and reads it without kui.
+`KUI_PERF_TRACE=path` streams a session to a file. This crate reads it
+without kui: it has no dependencies but behind its `lua` feature, which
+hands a script a recording as channels (`kui-channel`, `kui-value`) —
+the runner's `kui.trace`. A recording is read whole or as it arrives
+(`Stream`, a `Transport` such as `FileTransport`, a `Watch` on the file).
 
 ```sh
 kui-trace dump session.kuitrace                    # every record, a line each
@@ -18,6 +21,7 @@ kui-trace stats session.kuitrace                   # frames, work, burns, top sp
 kui-trace convert session.kuitrace --to perfetto session.pftrace
 kui-trace convert session.kuitrace session.json    # the format from the extension
 kui-trace diff before.kuitrace after.kuitrace --fail-over 10%
+kui-trace synth out.kuitrace                       # a made-up session, for a viewer's tests
 ```
 
 `convert` writes:

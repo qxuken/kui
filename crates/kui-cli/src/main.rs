@@ -351,6 +351,13 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     if !args.headless && !args.no_rename && project.rename {
         rename::relaunch_as(&project.name);
     }
+    // The devtools' "open in kui-perf" starts this binary's `kui perf`
+    // (backlog F253); a packed app's binary runs its app instead.
+    if packed.is_none()
+        && let Ok(exe) = std::env::current_exe()
+    {
+        kui_native::set_runner(exe);
+    }
     project::load_dotenv(&project.dir);
     modules::set_args(args.rest.clone());
     modules::set_name(project.name.clone());

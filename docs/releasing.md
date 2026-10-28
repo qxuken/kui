@@ -175,10 +175,13 @@ token that lives 30 minutes and is revoked when the job ends, then
   `--trusted` checks every crate it would publish before publishing any
   and fails naming the new ones, while nothing is out and the tag can
   still move. Publish those once by hand from the tag with a token of
-  your own (`cargo publish -p kui-value -p kui-channel --registry
-  crates-io`; `cargo login` keeps it in `~/.cargo/credentials.toml`), add
-  `release.yml` as each one's trusted publisher, and re-run `publish`: the
-  crates already up are skipped.
+  your own, with every pending crate before them in the order, since a
+  verify build resolves even an optional dependency on crates.io (the
+  error names the command: for alpha.70 `cargo publish -p kui-derive -p
+  kui-value -p kui-channel --registry crates-io`; `cargo login` keeps the
+  token in `~/.cargo/credentials.toml`), add `release.yml` as each new
+  one's trusted publisher, and re-run `publish`: the crates already up
+  are skipped.
 - A field that does not match (another workflow file, an environment
   named on crates.io that the job does not use) shows only at the token
   step, as the action's error.

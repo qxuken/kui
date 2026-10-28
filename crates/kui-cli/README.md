@@ -73,6 +73,7 @@ end
 | `-- args…` | What follows is the app's own, in `kui.args`: `kui run . -- --port 3001`. |
 | `--devtools` | Opens with the devtools panel; its Log tab has what the app printed and logged. |
 | `--no-rename` | Keeps the name "kui" in the Dock and ⌘Tab (macOS names an app by its binary, so a windowed run relaunches as a free clone named after the app). |
+| `kui perf [recording]` | Opens a `.kuitrace` in kui-perf, the trace inspector (ADR 0075), carried inside the runner; the run options apply. |
 | `kui check [path]` | Type-checks the app's `.tl` files against kui's, Kit's and the runner's declarations. |
 | `kui new <dir>` | Starts an app, with its editor declarations. |
 | `kui types [path]` | Writes `.kui/types` (lua-language-server's and Teal's declarations), `.luarc.json` and `tlconfig.lua`. |
@@ -124,7 +125,7 @@ is a response, a refused connection is `false`. The `try_` forms:
 | `kui.http.get/post/...(url, opts)` *waits* | `{ status, ok, headers, body, json }`; `opts` takes `headers`, `json` or `body`, and `timeout` in milliseconds (30,000 by default) for the whole request. |
 | `kui.http.serve{ port, static }` | `s:get("/api/items/:id", function(req) ... end)`; each request is a task. |
 | `kui.sqlite.open(path)` | `db:query`, `db:first`, `db:exec` *wait*; `db:transaction(fn)`. |
-| `kui.trace.open(path, { message })` | A recording (`.kuitrace`, ADR 0075) as channels: `rec.spans` (Kit's waterfall's `bars`), `rec.frames`, `rec.instants` (its `marks`); `rec:frame(row)`, `rec:span(row)`, `rec:stats(first, last)`, `rec:series(name)`; `rec:filter{ origins, name, min_us, verdicts, hide_unchanged, where }` (`where`, a function handed each span). The file is watched: as it grows, `update` gets `message`, and `rec:poll()` appends what came. |
+| `kui.trace.open(path, { message })` | A recording (`.kuitrace`, ADR 0075) as channels: `rec.spans` (Kit's waterfall's `bars`), `rec.frames`, `rec.instants` (its `marks`); `rec:frame(row)`, `rec:span(row)`, `rec:stats(first, last)`, `rec:series(name)`; `rec:filter{ origins, name, hide_names, min_us, verdicts, hide_unchanged, where }` (`where`, a function handed each span). The file is watched: as it grows, `update` gets `message`, and `rec:poll()` appends what came. |
 | `kui.worker(path, handler)` | A module on a thread of its own: `w:dispatch(msg)` reaches its `on_message`; what it dispatches reaches `handler` (or `update`). A channel in a message crosses without a copy. |
 | `kui.next_frame(fn)` | Runs `fn(env)` before the next `view`: `env.set_clipboard`, `env.set_focus`, `env.measure_text` from `update`, a task or a timer. |
 | `kui.exit(code)` | Ends the app: the window closes, then `on_exit()` runs, then what it spawned is ended. Ctrl-C, `SIGTERM` and `SIGHUP` do the same. |

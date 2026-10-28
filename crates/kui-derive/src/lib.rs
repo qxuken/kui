@@ -79,7 +79,8 @@
 //!   field such as a split's direction;
 //! - on the type, `crate = "..."` names the path the generated code
 //!   reaches kui through: `::kui_native` unless said, `kui_core` for a
-//!   crate that depends on kui-core alone;
+//!   crate that depends on kui-core alone, `kui_value` for one on no kui
+//!   core;
 //! - on a variant (or a struct), `on = <event>` gives the arriving twin
 //!   that variant with the event's data; on the type, `incoming = "..."`
 //!   names the twin and `incoming_derive(...)` lists its derives (see

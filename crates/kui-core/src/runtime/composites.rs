@@ -1307,6 +1307,18 @@ impl Core {
     /// a frame, where a frame with nothing typed pays one comparison, and
     /// before each keystroke, against the clock the driver stamped for it
     /// (backlog F139).
+    /// Whether a type-ahead search is under way: something typed, and not
+    /// so long ago that the next keystroke starts afresh. What
+    /// `age_type_ahead` would leave, asked without clearing: `claims`
+    /// answers before any frame has aged the buffer of a parked window.
+    pub(crate) fn type_ahead_live(&self) -> bool {
+        !self.type_ahead.is_empty()
+            && !matches!(
+                (self.anim.time(), self.type_ahead_at),
+                (Some(now), Some(at)) if now - at > TYPE_AHEAD_SECS
+            )
+    }
+
     pub(crate) fn age_type_ahead(&mut self) {
         if self.type_ahead.is_empty() {
             return;

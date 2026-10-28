@@ -37,6 +37,9 @@ was the first bare bump to break an app in five releases).
 - `MenuAction` has an eighth variant, `OpenRecording { path }` (backlog
   F253), the same way: a Rust host that matches it whole adds an arm, and
   a C host that does not know `KUI_MENU_ACTION_OPEN_RECORDING` drops it.
+  Node's `takeMenuActions()` union gains `openRecording` and
+  `setClipboardFiles`: a TypeScript `switch` that ends in an exhaustive
+  check names them.
 - `MenuAction` has a seventh variant, `SetClipboardFiles { paths }`: a
   Rust host that matches the enum whole adds an arm (backlog F247). A C
   host that drains `kui_take_menu_action` sees the new kind,
@@ -62,6 +65,15 @@ was the first bare bump to break an app in five releases).
   its parent offers in the axes the query reads, where it was a column
   its content's size (backlog F255): a branch that should stay that size
   says so inside it.
+- A list's or a table's type-ahead starts only at a letter or a digit
+  (backlog F259): punctuation pressed on a focused row bubbles to the
+  `onKey` sink above, where it was the list's search, so rows found by
+  typing a leading `#` or `.` are no longer.
+- Kit's waterfall zooms under the wheel however deep the trace is
+  (backlog F258), where its lanes scrolled under the wheel once they
+  overflowed: they scroll in a box around them instead.
+- The glyph atlas's `epoch` starts at 1 (backlog F245), where the first
+  page went out as 0.
 
 - `InputEvent` has a variant `Pinch { delta, begins }` and
   `kui_core::event::Scroll` a field `zoom: Option<f32>` (backlog F256): a
@@ -406,14 +418,24 @@ and its tables sort and filter them.
   process ended, through the app's `teardown` and the surfaces being let
   go; on Windows its empty surface showed white for as long as that
   took — long enough to see in an app that saves its documents on the way
-  out. Every window is hidden the moment the close is accepted (the close
+  out. Every window is hidden (ordered out on macOS, unmapped on X11;
+  Wayland has no hide) the moment the close is accepted (the close
   button, `WindowCommand::Close` of the main window, an OS Quit, a pumped
   runner's retirement), and a closing pane before it is destroyed.
   Measured on Windows 11 with a 1.5 s teardown: off the screen 7–16 ms
   after the close, where it stayed for the whole 1.6 s.
 
+- **A C or Odin host uploads the first atlas page** (backlog F245, from
+  Replicator Bloom). The glyph atlas's `epoch` started at 0, so a host
+  keeping "the epoch I uploaded" in a zeroed struct saw no change on the
+  first frame and skipped its new-page upload; it now starts at 1 and only
+  grows, never 0, as `kui.h` says. kui-wgpu was never affected.
+
 **What you can delete.**
 
+- `max(epoch, 1)`, or any other seed for the atlas epoch a host last
+  uploaded, kept only so the first page went up: a zeroed one is never
+  the atlas's.
 - A range eased by hand in a view — a frame asked for every frame and
   everything drawn again at the range part of the way — kept only so a
   chart's lines did not jump: draw them for the new range in a box that

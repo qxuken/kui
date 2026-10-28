@@ -71,7 +71,10 @@ def main [
     if $trusted and not $dry_run {
         let new = ($pending | where {|c| not (crate-known $registry $c) })
         if ($new | is-not-empty) {
-            let flags = ($new | each {|c| $"-p ($c)" } | str join ' ')
+            # A new crate's verify build resolves its dependencies, optional
+            # ones too, on crates.io: the pending crates before it go first.
+            let last = ($pending | enumerate | where {|e| $e.item in $new } | last | get index)
+            let flags = ($pending | first ($last + 1) | each {|c| $"-p ($c)" } | str join ' ')
             error make {msg: $"($registry) has never held ($new | str join ', '), and a trusted-publishing token cannot create a crate: from this tag, `cargo publish ($flags) --registry ($registry)` with a token of your own, give each release.yml as its trusted publisher on crates.io, then re-run this job \(docs/releasing.md\)"}
         }
     }
