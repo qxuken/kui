@@ -2683,9 +2683,14 @@ size_t kui_pack_instances(KuiCtx *ctx, uint8_t *out, size_t len);
  * A view that declares none of the handlers above has nothing to drain
  * there.
  *
- * Keys from GLFW or SDL3: kui_glfw.h and kui_sdl3.h beside this header
- * (header-only, backlog F239) map their keys to kui's names and send them
- * through the right halves; Odin has kui/glfw and kui/sdl3.
+ * Input from GLFW or SDL3: kui_glfw.h and kui_sdl3.h beside this header
+ * (header-only) carry step 1. They map the libraries' keys to kui's names
+ * and send them through the right halves (backlog F239). They send the
+ * pointer the way kui_run does (backlog F265): clicks counted, the scroll
+ * a wheel's lines or a trackpad's points, its gestures begun after a
+ * 0.2 s pause, on state the host owns. kui_glfw_install sets every GLFW
+ * callback, chained to the host's; kui_sdl3_event forwards every SDL
+ * event it knows. Odin has kui/glfw and kui/sdl3.
  *
  * When to run a turn at all: on input, while kui_owed(ctx) is non-zero
  * (a transition, an autoscroll), and when your model changed. Between

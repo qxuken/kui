@@ -22,9 +22,9 @@
 #   docs   crates/kui-native/docs: props.md and howto.md as the crate's
 #          rustdoc pages read them (kui_native::docs, ADR 0071), and an
 #          index of the ADRs linking to them and to the book
-#   keys   the GLFW and SDL3 key tables: kui_glfw.h and kui_sdl3.h in
+#   keys   the GLFW and SDL3 keys and pointer: kui_glfw.h and kui_sdl3.h in
 #          crates/kui-ffi/include, packages/odin/kui/glfw and kui/sdl3
-#          (the keytables bin, backlog F239)
+#          (the keytables bin, backlog F239, F265)
 #   odin   nu scripts/odin.nu gen: packages/odin from kui.h and the schema
 #          (needs odin, or ODIN, and clang)
 #   book   nu scripts/book-examples.nu: the book's Examples part
@@ -192,7 +192,7 @@ def main [
                 for f in $stale { $f.text | save -f --raw $f.path }
             }
         }]
-        [keys "the GLFW and SDL3 key tables (kui_glfw.h, kui_sdl3.h, packages/odin/kui/glfw and sdl3)" {
+        [keys "the GLFW and SDL3 keys and pointer (kui_glfw.h, kui_sdl3.h, packages/odin/kui/glfw and sdl3)" {
             must cargo run -q -p kui-devtools --bin keytables -- ...$check_flag
         }]
         [odin "the Odin binding (packages/odin)" {

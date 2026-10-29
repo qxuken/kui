@@ -15,7 +15,7 @@
 #
 #   kui-ffi-<version>-<platform>/
 #     include/    HEADERS below: kui.h, kui_glfw.h and kui_sdl3.h (header-only
-#                 key tables) and kui_wgpu.h (header-only, kui drawn on a
+#                 input helpers) and kui_wgpu.h (header-only, kui drawn on a
 #                 WebGPU device)
 #     lib/        libkui_ffi.so / .dylib / kui_ffi.dll + kui_ffi.dll.lib   dynamic
 #                 libkui_ffi.a / kui_ffi.lib                               static
@@ -124,7 +124,7 @@ const CARGO_XWIN_VERSION = "0.23.1"
 
 # The headers every pack carries in include/, from crates/kui-ffi/include/:
 # kui.h, and kui_glfw.h and kui_sdl3.h, header-only, a window library's
-# keys as kui's (backlog F239), and kui_wgpu.h, header-only, kui's frame
+# keys and pointer as kui's (backlogs F239, F265), and kui_wgpu.h, header-only, kui's frame
 # drawn on a WebGPU device the host owns (backlog F263). `bundle` copies a
 # pack's include/ whole, so a header added here reaches every archive.
 const HEADERS = [kui.h kui_glfw.h kui_sdl3.h kui_wgpu.h]
@@ -727,9 +727,9 @@ def readme [kind: string, v: string, platforms: list<string>] {
 def readme-text [kind: string, v: string, platforms: list<string>] {
     let for_which = if ($platforms | length) == 1 { $"for ($platforms | first)" } else { "for each platform" }
     let what = if $kind == "c" {
-        $"the C library: `include/kui.h`, and `libkui_ffi` ($for_which); `include/kui_glfw.h` and `include/kui_sdl3.h` forward GLFW's or SDL3's keys, and `include/kui_wgpu.h` draws kui's frame on a WebGPU device of your own, all header-only"
+        $"the C library: `include/kui.h`, and `libkui_ffi` ($for_which); `include/kui_glfw.h` and `include/kui_sdl3.h` forward GLFW's or SDL3's keys and pointer, and `include/kui_wgpu.h` draws kui's frame on a WebGPU device of your own, all header-only"
     } else {
-        $"the Odin binding: the `kui` package, and `libkui_ffi` ($for_which) it links; `kui/glfw` and `kui/sdl3` forward vendor:glfw's or vendor:sdl3's keys, and `kui/wgpu` draws kui's frame on a vendor:wgpu device of your own"
+        $"the Odin binding: the `kui` package, and `libkui_ffi` ($for_which) it links; `kui/glfw` and `kui/sdl3` forward vendor:glfw's or vendor:sdl3's keys and pointer, and `kui/wgpu` draws kui's frame on a vendor:wgpu device of your own"
     }
     let use = if $kind == "c" {
         $"With pkg-config \(not on Windows), point it at the platform's files and
