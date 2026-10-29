@@ -89,9 +89,9 @@ a task never stops a frame.
 
 A call that can fail on its input or on the world — a file, text read
 in, the network, a process, a database, a worker's script — has a `try_`
-form that returns `true` and what the call returns, or `false` and the
-error's message: `local ok, text = kui.fs.try_read(path)`,
-`db:try_query(sql)`. The plain call is made from it and raises the
+form that returns `true` and what the call returns, or `false`, the
+error's message and a code to match on: `local ok, text, code =
+kui.fs.try_read(path)`, `db:try_query(sql)`. The plain call is made from it and raises the
 message at the line that called it, with no traceback. Only an argument
 of the wrong type raises from a `try_` form. A `try_` form waits as its
 call does; a decoded `null` is `true, nil`, not a failure; an HTTP 404
@@ -102,7 +102,40 @@ is a response, a refused connection is `false`. The `try_` forms:
 `read_line`, `write`, `wait`; every `kui.http` request and `serve`;
 `kui.sqlite.open` and a database's `query`, `first`, `exec`,
 `transaction`; `kui.trace.open` and `read`; `kui.worker` and a worker's
-`dispatch`.
+`dispatch`; `decode` of `kui.base64` and `kui.hex`; `kui.crypto`'s
+`encrypt`, `decrypt`, `pbkdf2`, `argon2`, `hash_password`,
+`verify_password`;
+`kui.secrets`' `get`, `set`, `delete`.
+
+The codes are one set across the runner, named alike on every OS where
+the messages are each OS's own:
+
+| Code | When |
+| --- | --- |
+| `not_found` | No such file or folder (`kui.fs`, `kui.worker`), no such command (`kui.process`). |
+| `exists` | It is there already: `kui.fs.mkdir` where a file is. |
+| `denied` | Not allowed: permissions, a packed app's own files, a read-only database, a refused secrets prompt. |
+| `not_empty` | `kui.fs.rename` onto a folder that holds something. |
+| `invalid` | The input does not fit: a URL, a method, a key's length, a cipher's or a cost's name, TOML with no table at the top, a parameter a statement does not take. |
+| `parse` | Text that does not read as its format: `json`, `toml`, `yaml`, `base64`, `hex` `decode`. |
+| `encoding` | Bytes that are not the text expected: a file read as lines, a secret. |
+| `integrity` | `kui.crypto.decrypt`: the wrong key or `aad`, or altered data. |
+| `timeout` | A request past its `timeout`; an OS's own time-out. |
+| `dns` | A request's host has no address. |
+| `refused` | Nothing answered: refused, reset, unreachable. |
+| `tls` | A request's secure connection failed. |
+| `in_use` | `kui.http.serve` on a port that is taken. |
+| `closed` | A process's stdin, a stopped worker, a closed database. |
+| `busy` | The database is locked by another connection. |
+| `constraint` | A database constraint: unique, not null, a foreign key, a check. |
+| `sql` | The statement is wrong: its syntax, a table or column that is not there. |
+| `full` | The disk or a quota is full. |
+| `too_long` | Past a limit: a response's body, a secret, a database's value. |
+| `unavailable` | The service is not there: no secret store, a database file that will not open. |
+| `failed` | Anything else, and an error the app's own function raised in a `try_transaction`. |
+
+A `try_transaction` whose function raised a database's error (a plain
+`db:exec` that broke a constraint) answers that error's code.
 
 | | |
 | --- | --- |
@@ -115,7 +148,10 @@ is a response, a refused connection is `false`. The `try_` forms:
 | `kui.parse_args(spec)` | The arguments read against `{ about, options = { port = { type = "integer", default = 3000, short = "p", help = … } }, args = { { name = "files", many = true } } }`: `--help` written from it, a mistake said with what to type instead (`--prot` → did you mean `--port`?), both ending the app before its window. Options also take `env`, `choices`, `required`, `many`. |
 | `kui.log(...)`, `kui.log.warn/error/debug(...)`, `print` | Printed, and kept for the devtools' Log tab, with the runner's errors and every worker's lines. |
 | `kui.devtools(on)` | The panel on, off, or toggled; `kui.devtools("log")` opens it at the Log tab. |
-| `kui.hash.sha1/sha256/sha512/fnv(data)` | Digests as hex. |
+| `kui.hash.sha1/sha256/sha384/sha512(data, enc)` | Digests, as hex unless `enc` says `"base64"`, `"base64url"` or `"raw"`; `kui.hash.hmac("sha256", key, data, enc)` signs; `fnv(data)` is a quick name, not a secret. |
+| `kui.base64`, `kui.hex` | `encode(bytes)` and `decode(text)`. `kui.base64.encode(s, { url = true })` is a JWT's alphabet, unpadded; `decode` reads either alphabet, padded or not, past line breaks. |
+| `kui.crypto` | `random(n)` bytes; `equal(a, b)` in constant time (a MAC's check); `encrypt(key, data, { alg, aad })` and `decrypt` with a 32-byte key, AES-256-GCM or `alg = "chacha20-poly1305"`, the nonce kept in front of what it returns. Keys from passwords *wait*: `pbkdf2(password, salt, { iterations = 600000 })`, `argon2(password, salt, { memory, iterations, parallelism })` (Argon2id); `hash_password(pw)` makes a PHC string to keep and `verify_password(pw, hash)` checks one. |
+| `kui.secrets` | The OS's own store — the Keychain, the Credential Manager, the Secret Service — under the app's `id` (or `{ service = … }`): `get(name)` (nil when absent), `set(name, text)`, `delete(name)`, each *waits*. `probe()` answers `true`, or `false`, why and the code — `denied` (a Keychain prompt refused, a locked collection), `unavailable` (no Secret Service on the bus) — never raising. Nothing falls back to a file: what to do without a store is the app's choice. `kui.secrets.store` names the store; `KUI_SECRETS=memory` keeps secrets in the process, for a test. |
 | `kui.fs` | `read`, `write`, `append`, `create` (only if absent: a lock), `exists`, `list`, `lines`, `stat`, `mkdir`, `remove`, `rename` — at once; paths are the app's folder's. `walk(dir, { match, skip, dirs })` and `read_all(paths)` *wait*: a tree or a batch of files in one hop off the frame. |
 | `kui.json.array(t)` | Marks a list, so that empty it encodes as `[]`; a decoded empty list comes back marked. |
 | `kui.process.run(cmd, args, opts)` *waits* | `{ code, ok, stdout, stderr }`. |

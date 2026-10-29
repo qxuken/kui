@@ -21,6 +21,72 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.73 (unreleased)
+
+**What breaks.**
+
+- Kit's `select` menu is as wide as its widest option, and no narrower
+  than the field: a layout or a test that read it as 160 px finds it
+  wider.
+
+### Fixed
+
+- **Kit's `select` menu fits its options.** It was 160 px whatever it
+  held — its rows took the menu's width and gave it none — so a long
+  option wrapped inside a row one line tall and its lines were drawn over
+  the next option's. The menu is as wide as its widest option now, never
+  narrower than the field nor than 160 px, and no wider than the window
+  less a margin; past that an option is one line cut short with an
+  ellipsis. The closed field is sized as it was.
+
+### Added
+
+- **Kit's `select` takes `menu_max_width` and `menu_wrap`.**
+  `menu_max_width` holds the open menu to a width in px below the
+  window's (the field's width still its least); `menu_wrap` lets an option
+  too long for it wrap onto more lines, its row growing, where it is cut
+  short when left out. A menu whose rows above the current option wrap
+  hangs under the field rather than over it: how many lines they take is
+  the menu's width's to say, and that is the field's when it is wider.
+
+- **The runner encodes, hashes, seals and keeps secrets.** `kui.base64`
+  and `kui.hex` turn bytes into text and back (`decode` reads either
+  base64 alphabet, padded or not). `kui.hash` adds `sha384`, `hmac(alg,
+  key, data)`, and an encoding for every digest (`"base64"`,
+  `"base64url"`, `"raw"`; hex is still the default). `kui.crypto` has
+  random bytes, a constant-time `equal`, `encrypt`/`decrypt` under a
+  32-byte key (AES-256-GCM, or ChaCha20-Poly1305), and, as waiting calls,
+  keys from passwords (`pbkdf2`, `argon2`) and Argon2id password hashes
+  (`hash_password`, `verify_password`). `kui.secrets.get/set/delete` keep text in the OS's
+  own store (the Keychain, the Credential Manager, the Secret Service)
+  under the app's id; `kui.secrets.probe()` says whether that store is
+  there and answering, and why not, so an app without one decides what to
+  do — nothing falls back to a file; its code says which: `denied` (a
+  prompt refused, a locked collection) or `unavailable` (no store).
+  `KUI_SECRETS=memory` keeps them in the process for a test. Every call
+  that can fail has its `try_` form.
+
+- **A `try_` form's failure says its code.** Every `try_` form in the
+  runner answers `false`, the message and now a third value, a code to
+  match on, one set across modules and the same on every OS:
+  `not_found`, `exists`, `denied`, `not_empty`, `invalid`, `parse`,
+  `encoding`, `integrity`, `timeout`, `dns`, `refused`, `tls`, `in_use`,
+  `closed`, `busy`, `constraint`, `sql`, `full`, `too_long`,
+  `unavailable`, `failed` (the runner's README says when each is given).
+  A missing file and a forbidden one, a refused connection and a timed
+  out one, a unique constraint and a typo in the SQL were one message
+  each, told apart only by its words, which are each OS's own. A
+  `try_transaction` whose function raised a database's error answers that
+  error's code. The plain calls raise the message as they did.
+
+### What you can delete
+
+- A pure-Lua base64 or hex, and the `openssl`/`security`/`secret-tool`
+  processes an app ran to sign a request, encrypt a file or read a token.
+- Matching a `try_` form's message with `find("No such file")`,
+  `find("UNIQUE constraint")` or `find("Connection refused")`: match its
+  code.
+
 ## 0.1.0-alpha.72 (2026-10-29)
 
 **What breaks.**

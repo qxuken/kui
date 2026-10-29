@@ -4,9 +4,34 @@
 -- marked "waits" yields inside a task (`kui.spawn`) and blocks anywhere
 -- else. A call that can fail on its input or on the world (a file, text
 -- read in, the network, a process, a database) has a `try_` form that
--- returns `true` and what the call returns, or `false` and the error's
--- message: `local ok, text = kui.fs.try_read(path)`. The plain call raises
--- the message at its caller's line.
+-- returns `true` and what the call returns, or `false`, the error's
+-- message and its code: `local ok, text, code = kui.fs.try_read(path)`.
+-- The plain call raises the message at its caller's line.
+
+---What a `try_` form's failure is, to match on (the runner's README says
+---when each is given).
+---@alias kui.ErrorCode
+---| "not_found" # No such file, folder, command or host path.
+---| "exists" # It is there already.
+---| "denied" # Not allowed: permissions, a read-only file, a refused prompt.
+---| "not_empty" # A folder that holds something.
+---| "invalid" # The input does not fit: a URL, a key's length, an option.
+---| "parse" # Text that does not read as the format: JSON, TOML, YAML, base64, hex.
+---| "encoding" # Bytes that are not the text expected.
+---| "integrity" # Sealed data that does not open: the wrong key, or altered.
+---| "timeout" # It took longer than allowed.
+---| "dns" # The host has no address.
+---| "refused" # Nothing answered: refused, reset, unreachable.
+---| "tls" # The secure connection failed.
+---| "in_use" # The address or port is taken.
+---| "closed" # The process's stdin, the worker, the database has gone.
+---| "busy" # The database is locked by another connection.
+---| "constraint" # A database constraint was violated.
+---| "sql" # The statement is wrong: syntax, a missing table or column.
+---| "full" # The disk or a quota is full.
+---| "too_long" # Past a limit.
+---| "unavailable" # The service is not there: no secret store, a database that will not open.
+---| "failed" # Anything else.
 
 ---@class kui.Response
 ---@field status integer
@@ -80,9 +105,11 @@ function Process:wait() end
 function Process:kill(sig) end
 ---@return boolean ok
 ---@return string? line_or_err
+---@return kui.ErrorCode? code
 function Process:try_read_line(stream) end
 ---@return boolean ok
 ---@return string? err
+---@return kui.ErrorCode? code
 function Process:try_write(data) end
 ---@return boolean ok
 ---@return integer|string code_or_err
@@ -101,16 +128,20 @@ function Db:exec(sql, params) end
 function Db:transaction(fn) end
 ---@return boolean ok
 ---@return table<string, any>[]|string rows_or_err
+---@return kui.ErrorCode? code
 function Db:try_query(sql, params) end
 ---@return boolean ok
 ---@return table<string, any>|string|nil row_or_err
+---@return kui.ErrorCode? code
 function Db:try_first(sql, params) end
 ---@return boolean ok
 ---@return { changes: integer, last_id: integer }|string result_or_err
+---@return kui.ErrorCode? code
 function Db:try_exec(sql, params) end
 ---@param fn fun(db: kui.Db)
 ---@return boolean ok
 ---@return string? err
+---@return kui.ErrorCode? code
 function Db:try_transaction(fn) end
 
 ---@class kui.Timer
@@ -127,6 +158,7 @@ function Worker:dispatch(msg) end
 function Worker:stop() end
 ---@return boolean ok
 ---@return string? err
+---@return kui.ErrorCode? code
 function Worker:try_dispatch(msg) end
 
 kui = {}
@@ -241,17 +273,165 @@ function kui.input.click(x, y) end
 ---@param s string
 function kui.input.text(s) end
 
----Digests as lowercase hex.
+---Digests: lowercase hex unless `enc` names "base64", "base64url" or "raw".
 kui.hash = {}
+---@alias kui.Encoding "hex"|"base64"|"base64url"|"raw"
+---@param data string
+---@param enc? kui.Encoding
 ---@return string
-function kui.hash.sha1(data) end
+function kui.hash.sha1(data, enc) end
+---@param data string
+---@param enc? kui.Encoding
 ---@return string
-function kui.hash.sha256(data) end
+function kui.hash.sha256(data, enc) end
+---@param data string
+---@param enc? kui.Encoding
 ---@return string
-function kui.hash.sha512(data) end
+function kui.hash.sha384(data, enc) end
+---@param data string
+---@param enc? kui.Encoding
+---@return string
+function kui.hash.sha512(data, enc) end
+---HMAC of `data` under `key`.
+---@param alg "sha1"|"sha256"|"sha384"|"sha512"
+---@param key string
+---@param data string
+---@param enc? kui.Encoding
+---@return string
+function kui.hash.hmac(alg, key, data, enc) end
 ---64-bit FNV-1a: a quick name, not a secret.
 ---@return string
 function kui.hash.fnv(data) end
+
+kui.base64 = {}
+---Standard and padded; `url = true` is the URL alphabet, unpadded unless `pad`.
+---@param data string
+---@param opts? { url?: boolean, pad?: boolean }
+---@return string
+function kui.base64.encode(data, opts) end
+---Either alphabet, padded or not, whitespace passed over.
+---@param text string
+---@return string
+function kui.base64.decode(text) end
+---@return boolean ok
+---@return string bytes_or_err
+---@return kui.ErrorCode? code
+function kui.base64.try_decode(text) end
+
+kui.hex = {}
+---@param data string
+---@return string
+function kui.hex.encode(data) end
+---@param text string
+---@return string
+function kui.hex.decode(text) end
+---@return boolean ok
+---@return string bytes_or_err
+---@return kui.ErrorCode? code
+function kui.hex.try_decode(text) end
+
+---@class kui.SealOpts
+---@field alg? "aes-256-gcm"|"chacha20-poly1305"
+---@field aad? string Authenticated beside the data, not hidden.
+---@class kui.Argon2Opts
+---@field memory? integer KiB (19456).
+---@field iterations? integer (2)
+---@field parallelism? integer (1)
+---@field length? integer Bytes (32).
+
+kui.crypto = {}
+---`n` random bytes.
+---@param n integer
+---@return string
+function kui.crypto.random(n) end
+---Whether `a` and `b` are equal, in constant time.
+---@return boolean
+function kui.crypto.equal(a, b) end
+---Seals `data` under a 32-byte key: nonce .. ciphertext .. tag.
+---@param key string
+---@param data string
+---@param opts? kui.SealOpts
+---@return string
+function kui.crypto.encrypt(key, data, opts) end
+---@return boolean ok
+---@return string sealed_or_err
+---@return kui.ErrorCode? code
+function kui.crypto.try_encrypt(key, data, opts) end
+---@param key string
+---@param data string
+---@param opts? kui.SealOpts
+---@return string
+function kui.crypto.decrypt(key, data, opts) end
+---@return boolean ok
+---@return string plain_or_err
+---@return kui.ErrorCode? code
+function kui.crypto.try_decrypt(key, data, opts) end
+---A key stretched from a password by PBKDF2-HMAC (waits).
+---@param opts? { iterations?: integer, length?: integer, hash?: "sha256"|"sha384"|"sha512" }
+---@return string
+function kui.crypto.pbkdf2(password, salt, opts) end
+---@return boolean ok
+---@return string key_or_err
+---@return kui.ErrorCode? code
+function kui.crypto.try_pbkdf2(password, salt, opts) end
+---A key stretched from a password by Argon2id (waits); the salt is 8 bytes or more.
+---@param opts? kui.Argon2Opts
+---@return string
+function kui.crypto.argon2(password, salt, opts) end
+---@return boolean ok
+---@return string key_or_err
+---@return kui.ErrorCode? code
+function kui.crypto.try_argon2(password, salt, opts) end
+---A password to keep: an Argon2id PHC string (waits).
+---@param opts? kui.Argon2Opts
+---@return string
+function kui.crypto.hash_password(password, opts) end
+---@return boolean ok
+---@return string hash_or_err
+---@return kui.ErrorCode? code
+function kui.crypto.try_hash_password(password, opts) end
+---Whether `password` made `hash` (waits).
+---@return boolean
+function kui.crypto.verify_password(password, hash) end
+---@return boolean ok
+---@return boolean|string match_or_err
+---@return kui.ErrorCode? code
+function kui.crypto.try_verify_password(password, hash) end
+
+---The OS's secret store, under the app's id unless `service` names another.
+kui.secrets = {}
+---"keychain", "credential-manager", "secret-service" or "memory".
+---@type string
+kui.secrets.store = ""
+---The secret under `name` (waits), nil when none.
+---@param opts? { service?: string }
+---@return string?
+function kui.secrets.get(name, opts) end
+---@return boolean ok
+---@return string? secret_or_err
+---@return kui.ErrorCode? code
+function kui.secrets.try_get(name, opts) end
+---Keeps text under `name` (waits).
+---@param opts? { service?: string }
+function kui.secrets.set(name, value, opts) end
+---@return boolean ok
+---@return string? err
+---@return kui.ErrorCode? code
+function kui.secrets.try_set(name, value, opts) end
+---Removes the secret under `name` (waits): whether there was one.
+---@param opts? { service?: string }
+---@return boolean
+function kui.secrets.delete(name, opts) end
+---@return boolean ok
+---@return boolean|string had_or_err
+---@return kui.ErrorCode? code
+function kui.secrets.try_delete(name, opts) end
+---Whether secrets can be kept now (waits): true, or false and why. Never raises.
+---@param opts? { service?: string }
+---@return boolean ok
+---@return string? why
+---@return kui.ErrorCode? code
+function kui.secrets.probe(opts) end
 ---The process environment, after `.env` and `.env.local`.
 ---@type table<string, string>
 kui.env = {}
@@ -291,6 +471,7 @@ function kui.worker(path, handler) end
 ---@param handler? fun(msg: any, w: kui.Worker)
 ---@return boolean ok
 ---@return kui.Worker|string worker_or_err
+---@return kui.ErrorCode? code
 function kui.try_worker(path, handler) end
 
 kui.timer = {}
@@ -312,10 +493,12 @@ function kui.json.encode(value, opts) end
 function kui.json.array(t) end
 ---@return boolean ok
 ---@return any value_or_err
+---@return kui.ErrorCode? code
 function kui.json.try_decode(text) end
 ---@param opts? { pretty?: boolean }
 ---@return boolean ok
 ---@return string text_or_err
+---@return kui.ErrorCode? code
 function kui.json.try_encode(value, opts) end
 kui.toml = {}
 ---@return table
@@ -324,9 +507,11 @@ function kui.toml.decode(text) end
 function kui.toml.encode(value) end
 ---@return boolean ok
 ---@return table|string value_or_err
+---@return kui.ErrorCode? code
 function kui.toml.try_decode(text) end
 ---@return boolean ok
 ---@return string text_or_err
+---@return kui.ErrorCode? code
 function kui.toml.try_encode(value) end
 kui.yaml = {}
 ---@return any
@@ -335,9 +520,11 @@ function kui.yaml.decode(text) end
 function kui.yaml.encode(value) end
 ---@return boolean ok
 ---@return any value_or_err
+---@return kui.ErrorCode? code
 function kui.yaml.try_decode(text) end
 ---@return boolean ok
 ---@return string text_or_err
+---@return kui.ErrorCode? code
 function kui.yaml.try_encode(value) end
 
 kui.fs = {}
@@ -370,35 +557,45 @@ function kui.fs.remove(path) end
 function kui.fs.rename(from, to) end
 ---@return boolean ok
 ---@return string text_or_err
+---@return kui.ErrorCode? code
 function kui.fs.try_read(path) end
 ---@return boolean ok
 ---@return string? err
+---@return kui.ErrorCode? code
 function kui.fs.try_write(path, data) end
 ---@return boolean ok
 ---@return string? err
+---@return kui.ErrorCode? code
 function kui.fs.try_append(path, data) end
 ---@return boolean ok
 ---@return string[]|string names_or_err
+---@return kui.ErrorCode? code
 function kui.fs.try_list(path) end
 ---@return boolean ok
 ---@return string[]|string lines_or_err
+---@return kui.ErrorCode? code
 function kui.fs.try_lines(path) end
 ---@return boolean ok
 ---@return boolean|string created_or_err
+---@return kui.ErrorCode? code
 function kui.fs.try_create(path, data) end
 ---@param dir? string
 ---@param opts? { skip?: string[], match?: string, dirs?: boolean }
 ---@return boolean ok
 ---@return string[]|string files_or_err
+---@return kui.ErrorCode? code
 function kui.fs.try_walk(dir, opts) end
 ---@return boolean ok
 ---@return string? err
+---@return kui.ErrorCode? code
 function kui.fs.try_mkdir(path) end
 ---@return boolean ok
 ---@return string? err
+---@return kui.ErrorCode? code
 function kui.fs.try_remove(path) end
 ---@return boolean ok
 ---@return string? err
+---@return kui.ErrorCode? code
 function kui.fs.try_rename(from, to) end
 
 kui.process = {}
@@ -426,10 +623,12 @@ function kui.process.command_line(pid) end
 ---@param opts? { cwd?: string, env?: table<string,string>, stdin?: string }
 ---@return boolean ok
 ---@return kui.ProcessResult|string result_or_err
+---@return kui.ErrorCode? code
 function kui.process.try_run(cmd, args, opts) end
 ---@param opts? { cwd?: string, env?: table<string,string>, group?: boolean, detach?: boolean }
 ---@return boolean ok
 ---@return kui.Process|string process_or_err
+---@return kui.ErrorCode? code
 function kui.process.try_spawn(cmd, args, opts) end
 
 kui.http = {}
@@ -461,28 +660,36 @@ function kui.http.serve(opts) end
 ---@param opts? kui.RequestOpts
 ---@return boolean ok
 ---@return kui.Response|string response_or_err
+---@return kui.ErrorCode? code
 function kui.http.try_request(target, opts) end
 ---@return boolean ok
 ---@return kui.Response|string response_or_err
+---@return kui.ErrorCode? code
 function kui.http.try_get(url, opts) end
 ---@return boolean ok
 ---@return kui.Response|string response_or_err
+---@return kui.ErrorCode? code
 function kui.http.try_post(url, opts) end
 ---@return boolean ok
 ---@return kui.Response|string response_or_err
+---@return kui.ErrorCode? code
 function kui.http.try_put(url, opts) end
 ---@return boolean ok
 ---@return kui.Response|string response_or_err
+---@return kui.ErrorCode? code
 function kui.http.try_patch(url, opts) end
 ---@return boolean ok
 ---@return kui.Response|string response_or_err
+---@return kui.ErrorCode? code
 function kui.http.try_delete(url, opts) end
 ---@return boolean ok
 ---@return kui.Response|string response_or_err
+---@return kui.ErrorCode? code
 function kui.http.try_head(url, opts) end
 ---@param opts? { port?: integer, host?: string, static?: string }
 ---@return boolean ok
 ---@return kui.Server|string server_or_err
+---@return kui.ErrorCode? code
 function kui.http.try_serve(opts) end
 
 kui.sqlite = {}
@@ -493,6 +700,7 @@ function kui.sqlite.open(path) end
 ---@param path? string
 ---@return boolean ok
 ---@return kui.Db|string db_or_err
+---@return kui.ErrorCode? code
 function kui.sqlite.try_open(path) end
 
 ---A recording (ADR 0075): Rust reads and analyses it, a script draws its channels — `spans` in Kit's waterfall's shape, `frames` a row a finished frame, `instants` the waterfall's marks. Times are ms; rows 0-based.
@@ -524,6 +732,7 @@ function kui.trace.open(path, opts) end
 ---@param opts? { watch?: boolean, message?: any }
 ---@return boolean ok
 ---@return kui.Recording|string rec_or_err
+---@return kui.ErrorCode? code
 function kui.trace.try_open(path, opts) end
 ---A recording from its bytes.
 ---@param bytes string
@@ -532,6 +741,7 @@ function kui.trace.read(bytes) end
 ---@param bytes string
 ---@return boolean ok
 ---@return kui.Recording|string rec_or_err
+---@return kui.ErrorCode? code
 function kui.trace.try_read(bytes) end
 
 ---@type any The app's state: `init()`'s result, kept across a --watch reload.

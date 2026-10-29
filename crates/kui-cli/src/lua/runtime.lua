@@ -12,15 +12,32 @@ local waiting = {}
 local current = nil
 
 -- The runner's convention for a call that can fail on its input or on the
--- world: its `try_` form answers `true` and the value, or `false` and the
--- message, and the plain call is made from it, raising the message at its
--- caller's line with no traceback. Each such call has one value.
+-- world: its `try_` form answers `true` and the value, or `false`, the
+-- message and a code to match on (`not_found`, `denied`, `timeout`, … —
+-- the README lists them), and the plain call is made from it, raising the
+-- message at its caller's line with no traceback. Each such call has one
+-- value.
+--
+-- The last message raised is kept with its code, so a transaction whose
+-- function raised a database's error answers that error's code
+-- (`kui.__code_of`).
+local last_raised = { msg = nil, code = nil }
 local function raising(try_f)
   return function(...)
-    local ok, v = try_f(...)
-    if not ok then error(v, 2) end
+    local ok, v, code = try_f(...)
+    if not ok then
+      last_raised.msg, last_raised.code = v, code
+      error(v, 2)
+    end
     return v
   end
+end
+
+-- The code of an error a plain call raised: `failed` for any other.
+function kui.__code_of(err)
+  local msg = last_raised.msg
+  if type(err) == "string" and msg and err:sub(-#msg) == msg then return last_raised.code end
+  return "failed"
 end
 
 local function plain(t, names)
@@ -54,7 +71,8 @@ function kui.spawn(fn, ...)
 end
 
 -- What every waiting call ends in: inside a task it yields the operation's
--- id; anywhere else it blocks until the answer is there. `ok, value`.
+-- id; anywhere else it blocks until the answer is there. `ok, value`, and
+-- a failure's code.
 function kui.__try_await(id)
   local co = coroutine.running()
   if current ~= nil and co == current then
@@ -72,16 +90,16 @@ end
 -- A waiting call's `try_` form: `start(...)`, a Rust `try_` form that
 -- answers an operation's id, then the operation's answer.
 local function waits(start, ...)
-  local ok, id = start(...)
-  if not ok then return false, id end
+  local ok, id, code = start(...)
+  if not ok then return false, id, code end
   return kui.__try_await(id)
 end
 
-function kui.__resume(id, ok, value)
+function kui.__resume(id, ok, value, code)
   local co = waiting[id]
   if not co then return end
   waiting[id] = nil
-  step(co, ok, value)
+  step(co, ok, value, code)
 end
 
 --- How many tasks are waiting on something.
@@ -234,8 +252,8 @@ end
 --- thread of its own. `w:dispatch(msg)` reaches its `on_message`; what it
 --- dispatches reaches `handler(msg, w)`, or `update` without one.
 function kui.try_worker(path, handler)
-  local ok, id = kui.__try_worker_start(path)
-  if not ok then return false, id end
+  local ok, id, code = kui.__try_worker_start(path)
+  if not ok then return false, id, code end
   local w = { id = id, path = path, handler = handler, running = true }
   function w:try_dispatch(msg) return kui.__try_worker_send(self.id, msg) end
   function w:stop() kui.__worker_stop(self.id); self.running = false end
@@ -270,7 +288,8 @@ end
 --- headers, body | json | html }`.
 function kui.http.try_serve(opts)
   local ok, id, port = kui.__try_serve(opts or {})
-  if not ok then return false, id end
+  -- A failure's code is in `port`'s place.
+  if not ok then return false, id, port end
   local s = { id = id, port = port, routes = {} }
   function s:get(p, f) return route(self, "GET", p, f) end
   function s:post(p, f) return route(self, "POST", p, f) end
@@ -361,8 +380,8 @@ end
 --- Starts a command: `p:read_line()` (nil at the end), `p:lines()`,
 --- `p:write(s)`, `p:close()`, `p:wait()` (the exit code), `p:kill(sig)`.
 function kui.process.try_spawn(cmd, args, opts)
-  local ok, ud = kui.process.__try_spawn(cmd, args, opts)
-  if not ok then return false, ud end
+  local ok, ud, code = kui.process.__try_spawn(cmd, args, opts)
+  if not ok then return false, ud, code end
   local p = { pid = ud.pid }
   function p:try_read_line(stream) return kui.__try_await(ud:__read(stream)) end
   function p:lines(stream)
@@ -389,35 +408,35 @@ local open_db = kui.sqlite.try_open
 --- back when it raises: the plain call raises `fn`'s error again, as it
 --- was; `try_transaction` answers `false` and its message.
 function kui.sqlite.try_open(path)
-  local ok, ud = open_db(path)
-  if not ok then return false, ud end
+  local ok, ud, code = open_db(path)
+  if not ok then return false, ud, code end
   local db = {}
   function db:try_query(sql, params) return waits(ud.__try_query, ud, sql, params) end
   function db:try_first(sql, params)
-    local found, rows = self:try_query(sql, params)
-    if not found then return false, rows end
+    local found, rows, code = self:try_query(sql, params)
+    if not found then return false, rows, code end
     return true, rows[1]
   end
   function db:try_exec(sql, params) return waits(ud.__try_exec, ud, sql, params) end
   local function run(self, fn)
-    local began, err = self:try_exec("BEGIN")
-    if not began then return false, err end
+    local began, err, code = self:try_exec("BEGIN")
+    if not began then return false, err, code end
     local ran, failure = pcall(fn, self)
     if not ran then
       self:try_exec("ROLLBACK")
-      return false, failure, true
+      return false, failure, kui.__code_of(failure), true
     end
-    local done, cerr = self:try_exec("COMMIT")
-    if not done then return false, cerr end
+    local done, cerr, ccode = self:try_exec("COMMIT")
+    if not done then return false, cerr, ccode end
     return true
   end
   function db:try_transaction(fn)
-    local done, err = run(self, fn)
+    local done, err, code = run(self, fn)
     if done then return true end
-    return false, kui.__message(err)
+    return false, kui.__message(err), code
   end
   function db:transaction(fn)
-    local done, err, raised = run(self, fn)
+    local done, err, _, raised = run(self, fn)
     if done then return end
     if raised then error(err, 0) end
     error(err, 2)
@@ -426,8 +445,64 @@ function kui.sqlite.try_open(path)
   return true, db
 end
 
+-- A waiting call whose answer is bytes: it crosses from its thread as
+-- base64, an answer being text.
+local function bytes(ok, v, code)
+  if not ok then return false, v, code end
+  return kui.base64.try_decode(v)
+end
+
+--- A key of `opts.length` (32) bytes stretched from `password` by
+--- PBKDF2-HMAC (waits): `{ iterations = 600000, hash = "sha256" }`.
+function kui.crypto.try_pbkdf2(password, salt, opts)
+  return bytes(waits(kui.crypto.__try_pbkdf2, password, salt, opts))
+end
+
+--- A key of `opts.length` (32) bytes stretched from `password` by
+--- Argon2id (waits): `{ memory = 19456 (KiB), iterations = 2, parallelism = 1 }`.
+function kui.crypto.try_argon2(password, salt, opts)
+  return bytes(waits(kui.crypto.__try_argon2, password, salt, opts))
+end
+
+--- A password to keep and check later, as an Argon2id PHC string (waits).
+function kui.crypto.try_hash_password(password, opts)
+  return waits(kui.crypto.__try_hash_password, password, opts)
+end
+
+--- Whether `password` is the one `hash` was made from (waits).
+function kui.crypto.try_verify_password(password, hash)
+  return waits(kui.crypto.__try_verify_password, password, hash)
+end
+
+--- The secret kept under `name` (waits), nil when there is none.
+function kui.secrets.try_get(name, opts)
+  return waits(kui.secrets.__try_get, name, opts)
+end
+
+--- Keeps `value` under `name` (waits), over what was there.
+function kui.secrets.try_set(name, value, opts)
+  return waits(kui.secrets.__try_set, name, value, opts)
+end
+
+--- Removes the secret under `name` (waits): whether there was one.
+function kui.secrets.try_delete(name, opts)
+  return waits(kui.secrets.__try_delete, name, opts)
+end
+
+--- Whether secrets can be kept now (waits): `true`, or `false`, why, and
+--- the code. Never raises.
+function kui.secrets.probe(opts)
+  local ok, err, code = waits(kui.secrets.__try_probe, opts)
+  if ok then return true end
+  return false, err, code
+end
+
 -- The plain calls, each made from its `try_` form.
 plain(kui, { "worker" })
+plain(kui.base64, { "decode" })
+plain(kui.hex, { "decode" })
+plain(kui.crypto, { "encrypt", "decrypt", "pbkdf2", "argon2", "hash_password", "verify_password" })
+plain(kui.secrets, { "get", "set", "delete" })
 plain(kui.json, { "decode", "encode" })
 plain(kui.toml, { "decode", "encode" })
 plain(kui.yaml, { "decode", "encode" })

@@ -74,9 +74,42 @@ fn bind(stmt: &mut rusqlite::Statement<'_>, params: &Value) -> rusqlite::Result<
     Ok(())
 }
 
+/// A database's error with its code: `constraint`, `busy` (another
+/// connection holds the lock), `sql` (the statement is wrong: its syntax,
+/// a table or column that is not there), `denied`, `unavailable` (the
+/// file cannot be opened), `invalid` (not a database, a parameter that
+/// does not fit), `full`, `too_long`, else `failed`.
+fn sql_err(e: rusqlite::Error) -> String {
+    use rusqlite::ErrorCode as C;
+    let code = match e.sqlite_error_code() {
+        Some(C::ConstraintViolation) => "constraint",
+        Some(C::DatabaseBusy | C::DatabaseLocked) => "busy",
+        Some(C::Unknown) => "sql",
+        Some(C::PermissionDenied | C::ReadOnly | C::AuthorizationForStatementDenied) => "denied",
+        Some(C::CannotOpen) => "unavailable",
+        Some(C::NotADatabase | C::DatabaseCorrupt | C::TypeMismatch | C::ParameterOutOfRange) => {
+            "invalid"
+        }
+        Some(C::DiskFull) => "full",
+        Some(C::TooBig) => "too_long",
+        Some(_) => "failed",
+        None => match e {
+            rusqlite::Error::SqlInputError { .. } => "sql",
+            rusqlite::Error::InvalidParameterName(_)
+            | rusqlite::Error::InvalidParameterCount(..)
+            | rusqlite::Error::InvalidColumnType(..)
+            | rusqlite::Error::InvalidColumnIndex(_)
+            | rusqlite::Error::InvalidColumnName(_)
+            | rusqlite::Error::MultipleStatement => "invalid",
+            _ => "failed",
+        },
+    };
+    super::coded(code, e)
+}
+
 fn query(conn: &mut rusqlite::Connection, sql: &str, params: &Value) -> Result<Value, String> {
-    let mut stmt = conn.prepare_cached(sql).map_err(|e| e.to_string())?;
-    bind(&mut stmt, params).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare_cached(sql).map_err(sql_err)?;
+    bind(&mut stmt, params).map_err(sql_err)?;
     let names: Vec<String> = stmt
         .column_names()
         .into_iter()
@@ -84,13 +117,10 @@ fn query(conn: &mut rusqlite::Connection, sql: &str, params: &Value) -> Result<V
         .collect();
     let mut rows = stmt.raw_query();
     let mut out = Vec::new();
-    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+    while let Some(row) = rows.next().map_err(sql_err)? {
         let mut m = Vec::with_capacity(names.len());
         for (i, n) in names.iter().enumerate() {
-            m.push((
-                n.clone(),
-                from_sql(row.get_ref(i).map_err(|e| e.to_string())?),
-            ));
+            m.push((n.clone(), from_sql(row.get_ref(i).map_err(sql_err)?)));
         }
         out.push(Value::Map(m));
     }
@@ -100,12 +130,12 @@ fn query(conn: &mut rusqlite::Connection, sql: &str, params: &Value) -> Result<V
 fn exec(conn: &mut rusqlite::Connection, sql: &str, params: &Value) -> Result<Value, String> {
     let changes = if matches!(params, Value::Null) && sql.contains(';') {
         // Several statements and nothing to bind: a schema, a migration.
-        conn.execute_batch(sql).map_err(|e| e.to_string())?;
+        conn.execute_batch(sql).map_err(sql_err)?;
         conn.changes() as i64
     } else {
-        let mut stmt = conn.prepare_cached(sql).map_err(|e| e.to_string())?;
-        bind(&mut stmt, params).map_err(|e| e.to_string())?;
-        stmt.raw_execute().map_err(|e| e.to_string())? as i64
+        let mut stmt = conn.prepare_cached(sql).map_err(sql_err)?;
+        bind(&mut stmt, params).map_err(sql_err)?;
+        stmt.raw_execute().map_err(sql_err)? as i64
     };
     Ok(Value::map([
         ("changes", Value::Int(changes)),
@@ -135,7 +165,7 @@ impl UserData for Db {
                                 };
                                 ops.answer(id, a.map_err(|e| format!("{e} (in: {sql})")));
                             }))
-                            .map_err(|_| fail("the database is closed".into()))?;
+                            .map_err(|_| super::fail_as("closed", "the database is closed"))?;
                         Ok(id)
                     };
                     tried(lua, start())
@@ -157,7 +187,9 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             } else {
                 rusqlite::Connection::open(s.path(target))
             }
-            .map_err(|e| fail(format!("sqlite.open {target}: {e}")))?;
+            .map_err(|e| {
+                fail(sql_err(e).replacen("] ", &format!("] sqlite.open {target}: "), 1))
+            })?;
             let _ = conn.pragma_update(None, "journal_mode", "WAL");
             let (tx, rx) = mpsc::channel::<Job>();
             std::thread::Builder::new()

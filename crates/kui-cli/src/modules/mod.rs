@@ -10,12 +10,14 @@ use mlua::{Lua, Table};
 
 use crate::ops::Ops;
 
+pub mod crypto;
 pub mod formats;
 pub mod fs;
 pub mod http;
 pub mod input;
 pub mod log;
 pub mod process;
+pub mod secrets;
 pub mod sqlite;
 pub mod timer;
 pub mod worker;
@@ -270,6 +272,57 @@ pub fn fail(msg: String) -> mlua::Error {
     mlua::Error::runtime(msg)
 }
 
+/// A failure's message with its code in front, `[code] message`: what a
+/// `try_` form answers as its second and third values, the code split off
+/// by [`failure`] (or, for a waiting call, by [`answer_to_lua`]). The codes
+/// are one set across the runner, listed in its README.
+pub fn coded(code: &str, msg: impl std::fmt::Display) -> String {
+    format!("[{code}] {msg}")
+}
+
+/// [`fail`] with a code.
+pub fn fail_as(code: &str, msg: impl std::fmt::Display) -> mlua::Error {
+    fail(coded(code, msg))
+}
+
+/// The code an I/O error goes by: what the OS said, named alike on every
+/// OS, where the message is each OS's own.
+pub fn io_code(e: &std::io::Error) -> &'static str {
+    use std::io::ErrorKind as K;
+    match e.kind() {
+        K::NotFound => "not_found",
+        K::PermissionDenied | K::ReadOnlyFilesystem => "denied",
+        K::AlreadyExists => "exists",
+        K::DirectoryNotEmpty => "not_empty",
+        K::IsADirectory | K::NotADirectory | K::InvalidInput | K::InvalidFilename => "invalid",
+        K::InvalidData => "encoding",
+        K::TimedOut => "timeout",
+        K::ConnectionRefused
+        | K::ConnectionReset
+        | K::ConnectionAborted
+        | K::NotConnected
+        | K::HostUnreachable
+        | K::NetworkUnreachable
+        | K::NetworkDown => "refused",
+        K::AddrInUse | K::AddrNotAvailable => "in_use",
+        K::BrokenPipe => "closed",
+        K::StorageFull | K::QuotaExceeded | K::FileTooLarge => "full",
+        _ => "failed",
+    }
+}
+
+/// `msg` and its code, split: `failed` when it carries none.
+pub fn split(msg: &str) -> (String, String) {
+    if let Some(rest) = msg.strip_prefix('[')
+        && let Some((code, text)) = rest.split_once("] ")
+        && !code.is_empty()
+        && code.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+    {
+        return (text.to_string(), code.to_string());
+    }
+    (msg.to_string(), "failed".to_string())
+}
+
 /// The runtime's Lua half (tasks, dispatch, the router).
 const RUNTIME: &str = include_str!("../lua/runtime.lua");
 const ARGS_LUA: &str = include_str!("../lua/args.lua");
@@ -301,16 +354,35 @@ pub fn tried(
             out.push_front(mlua::Value::Boolean(true));
             Ok(out)
         }
-        Err(e) => mlua::IntoLuaMulti::into_lua_multi((false, message(&e)), lua),
+        Err(e) => mlua::IntoLuaMulti::into_lua_multi(
+            {
+                let (msg, code) = failure(&e);
+                (false, msg, code)
+            },
+            lua,
+        ),
+    }
+}
+
+/// An error's message and code: the code its message carries, an I/O
+/// error's kind, `invalid` for a value Lua could not convert.
+pub fn failure(e: &mlua::Error) -> (String, String) {
+    match e {
+        mlua::Error::CallbackError { cause, .. } => failure(cause),
+        mlua::Error::RuntimeError(m) => split(m),
+        mlua::Error::ExternalError(x) => match x.downcast_ref::<std::io::Error>() {
+            Some(io) => (io.to_string(), io_code(io).to_string()),
+            None => split(&x.to_string()),
+        },
+        mlua::Error::FromLuaConversionError { .. } | mlua::Error::BadArgument { .. } => {
+            (e.to_string(), "invalid".to_string())
+        }
+        other => (other.to_string(), "failed".to_string()),
     }
 }
 
 fn message(e: &mlua::Error) -> String {
-    match e {
-        mlua::Error::CallbackError { cause, .. } => message(cause),
-        mlua::Error::RuntimeError(m) => m.clone(),
-        other => other.to_string(),
-    }
+    failure(e).0
 }
 
 pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
@@ -427,6 +499,8 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     install_env(lua, &kui)?;
     log::install(lua, &kui)?;
     formats::install(lua, &kui)?;
+    crypto::install(lua, &kui)?;
+    secrets::install(lua, &kui)?;
     fs::install(lua, &kui)?;
     timer::install(lua, &kui)?;
     process::install(lua, &kui)?;
@@ -466,17 +540,23 @@ fn shared_of(lua: &Lua) -> Arc<Shared> {
     shared(lua)
 }
 
-/// An operation's answer as the `(ok, value)` pair `kui.__await` reads.
-pub fn answer_to_lua(lua: &Lua, a: crate::ops::Answer) -> (bool, mlua::Value) {
+/// An operation's answer as the `(ok, value, code)` `kui.__await` reads:
+/// a failure's code split off its message.
+pub fn answer_to_lua(lua: &Lua, a: crate::ops::Answer) -> (bool, mlua::Value, Option<String>) {
+    let err = |msg: &str| {
+        let (msg, code) = split(msg);
+        (
+            false,
+            mlua::Value::String(lua.create_string(msg).unwrap()),
+            Some(code),
+        )
+    };
     match a {
         Ok(v) => match kui_lua::value_to_lua(lua, &v) {
-            Ok(v) => (true, v),
-            Err(e) => (
-                false,
-                mlua::Value::String(lua.create_string(e.to_string()).unwrap()),
-            ),
+            Ok(v) => (true, v, None),
+            Err(e) => err(&e.to_string()),
         },
-        Err(e) => (false, mlua::Value::String(lua.create_string(e).unwrap())),
+        Err(e) => err(&e),
     }
 }
 
@@ -515,8 +595,8 @@ pub fn drain(lua: &Lua) -> mlua::Result<bool> {
         let (answers, inbound) = s.ops.take();
         let fresh = !answers.is_empty() || !inbound.is_empty();
         for (id, a) in answers {
-            let (ok, v) = answer_to_lua(lua, a);
-            resume.call::<()>((id, ok, v))?;
+            let (ok, v, code) = answer_to_lua(lua, a);
+            resume.call::<()>((id, ok, v, code))?;
         }
         for msg in inbound {
             match msg {
