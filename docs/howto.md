@@ -1221,6 +1221,35 @@ moves them with the stock button.
 [examples/node/widgets/controls.tsx](../examples/node/widgets/controls.tsx) ·
 [ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
+### How do I show progress or a level?
+
+A stock bar: `<progress label="Upload" valueNow={done} valueMax={total}
+valueText={`${done} of ${total} files`}/>`, `progress { label = "Upload",
+value_now = done, value_max = total }` in Lua, `kui_progress(ctx, label,
+spec)` in C, `kui.progress(ui, "Upload", done, 0, total)` in Odin,
+`widgets::progress(ui, "Upload", Some(done), 0.0, total)` in Rust. It is
+the slider's track and a fill, read-only: no Tab stop, nothing to press,
+and a screen reader hears its label and its value — `valueText` when you
+give one, else the number — and the new one each frame you declare
+another.
+Leave `valueNow` out while you cannot say how far along it is: the bar is
+busy, a third of the track lit in its middle, and every platform reads it
+as indeterminate.
+
+A level that is not a task under way — a battery, a disk, a signal — is a
+meter: the same bar with `role="meter"` (`KUI_ROLE_METER` in C,
+`.role(Role::Meter)` on `widgets::progress_spec` in Rust). macOS and Linux
+read it as a level indicator and Windows as a meter, where a progress bar
+would say "progress". A meter is never busy. The label is the accessible
+name only; put a visible caption beside the bar if the screen should say it
+too. Both roles fit a box of your own as well, with the value rows, when
+the stock look is not yours; the `slider-value-out-of-range` warning
+checks either.
+
+[the elements](props.md#elements) ·
+[examples/rust/widgets/controls.rs](../examples/rust/widgets/controls.rs) ·
+[examples/node/widgets/controls.tsx](../examples/node/widgets/controls.tsx)
+
 ### How do I keep a long checkbox label on one line?
 
 `ellipsis` on the toggle — `<checkbox ellipsis>`, `checkbox { ellipsis =
