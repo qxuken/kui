@@ -2258,6 +2258,56 @@ pub fn uniform_list_with(
     mut row_spec: impl FnMut(usize) -> NodeSpec,
     mut row: impl FnMut(&mut Ui<'_>, usize),
 ) -> Key {
+    let slice = uniform_list_begin(ui, label, spec, rows, row_h);
+    for i in slice.rows.clone() {
+        ui.with_indexed(i as u64, slice.row_spec(row_spec(i)), |ui| row(ui, i));
+    }
+    uniform_list_end(ui, &slice);
+    slice.key
+}
+
+/// What [`uniform_list_begin`] sliced: the container's key, the rows to
+/// build between it and [`uniform_list_end`] (each opened at its data index
+/// with [`UniformSlice::row_spec`]), and what the end needs to close it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UniformSlice {
+    /// The scrolling container, for `set_scroll` and `scroll_geometry`.
+    pub key: Key,
+    /// The rows to build, by data index.
+    pub rows: std::ops::Range<usize>,
+    /// The list's length, built or not.
+    pub len: usize,
+    /// The stride every row must come out as.
+    pub row_h: f32,
+    first_frame: bool,
+}
+
+impl UniformSlice {
+    /// A row's spec as the list needs it: `row_h` tall, and across the list
+    /// where its width is left `fit`.
+    pub fn row_spec(&self, spec: NodeSpec) -> NodeSpec {
+        let spec = spec.height(self.row_h);
+        if spec.layout.width == Sizing::Fit {
+            spec.grow_width()
+        } else {
+            spec
+        }
+    }
+}
+
+/// [`uniform_list_with`] in two halves around the rows, for a binding
+/// without closures (C's `kui_list_begin`, backlog F280): opens the
+/// container — `spec` forced to a scrolling column with no gap — declares
+/// the list's length (`row_count`) and the spacer above the window, and
+/// answers which rows to build. Build each with `open_indexed(i,
+/// slice.row_spec(spec))`, then call [`uniform_list_end`].
+pub fn uniform_list_begin(
+    ui: &mut Ui<'_>,
+    label: &str,
+    spec: NodeSpec,
+    rows: usize,
+    row_h: f32,
+) -> UniformSlice {
     const OVERSCAN: usize = 2;
 
     let key = ui.child_key(label);
@@ -2274,37 +2324,39 @@ pub fn uniform_list_with(
     };
     let range = visible_rows(offset_y, vh, pad_t, row_h, rows, OVERSCAN);
 
-    ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
-        // The whole list's size, built or not: what Select All inside a
-        // `selectable` list spans.
-        ui.row_count(rows as u64);
-        // Keyed, not auto-keyed: an auto key is a sibling index, and the
-        // rows already occupy that namespace at their data indices — an
-        // auto-keyed spacer next to a built row 0 would be row 0's key.
-        let lead = range.start as f32 * row_h;
-        if lead > 0.0 {
-            ui.leaf_keyed("lead", spacer_spec(lead));
-        }
-        for i in range.clone() {
-            let mut spec = row_spec(i).height(row_h);
-            if spec.layout.width == Sizing::Fit {
-                spec = spec.grow_width();
-            }
-            ui.with_indexed(i as u64, spec, |ui| row(ui, i));
-        }
-        let tail = (rows - range.end) as f32 * row_h;
-        if tail > 0.0 {
-            ui.leaf_keyed("tail", spacer_spec(tail));
-        }
-    });
+    ui.open_keyed(label, spec.scroll_y().gap(0.0));
+    // The whole list's size, built or not: what Select All inside a
+    // `selectable` list spans.
+    ui.row_count(rows as u64);
+    // Keyed, not auto-keyed: an auto key is a sibling index, and the rows
+    // already occupy that namespace at their data indices — an auto-keyed
+    // spacer next to a built row 0 would be row 0's key.
+    let lead = range.start as f32 * row_h;
+    if lead > 0.0 {
+        ui.leaf_keyed("lead", spacer_spec(lead));
+    }
+    UniformSlice {
+        key,
+        rows: range,
+        len: rows,
+        row_h,
+        first_frame,
+    }
+}
 
-    // Sliced by a screenful's guess, with no layout of its own yet: the
-    // next frame slices by its geometry. kui's ask, not the app's, so a
-    // trace names it for what it is.
-    if first_frame {
+/// The half after the rows: the spacer below the window, the container
+/// closed, and — on the first frame, sliced by a screenful's guess — the
+/// frame that slices by its geometry asked for.
+pub fn uniform_list_end(ui: &mut Ui<'_>, slice: &UniformSlice) {
+    let tail = (slice.len - slice.rows.end) as f32 * slice.row_h;
+    if tail > 0.0 {
+        ui.leaf_keyed("tail", spacer_spec(tail));
+    }
+    ui.close();
+    // kui's ask, not the app's, so a trace names it for what it is.
+    if slice.first_frame {
         ui.owe_frame("list first frame");
     }
-    key
 }
 
 /// Scrolls the [`uniform_list`] labelled `label` so row `i` shows, when

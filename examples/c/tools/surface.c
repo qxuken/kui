@@ -2021,6 +2021,47 @@ static int surface(void) {
         kui_ctx_free(li);
     }
 
+    /* A virtual list in two halves (backlog F280): a thousand rows 20 px
+     * tall in a 200 px box. The first frame builds a screenful, the next
+     * what the box shows plus two each side; the content is the whole
+     * list's height; scrolled to row 500, the rows start two above it. */
+    {
+        KuiCtx *vl = kui_ctx_new();
+        uint64_t first = 0, last = 0, list = 0, row = 0;
+        for (int pass = 0; pass < 3; pass++) {
+            kui_frame_begin(vl, 320, 240, 1.0f);
+            KuiSpec box = {.width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 200}};
+            list = kui_list_begin(vl, KUI_STR("log"), &box, 1000, 20, &first, &last);
+            for (uint64_t i = first; i < last; i++) {
+                KuiSpec cell = {.height = {KUI_FIXED, 7}};
+                row = kui_list_row(vl, i, &cell, NULL);
+                kui_close(vl);
+            }
+            kui_list_end(vl);
+            kui_frame_finish(vl);
+            if (pass == 0) check(first == 0 && last == 14, "kui_list_begin: the first frame builds a screenful");
+            if (pass == 1) {
+                check(first == 0 && last == 12, "kui_list_begin: then what the box shows, plus two");
+                KuiScrollGeometry g = KUI_SCROLL_GEOMETRY_INIT;
+                check(kui_scroll_geometry(vl, list, &g) && g.content_h == 1000 * 20,
+                      "kui_list_end: the spacers hold the whole list's height");
+                check(row != 0, "kui_list_row: a row's key");
+                kui_set_scroll(vl, list, 0, 500 * 20);
+            }
+            if (pass == 2) check(first == 498 && last == 512, "kui_list_begin: scrolled to row 500, rows from 498");
+        }
+        /* The scoped forms; a row's spec comes out the stride tall. */
+        kui_frame_begin(vl, 320, 240, 1.0f);
+        uint64_t built = 0;
+        KUI_LIST(vl, "log", 1000, 20, &first, &last, .width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 200}) {
+            for (uint64_t i = first; i < last; i++)
+                KUI_LIST_ROW(vl, i, NULL, .bg = 0x101010ffu) { built++; }
+        }
+        kui_frame_finish(vl);
+        check(built == last - first && first == 498, "KUI_LIST and KUI_LIST_ROW build the rows kui_list_begin answers");
+        kui_ctx_free(vl);
+    }
+
     /* A faded subtree as one picture (ADR 0056): on a context of its own,
      * a card at half opacity holding two boxes comes out between a begin
      * and an end marker, unfaded inside, the end carrying the fade. */

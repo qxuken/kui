@@ -113,6 +113,42 @@ row :: proc(ui: ^Ui, spec: Spec = {}) -> bool {
 	return true
 }
 
+// A virtual list of `rows` rows `row_h` px tall, built a screenful at a
+// time (backlog F280): list_begin's rows, first ..< last, to build in the
+// block, each with list_row; list_end closes it at the end of the block.
+// The container is `spec` made a scrolling column with no gap.
+//
+//     if first, last, ok := kui.list(ui, "log", n, 28, {width = kui.grow(1), height = kui.grow(1)}); ok {
+//         for i in first ..< last {
+//             if kui.list_row_box(ui, i, {pad = kui.pad(6), on_click = Pick{int(i)}}) {
+//                 kui.text(ui, lines[i])
+//             }
+//         }
+//     }
+@(deferred_in = list_close, require_results)
+list :: proc(ui: ^Ui, label: string, rows: u64, row_h: f32, spec: Spec = {}) -> (first, last: u64, ok: bool) {
+	_, first, last = list_begin(ui, label, spec, rows, row_h)
+	return first, last, true
+}
+
+@(private)
+list_close :: proc(ui: ^Ui, _: string, _: u64, _: f32, _: Spec = {}) {
+	list_end(ui)
+}
+
+// Row `index` of the open list as a container: list_row with the spec's
+// own click, closed at the end of the block.
+@(deferred_in = close_list_row, require_results)
+list_row_box :: proc(ui: ^Ui, index: u64, spec: Spec = {}) -> bool {
+	list_row(ui, index, spec, spec.on_click)
+	return true
+}
+
+@(private)
+close_list_row :: proc(ui: ^Ui, _: u64, _: Spec = {}) {
+	close(ui)
+}
+
 // A box with no children - a swatch, a rule, a decoration - opened and
 // closed in one call, where a bare box would stay open. Returns its key.
 rect :: proc(ui: ^Ui, spec: Spec = {}) -> (key: u64) {

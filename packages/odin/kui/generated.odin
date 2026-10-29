@@ -2976,6 +2976,34 @@ row_count :: proc(ui: ^Ui, rows: u64) {
 	c.row_count(ui, rows)
 }
 
+// kui_list_begin (kui.h).
+list_begin :: proc(ui: ^Ui, label: string, spec: Spec, rows: u64, row_h: f32) -> (result: u64, first: u64, last: u64) {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	spec_c: c.Spec
+	spec_to_c(spec, &spec_c, &scratch)
+	c_first: u64
+	c_last: u64
+	result = c.list_begin(ui, label, &spec_c, rows, row_h, &c_first, &c_last)
+	first = c_first
+	last = c_last
+	return
+}
+
+// kui_list_row (kui.h).
+list_row :: proc(ui: ^Ui, index: u64, spec: Spec = {}, on_click: any = nil) -> u64 {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	spec_c: c.Spec
+	spec_to_c(spec, &spec_c, &scratch)
+	return c.list_row(ui, index, &spec_c, to_value(on_click))
+}
+
+// kui_list_end (kui.h).
+list_end :: proc(ui: ^Ui) {
+	c.list_end(ui)
+}
+
 // Loads a plugin under a namespace; a `KuiWindow` takes its list at
 // construction (`extensions`).
 // Rust: Ui::add_extension.

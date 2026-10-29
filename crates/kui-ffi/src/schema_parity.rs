@@ -1014,6 +1014,12 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_latency_hud",
             "kui_tooltip",
             "kui_tooltip_with",
+            // `uniform_list` in two halves around the host's own loop
+            // (backlog F280): the element form a binding without
+            // closures needs, its rows `kui_open_indexed`'s.
+            "kui_list_begin",
+            "kui_list_row",
+            "kui_list_end",
             "kui_child_key",
             "kui_row_count",
             "kui_set_key_focus",

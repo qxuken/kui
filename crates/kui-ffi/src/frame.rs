@@ -58,6 +58,8 @@ pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) 
             // frame as input does (backlog F269).
             access_apply(c);
             c.draws_current = false;
+            // A list a frame left open is that frame's (backlog F280).
+            c.lists.clear();
             c.core()
                 .begin_frame(Size::new(w, h), if scale > 0.0 { scale } else { 1.0 });
         }
