@@ -2899,6 +2899,12 @@ void kui_release_held_keys(KuiCtx *ctx);
  * arrives with modifiers:{shift, ctrl, alt, super} in it; a root that
  * declares none hears nothing. */
 void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
+/* The next queued event, false when there is none. KuiEvent.event says
+ * what happened; the payload is the message its handler declared, the
+ * event's data in a field named for it - a map as itself, a string or a
+ * number wrapped as {tag: msg, ...}, so kui_button(ctx, label,
+ * kui_value_str("save")) is heard as {tag:"save"}, not as "save". kui_event_message and kui_event_data ("Messages", after the
+ * values) read either shape. */
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 /* A host that draws the UI over a world of its own - a game, a map, a 3D
  * view - asks these before it decides whose an input is (backlog F233;
@@ -4384,7 +4390,10 @@ void kui_close(KuiCtx *ctx);
  * empty one. KUI_BOX_KEYED keys the node by a label, KUI_BOX_KEY also
  * writes the key kui_open_keyed returns into *key_out, and KUI_BOX_CLICK
  * gives it a click message - a fresh string value each frame, since
- * kui_open* keeps the one it is handed.
+ * kui_open* keeps the one it is handed; it arrives as {tag: message}
+ * (kui_event_message reads it). KUI_BOX_CLICK_MSG takes any message
+ * instead, consumed the same way - kui_msg_int("row", "row", i) for a
+ * click that says which row.
  *
  * Never break, return or goto out of one: that skips its close. Out of a
  * KUI_BOX it leaves the node open, which the unclosed-node warning names
@@ -4409,6 +4418,9 @@ void kui_close(KuiCtx *ctx);
 #define KUI_BOX_CLICK(ctx, label, message, ...) \
     KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, \
                               kui_value_str(KUI_STR(message))), \
+               kui_close(ctx))
+#define KUI_BOX_CLICK_MSG(ctx, label, message, ...) \
+    KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, (message)), \
                kui_close(ctx))
 #endif
 
@@ -5237,6 +5249,82 @@ bool kui_value_as_int(const KuiValue *v, int64_t *out);
 bool kui_value_as_float(const KuiValue *v, double *out);
 bool kui_value_as_str(const KuiValue *v, KuiStr *out);            /* borrowed */
 void kui_value_free(KuiValue *v);
+
+/* -- Messages -------------------------------------------------------------
+ *
+ * A handler's message comes back as the event's payload (ADR 0047), with
+ * the event's data in one field named for the event, so its shape is the
+ * shape the view gave it:
+ *
+ *   - a map arrives as itself plus that field: an on_drag of
+ *     {kind:"pan"} as {kind:"pan", drag:{phase, x, y, dx, dy, ...}}, and a
+ *     click's {kind:"row", row:3} as itself (a plain click carries no
+ *     data);
+ *   - a string or a number is not a map, so it arrives wrapped: a click's
+ *     kui_value_str("harvest") as {tag:"harvest"}, never as the bare
+ *     string;
+ *   - a null message, kui_value_null(), arrives as the field alone.
+ *
+ * kui_event_message reads the name under all three - a map's `kind`, a
+ * wrapped message's `tag` - and kui_event_data the event's field; neither
+ * needs a host to know which shape a handler was given. kui_msg and
+ * kui_msg_int build the map shape, the one every binding's messages take
+ * (a Rust #[derive(Message)], an Odin struct, a Lua table with `kind`), so
+ * a message with a field is one call:
+ *
+ *     kui_open_keyed(ctx, KUI_STR(key), &row_spec, kui_msg_int("row", "row", i));
+ *     ...
+ *     KuiStr name;
+ *     int64_t row;
+ *     if (kui_event_message(&ev, &name) && kui_str_eq(name, "row") &&
+ *         kui_value_as_int(kui_value_get(ev.payload, KUI_STR("row")), &row))
+ *         select(row);
+ *
+ * Header-only, as kui_str_eq is: they call the functions above and
+ * nothing else. */
+
+/* A NUL-terminated string as a KuiStr, for these helpers: KUI_STR is a
+ * compound literal, which C++ (a host including this header) has not. */
+static inline KuiStr kui__cstr(const char *s) {
+    KuiStr out;
+    out.ptr = (const uint8_t *)s;
+    out.len = strlen(s);
+    return out;
+}
+
+/* The message's name: `kind` of a map, `tag` of a string or number the
+ * core wrapped, the string itself for a payload that is one. False, *name
+ * untouched, for a NULL payload or a message that names nothing (a null
+ * message, a map without `kind`). Borrowed from the payload. */
+static inline bool kui_event_message(const KuiEvent *ev, KuiStr *name) {
+    if (!ev || !ev->payload) return false;
+    return kui_value_as_str(ev->payload, name) ||
+           kui_value_as_str(kui_value_get(ev->payload, kui__cstr("kind")), name) ||
+           kui_value_as_str(kui_value_get(ev->payload, kui__cstr("tag")), name);
+}
+
+/* The event's data: the payload's field named for KuiEvent.event -
+ * {x, y, dx, dy, phase, ...} on a drag, {text} on a change. NULL for an
+ * event that carries none. Borrowed from the payload. */
+static inline const KuiValue *kui_event_data(const KuiEvent *ev) {
+    return ev && ev->payload ? kui_value_get(ev->payload, ev->event) : NULL;
+}
+
+/* {kind}: the message a click, a toggle or a menu choice is declared
+ * with when it needs no field. Owned by you until a handler consumes it. */
+static inline KuiValue *kui_msg(const char *kind) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, kui__cstr("kind"), kui_value_str(kui__cstr(kind)));
+    return m;
+}
+
+/* {kind, field: n}: a message that says which - a row's index, an item's
+ * id. Add more fields with kui_value_map_set on what it returns. */
+static inline KuiValue *kui_msg_int(const char *kind, const char *field, int64_t n) {
+    KuiValue *m = kui_msg(kind);
+    kui_value_map_set(m, kui__cstr(field), kui_value_int(n));
+    return m;
+}
 
 /* -- Windowed runner (winit + wgpu), blocks until the window closes ------ */
 /* These two are the library's `runner` feature, on by default and the only

@@ -84,7 +84,7 @@ static int drain(KuiCtx *ui) {
     KuiEvent ev = KUI_EVENT_INIT;
     while (kui_poll_event(ui, &ev)) {
         KuiStr msg = {0};
-        if (ev_is(&ev, "click") && ev_message(&ev, &msg) && kui_str_eq(msg, "count")) clicks++;
+        if (ev_is(&ev, "click") && kui_event_message(&ev, &msg) && kui_str_eq(msg, "count")) clicks++;
     }
     return clicks;
 }

@@ -10,9 +10,11 @@
 #include <stdlib.h>
 #include "../common.h"
 
-/* A panel holding a button, on a transparent root, opened and closed by
+/* A panel holding two buttons, on a transparent root, opened and closed by
  * kui.h's scoped openers (backlog F261). The click message is the node's
- * to keep, so KUI_BOX_CLICK makes one a frame. */
+ * to keep, so each frame makes one: "go" a string (KUI_BOX_CLICK), "row" a
+ * map that says which row (KUI_BOX_CLICK_MSG and kui_msg_int, backlog
+ * F266). */
 static uint64_t build(KuiCtx *ui) {
     uint64_t panel = 0;
     KuiTextStyle label = {.size = 13, .color = 0xffffffffu};
@@ -23,29 +25,74 @@ static uint64_t build(KuiCtx *ui) {
                           .bg = 0x3a6ff0ffu, .radius = 4, .label = KUI_STR("go")) {
                 kui_text(ui, KUI_STR("go"), &label);
             }
+            KUI_BOX_CLICK_MSG(ui, "row", kui_msg_int("row", "row", 7), .width = {KUI_FIXED, 60},
+                              .height = {KUI_FIXED, 24}, .bg = 0x3a6ff0ffu, .radius = 4,
+                              .label = KUI_STR("row")) {
+                kui_text(ui, KUI_STR("row"), &label);
+            }
         }
     }
     return panel;
 }
 
-/* Drains the queue; how many clicks said "go". */
-static int drain(KuiCtx *ui) {
+/* Drains the queue; how many clicks said "go", and the row the last
+ * "row" said. kui_event_message reads both shapes: "go" arrives as
+ * {tag:"go"}, the row as {kind:"row", row:7} (backlog F264). */
+static int drain(KuiCtx *ui, int64_t *row) {
     int clicks = 0;
     KuiEvent ev = KUI_EVENT_INIT;
     while (kui_poll_event(ui, &ev)) {
         KuiStr msg = {0};
-        if (ev_is(&ev, "click") && ev_message(&ev, &msg) && kui_str_eq(msg, "go")) clicks++;
+        if (!ev_is(&ev, "click") || !kui_event_message(&ev, &msg)) continue;
+        if (kui_str_eq(msg, "go")) clicks++;
+        if (kui_str_eq(msg, "row") && row) kui_value_as_int(kui_value_get(ev.payload, KUI_STR("row")), row);
     }
     return clicks;
+}
+
+/* kui_event_message and kui_event_data on payloads made by hand: the three
+ * shapes a message comes back in, and an event with no payload. */
+static void messages(void) {
+    KuiStr name = {0};
+    KuiEvent ev = KUI_EVENT_INIT;
+    check(!kui_event_message(&ev, &name) && !kui_event_data(&ev), "no payload names nothing");
+    ev.payload = kui_value_str(KUI_STR("bare"));
+    check(kui_event_message(&ev, &name) && kui_str_eq(name, "bare"), "a bare string is its own name");
+    kui_value_free((KuiValue *)ev.payload);
+    KuiValue *wrapped = kui_value_map();
+    kui_value_map_set(wrapped, KUI_STR("tag"), kui_value_str(KUI_STR("go")));
+    ev.payload = wrapped;
+    check(kui_event_message(&ev, &name) && kui_str_eq(name, "go"), "a wrapped message is named by its tag");
+    kui_value_free(wrapped);
+    KuiValue *pan = kui_msg_int("pan", "lane", 2);
+    KuiValue *drag = kui_value_map();
+    kui_value_map_set(drag, KUI_STR("dx"), kui_value_float(1.5));
+    kui_value_map_set(pan, KUI_STR("drag"), drag);
+    ev.payload = pan;
+    ev.event = KUI_STR("drag");
+    double dx = 0;
+    int64_t lane = 0;
+    check(kui_event_message(&ev, &name) && kui_str_eq(name, "pan"), "a map is named by its kind");
+    check(kui_value_as_float(kui_value_get(kui_event_data(&ev), KUI_STR("dx")), &dx) && dx == 1.5,
+          "kui_event_data is the field named for the event");
+    check(kui_value_as_int(kui_value_get(pan, KUI_STR("lane")), &lane) && lane == 2, "kui_msg_int's field");
+    kui_value_free(pan);
+    KuiValue *nameless = kui_value_map();
+    ev.payload = nameless;
+    name = KUI_STR("kept");
+    check(!kui_event_message(&ev, &name) && kui_str_eq(name, "kept"), "a map without kind names nothing");
+    kui_value_free(nameless);
 }
 
 int main(void) {
     if (!abi_ok()) return 1;
     KuiCtx *ui = kui_ctx_new();
 
+    messages();
+
     /* Build, drain, draw. */
     uint64_t panel = build(ui);
-    drain(ui);
+    drain(ui, NULL);
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     check(kui_draw_data(ui, &dd) && dd.quad_count > 0, "the frame drew");
     check(dd.atlas_dirty && dd.atlas_dirty_rect[2] > 0, "and its glyphs are an atlas rect to upload");
@@ -76,7 +123,12 @@ int main(void) {
     check(kui_pointer_wants(ui) && kui_hit(ui, 38, 20) != panel, "the button is under the pointer");
     kui_input_mouse(ui, true, 1);
     kui_input_mouse(ui, false, 1);
-    check(drain(ui) == 1, "the click arrived as its message");
+    check(drain(ui, NULL) == 1, "the click arrived as its message");
+    int64_t row = -1;
+    kui_input_cursor(ui, 38, 44);
+    kui_input_mouse(ui, true, 1);
+    kui_input_mouse(ui, false, 1);
+    check(drain(ui, &row) == 0 && row == 7, "the second button's click said which row");
     kui_input_cursor(ui, 300, 180);
     check(!kui_pointer_wants(ui), "past the panel is the world's");
 

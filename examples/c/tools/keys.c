@@ -42,7 +42,7 @@ static bool next_key(KuiCtx *ui, char *code, char *physical, char *location) {
     KuiEvent ev = KUI_EVENT_INIT;
     while (kui_poll_event(ui, &ev)) {
         if (!ev_is(&ev, "key")) continue;
-        const KuiValue *data = ev_data(&ev);
+        const KuiValue *data = kui_event_data(&ev);
         KuiStr c = {0}, p = {0}, l = {0};
         kui_value_as_str(kui_value_get(data, KUI_STR("code")), &c);
         kui_value_as_str(kui_value_get(data, KUI_STR("physical")), &p);

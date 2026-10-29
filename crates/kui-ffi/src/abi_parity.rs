@@ -1356,8 +1356,9 @@ fn every_edit_key_has_one_c_constant() {
 /// call) and every `extern "C" fn kui_*` the sources export (which is
 /// what the library links). An entry point added to either without a row
 /// here fails by name. The header's `kui_ext_*` are the plugin's exports,
-/// not the library's, and `kui_str_eq` is a static inline the header
-/// defines itself; neither is a symbol of this crate.
+/// not the library's, and its `static inline` helpers (`kui_str_eq`, the
+/// message readers and constructors) are defined by the header itself;
+/// neither is a symbol of this crate.
 /// The functions `include/kui.h` declares, by name: every `kui_*` that
 /// opens a prototype, less the plugin's exports and the header's own
 /// static inline.
@@ -1389,7 +1390,7 @@ fn header_declares() -> std::collections::BTreeSet<&'static str> {
         if line.starts_with(char::is_whitespace) {
             continue;
         }
-        if name.starts_with("kui_ext_") || name == "kui_str_eq" {
+        if name.starts_with("kui_ext_") || line.starts_with("static inline") {
             continue;
         }
         declared.insert(name);

@@ -37,8 +37,7 @@ typedef struct AppState {
 static void context_menu(KuiCtx *ui, const AppState *state) {
     KuiTheme t = KUI_THEME_INIT;
     kui_theme(ui, &t);
-    KuiValue *tag = kui_value_map();
-    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("menu")));
+    KuiValue *tag = kui_msg("menu");
     KuiSpec menu = {
         .dir = KUI_COLUMN, .gap = 4, .width = {KUI_FIXED, 120},
         .pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
@@ -56,12 +55,10 @@ static void context_menu(KuiCtx *ui, const AppState *state) {
     };
     kui_open(ui, &menu, NULL);
     {
-        KuiValue *add = kui_value_map();
-        kui_value_map_set(add, KUI_STR("kind"), kui_value_str(KUI_STR("add10")));
+        KuiValue *add = kui_msg("add10");
         kui_button(ui, KUI_STR("+10"), add);
 
-        KuiValue *reset = kui_value_map();
-        kui_value_map_set(reset, KUI_STR("kind"), kui_value_str(KUI_STR("reset")));
+        KuiValue *reset = kui_msg("reset");
         /* The sentence a reader hears after the name: the stock button
          * takes the access rows off a spec and nothing else (kui_button_with). */
         KuiSpec reset_rows = {.description = KUI_STR("Back to zero")};
@@ -93,8 +90,7 @@ static void view(void *user, KuiCtx *ui) {
      * the payload of the contextmenu event, the point in it:
      * {kind="card", contextmenu={x, y}}. Borrowed: the spec clones it
      * while the node opens, so it is freed below. */
-    KuiValue *menu_tag = kui_value_map();
-    kui_value_map_set(menu_tag, KUI_STR("kind"), kui_value_str(KUI_STR("card")));
+    KuiValue *menu_tag = kui_msg("card");
     KuiSpec card = {
         .dir = KUI_COLUMN, .gap = 20, .cross_align = KUI_CENTER,
         .pad_l = 32, .pad_r = 32, .pad_t = 32, .pad_b = 32,
@@ -115,12 +111,10 @@ static void view(void *user, KuiCtx *ui) {
         KuiSpec row = {.dir = KUI_ROW, .gap = 12};
         kui_open(ui, &row, NULL);
         {
-            KuiValue *dec = kui_value_map();
-            kui_value_map_set(dec, KUI_STR("kind"), kui_value_str(KUI_STR("dec")));
+            KuiValue *dec = kui_msg("dec");
             kui_button(ui, KUI_STR("-1"), dec);
 
-            KuiValue *inc = kui_value_map();
-            kui_value_map_set(inc, KUI_STR("kind"), kui_value_str(KUI_STR("inc")));
+            KuiValue *inc = kui_msg("inc");
             kui_button(ui, KUI_STR("+1"), inc);
         }
         kui_close(ui);
@@ -144,7 +138,7 @@ static void view(void *user, KuiCtx *ui) {
 /* Reads an integer field off the event's data (x / y arrive as numbers). */
 static float data_num(const KuiEvent *ev, const char *key) {
     const KuiValue *v =
-        kui_value_get(ev_data(ev), (KuiStr){(const uint8_t *)key, strlen(key)});
+        kui_value_get(kui_event_data(ev), (KuiStr){(const uint8_t *)key, strlen(key)});
     int64_t n = 0;
     return v && kui_value_as_int(v, &n) ? (float)n : 0.0f;
 }
@@ -153,7 +147,7 @@ static float data_num(const KuiEvent *ev, const char *key) {
  * happened to it (ADR 0047). */
 static void apply_event(AppState *state, const KuiEvent *ev) {
     KuiStr s;
-    if (!ev_message(ev, &s)) return;
+    if (!kui_event_message(ev, &s)) return;
     if (kui_str_eq(s, "inc")) state->count++;
     if (kui_str_eq(s, "dec")) state->count--;
     /* The card's secondary press: open the menu where it landed. */
@@ -344,17 +338,17 @@ static int headless(void) {
                 continue;
             }
             KuiStr name = {0}, phase = {0};
-            ev_message(&ev, &name);
-            kui_value_as_str(kui_value_get(ev_data(&ev), KUI_STR("phase")), &phase);
+            kui_event_message(&ev, &name);
+            kui_value_as_str(kui_value_get(kui_event_data(&ev), KUI_STR("phase")), &phase);
             if (kui_str_eq(phase, "failed")) {
                 failed++;
                 continue;
             }
             saved++;
             double w = data_num(&ev, "width"), frames = data_num(&ev, "frames"), secs = -1;
-            kui_value_as_float(kui_value_get(ev_data(&ev), KUI_STR("seconds")), &secs);
+            kui_value_as_float(kui_value_get(kui_event_data(&ev), KUI_STR("seconds")), &secs);
             KuiStr path = {0};
-            kui_value_as_str(kui_value_get(ev_data(&ev), KUI_STR("path")), &path);
+            kui_value_as_str(kui_value_get(kui_event_data(&ev), KUI_STR("path")), &path);
             if (kui_str_eq(name, "shot")) right &= w == 800 && frames == 1;
             else if (kui_str_eq(name, "copy")) right &= w == 800 && path.len == 0;
             else right &= kui_str_eq(name, "rec") && w == 800 && frames == 1 && fabs(secs - 0.5) < 1e-9;
