@@ -827,6 +827,8 @@ package kui_c
 #assert(ROLE_CELL == 30)
 #assert(ROLE_COLUMN_HEADER == 31)
 #assert(ROLE_ROW_HEADER == 32)
+#assert(ROLE_PROGRESS == 33)
+#assert(ROLE_METER == 34)
 #assert(ORIENTATION_HORIZONTAL == 1)
 #assert(ORIENTATION_VERTICAL == 2)
 #assert(VALUE_NOW == 1)

@@ -315,6 +315,9 @@ pub const ROLES: &[&str] = &[
     "cell",
     "columnHeader",
     "rowHeader",
+    // Appended later: the read-only bars (backlog F267).
+    "progress",
+    "meter",
 ];
 
 /// How a composite container arranges its items
@@ -1478,7 +1481,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_ROLE,
         kind: Kind::Enum(ROLES),
         apply: Apply::SpecEnum(|s, i| s.role(role_idx(i))),
-        doc: "What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree — the decorative door, for what a reader need not hear: an icon beside the text that says the same, or a caption under the button it repeats. A text takes no `role` (it has no box), so `none` goes on the box around it; `ambiguous-name` points at it when a caption and its control share a name (backlog F140). Where the caption is all a control says, a `label` on the control that says what it does is the better answer. A `radio` belongs inside a `radioGroup` and a `tab` inside a `tabList`, labelled with what the choice is: the pair is a composite (`docs/adr/0007-composite-keyboard-patterns.md`) — one Tab stop for the set, the arrows, Home and End moving the choice inside it (each step is the item's click, so the choice follows focus), and a screen reader reading \"2 of 3\". A `radio` or `tab` with no container above it is a Tab stop of its own that no arrow moves, and the core warns (`item-outside-container`). `menu` holds `menuItem`s and `list` holds `listItem`s the same way.",
+        doc: "What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree — the decorative door, for what a reader need not hear: an icon beside the text that says the same, or a caption under the button it repeats. A text takes no `role` (it has no box), so `none` goes on the box around it; `ambiguous-name` points at it when a caption and its control share a name (backlog F140). Where the caption is all a control says, a `label` on the control that says what it does is the better answer. A `radio` belongs inside a `radioGroup` and a `tab` inside a `tabList`, labelled with what the choice is: the pair is a composite (`docs/adr/0007-composite-keyboard-patterns.md`) — one Tab stop for the set, the arrows, Home and End moving the choice inside it (each step is the item's click, so the choice follows focus), and a screen reader reading \"2 of 3\". A `radio` or `tab` with no container above it is a Tab stop of its own that no arrow moves, and the core warns (`item-outside-container`). `menu` holds `menuItem`s and `list` holds `listItem`s the same way. `progress` and `meter` are the read-only bars (backlog F267): their position is the value rows (`valueNow`, `valueMin`, `valueMax`, `valueText`), read and announced as a slider's are, and they take no focus; a `meter` is a level (a battery, a disk), a `progress` how far a task has got, and a `progress` with no `valueNow` is busy. The stock `progress` element draws one.",
     },
     PropDef {
         name: "label",
@@ -1534,28 +1537,28 @@ pub const PROPS: &[PropDef] = &[
         id: P_VALUE_NOW,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.value_now(v)),
-        doc: "A `slider` role's current value (the drawing stays yours; this is what assistive technology reads).",
+        doc: "A `slider`, `progress` or `meter` role's current value (the drawing stays yours; this is what assistive technology reads). A `progress` without one is busy without saying how far: indeterminate, which a reader says as such.",
     },
     PropDef {
         name: "valueMin",
         id: P_VALUE_MIN,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.value_min(v)),
-        doc: "A `slider` role's minimum.",
+        doc: "A `slider`, `progress` or `meter` role's minimum.",
     },
     PropDef {
         name: "valueMax",
         id: P_VALUE_MAX,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.value_max(v)),
-        doc: "A `slider` role's maximum.",
+        doc: "A `slider`, `progress` or `meter` role's maximum.",
     },
     PropDef {
         name: "valueText",
         id: P_VALUE_TEXT,
         kind: Kind::Str,
         apply: Apply::SpecStr(|s, v| s.value_text(v)),
-        doc: "What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is \"36 percent\" — so a value whose unit carries the meaning says it here: \"25 minutes\". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute.",
+        doc: "What a `slider`, `progress` or `meter` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is \"36 percent\" — so a value whose unit carries the meaning says it here: \"25 minutes\", \"3 of 8 files\". It replaces the number in the reading rather than joining it, and a nudge or a step of the task announces the new text. Meaningful on those three roles alone, like the three numbers; putting the reading in `label` instead renames the node on every change, which is the wrong attribute.",
     },
     PropDef {
         name: "valueStep",
@@ -2277,6 +2280,37 @@ pub const SLIDER_ROWS_LUA: &[&str] = &[
     "min_width",
     "max_width",
 ];
+/// The rows the stock progress bar reads (`widgets::progress_with`, backlog
+/// F267): the slider's, less what moves it — no step, no change message,
+/// no `disabled` — and `role`, which makes it a `meter`.
+pub const PROGRESS_ROWS_JSX: &[&str] = &[
+    "key",
+    "label",
+    "description",
+    "tooltip",
+    "role",
+    "valueNow",
+    "valueMin",
+    "valueMax",
+    "valueText",
+    "width",
+    "minWidth",
+    "maxWidth",
+];
+pub const PROGRESS_ROWS_LUA: &[&str] = &[
+    "key",
+    "label",
+    "description",
+    "tooltip",
+    "role",
+    "value_now",
+    "value_min",
+    "value_max",
+    "value_text",
+    "width",
+    "min_width",
+    "max_width",
+];
 
 pub const ELEMENTS: &[ElementDef] = &[
     ElementDef {
@@ -2431,6 +2465,18 @@ pub const ELEMENTS: &[ElementDef] = &[
         c: "`kui_slider`",
         odin: "`kui.slider`",
         doc: "The stock slider (`widgets::slider_with`, ADR 0034): a track, a fill to `valueNow` and a thumb, as wide as a menu (`width` sizes it), keyed by its `label`, which is also its accessible name. With `onChange` the core does the arithmetic: a press proposes the value under the pointer, a drag each new step, the arrows one `valueStep`, PageUp / PageDown ten, Home / End the ends, all clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step, as its `onChange` message with `change: {value, phase: \"move\" | \"end\"}` in it (ADR 0047). The value is proposed, never applied: the view stores it and declares it as `valueNow`. Its look is its spec, so the rows it reads are the value rows, the access rows and its width.",
+    },
+    ElementDef {
+        name: "progress",
+        jsx_own: &[],
+        lua_own: &[],
+        jsx_rows: Some(PROGRESS_ROWS_JSX),
+        lua_rows: Some(PROGRESS_ROWS_LUA),
+        jsx: "`<progress label valueNow valueMin valueMax valueText role width description tooltip/>`",
+        lua: "`progress { label=, value_now=, value_min=, value_max=, value_text=, role=, width=, … }`",
+        c: "`kui_progress`",
+        odin: "`kui.progress`",
+        doc: "The stock progress bar (`widgets::progress_with`, backlog F267): the slider's track and a fill to `valueNow` in `valueMin`..`valueMax` (0..100 unset), with no thumb, as wide as a menu (`width` sizes it), keyed by its `label`, which is also its accessible name. It is the `progress` role, read-only: a reader hears the label and the value (`valueText` where the number does not say it — \"3 of 8 files\"), and the new one each time the view declares another; it takes no focus and no press. With no `valueNow` it is busy — indeterminate to a reader, and drawn as a third of the track filled in its middle. `role=\"meter\"` makes it a meter, a level rather than a task's progress (a battery, a disk): drawn the same, read as a level indicator; any other role is ignored. Its look is its spec, so the rows it reads are the value rows, the access rows and its width.",
     },
     ElementDef {
         name: "image",

@@ -125,7 +125,8 @@
 //!   for spans; `tooltip("hint")` as a node, or `tooltip = "hint"` as a prop.
 //! - Controls: `button { label = }`, `checkbox`, `radio`, `switch`,
 //!   `radio_group { radio { }, ... }`, `slider { value_now =, value_min =,
-//!   value_max =, on_change = }`, `input { label =, value =, on_change =,
+//!   value_max =, on_change = }`, `progress { label =, value_now = }`
+//!   (read-only; `role = "meter"` for a level), `input { label =, value =, on_change =,
 //!   on_submit =, on_cancel = }` (single line with chrome), `edit { key =,
 //!   value = | initial =, on_change = }` (bare editor), `dropdown {
 //!   options =, current =, on_menu = }` (named `dropdown` because `select`
@@ -3942,6 +3943,39 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             widgets::slider_with(ui, &key, out.spec, out.tooltip.as_deref());
             Ok(())
         }
+        "progress" => {
+            // The slider's shape, read-only (backlog F267): keyed by
+            // `label`, the value rows, its width and `role`, which makes
+            // it a meter, read by name over `widgets::progress_spec`
+            // (`schema::PROGRESS_ROWS_LUA`).
+            let label: String = t.get("label")?;
+            let key: String = t
+                .get::<Option<String>>("key")?
+                .unwrap_or_else(|| label.clone());
+            let mut out = PropsOut::new();
+            out.spec = widgets::progress_spec(&ui.metrics()).label(label.as_str());
+            if let Some(hint) = t.get::<Option<String>>("tooltip")? {
+                out.apply_tooltip(&hint);
+            }
+            apply_named_rows(
+                ui,
+                t,
+                &[
+                    "description",
+                    "role",
+                    "value_now",
+                    "value_min",
+                    "value_max",
+                    "value_text",
+                    "width",
+                    "min_width",
+                    "max_width",
+                ],
+                &mut out,
+            )?;
+            widgets::progress_with(ui, &key, out.spec, out.tooltip.as_deref());
+            Ok(())
+        }
         other => Err(mlua::Error::runtime(format!("unknown node type '{other}'"))),
     };
     if !checked {
@@ -6652,6 +6686,46 @@ mod tests {
         assert_eq!(node.value.as_deref(), Some("\u{2022}".repeat(7).as_str()));
         assert_eq!(core.edit_text(node.key).as_deref(), Some("hunter2"));
         assert!(core.secure_input() && core.ime_off());
+    }
+
+    /// `progress { }` (backlog F267): the stock bar over its value rows,
+    /// `role = "meter"` a meter, and no `value_now` busy — and a row it
+    /// does not read (a slider's `on_change`) is warned about, not taken.
+    #[test]
+    fn progress_is_a_read_only_bar() {
+        let mut ext = LuaExtension::from_source(
+            "progress",
+            r#"
+                function view(env)
+                  return column {
+                    progress { label = "Upload", value_now = 3, value_max = 8,
+                               value_text = "3 of 8 files" },
+                    progress { label = "Battery", value_now = 80, role = "meter" },
+                    progress { label = "Connecting", on_change = { kind = "x" } },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let named = |core: &mut Core, name: &str| {
+            core.access_tree()
+                .nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some(name))
+                .cloned()
+                .expect(name)
+        };
+        let up = named(&mut core, "Upload");
+        assert_eq!(up.role, kui_core::Role::Progress);
+        assert_eq!((up.number, up.max), (Some(3.0), Some(8.0)));
+        assert_eq!(up.value.as_deref(), Some("3 of 8 files"));
+        assert_eq!(named(&mut core, "Battery").role, kui_core::Role::Meter);
+        let busy = named(&mut core, "Connecting");
+        assert_eq!((busy.role, busy.number), (kui_core::Role::Progress, None));
+        let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert_eq!(codes, ["unknown-prop"]);
     }
 
     /// Editors: autofocus, typing arrives as the `on_change` message with

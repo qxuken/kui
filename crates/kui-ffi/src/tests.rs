@@ -1686,6 +1686,50 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `kui_progress` (backlog F267): a progress bar reads its value bits
+    /// and text, `KUI_ROLE_METER` on the spec makes it a meter, and one
+    /// without `KUI_VALUE_NOW` is busy, crossing with no number. None takes
+    /// focus or offers a reader anything to do.
+    #[test]
+    fn a_progress_bar_crosses_as_a_read_only_bar() {
+        let ctx = kui_ctx_new();
+        let mut upload = unsafe { std::mem::zeroed::<KuiSpec>() };
+        upload.value_set = KUI_VALUE_NOW | KUI_VALUE_MAX;
+        upload.value_now = 3.0;
+        upload.value_max = 8.0;
+        upload.value_text = ks("3 of 8 files");
+        let mut battery = unsafe { std::mem::zeroed::<KuiSpec>() };
+        battery.role = role_code(kui_core::Role::Meter);
+        battery.value_set = KUI_VALUE_NOW;
+        battery.value_now = 80.0;
+        kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+        let up = kui_progress(ctx, ks("Upload"), &upload);
+        let bat = kui_progress(ctx, ks("Battery"), &battery);
+        let busy = kui_progress(ctx, ks("Connecting"), std::ptr::null());
+        kui_frame_finish(ctx);
+        assert!(up != 0 && bat != 0 && busy != 0);
+        let mut nodes = [unsafe { std::mem::zeroed::<KuiAccessNode>() }; 8];
+        assert_eq!(kui_access_tree(ctx, nodes.as_mut_ptr(), nodes.len()), 4);
+        let of = |k: u64| *nodes.iter().find(|n| n.key == k).expect("the bar");
+        let u = of(up);
+        assert_eq!(u.role, role_code(kui_core::Role::Progress));
+        assert_eq!(kstr(u.name).as_ref(), "Upload");
+        assert_eq!(kstr(u.value).as_ref(), "3 of 8 files");
+        assert_eq!(
+            u.flags & (KUI_ACCESS_HAS_NUMBER | KUI_ACCESS_HAS_MIN | KUI_ACCESS_HAS_MAX),
+            KUI_ACCESS_HAS_NUMBER | KUI_ACCESS_HAS_MAX
+        );
+        assert_eq!((u.value_now, u.value_max), (3.0, 8.0));
+        assert_eq!(u.actions & kui_core::AccessAction::Increment.bit(), 0);
+        let b = of(bat);
+        assert_eq!(b.role, role_code(kui_core::Role::Meter));
+        assert_eq!(b.value_now, 80.0);
+        let c = of(busy);
+        assert_eq!(c.role, role_code(kui_core::Role::Progress));
+        assert_eq!(c.flags & KUI_ACCESS_HAS_NUMBER, 0, "busy: no number");
+        kui_ctx_free(ctx);
+    }
+
     /// An editor's runs cross as rows with borrowed arrays, and a text
     /// request addresses them: select "world" by run positions, type
     /// over it, read the text back.

@@ -613,8 +613,8 @@ export interface GeneratedSpecProps {
   repeat?: 'normal' | 'reverse' | 'alternate' | 'alternateReverse';
   /** Draw this node only while its anchor — the nearest ancestor that tracks the pointer: an `onClick` row, a `hoverBg` card, a `hoverable` group header — is hovered (the pointer over it or anything inside it), holds a press begun inside it, or holds keyboard-visible focus inside it; and while focus of any kind is inside the node itself (ADR 0051). A row's secondary actions, shown for the row under the pointer with no `onHover` and no redraw of the view: the core decides it each frame as it decides `hoverBg`. Hidden is `opacity` 0, eased by a `transition`: the node keeps its room and its hit regions, and stays in the access tree and the Tab ring, so a control in it is there for the pointer that reaches it, the keyboard that tabs to it and a screen reader, and shows for each. With no anchor above it, it is always drawn and `reveal-without-anchor` says so. */
   revealOnHover?: boolean;
-  /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree — the decorative door, for what a reader need not hear: an icon beside the text that says the same, or a caption under the button it repeats. A text takes no `role` (it has no box), so `none` goes on the box around it; `ambiguous-name` points at it when a caption and its control share a name (backlog F140). Where the caption is all a control says, a `label` on the control that says what it does is the better answer. A `radio` belongs inside a `radioGroup` and a `tab` inside a `tabList`, labelled with what the choice is: the pair is a composite (`docs/adr/0007-composite-keyboard-patterns.md`) — one Tab stop for the set, the arrows, Home and End moving the choice inside it (each step is the item's click, so the choice follows focus), and a screen reader reading "2 of 3". A `radio` or `tab` with no container above it is a Tab stop of its own that no arrow moves, and the core warns (`item-outside-container`). `menu` holds `menuItem`s and `list` holds `listItem`s the same way. */
-  role?: 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab' | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog' | 'group' | 'textInput' | 'multilineTextInput' | 'line' | 'radioGroup' | 'menu' | 'menuItem' | 'terminal' | 'table' | 'row' | 'cell' | 'columnHeader' | 'rowHeader';
+  /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree — the decorative door, for what a reader need not hear: an icon beside the text that says the same, or a caption under the button it repeats. A text takes no `role` (it has no box), so `none` goes on the box around it; `ambiguous-name` points at it when a caption and its control share a name (backlog F140). Where the caption is all a control says, a `label` on the control that says what it does is the better answer. A `radio` belongs inside a `radioGroup` and a `tab` inside a `tabList`, labelled with what the choice is: the pair is a composite (`docs/adr/0007-composite-keyboard-patterns.md`) — one Tab stop for the set, the arrows, Home and End moving the choice inside it (each step is the item's click, so the choice follows focus), and a screen reader reading "2 of 3". A `radio` or `tab` with no container above it is a Tab stop of its own that no arrow moves, and the core warns (`item-outside-container`). `menu` holds `menuItem`s and `list` holds `listItem`s the same way. `progress` and `meter` are the read-only bars (backlog F267): their position is the value rows (`valueNow`, `valueMin`, `valueMax`, `valueText`), read and announced as a slider's are, and they take no focus; a `meter` is a level (a battery, a disk), a `progress` how far a task has got, and a `progress` with no `valueNow` is busy. The stock `progress` element draws one. */
+  role?: 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab' | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog' | 'group' | 'textInput' | 'multilineTextInput' | 'line' | 'radioGroup' | 'menu' | 'menuItem' | 'terminal' | 'table' | 'row' | 'cell' | 'columnHeader' | 'rowHeader' | 'progress' | 'meter';
   /** Turns this node and everything under it, in turns clockwise (0.25 is a quarter turn right), about its pivot — the centre unless `pivotX` / `pivotY` say — after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`). Paint-only: the node takes the room its upright self takes, nothing around it moves, `onLayout` reports the layout rect. Everything the subtree draws turns with it — backgrounds, borders, shadows, text, images, strokes, fragments — and so does what it clips: a child cut by a turned card's rounded corners stays inside them. Hit where drawn: a tilted card is grabbed on its tilted edge and a press in its box past its edge falls through; drag payloads stay in viewport px. The access rect is the bounding box. Nests by composition. Tweens with `transition` as one slot with `scale`, and an entrance, an exit or a keyframe stop may name it (`enter: { rotate: -0.02 }`, `keyframes: [{ rotate: 0 }, { rotate: 1 }]` spins a box). A float anchored to the parent turns with it; a viewport float does not. On a `path` this is the path's own turn (ADR 0041), which does not tween — wrap it in a box for one that does. Text under a turn leaves the pixel grid, as a turned mask does. `backdropBlur` under a turn blurs the upright box. */
   rotate?: LengthProp;
   /** The width of a table's `rules` in logical px; 1 when unset. */
@@ -661,15 +661,15 @@ export interface GeneratedSpecProps {
   textColor?: ColorProp;
   /** Animate sizing/colors/radius changes over this many ms — and, on a scroll container, the offset a reveal or a set_scroll moves it to (needs a stable key). */
   transition?: LengthProp;
-  /** A `slider` role's maximum. */
+  /** A `slider`, `progress` or `meter` role's maximum. */
   valueMax?: LengthProp;
-  /** A `slider` role's minimum. */
+  /** A `slider`, `progress` or `meter` role's minimum. */
   valueMin?: LengthProp;
-  /** A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). */
+  /** A `slider`, `progress` or `meter` role's current value (the drawing stays yours; this is what assistive technology reads). A `progress` without one is busy without saying how far: indeterminate, which a reader says as such. */
   valueNow?: LengthProp;
   /** How far one arrow key moves a `slider` role, and the grid a value the pointer sets snaps to (ADR 0034). Unset, a hundredth of the range. PageUp / PageDown move ten steps. Read by the core only where the slider declares `onChange`; reported to assistive technology either way. */
   valueStep?: LengthProp;
-  /** What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute. */
+  /** What a `slider`, `progress` or `meter` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes", "3 of 8 files". It replaces the number in the reading rather than joining it, and a nudge or a step of the task announces the new text. Meaningful on those three roles alone, like the three numbers; putting the reading in `label` instead renames the node on every change, which is the wrong attribute. */
   valueText?: string;
   /** Props by condition (ADR 0069): a list of entries, each the conditions it tests and the props it sets while every one holds — `{ width: { below: 700, band: 16 }, dark: true, gap: 8 }`. Every entry that matches applies, in list order, over the node's own props, so a later entry wins a prop an earlier one set; `hoverBg`, `pressedBg` and `focusBg` are entries ahead of the list. The conditions: the node's own `width` / `height` (`{ below, above, band }`, each a length or a `$length` token; `below` holds under it, `above` at or over it, and a range that holds keeps holding `band` past its threshold, so a size resting on one does not flicker); `window: { width, height }`, the same against the window's content size; `dark`, `light`, `reducedMotion` (`reduced_motion`), `contrast: "more"`, `platform` (`"macos"`, `"windows"`, `"linux"` or a list), `scale: { above }`; and the node's state, `hovered`, `pressed`, `focused`, `focusVisible`, `disabled`, `selected`, each true or false — hovered as `hoverBg` reads it, over the node or anything inside it or its hover group; and its hover group's state, `groupHovered`, `groupPressed`, `groupFocused`, `groupFocusVisible` (`group_hovered` and so on) — a member of the group under the pointer, pressed, holding focus, its focus shown — so a checkbox's mark rings while its row has the keyboard, the two sharing a `hoverGroup`; none holds for a node in no group (backlog C106). The core resolves them, so a view declares a responsive, themed, interactive box once and is not re-run for a resize, a theme switch or a hover: window, environment and state entries as the node opens, before its `transition` eases what they set (layout props jump unless `slide`; under reduced motion everything jumps); own-size entries inside layout, a width entry once the node's width is final and before its children are laid across it, a height entry with one more layout pass on the frame its match changes — no frame is drawn with a stale match. An entry over the node's own size sets the layout of its children only — `dir`, `gap`, `crossGap`, padding, `wrapChildren`, `mainAlign`, `crossAlign`, `minColumn`, and `hidden` as the list of the keyed children it hides (`hidden: ["chooser"]`) — and makes the node a container in that axis: a `fit` size there is refused (`query-on-fit`) and the node takes the room its parent offers. Other entries set any box prop but handlers, access props, keys and children. What an entry may not set is left out with `rule-prop-refused`, the rest of it standing. `onQuery` tells the view when its own-size and window matches change. */
   when?: WhenEntry[];
@@ -957,6 +957,34 @@ export interface SliderProps
   onChange?: HandlerMsg<WithSliderChange> | null;
 }
 
+/** The stock progress bar (backlog F267): the slider's track and a fill to
+ *  `valueNow` in `valueMin`..`valueMax` (0..100 unset), read-only. A reader
+ *  hears `label` and the value (`valueText` where the number does not say
+ *  it), and the new one each time the view declares another; it takes no
+ *  focus. Without `valueNow` it is busy. `role="meter"` makes it a level
+ *  (a battery, a disk) rather than a task's progress. `label` is its name
+ *  and, unless `key` says otherwise, its key; the rows it reads are these
+ *  (`PROGRESS_ROWS_JSX` in schema.rs). */
+export interface ProgressProps
+  extends Keyed,
+    Pick<
+      GeneratedSpecProps,
+      | 'label'
+      | 'description'
+      | 'valueNow'
+      | 'valueMin'
+      | 'valueMax'
+      | 'valueText'
+      | 'width'
+      | 'minWidth'
+      | 'maxWidth'
+    >,
+    Pick<CustomSpecProps, 'tooltip'> {
+  label: string;
+  /** `meter` for a level; anything else is a progress bar. */
+  role?: 'progress' | 'meter';
+}
+
 /** A container of `<radio>`s (docs/adr/0034-stock-controls-over-the-roles.md):
  *  one Tab stop whose arrows, Home and End move the choice and press the
  *  radio they land on, so radios whose `onClick` each set the choice
@@ -1042,6 +1070,7 @@ export declare namespace JSX {
     switch: ToggleProps;
     radioGroup: RadioGroupProps;
     slider: SliderProps;
+    progress: ProgressProps;
     edit: EditProps;
     /** The stock single-line field with its chrome (`widgets::text_input`):
      *  `label` is the key and the accessible name both, `initial` the seed

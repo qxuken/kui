@@ -238,6 +238,10 @@ mod imp {
             Role::Cell => AkRole::Cell,
             Role::ColumnHeader => AkRole::ColumnHeader,
             Role::RowHeader => AkRole::RowHeader,
+            // Read-only bars (backlog F267): with no number a progress
+            // indicator is busy (AT-SPI's indeterminate state).
+            Role::Progress => AkRole::ProgressIndicator,
+            Role::Meter => AkRole::Meter,
         }
     }
 
@@ -524,6 +528,45 @@ mod imp {
                 .find(|n| n.role() == AkRole::Button)
                 .expect("a Button");
             assert_eq!((button.label(), button.value()), (Some("Save"), None));
+        }
+
+        /// The read-only bars (backlog F267): a progress bar is AccessKit's
+        /// progress indicator with its numbers, a busy one carries none —
+        /// AT-SPI's indeterminate — and a meter is a meter.
+        #[test]
+        fn a_progress_bar_is_a_progress_indicator() {
+            use kui_core::Role;
+            let mut core = Core::new();
+            let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+            let bar = |role, label| NodeSpec::row().role(role).label(label).size(50.0, 4.0);
+            ui.leaf_keyed(
+                "a",
+                bar(Role::Progress, "Upload").value_now(3.0).value_max(8.0),
+            );
+            ui.leaf_keyed("b", bar(Role::Progress, "Connecting"));
+            ui.leaf_keyed("c", bar(Role::Meter, "Battery").value_now(80.0));
+            ui.finish();
+            let update = tree_update(core.access_tree(), 1.0, &[]);
+            let named = |name| {
+                update
+                    .nodes
+                    .iter()
+                    .map(|(_, n)| n)
+                    .find(|n| n.label() == Some(name))
+                    .expect(name)
+            };
+            let up = named("Upload");
+            assert_eq!(up.role(), AkRole::ProgressIndicator);
+            assert_eq!(
+                (up.numeric_value(), up.max_numeric_value()),
+                (Some(3.0), Some(8.0))
+            );
+            let busy = named("Connecting");
+            assert_eq!(
+                (busy.role(), busy.numeric_value()),
+                (AkRole::ProgressIndicator, None)
+            );
+            assert_eq!(named("Battery").role(), AkRole::Meter);
         }
 
         /// UIA's Expand and Collapse reach the node as the click that

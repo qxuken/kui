@@ -203,6 +203,8 @@ scene_stock_controls :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			kui.radio(ui, "Dark", true, msg("dark"))
 		}
 		kui.toggle(ui, "Wi-Fi", true, msg("wifi"))
+		kui.progress(ui, "Upload", 3, hi = 8, spec = {value_text = "3 of 8 files"})
+		kui.progress(ui, "Battery", 80, spec = {role = .Meter})
 	}
 }
 
@@ -2310,6 +2312,7 @@ ROLE_NAMES := [?]string {
 	"multilineTextInput", "scrollView", "line",
 	"radioGroup", "menu", "menuItem", "terminal", "passwordInput",
 	"table", "row", "cell", "columnHeader", "rowHeader",
+	"progress", "meter",
 }
 
 role_name :: proc(role: kui.Role) -> string {

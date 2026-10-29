@@ -1,5 +1,6 @@
 //! Stock widgets built from the primitives: buttons, toggles, text input,
-//! select, slider, splitter, tooltips, menus, a titlebar and virtual lists.
+//! select, slider, progress bar, splitter, tooltips, menus, a titlebar and
+//! virtual lists.
 //!
 //! Every widget here is a plain function over a [`Ui`] that opens ordinary
 //! nodes with ordinary [`NodeSpec`]s; there is no widget trait and no
@@ -1385,6 +1386,90 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
                         ),
                 );
             });
+        });
+        if let Some(hint) = hint
+            && ui.is_hovered(node)
+        {
+            hover_hint(ui, hint);
+        }
+    })
+}
+
+// -- Progress ---------------------------------------------------------------
+
+/// The stock progress bar's spec: a row as wide as a menu and as tall as
+/// the slider, so the two line up in a form, its track across the middle.
+/// Not padded as the slider is: there is no thumb to hang off the ends.
+pub fn progress_spec(m: &Metrics) -> NodeSpec {
+    NodeSpec::row()
+        .size(m.menu_width, control_box(m))
+        .cross_align(Align::Center)
+}
+
+/// A progress bar named `label`, at `value` in `min..=max`, or busy with
+/// no value (`None`): how far a task has got, which the view declares
+/// again as the task moves on (backlog F267).
+pub fn progress(ui: &mut Ui<'_>, label: &str, value: Option<f32>, min: f32, max: f32) -> Key {
+    let m = ui.metrics();
+    let mut spec = progress_spec(&m).value_min(min).value_max(max);
+    if let Some(v) = value {
+        spec = spec.value_now(v);
+    }
+    progress_with(ui, label, spec, None)
+}
+
+/// A progress bar with its spec in the caller's hands: [`progress_spec`]
+/// plus the value rows (`value_now`, `value_min`, `value_max`,
+/// `value_text`), `description`, a width, and `hint`, the tooltip drawn
+/// while it is hovered. Keyed by `label`, which is its accessible name
+/// unless the spec carries a `label` of its own. The role is
+/// [`Role::Progress`] unless the spec declares [`Role::Meter`], which
+/// draws the same and reads as a level. What `<progress>` and its Lua and
+/// C doors lower to.
+///
+/// It takes no focus and no press: a reader hears it where it reads it,
+/// and the value it says is the one the view last declared. With no
+/// `value_now` it is busy, and draws a third of the track filled in its
+/// middle — still, since a bar that moves on its own would wake every
+/// frame for as long as the task takes.
+pub fn progress_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&str>) -> Key {
+    let t = ui.theme();
+    let node = ui.child_key(label);
+    let ax = spec.access();
+    let role = match ax.role {
+        Some(Role::Meter) => Role::Meter,
+        _ => Role::Progress,
+    };
+    // `None` for busy; a range that is not one fills nothing. The
+    // slider's arithmetic, so the two fill alike at one value.
+    let fraction = ax.value_now.map(|now| {
+        crate::slider::SliderRange::of(ax).map_or(0.0, |r| {
+            ((crate::slider::exact(now) - r.min) / (r.max - r.min)).clamp(0.0, 1.0) as f32
+        })
+    });
+    let named = ax.label.is_some();
+    let mut spec = described(spec.role(role), hint);
+    own_hint(&mut spec, hint);
+    if !named {
+        spec = spec.label(label);
+    }
+    ui.with_keyed(label, spec, |ui| {
+        let mut track = NodeSpec::row()
+            .grow_width()
+            .height(4.0)
+            .radius(2.0)
+            .bg(t.border_strong);
+        if fraction.is_none() {
+            track = track.main_align(Align::Center);
+        }
+        ui.with(track, |ui| {
+            ui.leaf(
+                NodeSpec::row()
+                    .width(Sizing::Percent(fraction.unwrap_or(1.0 / 3.0)))
+                    .grow_height()
+                    .radius(2.0)
+                    .bg(t.accent),
+            );
         });
         if let Some(hint) = hint
             && ui.is_hovered(node)

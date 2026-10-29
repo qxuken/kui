@@ -246,6 +246,21 @@ slider :: proc(ui: ^Ui, label: string, value, lo, hi: f32, msg: any = nil, spec:
 	return c.slider(ui, label, &cs)
 }
 
+// A progress bar at value in [lo, hi], read-only: a reader hears the value
+// the view declares, and the new one each frame it moves on. A nil value is
+// busy. spec.role = .Meter makes it a level (a battery, a disk) rather than
+// a task's progress; spec.value_text says the reading where the number does
+// not ("3 of 8 files"). Backlog F267.
+progress :: proc(ui: ^Ui, label: string, value: Maybe(f32), lo: f32 = 0, hi: f32 = 100, spec: Spec = {}) -> u64 {
+	s := spec
+	s.value_now, s.value_min, s.value_max = value, lo, hi
+	cs: c.Spec
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	spec_to_c(s, &cs, &scratch)
+	return c.progress(ui, label, &cs)
+}
+
 // A one-line text field, keyed by label; read it with edit_text. It
 // reports on its key with no message of the app's: an edit as {change =
 // {text}} (kui.With_Edit_Change), Enter and Escape as Ev.event "submit" and

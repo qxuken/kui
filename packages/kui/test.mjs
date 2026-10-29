@@ -131,7 +131,7 @@ const READBACK = {
   onButton: (n) => n.events.button?.kind === 't',
   onLayout: (n) => n.events.layout?.kind === 't',
   modal: (n) => n.events.modal?.kind === 't',
-  role: (n) => n.role === 'rowHeader',
+  role: (n) => n.role === 'meter',
 };
 
 // Every prop writes at least its own id, so declaring one has to change the
@@ -5151,6 +5151,8 @@ const SCENE_TREES = {
           el('radio', { checked: true, onClick: { kind: 'dark' } }, ['Dark']),
         ]),
         el('switch', { checked: true, onClick: { kind: 'wifi' } }, ['Wi-Fi']),
+        el('progress', { label: 'Upload', valueNow: 3, valueMax: 8, valueText: '3 of 8 files' }),
+        el('progress', { label: 'Battery', valueNow: 80, role: 'meter' }),
       ]),
     ]),
   // `conformance::build_table` (ADR 0033): a fit header row of two bare
@@ -9643,6 +9645,35 @@ test('<slider> proposes values from the keys, snapped to its step, and needs a l
   assert.equal(evs[0].payload.change.phase, 'end');
   assert.equal(evs[0].payload.kind, 'gain', 'in the onChange message');
   assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('slider', { valueNow: 1 })])), /needs a label/);
+});
+
+test('<progress> is a read-only bar: its value read, a meter by its role, busy without a value (F267)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const view = (done) => box({ pad: 10, gap: 8 }, [
+    el('progress', { label: 'Upload', valueNow: done, valueMax: 8, valueText: `${done} of 8 files` }),
+    el('progress', { label: 'Battery', valueNow: 80, role: 'meter' }),
+    el('progress', { label: 'Connecting', onChange: { kind: 'x' } }),
+  ]);
+  ctx.frame(320, 240, 1, view(3));
+  const named = (name) => ctx.accessTree().nodes.find((n) => n.name === name);
+  const up = named('Upload');
+  assert.equal(up.role, 'progress');
+  assert.equal(up.valueNow, 3);
+  assert.equal(up.valueMax, 8);
+  assert.equal(up.value, '3 of 8 files');
+  assert.ok(!up.actions.includes('increment'), JSON.stringify(up.actions));
+  assert.equal(named('Battery').role, 'meter');
+  const busy = named('Connecting');
+  assert.equal(busy.role, 'progress');
+  assert.equal(busy.valueNow, null, 'busy: no number');
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['unknown-prop'], 'onChange is no row of its');
+  // The next value is the next reading: what a reader is told.
+  ctx.frame(320, 240, 1, view(4));
+  assert.equal(named('Upload').value, '4 of 8 files');
+  ctx.key('tab');
+  assert.equal(ctx.accessTree().focus ?? null, null, 'no Tab stop');
+  assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('progress', { valueNow: 1 })])), /needs a label/);
 });
 
 test('<select> is the stock select: the click opens the menu under it, a row is one menu message on the field (F73)', () => {

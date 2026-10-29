@@ -988,6 +988,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_switch_with",
             "kui_radio_group_open",
             "kui_slider",
+            "kui_progress",
             "kui_image",
             "kui_image_with",
             "kui_fragment",

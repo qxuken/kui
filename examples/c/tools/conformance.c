@@ -100,6 +100,7 @@ static const char *role_name(uint32_t role) {
         "multilineTextInput", "scrollView", "line",
         "radioGroup", "menu", "menuItem", "terminal", "passwordInput",
         "table", "row", "cell", "columnHeader", "rowHeader",
+        "progress", "meter",
     };
     return role < sizeof names / sizeof *names ? names[role] : "?";
 }
@@ -312,6 +313,18 @@ static void conf_stock_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_radio(ui, KUI_STR("Dark"), &on, conf_kind("dark"));
     kui_close(ui);
     kui_switch(ui, KUI_STR("Wi-Fi"), &on, conf_kind("wifi"));
+    KuiSpec upload = {
+        .value_set = KUI_VALUE_NOW | KUI_VALUE_MAX,
+        .value_now = 3, .value_max = 8,
+        .value_text = KUI_STR("3 of 8 files"),
+    };
+    kui_progress(ui, KUI_STR("Upload"), &upload);
+    KuiSpec battery = {
+        .role = KUI_ROLE_METER,
+        .value_set = KUI_VALUE_NOW,
+        .value_now = 80,
+    };
+    kui_progress(ui, KUI_STR("Battery"), &battery);
     kui_close(ui);
 }
 

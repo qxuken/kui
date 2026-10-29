@@ -557,6 +557,69 @@ pub extern "C" fn kui_slider(ptr: *mut KuiCtx, label: KuiStr, spec: *const KuiSp
     })
 }
 
+/// The stock progress bar, named and keyed by `label` (backlog F267).
+/// Reads the value fields (`value_now` / `value_min` / `value_max` by
+/// their `KUI_VALUE_*` bits, `value_text`), `width` / `min_w` / `max_w`
+/// where set, `label` (a name other than the key), `description`,
+/// `tooltip`, and `role`, of which only `KUI_ROLE_METER` means anything:
+/// a meter rather than a progress bar. Without `KUI_VALUE_NOW` it is busy.
+/// Its key.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_progress(ptr: *mut KuiCtx, label: KuiStr, spec: *const KuiSpec) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let label = kstr(label);
+        let metrics = *c.core().metrics();
+        let mut node = kui_core::widgets::progress_spec(&metrics);
+        let mut hint = None;
+        if let Some(s) = unsafe { spec.as_ref() } {
+            if let Some(h) = opt_str(s.tooltip) {
+                node = node.apply_tooltip(&h);
+                hint = Some(h);
+            }
+            if let Some(l) = opt_str(s.label) {
+                node = node.label(l.as_ref());
+            }
+            if let Some(d) = opt_str(s.description) {
+                node = node.description(d.as_ref());
+            }
+            if s.width.tag != 0 {
+                node = node.width(sizing_of(s.width));
+            }
+            if s.min_w != 0.0 {
+                node = node.min_width(min_of(s.min_w));
+            }
+            if s.max_w > 0.0 {
+                node = node.max_width(s.max_w);
+            }
+            if s.value_set & KUI_VALUE_NOW != 0 {
+                node = node.value_now(s.value_now);
+            }
+            if s.value_set & KUI_VALUE_MIN != 0 {
+                node = node.value_min(s.value_min);
+            }
+            if s.value_set & KUI_VALUE_MAX != 0 {
+                node = node.value_max(s.value_max);
+            }
+            if let Some(t) = opt_str(s.value_text) {
+                node = node.value_text(t.into_owned());
+            }
+            if role_of_code(s.role) == Some(kui_core::Role::Meter) {
+                node = node.role(kui_core::Role::Meter);
+            }
+        }
+        kui_core::widgets::progress_with(
+            &mut kui_core::Ui::wrap(c.core()),
+            &label,
+            node,
+            hint.as_deref(),
+        )
+        .0
+    })
+}
+
 /// An editable text node keyed by `label`, seeded with `initial` the
 /// first time it is seen; the core keeps its buffer, caret and undo
 /// history across frames. `flags` are `KUI_EDIT_MULTILINE`,
