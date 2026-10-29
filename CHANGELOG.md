@@ -21,6 +21,120 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.72 (unreleased)
+
+**What breaks.**
+
+- Node's frame protocol is v29 (backlog F267: `<progress>` is a new op):
+  an addon built before it refuses the new encoder, as at every protocol
+  bump. Install the two together.
+- `pack-ffi.nu bundle --partial` writes only the per-platform archives
+  (backlog F268): a script that took `kui-c-<version>.tar.gz` from a
+  partial run finds `kui-c-<version>-<platform>.tar.gz` there. The
+  release's own names are unchanged.
+
+Nothing else breaks: the C ABI stays 42 (two role constants and new
+functions; no struct moved).
+
+### Fixed
+
+- **A release carries its own runners only** (backlog F268). alpha.71's
+  release has alpha.68's and alpha.70's `kui-<version>-<platform>` archives
+  beside its own: the build legs cached `target`, `target/pack` with it,
+  and the uploads took every version's by their globs. The cache leaves
+  `target/pack` out, and each leg clears it before packing.
+
+- **`kui_glfw.h` and `kui_sdl3.h` compile as C++.** Their key forwarders
+  (since F239) built strings with compound literals, which clang takes in
+  C++ as an extension and MSVC's C++ refuses. `kui_wgpu.h` and kui.h's new
+  message helpers are written the same way: plain C that a C++17 host
+  includes without a warning under `-pedantic`.
+
+### Added
+
+- **kui's renderer for a host with its own WebGPU device** (backlog F263,
+  from the UI library comparison). Every wgpu host copied the same ~200
+  lines out of the reference host — the bind group, the pipeline from the
+  instance layout, the blend, the samplers, the atlas uploaded by its
+  dirty rect, the growing instance buffer. `kui_wgpu.h` beside `kui.h`,
+  header-only against `webgpu.h` (wgpu-native's or Dawn's), and Odin's
+  `kui/wgpu` on `vendor:wgpu` are three calls:
+  `kui_wgpu_init(r, device, queue, format, KUI_WGSL_SINGLE or _DUAL)`,
+  `kui_wgpu_draw(r, ctx, pass)` into a render pass the host began (its
+  clear and its own passes stay its own), and `kui_wgpu_free`. The dual
+  shader blends per channel for subpixel text, on a device made with
+  dual-source blending. Texture-backed images, registered fragments,
+  backdrop blur and opacity groups are left out and draw nothing. The C
+  pack carries the header; the reference hosts in C and Odin draw through
+  it and check their pixels with both shaders.
+
+- **A C host reads a message by its name, and builds one with a field in
+  one call** (backlogs F264 and F266). A message that is not a map
+  arrives wrapped (`kui_value_str("save")` as `{tag:"save"}`, ADR 0047),
+  which kui.h had said only in a note, and the reader every C example
+  used lived outside the pack. kui.h's new "Messages" section, header-only:
+  `kui_event_message(ev, &name)` reads a bare string, a map's `kind` or a
+  wrapped `tag`; `kui_event_data(ev)` is the event's field;
+  `kui_msg(kind)` and `kui_msg_int(kind, field, n)` build the `{kind, ...}`
+  map every binding's messages take; `KUI_BOX_CLICK_MSG(ctx, label, msg,
+  ...)` is `KUI_BOX_CLICK` with any message. `kui_poll_event` says what a
+  payload is for each shape.
+
+- **`kui_glfw.h` and `kui_sdl3.h` forward the pointer as well as keys**
+  (backlog F265): the cursor, the pointer leaving the window, and every
+  button through `kui_input_mouse_button`, clicks counted the way kui_run
+  counts them (GLFW by time and distance, SDL from its own count). The
+  scroll goes to `kui_input_wheel` as lines, or on macOS a trackpad's
+  points to `kui_input_scroll_gesture` held to their axis, gestures begun
+  after kui_run's 0.2 s pause. The state lives in a struct the host owns
+  (`KuiGlfw`, `KuiSdl3`). `kui_glfw_install` sets every GLFW callback,
+  chained after the host's and leaving its window user pointer alone;
+  `kui_sdl3_event` forwards every SDL event the header knows in one call.
+  Odin's `kui/glfw` and `kui/sdl3` gain the same procs.
+
+- **A progress bar and a meter have roles** (backlog F267): `progress`
+  and `meter` (C `KUI_ROLE_PROGRESS`, `KUI_ROLE_METER`; Odin `.Progress`,
+  `.Meter`), appended to the role list. They read `valueNow` /
+  `valueMin` / `valueMax` and `valueText` as a slider does, so a reader
+  hears the value and each new one, and take no focus. A `progress` with
+  no `valueNow` is busy, read as indeterminate everywhere; a `meter` is a
+  level (a battery, a disk) — a level indicator on macOS and Linux, a
+  meter on Windows. A stock `progress` draws one: the slider's track and
+  a fill, or a still middle third while busy; `role="meter"` makes it a
+  meter. `<progress label valueNow ...>`, Lua `progress { }`, C
+  `kui_progress(ctx, label, spec)`, Odin `kui.progress(ui, label, value,
+  lo, hi)`, Rust `widgets::progress` / `progress_with`. The
+  `slider-value-out-of-range` warning covers both.
+
+- **The C and Odin libraries come per platform** (backlog F268):
+  `kui-c-<version>-<platform>.tar.gz` and `kui-odin-<version>-<platform>.tar.gz`
+  (`.zip` for win32-x64), 55 MB for darwin-arm64 where the one archive of
+  all four was 265 MB to download and 978 MB unpacked. The layout is the
+  all-platform archive's with one `lib/<platform>/`, so its pkg-config
+  files, Odin link block and README lines are unchanged, and its README
+  spells out its platform's paths. `kui-c-<version>.tar.gz` and
+  `kui-odin-<version>.tar.gz` stay for a project that vendors every
+  target; an Odin package for several targets comes from there, since
+  each per-platform `kui_c.odin` links only its own.
+
+- **A screen reader reads a host's own window** (backlog F269). A game or
+  tool that brings its own window linked a kui whose access tree never
+  reached the platform: VoiceOver found the window's traffic lights and
+  title and nothing kui drew. `kui_access_attach(ctx, native_handle)` puts
+  AccessKit's platform adapter on that window — an NSView or NSWindow on
+  macOS, an HWND on Windows (attached before the window is first shown),
+  AT-SPI on Linux — and the host loop's own calls do the rest: a reader's
+  press, focus or edit arrives as the input it is at the next
+  `kui_input_*`, `kui_poll_event` or `kui_frame_begin`; `kui_frame_finish`
+  sends the tree when it changed and delivers announcements;
+  `env.system.assistive` reads listening once a client asks; a loop asleep
+  in `glfwWaitEvents` wakes for that first ask on macOS and Windows. Odin
+  has `kui.access_attach`, Rust `kui_access::HostBridge` in the new
+  `kui-access` crate, whose translation is now also what `kui_run`'s
+  windows bridge through (their audit unchanged, 106/106). It is
+  kui-ffi's `access` feature, on by default and kept in the runner-less
+  library. An island's context (ADR 0076) is not bridged yet.
+
 ## 0.1.0-alpha.71 (2026-10-28)
 
 **What breaks.**

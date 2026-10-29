@@ -151,7 +151,7 @@
 //! - Drawing: [`kui_draw_data`], [`KuiDrawData`], [`KuiQuad`],
 //!   [`kui_set_subpixel_text`].
 //! - Widgets: [`kui_button`], [`kui_text_input`], [`kui_checkbox`],
-//!   [`kui_slider`], [`kui_select`].
+//!   [`kui_slider`], [`kui_progress`], [`kui_select`].
 //! - Theme and metrics: [`kui_env_set_system`], [`kui_theme`],
 //!   [`KuiTheme`], [`kui_metrics`].
 //! - Windows: [`kui_window_declare`], [`kui_window_declare_with`],
@@ -171,8 +171,11 @@
 //!
 //! - `runner` (on by default): `kui_run` and `kui_run_with`, the windowed
 //!   runner from `kui-native`. A host that owns its own window and
-//!   renderer builds with `--no-default-features` and ships less than
-//!   half the library.
+//!   renderer builds with `--no-default-features --features access` and
+//!   ships less than half the library.
+//! - `access` (on by default): the platform accessibility bridge a host
+//!   attaches to its own window, [`kui_access_attach`] (backlog F269),
+//!   through `kui-access`. Without it that call answers false.
 //!
 //! The book: <https://kui-book.qxuken.dev>. Repository:
 //! <https://github.com/qxuken/kui> (design records live under `docs/adr`
@@ -335,6 +338,7 @@ fn ctx_around(mut owned: Box<Core>) -> *mut KuiCtx {
             captures: None,
             perf_trace: Vec::new(),
             waker: std::ptr::null(),
+            access: None,
         }))
     }
 }
@@ -1070,7 +1074,9 @@ pub extern "C" fn kui_owed(ptr: *mut KuiCtx) -> u32 {
             (o.transition as u32 * KUI_OWED_TRANSITION)
                 | (o.cycle as u32 * KUI_OWED_CYCLE)
                 | (o.depart as u32 * KUI_OWED_DEPART)
-                | (o.requested as u32 * KUI_OWED_REQUESTED)
+                // A screen reader's request waiting, or its first tree
+                // (backlog F269), is a frame asked for.
+                | ((o.requested || access_owed(c)) as u32 * KUI_OWED_REQUESTED)
                 | (o.autoscroll as u32 * KUI_OWED_AUTOSCROLL)
                 | (o.scroll as u32 * KUI_OWED_SCROLL)
         })

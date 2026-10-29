@@ -890,8 +890,9 @@ fn theme_struct_covers_every_role() {
 
 /// The header's prototypes, by name: the first `kui_` word of every
 /// uncommented line that starts with a return type and goes on to `(`.
-/// The plugin's own exports (`kui_ext_*`) and the header's one static
-/// inline (`kui_str_eq`) are not the library's.
+/// The plugin's own exports (`kui_ext_*`) and the header's static
+/// inlines (`kui_str_eq`, the message readers and constructors) are not
+/// the library's.
 fn header_prototypes() -> std::collections::BTreeSet<&'static str> {
     let header = include_str!("../include/kui.h");
     let mut declared = std::collections::BTreeSet::new();
@@ -914,7 +915,7 @@ fn header_prototypes() -> std::collections::BTreeSet<&'static str> {
         if !line[idx + name.len()..].trim_start().starts_with('(') {
             continue;
         }
-        if name.starts_with("kui_ext_") || name == "kui_str_eq" {
+        if name.starts_with("kui_ext_") || line.starts_with("static inline") {
             continue;
         }
         declared.insert(name);
@@ -988,6 +989,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_switch_with",
             "kui_radio_group_open",
             "kui_slider",
+            "kui_progress",
             "kui_image",
             "kui_image_with",
             "kui_fragment",
@@ -1038,6 +1040,12 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_abi_version",
             "kui_run",
             "kui_run_with",
+            // The platform's accessibility bridge on a host's own window
+            // (backlog F269): plumbing a host does once, as kui_run is,
+            // and no verb a view or a driver has. Rust's is
+            // `kui_access::HostBridge`; Node has no host path to need it.
+            "kui_access_attach",
+            "kui_access_detach",
             // What frees the decoder's pixels: C's half of a Rust `Vec`
             // going out of scope, so no verb.
             "kui_pixels_free",

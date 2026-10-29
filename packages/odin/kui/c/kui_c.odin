@@ -326,6 +326,8 @@ ROLE_ROW :: 29
 ROLE_CELL :: 30
 ROLE_COLUMN_HEADER :: 31
 ROLE_ROW_HEADER :: 32
+ROLE_PROGRESS :: 33
+ROLE_METER :: 34
 
 ORIENTATION_HORIZONTAL :: 1
 ORIENTATION_VERTICAL :: 2
@@ -1539,6 +1541,8 @@ foreign lib {
 	input_access :: proc(ctx: ^Ctx, key: u64, action: u32, value: string) ---
 	access_runs :: proc(ctx: ^Ctx, key: u64, out: [^]AccessRun, cap: uint) -> uint ---
 	input_access_text :: proc(ctx: ^Ctx, key: u64, action: u32, anchor_run: u64, anchor_char: u32, focus_run: u64, focus_char: u32, value: string) ---
+	access_attach :: proc(ctx: ^Ctx, native_handle: rawptr) -> bool ---
+	access_detach :: proc(ctx: ^Ctx) ---
 	button :: proc(ctx: ^Ctx, label: string, payload: ^Value) ---
 	button_with :: proc(ctx: ^Ctx, text: string, spec: ^Spec, payload: ^Value) ---
 	titlebar :: proc(ctx: ^Ctx, title: string) ---
@@ -1561,6 +1565,7 @@ foreign lib {
 	switch_with :: proc(ctx: ^Ctx, text: string, spec: ^Spec, label: ^TextStyle, payload: ^Value) -> u64 ---
 	radio_group_open :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
 	slider :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
+	progress :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
 	text_edit :: proc(ctx: ^Ctx, label: string, initial: string, style: ^TextStyle, flags: u32, spec: ^Spec) -> u64 ---
 	text_edit_placeholder :: proc(ctx: ^Ctx, label: string, initial: string, style: ^TextStyle, flags: u32, placeholder: string, spec: ^Spec) -> u64 ---
 	edit_text :: proc(ctx: ^Ctx, key: u64, out: ^string) -> bool ---

@@ -503,7 +503,9 @@ extern "C" {
  * KuiDrawData appends bounds (152 bytes on 64-bit, from 136), where the
  * frame drew. kui_ctx_new_in, a context in another's session, is new
  * (backlog F237). Recompile; zeroed, a box counts as derived, and a caller
- * that reserved the old size is filled to it.
+ * that reserved the old size is filled to it. Still 42 with
+ * KUI_ROLE_PROGRESS and KUI_ROLE_METER, new constants appended to the
+ * roles, and kui_progress, a new function (backlog F267): no struct moved.
  */
 #define KUI_ABI_VERSION 42u
 uint32_t kui_abi_version(void);
@@ -1054,7 +1056,7 @@ typedef struct KuiSpec {
      * accessible name (empty = none; a button, link, tab or heading is then
      * named by the text inside it, an image or icon button has no name and
      * the core warns). checked: a checkbox / radio / switch role's on
-     * state (selected / expanded are below). value_*: a slider role's position and range, each present
+     * state (selected / expanded are below). value_*: a slider, progress or meter role's position and range, each present
      * when its KUI_VALUE_* bit is in value_set. */
     uint32_t role;
     KuiStr label;
@@ -1220,7 +1222,7 @@ typedef struct KuiSpec {
      * is what a keymap wants - one that heard both halves would run every
      * binding twice. */
     uint32_t key_up;
-    /* What a slider role's position reads as, empty for none (ARIA's
+    /* What a slider, progress or meter role's position reads as, empty for none (ARIA's
      * aria-valuetext). Without one a reader has only value_now and the
      * range and says a percentage - 25 in [5..60] is "36 percent" - so a
      * value whose unit carries the meaning says it here: "25 minutes". It
@@ -1733,8 +1735,10 @@ enum {
  * KUI_ROLE_NONE through KUI_ROLE_GROUP, plus KUI_ROLE_TEXT_INPUT,
  * KUI_ROLE_MULTILINE_TEXT_INPUT and KUI_ROLE_LINE (which an app that
  * draws its own text declares to make a key sink an editor and to mark
- * that editor's lines) and the three composite roles appended later,
- * KUI_ROLE_RADIO_GROUP through KUI_ROLE_MENU_ITEM. A role can only be
+ * that editor's lines), the three composite roles appended later,
+ * KUI_ROLE_RADIO_GROUP through KUI_ROLE_MENU_ITEM, the table's,
+ * KUI_ROLE_TABLE through KUI_ROLE_ROW_HEADER, and the read-only bars,
+ * KUI_ROLE_PROGRESS and KUI_ROLE_METER. A role can only be
  * appended (KUI_ROLE_* is the position in Rust's Role::ALL plus one, and
  * the Lua and Node wires carry the same index), so what is declarable is
  * a list rather than a range. The rest the core derives from what a node
@@ -1766,6 +1770,11 @@ enum {
                                 arrows moving in two dimensions, when a
                                 cell takes focus */
     KUI_ROLE_COLUMN_HEADER, KUI_ROLE_ROW_HEADER,
+    KUI_ROLE_PROGRESS, KUI_ROLE_METER, /* read-only bars (backlog F267):
+                                value_now / value_min / value_max and
+                                value_text are their position, read as a
+                                slider's; no focus. A KUI_ROLE_PROGRESS
+                                without KUI_VALUE_NOW is busy (kui_progress) */
 };
 
 /* How a composite container arranges its items
@@ -1873,12 +1882,13 @@ typedef struct KuiAccessNode {
     KuiStr name;
     KuiStr description;
     /* The node's one string value (KUI_ACCESS_HAS_VALUE): an editor's text,
-     * or a slider's value_text - a slider that named its reading reads as
-     * that string instead of its number. */
+     * or a slider's, progress bar's or meter's value_text - one that named
+     * its reading reads as that string instead of its number. */
     KuiStr value;
     float x, y, w, h;
     uint32_t caret, selection_start, selection_end; /* byte offsets into value */
-    float value_now, value_min, value_max;          /* a slider's position and range */
+    /* A slider's, a progress bar's or a meter's position and range. */
+    float value_now, value_min, value_max;
     float scroll_x, scroll_y, scroll_max_x, scroll_max_y; /* a scroll view's offsets */
     /* An editor's caret (focus_*) and the selection's other end (anchor_*)
      * as run positions (KUI_ACCESS_HAS_TEXT_SELECTION): a run key from
@@ -2632,8 +2642,14 @@ typedef struct KuiDrawData {
  * instance), an opacity group's picture (none unless
  * kui_set_opacity_groups), a texture-backed image (KUI_QUAD_TEXTURE: kind 3
  * drawn with that image's texture bound in the atlas's place, a run of its
- * own) and a registered fragment (its own pipeline). The reference hosts
- * are examples/c/tools/wgpu_host.c (wgpu-native's C API, offscreen, its
+ * own) and a registered fragment (its own pipeline).
+ *
+ * On WebGPU all of the above is kui_wgpu.h, beside this header (backlog
+ * F263): header-only against webgpu.h, kui_wgpu_init for the pipeline,
+ * kui_wgpu_draw into a render pass you began, kui_wgpu_free; it leaves
+ * out the same four, drawing nothing where they are. Odin's is the
+ * kui/wgpu package. The reference hosts draw through them:
+ * examples/c/tools/wgpu_host.c (wgpu-native's C API, offscreen, its
  * pixels checked) and examples/odin/tools/wgpu_host.odin (vendor:wgpu, the
  * same offscreen, and --window on GLFW with kui over a world). */
 enum {
@@ -2677,9 +2693,18 @@ size_t kui_pack_instances(KuiCtx *ctx, uint8_t *out, size_t len);
  * A view that declares none of the handlers above has nothing to drain
  * there.
  *
- * Keys from GLFW or SDL3: kui_glfw.h and kui_sdl3.h beside this header
- * (header-only, backlog F239) map their keys to kui's names and send them
- * through the right halves; Odin has kui/glfw and kui/sdl3.
+ * Input from GLFW or SDL3: kui_glfw.h and kui_sdl3.h beside this header
+ * (header-only) carry step 1. They map the libraries' keys to kui's names
+ * and send them through the right halves (backlog F239). They send the
+ * pointer the way kui_run does (backlog F265): clicks counted, the scroll
+ * a wheel's lines or a trackpad's points, its gestures begun after a
+ * 0.2 s pause, on state the host owns. kui_glfw_install sets every GLFW
+ * callback, chained to the host's; kui_sdl3_event forwards every SDL
+ * event it knows. Odin has kui/glfw and kui/sdl3.
+ *
+ * Screen readers: kui_access_attach(ctx, the window's native handle) once,
+ * after making the window, and the turn above carries the rest (backlog
+ * F269; see the Accessibility section).
  *
  * When to run a turn at all: on input, while kui_owed(ctx) is non-zero
  * (a transition, an autoscroll), and when your model changed. Between
@@ -2899,6 +2924,12 @@ void kui_release_held_keys(KuiCtx *ctx);
  * arrives with modifiers:{shift, ctrl, alt, super} in it; a root that
  * declares none hears nothing. */
 void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
+/* The next queued event, false when there is none. KuiEvent.event says
+ * what happened; the payload is the message its handler declared, the
+ * event's data in a field named for it - a map as itself, a string or a
+ * number wrapped as {tag: msg, ...}, so kui_button(ctx, label,
+ * kui_value_str("save")) is heard as {tag:"save"}, not as "save". kui_event_message and kui_event_data ("Messages", after the
+ * values) read either shape. */
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 /* A host that draws the UI over a world of its own - a game, a map, a 3D
  * view - asks these before it decides whose an input is (backlog F233;
@@ -3031,7 +3062,8 @@ enum {
 /* Whether an accessibility client has asked for the tree, for views to
  * read as env.system.assistive - the reading that changes what a view
  * *says* rather than what it draws: an alert announces when something is
- * listening and blinks when nothing is. A host that bridges the platform's
+ * listening and blinks when nothing is. kui_access_attach's bridge sets it
+ * itself. A host that bridges the platform's
  * accessibility API pushes KUI_ASSISTIVE_LISTENING when a client first asks
  * it for the tree (any client: a probe, an inspector, a screen reader) and
  * KUI_ASSISTIVE_NONE if the platform ever says the client left - which, of
@@ -4384,7 +4416,10 @@ void kui_close(KuiCtx *ctx);
  * empty one. KUI_BOX_KEYED keys the node by a label, KUI_BOX_KEY also
  * writes the key kui_open_keyed returns into *key_out, and KUI_BOX_CLICK
  * gives it a click message - a fresh string value each frame, since
- * kui_open* keeps the one it is handed.
+ * kui_open* keeps the one it is handed; it arrives as {tag: message}
+ * (kui_event_message reads it). KUI_BOX_CLICK_MSG takes any message
+ * instead, consumed the same way - kui_msg_int("row", "row", i) for a
+ * click that says which row.
  *
  * Never break, return or goto out of one: that skips its close. Out of a
  * KUI_BOX it leaves the node open, which the unclosed-node warning names
@@ -4409,6 +4444,9 @@ void kui_close(KuiCtx *ctx);
 #define KUI_BOX_CLICK(ctx, label, message, ...) \
     KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, \
                               kui_value_str(KUI_STR(message))), \
+               kui_close(ctx))
+#define KUI_BOX_CLICK_MSG(ctx, label, message, ...) \
+    KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, (message)), \
                kui_close(ctx))
 #endif
 
@@ -5029,9 +5067,10 @@ void kui_waker_free(KuiWaker *w);
 /* -- Accessibility ---------------- */
 /* The access tree of the last finished frame: fills out with up to cap
  * nodes in tree order (root first) and returns the total count, so a short
- * buffer can be resized and the call repeated. A host wiring its own
- * platform accessibility layer reads it after each frame; a test asserts
- * on it. Never asking costs nothing. */
+ * buffer can be resized and the call repeated. kui_access_attach (below)
+ * hands it to the platform; a host wiring an accessibility layer of its
+ * own reads it after each frame; a test asserts on it. Never asking costs
+ * nothing. */
 size_t kui_access_tree(KuiCtx *ctx, KuiAccessNode *out, size_t cap);
 /* Says something once, with no node behind it: "Saved", "3 results".
  * `live` is KUI_LIVE_POLITE or KUI_LIVE_ASSERTIVE; KUI_LIVE_OFF and an
@@ -5044,7 +5083,8 @@ void kui_announce(KuiCtx *ctx, KuiStr text, uint32_t live);
  * size it generously) and returns the count. Drain every frame whether or
  * not assistive technology is attached and discard what you cannot deliver
  * — an announcement kept is an announcement said minutes late. kui_run
- * does this itself. */
+ * does this itself, and so does a context with kui_access_attach: there
+ * this finds nothing. */
 size_t kui_take_announcements(KuiCtx *ctx, KuiAnnouncement *out, size_t cap);
 /* A request from assistive technology on a node: one KUI_ACCESS_* bit the
  * node advertises, with value the new text for KUI_ACCESS_SET_VALUE (empty
@@ -5068,6 +5108,50 @@ size_t kui_access_runs(KuiCtx *ctx, uint64_t key, KuiAccessRun *out, size_t cap)
 void kui_input_access_text(KuiCtx *ctx, uint64_t key, uint32_t action,
                            uint64_t anchor_run, uint32_t anchor_char,
                            uint64_t focus_run, uint32_t focus_char, KuiStr value);
+/* The platform's accessibility API on a window the host made (backlog
+ * F269): VoiceOver, Narrator and Orca read this context's access tree, and
+ * what they ask for - a press, a focus move, an edit - arrives as the input
+ * it is. kui_run's windows have this already and need none of it. A host
+ * with its own window attaches once, after making the window; from then on
+ * the host loop's own calls carry it:
+ *  - what a client asked is applied at the next kui_input_*, kui_poll_event
+ *    or kui_frame_begin, its events polled like any input's;
+ *  - kui_frame_finish takes the frame's announcements (so
+ *    kui_take_announcements has nothing left to take) and, while a client
+ *    listens, sends the tree when it changed. Until one asks, no tree is
+ *    derived at all;
+ *  - env.system.assistive reads KUI_ASSISTIVE_NONE, and LISTENING from a
+ *    client's first ask.
+ *
+ * native_handle is the window's, per platform:
+ *  - macOS: its NSView * (glfwGetCocoaView) or NSWindow *
+ *    (glfwGetCocoaWindow; SDL3's SDL_PROP_WINDOW_COCOA_WINDOW_POINTER).
+ *  - Windows: its HWND (glfwGetWin32Window;
+ *    SDL_PROP_WINDOW_WIN32_HWND_POINTER), before the window is first
+ *    shown: make it hidden (GLFW_VISIBLE false, SDL_WINDOW_HIDDEN), attach,
+ *    then show it.
+ *  - Linux: ignored, and NULL will do: AT-SPI is the application's, not a
+ *    window's.
+ * Call it on the thread that made the window (the main thread on macOS).
+ * The platform asks during the host's event polling; a client's first ask
+ * is answered by the next finished frame, and kui_owed has
+ * KUI_OWED_REQUESTED set until it is. On macOS and Windows the ask also
+ * posts the platform's empty event (what glfwPostEmptyEvent posts), so a
+ * loop asleep in glfwWaitEvents or SDL_WaitEvent wakes for it; on Linux it
+ * arrives on a thread of the bridge's own, so wait with a timeout there
+ * (glfwWaitEventsTimeout) while attached.
+ *
+ * False for a NULL or borrowed context (a kui_run callback's), a handle the
+ * platform does not take, a view that already has a bridge, and a library
+ * built without the `access` feature (Cargo.toml). Attaching again
+ * replaces the bridge. kui_access_detach takes it off, restoring the window
+ * and env.system.assistive's "unknown"; do so before destroying the
+ * window. kui_ctx_free detaches too.
+ *
+ * An island's context (ADR 0076) is not bridged: its nodes are drawn in the
+ * host's world and have no rect in the window. */
+bool kui_access_attach(KuiCtx *ctx, void *native_handle);
+void kui_access_detach(KuiCtx *ctx);
 /* Styled button with hover/press states; payload consumed (may be NULL). */
 void kui_button(KuiCtx *ctx, KuiStr label, KuiValue *payload);
 /* kui_button with the rows the stock button admits read off spec - label
@@ -5164,6 +5248,16 @@ uint64_t kui_radio_group_open(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
  * with change:{value, phase} in it; declare the value back as value_now.
  * Its key. */
 uint64_t kui_slider(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
+/* The stock progress bar, named and keyed by `label` (backlog F267): the
+ * slider's track and a fill, read-only. Reads value_now / value_min /
+ * value_max (by their KUI_VALUE_* bits), value_text, width / min_w /
+ * max_w where set, label, description and tooltip off `spec`, and role:
+ * KUI_ROLE_METER makes it a meter (a level, not a task's progress), and
+ * anything else is KUI_ROLE_PROGRESS. Without KUI_VALUE_NOW it is busy:
+ * indeterminate to a reader, a third of the track filled in its middle.
+ * It takes no focus; declare the new value each frame the task moves on,
+ * and a reader hears it. Its key. */
+uint64_t kui_progress(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
 /* Editable text node (state retained by key), seeded with `initial` - or,
  * with KUI_EDIT_VALUE, held to it. Returns the node key. It reports in the
  * messages `spec` declares (ADR 0047): an edit as {...on_change,
@@ -5238,6 +5332,82 @@ bool kui_value_as_float(const KuiValue *v, double *out);
 bool kui_value_as_str(const KuiValue *v, KuiStr *out);            /* borrowed */
 void kui_value_free(KuiValue *v);
 
+/* -- Messages -------------------------------------------------------------
+ *
+ * A handler's message comes back as the event's payload (ADR 0047), with
+ * the event's data in one field named for the event, so its shape is the
+ * shape the view gave it:
+ *
+ *   - a map arrives as itself plus that field: an on_drag of
+ *     {kind:"pan"} as {kind:"pan", drag:{phase, x, y, dx, dy, ...}}, and a
+ *     click's {kind:"row", row:3} as itself (a plain click carries no
+ *     data);
+ *   - a string or a number is not a map, so it arrives wrapped: a click's
+ *     kui_value_str("harvest") as {tag:"harvest"}, never as the bare
+ *     string;
+ *   - a null message, kui_value_null(), arrives as the field alone.
+ *
+ * kui_event_message reads the name under all three - a map's `kind`, a
+ * wrapped message's `tag` - and kui_event_data the event's field; neither
+ * needs a host to know which shape a handler was given. kui_msg and
+ * kui_msg_int build the map shape, the one every binding's messages take
+ * (a Rust #[derive(Message)], an Odin struct, a Lua table with `kind`), so
+ * a message with a field is one call:
+ *
+ *     kui_open_keyed(ctx, KUI_STR(key), &row_spec, kui_msg_int("row", "row", i));
+ *     ...
+ *     KuiStr name;
+ *     int64_t row;
+ *     if (kui_event_message(&ev, &name) && kui_str_eq(name, "row") &&
+ *         kui_value_as_int(kui_value_get(ev.payload, KUI_STR("row")), &row))
+ *         select(row);
+ *
+ * Header-only, as kui_str_eq is: they call the functions above and
+ * nothing else. */
+
+/* A NUL-terminated string as a KuiStr, for these helpers: KUI_STR is a
+ * compound literal, which C++ (a host including this header) has not. */
+static inline KuiStr kui__cstr(const char *s) {
+    KuiStr out;
+    out.ptr = (const uint8_t *)s;
+    out.len = strlen(s);
+    return out;
+}
+
+/* The message's name: `kind` of a map, `tag` of a string or number the
+ * core wrapped, the string itself for a payload that is one. False, *name
+ * untouched, for a NULL payload or a message that names nothing (a null
+ * message, a map without `kind`). Borrowed from the payload. */
+static inline bool kui_event_message(const KuiEvent *ev, KuiStr *name) {
+    if (!ev || !ev->payload) return false;
+    return kui_value_as_str(ev->payload, name) ||
+           kui_value_as_str(kui_value_get(ev->payload, kui__cstr("kind")), name) ||
+           kui_value_as_str(kui_value_get(ev->payload, kui__cstr("tag")), name);
+}
+
+/* The event's data: the payload's field named for KuiEvent.event -
+ * {x, y, dx, dy, phase, ...} on a drag, {text} on a change. NULL for an
+ * event that carries none. Borrowed from the payload. */
+static inline const KuiValue *kui_event_data(const KuiEvent *ev) {
+    return ev && ev->payload ? kui_value_get(ev->payload, ev->event) : NULL;
+}
+
+/* {kind}: the message a click, a toggle or a menu choice is declared
+ * with when it needs no field. Owned by you until a handler consumes it. */
+static inline KuiValue *kui_msg(const char *kind) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, kui__cstr("kind"), kui_value_str(kui__cstr(kind)));
+    return m;
+}
+
+/* {kind, field: n}: a message that says which - a row's index, an item's
+ * id. Add more fields with kui_value_map_set on what it returns. */
+static inline KuiValue *kui_msg_int(const char *kind, const char *field, int64_t n) {
+    KuiValue *m = kui_msg(kind);
+    kui_value_map_set(m, kui__cstr(field), kui_value_int(n));
+    return m;
+}
+
 /* -- Windowed runner (winit + wgpu), blocks until the window closes ------ */
 /* These two are the library's `runner` feature, on by default and the only
  * thing in it. They are also the only two entry points that need
@@ -5246,9 +5416,10 @@ void kui_value_free(KuiValue *v);
  * without (x86_64-pc-windows-msvc). A host that already has a window and
  * draws the display list itself builds
  *
- *     cargo build -p kui-ffi --no-default-features --release
+ *     cargo build -p kui-ffi --no-default-features --features access --release
  *
- * and these two are simply absent - a link error naming them, not a stub
+ * (`access` keeps kui_access_attach's bridge; leave it out and that call
+ * answers false) and these two are simply absent - a link error naming them, not a stub
  * that fails at run time. Everything else in this header is always there. */
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);

@@ -102,6 +102,9 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                         on_click = { kind = "dark" } },
               },
               switch { label = "Wi-Fi", checked = true, on_click = { kind = "wifi" } },
+              progress { label = "Upload", value_now = 3, value_max = 8,
+                         value_text = "3 of 8 files" },
+              progress { label = "Battery", value_now = 80, role = "meter" },
             }
         "#
         .to_string(),

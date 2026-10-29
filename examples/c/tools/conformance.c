@@ -100,6 +100,7 @@ static const char *role_name(uint32_t role) {
         "multilineTextInput", "scrollView", "line",
         "radioGroup", "menu", "menuItem", "terminal", "passwordInput",
         "table", "row", "cell", "columnHeader", "rowHeader",
+        "progress", "meter",
     };
     return role < sizeof names / sizeof *names ? names[role] : "?";
 }
@@ -312,6 +313,18 @@ static void conf_stock_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_radio(ui, KUI_STR("Dark"), &on, conf_kind("dark"));
     kui_close(ui);
     kui_switch(ui, KUI_STR("Wi-Fi"), &on, conf_kind("wifi"));
+    KuiSpec upload = {
+        .value_set = KUI_VALUE_NOW | KUI_VALUE_MAX,
+        .value_now = 3, .value_max = 8,
+        .value_text = KUI_STR("3 of 8 files"),
+    };
+    kui_progress(ui, KUI_STR("Upload"), &upload);
+    KuiSpec battery = {
+        .role = KUI_ROLE_METER,
+        .value_set = KUI_VALUE_NOW,
+        .value_now = 80,
+    };
+    kui_progress(ui, KUI_STR("Battery"), &battery);
     kui_close(ui);
 }
 
@@ -739,8 +752,7 @@ static void conf_clip_float(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)phase;
     KuiSpec outer = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
     kui_open(ui, &outer, NULL);
-    KuiValue *tag = kui_value_map();
-    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("toolbar")));
+    KuiValue *tag = kui_msg("toolbar");
     KuiSpec toolbar = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .height = {KUI_FIXED, 40},
                        .bg = 0x3a3f52ff, .label = KUI_STR("Toolbar")};
     kui_open_keyed(ui, KUI_STR("toolbar"), &toolbar, tag);
@@ -887,8 +899,7 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open(ui, &strip, NULL);
     kui_window_buttons(ui);
     kui_close(ui);
-    KuiValue *sink_tag = kui_value_map();
-    kui_value_map_set(sink_tag, KUI_STR("kind"), kui_value_str(KUI_STR("sink")));
+    KuiValue *sink_tag = kui_msg("sink");
     KuiSpec sink = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 16},
                     .bg = 0x22242cff, .focusable = 1, .label = KUI_STR("Sink"),
                     .on_focus = sink_tag};
@@ -902,25 +913,21 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
 static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
-    KuiValue *menu = kui_value_map();
-    kui_value_map_set(menu, KUI_STR("kind"), kui_value_str(KUI_STR("menu")));
+    KuiValue *menu = kui_msg("menu");
     /* The panel claims the middle button (backlog F105) and leaves the
      * secondary one to its menu. */
-    KuiValue *panel = kui_value_map();
-    kui_value_map_set(panel, KUI_STR("kind"), kui_value_str(KUI_STR("panel")));
+    KuiValue *panel = kui_msg("panel");
     KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6,
                      .on_context_menu = menu, .on_button = panel,
                      .buttons = KUI_BUTTONS_MIDDLE};
     kui_open(ui, &outer, NULL);
-    KuiValue *go = kui_value_map();
-    kui_value_map_set(go, KUI_STR("kind"), kui_value_str(KUI_STR("go")));
+    KuiValue *go = kui_msg("go");
     KuiSpec go_rows = {.description = KUI_STR("Starts the run")};
     kui_button_with(ui, KUI_STR("go"), &go_rows, go);
     /* Every row the stock button admits, on a button the steps never
      * touch: the name past its text, disabled, and a tooltip whose
      * description reaches the access row while nothing hovers it. */
-    KuiValue *stop = kui_value_map();
-    kui_value_map_set(stop, KUI_STR("kind"), kui_value_str(KUI_STR("stop")));
+    KuiValue *stop = kui_msg("stop");
     KuiSpec stop_rows = {.label = KUI_STR("Stop the run"),
                          .disabled = 1,
                          .tooltip = KUI_STR("Nothing is running")};
@@ -996,8 +1003,7 @@ static void conf_polygon(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open(ui, &canvas, NULL);
     float tri[] = {10, 10, 60, 20, 20, 50};
     KuiSpec blue = {.bg = 0x7f9cf5ff, .label = KUI_STR("Triangle")};
-    KuiValue *tri_click = kui_value_map();
-    kui_value_map_set(tri_click, KUI_STR("kind"), kui_value_str(KUI_STR("tri")));
+    KuiValue *tri_click = kui_msg("tri");
     kui_polygon(ui, KUI_STR(""), tri, 3, &blue, tri_click, NULL, NULL);
     float arrow[] = {80, 10, 130, 30, 80, 50, 95, 30};
     KuiSpec orange = {.bg = 0xd8863bff};
@@ -1042,8 +1048,7 @@ static void conf_component(KuiCtx *ui, const Fixtures *f, int phase) {
                       .pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 6,
                       .bg = 0x14161eff};
     kui_open(ui, &canvas, NULL);
-    KuiValue *closed = kui_value_map();
-    kui_value_map_set(closed, KUI_STR("kind"), kui_value_str(KUI_STR("closed")));
+    KuiValue *closed = kui_msg("closed");
     KuiValue *props = kui_value_map();
     kui_value_map_set(props, KUI_STR("title"), kui_value_str(KUI_STR("Deploys")));
     kui_value_map_set(props, KUI_STR("key"), kui_value_str(KUI_STR("deploys")));
@@ -1072,8 +1077,7 @@ static void conf_svg(KuiCtx *ui, const Fixtures *f, int phase) {
                      .bg = 0x14161eff};
     kui_open(ui, &strip, NULL);
     KuiSpec search = {.label = KUI_STR("Search")};
-    KuiValue *click = kui_value_map();
-    kui_value_map_set(click, KUI_STR("kind"), kui_value_str(KUI_STR("search")));
+    KuiValue *click = kui_msg("search");
     kui_svg(ui, KUI_STR(""), KUI_STR(SVG_ICON), KUI_STR(""), KUI_SVG_AUTO, KUI_SVG_CONTAIN,
             0xe07a8aff, &search, click);
     KuiSpec big = {.width = {KUI_FIXED, 48}, .label = KUI_STR("Big")};
@@ -1103,8 +1107,7 @@ static void conf_path(KuiCtx *ui, const Fixtures *f, int phase) {
                       .bg = 0x14161eff};
     kui_open(ui, &canvas, NULL);
     KuiSpec blue = {.bg = 0x7f9cf5ff, .label = KUI_STR("Wedge")};
-    KuiValue *click = kui_value_map();
-    kui_value_map_set(click, KUI_STR("kind"), kui_value_str(KUI_STR("wedge")));
+    KuiValue *click = kui_msg("wedge");
     kui_path_d(ui, KUI_STR(""), KUI_STR("M60 60 L100 60 A40 40 0 0 1 60 100 Z"),
                KUI_FILL_NONZERO, 0, 0, 0, NULL, NULL, &blue, click, NULL, NULL);
     /* A leaf's tooltip floats beside it, below its box (backlog RG113). */
@@ -1458,8 +1461,7 @@ static void conf_lines(KuiCtx *ui, const Fixtures *f, int phase) {
     float elbow[] = {100, 20, 140, 20, 140, 60};
     /* The elbow takes a click, and is hit by its stroke (ADR 0026). */
     KuiSpec elbow_spec = {.label = KUI_STR("Elbow")};
-    KuiValue *elbow_click = kui_value_map();
-    kui_value_map_set(elbow_click, KUI_STR("kind"), kui_value_str(KUI_STR("elbow")));
+    KuiValue *elbow_click = kui_msg("elbow");
     kui_polyline(ui, KUI_STR(""), elbow, 3, 3, 0xd8863bff, false, NULL, &elbow_spec,
                  elbow_click, NULL, NULL);
     float curve[] = {20, 100, 60, 80, 100, 110, 180, 90};
@@ -1520,8 +1522,7 @@ static void conf_ime(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)phase;
     KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
     kui_open(ui, &outer, NULL);
-    KuiValue *ed = kui_value_map();
-    kui_value_map_set(ed, KUI_STR("kind"), kui_value_str(KUI_STR("ed")));
+    KuiValue *ed = kui_msg("ed");
     KuiSpec buf = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 24}, .bg = 0x1b1d27ff,
                    .role = KUI_ROLE_MULTILINE_TEXT_INPUT, .label = KUI_STR("Buffer")};
     kui_open_with(ui, KUI_STR("buffer"), &buf, NULL, NULL, ed, NULL);
@@ -1535,8 +1536,7 @@ static void conf_ime(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiTextStyle s13 = {.size = 13};
     /* The stock editor reports its edits in a message it declares
      * (ADR 0047): {kind:"note", change:{text}}. */
-    KuiValue *note_msg = kui_value_map();
-    kui_value_map_set(note_msg, KUI_STR("kind"), kui_value_str(KUI_STR("note")));
+    KuiValue *note_msg = kui_msg("note");
     KuiSpec note = {.width = {KUI_FIXED, 200}, .label = KUI_STR("Note"), .on_change = note_msg};
     kui_text_edit(ui, KUI_STR("note"), KUI_STR(""), &s13, 0, &note);
     kui_value_free(note_msg);
@@ -1582,8 +1582,7 @@ static void conf_cells(KuiCtx *ui, const Fixtures *f, int phase) {
         screen[i].bg = i < 3 ? 0x1a1d27ff : 0;
     }
     KuiTextStyle style = {.size = 13, .family = KUI_FONT_MONO, .line_height = 18};
-    KuiValue *hit = kui_value_map();
-    kui_value_map_set(hit, KUI_STR("kind"), kui_value_str(KUI_STR("hit")));
+    KuiValue *hit = kui_msg("hit");
     KuiSpec term = {.label = KUI_STR("term")};
     kui_cells(ui, KUI_STR("term"), 1, 11, screen, 11, &style, &term, hit, NULL, NULL, 0, 3,
               KUI_CELL_CURSOR_BLOCK, 0x6a8bffff, 0);
@@ -1632,8 +1631,7 @@ static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
      * not claim, and the button holds focus from the first frame
      * (docs/adr/0011-keys-bubble-to-the-enclosing-sink.md). */
     conf_keys_sink(ui, "shell", 1);
-    KuiValue *go_tag = kui_value_map();
-    kui_value_map_set(go_tag, KUI_STR("kind"), kui_value_str(KUI_STR("go")));
+    KuiValue *go_tag = kui_msg("go");
     KuiSpec go = {.dir = KUI_ROW, .width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 16},
                   .bg = 0x3b5bd4ff, .label = KUI_STR("Go")};
     uint64_t go_key = kui_open_keyed(ui, KUI_STR("go"), &go, go_tag);
@@ -1653,8 +1651,7 @@ static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open(ui, &outer, NULL);
     kui_titlebar_with(ui, conf_modal_titlebar, NULL);
 
-    KuiValue *open_tag = kui_value_map();
-    kui_value_map_set(open_tag, KUI_STR("kind"), kui_value_str(KUI_STR("open")));
+    KuiValue *open_tag = kui_msg("open");
     KuiSpec open = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
                     .bg = 0x30344aff, .label = KUI_STR("Open")};
     uint64_t open_key = kui_open_keyed(ui, KUI_STR("open"), &open, open_tag);
@@ -1668,8 +1665,7 @@ static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
      * on the closing frame beats the focus the modal displaced (see
      * docs/adr/0003-modal-surfaces.md, decision 4). */
     if (phase != 0) {
-        KuiValue *note_tag = kui_value_map();
-        kui_value_map_set(note_tag, KUI_STR("kind"), kui_value_str(KUI_STR("note")));
+        KuiValue *note_tag = kui_msg("note");
         KuiSpec note = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
                         .bg = 0x30344aff, .label = KUI_STR("Note")};
         uint64_t note_key = kui_open_keyed(ui, KUI_STR("note"), &note, note_tag);
@@ -1680,8 +1676,7 @@ static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
     }
 
     /* KuiSpec.modal is the `modal` prop, borrowed for the open call. */
-    KuiValue *modal = kui_value_map();
-    kui_value_map_set(modal, KUI_STR("kind"), kui_value_str(KUI_STR("dlg")));
+    KuiValue *modal = kui_msg("dlg");
     KuiSpec dialog = {
         .width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 100},
         .pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 6,
@@ -1741,8 +1736,7 @@ static void conf_exit(KuiCtx *ui, const Fixtures *f, int phase) {
     conf_exit_slot(ui, "slotFade", 40);
     if (phase == 0) {
         /* Consumed by kui_open_keyed, like every other on_click payload. */
-        KuiValue *hit = kui_value_map();
-        kui_value_map_set(hit, KUI_STR("kind"), kui_value_str(KUI_STR("hit")));
+        KuiValue *hit = kui_msg("hit");
         /* Focusable, clickable and labelled while it is live, so each of
          * those is a separate thing the ghost has to stop being. */
         KuiSpec fade = {
@@ -1850,8 +1844,7 @@ static void conf_composite(KuiCtx *ui, const Fixtures *f, int phase) {
     conf_composite_item(ui, "Three", "three", KUI_ROLE_TAB, 0, 0, 60, 20, 0x30344aff);
     kui_close(ui);
 
-    KuiValue *add_tag = kui_value_map();
-    kui_value_map_set(add_tag, KUI_STR("kind"), kui_value_str(KUI_STR("add")));
+    KuiValue *add_tag = kui_msg("add");
     KuiSpec add = {.dir = KUI_ROW, .width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 20},
                    .bg = 0x3b5bd4ff, .label = KUI_STR("Add")};
     kui_open_keyed(ui, KUI_STR("add"), &add, add_tag);
@@ -1956,8 +1949,7 @@ static void conf_live(KuiCtx *ui, const Fixtures *f, int phase) {
 static void conf_drag(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
-    KuiValue *split = kui_value_map();
-    kui_value_map_set(split, KUI_STR("kind"), kui_value_str(KUI_STR("split")));
+    KuiValue *split = kui_msg("split");
     KuiSpec handle = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 40}, .bg = 0x30344aff};
     kui_open_draggable(ui, KUI_STR("handle"), &handle, NULL, split);
     kui_close(ui);
@@ -1969,8 +1961,7 @@ static void conf_drag(KuiCtx *ui, const Fixtures *f, int phase) {
 static void conf_drag_through(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
-    KuiValue *thumb = kui_value_map();
-    kui_value_map_set(thumb, KUI_STR("kind"), kui_value_str(KUI_STR("thumb")));
+    KuiValue *thumb = kui_msg("thumb");
     KuiSpec track = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 100}, .bg = 0x1b1d27ff};
     kui_open_draggable(ui, KUI_STR("track"), &track, NULL, thumb);
     KuiSpec spacer = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 30}};
@@ -2032,8 +2023,7 @@ static void conf_scroll_handler_room(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiSpec strip = {.dir = KUI_ROW, .width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 80},
                      .overflow = KUI_SCROLL_X, .bg = 0x101018ff};
     kui_open_keyed(ui, KUI_STR("strip"), &strip, NULL);
-    KuiValue *tag = kui_value_map();
-    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("code")));
+    KuiValue *tag = kui_msg("code");
     KuiSpec code = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 80},
                     .overflow = KUI_SCROLL_X, .on_scroll = tag, .bg = 0x161820ff};
     kui_open_keyed(ui, KUI_STR("code"), &code, NULL);
@@ -2052,8 +2042,7 @@ static void conf_scroll_handler_room(KuiCtx *ui, const Fixtures *f, int phase) {
 static void conf_scroll_gestures(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
-    KuiValue *zoom = kui_value_map();
-    kui_value_map_set(zoom, KUI_STR("kind"), kui_value_str(KUI_STR("zoom")));
+    KuiValue *zoom = kui_msg("zoom");
     KuiSpec outer = {.pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
                      .on_scroll = zoom, .scroll_mods = KUI_KMOD_CTRL};
     kui_open(ui, &outer, NULL);
@@ -2076,8 +2065,7 @@ static void conf_scroll_gestures(KuiCtx *ui, const Fixtures *f, int phase) {
         kui_close(ui);
     }
     kui_close(ui);
-    KuiValue *tag = kui_value_map();
-    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("term")));
+    KuiValue *tag = kui_msg("term");
     KuiSpec term = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 80}, .bg = 0x3b5bd4ff,
                     .on_scroll = tag, .scroll_axes = KUI_SCROLL_AXES_Y};
     kui_open_keyed(ui, KUI_STR("term"), &term, NULL);
@@ -2107,8 +2095,7 @@ static void conf_cells_scroll(KuiCtx *ui, const Fixtures *f, int phase) {
     for (int r = 0; r < 3; r++)
         for (int c = 0; rows[r][c]; c++) screen[r * 11 + c].ch = (uint32_t)rows[r][c];
     KuiTextStyle style = {.size = 13, .family = KUI_FONT_MONO, .line_height = 18};
-    KuiValue *tag = kui_value_map();
-    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("term")));
+    KuiValue *tag = kui_msg("term");
     KuiSpec term = {.label = KUI_STR("term"), .selectable = 1, .on_scroll = tag};
     kui_cells(ui, KUI_STR("term"), 3, 11, screen, 33, &style, &term, NULL, NULL, NULL, 0, 0,
               0, 0, 100 + (uint64_t)phase);
@@ -2125,8 +2112,7 @@ static void conf_virtual(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
     /* The rows in view, as ADR 0065's on_range reports them. */
-    KuiValue *rows_msg = kui_value_map();
-    kui_value_map_set(rows_msg, KUI_STR("kind"), kui_value_str(KUI_STR("rows")));
+    KuiValue *rows_msg = kui_msg("rows");
     KuiSpec list = {.width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 60},
                     .gap = 0, .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
                     .role = KUI_ROLE_LIST, .label = KUI_STR("log"), .on_range = rows_msg};
@@ -2345,8 +2331,7 @@ static void conf_drop(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_value_free(docs);
     KuiSpec outer = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
     kui_open(ui, &outer, NULL);
-    KuiValue *files = kui_value_map();
-    kui_value_map_set(files, KUI_STR("kind"), kui_value_str(KUI_STR("files")));
+    KuiValue *files = kui_msg("files");
     KuiSpec zone = {
         .width = {KUI_FIXED, 200}, .height = {KUI_GROW, 1},
         .pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10,
@@ -2354,8 +2339,7 @@ static void conf_drop(KuiCtx *ui, const Fixtures *f, int phase) {
     };
     kui_open_keyed(ui, KUI_STR("files"), &zone, NULL);
     {
-        KuiValue *pick = kui_value_map();
-        kui_value_map_set(pick, KUI_STR("kind"), kui_value_str(KUI_STR("pick")));
+        KuiValue *pick = kui_msg("pick");
         KuiSpec button = {.dir = KUI_ROW, .width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 40},
                           .bg = 0x3b5bd4ff, .label = KUI_STR("Pick")};
         kui_open_keyed(ui, KUI_STR("pick"), &button, pick);
@@ -2363,8 +2347,7 @@ static void conf_drop(KuiCtx *ui, const Fixtures *f, int phase) {
     }
     kui_close(ui);
     kui_value_free(files);
-    KuiValue *other = kui_value_map();
-    kui_value_map_set(other, KUI_STR("kind"), kui_value_str(KUI_STR("other")));
+    KuiValue *other = kui_msg("other");
     KuiSpec second = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
                       .bg = 0x30344aff, .on_drop = other};
     kui_open_keyed(ui, KUI_STR("other"), &second, NULL);
@@ -2382,8 +2365,7 @@ static void conf_drop(KuiCtx *ui, const Fixtures *f, int phase) {
         kui_close(ui);
     }
     if (phase == 2) {
-        KuiValue *modal = kui_value_map();
-        kui_value_map_set(modal, KUI_STR("kind"), kui_value_str(KUI_STR("dismiss")));
+        KuiValue *modal = kui_msg("dismiss");
         KuiSpec confirm = {
             .float_mode = KUI_FLOAT_VIEWPORT,
             .float_anchor_x = KUI_START, .float_anchor_y = KUI_START,
@@ -2446,14 +2428,10 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)phase;
     KuiSpec outer = {.pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 6};
     kui_open(ui, &outer, NULL);
-    KuiValue *click = kui_value_map();
-    kui_value_map_set(click, KUI_STR("kind"), kui_value_str(KUI_STR("card")));
-    KuiValue *hover = kui_value_map();
-    kui_value_map_set(hover, KUI_STR("kind"), kui_value_str(KUI_STR("hov")));
-    KuiValue *layout = kui_value_map();
-    kui_value_map_set(layout, KUI_STR("kind"), kui_value_str(KUI_STR("lay")));
-    KuiValue *force = kui_value_map();
-    kui_value_map_set(force, KUI_STR("kind"), kui_value_str(KUI_STR("force")));
+    KuiValue *click = kui_msg("card");
+    KuiValue *hover = kui_msg("hov");
+    KuiValue *layout = kui_msg("lay");
+    KuiValue *force = kui_msg("force");
     KuiValue *two = kui_value_int(2); /* activeIndex (ADR 0070) */
     KuiKeyframe stops[] = {
         {.set = KUI_KF_BG, .bg = 0x1b1d27ff},
@@ -2937,9 +2915,9 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
     KuiEvent ev = KUI_EVENT_INIT;
     while (kui_poll_event(ctx, &ev)) {
         KuiStr kind = ev.event.len ? ev.event : KUI_STR("-");
-        const KuiValue *data = ev_data(&ev);
+        const KuiValue *data = kui_event_data(&ev);
         KuiStr tag = KUI_STR("-");
-        bool named = ev_message(&ev, &tag);
+        bool named = kui_event_message(&ev, &tag);
         KuiStr edge = conf_str(data, "phase", KUI_STR("-"));
         if (kui_str_eq(edge, "-")) edge = conf_str(data, "reason", KUI_STR("-"));
         if (!named) tag = edge;

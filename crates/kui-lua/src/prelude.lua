@@ -123,6 +123,16 @@ function slider(t)
   return t
 end
 
+-- progress { label = "Upload", value_now = done, value_max = total,
+-- value_text = "3 of 8 files" }: the slider's track and a fill, read-only.
+-- A reader hears the value the view declares, and the new one each time it
+-- moves on; without value_now it is busy. role = "meter" makes it a level
+-- (a battery, a disk) rather than a task's progress.
+function progress(t)
+  t.type = "progress"
+  return t
+end
+
 -- Single-line input with chrome: input { label = "name", value = name,
 -- on_change = { kind = "name" }, on_submit = { kind = "go" }, on_cancel = ... }.
 -- `value` is the text, declared every frame (or `initial`, a seed for a new

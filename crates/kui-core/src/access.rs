@@ -140,6 +140,19 @@ pub enum Role {
     /// A cell that heads its row: a cell to navigation, a row header to a
     /// reader.
     RowHeader,
+    /// How far a task has got (backlog F267): read-only, its position the
+    /// `value_now` / `value_min` / `value_max` rows and its reading
+    /// `value_text`, as a slider's are, and never focused. One with no
+    /// `value_now` is busy without saying how far — indeterminate, which
+    /// is how every platform reads a progress bar with no value.
+    Progress,
+    /// A level in a known range — a battery, a disk, a health bar — read
+    /// as a progress bar is, from the same rows. Its own role because
+    /// the platforms say it differently: a level indicator on macOS, a
+    /// level bar on Linux, a meter on Windows, where a progress bar is a
+    /// progress indicator, a progress bar and a progress bar. A meter is
+    /// never busy: it always has a value.
+    Meter,
 }
 
 impl Role {
@@ -171,6 +184,8 @@ impl Role {
             Role::Cell => "cell",
             Role::ColumnHeader => "columnHeader",
             Role::RowHeader => "rowHeader",
+            Role::Progress => "progress",
+            Role::Meter => "meter",
             Role::Window => "window",
             Role::TitleBar => "titleBar",
             Role::StaticText => "staticText",
@@ -185,7 +200,7 @@ impl Role {
         Role::ALL.iter().copied().find(|r| r.name() == name)
     }
 
-    pub const ALL: [Role; 32] = [
+    pub const ALL: [Role; 34] = [
         Role::None,
         Role::Button,
         Role::Checkbox,
@@ -218,6 +233,8 @@ impl Role {
         Role::Cell,
         Role::ColumnHeader,
         Role::RowHeader,
+        Role::Progress,
+        Role::Meter,
     ];
 
     /// A control needs a name; one without is reported as a warning.
@@ -988,7 +1005,12 @@ pub(crate) fn semantic(
     // `Role::Label` reads the node's *value*, so a live static text
     // announces nothing at all. One named node is also one announcement
     // on all three platforms rather than one per live descendant.
+    // A progress bar's or a meter's track and fill are its drawing, not
+    // items of their own; unlike a button it is named only by its label
+    // (ARIA's progressbar and meter), so it is not `presentational()`,
+    // which names a node by its text too.
     let presentational = role.presentational()
+        || matches!(role, Role::Progress | Role::Meter)
         || spec.access().live != Live::Off
         || matches!(spec.window, Some(WindowRole::Button(_)))
         || is_custom_editor(tree, i);
@@ -1487,23 +1509,31 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             // declared the fact and the tree dropped it, so a reader heard
             // "Wrap" where a sighted user saw "✓ Wrap".
             Role::MenuItem if ax.checked => node.checked = Some(true),
-            Role::Slider => {
+            // A progress bar and a meter read their rows as a slider does,
+            // and a change to them is announced the same way: the number
+            // or the reading moves, and the platform says the new one.
+            // They offer no actions — nothing moves them but the app. A
+            // progress bar with no `value_now` carries no number, which is
+            // AccessKit's indeterminate ("busy") progress indicator.
+            Role::Slider | Role::Progress | Role::Meter => {
                 node.number = ax.value_now;
                 node.min = ax.value_min;
                 node.max = ax.value_max;
-                node.step = ax.value_step;
                 // The declared reading, in the one string slot the
-                // platform gives a node (see `value`). Slider-only, like
-                // the three numbers: a `group` shaped like a progress bar
+                // platform gives a node (see `value`). Only on the roles
+                // with the three numbers: a `group` shaped like a bar
                 // carries none of them either, and a role whose numbers
                 // are ignored should not have a reading that is not.
                 node.value = ax.value_text.as_deref().map(str::to_owned);
-                // SetValue too: Windows' UI Automation has no increment,
-                // and moves a slider only by setting it.
-                if !spec.disabled {
-                    actions |= AccessAction::Increment.bit()
-                        | AccessAction::Decrement.bit()
-                        | AccessAction::SetValue.bit();
+                if sem.role == Role::Slider {
+                    node.step = ax.value_step;
+                    // SetValue too: Windows' UI Automation has no
+                    // increment, and moves a slider only by setting it.
+                    if !spec.disabled {
+                        actions |= AccessAction::Increment.bit()
+                            | AccessAction::Decrement.bit()
+                            | AccessAction::SetValue.bit();
+                    }
                 }
             }
             _ => {}

@@ -15,9 +15,14 @@
 //!     surface          the header walk, every prototype called once
 //!     host_loop        kui.h's host loop with nothing from the runner
 //!     keys             the GLFW and SDL3 key tables (kui_glfw.h, kui_sdl3.h)
-//!     wgpu_host        kui's frame drawn on a wgpu-native device of its own,
-//!                      offscreen, and its pixels checked (where a
-//!                      wgpu-native is found: see `wgpu_native`)
+//!     pointer          the same headers' pointer halves, on hand-made events
+//!     access_host      a GLFW window with kui's accessibility bridge on it
+//!                      (kui_access_attach), where a GLFW is found; the
+//!                      round attaches and detaches, and
+//!                      scripts/ax-host-audit.swift walks it on macOS
+//!     wgpu_host        kui's frame drawn on a wgpu-native device of its own
+//!                      through kui_wgpu.h, offscreen, its pixels checked
+//!                      (where a wgpu-native is found: see `wgpu_native`)
 //!     conformance      the C adapter over the scene corpus
 //!     host             C as the host of a C *extension* (ADR 0014's C half)
 //!     panel.so/.dll    the panel, which either host loads
@@ -397,6 +402,26 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
         .flat_map(|d| [s("-I"), s(d)])
         .collect();
     exe_with("examples/c/tools/keys.c", "keys", &brew, &[])?;
+    // Their pointer halves (backlog F265), the same way: neither library
+    // is linked, the test feeding the helpers events of its own.
+    exe_with("examples/c/tools/pointer.c", "pointer", &brew, &[])?;
+    // A GLFW window a screen reader reads, through kui_access_attach
+    // (backlog F269), where a GLFW to link is found.
+    let access_host = match glfw(cc.msvc) {
+        Ok((cflags, libs)) => {
+            exe_with(
+                "examples/c/tools/access_host.c",
+                "access_host",
+                &cflags,
+                &libs,
+            )?;
+            true
+        }
+        Err(why) => {
+            println!("skipped access_host: {why}");
+            false
+        }
+    };
     // A host drawing kui's frame on a wgpu device of its own (backlog
     // F234), built only where a wgpu-native is: it is not a dependency of
     // anything else here.
@@ -516,6 +541,12 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
             must_fail: None,
         },
         Step {
+            exe: format!("{bin}/{}", exe_name("pointer")),
+            args: vec![],
+            note: "the GLFW and SDL3 pointer helpers: clicks, wheel gestures, leaving, chaining",
+            must_fail: None,
+        },
+        Step {
             exe: format!("{bin}/{}", exe_name("host")),
             args: vec![s("--headless")],
             note: "C on both sides: the panel placed, the click routed, the emit back, the toolbar slot's chip heard",
@@ -544,6 +575,14 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
                 must_fail: None,
             },
         );
+    }
+    if access_host {
+        round.push(Step {
+            exe: format!("{bin}/{}", exe_name("access_host")),
+            args: vec![s("--check")],
+            note: "the accessibility bridge on a GLFW window: attached, detached, attached again (skips with no display)",
+            must_fail: None,
+        });
     }
     if cc.msvc {
         round.push(Step {
@@ -575,6 +614,13 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
             exe_name("counter")
         );
         println!("  ./{}/{}     # with a window", ex, exe_name("c_panel"));
+        if access_host {
+            println!(
+                "  ./{}/{} & swift scripts/ax-host-audit.swift $!   # read by the AX API (macOS)",
+                bin,
+                exe_name("access_host")
+            );
+        }
         return Ok(());
     }
 
@@ -609,6 +655,38 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
         round.len()
     );
     Ok(())
+}
+
+/// The compile and link flags for a GLFW 3 (`access_host.c`): its header
+/// and shared library under Homebrew's prefixes or the system's, as a
+/// distribution's `libglfw3-dev` puts them. Linked dynamically: Homebrew's
+/// dylib names itself by absolute path, and a distribution's is on the
+/// loader's path. None on MSVC, where nothing installs one where a build
+/// could find it without being told.
+fn glfw(msvc: bool) -> Result<(Vec<String>, Vec<String>), String> {
+    if msvc {
+        return Err("no GLFW lookup for MSVC".into());
+    }
+    let shared = if cfg!(target_os = "macos") {
+        "libglfw.dylib"
+    } else {
+        "libglfw.so"
+    };
+    let multiarch = format!("/usr/lib/{}-linux-gnu", std::env::consts::ARCH);
+    for prefix in ["/opt/homebrew", "/usr/local", "/usr"] {
+        let header = Path::new(prefix).join("include/GLFW/glfw3.h");
+        if !header.exists() {
+            continue;
+        }
+        let libdirs = [format!("{prefix}/lib"), multiarch.clone()];
+        let Some(libdir) = libdirs.iter().find(|d| Path::new(d).join(shared).exists()) else {
+            continue;
+        };
+        let cflags = vec![s("-I"), format!("{prefix}/include")];
+        let libs = vec![s("-L"), libdir.clone(), s("-lglfw")];
+        return Ok((cflags, libs));
+    }
+    Err(format!("no GLFW/glfw3.h with a {shared} beside it"))
 }
 
 /// A wgpu-native to build `wgpu_host.c` against, and how.

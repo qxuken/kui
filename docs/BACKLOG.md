@@ -4259,179 +4259,13 @@ Code lines (cloc):
 | Clay | 153 | 82 |
 
 214 of kui's glue lines are the renderer the pack does not ship. Seven
-entries, F263–F269, filed and not built. F269 is what the user's
-question about the comparison's accessibility row found.
-
-### `.` F263 — A host with its own device copies kui's renderer out of an example
-
-**Found** 2026-10-29 in `ui-compare/kui/kui_wgpu.c`: 214 lines, copied
-and trimmed from `examples/c/tools/wgpu_host.c`. They are:
-- the bind group layout kui.h describes in prose;
-- the pipeline from `kui_instance_attributes`' triples, and the blend;
-- the two samplers and the uniform of eight floats;
-- the atlas page with its epoch and dirty-rect upload;
-- the growing instance buffer;
-- a pass that loads, scissored to `bounds`.
-
-Nothing in it is the game's: every wgpu host writes the same file, and
-Replicator Bloom wrote it once more in Odin (`src/kui_render.odin`).
-F234 shipped the parts (shader, layout, packing); the pipeline around
-them is still the host's.
-- ImGui ships `imgui_impl_wgpu`, so its glue is 143 lines with none of this.
-- Clay ships `clay_renderer_raylib.c`.
-- kui's glue without this file would be about 80 lines.
-
-**Do.** Ship it as `kui_wgpu.h` beside `kui_glfw.h`: header-only,
-against `webgpu.h` (wgpu-native's and Dawn's share it now), with three
-calls:
-- `kui_wgpu_init(r, device, queue, format)`;
-- `kui_wgpu_draw(r, ctx, pass)` into a pass the host began, so the host keeps its load op and its own passes;
-- `kui_wgpu_free`.
-
-Then:
-- Odin's twin as `kui/wgpu`, beside `kui/glfw`.
-- `wgpu_host.c` and `wgpu_host.odin` become its users, so CI's lavapipe run checks it.
-- A texture-backed image and a fragment are what it leaves out, as `kui_pack_instances` does: say so where it is declared.
-
-### `.` F264 — A string click message arrives as `{tag: msg, click: …}` and C has no reader for it
-
-**Found** 2026-10-29: the kui HUD built, ran, and no click did anything.
-`hud_apply` read the payload as a string (`kui_value_as_str`) or as a
-map's `kind`, which is what `kui_button(ctx, label,
-kui_value_str("harvest"))` suggests. A debug build showed `event ==
-"click"` arriving with a payload that was neither. The rule (ADR 0047,
-"a message that is not a map arrives as {tag: msg, drag: ...}") is
-written in kui.h in two places:
-- the ABI 33 note;
-- `kui_open_with`'s comment, for `on_key`.
-
-It is not written at `kui_button`, `kui_checkbox`, `KUI_BOX_CLICK`, `kui_open_keyed` or `kui_poll_event`. The reader every C example uses, `ev_message` (bare string, else `kind`, else `tag`), lives in `examples/c/common.h`, which the pack does not carry.
-
-Odin does not meet this (`kui.message(ev, Msg)` reads the declared type
-back), nor do Rust and Node.
-
-**Do.**
-- Put `ev_message`'s rule in kui.h as `bool kui_event_message(const KuiEvent *ev, KuiStr *name)`, static inline like `kui_str_eq`, and the field read (`ev_data`) beside it.
-- Make the C examples use the header's.
-- Say at `kui_poll_event` what a payload is for each kind of message.
-
-### `.` F265 — `kui_glfw.h` and `kui_sdl3.h` forward keys and nothing else
-
-**Found** 2026-10-29 in `ui-compare/kui/main.c`. Keys are two lines
-through `kui_glfw_key` and `kui_glfw_char`. The rest is about 25 lines
-of callbacks the host writes:
-- the cursor, and leaving the window;
-- the left button, and the others through `kui_input_mouse_button`;
-- the scroll.
-
-The scroll is a choice among `kui_input_scroll`, `_scroll_gesture` and
-`_wheel`, with the host inventing when a gesture begins. kui_run's 200 ms
-pause is written nowhere a host reads it, and GLFW's deltas are lines,
-with a trackpad's scaled by 0.1. Clicks need a count the host keeps for
-double and triple clicks.
-
-ImGui's GLFW backend installs all of it (`install_callbacks = true`),
-and chains to callbacks the app set before it.
-
-**Do.** Grow both headers by the pointer:
-- `kui_glfw_cursor`, `kui_glfw_enter`, `kui_glfw_button` (counting clicks by the platform's double-click time) and `kui_glfw_scroll` (the wheel, with the gesture rule kui_run uses);
-- the same set for SDL3;
-- with an optional `kui_glfw_install(ctx, window)` that sets the callbacks for a host that has none of its own.
-
-Odin's `kui/glfw` and `kui/sdl3` take the same procs.
-
-### `.` F266 — A C click message with a field takes a three-call map
-
-**Found** 2026-10-29: a log row's click carries its index. In C that is
-five calls: `kui_value_map`, two `kui_value_map_set` (with
-`kui_value_str` and `kui_value_int`), then `kui_open_keyed` and
-`kui_close`. That is because `KUI_BOX_CLICK` (F261) takes a string
-message only, which arrives as `{tag: msg}` (F264).
-
-The other two libraries:
-- ImGui's row is `if (Selectable(...)) select(i)`.
-- Clay recovers the index from the element id (`CLAY_IDI` and `id.offset`).
-
-Most of the 1.6× between kui's HUD and ImGui's is this plumbing.
-
-**Do.** A message constructor for the common shape:
-- `kui_msg(kind)` and `kui_msg_int(kind, field, n)`, both returning `{kind, field: n}` maps, so the reader is F264's;
-- `KUI_BOX_CLICK_MSG(ctx, label, msg, ...)` taking any `KuiValue *`.
-
-Weigh it against a varargs `kui_msgf("row", "row", i, NULL)`: one call, but untyped.
-
-### `~` F267 — A progress bar or meter has no role
-
-**Found** 2026-10-29: the HUD's energy bar wanted `KUI_ROLE_PROGRESS`
-with `value_now`/`value_max`. There is none: the role list has `SLIDER`,
-which is a control, and nothing read-only with a value. So the bar is two
-boxes that assistive technology reads as nothing.
-
-ImGui's `ProgressBar` has no accessibility to lose, and Clay has none
-either, but kui does.
-
-**Do.** A `progress` role (AccessKit's `ProgressIndicator`, and a meter
-if the platforms tell them apart):
-- it reads `value_now`/`value_min`/`value_max` and `value_text`, takes no focus, and its value change is announced as a slider's is;
-- in the schema, every binding's role list and `props.md`;
-- then a stock `progress` widget (a track and a fill) beside the slider.
-
-### `.` F268 — The C and Odin packs carry every platform: 252 MB to download, 978 MB unpacked
-
-**Found** 2026-10-29: `kui-c-0.1.0-alpha.71.tar.gz` is 252 MB, and so is
-`kui-odin-…`. Unpacked, the C pack is 978 MB:
-- four platforms, each with shared, static and the runner-less core of both;
-- the static archives are about 575 MB of it (darwin's `static/` alone is 87 MB);
-- the one file a wgpu host on a Mac links, `core/shared/libkui_ffi.dylib`, is 12.4 MB.
-
-The other two: ImGui's release is 2.2 MB, with 4.5 MB for its C
-bindings, and Clay's is one 260 KB header. The app packs (`kui-<ver>-<platform>`) are 11–13 MB because they are per platform.
-
-**Do.**
-- Per-platform C and Odin packs (`kui-c-<ver>-<platform>.tar.gz`), built by the release's existing per-platform jobs, with the all-platform bundle kept for whoever vendors every target.
-- `install.sh`'s and the README's pointers follow.
-- A further cut, to weigh: the static archives in a pack of their own, since a host beside another Rust library is told to link shared anyway.
-
-### `~` F269 — A host with its own window has no accessibility bridge: a screen reader finds the window empty
-
-**Found** 2026-10-29: the spike's kui HUD, walked with the macOS AX API
-while it ran, showed only its window's three traffic-light buttons and
-its title. The same view gives 11 nodes from `kui_access_tree` (two
-buttons, a checkbox, five texts, a scroll view, its row, the window).
-
-The core has every part of accessibility except the delivery:
-- the tree;
-- announcements (`kui_take_announcements`);
-- actions in (`kui_input_access`, `kui_input_access_text`);
-- `kui_env_set_assistive`.
-
-The one bridge to a platform is `kui-native/src/access_bridge.rs`: 626
-lines on `accesskit_winit`, run by `kui_run`'s windows alone. The
-runner-less core library a game links, the one F234–F239 and ADR 0076
-built the host path around, has none. kui.h says only that "a host
-wiring its own platform accessibility layer reads it after each frame".
-A C host doing that would bring AccessKit's C API and write the same 626
-lines: the adapter on its view, every node translated, actions mapped
-back.
-
-So every embedded kui is silent to assistive technology: Replicator
-Bloom, the spike, and any game on GLFW or SDL3. Its keyboard focus still
-works. Dear ImGui and Clay have no accessibility either, but kui is the
-one that claims it.
-
-**Do.**
-- **A door in the core library** that attaches AccessKit's platform adapters to the host's native handle, with no winit:
-  - an `NSView` on macOS (`accesskit_macos::SubclassingAdapter`), an `HWND` on Windows (`accesskit_windows`'s), and nothing on Linux (`accesskit_unix` needs no window);
-  - something like `kui_access_attach(ctx, handle)` and `kui_access_detach`;
-  - it pushes a tree after `kui_frame_finish` when the tree's hash changed, delivers announcements, sets `env.system.assistive` when a client first asks, and turns a client's requests into `kui_input_access` on the same context.
-- **Move the runner onto it**, so `access_bridge.rs` is its one user rather than a second copy; `accesskit_winit` is mostly these adapters plus winit's event plumbing.
-- **Bindings:** doors in C and Odin. Rust's host path takes it as a function on the context. Node has no host path.
-- **A feature in the core build** (`access`), since it adds AccessKit's platform crates to a library that has none; on by default.
-- **Decide the islands (ADR 0076).**
-  - A surface is a context of its own, drawn in perspective in the world, so its nodes have no rect in the window until the host projects them.
-  - Either the host gives each surface context a transform, or the four corners of its quad in window px each frame, and the bridge grafts that context's tree under a node of the main one with projected rects.
-  - Or a surface is not exposed, and the reason is written in ADR 0076.
-- **The test:** the C reference host attached headlessly is not enough (no AX client). A walk of the macOS AX API from a swift script (as the VoiceOver repros are run headlessly) against a windowed host is: the spike's HUD should list its buttons and checkbox, and AXPress on Harvest should raise the click.
+entries, F263–F269, the last what the user's question about the
+comparison's accessibility row found — **all built 2026-10-29**, on
+`claude/game-host-dx-f263-f269` by five worktree agents and the lead
+(F264 with F266), and in the archive.
+Rebuilt on that branch (`ui-compare/kui-next`), the same HUD is 76 lines
+and its glue 80, the drawing and the pointer now kui's; and its window,
+walked with the macOS AX API, lists the HUD where it had listed nothing.
 
 ## From the core impurities audit (2026-10-25)
 
@@ -6439,6 +6273,16 @@ move.
 **From verifying the Linux packs in Docker (2026-10-28)** — F262, filed and built the same day
 
 - `!` **F262** — [On a system with no fonts, text panics in cosmic-text](backlog/closed-2026-09.md#-f262--on-a-system-with-no-fonts-text-panics-in-cosmic-text--done-2026-10-28) — done (2026-10-28) — a generated last-resort face when the scan finds none, and `no-system-fonts`
+
+**From the UI library comparison (2026-10-29)** — F263–F269, filed and built the same day
+
+- `.` **F263** — [A host with its own device copies kui's renderer out of an example](backlog/closed-2026-09.md#-f263--a-host-with-its-own-device-copies-kuis-renderer-out-of-an-example--done-2026-10-29) — done (2026-10-29) — `kui_wgpu.h` (init, draw into the host's pass, free) and Odin's `kui/wgpu`; the reference hosts draw through them
+- `.` **F264** — [A string click message arrives as `{tag: msg, click: …}` and C has no reader for it](backlog/closed-2026-09.md#-f264--a-string-click-message-arrives-as-tag-msg-click--and-c-has-no-reader-for-it--done-2026-10-29) — done (2026-10-29) — `kui_event_message`, `kui_event_data` in kui.h's "Messages"; `kui_poll_event` names the payload shapes
+- `.` **F265** — [`kui_glfw.h` and `kui_sdl3.h` forward keys and nothing else](backlog/closed-2026-09.md#-f265--kui_glfwh-and-kui_sdl3h-forward-keys-and-nothing-else--done-2026-10-29) — done (2026-10-29) — `KuiGlfw`/`KuiSdl3`: cursor, enter, buttons with clicks counted, kui_run's scroll rule; `kui_glfw_install` chained; `kui_sdl3_event`; Odin the same
+- `.` **F266** — [A C click message with a field takes a three-call map](backlog/closed-2026-09.md#-f266--a-c-click-message-with-a-field-takes-a-three-call-map--done-2026-10-29) — done (2026-10-29) — `kui_msg`, `kui_msg_int`, `KUI_BOX_CLICK_MSG`
+- `~` **F267** — [A progress bar or meter has no role](backlog/closed-2026-09.md#-f267--a-progress-bar-or-meter-has-no-role--done-2026-10-29) — done (2026-10-29) — roles `progress` and `meter` (AccessKit ProgressIndicator / Meter), a stock `progress` in every binding; Node protocol v29
+- `.` **F268** — [The C and Odin packs carry every platform: 252 MB to download, 978 MB unpacked](backlog/closed-2026-09.md#-f268--the-c-and-odin-packs-carry-every-platform-252-mb-to-download-978-mb-unpacked--done-2026-10-29) — done (2026-10-29) — `kui-c-<v>-<platform>` and `kui-odin-<v>-<platform>` beside the all-platform two; the release cache no longer carries old packs
+- `~` **F269** — [A host with its own window has no accessibility bridge: a screen reader finds the window empty](backlog/closed-2026-09.md#-f269--a-host-with-its-own-window-has-no-accessibility-bridge-a-screen-reader-finds-the-window-empty--done-2026-10-29) — done (2026-10-29) — `kui_access_attach` / `kui_access_detach` on the new `kui-access` crate's `HostBridge`; the runner shares its translation
 
 **From a pinch that zoomed nothing (2026-10-28)** — F256, filed and built the same day
 

@@ -297,3 +297,106 @@ fn a_fractional_step_proposes_the_decimal() {
     let evs = key(&mut core, KeyCode::Right);
     assert_eq!(value(&evs[0]).0, 0.3);
 }
+
+/// The track's fill and the track: the two solids a stock progress bar
+/// draws, the fill first by width (it is the narrower or as wide).
+fn bar_quads(core: &mut Core) -> (kui_core::Rect, kui_core::Rect) {
+    let mut q: Vec<kui_core::Rect> = kui_core::testing::solids(core)
+        .into_iter()
+        .map(|q| q.rect)
+        .filter(|r| (r.h - 4.0).abs() < 0.01)
+        .collect();
+    assert_eq!(q.len(), 2, "a track and a fill: {q:?}");
+    q.sort_by(|a, b| a.w.total_cmp(&b.w));
+    (q[0], q[1])
+}
+
+/// The stock progress bar (backlog F267): the progress role over the
+/// value rows it was given, named by its label, a fill as far along the
+/// track as the value is, and no focus, no press, no change — a key or a
+/// click on it does nothing.
+#[test]
+fn a_progress_bar_fills_to_its_value_and_reads_it() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    let k = widgets::progress(&mut ui, "Upload", Some(25.0), 0.0, 100.0);
+    ui.finish();
+    let n = node(&mut core, k);
+    assert_eq!(n.role, Role::Progress);
+    assert_eq!(n.name.as_deref(), Some("Upload"));
+    assert_eq!(
+        (n.number, n.min, n.max),
+        (Some(25.0), Some(0.0), Some(100.0))
+    );
+    assert_eq!(
+        n.actions,
+        AccessAction::ScrollIntoView.bit(),
+        "nothing to do to it"
+    );
+    let (fill, track) = bar_quads(&mut core);
+    assert_eq!(track.x, fill.x, "the fill starts where the track does");
+    assert!(
+        (fill.w - track.w / 4.0).abs() < 0.5,
+        "{fill:?} of {track:?}"
+    );
+
+    let evs = press(&mut core, Vec2::new(track.x + 5.0, track.y + 2.0));
+    let evs = [evs, release(&mut core), key(&mut core, KeyCode::Tab)].concat();
+    assert!(kinds(&evs).is_empty(), "{:?}", kinds(&evs));
+    assert_eq!(core.focus(), None);
+}
+
+/// Busy: no value, so the role carries no number (a reader's
+/// indeterminate) and the fill is a still third of the track, in its
+/// middle — not at the start, where it would read as a third done.
+#[test]
+fn a_busy_progress_bar_has_no_number_and_fills_its_middle_third() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    let k = widgets::progress(&mut ui, "Connecting", None, 0.0, 100.0);
+    ui.finish();
+    let n = node(&mut core, k);
+    assert_eq!((n.role, n.number), (Role::Progress, None));
+    let (fill, track) = bar_quads(&mut core);
+    assert!(
+        (fill.w - track.w / 3.0).abs() < 0.5,
+        "{fill:?} of {track:?}"
+    );
+    let centre = |r: kui_core::Rect| r.x + r.w / 2.0;
+    assert!(
+        (centre(fill) - centre(track)).abs() < 0.5,
+        "{fill:?} in {track:?}"
+    );
+}
+
+/// `role(Meter)` on the spec makes the same drawing a meter; any other
+/// role is the progress bar's, as the slider's role is its own. A
+/// `value_text` is its reading, and a hint is its description.
+#[test]
+fn a_progress_spec_with_the_meter_role_is_a_meter() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    let m = ui.metrics();
+    let meter = widgets::progress_with(
+        &mut ui,
+        "Battery",
+        widgets::progress_spec(&m)
+            .role(Role::Meter)
+            .value_now(0.8)
+            .value_max(1.0)
+            .value_text("80 percent, charging"),
+        Some("Charged by noon"),
+    );
+    let other = widgets::progress_with(
+        &mut ui,
+        "Sync",
+        widgets::progress_spec(&m).role(Role::Button).value_now(1.0),
+        None,
+    );
+    ui.finish();
+    let n = node(&mut core, meter);
+    assert_eq!(n.role, Role::Meter);
+    assert_eq!(n.value.as_deref(), Some("80 percent, charging"));
+    assert_eq!(n.description.as_deref(), Some("Charged by noon"));
+    assert_eq!(node(&mut core, other).role, Role::Progress);
+}

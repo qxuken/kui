@@ -8,13 +8,15 @@
 #   nu scripts/pack-ffi.nu --accept-msvc-license   Windows too (see below)
 #   nu scripts/pack-ffi.nu --no-runner             without the windowed runner (kui_run)
 #   nu scripts/pack-ffi.nu --platforms linux-x64 --zig   this Linux machine's own, at glibc 2.28
-#   nu scripts/pack-ffi.nu bundle [--partial]      the release's two tarballs, from the packs
+#   nu scripts/pack-ffi.nu bundle [--partial]      the release's C and Odin archives, from the packs
 #   nu scripts/pack-ffi.nu verify <tarball>        link and run a counter against one
 #
 # What lands in target/pack/, per platform:
 #
 #   kui-ffi-<version>-<platform>/
-#     include/kui.h, and kui_glfw.h and kui_sdl3.h (header-only key tables)
+#     include/    HEADERS below: kui.h, kui_glfw.h and kui_sdl3.h (header-only
+#                 input helpers) and kui_wgpu.h (header-only, kui drawn on a
+#                 WebGPU device)
 #     lib/        libkui_ffi.so / .dylib / kui_ffi.dll + kui_ffi.dll.lib   dynamic
 #                 libkui_ffi.a / kui_ffi.lib                               static
 #                 windows.0.5x.0.lib (Windows): windows-targets' import
@@ -45,15 +47,26 @@
 # what the release workflow does on its Linux runners, each building its
 # own platform (.github/workflows/release.yml).
 #
-# The release ships two tarballs over every platform's pack, which
-# `bundle` writes to target/pack/release/ with their SHA256SUMS:
+# The release ships a C archive and an Odin one for each platform, and the
+# two again over all four, which `bundle` writes to target/pack/release/
+# with their SHA256SUMS:
 #
-#   kui-c-<version>/      include/kui.h, lib/<platform>/ (and core/ in it,
-#                         the library without the runner, as its own
-#                         shared/ static/ BUILD.txt; and pkgconfig/ with
-#                         kui, kui-static, kui-core, kui-core-static .pc
-#                         files, but on Windows)
-#   kui-odin-<version>/   kui/, the Odin package (packages/odin/kui), with
+#   kui-c-<version>-<platform>.tar.gz     one platform's, a .zip for
+#   kui-odin-<version>-<platform>.tar.gz  win32-x64 as the runner's is
+#   kui-c-<version>.tar.gz                all four platforms, for whoever
+#   kui-odin-<version>.tar.gz             vendors every target
+#
+# One layout for both, the per-platform archive holding a single
+# lib/<platform>/, so a path the README gives is the same in either:
+#
+#   kui-c-<version>[-<platform>]/
+#                         include/ (the HEADERS), lib/<platform>/ (and
+#                         core/ in it, the library without the runner, as
+#                         its own shared/ static/ BUILD.txt; and pkgconfig/
+#                         with kui, kui-static, kui-core, kui-core-static
+#                         .pc files, but on Windows)
+#   kui-odin-<version>[-<platform>]/
+#                         kui/, the Odin package (packages/odin/kui), with
 #                         the same libraries under kui/c/lib/<platform>/
 #     where <platform>/ is: shared/  libkui_ffi.so / .dylib, or
 #                                    kui_ffi.dll + kui_ffi.dll.lib
@@ -61,6 +74,22 @@
 #                                    windows-targets' .libs, link.txt
 #                           BUILD.txt
 #     and in both:        README.md, LICENSE
+#
+# Until alpha.71 the release shipped the all-platform two alone: 265 MB
+# each to download and 978 MB unpacked, for a host that links one 12 MB
+# library (backlog F268). darwin-arm64's own is 55 MB, 175 MB unpacked,
+# at alpha.71; Linux's are larger (their static archives are). The
+# all-platform Odin archive is the one way to vendor the package for
+# several targets, since each archive's kui_c.odin names only the
+# platforms it carries; the C one is kept beside it for the same reader.
+#
+# The static archives stay in each platform's archive, though they are
+# most of its size: kui_c.odin links static by default, so the Odin
+# package's promise (an import, and nothing beside the program) is the
+# static library, and an archive without it would build nothing until a
+# second one were unpacked over it. A host beside another Rust library
+# links shared and carries the static one unused: 42 MB of darwin-arm64's
+# 55 at alpha.71, where it was some 200 MB of every platform's at once.
 #
 # A kind to a directory, so `-L lib/<platform>/static -lkui_ffi` is the
 # static link and the same line with `shared` the dynamic one: a linker
@@ -92,6 +121,13 @@ const OUT = $ROOT | path join target pack
 const CARGO_ZIGBUILD_VERSION = "0.23.3"
 const ZIGLANG_VERSION = "0.17.0"
 const CARGO_XWIN_VERSION = "0.23.1"
+
+# The headers every pack carries in include/, from crates/kui-ffi/include/:
+# kui.h, and kui_glfw.h and kui_sdl3.h, header-only, a window library's
+# keys and pointer as kui's (backlogs F239, F265), and kui_wgpu.h, header-only, kui's frame
+# drawn on a WebGPU device the host owns (backlog F263). `bundle` copies a
+# pack's include/ whole, so a header added here reaches every archive.
+const HEADERS = [kui.h kui_glfw.h kui_sdl3.h kui_wgpu.h]
 
 const PLATFORMS = [
     [platform target builder];
@@ -153,8 +189,10 @@ def main [
         error make { msg: "nothing to build" }
     }
 
-    let features = if $no_runner { [--no-default-features] } else { [] }
-    let feature_note = if $no_runner { "no default features (no runner)" } else { "default features (with the runner)" }
+    # The core library keeps `access`, the accessibility bridge a host
+    # attaches to its own window (kui_access_attach, backlog F269).
+    let features = if $no_runner { [--no-default-features --features access] } else { [] }
+    let feature_note = if $no_runner { "no default features but access (no runner)" } else { "default features (with the runner)" }
     mkdir $OUT
     if ($todo | any {|r| $r.how == "docker" }) { build-image }
 
@@ -334,9 +372,7 @@ def stage [row: record, built: record, feature_note: string, no_runner: bool] {
     mkdir ($dir | path join include) ($dir | path join lib)
     # With LF line ends whatever the checkout has: a CRLF one (Git for
     # Windows' autocrlf) would otherwise ship a header that differs by host.
-    # kui_glfw.h and kui_sdl3.h ride beside it: header-only, a window
-    # library's keys as kui's (backlog F239).
-    for h in [kui.h kui_glfw.h kui_sdl3.h] {
+    for h in $HEADERS {
         open --raw ($ROOT | path join crates kui-ffi include $h) | str replace -a "\r\n" "\n" | save -f --raw ($dir | path join include $h)
     }
     for f in (libraries $row.target) {
@@ -399,11 +435,12 @@ def sha256sum-of [file: string] {
     $"($sum)  ($file)"
 }
 
-# The release's two tarballs (see the top of this file), from the
+# The release's C and Odin archives (see the top of this file), from the
 # per-platform packs `main` left in target/pack/ — in the release
-# workflow, the four its build legs uploaded.
+# workflow, the four its build legs uploaded: one of each per platform,
+# and the all-platform two once all four are packed.
 def "main bundle" [
-    --partial # bundle the platforms that are packed; without it all four must be
+    --partial # bundle the platforms that are packed, each on its own; without it all four must be
 ] {
     let v = version
     let all = $PLATFORMS | get platform
@@ -431,48 +468,70 @@ def "main bundle" [
     let rel = $OUT | path join release
     rm -rf $rel
     mkdir $rel
-    let tarballs = [c odin] | each {|kind|
-        let name = $"kui-($kind)-($v)"
-        let dir = $rel | path join $name
-        if $kind == "c" {
-            for p in $have {
-                lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)") ($dir | path join lib $p)
-            }
-            for p in $core {
-                lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)-no-runner") ($dir | path join lib $p core)
-            }
-            for p in ($have | where {|p| not ($p | str starts-with "win32") }) {
-                write-pkg-config ($dir | path join lib $p) $v ($p in $core)
-            }
-            mkdir ($dir | path join include)
-            for h in [kui.h kui_glfw.h kui_sdl3.h] {
-                cp ($OUT | path join $"kui-ffi-($v)-($have | first)" include $h) ($dir | path join include)
-            }
-        } else {
-            # The libraries inside the package, beside the file that links
-            # them, as vendor:raylib carries its own: `import "kui"` is the
-            # whole of using the pack, and the package travels with them.
-            mkdir $dir
-            cp -r ($ROOT | path join packages odin kui) $dir
-            for p in $have {
-                lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)") ($dir | path join kui c lib $p)
-            }
-            for p in $core {
-                lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)-no-runner") ($dir | path join kui c lib $p core)
-            }
-            link-the-pack ($dir | path join kui c) $have $core
+    # Each platform's own, then all four together: the all-platform name
+    # means all four, so a --partial run with some missing writes none.
+    let single = $have | each {|p|
+        [c odin] | each {|kind| archive-one $rel $kind $v $"kui-($kind)-($v)-($p)" [$p] ($core | where {|c| $c == $p }) }
+    } | flatten
+    let whole = if ($missing | is-empty) {
+        [c odin] | each {|kind| archive-one $rel $kind $v $"kui-($kind)-($v)" $have $core }
+    } else {
+        print -e "no all-platform archives: they want all four platforms packed"
+        []
+    }
+    let archives = $single ++ $whole
+    cd $rel
+    $archives | each {|t| sha256sum-of $t } | str join "\n" | save -f SHA256SUMS
+    print ($archives | wrap archive | insert size {|r| ls $r.archive | get 0.size } | table --width 100)
+    print $"in ($rel)"
+}
+
+# The archive of one kind (c or odin) over `platforms`, named `name`, in
+# `rel`: laid out in a directory of that name, then a .tar.gz of it, or a
+# .zip for an archive of win32-x64 alone, as the runner's is
+# (scripts/pack-runner.nu's asset-name). Its file name.
+def archive-one [rel: string, kind: string, v: string, name: string, platforms: list<string>, core: list<string>] {
+    let dir = $rel | path join $name
+    let pack_of = {|p| $OUT | path join $"kui-ffi-($v)-($p)" }
+    let core_of = {|p| $OUT | path join $"kui-ffi-($v)-($p)-no-runner" }
+    if $kind == "c" {
+        for p in $platforms {
+            lay-out-libs (do $pack_of $p) ($dir | path join lib $p)
         }
-        cp ($ROOT | path join LICENSE) $dir
-        readme $kind $v $have | save -f ($dir | path join README.md)
-        cd $rel
+        for p in $core {
+            lay-out-libs (do $core_of $p) ($dir | path join lib $p core)
+        }
+        for p in ($platforms | where {|p| not ($p | str starts-with "win32") }) {
+            write-pkg-config ($dir | path join lib $p) $v ($p in $core)
+        }
+        # The pack's include/ whole: every header it carries (HEADERS).
+        cp -r (do $pack_of ($platforms | first) | path join include) $dir
+    } else {
+        # The libraries inside the package, beside the file that links
+        # them, as vendor:raylib carries its own: `import "kui"` is the
+        # whole of using the pack, and the package travels with them.
+        mkdir $dir
+        cp -r ($ROOT | path join packages odin kui) $dir
+        for p in $platforms {
+            lay-out-libs (do $pack_of $p) ($dir | path join kui c lib $p)
+        }
+        for p in $core {
+            lay-out-libs (do $core_of $p) ($dir | path join kui c lib $p core)
+        }
+        link-the-pack ($dir | path join kui c) $platforms $core
+    }
+    cp ($ROOT | path join LICENSE) $dir
+    readme $kind $v $platforms | save -f ($dir | path join README.md)
+    cd $rel
+    let file = if $platforms == [win32-x64] {
+        zip-dir $name
+        $"($name).zip"
+    } else {
         tar-gz $name
-        rm -rf $name
         $"($name).tar.gz"
     }
-    cd $rel
-    $tarballs | each {|t| sha256sum-of $t } | str join "\n" | save -f SHA256SUMS
-    print ($tarballs | wrap tarball | insert size {|r| ls $r.tarball | get 0.size } | table --width 100)
-    print $"in ($rel)"
+    rm -rf $name
+    $file
 }
 
 # One platform's pack, split by kind: shared/ the library a program loads
@@ -658,13 +717,21 @@ when KUI_PLUGIN && ODIN_OS == .Darwin {
     $out | save -f --raw $file
 }
 
-# README.md of a release tarball: what is in it and the link lines, for
-# the platforms it holds.
+# README.md of a release archive: what is in it and the link lines, for
+# the platforms it holds; in one platform's, its paths spelled out.
 def readme [kind: string, v: string, platforms: list<string>] {
+    let text = readme-text $kind $v $platforms
+    # Every path to the libraries is `lib/<platform>`; the archives' own
+    # names keep their `<platform>`.
+    if ($platforms | length) == 1 { $text | str replace -a "lib/<platform>" $"lib/($platforms | first)" } else { $text }
+}
+
+def readme-text [kind: string, v: string, platforms: list<string>] {
+    let for_which = if ($platforms | length) == 1 { $"for ($platforms | first)" } else { "for each platform" }
     let what = if $kind == "c" {
-        "the C library: `include/kui.h`, and `libkui_ffi` for each platform; `include/kui_glfw.h` and `include/kui_sdl3.h` forward GLFW's or SDL3's keys, header-only"
+        $"the C library: `include/kui.h`, and `libkui_ffi` ($for_which); `include/kui_glfw.h` and `include/kui_sdl3.h` forward GLFW's or SDL3's keys and pointer, and `include/kui_wgpu.h` draws kui's frame on a WebGPU device of your own, all header-only"
     } else {
-        "the Odin binding: the `kui` package, and `libkui_ffi` for each platform it links; `kui/glfw` and `kui/sdl3` forward vendor:glfw's or vendor:sdl3's keys"
+        $"the Odin binding: the `kui` package, and `libkui_ffi` ($for_which) it links; `kui/glfw` and `kui/sdl3` forward vendor:glfw's or vendor:sdl3's keys and pointer, and `kui/wgpu` draws kui's frame on a vendor:wgpu device of your own"
     }
     let use = if $kind == "c" {
         $"With pkg-config \(not on Windows), point it at the platform's files and
@@ -719,6 +786,12 @@ glibc it needs \(2.28 or newer).
 
 Platforms: ($platforms | str join ', ').
 
+Each release carries this archive for each platform on its own,
+`kui-($kind)-($v)-<platform>.tar.gz` \(`.zip` for win32-x64), and all four in
+`kui-($kind)-($v).tar.gz`, for a project that vendors every target. The
+layout is one: each platform's files are under its own `lib/` directory
+in either.
+
 ($use)
 
 ## Without the runner
@@ -754,11 +827,11 @@ kui.h's `KUI_ABI_VERSION` is what this library answers from
 # check that what the release ships links and works outside this
 # repository. C needs `cc` (or $env.CC); Odin needs odin on PATH or ODIN.
 def "main verify" [
-    tarball: string # a kui-c-<version>.tar.gz or kui-odin-<version>.tar.gz
+    tarball: string # a kui-c-<version>[-<platform>].tar.gz or kui-odin-<version>[-<platform>].tar.gz
     --platform: string # whose libraries to link; default: this machine's
 ] {
     let p = $platform | default (host-platform)
-    if ($p | str starts-with "win32") {
+    if ($p | str starts-with "win32") or ($tarball | str ends-with ".zip") {
         error make { msg: "verify links with cc or odin's own linker line, on Linux and macOS; Windows is not checked" }
     }
     let tarball = $tarball | path expand
@@ -851,5 +924,17 @@ def --wrapped run-or-fail [what: string, cmd: string, ...args] {
 def tar-gz [dir: string] {
     with-env { COPYFILE_DISABLE: "1" } {
         tar --no-xattrs -czf $"($dir).tar.gz" $dir
+    }
+}
+
+# <dir>.zip, the directory at its top, as Windows' Explorer opens it:
+# Compress-Archive on Windows, zip(1) elsewhere (the release bundles on
+# Linux). `-X` leaves out the extra attributes, as tar-gz does.
+def zip-dir [dir: string] {
+    rm -f $"($dir).zip"
+    if $nu.os-info.name == "windows" {
+        ^powershell -NoProfile -NonInteractive -Command $"Compress-Archive -Path '($dir)' -DestinationPath '($dir).zip' -CompressionLevel Optimal"
+    } else {
+        ^zip -q -r -9 -X $"($dir).zip" $dir
     }
 }

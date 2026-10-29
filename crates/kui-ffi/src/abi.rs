@@ -257,7 +257,10 @@
 ///   64-bit, from 912) with `KUI_HOST_HIT_*`; `kui_hit`,
 ///   `kui_pointer_wants` and `kui_keyboard_wants` are new functions.
 ///   `KuiDrawData` appends `bounds` (152 bytes on 64-bit, from 136).
-///   `kui_ctx_new_in`, a context in another's session, is new.
+///   `kui_ctx_new_in`, a context in another's session, is new. Still 42
+///   with `KUI_ROLE_PROGRESS` and `KUI_ROLE_METER`, new constants appended
+///   to the roles, and `kui_progress`, a new function (backlog F267): no
+///   struct moved.
 pub const KUI_ABI_VERSION: u32 = 42;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

@@ -68,21 +68,8 @@ static inline bool ev_is(const KuiEvent *ev, const char *kind) {
     return kui_str_eq(ev->event, kind);
 }
 
-/* The event's data: the payload's field named for the event - NULL for
- * one that carries none (a plain click, a submit, a fonts change). */
-static inline const KuiValue *ev_data(const KuiEvent *ev) {
-    return ev->payload ? kui_value_get(ev->payload, ev->event) : NULL;
-}
-
-/* The message's name: a bare string message, else its `kind`, else the
- * `tag` a non-map message is kept under. False when it names none. */
-static inline bool ev_message(const KuiEvent *ev, KuiStr *out) {
-    if (!ev->payload) return false;
-    if (kui_value_as_str(ev->payload, out)) return true;
-    const KuiValue *k = kui_value_get(ev->payload, KUI_STR("kind"));
-    if (k && kui_value_as_str(k, out)) return true;
-    const KuiValue *t = kui_value_get(ev->payload, KUI_STR("tag"));
-    return t && kui_value_as_str(t, out);
-}
+/* The message's name and the event's data are kui.h's own
+ * (kui_event_message, kui_event_data): every C host needs them, so they
+ * live in the header rather than here (backlog F264). */
 
 #endif

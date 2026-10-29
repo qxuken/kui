@@ -137,8 +137,13 @@ release pipeline:
   the same target dir: the addon's tree is the library's but for 18
   crates) and, off Windows, links and runs the C and Odin counters
   against it shared and static; `packs`, beside `publish` and not in its
-  way, bundles the four into `kui-c-<version>.tar.gz` and
-  `kui-odin-<version>.tar.gz`, checks them again on linux-x64, adds the
+  way, bundles the four into a C and an Odin archive per platform,
+  `kui-c-<version>-<platform>.tar.gz` and
+  `kui-odin-<version>-<platform>.tar.gz` (`.zip` for win32-x64), and
+  the all-platform `kui-c-<version>.tar.gz` and
+  `kui-odin-<version>.tar.gz` for whoever vendors every target (one
+  layout; until alpha.71 the all-platform two were the only ones, 252 MB
+  each), checks the all-platform two and linux-x64's own again, adds the
   four runner assets and the two install scripts, writes one `SHA256SUMS`
   over all of it, installs the linux-x64 runner through `install.sh`
   from those files laid out as a mirror, and attaches everything to the
@@ -328,8 +333,11 @@ When `packs` cannot finish (and a re-run does not help), the runner's
 release assets are the run's four `kui-runner-<platform>` artifacts:
 download them into one directory with `install.sh` and `install.ps1`
 beside them, `nu scripts/pack-runner.nu sums <dir>` (it covers every
-file there, so add the C and Odin tarballs first if they are to be in
-it), and `gh release upload v<version> <dir>/* --clobber`. `gh run view
+file there, so add the C and Odin archives first if they are to be in
+it), and `gh release upload v<version> <dir>/* --clobber`. The C and Odin
+archives come from the run's four `kui-ffi-<platform>` artifacts: unpack
+every tarball in them into `target/pack/`, then `nu scripts/pack-ffi.nu
+bundle` writes all ten to `target/pack/release/`. `gh run view
 <run-id> -R qxuken/kui` lists where each job stands.
 
 When the runner cannot publish the crates at all (alpha.17's tag job once

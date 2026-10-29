@@ -6,7 +6,9 @@ import c "c"
 // (backlog F234): renderer_wgsl is the shader, instance_stride and
 // instance_attributes the vertex layout, pack_instances the frame. Build
 // the pipeline from the layout read here and a later library's needs no
-// change. kui.h's "Drawing it yourself" is the whole of it.
+// change. kui.h's "Drawing it yourself" is the whole of it; on
+// vendor:wgpu the pipeline around these is the kui/wgpu package (backlog
+// F263), so a host with its own device draws kui in three calls.
 
 // The shader that draws pack_instances' instances, WGSL: dual for a device
 // with dual-source blending (LCD subpixel text), else the single variant.
