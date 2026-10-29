@@ -1,22 +1,21 @@
 /* A host that draws kui's frame with a GPU device of its own (backlog
- * F234), on wgpu-native's C API (webgpu.h): kui.h's "Drawing it yourself"
- * done end to end, offscreen. No window and no surface - an instance, an
- * adapter, a device - so it runs on a machine with a display and on CI's
- * software Vulkan alike.
+ * F234), on wgpu-native's C API (webgpu.h), through kui_wgpu.h (backlog
+ * F263): kui.h's "Drawing it yourself" done end to end, offscreen. No
+ * window and no surface - an instance, an adapter, a device - so it runs
+ * on a machine with a display and on CI's software Vulkan alike.
  *
- * Nothing here knows kui's instance layout or shader: the WGSL comes from
- * kui_renderer_wgsl, the vertex buffer's layout from kui_instance_stride
- * and kui_instance_attributes, the instances from kui_pack_instances. A
- * later library that moves any of them needs no change here. What this
- * file does know is what kui.h states and kui-wgpu does
- * (crates/kui-wgpu/src/lib.rs): the bind group, the blend, an RGBA8Unorm
- * target whose bytes are kui's colours as written (no sRGB encode).
+ * The pipeline, the atlas and the instances are kui_wgpu.h's; this file
+ * is what stays the host's: the device, a target and the pass over it,
+ * cleared to the "world" kui draws over, and a readback. Since CI runs it
+ * over lavapipe, its checks are the header's.
  *
  * The frame is drawn, read back and checked: the panel's colour inside the
  * panel, the clear colour far outside it, a shadow under it, glyph coverage
  * where its title is, the button's colour on the button. Then the button
  * is clicked, the frame rebuilt with its new label, and drawn again: the
  * label's new glyph reaches the atlas as a dirty rect, uploaded alone.
+ * That runs once with KUI_WGSL_SINGLE, and again with KUI_WGSL_DUAL and
+ * subpixel text where the adapter offers dual-source blending.
  *
  * It calls only the core library (no kui_run, no capture), so it links
  * against the release's no-runner library as well.
@@ -33,6 +32,7 @@
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include "../common.h"
+#include "kui_wgpu.h"
 
 /* The frame, in logical px, drawn at twice that. */
 #define W 320
@@ -46,13 +46,18 @@
 #define BUTTON_H 28
 #define PANEL_BG 0x2a3550ffu
 #define BUTTON_BG 0xe0703affu
+/* A texture-backed image between the title and the button: a quad
+ * kui_wgpu.h leaves out, so where it is shows the panel. */
+#define IMAGE_W 32
+#define IMAGE_H 6
 /* The world behind the UI: what the target is cleared to. */
 static const WGPUColor CLEAR = {0.10, 0.55, 0.35, 1.0};
 
 /* --- the view --------------------------------------------------------- */
 
-/* A panel with a shadow, a title and a button, on a transparent root. */
-static void build(KuiCtx *ui, int clicks) {
+/* A panel with a shadow, a title, an image and a button, on a transparent
+ * root. */
+static void build(KuiCtx *ui, uint64_t image, int clicks) {
     kui_frame_begin(ui, W, H, SCALE);
     KuiSpec world = {.width = {KUI_FIXED, W}, .height = {KUI_FIXED, H}, .pad_l = PANEL_X, .pad_t = PANEL_Y};
     kui_open_keyed(ui, KUI_STR("world"), &world, NULL);
@@ -63,6 +68,8 @@ static void build(KuiCtx *ui, int clicks) {
     kui_open_keyed(ui, KUI_STR("panel"), &panel, NULL);
     KuiTextStyle title = {.size = 18, .color = 0xffffffffu};
     kui_text(ui, KUI_STR("kui over wgpu"), &title);
+    KuiSpec picture = {.width = {KUI_FIXED, IMAGE_W}, .height = {KUI_FIXED, IMAGE_H}};
+    kui_image(ui, image, &picture);
     KuiSpec button = {.width = {KUI_FIXED, BUTTON_W}, .height = {KUI_FIXED, BUTTON_H},
                       .main_align = KUI_CENTER, .cross_align = KUI_CENTER,
                       .bg = BUTTON_BG, .radius = 6, .label = KUI_STR("count")};
@@ -151,10 +158,14 @@ typedef struct Gpu {
     WGPUDevice device;
     WGPUQueue queue;
     char adapter_name[128];
+    /* Whether the device was given dual-source blending, which
+     * KUI_WGSL_DUAL wants. */
+    bool dual;
 } Gpu;
 
-/* An instance, an adapter and a device, with no surface. False with no
- * adapter: the machine has no GPU (or no driver for one). */
+/* An instance, an adapter and a device, with no surface: the device with
+ * dual-source blending when the adapter offers it. False with no adapter:
+ * the machine has no GPU (or no driver for one). */
 static bool gpu_open(Gpu *g) {
     g->instance = wgpuCreateInstance(NULL);
     if (!g->instance) return false;
@@ -178,7 +189,12 @@ static bool gpu_open(Gpu *g) {
     }
 
     Answer d = {0};
+    WGPUFeatureName dual = WGPUFeatureName_DualSourceBlending;
     WGPUDeviceDescriptor desc = WGPU_DEVICE_DESCRIPTOR_INIT;
+    if (wgpuAdapterHasFeature(g->adapter, dual)) {
+        desc.requiredFeatureCount = 1;
+        desc.requiredFeatures = &dual;
+    }
     desc.uncapturedErrorCallbackInfo.callback = on_error;
     WGPURequestDeviceCallbackInfo dcb = WGPU_REQUEST_DEVICE_CALLBACK_INFO_INIT;
     dcb.mode = WGPUCallbackMode_AllowProcessEvents;
@@ -189,6 +205,7 @@ static bool gpu_open(Gpu *g) {
     if (!d.ok) return false;
     g->device = d.handle;
     g->queue = wgpuDeviceGetQueue(g->device);
+    g->dual = wgpuDeviceHasFeature(g->device, dual);
     return true;
 }
 
@@ -199,245 +216,49 @@ static void gpu_close(Gpu *g) {
     if (g->instance) wgpuInstanceRelease(g->instance);
 }
 
-/* --- kui's renderer, built from what the library says ----------------- */
+/* --- the target: the host's pass, kui drawn into it ------------------- */
 
-typedef struct Renderer {
-    WGPUBindGroupLayout layout;
-    WGPURenderPipeline pipeline;
-    WGPUBuffer globals;
-    WGPUSampler linear, nearest;
-    /* The glyph atlas, kept between frames: a page the size the draw data
-     * says, and the epoch of the page it holds. */
-    WGPUTexture atlas;
-    WGPUTextureView atlas_view;
-    uint32_t atlas_size;
-    uint64_t atlas_epoch;
-    WGPUBindGroup group;
-    WGPUBuffer instances;
-    size_t instance_cap;
-    /* The offscreen target, and the buffer it is read back through. */
-    WGPUTexture target;
-    WGPUTextureView target_view;
+static const WGPUTextureFormat FORMAT = WGPUTextureFormat_RGBA8Unorm;
+
+/* An offscreen target and the buffer it is read back through; a copy's
+ * rows are 256-byte aligned. */
+typedef struct Target {
+    WGPUTexture texture;
+    WGPUTextureView view;
     WGPUBuffer readback;
     uint32_t width, height, row;
-    /* What the last frame uploaded of the atlas, for the summary. */
-    uint32_t uploaded[4];
-} Renderer;
+} Target;
 
-static const WGPUTextureFormat TARGET = WGPUTextureFormat_RGBA8Unorm;
-
-static bool renderer_init(Gpu *g, Renderer *r, uint32_t width, uint32_t height) {
-    memset(r, 0, sizeof *r);
-    /* The shader without dual-source blending: subpixel text stays off (it
-     * is unless kui_set_subpixel_text), so no glyph needs per-channel
-     * blending. */
-    KuiStr wgsl = kui_renderer_wgsl(KUI_WGSL_SINGLE);
-    WGPUShaderSourceWGSL src = WGPU_SHADER_SOURCE_WGSL_INIT;
-    src.code = (WGPUStringView){.data = (const char *)wgsl.ptr, .length = wgsl.len};
-    WGPUShaderModuleDescriptor md = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
-    md.nextInChain = &src.chain;
-    WGPUShaderModule module = wgpuDeviceCreateShaderModule(g->device, &md);
-
-    /* Group 0 as kui.h gives it: the globals, the atlas, two samplers. */
-    WGPUBindGroupLayoutEntry entries[4] = {
-        WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT, WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT,
-        WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT, WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT,
-    };
-    entries[0].binding = 0;
-    entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-    entries[0].buffer.type = WGPUBufferBindingType_Uniform;
-    entries[1].binding = 1;
-    entries[1].visibility = WGPUShaderStage_Fragment;
-    entries[1].texture.sampleType = WGPUTextureSampleType_Float;
-    entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
-    for (int i = 2; i < 4; i++) {
-        entries[i].binding = (uint32_t)i;
-        entries[i].visibility = WGPUShaderStage_Fragment;
-        entries[i].sampler.type = WGPUSamplerBindingType_Filtering;
-    }
-    WGPUBindGroupLayoutDescriptor bld = WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
-    bld.entryCount = 4;
-    bld.entries = entries;
-    r->layout = wgpuDeviceCreateBindGroupLayout(g->device, &bld);
-    WGPUPipelineLayoutDescriptor pld = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
-    pld.bindGroupLayoutCount = 1;
-    pld.bindGroupLayouts = &r->layout;
-    WGPUPipelineLayout pipeline_layout = wgpuDeviceCreatePipelineLayout(g->device, &pld);
-
-    /* The instance layout, read from the library at run time: (location,
-     * floats, offset) triples, each a float32x2 or float32x4, stepped per
-     * instance. */
-    uint32_t n = kui_instance_attributes(NULL, 0);
-    uint32_t *triples = malloc(n * 3 * sizeof *triples);
-    WGPUVertexAttribute *attrs = calloc(n, sizeof *attrs);
-    kui_instance_attributes(triples, n);
-    for (uint32_t i = 0; i < n; i++) {
-        attrs[i].shaderLocation = triples[i * 3];
-        attrs[i].format = triples[i * 3 + 1] == 2 ? WGPUVertexFormat_Float32x2 : WGPUVertexFormat_Float32x4;
-        attrs[i].offset = triples[i * 3 + 2];
-    }
-    WGPUVertexBufferLayout vbl = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
-    vbl.stepMode = WGPUVertexStepMode_Instance;
-    vbl.arrayStride = kui_instance_stride();
-    vbl.attributeCount = n;
-    vbl.attributes = attrs;
-
-    /* The single variant writes straight colour and its coverage as alpha:
-     * blended as kui-wgpu blends it, colour by its alpha, alpha over. */
-    WGPUBlendState blend = {
-        .color = {.operation = WGPUBlendOperation_Add, .srcFactor = WGPUBlendFactor_SrcAlpha,
-                  .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha},
-        .alpha = {.operation = WGPUBlendOperation_Add, .srcFactor = WGPUBlendFactor_One,
-                  .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha},
-    };
-    WGPUColorTargetState target = WGPU_COLOR_TARGET_STATE_INIT;
-    target.format = TARGET;
-    target.blend = &blend;
-    WGPUFragmentState fs = WGPU_FRAGMENT_STATE_INIT;
-    fs.module = module;
-    fs.entryPoint = (WGPUStringView){.data = "fs_main", .length = WGPU_STRLEN};
-    fs.targetCount = 1;
-    fs.targets = &target;
-    WGPURenderPipelineDescriptor rpd = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
-    rpd.layout = pipeline_layout;
-    rpd.vertex.module = module;
-    rpd.vertex.entryPoint = (WGPUStringView){.data = "vs_main", .length = WGPU_STRLEN};
-    rpd.vertex.bufferCount = 1;
-    rpd.vertex.buffers = &vbl;
-    /* Six vertices an instance, a triangle list (the default topology). */
-    rpd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-    rpd.fragment = &fs;
-    r->pipeline = wgpuDeviceCreateRenderPipeline(g->device, &rpd);
-    free(attrs);
-    free(triples);
-    wgpuPipelineLayoutRelease(pipeline_layout);
-    wgpuShaderModuleRelease(module);
-
-    /* Eight floats: viewport, atlas size, frame clock, scale, padding. */
-    WGPUBufferDescriptor gd = WGPU_BUFFER_DESCRIPTOR_INIT;
-    gd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    gd.size = 8 * sizeof(float);
-    r->globals = wgpuDeviceCreateBuffer(g->device, &gd);
-    /* kui-wgpu's two samplers: clamped, one filtering and one not. */
-    WGPUSamplerDescriptor sd = WGPU_SAMPLER_DESCRIPTOR_INIT;
-    sd.magFilter = sd.minFilter = WGPUFilterMode_Linear;
-    r->linear = wgpuDeviceCreateSampler(g->device, &sd);
-    sd.magFilter = sd.minFilter = WGPUFilterMode_Nearest;
-    r->nearest = wgpuDeviceCreateSampler(g->device, &sd);
-
-    /* The target and its readback; a copy's rows are 256-byte aligned. */
-    r->width = width;
-    r->height = height;
-    r->row = (width * 4 + 255) & ~255u;
+static void target_make(Gpu *g, Target *t, uint32_t width, uint32_t height) {
+    t->width = width;
+    t->height = height;
+    t->row = (width * 4 + 255) & ~255u;
     WGPUTextureDescriptor td = WGPU_TEXTURE_DESCRIPTOR_INIT;
     td.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
     td.size = (WGPUExtent3D){width, height, 1};
-    td.format = TARGET;
-    r->target = wgpuDeviceCreateTexture(g->device, &td);
-    r->target_view = wgpuTextureCreateView(r->target, NULL);
+    td.format = FORMAT;
+    t->texture = wgpuDeviceCreateTexture(g->device, &td);
+    t->view = wgpuTextureCreateView(t->texture, NULL);
     WGPUBufferDescriptor rd = WGPU_BUFFER_DESCRIPTOR_INIT;
     rd.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-    rd.size = (uint64_t)r->row * height;
-    r->readback = wgpuDeviceCreateBuffer(g->device, &rd);
-    return wgpu_errors == 0;
+    rd.size = (uint64_t)t->row * height;
+    t->readback = wgpuDeviceCreateBuffer(g->device, &rd);
 }
 
-/* A page of `size`, and the bind group that names it. */
-static void atlas_resize(Gpu *g, Renderer *r, uint32_t size) {
-    if (r->atlas) {
-        wgpuBindGroupRelease(r->group);
-        wgpuTextureViewRelease(r->atlas_view);
-        wgpuTextureRelease(r->atlas);
-    }
-    WGPUTextureDescriptor td = WGPU_TEXTURE_DESCRIPTOR_INIT;
-    td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-    td.size = (WGPUExtent3D){size, size, 1};
-    td.format = WGPUTextureFormat_RGBA8Unorm;
-    r->atlas = wgpuDeviceCreateTexture(g->device, &td);
-    r->atlas_view = wgpuTextureCreateView(r->atlas, NULL);
-    r->atlas_size = size;
-    r->atlas_epoch = 0;
-    WGPUBindGroupEntry e[4] = {
-        WGPU_BIND_GROUP_ENTRY_INIT, WGPU_BIND_GROUP_ENTRY_INIT,
-        WGPU_BIND_GROUP_ENTRY_INIT, WGPU_BIND_GROUP_ENTRY_INIT,
-    };
-    e[0].binding = 0;
-    e[0].buffer = r->globals;
-    e[0].size = 8 * sizeof(float);
-    e[1].binding = 1;
-    e[1].textureView = r->atlas_view;
-    e[2].binding = 2;
-    e[2].sampler = r->linear;
-    e[3].binding = 3;
-    e[3].sampler = r->nearest;
-    WGPUBindGroupDescriptor bd = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
-    bd.layout = r->layout;
-    bd.entryCount = 4;
-    bd.entries = e;
-    r->group = wgpuDeviceCreateBindGroup(g->device, &bd);
+static void target_free(Target *t) {
+    wgpuBufferRelease(t->readback);
+    wgpuTextureViewRelease(t->view);
+    wgpuTextureRelease(t->texture);
 }
 
-/* The atlas: whole when the page is new to us, else the dirty rect alone.
- * The rect's rows are atlas_pixels' own, so the source starts at its
- * corner with the page's stride. */
-static void atlas_upload(Gpu *g, Renderer *r, const KuiDrawData *dd) {
-    uint32_t size = dd->atlas_size ? dd->atlas_size : 1;
-    if (!r->atlas || size != r->atlas_size) atlas_resize(g, r, size);
-    memset(r->uploaded, 0, sizeof r->uploaded);
-    if (!dd->atlas_size || !dd->atlas_pixels) return;
-    uint32_t x = 0, y = 0, w = size, h = size;
-    if (dd->atlas_epoch == r->atlas_epoch) {
-        if (!dd->atlas_dirty) return;
-        x = dd->atlas_dirty_rect[0], y = dd->atlas_dirty_rect[1];
-        w = dd->atlas_dirty_rect[2], h = dd->atlas_dirty_rect[3];
-        if (!w || !h) return;
-    }
-    WGPUTexelCopyTextureInfo dst = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-    dst.texture = r->atlas;
-    dst.origin = (WGPUOrigin3D){x, y, 0};
-    WGPUTexelCopyBufferLayout layout = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
-    layout.bytesPerRow = size * 4;
-    layout.rowsPerImage = h;
-    size_t from = ((size_t)y * size + x) * 4;
-    size_t bytes = (size_t)(h - 1) * size * 4 + (size_t)w * 4;
-    WGPUExtent3D extent = {w, h, 1};
-    wgpuQueueWriteTexture(g->queue, &dst, dd->atlas_pixels + from, bytes, &layout, &extent);
-    r->atlas_epoch = dd->atlas_epoch;
-    r->uploaded[0] = x, r->uploaded[1] = y, r->uploaded[2] = w, r->uploaded[3] = h;
-}
-
-/* kui's last finished frame into the target, read back into `rgba`
- * (r->row bytes a row). Returns the number of instances drawn. */
-static size_t render(Gpu *g, Renderer *r, KuiCtx *ui, uint8_t *rgba) {
-    KuiDrawData dd = KUI_DRAW_DATA_INIT;
-    if (!kui_draw_data(ui, &dd)) return 0;
-    atlas_upload(g, r, &dd);
-
-    float globals[8] = {dd.viewport_w, dd.viewport_h, (float)r->atlas_size, (float)r->atlas_size,
-                        dd.time, dd.scale, 0, 0};
-    wgpuQueueWriteBuffer(g->queue, r->globals, 0, globals, sizeof globals);
-
-    uint32_t stride = kui_instance_stride();
-    size_t count = kui_pack_instances(ui, NULL, 0);
-    size_t bytes = count * stride;
-    if (count > r->instance_cap) {
-        if (r->instances) wgpuBufferRelease(r->instances);
-        r->instance_cap = count * 2;
-        WGPUBufferDescriptor bd = WGPU_BUFFER_DESCRIPTOR_INIT;
-        bd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-        bd.size = r->instance_cap * stride;
-        r->instances = wgpuDeviceCreateBuffer(g->device, &bd);
-    }
-    if (count) {
-        uint8_t *packed = malloc(bytes);
-        kui_pack_instances(ui, packed, bytes);
-        wgpuQueueWriteBuffer(g->queue, r->instances, 0, packed, bytes);
-        free(packed);
-    }
-
+/* kui's last finished frame over the world: a pass that clears the target
+ * to it - the host's load op - with kui_wgpu_draw inside, then the target
+ * read back into `rgba` (t->row bytes a row). Returns the instances
+ * drawn. */
+static size_t render(Gpu *g, KuiWgpu *kr, Target *t, KuiCtx *ui, uint8_t *rgba) {
     WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(g->device, NULL);
     WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-    color.view = r->target_view;
+    color.view = t->view;
     color.loadOp = WGPULoadOp_Clear;
     color.storeOp = WGPUStoreOp_Store;
     color.clearValue = CLEAR;
@@ -445,68 +266,45 @@ static size_t render(Gpu *g, Renderer *r, KuiCtx *ui, uint8_t *rgba) {
     rp.colorAttachmentCount = 1;
     rp.colorAttachments = &color;
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &rp);
-    /* The draw scissored to where the frame drew (KuiDrawData.bounds):
-     * nothing outside it is touched, so the world shows through. */
-    if (count && dd.bounds[2] && dd.bounds[3]) {
-        wgpuRenderPassEncoderSetScissorRect(pass, dd.bounds[0], dd.bounds[1], dd.bounds[2], dd.bounds[3]);
-        wgpuRenderPassEncoderSetPipeline(pass, r->pipeline);
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, r->group, 0, NULL);
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, r->instances, 0, bytes);
-        wgpuRenderPassEncoderDraw(pass, 6, (uint32_t)count, 0, 0);
-    }
+    size_t drawn = kui_wgpu_draw(kr, ui, pass);
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
     WGPUTexelCopyTextureInfo src = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-    src.texture = r->target;
+    src.texture = t->texture;
     WGPUTexelCopyBufferInfo dst = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
-    dst.buffer = r->readback;
-    dst.layout.bytesPerRow = r->row;
-    dst.layout.rowsPerImage = r->height;
-    WGPUExtent3D extent = {r->width, r->height, 1};
+    dst.buffer = t->readback;
+    dst.layout.bytesPerRow = t->row;
+    dst.layout.rowsPerImage = t->height;
+    WGPUExtent3D extent = {t->width, t->height, 1};
     wgpuCommandEncoderCopyTextureToBuffer(enc, &src, &dst, &extent);
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, NULL);
     wgpuQueueSubmit(g->queue, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(enc);
 
-    size_t size = (size_t)r->row * r->height;
+    size_t size = (size_t)t->row * t->height;
     Answer m = {0};
     WGPUBufferMapCallbackInfo mcb = WGPU_BUFFER_MAP_CALLBACK_INFO_INIT;
     mcb.mode = WGPUCallbackMode_AllowProcessEvents;
     mcb.callback = on_mapped;
     mcb.userdata1 = &m;
-    wgpuBufferMapAsync(r->readback, WGPUMapMode_Read, 0, size, mcb);
+    wgpuBufferMapAsync(t->readback, WGPUMapMode_Read, 0, size, mcb);
     wgpuDevicePoll(g->device, true, NULL);
     wait_for(g->instance, &m);
     if (!m.ok) {
         check(false, "the readback mapped");
         return 0;
     }
-    memcpy(rgba, wgpuBufferGetConstMappedRange(r->readback, 0, size), size);
-    wgpuBufferUnmap(r->readback);
-    return count;
-}
-
-static void renderer_free(Renderer *r) {
-    if (r->instances) wgpuBufferRelease(r->instances);
-    if (r->group) wgpuBindGroupRelease(r->group);
-    if (r->atlas_view) wgpuTextureViewRelease(r->atlas_view);
-    if (r->atlas) wgpuTextureRelease(r->atlas);
-    wgpuBufferRelease(r->readback);
-    wgpuTextureViewRelease(r->target_view);
-    wgpuTextureRelease(r->target);
-    wgpuSamplerRelease(r->nearest);
-    wgpuSamplerRelease(r->linear);
-    wgpuBufferRelease(r->globals);
-    wgpuRenderPipelineRelease(r->pipeline);
-    wgpuBindGroupLayoutRelease(r->layout);
+    memcpy(rgba, wgpuBufferGetConstMappedRange(t->readback, 0, size), size);
+    wgpuBufferUnmap(t->readback);
+    return drawn;
 }
 
 /* --- the checks ------------------------------------------------------- */
 
-static const uint8_t *pixel(const Renderer *r, const uint8_t *rgba, float x, float y) {
-    return rgba + (size_t)y * r->row + (size_t)x * 4;
+static const uint8_t *pixel(const Target *t, const uint8_t *rgba, float x, float y) {
+    return rgba + (size_t)y * t->row + (size_t)x * 4;
 }
 
 /* Within `tol` per channel of 0xRRGGBB. */
@@ -531,22 +329,32 @@ static const KuiQuad *button_quad(const KuiDrawData *dd) {
     return NULL;
 }
 
-/* What every drawn frame shows, wherever its pixels came from. */
-static void check_frame(KuiCtx *ui, const Renderer *r, const uint8_t *rgba, const char *when) {
+/* The quad the image is: drawn from a texture of its own. */
+static const KuiQuad *texture_quad(const KuiDrawData *dd) {
+    for (size_t i = 0; i < dd->quad_count; i++) {
+        if (dd->quads[i].kind == KUI_QUAD_TEXTURE) return &dd->quads[i];
+    }
+    return NULL;
+}
+
+/* What every drawn frame shows, wherever its pixels came from. `glyph` is
+ * the kind the title's glyphs should be: a mask, or per-channel coverage
+ * under subpixel text. */
+static void check_frame(KuiCtx *ui, const Target *t, const uint8_t *rgba, uint32_t glyph, const char *when) {
     char what[160];
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ui, &dd);
 #define CHECK(ok, msg) (snprintf(what, sizeof what, "%s: %s", when, msg), check(ok, what))
 
     /* The panel's colour at its right edge, clear of the text. */
-    const uint8_t *p = pixel(r, rgba, (PANEL_X + PANEL_W - 6) * SCALE, (PANEL_Y + PANEL_H / 2) * SCALE);
+    const uint8_t *p = pixel(t, rgba, (PANEL_X + PANEL_W - 6) * SCALE, (PANEL_Y + PANEL_H / 2) * SCALE);
     CHECK(near(p, PANEL_BG >> 8, 2), "the panel is its colour");
     /* The world far from it. */
-    p = pixel(r, rgba, r->width - 10, r->height - 10);
+    p = pixel(t, rgba, t->width - 10, t->height - 10);
     CHECK(near(p, clear_rgb(), 2), "past the panel is the clear colour");
     /* The shadow, just under the panel's bottom edge: darker than the
      * world it falls on. */
-    p = pixel(r, rgba, (PANEL_X + PANEL_W / 2) * SCALE, (PANEL_Y + PANEL_H + 3) * SCALE);
+    p = pixel(t, rgba, (PANEL_X + PANEL_W / 2) * SCALE, (PANEL_Y + PANEL_H + 3) * SCALE);
     uint32_t c = clear_rgb();
     int world = (int)((c >> 16) + ((c >> 8) & 0xff) + (c & 0xff));
     CHECK(p[0] + p[1] + p[2] < world * 9 / 10, "the shadow darkens the world under the panel");
@@ -555,25 +363,107 @@ static void check_frame(KuiCtx *ui, const Renderer *r, const uint8_t *rgba, cons
      * their union that are not the flat panel. */
     float top = (PANEL_Y + PANEL_H / 2) * SCALE;
     float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+    bool kind_ok = true;
     for (size_t i = 0; i < dd.quad_count; i++) {
         const KuiQuad *q = &dd.quads[i];
         if ((q->kind != KUI_QUAD_GLYPH_MASK && q->kind != KUI_QUAD_GLYPH_SUBPIXEL) || q->y + q->h > top) continue;
+        if (q->kind != glyph) kind_ok = false;
         if (q->x < x0) x0 = q->x;
         if (q->y < y0) y0 = q->y;
         if (q->x + q->w > x1) x1 = q->x + q->w;
         if (q->y + q->h > y1) y1 = q->y + q->h;
     }
+    CHECK(kind_ok, glyph == KUI_QUAD_GLYPH_SUBPIXEL ? "the title's glyphs are subpixel" : "the title's glyphs are masks");
     int inked = 0;
     for (float y = y0; y < y1; y++)
         for (float x = x0; x < x1; x++)
-            if (!near(pixel(r, rgba, x, y), PANEL_BG >> 8, 40)) inked++;
+            if (!near(pixel(t, rgba, x, y), PANEL_BG >> 8, 40)) inked++;
     CHECK(x1 > x0 && inked >= 30, "the title's glyphs are drawn (atlas uploaded, sampled)");
 
     /* The button's colour at its left edge, clear of its label. */
     const KuiQuad *b = button_quad(&dd);
     CHECK(b != NULL, "the button's quad is in the frame");
-    if (b) CHECK(near(pixel(r, rgba, b->x + 6, b->y + b->h / 2), BUTTON_BG >> 8, 2), "the button is its colour");
+    if (b) CHECK(near(pixel(t, rgba, b->x + 6, b->y + b->h / 2), BUTTON_BG >> 8, 2), "the button is its colour");
+
+    /* The texture-backed image, between the title's quads and the
+     * button's: left out, so the panel shows where it is, and the draws
+     * either side of it still land. */
+    const KuiQuad *img = texture_quad(&dd);
+    CHECK(img != NULL, "the image is a KUI_QUAD_TEXTURE quad");
+    if (img) CHECK(near(pixel(t, rgba, img->x + img->w / 2, img->y + img->h / 2), PANEL_BG >> 8, 2),
+                   "the left-out image draws nothing over the panel");
 #undef CHECK
+}
+
+/* The whole turn with one variant of kui's shader, on a context of its
+ * own: two frames drawn and checked, a click between them. */
+static void run(Gpu *g, uint32_t variant) {
+    const char *name = variant == KUI_WGSL_DUAL ? "dual" : "single";
+    char what[160];
+#define CHECK(ok, msg) (snprintf(what, sizeof what, "%s: %s", name, msg), check(ok, what))
+    KuiCtx *ui = kui_ctx_new();
+    /* Per-channel glyphs only where the blend is per channel. */
+    kui_set_subpixel_text(ui, variant == KUI_WGSL_DUAL);
+    uint32_t glyph = variant == KUI_WGSL_DUAL ? KUI_QUAD_GLYPH_SUBPIXEL : KUI_QUAD_GLYPH_MASK;
+    /* Magenta, and updated once, which moves it off the atlas onto a
+     * texture of its own. */
+    uint8_t magenta[IMAGE_W * IMAGE_H * 4];
+    for (size_t i = 0; i < sizeof magenta; i += 4) {
+        magenta[i] = 0xff, magenta[i + 1] = 0, magenta[i + 2] = 0xff, magenta[i + 3] = 0xff;
+    }
+    uint64_t image = kui_image_add(ui, IMAGE_W, IMAGE_H, magenta);
+    kui_image_update(ui, image, IMAGE_W, IMAGE_H, magenta);
+    KuiWgpu kr;
+    CHECK(kui_wgpu_init(&kr, g->device, g->queue, FORMAT, variant) && !wgpu_errors,
+          "kui_wgpu_init built the pipeline from kui's shader and layout");
+    Target t;
+    target_make(g, &t, W * SCALE, H * SCALE);
+    uint8_t *rgba = malloc((size_t)t.row * t.height);
+
+    /* The host loop's turn (kui.h): build, drain, draw. */
+    build(ui, image, 0);
+    drain(ui);
+    size_t drawn = render(g, &kr, &t, ui, rgba);
+    CHECK(drawn > 0, "the first frame drew instances");
+    CHECK(drawn == kui_pack_instances(ui, NULL, 0) - 1, "the first frame drew every instance but the image's");
+    CHECK(kr.uploaded[2] == kr.atlas_size, "the first frame uploaded the whole atlas page");
+    snprintf(what, sizeof what, "%s, first frame", name);
+    check_frame(ui, &t, rgba, glyph, what);
+
+    /* Input, then the next turn: a click on the button, its message, and
+     * the frame rebuilt with the new count. The label's "1" is a glyph the
+     * atlas did not hold, so the upload is a rect, not the page. */
+    KuiDrawData dd = KUI_DRAW_DATA_INIT;
+    kui_draw_data(ui, &dd);
+    const KuiQuad *b = button_quad(&dd);
+    int clicks = 0;
+    if (b) {
+        float cx = (b->x + b->w / 2) / SCALE, cy = (b->y + b->h / 2) / SCALE;
+        kui_input_cursor(ui, cx, cy);
+        CHECK(kui_pointer_wants(ui), "the pointer over the button is the UI's");
+        kui_input_mouse(ui, true, 1);
+        kui_input_mouse(ui, false, 1);
+        clicks += drain(ui);
+    }
+    CHECK(clicks == 1, "the click arrived as the button's message");
+    kui_input_cursor(ui, W - 4, H - 4);
+    CHECK(!kui_pointer_wants(ui), "past the panel the pointer is the world's");
+    build(ui, image, clicks);
+    drain(ui);
+    drawn = render(g, &kr, &t, ui, rgba);
+    CHECK(drawn > 0, "the second frame drew instances");
+    CHECK(kr.uploaded[2] > 0 && kr.uploaded[2] < kr.atlas_size, "the second frame uploaded a dirty rect alone");
+    snprintf(what, sizeof what, "%s, second frame", name);
+    check_frame(ui, &t, rgba, glyph, what);
+#undef CHECK
+
+    printf("wgpu host %s: %s, %ux%u, %zu instances of %u bytes, the atlas a %u px page then a %ux%u rect\n",
+           name, g->adapter_name, t.width, t.height, drawn, kui_instance_stride(), kr.atlas_size, kr.uploaded[2],
+           kr.uploaded[3]);
+    free(rgba);
+    target_free(&t);
+    kui_wgpu_free(&kr);
+    kui_ctx_free(ui);
 }
 
 int main(void) {
@@ -597,56 +487,23 @@ int main(void) {
         return 1;
     }
 
-    KuiCtx *ui = kui_ctx_new();
-    Renderer r;
-    check(renderer_init(&g, &r, W * SCALE, H * SCALE), "the pipeline built from kui's shader and layout");
-    uint8_t *rgba = malloc((size_t)r.row * r.height);
-
-    /* The host loop's turn (kui.h): build, drain, draw. */
-    build(ui, 0);
-    drain(ui);
-    size_t drawn = render(&g, &r, ui, rgba);
-    check(drawn > 0, "the first frame drew instances");
-    check(r.uploaded[2] == r.atlas_size, "the first frame uploaded the whole atlas page");
-    check_frame(ui, &r, rgba, "first frame");
-
-    /* Input, then the next turn: a click on the button, its message, and
-     * the frame rebuilt with the new count. The label's "1" is a glyph the
-     * atlas did not hold, so the upload is a rect, not the page. */
-    KuiDrawData dd = KUI_DRAW_DATA_INIT;
-    kui_draw_data(ui, &dd);
-    const KuiQuad *b = button_quad(&dd);
-    int clicks = 0;
-    if (b) {
-        float cx = (b->x + b->w / 2) / SCALE, cy = (b->y + b->h / 2) / SCALE;
-        kui_input_cursor(ui, cx, cy);
-        check(kui_pointer_wants(ui), "the pointer over the button is the UI's");
-        kui_input_mouse(ui, true, 1);
-        kui_input_mouse(ui, false, 1);
-        clicks += drain(ui);
+    run(&g, KUI_WGSL_SINGLE);
+    if (g.dual) {
+        run(&g, KUI_WGSL_DUAL);
+    } else {
+        /* Without the feature the dual variant is refused, not built. */
+        KuiWgpu kr;
+        check(!kui_wgpu_init(&kr, g.device, g.queue, FORMAT, KUI_WGSL_DUAL) && !kr.pipeline,
+              "kui_wgpu_init refuses KUI_WGSL_DUAL on a device without dual-source blending");
+        kui_wgpu_free(&kr);
+        printf("wgpu host dual: skipped, %s offers no dual-source blending\n", g.adapter_name);
     }
-    check(clicks == 1, "the click arrived as the button's message");
-    kui_input_cursor(ui, W - 4, H - 4);
-    check(!kui_pointer_wants(ui), "past the panel the pointer is the world's");
-    build(ui, clicks);
-    drain(ui);
-    drawn = render(&g, &r, ui, rgba);
-    check(drawn > 0, "the second frame drew instances");
-    check(r.uploaded[2] > 0 && r.uploaded[2] < r.atlas_size, "the second frame uploaded a dirty rect alone");
-    check_frame(ui, &r, rgba, "second frame");
     check(wgpu_errors == 0, "wgpu raised no validation error");
-
-    uint32_t atlas = r.atlas_size, rect_w = r.uploaded[2], rect_h = r.uploaded[3], width = r.width, height = r.height;
-    free(rgba);
-    renderer_free(&r);
-    kui_ctx_free(ui);
+    gpu_close(&g);
     if (fails) {
         fprintf(stderr, "wgpu_host: %d check(s) failed\n", fails);
-        gpu_close(&g);
         return 1;
     }
-    printf("wgpu host OK: %s, %ux%u, %zu instances of %u bytes, the atlas a %u px page then a %ux%u rect\n",
-           g.adapter_name, width, height, drawn, kui_instance_stride(), atlas, rect_w, rect_h);
-    gpu_close(&g);
+    printf("wgpu host OK\n");
     return 0;
 }

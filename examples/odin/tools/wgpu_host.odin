@@ -1,25 +1,26 @@
 // A host that draws kui's frame with a GPU device of its own (backlog
-// F234), on the wgpu-native Odin ships as vendor:wgpu: kui.h's "Drawing it
-// yourself" end to end. Nothing here knows kui's instance layout or shader:
-// the WGSL is kui.renderer_wgsl, the vertex buffer's layout is read from
-// kui.instance_stride and kui.instance_attributes, the instances are
-// kui.pack_instances. A later library that moves any of them needs no
-// change here. What this file does know is what kui.h states and kui-wgpu
-// does (crates/kui-wgpu/src/lib.rs): the bind group, the blend, a target
-// whose bytes are kui's colours as written (an Unorm format, no sRGB).
+// F234), on the wgpu-native Odin ships as vendor:wgpu, through kui/wgpu
+// (backlog F263): kui.h's "Drawing it yourself" end to end. The pipeline,
+// the atlas and the instances are kui/wgpu's; this file is what stays the
+// host's: the device, the target and the pass over it, cleared to the
+// "world" kui draws over.
 //
 // Two modes. Offscreen (the default, and --headless): no window and no
 // surface; the frame is drawn into a texture, read back and checked - the
 // panel's colour, the clear colour around it, the shadow, the title's
-// glyphs, the button - then the button is clicked and the frame drawn
-// again, the label's new glyph uploaded as the atlas's dirty rect alone.
+// glyphs, the button, nothing where the texture-backed image kui/wgpu
+// leaves out is - then the button is clicked and the frame drawn again,
+// the label's new glyph uploaded as the atlas's dirty rect alone. That
+// runs with the single shader, and again with the dual one and subpixel
+// text where the adapter offers dual-source blending.
 // examples/c/tools/wgpu_host.c is the same in C. With no GPU adapter it
 // says so and exits 0, unless KUI_REQUIRE_GPU is set (CI sets it over
 // lavapipe).
 //
 // --window: a GLFW window whose "world" is the clear colour, kui drawn over
 // it every frame in kui.h's host-loop order (input, drain, build, drain,
-// draw). The button counts clicks; a click on the world - where
+// draw), with the dual shader and subpixel text where the device has
+// them. The button counts clicks; a click on the world - where
 // kui.pointer_wants says the pointer is not the UI's - changes its colour;
 // keys reach kui through kui/glfw; Escape, when kui.keyboard_wants says the
 // keyboard is not the UI's, closes it. --frames N quits after N frames.
@@ -43,6 +44,7 @@ import "vendor:wgpu"
 import "vendor:wgpu/glfwglue"
 import kui "../../../packages/odin/kui"
 import kui_glfw "../../../packages/odin/kui/glfw"
+import kui_wgpu "../../../packages/odin/kui/wgpu"
 
 // The frame, in logical px; offscreen it is drawn at twice that.
 W :: 320
@@ -56,6 +58,10 @@ BUTTON_W :: 112
 BUTTON_H :: 28
 PANEL_BG :: kui.Color(0x2a3550ff)
 BUTTON_BG :: kui.Color(0xe0703aff)
+// A texture-backed image between the title and the button: a quad
+// kui/wgpu leaves out, so where it is shows the panel.
+IMAGE_W :: 32
+IMAGE_H :: 6
 
 // The worlds a click on them cycles through; the first is the offscreen
 // clear colour the checks expect.
@@ -68,9 +74,11 @@ Count :: struct {}
 State :: struct {
 	clicks: int,
 	world:  int,
+	image:  kui.Image,
 }
 
-// A panel with a shadow, a title and a button, on a transparent root.
+// A panel with a shadow, a title, an image and a button, on a transparent
+// root.
 view :: proc(s: ^State, ui: ^kui.Ui) {
 	if kui.box(ui, {pad = {l = PANEL_X, t = PANEL_Y}}) {
 		panel := kui.Spec {
@@ -87,6 +95,7 @@ view :: proc(s: ^State, ui: ^kui.Ui) {
 		}
 		if kui.box(ui, panel) {
 			kui.text(ui, "kui over wgpu", {size = 18, color = 0xffffffff})
+			kui.image(ui, s.image, {width = kui.px(IMAGE_W), height = kui.px(IMAGE_H)})
 			button := kui.Spec {
 				width       = kui.px(BUTTON_W),
 				height      = kui.px(BUTTON_H),
@@ -125,6 +134,9 @@ Gpu :: struct {
 	device:   wgpu.Device,
 	queue:    wgpu.Queue,
 	name:     string,
+	// Whether the device was given dual-source blending, which the dual
+	// shader wants.
+	dual:     bool,
 }
 
 // Every validation error the device raises: a failure, since a reference
@@ -144,7 +156,8 @@ wait_for :: proc(instance: wgpu.Instance, a: ^Answer) {
 }
 
 // An adapter (one that can present to `surface`, when there is one) and a
-// device. False with no adapter: the machine has no GPU, or no driver.
+// device, with dual-source blending when the adapter offers it. False with
+// no adapter: the machine has no GPU, or no driver.
 gpu_open :: proc(g: ^Gpu, surface: wgpu.Surface = nil) -> bool {
 	if g.instance == nil do g.instance = wgpu.CreateInstance(nil)
 	if g.instance == nil do return false
@@ -176,11 +189,15 @@ gpu_open :: proc(g: ^Gpu, surface: wgpu.Surface = nil) -> bool {
 		if !d.ok do fmt.eprintln("device:", message)
 	}
 	d: Answer
-	wgpu.AdapterRequestDevice(g.adapter, &{uncapturedErrorCallbackInfo = {callback = on_error}}, {mode = .AllowProcessEvents, callback = on_device, userdata1 = &d})
+	dual := wgpu.FeatureName.DualSourceBlending
+	desc := wgpu.DeviceDescriptor{uncapturedErrorCallbackInfo = {callback = on_error}}
+	if wgpu.AdapterHasFeature(g.adapter, dual) do desc.requiredFeatureCount, desc.requiredFeatures = 1, &dual
+	wgpu.AdapterRequestDevice(g.adapter, &desc, {mode = .AllowProcessEvents, callback = on_device, userdata1 = &d})
 	wait_for(g.instance, &d)
 	if !d.ok do return false
 	g.device = wgpu.Device(d.handle)
 	g.queue = wgpu.DeviceGetQueue(g.device)
+	g.dual = bool(wgpu.DeviceHasFeature(g.device, dual))
 	return true
 }
 
@@ -190,198 +207,6 @@ gpu_close :: proc(g: ^Gpu) {
 	if g.adapter != nil do wgpu.AdapterRelease(g.adapter)
 	if g.instance != nil do wgpu.InstanceRelease(g.instance)
 	delete(g.name)
-}
-
-// -- kui's renderer, built from what the library says -------------------------
-
-Renderer :: struct {
-	layout:       wgpu.BindGroupLayout,
-	pipeline:     wgpu.RenderPipeline,
-	globals:      wgpu.Buffer,
-	linear:       wgpu.Sampler,
-	nearest:      wgpu.Sampler,
-	// The glyph atlas, kept between frames: a page the size the draw data
-	// says, and the epoch of the page it holds.
-	atlas:        wgpu.Texture,
-	atlas_view:   wgpu.TextureView,
-	atlas_size:   u32,
-	atlas_epoch:  u64,
-	group:        wgpu.BindGroup,
-	instances:    wgpu.Buffer,
-	instance_cap: int,
-	// What the last frame uploaded of the atlas: x, y, w, h.
-	uploaded:     [4]u32,
-}
-
-renderer_init :: proc(g: ^Gpu, r: ^Renderer, format: wgpu.TextureFormat) {
-	// The shader without dual-source blending: subpixel text stays off (it
-	// is unless kui.set_subpixel_text), so no glyph needs per-channel
-	// blending.
-	module := wgpu.DeviceCreateShaderModule(g.device, &{nextInChain = &wgpu.ShaderSourceWGSL{sType = .ShaderSourceWGSL, code = kui.renderer_wgsl()}})
-	defer wgpu.ShaderModuleRelease(module)
-
-	// Group 0 as kui.h gives it: the globals, the atlas, two samplers.
-	entries := [4]wgpu.BindGroupLayoutEntry {
-		{binding = 0, visibility = {.Vertex, .Fragment}, buffer = {type = .Uniform}},
-		{binding = 1, visibility = {.Fragment}, texture = {sampleType = .Float, viewDimension = ._2D}},
-		{binding = 2, visibility = {.Fragment}, sampler = {type = .Filtering}},
-		{binding = 3, visibility = {.Fragment}, sampler = {type = .Filtering}},
-	}
-	r.layout = wgpu.DeviceCreateBindGroupLayout(g.device, &{entryCount = len(entries), entries = &entries[0]})
-	pipeline_layout := wgpu.DeviceCreatePipelineLayout(g.device, &{bindGroupLayoutCount = 1, bindGroupLayouts = &r.layout})
-	defer wgpu.PipelineLayoutRelease(pipeline_layout)
-
-	// The instance layout, read from the library at run time: each
-	// attribute a float32x2 or float32x4 at its location and offset,
-	// stepped per instance.
-	kui_attrs := kui.instance_attributes()
-	attrs := make([]wgpu.VertexAttribute, len(kui_attrs), context.temp_allocator)
-	for a, i in kui_attrs {
-		attrs[i] = {format = .Float32x2 if a.floats == 2 else .Float32x4, offset = u64(a.offset), shaderLocation = a.location}
-	}
-	// The single variant writes straight colour and its coverage as alpha:
-	// blended as kui-wgpu blends it, colour by its alpha, alpha over.
-	blend := wgpu.BlendState {
-		color = {srcFactor = .SrcAlpha, dstFactor = .OneMinusSrcAlpha, operation = .Add},
-		alpha = {srcFactor = .One, dstFactor = .OneMinusSrcAlpha, operation = .Add},
-	}
-	r.pipeline = wgpu.DeviceCreateRenderPipeline(g.device, &{
-		layout = pipeline_layout,
-		vertex = {
-			module = module,
-			entryPoint = "vs_main",
-			bufferCount = 1,
-			buffers = &wgpu.VertexBufferLayout {
-				stepMode = .Instance,
-				arrayStride = u64(kui.instance_stride()),
-				attributeCount = len(attrs),
-				attributes = raw_data(attrs),
-			},
-		},
-		fragment = &{
-			module = module,
-			entryPoint = "fs_main",
-			targetCount = 1,
-			targets = &wgpu.ColorTargetState{format = format, blend = &blend, writeMask = wgpu.ColorWriteMaskFlags_All},
-		},
-		// Six vertices an instance, a triangle list.
-		primitive = {topology = .TriangleList},
-		multisample = {count = 1, mask = 0xFFFFFFFF},
-	})
-
-	// Eight floats: viewport, atlas size, frame clock, scale, padding.
-	r.globals = wgpu.DeviceCreateBuffer(g.device, &{usage = {.Uniform, .CopyDst}, size = 8 * size_of(f32)})
-	// kui-wgpu's two samplers: clamped, one filtering and one not.
-	r.linear = wgpu.DeviceCreateSampler(g.device, &{
-		addressModeU = .ClampToEdge, addressModeV = .ClampToEdge, addressModeW = .ClampToEdge,
-		magFilter = .Linear, minFilter = .Linear, mipmapFilter = .Nearest, lodMaxClamp = 32, maxAnisotropy = 1,
-	})
-	r.nearest = wgpu.DeviceCreateSampler(g.device, &{
-		addressModeU = .ClampToEdge, addressModeV = .ClampToEdge, addressModeW = .ClampToEdge,
-		magFilter = .Nearest, minFilter = .Nearest, mipmapFilter = .Nearest, lodMaxClamp = 32, maxAnisotropy = 1,
-	})
-}
-
-// A page of `size`, and the bind group that names it.
-atlas_resize :: proc(g: ^Gpu, r: ^Renderer, size: u32) {
-	if r.atlas != nil {
-		wgpu.BindGroupRelease(r.group)
-		wgpu.TextureViewRelease(r.atlas_view)
-		wgpu.TextureRelease(r.atlas)
-	}
-	r.atlas = wgpu.DeviceCreateTexture(g.device, &{
-		usage = {.TextureBinding, .CopyDst},
-		dimension = ._2D,
-		size = {size, size, 1},
-		format = .RGBA8Unorm,
-		mipLevelCount = 1,
-		sampleCount = 1,
-	})
-	r.atlas_view = wgpu.TextureCreateView(r.atlas, nil)
-	r.atlas_size, r.atlas_epoch = size, 0
-	entries := [4]wgpu.BindGroupEntry {
-		{binding = 0, buffer = r.globals, size = 8 * size_of(f32)},
-		{binding = 1, textureView = r.atlas_view},
-		{binding = 2, sampler = r.linear},
-		{binding = 3, sampler = r.nearest},
-	}
-	r.group = wgpu.DeviceCreateBindGroup(g.device, &{layout = r.layout, entryCount = len(entries), entries = &entries[0]})
-}
-
-// The atlas: whole when the page is new to us, else the dirty rect alone.
-// The rect's rows are atlas_pixels' own, so the source starts at its corner
-// with the page's stride.
-atlas_upload :: proc(g: ^Gpu, r: ^Renderer, dd: kui.Draw_Data) {
-	size := max(dd.atlas_size, 1)
-	if r.atlas == nil || size != r.atlas_size do atlas_resize(g, r, size)
-	r.uploaded = {}
-	if dd.atlas_size == 0 || dd.atlas_pixels == nil do return
-	x, y, w, h := u32(0), u32(0), size, size
-	if dd.atlas_epoch == r.atlas_epoch {
-		if !dd.atlas_dirty do return
-		x, y, w, h = dd.atlas_dirty_rect[0], dd.atlas_dirty_rect[1], dd.atlas_dirty_rect[2], dd.atlas_dirty_rect[3]
-		if w == 0 || h == 0 do return
-	}
-	from := (uint(y) * uint(size) + uint(x)) * 4
-	bytes := uint(h - 1) * uint(size) * 4 + uint(w) * 4
-	wgpu.QueueWriteTexture(g.queue, &{texture = r.atlas, aspect = .All, origin = {x, y, 0}}, &dd.atlas_pixels[from], bytes, &{bytesPerRow = size * 4, rowsPerImage = h}, &{w, h, 1})
-	r.atlas_epoch = dd.atlas_epoch
-	r.uploaded = {x, y, w, h}
-}
-
-// kui's last finished frame into `target`, cleared to `world` first, in
-// one pass on `enc`. Returns the number of instances drawn.
-draw :: proc(g: ^Gpu, r: ^Renderer, ui: ^kui.Ui, enc: wgpu.CommandEncoder, target: wgpu.TextureView, world: wgpu.Color) -> int {
-	dd, ok := kui.draw_data(ui)
-	if !ok do return 0
-	atlas_upload(g, r, dd)
-	globals := [8]f32{dd.viewport_w, dd.viewport_h, f32(r.atlas_size), f32(r.atlas_size), dd.time, dd.scale, 0, 0}
-	wgpu.QueueWriteBuffer(g.queue, r.globals, 0, &globals, size_of(globals))
-
-	packed := kui.pack_instances(ui)
-	count := len(packed) / int(kui.instance_stride())
-	if len(packed) > r.instance_cap {
-		if r.instances != nil do wgpu.BufferRelease(r.instances)
-		r.instance_cap = len(packed) * 2
-		r.instances = wgpu.DeviceCreateBuffer(g.device, &{usage = {.Vertex, .CopyDst}, size = u64(r.instance_cap)})
-	}
-	if count > 0 do wgpu.QueueWriteBuffer(g.queue, r.instances, 0, raw_data(packed), uint(len(packed)))
-
-	pass := wgpu.CommandEncoderBeginRenderPass(enc, &{
-		colorAttachmentCount = 1,
-		colorAttachments = &wgpu.RenderPassColorAttachment {
-			view = target,
-			loadOp = .Clear,
-			storeOp = .Store,
-			depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
-			clearValue = world,
-		},
-	})
-	// The draw scissored to where the frame drew (Draw_Data.bounds): what
-	// is outside it stays the world.
-	b := dd.bounds
-	if count > 0 && b[2] > 0 && b[3] > 0 {
-		wgpu.RenderPassEncoderSetScissorRect(pass, b[0], b[1], b[2], b[3])
-		wgpu.RenderPassEncoderSetPipeline(pass, r.pipeline)
-		wgpu.RenderPassEncoderSetBindGroup(pass, 0, r.group)
-		wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, r.instances, 0, u64(len(packed)))
-		wgpu.RenderPassEncoderDraw(pass, 6, u32(count), 0, 0)
-	}
-	wgpu.RenderPassEncoderEnd(pass)
-	wgpu.RenderPassEncoderRelease(pass)
-	return count
-}
-
-renderer_free :: proc(r: ^Renderer) {
-	if r.instances != nil do wgpu.BufferRelease(r.instances)
-	if r.group != nil do wgpu.BindGroupRelease(r.group)
-	if r.atlas_view != nil do wgpu.TextureViewRelease(r.atlas_view)
-	if r.atlas != nil do wgpu.TextureRelease(r.atlas)
-	wgpu.SamplerRelease(r.nearest)
-	wgpu.SamplerRelease(r.linear)
-	wgpu.BufferRelease(r.globals)
-	wgpu.RenderPipelineRelease(r.pipeline)
-	wgpu.BindGroupLayoutRelease(r.layout)
 }
 
 // -- offscreen: drawn, read back, checked --------------------------------------
@@ -422,11 +247,31 @@ target_free :: proc(t: ^Target) {
 	delete(t.pixels)
 }
 
+// kui's last finished frame over the world, on `enc`: a pass that clears
+// `target` to it - the host's load op - with kui_wgpu.draw inside. Returns
+// the instances drawn.
+draw_over :: proc(r: ^kui_wgpu.Renderer, ui: ^kui.Ui, enc: wgpu.CommandEncoder, target: wgpu.TextureView, world: wgpu.Color) -> int {
+	pass := wgpu.CommandEncoderBeginRenderPass(enc, &{
+		colorAttachmentCount = 1,
+		colorAttachments = &wgpu.RenderPassColorAttachment {
+			view = target,
+			loadOp = .Clear,
+			storeOp = .Store,
+			depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
+			clearValue = world,
+		},
+	})
+	drawn := kui_wgpu.draw(r, ui, pass)
+	wgpu.RenderPassEncoderEnd(pass)
+	wgpu.RenderPassEncoderRelease(pass)
+	return drawn
+}
+
 // The frame drawn into the target and read back into t.pixels.
-render_offscreen :: proc(g: ^Gpu, r: ^Renderer, ui: ^kui.Ui, t: ^Target) -> int {
+render_offscreen :: proc(g: ^Gpu, r: ^kui_wgpu.Renderer, ui: ^kui.Ui, t: ^Target) -> int {
 	enc := wgpu.DeviceCreateCommandEncoder(g.device, nil)
 	defer wgpu.CommandEncoderRelease(enc)
-	drawn := draw(g, r, ui, enc, t.view, WORLDS[0])
+	drawn := draw_over(r, ui, enc, t.view, WORLDS[0])
 	wgpu.CommandEncoderCopyTextureToBuffer(enc, &{texture = t.texture, aspect = .All}, &{buffer = t.buffer, layout = {bytesPerRow = t.row, rowsPerImage = t.h}}, &{t.w, t.h, 1})
 	cmd := wgpu.CommandEncoderFinish(enc, nil)
 	defer wgpu.CommandBufferRelease(cmd)
@@ -478,8 +323,18 @@ button_quad :: proc(dd: kui.Draw_Data) -> (kui.Quad, bool) {
 	return {}, false
 }
 
-// What every drawn frame shows, wherever its pixels came from.
-check_frame :: proc(ui: ^kui.Ui, t: ^Target, when_: string) {
+// The quad the image is: drawn from a texture of its own.
+texture_quad :: proc(dd: kui.Draw_Data) -> (kui.Quad, bool) {
+	for q in dd.quads {
+		if q.kind == .Texture do return q, true
+	}
+	return {}, false
+}
+
+// What every drawn frame shows, wherever its pixels came from. `glyph` is
+// the kind the title's glyphs should be: a mask, or per-channel coverage
+// under subpixel text.
+check_frame :: proc(ui: ^kui.Ui, t: ^Target, glyph: kui.Quad_Kind, when_: string) {
 	dd, _ := kui.draw_data(ui)
 	// The panel's colour at its right edge, clear of the text.
 	p := pixel(t, (PANEL_X + PANEL_W - 6) * SCALE, (PANEL_Y + PANEL_H / 2) * SCALE)
@@ -497,11 +352,14 @@ check_frame :: proc(ui: ^kui.Ui, t: ^Target, when_: string) {
 	// their union that are not the flat panel.
 	top := f32((PANEL_Y + PANEL_H / 2) * SCALE)
 	lo, hi := [2]f32{1e9, 1e9}, [2]f32{-1e9, -1e9}
+	kind_ok := true
 	for q in dd.quads {
 		if (q.kind != .Glyph_Mask && q.kind != .Glyph_Subpixel) || q.y + q.h > top do continue
+		if q.kind != glyph do kind_ok = false
 		lo = {min(lo.x, q.x), min(lo.y, q.y)}
 		hi = {max(hi.x, q.x + q.w), max(hi.y, q.y + q.h)}
 	}
+	check(kind_ok, fmt.tprintf("%s: the title's glyphs are %v", when_, glyph))
 	inked := 0
 	for y := lo.y; y < hi.y; y += 1 {
 		for x := lo.x; x < hi.x; x += 1 {
@@ -514,6 +372,72 @@ check_frame :: proc(ui: ^kui.Ui, t: ^Target, when_: string) {
 	b, found := button_quad(dd)
 	check(found, fmt.tprintf("%s: the button's quad is in the frame", when_))
 	if found do check(near(pixel(t, b.x + 6, b.y + b.h / 2), u32(BUTTON_BG), 2), fmt.tprintf("%s: the button is its colour", when_))
+
+	// The texture-backed image, between the title's quads and the button's:
+	// left out, so the panel shows where it is, and the draws either side of
+	// it still land.
+	img, has_img := texture_quad(dd)
+	check(has_img, fmt.tprintf("%s: the image is a .Texture quad", when_))
+	if has_img do check(near(pixel(t, img.x + img.w / 2, img.y + img.h / 2), u32(PANEL_BG), 2), fmt.tprintf("%s: the left-out image draws nothing over the panel", when_))
+}
+
+// Magenta, and updated once, which moves it off the atlas onto a texture
+// of its own.
+add_image :: proc(ui: ^kui.Ui) -> kui.Image {
+	magenta: [IMAGE_W * IMAGE_H * 4]u8
+	for i := 0; i < len(magenta); i += 4 do magenta[i], magenta[i + 2], magenta[i + 3] = 0xff, 0xff, 0xff
+	image := kui.image_add(ui, IMAGE_W, IMAGE_H, magenta[:])
+	kui.image_update(ui, image, IMAGE_W, IMAGE_H, magenta[:])
+	return image
+}
+
+// The whole turn with one of kui's shaders, on a Ui of its own: two frames
+// drawn and checked, a click between them.
+run :: proc(g: ^Gpu, dual: bool) {
+	name := "dual" if dual else "single"
+	ui := kui.new_ui()
+	defer kui.free_ui(ui)
+	// Per-channel glyphs only where the blend is per channel.
+	kui.set_subpixel_text(ui, dual)
+	glyph := kui.Quad_Kind.Glyph_Subpixel if dual else .Glyph_Mask
+	r: kui_wgpu.Renderer
+	check(kui_wgpu.init(&r, g.device, g.queue, .RGBA8Unorm, dual) && wgpu_errors == 0, fmt.tprintf("%s: kui_wgpu.init built the pipeline from kui's shader and layout", name))
+	defer kui_wgpu.destroy(&r)
+	t := target_make(g, W * SCALE, H * SCALE)
+	defer target_free(&t)
+	s := State{image = add_image(ui)}
+
+	// The host loop's turn (kui.h): build, drain, draw.
+	kui.frame(ui, &s, view, W, H, SCALE)
+	drain(ui, &s)
+	drawn := render_offscreen(g, &r, ui, &t)
+	check(drawn > 0, fmt.tprintf("%s: the first frame drew instances", name))
+	check(drawn == len(kui.pack_instances(ui)) / int(kui.instance_stride()) - 1, fmt.tprintf("%s: the first frame drew every instance but the image's", name))
+	check(r.uploaded[2] == r.atlas_size, fmt.tprintf("%s: the first frame uploaded the whole atlas page", name))
+	check_frame(ui, &t, glyph, fmt.tprintf("%s, first frame", name))
+
+	// Input, then the next turn: a click on the button, its message, and
+	// the frame rebuilt with the new count. The label's "1" is a glyph the
+	// atlas did not hold, so the upload is a rect, not the page.
+	dd, _ := kui.draw_data(ui)
+	if b, found := button_quad(dd); found {
+		kui.input_cursor(ui, (b.x + b.w / 2) / SCALE, (b.y + b.h / 2) / SCALE)
+		check(kui.pointer_wants(ui), fmt.tprintf("%s: the pointer over the button is the UI's", name))
+		kui.input_mouse(ui, true, 1)
+		kui.input_mouse(ui, false, 1)
+		drain(ui, &s)
+	}
+	check(s.clicks == 1, fmt.tprintf("%s: the click arrived as the button's message", name))
+	kui.input_cursor(ui, W - 4, H - 4)
+	check(!kui.pointer_wants(ui), fmt.tprintf("%s: past the panel the pointer is the world's", name))
+	kui.frame(ui, &s, view, W, H, SCALE)
+	drain(ui, &s)
+	drawn = render_offscreen(g, &r, ui, &t)
+	check(drawn > 0, fmt.tprintf("%s: the second frame drew instances", name))
+	check(r.uploaded[2] > 0 && r.uploaded[2] < r.atlas_size, fmt.tprintf("%s: the second frame uploaded a dirty rect alone", name))
+	check_frame(ui, &t, glyph, fmt.tprintf("%s, second frame", name))
+
+	fmt.printfln("wgpu host %s: %s, %dx%d, %d instances of %d bytes, the atlas a %d px page then a %dx%d rect", name, g.name, t.w, t.h, drawn, kui.instance_stride(), r.atlas_size, r.uploaded[2], r.uploaded[3])
 }
 
 offscreen :: proc() -> int {
@@ -532,55 +456,29 @@ offscreen :: proc() -> int {
 		fmt.eprintfln("FAIL: KUI_REQUIRE_GPU is %s, but the adapter is %s", need, g.name)
 		return 1
 	}
-
-	ui := kui.new_ui()
-	if ui == nil {
+	probe := kui.new_ui()
+	if probe == nil {
 		fmt.eprintln("FAIL: libkui_ffi's ABI is not the one this binding was generated against")
 		return 1
 	}
-	defer kui.free_ui(ui)
-	r: Renderer
-	renderer_init(&g, &r, .RGBA8Unorm)
-	defer renderer_free(&r)
-	t := target_make(&g, W * SCALE, H * SCALE)
-	defer target_free(&t)
-	s: State
+	kui.free_ui(probe)
 
-	// The host loop's turn (kui.h): build, drain, draw.
-	kui.frame(ui, &s, view, W, H, SCALE)
-	drain(ui, &s)
-	drawn := render_offscreen(&g, &r, ui, &t)
-	check(drawn > 0, "the first frame drew instances")
-	check(r.uploaded[2] == r.atlas_size, "the first frame uploaded the whole atlas page")
-	check_frame(ui, &t, "first frame")
-
-	// Input, then the next turn: a click on the button, its message, and
-	// the frame rebuilt with the new count. The label's "1" is a glyph the
-	// atlas did not hold, so the upload is a rect, not the page.
-	dd, _ := kui.draw_data(ui)
-	if b, found := button_quad(dd); found {
-		kui.input_cursor(ui, (b.x + b.w / 2) / SCALE, (b.y + b.h / 2) / SCALE)
-		check(kui.pointer_wants(ui), "the pointer over the button is the UI's")
-		kui.input_mouse(ui, true, 1)
-		kui.input_mouse(ui, false, 1)
-		drain(ui, &s)
+	run(&g, false)
+	if g.dual {
+		run(&g, true)
+	} else {
+		// Without the feature the dual shader is refused, not built.
+		r: kui_wgpu.Renderer
+		check(!kui_wgpu.init(&r, g.device, g.queue, .RGBA8Unorm, true) && r.pipeline == nil, "kui_wgpu.init refuses dual on a device without dual-source blending")
+		kui_wgpu.destroy(&r)
+		fmt.printfln("wgpu host dual: skipped, %s offers no dual-source blending", g.name)
 	}
-	check(s.clicks == 1, "the click arrived as the button's message")
-	kui.input_cursor(ui, W - 4, H - 4)
-	check(!kui.pointer_wants(ui), "past the panel the pointer is the world's")
-	kui.frame(ui, &s, view, W, H, SCALE)
-	drain(ui, &s)
-	drawn = render_offscreen(&g, &r, ui, &t)
-	check(drawn > 0, "the second frame drew instances")
-	check(r.uploaded[2] > 0 && r.uploaded[2] < r.atlas_size, "the second frame uploaded a dirty rect alone")
-	check_frame(ui, &t, "second frame")
 	check(wgpu_errors == 0, "wgpu raised no validation error")
-
 	if fails > 0 {
 		fmt.eprintfln("wgpu_host: %d check(s) failed", fails)
 		return 1
 	}
-	fmt.printfln("wgpu host OK: %s, %dx%d, %d instances of %d bytes, the atlas a %d px page then a %dx%d rect", g.name, t.w, t.h, drawn, kui.instance_stride(), r.atlas_size, r.uploaded[2], r.uploaded[3])
+	fmt.println("wgpu host OK")
 	return 0
 }
 
@@ -686,9 +584,16 @@ window :: proc(max_frames: int) -> int {
 		return 1
 	}
 	defer kui.free_ui(app.ui)
-	r: Renderer
-	renderer_init(&g, &r, format)
-	defer renderer_free(&r)
+	// The dual shader and subpixel text where the device blends per
+	// channel, as kui-wgpu picks them.
+	kui.set_subpixel_text(app.ui, g.dual)
+	r: kui_wgpu.Renderer
+	if !kui_wgpu.init(&r, g.device, g.queue, format, g.dual) {
+		fmt.eprintln("wgpu_host: kui_wgpu.init failed")
+		return 1
+	}
+	defer kui_wgpu.destroy(&r)
+	app.state.image = add_image(app.ui)
 
 	glfw.SetInputMode(app.window, glfw.LOCK_KEY_MODS, 1)
 	glfw.SetCursorPosCallback(app.window, on_cursor)
@@ -733,7 +638,7 @@ window :: proc(max_frames: int) -> int {
 		}
 		frame := wgpu.TextureCreateView(st.texture, nil)
 		enc := wgpu.DeviceCreateCommandEncoder(g.device, nil)
-		draw(&g, &r, app.ui, enc, frame, WORLDS[app.state.world])
+		draw_over(&r, app.ui, enc, frame, WORLDS[app.state.world])
 		cmd := wgpu.CommandEncoderFinish(enc, nil)
 		wgpu.QueueSubmit(g.queue, {cmd})
 		wgpu.SurfacePresent(app.surface)
@@ -749,7 +654,7 @@ window :: proc(max_frames: int) -> int {
 		fmt.eprintfln("wgpu_host: %d wgpu error(s)", wgpu_errors)
 		return 1
 	}
-	fmt.printfln("wgpu host window: %d frames on %s, %d button clicks, world %d", frames, g.name, app.state.clicks, app.state.world)
+	fmt.printfln("wgpu host window: %d frames on %s, the %s shader, %d button clicks, world %d", frames, g.name, "dual" if r.dual else "single", app.state.clicks, app.state.world)
 	return 0
 }
 
