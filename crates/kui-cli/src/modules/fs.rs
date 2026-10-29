@@ -3,10 +3,10 @@
 
 use mlua::{Lua, Table};
 
-use super::{fail, shared, try_fn};
+use super::{fail_as, io_code, shared, try_fn};
 
 fn io(path: &std::path::Path, e: std::io::Error) -> mlua::Error {
-    fail(format!("{}: {e}", path.display()))
+    fail_as(io_code(&e), format!("{}: {e}", path.display()))
 }
 
 /// A path the app may write: anywhere but a packed app's own files, which
@@ -16,12 +16,15 @@ fn writable(lua: &Lua, path: &str) -> mlua::Result<std::path::PathBuf> {
     if let Some(dir) = crate::packed::dir()
         && p.starts_with(dir)
     {
-        return Err(fail(format!(
-            "{path}: a packed app's own files are read-only — write under kui.data_dir ({})",
-            crate::modules::app()
-                .map(|a| a.data_dir.display().to_string())
-                .unwrap_or_default()
-        )));
+        return Err(fail_as(
+            "denied",
+            format!(
+                "{path}: a packed app's own files are read-only — write under kui.data_dir ({})",
+                crate::modules::app()
+                    .map(|a| a.data_dir.display().to_string())
+                    .unwrap_or_default()
+            ),
+        ));
     }
     Ok(p)
 }
@@ -174,7 +177,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             crate::ops::run(&s.ops, id, move || {
                 let mut out = Vec::new();
                 walk(&root, &root, &skip, pattern.as_deref(), dirs, &mut out)
-                    .map_err(|e| format!("{}: {e}", root.display()))?;
+                    .map_err(|e| super::coded(io_code(&e), format!("{}: {e}", root.display())))?;
                 out.sort();
                 Ok(kui_core::Value::List(
                     out.into_iter().map(kui_core::Value::Str).collect(),

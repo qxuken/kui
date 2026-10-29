@@ -517,6 +517,13 @@ local record kit
     label: string
     -- Its width in px.
     width: number
+    -- The open menu's width in px at the most; the window's less a margin
+    -- when left out. The menu is as wide as its widest option up to it, and
+    -- never narrower than the field.
+    menu_max_width: number
+    -- An option too long for the menu wraps onto more lines, its row growing,
+    -- where it is cut short with an ellipsis when left out.
+    menu_wrap: boolean
     -- The message `change` arrives as. An option was chosen.
     on_change: any
     key: string

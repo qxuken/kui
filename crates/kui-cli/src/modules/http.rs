@@ -77,13 +77,34 @@ fn request_opts(url_or_opts: mlua::Value, method: &str, extra: Option<Table>) ->
         read(&mut r, &t)?;
     }
     if r.url.is_empty() {
-        return Err(fail("http: no url".into()));
+        return Err(super::fail_as("invalid", "http: no url"));
     }
     Ok(r)
 }
 
 fn is_json(content_type: Option<&str>) -> bool {
     content_type.is_some_and(|c| c.contains("json"))
+}
+
+/// A request's failure by its code: `timeout`, `dns` (the host has no
+/// address), `refused` (nothing answered: refused, reset, unreachable),
+/// `tls`, `invalid` (the URL), `too_long` (a body past the limit), else
+/// `failed`. A status is a response, not a failure.
+fn http_code(e: &ureq::Error) -> &'static str {
+    use ureq::Error as E;
+    match e {
+        E::Timeout(_) => "timeout",
+        E::HostNotFound => "dns",
+        E::ConnectionFailed => "refused",
+        E::Io(io) => match super::io_code(io) {
+            "not_found" => "dns",
+            code => code,
+        },
+        E::Tls(_) | E::Pem(_) | E::Rustls(_) | E::TlsRequired => "tls",
+        E::BadUri(_) | E::InvalidProxyUrl | E::RequireHttpsOnly(_) | E::Http(_) => "invalid",
+        E::BodyExceedsLimit(_) | E::LargeResponseHeader(..) => "too_long",
+        _ => "failed",
+    }
 }
 
 fn fetch(r: Req) -> Result<Value, String> {
@@ -111,9 +132,10 @@ fn fetch(r: Req) -> Result<Value, String> {
         "POST" => with_headers!(agent.post(&r.url)).send(&body[..]),
         "PUT" => with_headers!(agent.put(&r.url)).send(&body[..]),
         "PATCH" => with_headers!(agent.patch(&r.url)).send(&body[..]),
-        other => return Err(format!("http: no method {other}")),
+        other => return Err(super::coded("invalid", format!("http: no method {other}"))),
     };
-    let mut res = res.map_err(|e| format!("{} {}: {e}", r.method, r.url))?;
+    let mut res =
+        res.map_err(|e| super::coded(http_code(&e), format!("{} {}: {e}", r.method, r.url)))?;
     let status = res.status().as_u16();
     let mut headers = Vec::new();
     for (k, v) in res.headers() {
@@ -242,8 +264,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 .get::<Option<String>>("host")?
                 .unwrap_or_else(|| "127.0.0.1".into());
             let root = opts.get::<Option<String>>("static")?.map(|d| s.path(&d));
-            let inner = tiny_http::Server::http((host.as_str(), port))
-                .map_err(|e| fail(format!("http.serve on {host}:{port}: {e}")))?;
+            let inner = tiny_http::Server::http((host.as_str(), port)).map_err(|e| {
+                let code = e
+                    .downcast_ref::<std::io::Error>()
+                    .map_or("failed", super::io_code);
+                super::fail_as(code, format!("http.serve on {host}:{port}: {e}"))
+            })?;
             let bound = inner
                 .server_addr()
                 .to_ip()

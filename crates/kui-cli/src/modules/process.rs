@@ -324,8 +324,8 @@ impl UserData for Proc {
                 match stdin.as_mut() {
                     Some(w) => w
                         .write_all(&data.as_bytes())
-                        .map_err(|e| fail(format!("write: {e}"))),
-                    None => Err(fail("the process's stdin is closed".into())),
+                        .map_err(|e| super::fail_as(super::io_code(&e), format!("write: {e}"))),
+                    None => Err(super::fail_as("closed", "the process's stdin is closed")),
                 },
             )
         });
@@ -366,8 +366,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                         Stdio::null()
                     });
                     c.stdout(Stdio::piped()).stderr(Stdio::piped());
-                    let mut child =
-                        kui_native::spawn::spawn(&mut c).map_err(|e| format!("{cmd}: {e}"))?;
+                    let mut child = kui_native::spawn::spawn(&mut c)
+                        .map_err(|e| super::coded(super::io_code(&e), format!("{cmd}: {e}")))?;
                     if let Some(input) = o.stdin
                         && let Some(mut w) = child.stdin.take()
                     {
@@ -375,7 +375,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                     }
                     let out = child
                         .wait_with_output()
-                        .map_err(|e| format!("{cmd}: {e}"))?;
+                        .map_err(|e| super::coded(super::io_code(&e), format!("{cmd}: {e}")))?;
                     Ok(Value::map([
                         (
                             "code",
@@ -407,8 +407,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 c.stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
-                let mut child =
-                    kui_native::spawn::spawn(&mut c).map_err(|e| fail(format!("{cmd}: {e}")))?;
+                let mut child = kui_native::spawn::spawn(&mut c)
+                    .map_err(|e| super::fail_as(super::io_code(&e), format!("{cmd}: {e}")))?;
                 let s = shared(lua);
                 let state = Arc::new(Mutex::new(State::default()));
                 reader(

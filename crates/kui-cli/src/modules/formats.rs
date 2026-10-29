@@ -6,15 +6,15 @@
 use kui_core::Value;
 use mlua::{Lua, Table};
 
-use super::{fail, try_fn};
+use super::{fail_as, try_fn};
 
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let json = lua.create_table()?;
     json.set(
         "try_decode",
         try_fn(lua, |lua, text: mlua::LuaString| {
-            let v =
-                kui_core::json::parse(&text.to_str()?).map_err(|e| fail(format!("json: {e}")))?;
+            let v = kui_core::json::parse(&text.to_str()?)
+                .map_err(|e| fail_as("parse", format!("json: {e}")))?;
             kui_lua::value_to_lua(lua, &v)
         })?,
     )?;
@@ -46,39 +46,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     )?;
     kui.set("json", json)?;
 
-    // `kui.hash`: digests as lowercase hex — `sha1` and `sha256`, `sha512`
-    // for a file's identity, `fnv` (64-bit FNV-1a) for a quick name.
-    let hash = lua.create_table()?;
-    for (name, alg) in [
-        ("sha1", &ring::digest::SHA1_FOR_LEGACY_USE_ONLY),
-        ("sha256", &ring::digest::SHA256),
-        ("sha512", &ring::digest::SHA512),
-    ] {
-        hash.set(
-            name,
-            lua.create_function(move |_, data: mlua::LuaString| {
-                Ok(hex(ring::digest::digest(alg, &data.as_bytes()).as_ref()))
-            })?,
-        )?;
-    }
-    hash.set(
-        "fnv",
-        lua.create_function(|_, data: mlua::LuaString| {
-            let mut h: u64 = 0xcbf29ce484222325;
-            for b in data.as_bytes().iter() {
-                h = (h ^ *b as u64).wrapping_mul(0x100000001b3);
-            }
-            Ok(format!("{h:016x}"))
-        })?,
-    )?;
-    kui.set("hash", hash)?;
-
     let toml = lua.create_table()?;
     toml.set(
         "try_decode",
         try_fn(lua, |lua, text: mlua::LuaString| {
-            let v: toml::Table =
-                toml::from_str(&text.to_str()?).map_err(|e| fail(format!("toml: {e}")))?;
+            let v: toml::Table = toml::from_str(&text.to_str()?)
+                .map_err(|e| fail_as("parse", format!("toml: {e}")))?;
             kui_lua::value_to_lua(lua, &from_toml(toml::Value::Table(v)))
         })?,
     )?;
@@ -86,7 +59,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "try_encode",
         try_fn(lua, |_, v: mlua::Value| {
             let t = to_toml(&kui_lua::lua_to_value(&v)?)?;
-            toml::to_string_pretty(&t).map_err(|e| fail(format!("toml: {e}")))
+            toml::to_string_pretty(&t).map_err(|e| fail_as("invalid", format!("toml: {e}")))
         })?,
     )?;
     kui.set("toml", toml)?;
@@ -96,7 +69,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "try_decode",
         try_fn(lua, |lua, text: mlua::LuaString| {
             let docs = yaml_rust2::YamlLoader::load_from_str(&text.to_str()?)
-                .map_err(|e| fail(format!("yaml: {e}")))?;
+                .map_err(|e| fail_as("parse", format!("yaml: {e}")))?;
             let first = docs.into_iter().next().unwrap_or(yaml_rust2::Yaml::Null);
             kui_lua::value_to_lua(lua, &from_yaml(first))
         })?,
@@ -108,22 +81,13 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             let mut out = String::new();
             yaml_rust2::YamlEmitter::new(&mut out)
                 .dump(&y)
-                .map_err(|e| fail(format!("yaml: {e}")))?;
+                .map_err(|e| fail_as("invalid", format!("yaml: {e}")))?;
             // The emitter opens with a document marker; a file reads cleaner without it.
             Ok(out.strip_prefix("---\n").unwrap_or(&out).to_string() + "\n")
         })?,
     )?;
     kui.set("yaml", yaml)?;
     Ok(())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(s, "{b:02x}");
-    }
-    s
 }
 
 fn sorted(entries: &[(String, Value)]) -> Vec<&(String, Value)> {
@@ -218,7 +182,7 @@ fn from_toml(v: toml::Value) -> Value {
 
 fn to_toml(v: &Value) -> mlua::Result<toml::Value> {
     Ok(match v {
-        Value::Null => return Err(fail("toml has no null; leave the key out".into())),
+        Value::Null => return Err(fail_as("invalid", "toml has no null; leave the key out")),
         Value::Bool(b) => toml::Value::Boolean(*b),
         Value::Int(i) => toml::Value::Integer(*i),
         Value::Float(f) => toml::Value::Float(*f),

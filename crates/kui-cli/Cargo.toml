@@ -24,6 +24,10 @@ ureq = "3"
 tiny_http = "0.12"
 rusqlite = { version = "0.37", features = ["bundled"] }
 ring = "0.17"
+base64 = "0.22"
+argon2 = "0.5"
+# `kui.secrets`: the OS's store, one crate per platform under keyring-core.
+keyring-core = "1"
 flate2 = "1.1"
 crc32fast = "1.5"
 png = "0.18"
@@ -45,3 +49,14 @@ flate2 = "1.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = { version = "1", default-features = false }
+
+# The Secret Service over zbus, already in the tree through rfd's portal:
+# no libdbus to link, so a Linux runner still builds anywhere.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }

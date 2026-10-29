@@ -301,6 +301,8 @@
 ---@field placeholder? string Shown with nothing chosen.
 ---@field label? string Its label, above it.
 ---@field width? number Its width in px.
+---@field menu_max_width? number The open menu's width in px at the most; the window's less a margin when left out. The menu is as wide as its widest option up to it, and never narrower than the field.
+---@field menu_wrap? boolean An option too long for the menu wraps onto more lines, its row growing, where it is cut short with an ellipsis when left out.
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.SelectChange). An option was chosen.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.

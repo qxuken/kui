@@ -1253,6 +1253,13 @@ Select :: struct {
 	label: string,
 	// Its width in px.
 	width: Maybe(f64),
+	// The open menu's width in px at the most; the window's less a margin when
+	// left out. The menu is as wide as its widest option up to it, and never
+	// narrower than the field.
+	menu_max_width: Maybe(f64),
+	// An option too long for the menu wraps onto more lines, its row growing,
+	// where it is cut short with an ellipsis when left out.
+	menu_wrap: Maybe(bool),
 	// The message `change` arrives as. An option was chosen.
 	on_change: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -1279,6 +1286,8 @@ select_props :: proc(p: Select) -> ^c.Value {
 	if p.placeholder != "" do c.value_map_set(m, "placeholder", c.value_str(p.placeholder))
 	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
+	if x, ok := p.menu_max_width.?; ok do c.value_map_set(m, "menu_max_width", c.value_float(x))
+	if x, ok := p.menu_wrap.?; ok do c.value_map_set(m, "menu_wrap", c.value_bool(x))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))

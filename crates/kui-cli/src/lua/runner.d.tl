@@ -3,9 +3,13 @@
   -- task (`kui.spawn`) and blocks anywhere else. A call that can fail on
   -- its input or on the world (a file, text read in, the network, a
   -- process, a database) has a `try_` form that returns `true` and what
-  -- the call returns, or `false` and the error's message: `local ok, text
-  -- = kui.fs.try_read(path)`. The plain call raises the message at its
-  -- caller's line.
+  -- the call returns, or `false`, the error's message and its code: `local
+  -- ok, text, code = kui.fs.try_read(path)`. The codes are one set
+  -- (the runner's README lists them): "not_found", "exists", "denied",
+  -- "not_empty", "invalid", "parse", "encoding", "integrity", "timeout",
+  -- "dns", "refused", "tls", "in_use", "closed", "busy", "constraint",
+  -- "sql", "full", "too_long", "unavailable", "failed". The plain call
+  -- raises the message at its caller's line.
 
   -- Runs `fn` as a task: its waiting calls yield to the frame.
   spawn: function(fn: function(...: any), ...: any): thread
@@ -107,13 +111,81 @@
     text: function(s: string)
   end
 
-  -- Digests as lowercase hex.
+  -- Digests: lowercase hex unless `enc` names "base64", "base64url" or "raw".
   record hash
-    sha1: function(data: string): string
-    sha256: function(data: string): string
-    sha512: function(data: string): string
+    sha1: function(data: string, enc?: string): string
+    sha256: function(data: string, enc?: string): string
+    sha384: function(data: string, enc?: string): string
+    sha512: function(data: string, enc?: string): string
+    -- HMAC of `data` under `key`: "sha1", "sha256", "sha384", "sha512".
+    hmac: function(alg: string, key: string, data: string, enc?: string): string
     -- 64-bit FNV-1a: a quick name, not a secret.
     fnv: function(data: string): string
+  end
+  record Base64Opts
+    url: boolean
+    pad: boolean
+  end
+  record base64
+    encode: function(data: string, opts?: Base64Opts): string
+    decode: function(text: string): string
+    try_decode: function(text: string): boolean, string, string
+  end
+  record hex
+    encode: function(data: string): string
+    decode: function(text: string): string
+    try_decode: function(text: string): boolean, string, string
+  end
+  record SealOpts
+    -- "aes-256-gcm" (the default) or "chacha20-poly1305".
+    alg: string
+    aad: string
+  end
+  record Pbkdf2Opts
+    iterations: integer
+    length: integer
+    hash: string
+  end
+  record Argon2Opts
+    memory: integer
+    iterations: integer
+    parallelism: integer
+    length: integer
+  end
+  record crypto
+    random: function(n: integer): string
+    equal: function(a: string, b: string): boolean
+    encrypt: function(key: string, data: string, opts?: SealOpts): string
+    try_encrypt: function(key: string, data: string, opts?: SealOpts): boolean, string, string
+    decrypt: function(key: string, data: string, opts?: SealOpts): string
+    try_decrypt: function(key: string, data: string, opts?: SealOpts): boolean, string, string
+    -- Keys stretched from passwords, and password hashes: each waits.
+    pbkdf2: function(password: string, salt: string, opts?: Pbkdf2Opts): string
+    try_pbkdf2: function(password: string, salt: string, opts?: Pbkdf2Opts): boolean, string, string
+    argon2: function(password: string, salt: string, opts?: Argon2Opts): string
+    try_argon2: function(password: string, salt: string, opts?: Argon2Opts): boolean, string, string
+    hash_password: function(password: string, opts?: Argon2Opts): string
+    try_hash_password: function(password: string, opts?: Argon2Opts): boolean, string, string
+    verify_password: function(password: string, hash: string): boolean
+    try_verify_password: function(password: string, hash: string): boolean, boolean | string, string
+  end
+  record SecretOpts
+    service: string
+  end
+  -- The OS's secret store, under the app's id unless `service` says.
+  -- Every call waits.
+  record secrets
+    -- "keychain", "credential-manager", "secret-service" or "memory".
+    store: string
+    get: function(name: string, opts?: SecretOpts): string
+    try_get: function(name: string, opts?: SecretOpts): boolean, string, string
+    set: function(name: string, value: string, opts?: SecretOpts)
+    try_set: function(name: string, value: string, opts?: SecretOpts): boolean, string, string
+    delete: function(name: string, opts?: SecretOpts): boolean
+    try_delete: function(name: string, opts?: SecretOpts): boolean, boolean | string, string
+    -- true, or false, why and its code ("denied", "unavailable", …);
+    -- never raises.
+    probe: function(opts?: SecretOpts): boolean, string, string
   end
   -- The folder `kui` was started from (relative paths are the app's).
   cwd: string
@@ -153,22 +225,22 @@
   record json
     decode: function(text: string): any
     encode: function(value: any, opts?: {string:boolean}): string
-    try_decode: function(text: string): boolean, any
-    try_encode: function(value: any, opts?: {string:boolean}): boolean, string
+    try_decode: function(text: string): boolean, any, string
+    try_encode: function(value: any, opts?: {string:boolean}): boolean, string, string
     -- `t` (or a new table) marked a list: empty, it encodes as `[]`.
     array: function<T>(t?: {T}): {T}
   end
   record toml
     decode: function(text: string): {string:any}
     encode: function(value: {string:any}): string
-    try_decode: function(text: string): boolean, {string:any} | string
-    try_encode: function(value: {string:any}): boolean, string
+    try_decode: function(text: string): boolean, {string:any} | string, string
+    try_encode: function(value: {string:any}): boolean, string, string
   end
   record yaml
     decode: function(text: string): any
     encode: function(value: any): string
-    try_decode: function(text: string): boolean, any
-    try_encode: function(value: any): boolean, string
+    try_decode: function(text: string): boolean, any, string
+    try_encode: function(value: any): boolean, string, string
   end
 
   record WalkOpts
@@ -201,16 +273,16 @@
     mkdir: function(path: string)
     remove: function(path: string)
     rename: function(from: string, to: string)
-    try_read: function(path: string): boolean, string
-    try_write: function(path: string, data: string): boolean, string
-    try_append: function(path: string, data: string): boolean, string
-    try_list: function(path?: string): boolean, {string} | string
-    try_lines: function(path: string): boolean, {string} | string
-    try_create: function(path: string, data: string): boolean, boolean | string
-    try_walk: function(dir?: string, opts?: WalkOpts): boolean, {string} | string
-    try_mkdir: function(path: string): boolean, string
-    try_remove: function(path: string): boolean, string
-    try_rename: function(from: string, to: string): boolean, string
+    try_read: function(path: string): boolean, string, string
+    try_write: function(path: string, data: string): boolean, string, string
+    try_append: function(path: string, data: string): boolean, string, string
+    try_list: function(path?: string): boolean, {string} | string, string
+    try_lines: function(path: string): boolean, {string} | string, string
+    try_create: function(path: string, data: string): boolean, boolean | string, string
+    try_walk: function(dir?: string, opts?: WalkOpts): boolean, {string} | string, string
+    try_mkdir: function(path: string): boolean, string, string
+    try_remove: function(path: string): boolean, string, string
+    try_rename: function(from: string, to: string): boolean, string, string
   end
 
   record ProcessOpts
@@ -240,9 +312,9 @@
     -- Ends it, or sends `sig` ("term", "int", "hup", "kill"); its group's
     -- whole when spawned `group`. False when it had already exited.
     kill: function(self: Process, sig?: string): boolean
-    try_read_line: function(self: Process, stream?: string): boolean, string
-    try_write: function(self: Process, data: string): boolean, string
-    try_wait: function(self: Process): boolean, integer | string
+    try_read_line: function(self: Process, stream?: string): boolean, string, string
+    try_write: function(self: Process, data: string): boolean, string, string
+    try_wait: function(self: Process): boolean, integer | string, string
   end
   record process
     -- Runs a command to its end (waits).
@@ -255,8 +327,8 @@
     pid: integer
     -- The command `pid` was started with (waits), nil when none.
     command_line: function(pid: integer): string
-    try_run: function(cmd: string, args?: {string}, opts?: ProcessOpts): boolean, ProcessResult | string
-    try_spawn: function(cmd: string, args?: {string}, opts?: ProcessOpts): boolean, Process | string
+    try_run: function(cmd: string, args?: {string}, opts?: ProcessOpts): boolean, ProcessResult | string, string
+    try_spawn: function(cmd: string, args?: {string}, opts?: ProcessOpts): boolean, Process | string, string
   end
 
   record RequestOpts
@@ -311,14 +383,14 @@
     head: function(url: string, opts?: RequestOpts): Response
     serve: function(opts?: ServeOpts): Server
     -- A refused connection or a timeout is `false`; a 404 is a Response.
-    try_request: function(target: string | RequestOpts, opts?: RequestOpts): boolean, Response | string
-    try_get: function(url: string, opts?: RequestOpts): boolean, Response | string
-    try_post: function(url: string, opts?: RequestOpts): boolean, Response | string
-    try_put: function(url: string, opts?: RequestOpts): boolean, Response | string
-    try_patch: function(url: string, opts?: RequestOpts): boolean, Response | string
-    try_delete: function(url: string, opts?: RequestOpts): boolean, Response | string
-    try_head: function(url: string, opts?: RequestOpts): boolean, Response | string
-    try_serve: function(opts?: ServeOpts): boolean, Server | string
+    try_request: function(target: string | RequestOpts, opts?: RequestOpts): boolean, Response | string, string
+    try_get: function(url: string, opts?: RequestOpts): boolean, Response | string, string
+    try_post: function(url: string, opts?: RequestOpts): boolean, Response | string, string
+    try_put: function(url: string, opts?: RequestOpts): boolean, Response | string, string
+    try_patch: function(url: string, opts?: RequestOpts): boolean, Response | string, string
+    try_delete: function(url: string, opts?: RequestOpts): boolean, Response | string, string
+    try_head: function(url: string, opts?: RequestOpts): boolean, Response | string, string
+    try_serve: function(opts?: ServeOpts): boolean, Server | string, string
   end
 
   record ExecResult
@@ -331,14 +403,14 @@
     first: function(self: Db, sql: string, params?: any): {string:any}
     exec: function(self: Db, sql: string, params?: any): ExecResult
     transaction: function(self: Db, fn: function(db: Db))
-    try_query: function(self: Db, sql: string, params?: any): boolean, {{string:any}} | string
-    try_first: function(self: Db, sql: string, params?: any): boolean, {string:any} | string
-    try_exec: function(self: Db, sql: string, params?: any): boolean, ExecResult | string
-    try_transaction: function(self: Db, fn: function(db: Db)): boolean, string
+    try_query: function(self: Db, sql: string, params?: any): boolean, {{string:any}} | string, string
+    try_first: function(self: Db, sql: string, params?: any): boolean, {string:any} | string, string
+    try_exec: function(self: Db, sql: string, params?: any): boolean, ExecResult | string, string
+    try_transaction: function(self: Db, fn: function(db: Db)): boolean, string, string
   end
   record sqlite
     open: function(path?: string): Db
-    try_open: function(path?: string): boolean, Db | string
+    try_open: function(path?: string): boolean, Db | string, string
   end
 
   -- A recording (ADR 0075): Rust reads and analyses it, a script draws
@@ -493,8 +565,8 @@
   record trace
     open: function(path: string, opts?: TraceOpenOpts): Recording
     read: function(bytes: string): Recording
-    try_open: function(path: string, opts?: TraceOpenOpts): boolean, Recording | string
-    try_read: function(bytes: string): boolean, Recording | string
+    try_open: function(path: string, opts?: TraceOpenOpts): boolean, Recording | string, string
+    try_read: function(bytes: string): boolean, Recording | string, string
   end
 
   record Worker
@@ -503,7 +575,7 @@
     running: boolean
     dispatch: function(self: Worker, msg: any)
     stop: function(self: Worker)
-    try_dispatch: function(self: Worker, msg: any): boolean, string
+    try_dispatch: function(self: Worker, msg: any): boolean, string, string
   end
   worker: function(path: string, handler?: function(msg: any, w: Worker)): Worker
-  try_worker: function(path: string, handler?: function(msg: any, w: Worker)): boolean, Worker | string
+  try_worker: function(path: string, handler?: function(msg: any, w: Worker)): boolean, Worker | string, string

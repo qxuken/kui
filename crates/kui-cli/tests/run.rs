@@ -385,6 +385,73 @@ fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
 }
 
 #[test]
+fn a_try_twins_failure_says_its_code() {
+    let dir = app(
+        "try-codes",
+        &[
+            ("bad.json", "{ not json"),
+            ("full/x.txt", "x"),
+            (
+                "main.lua",
+                r#"
+                local function code(...) local r = table.pack(...); return tostring(r[3]) end
+                print("ok", code(kui.fs.try_read("bad.json")))
+                print("not_found", code(kui.fs.try_read("missing.txt")))
+                print("exists", code(kui.fs.try_mkdir("bad.json")))
+                print("parse", code(kui.json.try_decode(kui.fs.read("bad.json"))),
+                  code(kui.toml.try_decode("= x")), code(kui.yaml.try_decode("a: [")),
+                  code(kui.base64.try_decode("a")))
+                print("invalid", code(kui.toml.try_encode(5)),
+                  code(kui.http.try_get("")), code(kui.crypto.try_encrypt("short", "x")))
+                print("worker", code(kui.try_worker("nope.lua")))
+                local _, db = kui.sqlite.try_open(":memory:")
+                db:exec("create table t(x unique)")
+                db:exec("insert into t values (1)")
+                print("sql", code(db:try_query("select * from nowhere")))
+                print("constraint", code(db:try_exec("insert into t values (1)")),
+                  code(db:try_transaction(function(d) d:exec("insert into t values (1)") end)),
+                  code(db:try_transaction(function() error("mine") end)))
+                print("integrity", code(kui.crypto.try_decrypt(kui.crypto.random(32), kui.crypto.random(40))))
+                print("raised", pcall(kui.fs.read, "missing.txt"))
+                kui.spawn(function()
+                  print("spawn", code(kui.process.try_run("kui-no-such-command")),
+                    code(kui.process.try_spawn("kui-no-such-command")))
+                  print("refused", code(kui.http.try_get("http://127.0.0.1:9/")))
+                  print("walk", code(kui.fs.try_walk("no-such-dir")))
+                  local s = kui.http.serve({ port = 0 })
+                  print("in_use", code(kui.http.try_serve({ port = s.port })))
+                  kui.exit(0)
+                end)
+                "#,
+            ),
+        ],
+    );
+    let o = kui(&dir, &["run", "--headless"], 30);
+    let s = out(&o);
+    for want in [
+        "ok\tnil",
+        "not_found\tnot_found",
+        "exists\texists",
+        "parse\tparse\tparse\tparse\tparse",
+        "invalid\tinvalid\tinvalid\tinvalid",
+        "worker\tnot_found",
+        "sql\tsql",
+        "constraint\tconstraint\tconstraint\tfailed",
+        "integrity\tintegrity",
+        "spawn\tnot_found\tnot_found",
+        "refused\trefused",
+        "walk\tnot_found",
+        "in_use\tin_use",
+    ] {
+        assert!(s.contains(want), "missing {want:?} in:\n{s}");
+    }
+    assert!(
+        s.contains("raised\tfalse\t") && s.contains("missing.txt: ") && !s.contains("[not_found]"),
+        "a plain call raises the message alone:\n{s}"
+    );
+}
+
+#[test]
 fn a_worker_that_throws_arrives_as_a_message() {
     let dir = app(
         "worker-error",
@@ -1852,6 +1919,91 @@ fn hashes_arrays_walks_and_logs() {
     );
     assert!(s.contains("read_all\talpha\tfalse\tbeta"), "{s}");
     assert!(s.contains("cmd\ttrue\ttrue"), "{s}");
+}
+
+#[test]
+fn encodes_hashes_seals_and_keeps_secrets() {
+    let dir = app(
+        "crypto",
+        &[(
+            "main.lua",
+            r##"
+            local h = kui.hex.encode
+            print("b64", kui.base64.encode("hello"), kui.base64.encode("\251\255", { url = true }))
+            print("b64back", kui.base64.decode("aGVsbG8") == "hello", h(kui.base64.decode("-_8=")))
+            print("b64bad", kui.base64.try_decode("a"))
+            print("hex", h("\0\171"), kui.hex.decode("00AB") == "\0\171", kui.hex.try_decode("abc"))
+            print("sha384", kui.hash.sha384("abc"))
+            print("sha256b64", kui.hash.sha256("abc", "base64"), #kui.hash.sha256("abc", "raw"))
+            print("hmac", kui.hash.hmac("sha256", "key", "The quick brown fox jumps over the lazy dog"))
+            print("hmacbad", pcall(kui.hash.hmac, "md5", "k", "d"))
+            print("random", #kui.crypto.random(32), kui.crypto.random(16) ~= kui.crypto.random(16))
+            print("equal", kui.crypto.equal("abc", "abc"), kui.crypto.equal("abc", "abd"))
+            local key = kui.crypto.random(32)
+            for _, alg in ipairs({ "aes-256-gcm", "chacha20-poly1305" }) do
+              local sealed = kui.crypto.encrypt(key, "secret text", { alg = alg, aad = "v1" })
+              print("aead", alg, #sealed, kui.crypto.decrypt(key, sealed, { alg = alg, aad = "v1" }))
+              print("aeadbad", alg, kui.crypto.try_decrypt(key, sealed, { alg = alg, aad = "v2" }))
+            end
+            print("shortkey", kui.crypto.try_encrypt("short", "x"))
+            print("secrets.store", kui.secrets.store)
+            kui.spawn(function()
+              print("pbkdf2", h(kui.crypto.pbkdf2("password", "salt", { iterations = 1 })))
+              local a = kui.crypto.argon2("pw", "somesalt", { memory = 64, iterations = 1 })
+              print("argon2", #a, a == kui.crypto.argon2("pw", "somesalt", { memory = 64, iterations = 1 }))
+              local phc = kui.crypto.hash_password("hunter2", { memory = 64, iterations = 1 })
+              print("phc", phc:sub(1, 10), kui.crypto.verify_password("hunter2", phc),
+                kui.crypto.verify_password("hunter3", phc))
+              print("phcbad", kui.crypto.try_verify_password("x", "not a hash"))
+              print("probe", kui.secrets.probe())
+              print("noname", kui.secrets.try_get(""))
+              print("raised", pcall(kui.secrets.get, ""))
+              print("get0", kui.secrets.get("token"))
+              kui.secrets.set("token", "s3cr3t")
+              print("get1", kui.secrets.get("token"), kui.secrets.get("token", { service = "other" }))
+              print("del", kui.secrets.delete("token"), kui.secrets.delete("token"), kui.secrets.get("token"))
+              kui.exit(0)
+            end)
+            "##,
+        )],
+    );
+    let o = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[("KUI_SECRETS", "memory")],
+        &dir.join(".cache"),
+        60,
+    );
+    let s = out(&o);
+    for want in [
+        "b64\taGVsbG8=\t-_8",
+        "b64back\ttrue\tfbff",
+        "b64bad\tfalse\tbase64:",
+        "hex\t00ab\ttrue\tfalse\thex: an odd number of digits (3)",
+        "sha384\tcb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7",
+        "sha256b64\tungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=\t32",
+        "hmac\tf7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8",
+        "kui.hash.hmac: no digest named \"md5\"",
+        "random\t32\ttrue",
+        "equal\ttrue\tfalse",
+        "aead\taes-256-gcm\t39\tsecret text",
+        "aead\tchacha20-poly1305\t39\tsecret text",
+        "aeadbad\taes-256-gcm\tfalse\tcrypto: cannot decrypt",
+        "shortkey\tfalse\tcrypto: the key must be 32 bytes",
+        "secrets.store\tmemory",
+        "pbkdf2\t120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b",
+        "argon2\t32\ttrue",
+        "phc\t$argon2id$\ttrue\tfalse",
+        "phcbad\tfalse\tcrypto: not a password hash",
+        "probe\ttrue",
+        "noname\tfalse\tsecrets: a secret needs a name\tinvalid",
+        "raised\tfalse\tsecrets: a secret needs a name",
+        "get0\tnil",
+        "get1\ts3cr3t\tnil",
+        "del\ttrue\tfalse\tnil",
+    ] {
+        assert!(s.contains(want), "missing {want:?} in:\n{s}");
+    }
 }
 
 #[test]

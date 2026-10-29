@@ -2738,6 +2738,13 @@ pub struct Select {
     pub label: Option<String>,
     /// Its width in px.
     pub width: Option<f64>,
+    /// The open menu's width in px at the most; the window's less a margin when
+    /// left out. The menu is as wide as its widest option up to it, and never
+    /// narrower than the field.
+    pub menu_max_width: Option<f64>,
+    /// An option too long for the menu wraps onto more lines, its row growing,
+    /// where it is cut short with an ellipsis when left out.
+    pub menu_wrap: Option<bool>,
     /// The message `change` arrives as, with `change: SelectChange` in it. An
     /// option was chosen.
     pub on_change: Option<Value>,
@@ -2756,6 +2763,8 @@ impl Select {
             placeholder: None,
             label: None,
             width: None,
+            menu_max_width: None,
+            menu_wrap: None,
             on_change: None,
             key: None,
             fresh: false,
@@ -2783,6 +2792,21 @@ impl Select {
     /// Its width in px.
     pub fn width(mut self, v: f64) -> Self {
         self.width = Some(v);
+        self
+    }
+
+    /// The open menu's width in px at the most; the window's less a margin when
+    /// left out. The menu is as wide as its widest option up to it, and never
+    /// narrower than the field.
+    pub fn menu_max_width(mut self, v: f64) -> Self {
+        self.menu_max_width = Some(v);
+        self
+    }
+
+    /// An option too long for the menu wraps onto more lines, its row growing,
+    /// where it is cut short with an ellipsis when left out.
+    pub fn menu_wrap(mut self, v: bool) -> Self {
+        self.menu_wrap = Some(v);
         self
     }
 
@@ -2822,6 +2846,12 @@ impl Select {
         }
         if let Some(v) = &self.width {
             m.push(("width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.menu_max_width {
+            m.push(("menu_max_width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.menu_wrap {
+            m.push(("menu_wrap".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));

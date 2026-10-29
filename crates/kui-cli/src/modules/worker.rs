@@ -32,7 +32,10 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 file
             };
             if !file.exists() {
-                return Err(fail(format!("kui.worker: no file {}", file.display())));
+                return Err(super::fail_as(
+                    "not_found",
+                    format!("kui.worker: no file {}", file.display()),
+                ));
             }
             let id = app.ops.id();
             let dir = file
@@ -68,7 +71,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             let msg = kui_lua::lua_to_value(&msg)?;
             match shared(lua).workers.lock().unwrap().get(&id) {
                 Some(w) => w.ops.send(Inbound::Message(msg)),
-                None => return Err(fail("the worker has stopped".into())),
+                None => return Err(super::fail_as("closed", "the worker has stopped")),
             }
             Ok(())
         })?,

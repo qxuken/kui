@@ -523,6 +523,10 @@ export interface SelectProps {
   label?: string;
   /** Its width in px. */
   width?: number;
+  /** The open menu's width in px at the most; the window's less a margin when left out. The menu is as wide as its widest option up to it, and never narrower than the field. */
+  menuMaxWidth?: number;
+  /** An option too long for the menu wraps onto more lines, its row growing, where it is cut short with an ellipsis when left out. */
+  menuWrap?: boolean;
   /** The message change arrives as: yours, with `change: SelectChange` in it — register it as `SelectChangeMsg<…>`. An option was chosen. */
   onChange?: HandlerMsg<{ change: SelectChange }>;
   /** Keys the instance; by default it is keyed by where it is placed. */
