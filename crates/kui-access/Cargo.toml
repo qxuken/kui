@@ -1,0 +1,62 @@
+[package]
+name = "kui-access"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "kui's access tree to the platform's accessibility API through AccessKit: the translation every bridge shares, and a bridge a host with its own window attaches (backlog F269)"
+readme = "README.md"
+publish = ["crates-io"]
+
+# Two halves, one of them optional. The translation (the core's access tree
+# as AccessKit nodes, AccessKit's requests as the core's) needs `accesskit`
+# alone, which is plain data; the runner's bridge in kui-native builds on it
+# and brings its own window plumbing (`accesskit_winit`). The `platform`
+# feature adds the bridge a host attaches to a window it made itself: the
+# AccessKit adapter for the platform, and nothing of winit or wgpu, so the
+# runner-less C library (kui-ffi without `runner`) can carry it.
+#
+# The versions are the ones `accesskit_winit` 0.34 resolves to, so a build
+# with the runner and the host bridge links one AccessKit.
+[dependencies]
+kui-core.workspace = true
+accesskit = "0.25"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+accesskit_macos = { version = "0.27", optional = true }
+# The view's window (is it key?) and the empty event that wakes a host's
+# loop: the objc2 that `accesskit_macos` 0.27 is written against, so
+# nothing second enters the tree.
+objc2 = { version = "0.5", optional = true }
+objc2-foundation = { version = "0.2", optional = true, features = ["NSGeometry", "NSThread", "NSDate"] }
+objc2-app-kit = { version = "0.2", optional = true, features = [
+    "NSApplication",
+    "NSEvent",
+    "NSGraphicsContext",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+accesskit_windows = { version = "0.35", optional = true }
+
+# AT-SPI over D-Bus, in pure Rust; `async-io` is the executor
+# `accesskit_winit` picks by default, so the two agree.
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+accesskit_unix = { version = "0.24", optional = true, default-features = false, features = ["async-io"] }
+
+[features]
+default = ["platform"]
+# The bridge a host attaches (`HostBridge`).
+platform = [
+    "dep:accesskit_macos",
+    "dep:objc2",
+    "dep:objc2-foundation",
+    "dep:objc2-app-kit",
+    "dep:accesskit_windows",
+    "dep:accesskit_unix",
+]

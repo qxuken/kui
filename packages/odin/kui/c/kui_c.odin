@@ -1541,6 +1541,8 @@ foreign lib {
 	input_access :: proc(ctx: ^Ctx, key: u64, action: u32, value: string) ---
 	access_runs :: proc(ctx: ^Ctx, key: u64, out: [^]AccessRun, cap: uint) -> uint ---
 	input_access_text :: proc(ctx: ^Ctx, key: u64, action: u32, anchor_run: u64, anchor_char: u32, focus_run: u64, focus_char: u32, value: string) ---
+	access_attach :: proc(ctx: ^Ctx, native_handle: rawptr) -> bool ---
+	access_detach :: proc(ctx: ^Ctx) ---
 	button :: proc(ctx: ^Ctx, label: string, payload: ^Value) ---
 	button_with :: proc(ctx: ^Ctx, text: string, spec: ^Spec, payload: ^Value) ---
 	titlebar :: proc(ctx: ^Ctx, title: string) ---

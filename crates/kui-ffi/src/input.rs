@@ -7,6 +7,9 @@ use super::*;
 pub(crate) fn push_input(ptr: *mut KuiCtx, ev: InputEvent) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
+            // What a screen reader asked since, first: it came before
+            // this input (backlog F269).
+            access_apply(c);
             let evs = c.core().handle_input(ev);
             c.absorb(evs);
         }
@@ -453,6 +456,9 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
         // key releases `kui_focus` / `kui_release_held_keys` force.
         let pending = c.core().take_pending_events();
         c.absorb(pending);
+        // And what a screen reader asked for since the last call (backlog
+        // F269): a host woken by the bridge alone polls before it builds.
+        access_apply(c);
         // Refuse before popping: a reservation this library cannot write
         // into must leave the queue where it was, not swallow an event.
         if c.events.is_empty() || !out_accepts(out) {

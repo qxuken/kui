@@ -1029,6 +1029,11 @@ surface :: proc() -> bool {
 
 	// The assistive fact, and the cursor the last hover derived.
 	kui.env_set_assistive(ui, .Listening)
+	// The platform bridge needs a window, which this walk has none of: a
+	// nil context attaches nothing (a nil handle would on Linux, where
+	// AT-SPI takes none), and a detach with nothing attached is nothing.
+	check(!kui.access_attach(nil, nil), "access_attach refuses a nil context")
+	kui.access_detach(ui)
 	kui.set_time(ui, 0.3)
 	kui.frame(ui, &k, surface_view, 800, 600, 2)
 	check(kui.cursor_shape(ui) != .Unset, "cursor_shape names a cursor once a frame has hovered")

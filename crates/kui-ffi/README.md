@@ -16,10 +16,10 @@ For a C host, build the library and include the header from the repository:
 
 ```sh
 cargo build -p kui-ffi --release                       # target/release/libkui_ffi.{so,dylib,dll}
-cargo build -p kui-ffi --release --no-default-features  # without the windowed runner
+cargo build -p kui-ffi --release --no-default-features --features access  # without the windowed runner
 ```
 
-The `runner` feature (on by default) provides `kui_run` and `kui_run_with`; a host that owns its own window and renderer turns it off and ships less than half the library.
+The `runner` feature (on by default) provides `kui_run` and `kui_run_with`; a host that owns its own window and renderer turns it off and ships less than half the library. The `access` feature (on by default) is the platform accessibility bridge such a host attaches to its window, `kui_access_attach`; without it that call answers false.
 
 A program that links another Rust static library too (wgpu-native's `libwgpu_native.a`, say) links the shared `libkui_ffi`, not the archive: each Rust archive carries its own standard library, so two in one link collide at `rust_eh_personality`, and the runner's winit adds `RawWindowMetalLayer` on macOS. Turning the runner off drops the second, not the first.
 

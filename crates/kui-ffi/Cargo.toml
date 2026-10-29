@@ -40,19 +40,33 @@ crate-type = ["cdylib", "rlib"]
 #
 #     cargo build -p kui-ffi --no-default-features --release
 #
+# One other thing is: `access`, the platform accessibility bridge a host
+# attaches to a window of its own (`kui_access_attach`, backlog F269). It is
+# AccessKit's adapter for the platform (accesskit_macos, accesskit_windows,
+# accesskit_unix over D-Bus), which the core library otherwise has none of,
+# so a host that does not want it can leave it out; on by default, because
+# an accessibility feature that is off by default goes untested and
+# unshipped. Without it `kui_access_attach` answers false. The runner-less
+# library a release ships keeps it:
+#
+#     cargo build -p kui-ffi --no-default-features --features access --release
+#
 # Nothing else is behind a flag. The builder, layout, text, access, input
 # and draw-data surface is what a plugin calls and what a host embeds, and
 # splitting *that* saves nothing: a plugin links against none of it (it
 # imports, and panel.dll is 147 KB), so there is no ext-only build to make.
 [features]
-default = ["runner"]
+default = ["runner", "access"]
 runner = ["dep:kui-native"]
+access = ["dep:kui-access", "kui-access/platform"]
 
 [dependencies]
 # The renderer's instances as bytes (`kui_pack_instances`, backlog F234).
 bytemuck.workspace = true
 kui-core.workspace = true
 kui-native = { workspace = true, optional = true }
+# The host's accessibility bridge (feature `access`, backlog F269).
+kui-access = { workspace = true, optional = true }
 # Every host loads a `.lua` extension through `open_extension` (ADR 0059):
 # the Lua VM ships in this library, and a script opens C plugins through
 # the loader this crate registers with kui-lua.

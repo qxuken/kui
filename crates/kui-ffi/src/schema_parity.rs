@@ -1039,6 +1039,12 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_abi_version",
             "kui_run",
             "kui_run_with",
+            // The platform's accessibility bridge on a host's own window
+            // (backlog F269): plumbing a host does once, as kui_run is,
+            // and no verb a view or a driver has. Rust's is
+            // `kui_access::HostBridge`; Node has no host path to need it.
+            "kui_access_attach",
+            "kui_access_detach",
             // What frees the decoder's pixels: C's half of a Rust `Vec`
             // going out of scope, so no verb.
             "kui_pixels_free",

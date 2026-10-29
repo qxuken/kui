@@ -216,3 +216,22 @@ waker_clone :: proc(w: Waker) -> Waker {
 waker_free :: proc(w: Waker) {
 	c.waker_free(w.raw)
 }
+
+// The platform's accessibility API on a window the host made (backlog
+// F269): VoiceOver, Narrator and Orca read this context's access tree, and
+// what they ask for arrives as the input it is, at the next input, poll or
+// frame_begin. native_handle is the window's: an NSView or NSWindow on macOS
+// (glfw.GetCocoaView, glfw.GetCocoaWindow), the HWND on Windows before the
+// window is first shown, ignored on Linux. On the thread that made the
+// window. False where nothing attaches (kui.h's kui_access_attach says
+// when); a window `run` made has the runner's bridge and needs none.
+// Rust: kui_access::HostBridge::attach.
+access_attach :: proc(ui: ^Ui, native_handle: rawptr) -> bool {
+	return c.access_attach(ui, native_handle)
+}
+
+// Takes access_attach's bridge off and restores the window; call it before
+// destroying the window. free_ui does it too.
+access_detach :: proc(ui: ^Ui) {
+	c.access_detach(ui)
+}
