@@ -9,9 +9,13 @@
 # and `publish` puts the crates on crates.io and the ten npm packages on
 # npmjs, while `packs` attaches to the tag's GitHub release:
 #
+#   kui-c-<version>-<platform>.tar.gz, kui-odin-<version>-<platform>.tar.gz
+#   (kui-c-<version>-win32-x64.zip, kui-odin-<version>-win32-x64.zip)
+#       libkui_ffi for one platform, shared and static, with and without
+#       the runner (the layout is scripts/pack-ffi.nu's)
 #   kui-c-<version>.tar.gz, kui-odin-<version>.tar.gz
-#       libkui_ffi for all four platforms, shared and static (the layout
-#       is scripts/pack-ffi.nu's)
+#       the same for all four platforms in one archive, for whoever
+#       vendors every target (backlog F268: until alpha.71 the only ones)
 #   kui-<version>-<platform>.tar.gz (kui-<version>-win32-x64.zip)
 #       the runner, one file `kui` (`kui.exe`) per platform
 #       (scripts/pack-runner.nu, ADR 0068)
@@ -172,6 +176,9 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/cargo-zigbuild" --version
 
+      # Not target/pack: its archives are each run's own to make. Cached,
+      # alpha.68's and alpha.70's runner archives rode into alpha.71's
+      # release beside its own (see "Clear old packs" below).
       - name: Cache cargo
         uses: actions/cache@v6
         with:
@@ -180,6 +187,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
+            !target/pack
           key: prebuild-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: prebuild-${{ matrix.target }}-
 
@@ -265,6 +273,15 @@ jobs:
         shell: bash
         run: cargo build -p kui-cli --release --target "${{ matrix.target }}"
 
+      # A cache saved before target/pack was left out of it still brings
+      # one back, older versions' archives in it, and the uploads below
+      # take every version's by their globs: alpha.71's release carried
+      # the alpha.68 and alpha.70 runners beside its own, and each leg's
+      # kui-ffi artifact carried older packs to `packs`.
+      - name: Clear old packs
+        shell: bash
+        run: rm -rf target/pack
+
       # kui-<version>-<platform>.tar.gz, one file `kui` (a .zip of
       # `kui.exe` on Windows), in target/pack/runner/; and the binary
       # asked its version on the platform it is for, which is as far as a
@@ -300,7 +317,9 @@ jobs:
       # The pack linked and run on the platform it is for, as a user would
       # take it out of the release: the C counter and the Odin one, each
       # against the shared library and the static one, each --headless,
-      # and the host loop against the library without the runner.
+      # and the host loop against the library without the runner. `bundle
+      # --partial` with this platform's packs alone writes this platform's
+      # two archives, as `packs` writes them for the release.
       # Not on Windows, which has no cc (pack-ffi.nu's `verify` says so).
       - name: Install Odin
         if: runner.os != 'Windows'
@@ -326,7 +345,7 @@ jobs:
         run: |
           set -eu
           nu scripts/pack-ffi.nu bundle --partial
-          for t in target/pack/release/kui-*.tar.gz; do
+          for t in target/pack/release/kui-*-${{ matrix.prebuild }}.tar.gz; do
             nu scripts/pack-ffi.nu verify "$t"
           done
 
@@ -340,11 +359,12 @@ jobs:
           # Already a tarball; zipping it again buys nothing.
           compression-level: 0
 
-  # The four platforms' packs into the two release tarballs, checked once
-  # more as shipped (linux-x64, on this runner), the four runners and the
-  # install scripts beside them, one SHA256SUMS over everything, and all
-  # of it attached to the tag's GitHub release. Not in `publish`'s way: see
-  # the top of this file.
+  # The four platforms' packs into the release's C and Odin archives, one
+  # of each per platform and the all-platform two, checked once more as
+  # shipped (the all-platform two and linux-x64's own, on this runner),
+  # the four runners and the install scripts beside them, one SHA256SUMS
+  # over everything, and all of it attached to the tag's GitHub release.
+  # Not in `publish`'s way: see the top of this file.
   packs:
     needs: [build, smoke]
     runs-on: ubuntu-24.04
@@ -381,15 +401,25 @@ jobs:
           path: target/pack
           merge-multiple: true
 
+      # Every platform's archives are written here, from the same packs,
+      # whatever runner they are for: the win32-x64 two as .zip, which
+      # needs zip(1), on the image. The other platforms' were verified on
+      # their own legs, as `bundle --partial` writes them there.
       - name: Bundle
         run: |
           set -eu
+          ver=$(nu -c 'open Cargo.toml | get workspace.package.version')
           cd target/pack
           for t in kui-ffi-*.tar.gz; do tar -xzf "$t"; done
           cd ../..
           nu scripts/pack-ffi.nu bundle
-          for t in target/pack/release/kui-*.tar.gz; do
-            nu scripts/pack-ffi.nu verify "$t"
+          for k in c odin; do
+            for p in linux-x64 linux-arm64 darwin-arm64; do
+              test -f "target/pack/release/kui-$k-$ver-$p.tar.gz" || { echo "missing kui-$k-$ver-$p.tar.gz" >&2; exit 1; }
+            done
+            test -f "target/pack/release/kui-$k-$ver-win32-x64.zip" || { echo "missing kui-$k-$ver-win32-x64.zip" >&2; exit 1; }
+            nu scripts/pack-ffi.nu verify "target/pack/release/kui-$k-$ver.tar.gz"
+            nu scripts/pack-ffi.nu verify "target/pack/release/kui-$k-$ver-linux-x64.tar.gz"
           done
           ls -l target/pack/release
 
@@ -400,8 +430,8 @@ jobs:
           path: target/pack/release
           merge-multiple: true
 
-      # SHA256SUMS over every asset (pack-ffi.nu's own covered the two
-      # tarballs only), then the linux-x64 runner installed the way a user
+      # SHA256SUMS over every asset (pack-ffi.nu's own covered the C and
+      # Odin archives only), then the linux-x64 runner installed the way a user
       # installs it: install.sh against these files laid out as a mirror
       # (KUI_MIRROR=file://…, the release's v<version>/ layout, with the
       # latest.txt a mirror holds), and the installed binary run.
@@ -447,7 +477,7 @@ jobs:
             gh release upload "$tag" "${files[@]}" --clobber
           else
             gh release create "$tag" "${files[@]}" --verify-tag --prerelease --latest=false --title "$tag" \
-              --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The kui runner: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.sh | sh\` on macOS and Linux, \`irm https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.ps1 | iex\` on Windows, or the kui-${tag#v}-<platform> archives by hand (SHA256SUMS covers every asset). The C and Odin tarballs hold libkui_ffi for linux-x64, linux-arm64, darwin-arm64 and win32-x64, shared and static; README.md in each says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui, and the runner as @qxuken/kui-cli)."
+              --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The kui runner: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.sh | sh\` on macOS and Linux, \`irm https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.ps1 | iex\` on Windows, or the kui-${tag#v}-<platform> archives by hand (SHA256SUMS covers every asset). libkui_ffi for C is kui-c-${tag#v}-<platform>.tar.gz and for Odin kui-odin-${tag#v}-<platform>.tar.gz (.zip for win32-x64), shared and static, for linux-x64, linux-arm64, darwin-arm64 and win32-x64; kui-c-${tag#v}.tar.gz and kui-odin-${tag#v}.tar.gz hold all four; README.md in each says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui, and the runner as @qxuken/kui-cli)."
           fi
 
   # The ten npm packages, from the build legs' artifacts: the addon and the

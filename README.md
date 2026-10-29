@@ -52,11 +52,14 @@ as if cancelled.
 The first build takes a few minutes: it compiles a GPU renderer.
 
 From C or Odin there is nothing to build: each release on
-[GitHub](https://github.com/qxuken/kui/releases) carries
-`kui-c-<version>.tar.gz` (kui.h) and `kui-odin-<version>.tar.gz` (the
-Odin package), each with `libkui_ffi` for linux-x64, linux-arm64,
-darwin-arm64 and win32-x64, shared and static, and a README.md with the
-link lines.
+[GitHub](https://github.com/qxuken/kui/releases) carries, for each of
+linux-x64, linux-arm64, darwin-arm64 and win32-x64,
+`kui-c-<version>-<platform>.tar.gz` (kui.h) and
+`kui-odin-<version>-<platform>.tar.gz` (the Odin package), `.zip` for
+win32-x64, each with that platform's `libkui_ffi`, shared and static, and
+a README.md with the link lines. `kui-c-<version>.tar.gz` and
+`kui-odin-<version>.tar.gz` hold all four platforms, for a project that
+vendors every target.
 
 ## Hello, window
 

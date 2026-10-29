@@ -93,11 +93,16 @@ has no rpath. Outside this repository, pass your own
 ## Linking a prebuilt library
 
 Outside this repository there is no cargo build to link. Each release on
-GitHub carries `kui-odin-<version>.tar.gz`: this package as `kui/`, with
-`libkui_ffi` for linux-x64, linux-arm64, darwin-arm64 and win32-x64 inside
-it, under `kui/c/lib/<platform>/{shared,static}/`, and a `kui/c/kui_c.odin`
-that links them itself, the way `vendor:raylib` links its own. Importing
-the package is all a program does:
+GitHub carries `kui-odin-<version>-<platform>.tar.gz` (`.zip` for
+win32-x64) for linux-x64, linux-arm64, darwin-arm64 and win32-x64: this
+package as `kui/`, with that platform's `libkui_ffi` inside it, under
+`kui/c/lib/<platform>/{shared,static}/`, and a `kui/c/kui_c.odin` that
+links it itself, the way `vendor:raylib` links its own.
+`kui-odin-<version>.tar.gz` is the same package with all four platforms'
+libraries, for a project that vendors the package for every target: each
+archive's `kui_c.odin` names only the platforms it carries, so two
+platforms' archives unpacked over each other build for the last one
+alone. Importing the package is all a program does:
 
 ```sh
 odin build app -collection:kui=$ODIN_PACK          # import kui "kui:kui": static, nothing beside the program
