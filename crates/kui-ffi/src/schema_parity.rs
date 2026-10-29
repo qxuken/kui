@@ -890,8 +890,9 @@ fn theme_struct_covers_every_role() {
 
 /// The header's prototypes, by name: the first `kui_` word of every
 /// uncommented line that starts with a return type and goes on to `(`.
-/// The plugin's own exports (`kui_ext_*`) and the header's one static
-/// inline (`kui_str_eq`) are not the library's.
+/// The plugin's own exports (`kui_ext_*`) and the header's static
+/// inlines (`kui_str_eq`, the message readers and constructors) are not
+/// the library's.
 fn header_prototypes() -> std::collections::BTreeSet<&'static str> {
     let header = include_str!("../include/kui.h");
     let mut declared = std::collections::BTreeSet::new();
@@ -914,7 +915,7 @@ fn header_prototypes() -> std::collections::BTreeSet<&'static str> {
         if !line[idx + name.len()..].trim_start().starts_with('(') {
             continue;
         }
-        if name.starts_with("kui_ext_") || name == "kui_str_eq" {
+        if name.starts_with("kui_ext_") || line.starts_with("static inline") {
             continue;
         }
         declared.insert(name);
