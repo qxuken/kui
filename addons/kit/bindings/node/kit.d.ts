@@ -1451,7 +1451,7 @@ export declare function Notice(props: NoticeProps, children?: KuiNode): KuiNode;
 /** What a view shows with nothing in it: a title, a sentence, and what to do. */
 export declare function Empty(props: EmptyProps, children?: KuiNode): KuiNode;
 
-/** A bar that fills; with no value it moves to say work is going on. */
+/** A bar that fills; with no value it moves to say work is going on. A reader hears a progress bar: its percent, or busy with no value. */
 export declare function Progress(props: ProgressProps, children?: KuiNode): KuiNode;
 
 /** A placeholder for what is still loading: lines a text high, a block or a circle, in the skin's well colour and rounded as its controls are, with a shimmer crossing them in step — Kit's shimmer fragment (`addons/kit/shaders/shimmer.wgsl`), which Kit registers itself — held still under reduced motion. */

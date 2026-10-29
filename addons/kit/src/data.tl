@@ -1298,14 +1298,18 @@ function M.progress(c: Ctx, p: P): kui.Node
       transition = math.max(1400, w * 2.5),
     }
   end
+  -- A progress bar to assistive technology (backlog F267), read-only and
+  -- no Tab stop: its percent while it has a value, and with none it is
+  -- busy, which every platform reads as indeterminate. It was a disabled
+  -- slider, read as a control that would not move, "under way" its
+  -- reading.
   local track = row {
-    role = "slider",
+    role = "progress",
     label = str(p.label) or "progress",
     value_now = v and v * 100 or nil,
     value_min = 0,
     value_max = 100,
-    value_text = v and string.format("%d%%", math.floor(v * 100 + 0.5)) or "under way",
-    disabled = true,
+    value_text = v and string.format("%d%%", math.floor(v * 100 + 0.5)) or nil,
     key = "track",
     on_layout = not v and act(c, "progress.layout") or nil,
     width = "grow",

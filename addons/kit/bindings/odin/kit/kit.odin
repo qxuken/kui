@@ -2292,7 +2292,8 @@ empty_with :: proc(ui: ^kui.Ui, p: Empty, data: ^$T, children: proc(data: ^T, ui
 	return c.component(ui, concat(NAMESPACE, "/empty"), props, call, &b)
 }
 
-// A bar that fills; with no value it moves to say work is going on.
+// A bar that fills; with no value it moves to say work is going on. A reader
+// hears a progress bar: its percent, or busy with no value.
 Progress :: struct {
 	// 0 to 1; indeterminate when left out.
 	value: Maybe(f64),

@@ -1005,7 +1005,8 @@ local function make(namespace)
     return component(namespace .. "/empty", props, children)
   end
 
-  ---A bar that fills; with no value it moves to say work is going on.
+  ---A bar that fills; with no value it moves to say work is going on. A
+  ---reader hears a progress bar: its percent, or busy with no value.
   ---@param props kit.ProgressProps
   ---@return kui.Node
   function M.progress(props)

@@ -462,7 +462,7 @@ return {
       },
       children = { { "", doc = "are its actions." } } },
     { "progress",
-      doc = "A bar that fills; with no value it moves to say work is going on.",
+      doc = "A bar that fills; with no value it moves to say work is going on. A reader hears a progress bar: its percent, or busy with no value.",
       props = {
         { "value", "number?", doc = "0 to 1; indeterminate when left out." },
         { "label", "string?", doc = "What is under way." },
