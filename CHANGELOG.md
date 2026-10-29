@@ -28,6 +28,22 @@ was the first bare bump to break an app in five releases).
 - Kit's `select` menu is as wide as its widest option, and no narrower
   than the field: a layout or a test that read it as 160 px finds it
   wider.
+- The C and Odin release archives (backlog F278): `kui-c-<version>-<platform>`,
+  `kui-odin-<version>-<platform>` and the all-platform `kui-c-<version>`
+  and `kui-odin-<version>` are gone. Each platform has
+  `kui-ffi-<version>-<platform>` (the runner's library, shared and static)
+  and `kui-ffi-core-<version>-<platform>` (the library without it, shared
+  only), each with kui.h and the Odin package. A download or a vendoring
+  script that names the old archives breaks; a link line under
+  `lib/<platform>/core/` reads the core archive's `lib/<platform>/shared/`;
+  an Odin package copied out on its own needs `lib/` beside it.
+- `scripts/pack-ffi.nu`'s packs are `kui-pack-<version>-<platform>`, and
+  `-core` where they were `-no-runner`; the release's archives took the
+  `kui-ffi-` name.
+- A component placed with an integer `key` prop is keyed by it (backlog
+  F279): an instance that was keyed by its position, the integer read as
+  no key, now keeps its state, its focus and its kept fill under that
+  index as its siblings move.
 
 ### Fixed
 
@@ -39,7 +55,51 @@ was the first bare bump to break an app in five releases).
   less a margin; past that an option is one line cut short with an
   ellipsis. The closed field is sized as it was.
 
+- **A component's integer `key` keys it** (backlog F279, from the UI
+  library comparison). `key` was read as a string alone, so an integer -
+  the row of a list, its natural key - was no key at all: every instance
+  was keyed by its position, and a list that grew at the top moved every
+  row's props onto its neighbour's instance and filled them all again
+  (0% replayed, each `KUI_FILL_PARAMS`, where string keys replayed
+  99.3%). An integer, or a float with no fraction (a Lua or JavaScript
+  number), is a data index now, as `kui_open_indexed` and `open_indexed`
+  key a node, and a namespace apart from names. kui.h, `docs/props.md`.
+
 ### Added
+
+- **`kui_wgpu_upload`: kui's instances through a ring of staging buffers**
+  (backlog F277, from the UI library comparison). `kui_wgpu.h` wrote each
+  frame's instances with one `wgpuQueueWriteBuffer`, and wgpu-native stages
+  every write in a buffer of its own: on Metal one of a page (16 KiB) or
+  more costs ~100 µs more, which a HUD of 93 quads (17,856 bytes) is. Called
+  on the encoder before the host begins its pass, `kui_wgpu_upload(r, ctx,
+  encoder)` packs the instances straight into a staging buffer mapped ahead
+  of time and records its copy there; the staging buffers are a ring of
+  `KUI_WGPU_RING` (4), each mapped again once the GPU is done with it, asked
+  for at the next upload and called back by the device (no poll). Without
+  it, `kui_wgpu_draw` writes the instances itself as before, in pieces under
+  a page (`KUI_WGPU_WRITE_PIECE`). On an M3 Pro through wgpu-native, in
+  interleaved rounds of 600 frames (93 instances), the draw took a third of
+  its time with the pieces and a quarter with the upload: 155, 58 and 30 µs
+  in one session, 50, 19 and 12 µs in another, the machine's clock the
+  difference. A ring copied in a submit of its own measured 159 µs where
+  the one write took 155, which is why the copy needs the host's encoder. `KuiWgpu.instances_by` says which way the
+  last frame's went. Odin's `kui/wgpu` has `upload`. The reference hosts in
+  C and Odin draw a frame each way and then twice round the ring, the last
+  frame's pixels checked.
+
+- **A virtual list in C and Odin** (backlog F280, from the UI library
+  comparison). `uniform_list`, which Rust, Lua and JSX take with a row
+  callback, in two halves around the host's own loop: `kui_list_begin`
+  opens the scrolling container, declares the list's length and the spacer
+  above the view and answers the rows to build, by data index, the view's
+  plus two each side; `kui_list_row` opens one, the spec made the stride
+  tall; `kui_list_end` declares the spacer below and closes it. `KUI_LIST`
+  and `KUI_LIST_ROW` are the scoped forms; Odin has `kui.list` and
+  `kui.list_row_box` (and the unscoped three), Rust `widgets::uniform_list_begin`
+  / `uniform_list_end`, which `uniform_list_with` is now built from. The
+  comparison's log of 10,000 rows built in 195 µs a frame this way, against
+  6.3 ms built whole.
 
 - **Kit's `select` takes `menu_max_width` and `menu_wrap`.**
   `menu_max_width` holds the open menu to a width in px below the
@@ -79,6 +139,25 @@ was the first bare bump to break an app in five releases).
   `try_transaction` whose function raised a database's error answers that
   error's code. The plain calls raise the message as they did.
 
+### Changed
+
+- **The C and Odin library comes as a full archive and a slim one per
+  platform** (backlog F278). `kui-ffi-<version>-<platform>` is the library
+  with the runner, shared and static: what a program that opens its window
+  with kui links, and what the Odin package's static default needs.
+  `kui-ffi-core-<version>-<platform>` is the library without it - no
+  `kui_run`, wgpu, winit or audio device - shared only, which is how a host
+  with its own window and its own Rust beside kui must link it anyway.
+  Each carries the C headers and the Odin package over one copy of its
+  library: the package's `kui_c.odin` links `../../lib/<platform>/`
+  beside it, where the Odin archive carried a second copy inside the
+  package. darwin-arm64's are 34.3 MB and 5.2 MB, where its C archive was
+  55 MB and its Odin one as large again; the all-platform archives (252 MB
+  each at alpha.71) are gone, and a project that vendors every target
+  unpacks the four of one kind into one directory. `pack-ffi.nu verify`
+  links the C and Odin counters against a full archive, shared and static,
+  and the C and Odin host loops against a slim one.
+
 ### What you can delete
 
 - A pure-Lua base64 or hex, and the `openssl`/`security`/`secret-tool`
@@ -86,6 +165,15 @@ was the first bare bump to break an app in five releases).
 - Matching a `try_` form's message with `find("No such file")`,
   `find("UNIQUE constraint")` or `find("Connection refused")`: match its
   code.
+- A C or Odin host's visible-row arithmetic for a long list - the window
+  from `kui_scroll_geometry`, the overscan, the two spacers, `kui_row_count`
+  - and its fixed row height spelled on every row: `kui_list_begin` and
+  `kui_list_row`.
+- A copy of `kui_wgpu.h` that splits the instance write, or keeps a staging
+  buffer of its own: `kui_wgpu_upload`.
+- Turning a list row's integer id into a string for a component's `key`.
+- Downloading the 55 MB archive, or unpacking a C and an Odin one, to link
+  the shared library without the runner: `kui-ffi-core` is 5 MB.
 
 ## 0.1.0-alpha.72 (2026-10-29)
 
