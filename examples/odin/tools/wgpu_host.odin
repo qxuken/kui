@@ -22,7 +22,7 @@
 // draw), with the dual shader and subpixel text where the device has
 // them. The button counts clicks; a click on the world - where
 // kui.pointer_wants says the pointer is not the UI's - changes its colour;
-// keys reach kui through kui/glfw; Escape, when kui.keyboard_wants says the
+// the pointer and the keys reach kui through kui/glfw's install; Escape, when kui.keyboard_wants says the
 // keyboard is not the UI's, closes it. --frames N quits after N frames.
 //
 //   nu scripts/odin.nu run wgpu_host                  offscreen, exit 0 on a clean draw
@@ -487,6 +487,7 @@ offscreen :: proc() -> int {
 App :: struct {
 	ui:      ^kui.Ui,
 	state:   State,
+	input:   kui_glfw.State,
 	window:  glfw.WindowHandle,
 	surface: wgpu.Surface,
 	config:  wgpu.SurfaceConfiguration,
@@ -494,27 +495,17 @@ App :: struct {
 
 app: App
 
-// GLFW's input, handed to kui as data - and to the world, when kui says
-// the input is not the UI's (kui.h, "The UI over a world of its own").
-on_cursor :: proc "c" (_: glfw.WindowHandle, x, y: f64) {
-	context = runtime.default_context()
-	kui.input_cursor(app.ui, f32(x), f32(y))
-}
-
-on_enter :: proc "c" (_: glfw.WindowHandle, entered: i32) {
-	context = runtime.default_context()
-	if entered == 0 do kui.input_cursor_left(app.ui)
-}
-
+// GLFW's input reaches kui through kui/glfw's callbacks (backlog F265):
+// install sets them on the window, chained after these two, which are the
+// world's - a press kui does not want flips it, and Escape quits while no
+// field has the keyboard (kui.h, "The UI over a world of its own"). kui
+// hears every press either way: a press outside a focused field is what
+// blurs it.
 on_button :: proc "c" (_: glfw.WindowHandle, button, action, _: i32) {
 	context = runtime.default_context()
-	if button != glfw.MOUSE_BUTTON_LEFT do return
-	if action == glfw.PRESS && !kui.pointer_wants(app.ui) {
+	if button == glfw.MOUSE_BUTTON_LEFT && action == glfw.PRESS && !kui.pointer_wants(app.ui) {
 		app.state.world = (app.state.world + 1) % len(WORLDS)
 	}
-	// kui hears every press, the world's too: a press outside a focused
-	// field is what blurs it.
-	kui.input_mouse(app.ui, action == glfw.PRESS, 1)
 }
 
 on_key :: proc "c" (w: glfw.WindowHandle, key, scancode, action, mods: i32) {
@@ -522,12 +513,6 @@ on_key :: proc "c" (w: glfw.WindowHandle, key, scancode, action, mods: i32) {
 	if key == glfw.KEY_ESCAPE && action == glfw.PRESS && !kui.keyboard_wants(app.ui) {
 		glfw.SetWindowShouldClose(w, true)
 	}
-	kui_glfw.on_key(app.ui, key, scancode, action, mods)
-}
-
-on_char :: proc "c" (_: glfw.WindowHandle, r: rune) {
-	context = runtime.default_context()
-	kui_glfw.on_char(app.ui, r)
 }
 
 // The surface at the framebuffer's size; false while the window has none.
@@ -596,11 +581,11 @@ window :: proc(max_frames: int) -> int {
 	app.state.image = add_image(app.ui)
 
 	glfw.SetInputMode(app.window, glfw.LOCK_KEY_MODS, 1)
-	glfw.SetCursorPosCallback(app.window, on_cursor)
-	glfw.SetCursorEnterCallback(app.window, on_enter)
 	glfw.SetMouseButtonCallback(app.window, on_button)
 	glfw.SetKeyCallback(app.window, on_key)
-	glfw.SetCharCallback(app.window, on_char)
+	app.input = {ui = app.ui}
+	kui_glfw.install(&app.input, app.window)
+	defer kui_glfw.uninstall(&app.input)
 
 	frames := 0
 	for !glfw.WindowShouldClose(app.window) {
