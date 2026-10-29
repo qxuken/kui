@@ -196,6 +196,13 @@ pub struct KuiCtx {
     /// in every build, for `captures`' reason.
     #[cfg_attr(not(feature = "runner"), allow(dead_code))]
     pub(crate) waker: *const c_void,
+    /// The platform accessibility bridge `kui_access_attach` put on the
+    /// host's window (backlog F269); `None` until then, and on every
+    /// borrowed context. A pointer in every build, for `captures`'
+    /// reason: without the `access` feature its type is empty and it is
+    /// never set.
+    #[cfg_attr(not(feature = "access"), allow(dead_code))]
+    pub(crate) access: Option<Box<crate::access::CtxAccess>>,
 }
 
 /// What a context keeps its captures in: the runner's server, or nothing
@@ -282,6 +289,7 @@ impl KuiCtx {
             captures: None,
             perf_trace: Vec::new(),
             waker: std::ptr::null(),
+            access: None,
         }
     }
 

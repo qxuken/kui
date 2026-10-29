@@ -2681,6 +2681,10 @@ size_t kui_pack_instances(KuiCtx *ctx, uint8_t *out, size_t len);
  * (header-only, backlog F239) map their keys to kui's names and send them
  * through the right halves; Odin has kui/glfw and kui/sdl3.
  *
+ * Screen readers: kui_access_attach(ctx, the window's native handle) once,
+ * after making the window, and the turn above carries the rest (backlog
+ * F269; see the Accessibility section).
+ *
  * When to run a turn at all: on input, while kui_owed(ctx) is non-zero
  * (a transition, an autoscroll), and when your model changed. Between
  * those the window can sleep.
@@ -3031,7 +3035,8 @@ enum {
 /* Whether an accessibility client has asked for the tree, for views to
  * read as env.system.assistive - the reading that changes what a view
  * *says* rather than what it draws: an alert announces when something is
- * listening and blinks when nothing is. A host that bridges the platform's
+ * listening and blinks when nothing is. kui_access_attach's bridge sets it
+ * itself. A host that bridges the platform's
  * accessibility API pushes KUI_ASSISTIVE_LISTENING when a client first asks
  * it for the tree (any client: a probe, an inspector, a screen reader) and
  * KUI_ASSISTIVE_NONE if the platform ever says the client left - which, of
@@ -5029,9 +5034,10 @@ void kui_waker_free(KuiWaker *w);
 /* -- Accessibility ---------------- */
 /* The access tree of the last finished frame: fills out with up to cap
  * nodes in tree order (root first) and returns the total count, so a short
- * buffer can be resized and the call repeated. A host wiring its own
- * platform accessibility layer reads it after each frame; a test asserts
- * on it. Never asking costs nothing. */
+ * buffer can be resized and the call repeated. kui_access_attach (below)
+ * hands it to the platform; a host wiring an accessibility layer of its
+ * own reads it after each frame; a test asserts on it. Never asking costs
+ * nothing. */
 size_t kui_access_tree(KuiCtx *ctx, KuiAccessNode *out, size_t cap);
 /* Says something once, with no node behind it: "Saved", "3 results".
  * `live` is KUI_LIVE_POLITE or KUI_LIVE_ASSERTIVE; KUI_LIVE_OFF and an
@@ -5044,7 +5050,8 @@ void kui_announce(KuiCtx *ctx, KuiStr text, uint32_t live);
  * size it generously) and returns the count. Drain every frame whether or
  * not assistive technology is attached and discard what you cannot deliver
  * — an announcement kept is an announcement said minutes late. kui_run
- * does this itself. */
+ * does this itself, and so does a context with kui_access_attach: there
+ * this finds nothing. */
 size_t kui_take_announcements(KuiCtx *ctx, KuiAnnouncement *out, size_t cap);
 /* A request from assistive technology on a node: one KUI_ACCESS_* bit the
  * node advertises, with value the new text for KUI_ACCESS_SET_VALUE (empty
@@ -5068,6 +5075,50 @@ size_t kui_access_runs(KuiCtx *ctx, uint64_t key, KuiAccessRun *out, size_t cap)
 void kui_input_access_text(KuiCtx *ctx, uint64_t key, uint32_t action,
                            uint64_t anchor_run, uint32_t anchor_char,
                            uint64_t focus_run, uint32_t focus_char, KuiStr value);
+/* The platform's accessibility API on a window the host made (backlog
+ * F269): VoiceOver, Narrator and Orca read this context's access tree, and
+ * what they ask for - a press, a focus move, an edit - arrives as the input
+ * it is. kui_run's windows have this already and need none of it. A host
+ * with its own window attaches once, after making the window; from then on
+ * the host loop's own calls carry it:
+ *  - what a client asked is applied at the next kui_input_*, kui_poll_event
+ *    or kui_frame_begin, its events polled like any input's;
+ *  - kui_frame_finish takes the frame's announcements (so
+ *    kui_take_announcements has nothing left to take) and, while a client
+ *    listens, sends the tree when it changed. Until one asks, no tree is
+ *    derived at all;
+ *  - env.system.assistive reads KUI_ASSISTIVE_NONE, and LISTENING from a
+ *    client's first ask.
+ *
+ * native_handle is the window's, per platform:
+ *  - macOS: its NSView * (glfwGetCocoaView) or NSWindow *
+ *    (glfwGetCocoaWindow; SDL3's SDL_PROP_WINDOW_COCOA_WINDOW_POINTER).
+ *  - Windows: its HWND (glfwGetWin32Window;
+ *    SDL_PROP_WINDOW_WIN32_HWND_POINTER), before the window is first
+ *    shown: make it hidden (GLFW_VISIBLE false, SDL_WINDOW_HIDDEN), attach,
+ *    then show it.
+ *  - Linux: ignored, and NULL will do: AT-SPI is the application's, not a
+ *    window's.
+ * Call it on the thread that made the window (the main thread on macOS).
+ * The platform asks during the host's event polling; a client's first ask
+ * is answered by the next finished frame, and kui_owed has
+ * KUI_OWED_REQUESTED set until it is. On macOS and Windows the ask also
+ * posts the platform's empty event (what glfwPostEmptyEvent posts), so a
+ * loop asleep in glfwWaitEvents or SDL_WaitEvent wakes for it; on Linux it
+ * arrives on a thread of the bridge's own, so wait with a timeout there
+ * (glfwWaitEventsTimeout) while attached.
+ *
+ * False for a NULL or borrowed context (a kui_run callback's), a handle the
+ * platform does not take, a view that already has a bridge, and a library
+ * built without the `access` feature (Cargo.toml). Attaching again
+ * replaces the bridge. kui_access_detach takes it off, restoring the window
+ * and env.system.assistive's "unknown"; do so before destroying the
+ * window. kui_ctx_free detaches too.
+ *
+ * An island's context (ADR 0076) is not bridged: its nodes are drawn in the
+ * host's world and have no rect in the window. */
+bool kui_access_attach(KuiCtx *ctx, void *native_handle);
+void kui_access_detach(KuiCtx *ctx);
 /* Styled button with hover/press states; payload consumed (may be NULL). */
 void kui_button(KuiCtx *ctx, KuiStr label, KuiValue *payload);
 /* kui_button with the rows the stock button admits read off spec - label
@@ -5246,9 +5297,10 @@ void kui_value_free(KuiValue *v);
  * without (x86_64-pc-windows-msvc). A host that already has a window and
  * draws the display list itself builds
  *
- *     cargo build -p kui-ffi --no-default-features --release
+ *     cargo build -p kui-ffi --no-default-features --features access --release
  *
- * and these two are simply absent - a link error naming them, not a stub
+ * (`access` keeps kui_access_attach's bridge; leave it out and that call
+ * answers false) and these two are simply absent - a link error naming them, not a stub
  * that fails at run time. Everything else in this header is always there. */
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);

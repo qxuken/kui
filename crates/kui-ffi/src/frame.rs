@@ -54,6 +54,9 @@ pub extern "C" fn kui_spec_float_preset(spec: *mut KuiSpec, name: KuiStr) -> boo
 pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
+            // A screen reader's requests are input, and land before the
+            // frame as input does (backlog F269).
+            access_apply(c);
             c.draws_current = false;
             c.core()
                 .begin_frame(Size::new(w, h), if scale > 0.0 { scale } else { 1.0 });
@@ -1405,6 +1408,10 @@ pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
             // still cursor.
             let pending = c.core().take_pending_events();
             c.absorb(pending);
+            // The platform's accessibility bridge, when attached (backlog
+            // F269): the frame's announcements, and its tree if it changed
+            // while a client listens.
+            access_publish(c);
         }
     });
 }

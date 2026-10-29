@@ -212,7 +212,7 @@ mod platform {
     use std::ffi::c_void;
 
     use objc2::rc::Retained;
-    use objc2::runtime::AnyObject;
+    use objc2::runtime::{AnyClass, AnyObject};
     use objc2::{ClassType, msg_send};
     use objc2_app_kit::{
         NSApplication, NSEvent, NSEventModifierFlags, NSEventType, NSView, NSWindow,
@@ -277,7 +277,13 @@ mod platform {
                 return None;
             };
             // The adapter panics on a view that already has one; a
-            // second attach is refused here instead.
+            // second attach is refused here instead. Its subclass names
+            // itself, which is the one sign of it from outside; the catch
+            // stands behind that.
+            let class: &AnyClass = unsafe { msg_send![&*view, class] };
+            if class.name().starts_with("AccessKitSubclassOf") {
+                return None;
+            }
             let inner = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
                 accesskit_macos::SubclassingAdapter::new(
                     Retained::as_ptr(&view) as *mut c_void,

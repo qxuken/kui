@@ -107,6 +107,14 @@ date: 2026-10-28
   are.
 - The reference hosts (F234) draw one context's draw data into a
   texture; an island is that, with a world transform the host owns.
+- A screen reader does not reach an island (backlog F269). The
+  accessibility bridge a host attaches (`kui_access_attach`) is the main
+  context's, on the host's window; an island's context is not bridged,
+  because its nodes' rects are in the host's world and have no place in
+  the window until the host projects them. Bridging one later takes the
+  host giving the four corners of the island's quad in window px each
+  frame, and the bridge grafting the island's tree under a node of the
+  main one with its rects projected through them.
 
 ## Considered and turned down
 

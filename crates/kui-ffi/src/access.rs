@@ -346,3 +346,123 @@ pub extern "C" fn kui_take_announcements(
         n
     })
 }
+
+// ---------------------------------------------------------------------------
+// The platform bridge on a host's own window (backlog F269)
+
+/// What `kui_access_attach` holds on a context: the host's bridge
+/// (`kui_access::HostBridge`). Empty, and never made, in a build without
+/// the `access` feature; the context's field is a pointer either way.
+pub(crate) struct CtxAccess {
+    #[cfg(feature = "access")]
+    bridge: kui_access::HostBridge,
+}
+
+/// Puts the platform's accessibility API on the window a host made:
+/// VoiceOver, Narrator and Orca read the context's access tree, and what
+/// they ask for arrives as the input it is. `handle` is the window's
+/// native handle — an `NSView *` or `NSWindow *` on macOS, an `HWND` on
+/// Windows (before the window is first shown), ignored on Linux — on the
+/// thread that made the window. False on a NULL or borrowed context (a
+/// `kui_run` callback's: the runner bridges its own windows), a handle
+/// the platform does not take, a view that already has a bridge, and a
+/// build without the `access` feature. Attaching again replaces the
+/// bridge.
+///
+/// From then on the host loop's own calls carry it: what a client asked
+/// is applied at the next `kui_input_*`, [`kui_poll_event`] or
+/// [`kui_frame_begin`], and [`kui_frame_finish`] takes the frame's
+/// announcements and sends the tree while a client listens and it
+/// changed. `env.system.assistive` reads none from here until a client
+/// asks.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_access_attach(ptr: *mut KuiCtx, handle: *mut c_void) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        // A borrowed context's core is the runner's (or an extension
+        // host's), whose windows have the runner's bridge.
+        if c._owned.is_none() {
+            return false;
+        }
+        // The old bridge goes first: a view takes one at a time.
+        detach(c);
+        attach(c, handle)
+    })
+}
+
+/// Takes the bridge [`kui_access_attach`] put on, restoring the window as
+/// it was; `env.system.assistive` reads unknown again. Call it before
+/// destroying the window. [`kui_ctx_free`] does it too. Nothing on a
+/// context with none.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_access_detach(ptr: *mut KuiCtx) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            detach(c);
+        }
+    })
+}
+
+fn detach(c: &mut KuiCtx) {
+    if c.access.take().is_some() {
+        c.core().env.system.assistive = kui_core::Assistive::Unknown;
+    }
+}
+
+#[cfg(feature = "access")]
+fn attach(c: &mut KuiCtx, handle: *mut c_void) -> bool {
+    let Some(bridge) = (unsafe { kui_access::HostBridge::attach(handle) }) else {
+        return false;
+    };
+    // Up and nobody asking: "none", not the "unknown" of no bridge.
+    c.core().env.system.assistive = kui_core::Assistive::None;
+    c.access = Some(Box::new(CtxAccess { bridge }));
+    true
+}
+
+#[cfg(not(feature = "access"))]
+fn attach(_c: &mut KuiCtx, _handle: *mut c_void) -> bool {
+    false
+}
+
+/// What a client asked since the host's last call, applied: its arrival
+/// as `env.system.assistive`, its actions as the input they are, their
+/// events queued for [`kui_poll_event`]. Called where the host's loop may
+/// change the context and is outside a frame: each input, each poll, the
+/// start of a frame. A context with no bridge pays a branch.
+pub(crate) fn access_apply(c: &mut KuiCtx) {
+    #[cfg(feature = "access")]
+    if let Some(a) = c.access.as_mut() {
+        let core: &mut Core = unsafe { &mut *c.core };
+        let events = a.bridge.apply(core);
+        c.absorb(events);
+    }
+    #[cfg(not(feature = "access"))]
+    let _ = c;
+}
+
+/// After a finished frame: the bridge takes the announcements and sends
+/// the tree when it changed.
+pub(crate) fn access_publish(c: &mut KuiCtx) {
+    #[cfg(feature = "access")]
+    if let Some(a) = c.access.as_mut() {
+        let core: &mut Core = unsafe { &mut *c.core };
+        a.bridge.publish(core);
+    }
+    #[cfg(not(feature = "access"))]
+    let _ = c;
+}
+
+/// Whether the bridge owes the host a turn: a request waiting, or a
+/// client that asked and has had no tree yet.
+pub(crate) fn access_owed(c: &KuiCtx) -> bool {
+    #[cfg(feature = "access")]
+    return c.access.as_ref().is_some_and(|a| a.bridge.owed());
+    #[cfg(not(feature = "access"))]
+    {
+        let _ = c;
+        false
+    }
+}

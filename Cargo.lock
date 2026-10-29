@@ -1797,6 +1797,7 @@ name = "kui-ffi"
 version = "0.1.0-alpha.71"
 dependencies = [
  "bytemuck",
+ "kui-access",
  "kui-core",
  "kui-devtools",
  "kui-lua",

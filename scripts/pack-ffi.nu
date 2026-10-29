@@ -153,8 +153,10 @@ def main [
         error make { msg: "nothing to build" }
     }
 
-    let features = if $no_runner { [--no-default-features] } else { [] }
-    let feature_note = if $no_runner { "no default features (no runner)" } else { "default features (with the runner)" }
+    # The core library keeps `access`, the accessibility bridge a host
+    # attaches to its own window (kui_access_attach, backlog F269).
+    let features = if $no_runner { [--no-default-features --features access] } else { [] }
+    let feature_note = if $no_runner { "no default features but access (no runner)" } else { "default features (with the runner)" }
     mkdir $OUT
     if ($todo | any {|r| $r.how == "docker" }) { build-image }
 

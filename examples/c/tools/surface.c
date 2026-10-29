@@ -677,6 +677,12 @@ static int surface(void) {
     check(editors == 1, "the multiline editor is in the tree");
     kui_input_access(ui, k.slider, KUI_ACCESS_INCREMENT, (KuiStr){NULL, 0});
     kui_input_access(ui, k.card, KUI_ACCESS_FOCUS, (KuiStr){NULL, 0});
+    /* The platform bridge needs a window, which access_host.c has and
+     * this walk does not: a NULL context attaches nothing (a NULL handle
+     * would on Linux, where AT-SPI takes none), and a detach with nothing
+     * attached leaves the reading alone. */
+    check(!kui_access_attach(NULL, NULL), "kui_access_attach refuses a NULL context");
+    kui_access_detach(ui);
 
     /* Audio without a device: commands queue for the host to apply. */
     KuiPlay opts = KUI_PLAY_INIT;
