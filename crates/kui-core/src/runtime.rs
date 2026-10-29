@@ -467,6 +467,12 @@ pub struct Core {
     /// handed to `interaction` with them at the end of
     /// emission; the previous frame's buffers, cleared, in between.
     pub(crate) hit_shapes: crate::input::HitShapes,
+    /// The previous frame's click messages, out of its hit regions:
+    /// emission writes each new region's message over one of them
+    /// (`Value::clone_from`), so a message like last frame's at a node
+    /// costs no allocation where a clone was one per string in it
+    /// (backlog F281). Emptied at the end of emission.
+    pub(crate) hit_payloads: Vec<Value>,
     /// The painted boxes that are no hit region, filled by emission and
     /// installed with the hits (backlog F233) — only once a host has
     /// asked (`host_asked`), so a window nobody asks about pays nothing.
@@ -1505,6 +1511,7 @@ impl Core {
             fragments: Default::default(),
             stock_polygon: None,
             hit_shapes: Default::default(),
+            hit_payloads: Vec::new(),
             blockers: Vec::new(),
             host_asked: Default::default(),
             record_blockers: false,
