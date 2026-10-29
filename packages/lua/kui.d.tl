@@ -83,7 +83,7 @@ global type kui = record
   end
 
   enum Role
-    "none" "button" "checkbox" "radio" "switch" "slider" "tab" "tabList" "link" "heading" "list" "listItem" "image" "dialog" "group" "textInput" "multilineTextInput" "line" "radioGroup" "menu" "menuItem" "terminal" "table" "row" "cell" "columnHeader" "rowHeader"
+    "none" "button" "checkbox" "radio" "switch" "slider" "tab" "tabList" "link" "heading" "list" "listItem" "image" "dialog" "group" "textInput" "multilineTextInput" "line" "radioGroup" "menu" "menuItem" "terminal" "table" "row" "cell" "columnHeader" "rowHeader" "progress" "meter"
   end
 
   enum Expanded
@@ -482,7 +482,7 @@ global type kui = record
     bold: boolean
     -- OpenType features for the shaper, as `tag=value` pairs separated by spaces or commas — a bare `tag` is 1, `-tag` is 0: `"liga=0 calt=0"` keeps a coding font from joining `->` and `!=` (what a terminal built on runs needs to hold its grid), `"tnum"` lines figures up in a gutter, `"ss01"` picks a stylistic set. Unset, the font's own defaults apply. At most 8; part of what the text is shaped as, so two texts differing only here are shaped twice.
     features: string
-    -- What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree — the decorative door, for what a reader need not hear: an icon beside the text that says the same, or a caption under the button it repeats. A text takes no `role` (it has no box), so `none` goes on the box around it; `ambiguous-name` points at it when a caption and its control share a name (backlog F140). Where the caption is all a control says, a `label` on the control that says what it does is the better answer. A `radio` belongs inside a `radioGroup` and a `tab` inside a `tabList`, labelled with what the choice is: the pair is a composite (`docs/adr/0007-composite-keyboard-patterns.md`) — one Tab stop for the set, the arrows, Home and End moving the choice inside it (each step is the item's click, so the choice follows focus), and a screen reader reading "2 of 3". A `radio` or `tab` with no container above it is a Tab stop of its own that no arrow moves, and the core warns (`item-outside-container`). `menu` holds `menuItem`s and `list` holds `listItem`s the same way.
+    -- What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree — the decorative door, for what a reader need not hear: an icon beside the text that says the same, or a caption under the button it repeats. A text takes no `role` (it has no box), so `none` goes on the box around it; `ambiguous-name` points at it when a caption and its control share a name (backlog F140). Where the caption is all a control says, a `label` on the control that says what it does is the better answer. A `radio` belongs inside a `radioGroup` and a `tab` inside a `tabList`, labelled with what the choice is: the pair is a composite (`docs/adr/0007-composite-keyboard-patterns.md`) — one Tab stop for the set, the arrows, Home and End moving the choice inside it (each step is the item's click, so the choice follows focus), and a screen reader reading "2 of 3". A `radio` or `tab` with no container above it is a Tab stop of its own that no arrow moves, and the core warns (`item-outside-container`). `menu` holds `menuItem`s and `list` holds `listItem`s the same way. `progress` and `meter` are the read-only bars (backlog F267): their position is the value rows (`valueNow`, `valueMin`, `valueMax`, `valueText`), read and announced as a slider's are, and they take no focus; a `meter` is a level (a battery, a disk), a `progress` how far a task has got, and a `progress` with no `valueNow` is busy. The stock `progress` element draws one.
     role: Role
     -- The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). Not the key label a `key` prop or `with_keyed` declares, which `key_of` looks up and a reader never hears; `key_named` looks a node up by this name.
     label: string
@@ -498,13 +498,13 @@ global type kui = record
     expanded: Expanded
     -- Marks this node a live region: when the text inside it changes, a screen reader reads the change without being asked — `polite` at the next pause, `assertive` interrupting. Put it on the smallest node that holds the message, since everything inside a live node is live. For a one-off with no node behind it ("Saved") the binding's `announce` verb is the other half.
     live: Live
-    -- A `slider` role's current value (the drawing stays yours; this is what assistive technology reads).
+    -- A `slider`, `progress` or `meter` role's current value (the drawing stays yours; this is what assistive technology reads). A `progress` without one is busy without saying how far: indeterminate, which a reader says as such.
     value_now: Length
-    -- A `slider` role's minimum.
+    -- A `slider`, `progress` or `meter` role's minimum.
     value_min: Length
-    -- A `slider` role's maximum.
+    -- A `slider`, `progress` or `meter` role's maximum.
     value_max: Length
-    -- What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute.
+    -- What a `slider`, `progress` or `meter` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes", "3 of 8 files". It replaces the number in the reading rather than joining it, and a nudge or a step of the task announces the new text. Meaningful on those three roles alone, like the three numbers; putting the reading in `label` instead renames the node on every change, which is the wrong attribute.
     value_text: string
     -- How far one arrow key moves a `slider` role, and the grid a value the pointer sets snaps to (ADR 0034). Unset, a hundredth of the range. PageUp / PageDown move ten steps. Read by the core only where the slider declares `onChange`; reported to assistive technology either way.
     value_step: Length
@@ -1775,6 +1775,13 @@ global radio_group: function(t: kui.Props): kui.Node
 -- (ev.event == "change"); store `ev.change.value` and draw the slider at it.
 -- Without on_change the slider does not move.
 global slider: function(t: kui.Props): kui.Node
+
+-- progress { label = "Upload", value_now = done, value_max = total,
+-- value_text = "3 of 8 files" }: the slider's track and a fill, read-only.
+-- A reader hears the value the view declares, and the new one each time it
+-- moves on; without value_now it is busy. role = "meter" makes it a level
+-- (a battery, a disk) rather than a task's progress.
+global progress: function(t: kui.Props): kui.Node
 
 -- Single-line input with chrome: input { label = "name", value = name,
 -- on_change = { kind = "name" }, on_submit = { kind = "go" }, on_cancel = ... }.

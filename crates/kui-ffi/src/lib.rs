@@ -151,7 +151,7 @@
 //! - Drawing: [`kui_draw_data`], [`KuiDrawData`], [`KuiQuad`],
 //!   [`kui_set_subpixel_text`].
 //! - Widgets: [`kui_button`], [`kui_text_input`], [`kui_checkbox`],
-//!   [`kui_slider`], [`kui_select`].
+//!   [`kui_slider`], [`kui_progress`], [`kui_select`].
 //! - Theme and metrics: [`kui_env_set_system`], [`kui_theme`],
 //!   [`KuiTheme`], [`kui_metrics`].
 //! - Windows: [`kui_window_declare`], [`kui_window_declare_with`],

@@ -8,8 +8,8 @@ use kui_core::diag::{
 };
 use kui_core::testing::codes;
 use kui_core::{
-    AccessAction, AccessRequest, AccessTree, Core, EditOptions, InputEvent, Key, NodeSpec, Role,
-    Size, TextStyle, UiEvent, Value, WindowButton, WindowCommand,
+    AccessAction, AccessRequest, AccessTree, Core, EditOptions, InputEvent, Key, KeyCode, KeyMods,
+    KeyPress, NodeSpec, Role, Size, TextStyle, UiEvent, Value, WindowButton, WindowCommand,
 };
 
 /// What each event was: a click by the message it names (its `kind`), as
@@ -1126,5 +1126,147 @@ fn a_key_two_nodes_share_is_one_access_node() {
             (Role::Button, Some("Show")),
         ],
         "the second name left out and its button kept; the second button gone with its words"
+    );
+}
+
+/// A progress bar and a meter (backlog F267) read their value rows as a
+/// slider does — the three numbers and the reading — and are nothing a
+/// keyboard or a reader can move: no actions, no Tab stop. Named by their
+/// label and never by the text drawn inside, which is part of the bar
+/// and not an item of its own. A progress bar with no `value_now` carries
+/// no number, which is how AccessKit reads it as busy.
+#[test]
+fn a_progress_bar_and_a_meter_read_their_value_and_take_no_focus() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    let upload = ui.text_in_keyed(
+        "upload",
+        NodeSpec::row()
+            .role(Role::Progress)
+            .label("Upload")
+            .value_now(3.0)
+            .value_min(0.0)
+            .value_max(8.0)
+            .value_text("3 of 8 files"),
+        "37%",
+        TextStyle::new(12.0),
+    );
+    let busy = ui.leaf_keyed(
+        "busy",
+        NodeSpec::row()
+            .role(Role::Progress)
+            .label("Connecting")
+            .size(100.0, 4.0),
+    );
+    let battery = ui.leaf_keyed(
+        "battery",
+        NodeSpec::row()
+            .role(Role::Meter)
+            .label("Battery")
+            .value_now(80.0)
+            .value_max(100.0)
+            .size(100.0, 4.0),
+    );
+    ui.finish();
+    let tree = core.access_tree().clone();
+
+    let u = tree.get(upload).unwrap();
+    assert_eq!(u.role, Role::Progress);
+    assert_eq!(u.name.as_deref(), Some("Upload"));
+    assert_eq!((u.number, u.min, u.max), (Some(3.0), Some(0.0), Some(8.0)));
+    assert_eq!(u.value.as_deref(), Some("3 of 8 files"));
+    assert_eq!(u.step, None, "a bar has no step: nothing moves it");
+    for a in [
+        AccessAction::Increment,
+        AccessAction::Decrement,
+        AccessAction::SetValue,
+        AccessAction::Click,
+        AccessAction::Focus,
+    ] {
+        assert!(!u.supports(a), "a progress bar offers no {a:?}");
+    }
+    assert!(
+        tree.nodes.iter().all(|n| n.parent != Some(upload)),
+        "the text drawn inside is the bar's, not a node of its own"
+    );
+
+    let b = tree.get(busy).unwrap();
+    assert_eq!(b.role, Role::Progress);
+    assert_eq!(b.number, None, "busy: no number, indeterminate");
+
+    let m = tree.get(battery).unwrap();
+    assert_eq!(m.role, Role::Meter);
+    assert_eq!((m.number, m.max), (Some(80.0), Some(100.0)));
+
+    // Neither is a Tab stop.
+    core.press(KeyPress::new(KeyCode::Tab, KeyMods::default()));
+    assert_eq!(core.focus(), None, "a bar takes no focus");
+}
+
+/// The announcement on change: a progress bar's new value is a new tree —
+/// its number and reading moved, and the tree's hash with them — which is
+/// what the platform bridge pushes, and what AccessKit turns into the
+/// value-changed notification a reader speaks, as it does for a slider.
+/// The same value again is the same tree, so a view that redraws a bar
+/// that has not moved says nothing.
+#[test]
+fn a_progress_bar_announces_its_new_value() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, done: f32| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        let k = ui.leaf_keyed(
+            "upload",
+            NodeSpec::row()
+                .role(Role::Progress)
+                .label("Upload")
+                .value_now(done)
+                .value_max(8.0)
+                .value_text(format!("{done} of 8 files")),
+        );
+        ui.finish();
+        k
+    };
+    let k = frame(&mut core, 3.0);
+    let first = core.access_tree().hash;
+    frame(&mut core, 3.0);
+    assert_eq!(core.access_tree().hash, first, "unmoved: nothing to say");
+    frame(&mut core, 4.0);
+    let tree = core.access_tree();
+    assert_ne!(tree.hash, first, "moved: a new tree to push");
+    let n = tree.get(k).unwrap();
+    assert_eq!(n.number, Some(4.0));
+    assert_eq!(n.value.as_deref(), Some("4 of 8 files"));
+}
+
+/// The range check covers the bars too: their rows are read as a
+/// slider's, so a value outside the range is the same defect.
+#[test]
+fn a_progress_value_outside_its_range_warns() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.leaf_keyed(
+        "over",
+        NodeSpec::row()
+            .role(Role::Progress)
+            .label("Upload")
+            .value_now(9.0)
+            .value_max(8.0),
+    );
+    ui.leaf_keyed(
+        "fine",
+        NodeSpec::row()
+            .role(Role::Meter)
+            .label("Battery")
+            .value_now(8.0)
+            .value_max(8.0),
+    );
+    ui.finish();
+    let ws = core.take_warnings();
+    assert_eq!(codes(&ws), [SLIDER_VALUE_OUT_OF_RANGE]);
+    assert_eq!(ws[0].key, Key::ROOT.str("over"));
+    assert!(
+        ws[0].message.contains("this progress's"),
+        "{}",
+        ws[0].message
     );
 }

@@ -844,16 +844,25 @@ pub const SCENES: &[Scene] = &[
               the pointer reads — runs from x 16 to 216; under it a \
               checkbox, a checked one, a mixed one, a radio group of two with the \
               second checked and a switch that is on; the checked box's mark is \
-              a drawn stroke. The pointer presses \
+              a drawn stroke; last a progress bar at 3 of 8 that names its \
+              reading and a meter at 80, the progress element made a meter by \
+              its role (backlog F267). The pointer presses \
               the track at 70, drags to 90 and lets go — two `move` rows \
               and an `end` — then the keys move the slider from the 30 \
               the view still declares: Right to 40, Home to 0, End to \
               100; then the checkbox is clicked. The event rows carry each \
               change's phase and value, which is the arithmetic the core \
               took on; the access rows carry the checked, mixed and slider \
-              states.",
+              states, and the bars' roles and reading.",
         custom: &["key"],
-        elements: &["checkbox", "radio", "radioGroup", "switch", "slider"],
+        elements: &[
+            "checkbox",
+            "radio",
+            "radioGroup",
+            "switch",
+            "slider",
+            "progress",
+        ],
         build: build_stock_controls,
         env: NATIVE_CHROME,
         steps: &[
@@ -869,7 +878,7 @@ pub const SCENES: &[Scene] = &[
             Step::MouseUp,
         ],
         expect: Expect {
-            solid: 12,
+            solid: 16,
             shadows: 0,
             images: 0,
             segments: 2,
@@ -887,6 +896,8 @@ pub const SCENES: &[Scene] = &[
                 "2 radio Light||",
                 "2 radio Dark||",
                 "1 switch Wi-Fi||",
+                "1 progress Upload||3 of 8 files",
+                "1 meter Battery||",
             ],
             events: &[
                 "change vol move 70",
@@ -4569,6 +4580,21 @@ fn build_stock_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             widgets::radio(ui, "Dark", true, tag("dark"));
         });
         widgets::switch(ui, "Wi-Fi", true, tag("wifi"));
+        widgets::progress_with(
+            ui,
+            "Upload",
+            widgets::progress_spec(&m)
+                .value_now(3.0)
+                .value_max(8.0)
+                .value_text("3 of 8 files"),
+            None,
+        );
+        widgets::progress_with(
+            ui,
+            "Battery",
+            widgets::progress_spec(&m).value_now(80.0).role(Role::Meter),
+            None,
+        );
     });
 }
 
@@ -6807,6 +6833,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
             }
             Some(Role::Slider) if spec.events().on_change().is_some() => {
                 cov.elements.insert("slider");
+            }
+            Some(Role::Progress | Role::Meter) => {
+                cov.elements.insert("progress");
             }
             _ => {}
         }

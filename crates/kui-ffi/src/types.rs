@@ -1090,7 +1090,8 @@ pub struct KuiAccessNode {
     pub caret: u32,
     pub selection_start: u32,
     pub selection_end: u32,
-    /// A slider's position and range (KUI_ACCESS_HAS_NUMBER / MIN / MAX).
+    /// A slider's, progress bar's or meter's position and range
+    /// (KUI_ACCESS_HAS_NUMBER / MIN / MAX).
     pub value_now: f32,
     pub value_min: f32,
     pub value_max: f32,

@@ -326,6 +326,8 @@ ROLE_ROW :: 29
 ROLE_CELL :: 30
 ROLE_COLUMN_HEADER :: 31
 ROLE_ROW_HEADER :: 32
+ROLE_PROGRESS :: 33
+ROLE_METER :: 34
 
 ORIENTATION_HORIZONTAL :: 1
 ORIENTATION_VERTICAL :: 2
@@ -1561,6 +1563,7 @@ foreign lib {
 	switch_with :: proc(ctx: ^Ctx, text: string, spec: ^Spec, label: ^TextStyle, payload: ^Value) -> u64 ---
 	radio_group_open :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
 	slider :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
+	progress :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
 	text_edit :: proc(ctx: ^Ctx, label: string, initial: string, style: ^TextStyle, flags: u32, spec: ^Spec) -> u64 ---
 	text_edit_placeholder :: proc(ctx: ^Ctx, label: string, initial: string, style: ^TextStyle, flags: u32, placeholder: string, spec: ^Spec) -> u64 ---
 	edit_text :: proc(ctx: ^Ctx, key: u64, out: ^string) -> bool ---

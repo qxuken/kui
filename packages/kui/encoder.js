@@ -55,6 +55,7 @@ export function createEncoder(P) {
   // and `key` riding as the op's own field; the slider's less its key.
   const TOGGLE_ROWS = new Set([...(ROWS.get('checkbox') ?? [])].filter((k) => k !== 'onClick' && k !== 'key'));
   const SLIDER_ROWS = new Set([...(ROWS.get('slider') ?? [])].filter((k) => k !== 'key'));
+  const PROGRESS_ROWS = new Set([...(ROWS.get('progress') ?? [])].filter((k) => k !== 'key'));
   const TOGGLE_KIND = { checkbox: 0, radio: 1, switch: 2 };
   // The text an editor op carries: its `value` when it declares one,
   // which wins (bit 32 says so, bit 64 that `initial` was declared
@@ -1123,6 +1124,18 @@ export function createEncoder(P) {
         strRef(String(label));
         strRef(keyText(el.key));
         props(p, null, false, SLIDER_ROWS);
+        return;
+      }
+      case 'progress': {
+        // The stock progress bar (backlog F267): the slider's door,
+        // read-only — the value rows, its width and `role` (a meter) ride
+        // over `widgets::progress_spec`.
+        const label = p.label ?? el.key;
+        if (label == null) throw new Error('<progress> needs a label (its accessible name)');
+        f[fi++] = OP.progress;
+        strRef(String(label));
+        strRef(keyText(el.key));
+        props(p, null, false, PROGRESS_ROWS);
         return;
       }
       case 'radioGroup': {

@@ -503,7 +503,9 @@ extern "C" {
  * KuiDrawData appends bounds (152 bytes on 64-bit, from 136), where the
  * frame drew. kui_ctx_new_in, a context in another's session, is new
  * (backlog F237). Recompile; zeroed, a box counts as derived, and a caller
- * that reserved the old size is filled to it.
+ * that reserved the old size is filled to it. Still 42 with
+ * KUI_ROLE_PROGRESS and KUI_ROLE_METER, new constants appended to the
+ * roles, and kui_progress, a new function (backlog F267): no struct moved.
  */
 #define KUI_ABI_VERSION 42u
 uint32_t kui_abi_version(void);
@@ -1054,7 +1056,7 @@ typedef struct KuiSpec {
      * accessible name (empty = none; a button, link, tab or heading is then
      * named by the text inside it, an image or icon button has no name and
      * the core warns). checked: a checkbox / radio / switch role's on
-     * state (selected / expanded are below). value_*: a slider role's position and range, each present
+     * state (selected / expanded are below). value_*: a slider, progress or meter role's position and range, each present
      * when its KUI_VALUE_* bit is in value_set. */
     uint32_t role;
     KuiStr label;
@@ -1220,7 +1222,7 @@ typedef struct KuiSpec {
      * is what a keymap wants - one that heard both halves would run every
      * binding twice. */
     uint32_t key_up;
-    /* What a slider role's position reads as, empty for none (ARIA's
+    /* What a slider, progress or meter role's position reads as, empty for none (ARIA's
      * aria-valuetext). Without one a reader has only value_now and the
      * range and says a percentage - 25 in [5..60] is "36 percent" - so a
      * value whose unit carries the meaning says it here: "25 minutes". It
@@ -1733,8 +1735,10 @@ enum {
  * KUI_ROLE_NONE through KUI_ROLE_GROUP, plus KUI_ROLE_TEXT_INPUT,
  * KUI_ROLE_MULTILINE_TEXT_INPUT and KUI_ROLE_LINE (which an app that
  * draws its own text declares to make a key sink an editor and to mark
- * that editor's lines) and the three composite roles appended later,
- * KUI_ROLE_RADIO_GROUP through KUI_ROLE_MENU_ITEM. A role can only be
+ * that editor's lines), the three composite roles appended later,
+ * KUI_ROLE_RADIO_GROUP through KUI_ROLE_MENU_ITEM, the table's,
+ * KUI_ROLE_TABLE through KUI_ROLE_ROW_HEADER, and the read-only bars,
+ * KUI_ROLE_PROGRESS and KUI_ROLE_METER. A role can only be
  * appended (KUI_ROLE_* is the position in Rust's Role::ALL plus one, and
  * the Lua and Node wires carry the same index), so what is declarable is
  * a list rather than a range. The rest the core derives from what a node
@@ -1766,6 +1770,11 @@ enum {
                                 arrows moving in two dimensions, when a
                                 cell takes focus */
     KUI_ROLE_COLUMN_HEADER, KUI_ROLE_ROW_HEADER,
+    KUI_ROLE_PROGRESS, KUI_ROLE_METER, /* read-only bars (backlog F267):
+                                value_now / value_min / value_max and
+                                value_text are their position, read as a
+                                slider's; no focus. A KUI_ROLE_PROGRESS
+                                without KUI_VALUE_NOW is busy (kui_progress) */
 };
 
 /* How a composite container arranges its items
@@ -1873,12 +1882,13 @@ typedef struct KuiAccessNode {
     KuiStr name;
     KuiStr description;
     /* The node's one string value (KUI_ACCESS_HAS_VALUE): an editor's text,
-     * or a slider's value_text - a slider that named its reading reads as
-     * that string instead of its number. */
+     * or a slider's, progress bar's or meter's value_text - one that named
+     * its reading reads as that string instead of its number. */
     KuiStr value;
     float x, y, w, h;
     uint32_t caret, selection_start, selection_end; /* byte offsets into value */
-    float value_now, value_min, value_max;          /* a slider's position and range */
+    /* A slider's, a progress bar's or a meter's position and range. */
+    float value_now, value_min, value_max;
     float scroll_x, scroll_y, scroll_max_x, scroll_max_y; /* a scroll view's offsets */
     /* An editor's caret (focus_*) and the selection's other end (anchor_*)
      * as run positions (KUI_ACCESS_HAS_TEXT_SELECTION): a run key from
@@ -5164,6 +5174,16 @@ uint64_t kui_radio_group_open(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
  * with change:{value, phase} in it; declare the value back as value_now.
  * Its key. */
 uint64_t kui_slider(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
+/* The stock progress bar, named and keyed by `label` (backlog F267): the
+ * slider's track and a fill, read-only. Reads value_now / value_min /
+ * value_max (by their KUI_VALUE_* bits), value_text, width / min_w /
+ * max_w where set, label, description and tooltip off `spec`, and role:
+ * KUI_ROLE_METER makes it a meter (a level, not a task's progress), and
+ * anything else is KUI_ROLE_PROGRESS. Without KUI_VALUE_NOW it is busy:
+ * indeterminate to a reader, a third of the track filled in its middle.
+ * It takes no focus; declare the new value each frame the task moves on,
+ * and a reader hears it. Its key. */
+uint64_t kui_progress(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
 /* Editable text node (state retained by key), seeded with `initial` - or,
  * with KUI_EDIT_VALUE, held to it. Returns the node key. It reports in the
  * messages `spec` declares (ADR 0047): an edit as {...on_change,

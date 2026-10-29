@@ -139,6 +139,8 @@ Role :: enum u32 {
 	Cell = 30, // KUI_ROLE_CELL
 	Column_Header = 31, // KUI_ROLE_COLUMN_HEADER
 	Row_Header = 32, // KUI_ROLE_ROW_HEADER
+	Progress = 33, // KUI_ROLE_PROGRESS
+	Meter = 34, // KUI_ROLE_METER
 }
 
 Cursor :: enum u32 {
@@ -1093,14 +1095,15 @@ Spec :: struct {
 	// reader reads the change without being asked — `polite` at the next pause,
 	// `assertive` interrupting.
 	live: Live,
-	// A `slider` role's current value (the drawing stays yours; this is what
-	// assistive technology reads).
+	// A `slider`, `progress` or `meter` role's current value (the drawing stays
+	// yours; this is what assistive technology reads).
 	value_now: Maybe(f32),
-	// A `slider` role's minimum.
+	// A `slider`, `progress` or `meter` role's minimum.
 	value_min: Maybe(f32),
-	// A `slider` role's maximum.
+	// A `slider`, `progress` or `meter` role's maximum.
 	value_max: Maybe(f32),
-	// What a `slider` role's position reads as (ARIA's `aria-valuetext`).
+	// What a `slider`, `progress` or `meter` role's position reads as (ARIA's
+	// `aria-valuetext`).
 	value_text: string,
 	// How far one arrow key moves a `slider` role, and the grid a value the
 	// pointer sets snaps to (ADR 0034).

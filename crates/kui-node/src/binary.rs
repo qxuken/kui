@@ -144,7 +144,10 @@ use crate::{Result, err, value_of};
 /// resolves it, an extension's exported table among the ones it reads
 /// (backlog F207). And, in the same unreleased version, a span carries its
 /// background's padding after its size (`bgPad`, backlog F227).
-pub const VERSION: u32 = 28;
+/// v29: `progress` is a new op (31), the stock progress bar (backlog
+/// F267), and `progress` and `meter` are new roles at the tail of the
+/// role index.
+pub const VERSION: u32 = 29;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -215,6 +218,9 @@ pub const OP_SLOT: u32 = 29;
 /// `fallback`, -1 neither, taken from `lazyChoices()` — then the length in
 /// slots of the branch's ops and those ops.
 pub const OP_LAZY: u32 = 30;
+/// The stock progress bar (backlog F267): label, key?, a prop list of
+/// the rows it admits — the slider's, read-only, and `role` for a meter.
+pub const OP_PROGRESS: u32 = 31;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -253,6 +259,7 @@ pub fn protocol_json() -> Json {
                 ("component", OP_COMPONENT),
                 ("slot", OP_SLOT),
                 ("lazy", OP_LAZY),
+                ("progress", OP_PROGRESS),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1835,6 +1842,16 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             base.spec = widgets::slider_spec(&ui.metrics()).label(label);
             let p = lower_props_over(r, base, ui)?;
             widgets::slider_with(ui, key.unwrap_or(label), p.spec, p.tooltip.as_deref());
+            Ok(())
+        }
+        OP_PROGRESS => {
+            // Named by its label whatever it is keyed by, as the slider is.
+            let label = r.req_str()?;
+            let key = r.str_ref()?;
+            let mut base = PropsOut::new();
+            base.spec = widgets::progress_spec(&ui.metrics()).label(label);
+            let p = lower_props_over(r, base, ui)?;
+            widgets::progress_with(ui, key.unwrap_or(label), p.spec, p.tooltip.as_deref());
             Ok(())
         }
         OP_RADIO_GROUP => {

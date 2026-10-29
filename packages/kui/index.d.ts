@@ -948,7 +948,7 @@ export type AccessRole =
   | 'group' | 'window' | 'titleBar' | 'staticText' | 'textInput'
   | 'multilineTextInput' | 'scrollView' | 'line' | 'radioGroup' | 'menu'
   | 'menuItem' | 'terminal' | 'passwordInput' | 'table' | 'row' | 'cell'
-  | 'columnHeader' | 'rowHeader';
+  | 'columnHeader' | 'rowHeader' | 'progress' | 'meter';
 
 /** What assistive technology can ask of a node (`access(key, action)`). */
 export type AccessAction =
@@ -1014,7 +1014,8 @@ export interface AccessNode {
   /** How a composite container (`radioGroup`, `tabList`, `menu`, `list`)
    *  arranges its items, from its own `dir`. `null` for anything else. */
   orientation: 'horizontal' | 'vertical' | null;
-  /** `valueNow` / `valueMin` / `valueMax` for a slider. What the position
+  /** `valueNow` / `valueMin` / `valueMax` for a slider, a progress bar or
+   *  a meter (a busy progress bar has no `valueNow`). What the position
    *  reads as is `valueText`, which arrives in `value` above. */
   valueNow: number | null;
   valueMin: number | null;
@@ -1229,12 +1230,13 @@ export type WarningCode =
   /** An image with no `label`: assistive technology has nothing to say for it.
    *  Decorative images take `role="none"`. */
   | 'image-without-label'
-  /** A `slider` whose `valueNow` lies outside its own `valueMin` / `valueMax`,
-   *  or whose `valueMin` is above its `valueMax`. The row is advertised
-   *  verbatim, so a screen reader reads a value the range says is impossible;
-   *  the app that clamps in its own `update` keeps the range in two places with
-   *  nothing tying them, and this is the tie. Declare the range the value is
-   *  really held to, or clamp where the view declares it. */
+  /** A `slider` (or a `progress` or `meter`, which read the same rows) whose
+   *  `valueNow` lies outside its own `valueMin` / `valueMax`, or whose
+   *  `valueMin` is above its `valueMax`. The row is advertised verbatim, so a
+   *  screen reader reads a value the range says is impossible; the app that
+   *  clamps in its own `update` keeps the range in two places with nothing
+   *  tying them, and this is the tie. Declare the range the value is really
+   *  held to, or clamp where the view declares it. */
   | 'slider-value-out-of-range'
   /** `Core::add_fragment` was given WGSL that does not compile, so no handle
    *  was minted and nothing will draw. The message carries naga's own error
