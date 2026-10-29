@@ -110,7 +110,9 @@ functions; no struct moved).
   meter. `<progress label valueNow ...>`, Lua `progress { }`, C
   `kui_progress(ctx, label, spec)`, Odin `kui.progress(ui, label, value,
   lo, hi)`, Rust `widgets::progress` / `progress_with`. The
-  `slider-value-out-of-range` warning covers both.
+  `slider-value-out-of-range` warning covers both. `docs/howto.md` has
+  "How do I show progress or a level?", and the controls examples (Rust
+  and Node) show a progress bar, a meter and a busy bar.
 
 - **The C and Odin libraries come per platform** (backlog F268):
   `kui-c-<version>-<platform>.tar.gz` and `kui-odin-<version>-<platform>.tar.gz`

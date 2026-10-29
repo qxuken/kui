@@ -1,13 +1,17 @@
 //! The stock controls (`docs/adr/0034-stock-controls-over-the-roles.md`):
 //! checkbox, radio group, switch and slider, each drawn from the state the
-//! view declares and none holding any of its own.
+//! view declares and none holding any of its own; and the read-only bars
+//! beside them, a progress bar and a meter (backlog F267).
 //!
 //! A settings page's worth of them: notifications on or off, a sound
 //! checkbox beside a select-all box that goes mixed when only some of its
 //! three rows are ticked, a theme chosen by radio (arrows move the choice),
 //! and two sliders — a volume the core snaps to steps of 5, and a gain in
-//! tenths — whose `change` events carry the value to store. Every change
-//! is one line in the event log at the bottom.
+//! tenths — whose `change` events carry the value to store. Under them a
+//! progress bar counts the channels set up, a meter shows the volume as a
+//! level, and a third bar is busy: none is a control, and a screen reader
+//! hears each one's value. Every change is one line in the event log at
+//! the bottom.
 //!
 //! Run: cargo run -p kui-native --example controls [-- --headless]
 
@@ -152,6 +156,46 @@ impl App for Controls {
                     );
                 });
 
+                heading(
+                    ui,
+                    "progress and meter — read-only, no Tab stop, read with their value",
+                );
+                let caption = |ui: &mut Ui<'_>, s: &str| {
+                    ui.text(s, TextStyle::new(13.0).color(t.fg));
+                };
+                let bar_row = NodeSpec::row().gap(12.0).cross_align(Align::Center);
+                ui.with(bar_row.clone(), |ui| {
+                    widgets::progress_with(
+                        ui,
+                        "Channels set up",
+                        widgets::progress_spec(&m)
+                            .value_now(ticked as f32)
+                            .value_min(0.0)
+                            .value_max(CHANNELS.len() as f32)
+                            .value_text(format!("{ticked} of {}", CHANNELS.len())),
+                        None,
+                    );
+                    caption(ui, &format!("{ticked} of {} channels", CHANNELS.len()));
+                });
+                // A level, not a task under way: a meter.
+                ui.with(bar_row.clone(), |ui| {
+                    widgets::progress_with(
+                        ui,
+                        "Output level",
+                        widgets::progress_spec(&m)
+                            .role(Role::Meter)
+                            .value_now(self.volume)
+                            .value_max(100.0),
+                        None,
+                    );
+                    caption(ui, "output level");
+                });
+                // No value: busy, read as indeterminate.
+                ui.with(bar_row, |ui| {
+                    widgets::progress(ui, "Syncing", None, 0.0, 100.0);
+                    caption(ui, "syncing…");
+                });
+
                 ui.leaf(NodeSpec::column().height(8.0));
                 ui.text(&self.last, TextStyle::new(12.0).color(t.faint).mono());
             },
@@ -183,7 +227,7 @@ impl App for Controls {
 
 impl Example for Controls {
     fn window(&self) -> kui_devtools::Window {
-        kui_devtools::Window::default().size(520.0, 560.0)
+        kui_devtools::Window::default().size(520.0, 680.0)
     }
 
     /// A toggle's press flips the model through its payload; the select-all
@@ -191,7 +235,7 @@ impl Example for Controls {
     /// group's arrows move the choice; a slider's press, keys and ends
     /// propose values snapped to its step, which the app stores.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
-        let mut d = Drive::new(core, 520.0, 560.0);
+        let mut d = Drive::new(core, 520.0, 680.0);
         d.frame(self);
         let node = |d: &mut Drive<'_>, name: &str, role: Role| {
             d.core
@@ -203,11 +247,24 @@ impl Example for Controls {
                 .ok_or(format!("no {name}"))
         };
 
+        let set_up = node(&mut d, "Channels set up", Role::Progress)?;
+        d.check(
+            set_up.number == Some(2.0) && set_up.value.as_deref() == Some("2 of 3"),
+            "the progress bar reads two of three",
+        )?;
+        let busy = node(&mut d, "Syncing", Role::Progress)?;
+        d.check(busy.number.is_none(), "the busy bar carries no number")?;
+
         let all = node(&mut d, "All channels", Role::Checkbox)?;
         d.check(all.mixed, "two of three channels: the select-all is mixed")?;
         d.click_key(self, all.key);
         d.frame(self);
         d.check(self.channels == [true; 3], "and ticking it ticks every row")?;
+        let set_up = node(&mut d, "Channels set up", Role::Progress)?;
+        d.check(
+            set_up.number == Some(3.0),
+            "and the bar follows: three of three",
+        )?;
         let all = node(&mut d, "All channels", Role::Checkbox)?;
         d.check(all.checked == Some(true), "then it reads checked")?;
 
@@ -246,6 +303,9 @@ impl Example for Controls {
         d.key(self, "end", KeyMods::default());
         d.frame(self);
         d.check(self.volume == 100.0, "End is the top")?;
+        d.frame(self);
+        let level = node(&mut d, "Output level", Role::Meter)?;
+        d.check(level.number == Some(100.0), "the meter reads the volume")?;
 
         let gain = node(&mut d, "Gain", Role::Slider)?;
         d.check(

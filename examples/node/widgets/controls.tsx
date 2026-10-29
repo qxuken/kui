@@ -3,8 +3,11 @@
 // of `<radio>`s whose arrows move the choice, and `<slider>`s whose changes
 // arrive as their `onChange` message with `change: {value, phase}` in it. None holds state: each
 // is drawn from the model, a toggle's press is its `onClick` message, and a
-// slider's value is proposed by the core and stored by `update` — the twin
-// of `rust/widgets/controls.rs`.
+// slider's value is proposed by the core and stored by `update`. Under them
+// the read-only bars (backlog F267): a `<progress>` counting the channels
+// set up, a meter showing the volume as a level, and a busy bar with no
+// value — none a control, each read with its value. The twin of
+// `rust/widgets/controls.rs`.
 //
 //   npm run controls                           a window to use by hand
 //   node dist/widgets/controls.mjs --headless  the same loop, no window
@@ -99,6 +102,27 @@ function view(model: Model) {
         />
         <text size={13}>{model.gain.toFixed(1)}</text>
       </box>
+      {heading('progress and meter — read-only, no Tab stop, read with their value')}
+      <box dir="row" gap={12} crossAlign="center">
+        <progress
+          label="Channels set up"
+          valueNow={ticked}
+          valueMin={0}
+          valueMax={CHANNELS.length}
+          valueText={`${ticked} of ${CHANNELS.length}`}
+        />
+        <text size={13}>{`${ticked} of ${CHANNELS.length} channels`}</text>
+      </box>
+      {/* A level, not a task under way: a meter. */}
+      <box dir="row" gap={12} crossAlign="center">
+        <progress label="Output level" role="meter" valueNow={model.volume} valueMax={100} />
+        <text size={13}>output level</text>
+      </box>
+      {/* No value: busy, read as indeterminate. */}
+      <box dir="row" gap={12} crossAlign="center">
+        <progress label="Syncing" />
+        <text size={13}>syncing…</text>
+      </box>
     </box>
   );
 }
@@ -109,7 +133,7 @@ await run<Model, AppMsg>({
   update,
   view,
   keys: [['click / space', 'toggle'], ['↑ ↓', 'move the radio'], ['← → pgup pgdn home end', 'move a slider']],
-  window: { width: 520, height: 540 },
+  window: { width: 520, height: 680 },
   headless: (app: App<Model, Msg>) => {
     const ok = (cond: boolean, what: string) => {
       if (!cond) throw new Error(what);
@@ -117,11 +141,15 @@ await run<Model, AppMsg>({
     };
     const node = (role: string, name: string) => app.accessTree().nodes.find((n) => n.role === role && n.name === name)!;
     app.render();
+    const setUp = node('progress', 'Channels set up');
+    ok(setUp.valueNow === 2 && setUp.value === '2 of 3', 'the progress bar reads two of three');
+    ok(node('progress', 'Syncing').valueNow === null, 'the busy bar carries no number');
     ok(node('checkbox', 'All channels').mixed, 'two of three channels: the select-all is mixed');
     app.access('All channels', 'click');
     app.render();
     ok(app.model.channels.every(Boolean), 'and ticking it ticks every row');
     ok(node('checkbox', 'All channels').checked === true, 'then it reads checked');
+    ok(node('progress', 'Channels set up').valueNow === 3, 'and the bar follows: three of three');
 
     const vol = node('slider', 'Volume');
     ok(vol.valueStep === 5, 'the slider reports its step');
@@ -134,6 +162,7 @@ await run<Model, AppMsg>({
     app.key('end');
     ok(app.model.volume === 100, 'End is the top');
     app.render();
+    ok(node('meter', 'Output level').valueNow === 100, 'the meter reads the volume');
     app.ctx.focus(node('slider', 'Gain').key);
     app.key('left');
     ok(app.model.gain === 0.4, 'a tenth down is 0.4 on the wire');
