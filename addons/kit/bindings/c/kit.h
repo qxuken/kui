@@ -1447,6 +1447,19 @@ typedef struct KitSelect {
     double width;
     bool width_set;
     /*
+     * The open menu's width in px at the most; the window's less a margin when
+     * left out. The menu is as wide as its widest option up to it, and never
+     * narrower than the field.
+     */
+    double menu_max_width;
+    bool menu_max_width_set;
+    /*
+     * An option too long for the menu wraps onto more lines, its row growing,
+     * where it is cut short with an ellipsis when left out.
+     */
+    bool menu_wrap;
+    bool menu_wrap_set;
+    /*
      * The message `change` arrives as, consumed; NULL for none. An option was
      * chosen.
      */
@@ -1468,6 +1481,8 @@ static inline KuiValue *kit_select_props(const KitSelect *p) {
     if (p->placeholder.len > 0) kui_value_map_set(m, KUI_STR("placeholder"), kui_value_str(p->placeholder));
     if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
+    if (p->menu_max_width_set) kui_value_map_set(m, KUI_STR("menu_max_width"), kui_value_float(p->menu_max_width));
+    if (p->menu_wrap_set) kui_value_map_set(m, KUI_STR("menu_wrap"), kui_value_bool(p->menu_wrap));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));

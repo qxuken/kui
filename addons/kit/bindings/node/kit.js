@@ -254,6 +254,8 @@ function make(namespace) {
       if (props.placeholder !== undefined) wire.placeholder = props.placeholder;
       if (props.label !== undefined) wire.label = props.label;
       if (props.width !== undefined) wire.width = props.width;
+      if (props.menuMaxWidth !== undefined) wire.menu_max_width = props.menuMaxWidth;
+      if (props.menuWrap !== undefined) wire.menu_wrap = props.menuWrap;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       const groups = undefined;
       return {

@@ -261,6 +261,8 @@ return {
         { "placeholder", "string?", doc = "Shown with nothing chosen." },
         { "label", "string?", doc = "Its label, above it." },
         { "width", "number?", doc = "Its width in px." },
+        { "menu_max_width", "number?", doc = "The open menu's width in px at the most; the window's less a margin when left out. The menu is as wide as its widest option up to it, and never narrower than the field." },
+        { "menu_wrap", "boolean?", doc = "An option too long for the menu wraps onto more lines, its row growing, where it is cut short with an ellipsis when left out." },
       },
       events = {
         { "change", doc = "An option was chosen.", fields = { { "value", "string", doc = "Its value." } } },

@@ -269,6 +269,8 @@ Lua `kit.select(props)` · Node `<Select />`
 | `placeholder` | `placeholder` | string? | Shown with nothing chosen. |
 | `label` | `label` | string? | Its label, above it. |
 | `width` | `width` | number? | Its width in px. |
+| `menu_max_width` | `menuMaxWidth` | number? | The open menu's width in px at the most; the window's less a margin when left out. The menu is as wide as its widest option up to it, and never narrower than the field. |
+| `menu_wrap` | `menuWrap` | boolean? | An option too long for the menu wraps onto more lines, its row growing, where it is cut short with an ellipsis when left out. |
 
 | event | Node | carries | description |
 |---|---|---|---|

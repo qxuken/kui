@@ -565,18 +565,48 @@ function M.select(c: Ctx, p: P): kui.Node
   -- Up to its width, less in a narrow row, its choice ellipsized.
   ctx.up_to(field, p.width, 80)
   if st.open then
+    local row_h, ctl_h = skin.row_h(c.s), skin.ctl_h(c.s)
+    local env = c.env
+    local wrap = p.menu_wrap == true
+    local style = { size = "$kitSize", family = "$kitUi" } as kui.Props
+    -- As wide as its widest option (its padding, 4, and a row's, 8, each
+    -- side; a border takes no room), 160 px at the least, and no wider
+    -- than the window less a margin or `menu_max_width`: past that an
+    -- option is cut short, or wraps. The field's width is its floor: a
+    -- float's `grow` is its anchor's width, and the column it floats from
+    -- is the field's.
+    local widest = 0.0
+    for _, o in ipairs(options) do
+      widest = math.max(widest, env.measure_text(o.label as string, style, nil).width)
+    end
+    local menu_w = math.min(math.max(160, math.ceil(widest) + 1 + 2 * 4 + 2 * 8), env.viewport_w - 16)
+    local cap = p.menu_max_width
+    if cap is number then menu_w = math.min(menu_w, cap) end
+    local text_w = menu_w - 2 * 4 - 2 * 8
+    -- A wrapping row keeps its one line where a `$kitRow` row has it.
+    local line_h = env.measure_text("Ag", style, nil).height
+    local pad_y = math.max(0, (row_h - line_h) / 2)
     -- The menu opens with the current option over the field, as a native
     -- pop-up's does: lifted by the rows above it (each `$kitRow` and a
     -- 1 px gap), its padding and its edge, and centred on the field's
     -- height; `fit` keeps it in the window. With nothing chosen it hangs
-    -- under the field.
+    -- under the field, and so it does when a row above it wraps: the menu
+    -- may be wider than measured here (the field's width), its lines then
+    -- fewer, and the lift would be a guess.
     local float: {any:any} = MENU_FLOAT
     local at = 0
     for i, o in ipairs(options) do
       if o.value == p.value then at = i end
     end
+    if at > 0 and wrap then
+      for i = 1, at - 1 do
+        if env.measure_text(options[i].label as string, style, text_w).height > line_h + 0.5 then
+          at = 0
+          break
+        end
+      end
+    end
     if at > 0 then
-      local row_h, ctl_h = skin.row_h(c.s), skin.ctl_h(c.s)
       local edge = c.s.hair or c.s.skin.hair
       float = { anchor = "parent", at = { "start", "start" }, self = { "start", "start" }, fit = true,
         escape = true, dy = -(4 + edge + (at - 1) * (row_h + 1)) + (ctl_h - row_h) / 2 }
@@ -586,7 +616,8 @@ function M.select(c: Ctx, p: P): kui.Node
       role = "menu",
       float = float,
       modal = act(c, "select.dismiss"),
-      min_width = 160,
+      width = "grow",
+      min_width = menu_w,
       pad = 4,
       gap = 1,
       bg = ref(c, "raised"),
@@ -603,9 +634,10 @@ function M.select(c: Ctx, p: P): kui.Node
         selected = here,
         disabled = o.disabled == true,
         initial_focus = here,
-        height = "$kitRow",
+        height = not wrap and "$kitRow" or nil,
+        min_height = wrap and "$kitRow" or nil,
         width = "grow",
-        pad = { x = 8 },
+        pad = { x = 8, y = wrap and pad_y or nil },
         gap = 6,
         cross_align = "center",
         radius = "$kitRadius",
@@ -614,7 +646,8 @@ function M.select(c: Ctx, p: P): kui.Node
         cursor = "pointer",
         opacity = o.disabled == true and "$disabledOpacity" or nil,
         on_click = act(c, "select.pick", { value = o.value }),
-        ctx.text(c, o.label as string, { color = ref(c, here and "sel_fg" or "fg") }),
+        ctx.text(c, o.label as string, { color = ref(c, here and "sel_fg" or "fg"),
+          max_lines = not wrap and 1 or nil, ellipsis = not wrap or nil }),
       }
     end
     -- Beside the field, not in it: a button's children are presentational

@@ -35,6 +35,7 @@ function demo.view(m)
         on_change = { kind = "query" } }),
       kit.select({ label = "Mode", value = m.mode, on_change = { kind = "mode" },
         options = { { value = "auto", label = "Automatic" }, { value = "manual", label = "Manual" },
+          { value = "nightly", label = "Nightly — every night at 02:00, against the staging pool" },
           { value = "off", label = "Off", disabled = true } } }) },
     text("name = " .. m.name .. "   version = " .. m.version .. "   query = " .. m.query .. "   mode = " .. m.mode,
       { size = 11, family = "$kitData", color = "$kitMuted" })

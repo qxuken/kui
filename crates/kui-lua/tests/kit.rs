@@ -507,6 +507,164 @@ fn a_select_opens_picks_and_closes_on_its_own() {
     );
 }
 
+/// What an open select's menu laid out: the field's rect, the menu's, and
+/// each option's row and text, in order.
+struct OpenMenu {
+    field: kui_core::Rect,
+    menu: kui_core::Rect,
+    rows: Vec<(kui_core::Rect, kui_core::Rect)>,
+}
+
+/// A select labelled "Pool" with `options`, the one at `chosen` chosen,
+/// shaped by `shape`, opened.
+fn open_select(
+    options: &[&str],
+    chosen: usize,
+    shape: impl Fn(kit::Select) -> kit::Select + Copy,
+) -> OpenMenu {
+    let mut r = rig();
+    let choices = || {
+        options
+            .iter()
+            .enumerate()
+            .map(|(i, o)| kit::Choice::new(format!("v{i}"), *o))
+            .collect::<Vec<_>>()
+    };
+    let view = |ui: &mut Ui<'_>| {
+        shape(
+            kit::Select::new(choices())
+                .value(format!("v{chosen}"))
+                .label("Pool"),
+        )
+        .on_change(msg("pool"))
+        .place(ui);
+    };
+    r.frame(view);
+    r.frame(view);
+    let name = format!("Pool: {}", options[chosen]);
+    r.click(&name);
+    r.frame(view);
+    r.frame(view);
+    let field = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some(name.as_str()))
+        .unwrap()
+        .rect;
+    let nodes = r.core.nodes();
+    let menu = nodes
+        .iter()
+        .find(|n| n.role == Some(kui_core::Role::Menu))
+        .expect("the menu is open")
+        .rect;
+    let rows = nodes
+        .iter()
+        .filter(|n| n.role == Some(kui_core::Role::MenuItem))
+        .map(|row| {
+            let text = nodes
+                .iter()
+                .find(|n| n.parent == Some(row.key) && n.text.is_some())
+                .expect("an option's text")
+                .rect;
+            (row.rect, text)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), options.len());
+    OpenMenu { field, menu, rows }
+}
+
+fn right(r: &kui_core::Rect) -> f32 {
+    r.x + r.w
+}
+
+fn bottom(r: &kui_core::Rect) -> f32 {
+    r.y + r.h
+}
+
+const LONG: &str = "creditCardsCreditOnline Sign — a client with an available limit (e2e) · 39";
+
+#[test]
+fn a_selects_menu_is_as_wide_as_its_widest_option() {
+    let huge = "an option far too long for any window ".repeat(8);
+    let m = open_select(&["Short", LONG, &huge], 0, |s| s.width(200.0));
+    assert!(m.menu.w > 160.0, "{:?}", m.menu);
+    assert!(m.menu.w >= m.field.w, "{:?} {:?}", m.menu, m.field);
+    assert!(m.menu.x >= 0.0 && right(&m.menu) <= VIEW.w, "{:?}", m.menu);
+    let line = m.rows[0].1.h;
+    for (row, text) in &m.rows {
+        assert_eq!(text.h, line, "one line each: {text:?}");
+        assert!(
+            text.y >= row.y && bottom(text) <= bottom(row),
+            "{text:?} in {row:?}"
+        );
+        assert!(right(text) <= right(row), "{text:?} in {row:?}");
+    }
+    // The long option whole, past the 160 px the menu was held to.
+    assert!(m.rows[1].1.w > 300.0, "{:?}", m.rows[1].1);
+}
+
+#[test]
+fn a_selects_short_options_take_the_fields_width() {
+    let m = open_select(&["Alpha", "Beta"], 0, |s| s.width(400.0));
+    assert_eq!(m.field.w, 400.0);
+    assert_eq!(m.menu.w, m.field.w, "{:?} {:?}", m.menu, m.field);
+}
+
+#[test]
+fn a_selects_menu_max_width_caps_the_menu_and_cuts_its_options() {
+    let m = open_select(&["Short", LONG], 0, |s| {
+        s.width(120.0).menu_max_width(220.0)
+    });
+    assert_eq!(m.menu.w, 220.0);
+    let (row, text) = m.rows[1];
+    assert_eq!(text.h, m.rows[0].1.h, "one line, ellipsized");
+    assert!(right(&text) <= right(&row), "{text:?} in {row:?}");
+}
+
+#[test]
+fn a_selects_menu_wrap_grows_its_rows() {
+    let m = open_select(&["Short", LONG, "Last"], 0, |s| {
+        s.width(120.0).menu_max_width(220.0).menu_wrap(true)
+    });
+    assert_eq!(m.menu.w, 220.0);
+    let line = m.rows[0].1.h;
+    assert!(m.rows[1].1.h > line * 1.5, "wrapped: {:?}", m.rows[1].1);
+    assert!(
+        m.rows[1].0.h > m.rows[0].0.h,
+        "a taller row: {:?}",
+        m.rows[1].0
+    );
+    for w in m.rows.windows(2) {
+        let ((row, text), (next, next_text)) = (w[0], w[1]);
+        assert!(
+            text.y >= row.y && bottom(&text) <= bottom(&row),
+            "{text:?} in {row:?}"
+        );
+        assert!(next.y >= bottom(&row), "{next:?} under {row:?}");
+        assert!(next_text.y >= bottom(&text), "{next_text:?} under {text:?}");
+    }
+    // Opened on its option, over the field, with no wrapped row above it.
+    let (row, _) = m.rows[0];
+    let mid = row.y + row.h / 2.0;
+    assert!(
+        mid > m.field.y && mid < bottom(&m.field) && m.menu.y < m.field.y,
+        "{row:?} on {:?}",
+        m.field
+    );
+    // A wrapped row above it: hung under the field.
+    let m = open_select(&["Short", LONG, "Last"], 2, |s| {
+        s.width(120.0).menu_max_width(220.0).menu_wrap(true)
+    });
+    assert!(
+        m.menu.y >= bottom(&m.field),
+        "{:?} under {:?}",
+        m.menu,
+        m.field
+    );
+}
+
 #[test]
 fn a_skin_switch_reasks_every_instance() {
     let mut r = rig();
