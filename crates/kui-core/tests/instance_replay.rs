@@ -701,3 +701,68 @@ fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
     assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     assert_eq!(r.views.get(), 1);
 }
+
+/// A list of instances that shifts every frame - a new one in front, the
+/// rest one place down, as a log grows - keyed by `key` (backlog F279).
+/// Answers how many of the last frame's `n` placements replayed.
+fn shifting_list(key: fn(i64) -> Option<Value>) -> usize {
+    let mut r = rig(Ext::default());
+    let n = 8;
+    let mut replayed = 0;
+    for frame in 0..3 {
+        replayed = 0;
+        let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
+        ui.configure_root(NodeSpec::column().fill());
+        for i in 0..n {
+            let line = frame + n - 1 - i;
+            let mut p = vec![(
+                "title".to_owned(),
+                Value::Str(format!("line {line}")),
+            )];
+            if let Some(k) = key(line) {
+                p.push(("key".to_owned(), k));
+            }
+            replayed += usize::from(
+                ui.component("outer/pane", &Value::Map(p)) == Some(FillAnswer::Replayed),
+            );
+        }
+        ui.finish();
+    }
+    replayed
+}
+
+#[test]
+fn an_integer_key_keeps_each_instance_as_its_list_shifts() {
+    // Every row but the new one replays: the key follows the line, not the
+    // place. A float with no fraction is the same index (a Lua or JS number).
+    assert_eq!(shifting_list(|line| Some(Value::Int(line))), 7);
+    assert_eq!(shifting_list(|line| Some(Value::Float(line as f64))), 7);
+    assert_eq!(
+        shifting_list(|line| Some(Value::str(format!("line{line}")))),
+        7
+    );
+    // By position every row's props moved, so every row fills again: what an
+    // integer key fell back to until alpha.73.
+    assert_eq!(shifting_list(|_| None), 0);
+}
+
+#[test]
+fn an_index_key_and_a_name_key_are_different_instances() {
+    let mut r = rig(Ext::default());
+    let place = |ui: &mut Ui<'_>, key: Value| {
+        ui.component(
+            "outer/pane",
+            &Value::map([("key", key), ("title", Value::str("t"))]),
+        )
+    };
+    for _ in 0..2 {
+        let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
+        ui.configure_root(NodeSpec::column().fill());
+        place(&mut ui, Value::Int(3));
+        place(&mut ui, Value::str("3"));
+        ui.finish();
+    }
+    // Two instances, each filled once and replayed once: had the keys met,
+    // the second placement would have collided with the first.
+    assert_eq!(r.views.get(), 2);
+}

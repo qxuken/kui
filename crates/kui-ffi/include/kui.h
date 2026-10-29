@@ -5850,7 +5850,9 @@ void kui_children(KuiCtx *ctx, KuiStr group);
 /* A component an extension provides, placed at the cursor (ADR 0060, ADR
  * 0067): name is namespace/component - "namespace/root" is that
  * extension's view, drawn fresh every frame; props (borrowed, NULL for
- * none) is what its fill reads - "key" keys the instance, "fresh": true
+ * none) is what its fill reads - "key" keys the instance (a string by
+ * name; an integer by data index, as kui_open_indexed, so a list's rows
+ * keep their instances as the list shifts; backlog F279), "fresh": true
  * asks every frame, and its on* entries are the messages its events arrive
  * as. children builds your own children where the component asks, with a
  * context borrowing the frame for the call and the group (empty for the
