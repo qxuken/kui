@@ -4267,6 +4267,108 @@ Rebuilt on that branch (`ui-compare/kui-next`), the same HUD is 76 lines
 and its glue 80, the drawing and the pointer now kui's; and its window,
 walked with the macOS AX API, lists the HUD where it had listed nothing.
 
+## What building F263–F269 left (2026-10-29)
+
+The five agents that built the comparison's entries each reported what
+they left, and one question about a dump of the spike's window found a
+sixth. Five entries, F270–F274, filed and not built. Not entries, for the
+alpha.72 pre-tag round instead:
+- F269's Windows half (the HWND subclassing adapter, the `WM_NULL` wake)
+  and its AT-SPI half have been compiled, never run: Narrator or NVDA on
+  the Windows machine, Orca under WSLg, against `access_host`;
+- F268's Linux and Windows archive sizes are estimates, and its
+  `release.yml` changes were read, not run: a release dry run.
+
+### `.` F270 — A host's bridge on Linux gives AT-SPI no window bounds, no focus state and no wake
+
+**Found** 2026-10-29 building F269. `kui_access::HostBridge` on Linux
+is `accesskit_unix`'s adapter with nothing of the window:
+- it never calls `set_root_window_bounds`, so every rect it sends is
+  relative to a window AT-SPI cannot place: Orca's flat review and a
+  magnifier following focus land in the wrong place;
+- it never calls `update_window_focus_state`, so the window is never
+  "active" to AT-SPI and focus events may not be spoken;
+- the adapter answers on a thread of its own, and nothing posts to the
+  host's loop, so kui.h tells a Linux host to wait with a timeout while
+  attached, where macOS and Windows post the platform's empty event.
+
+`kui_run`'s windows have all three through `accesskit_winit`. **Do.**
+- Bounds and focus: a door the host calls when its window moves, resizes
+  or gains and loses focus (`kui_access_window_state(ctx, x, y, w, h,
+  focused)`), applied on Linux and ignored where the platform reads them
+  itself; GLFW's and SDL3's helpers (F265) can call it from the callbacks
+  they already install.
+- The wake: a callback the host registers (`kui_access_set_waker(ctx, fn,
+  user)`), which `glfwPostEmptyEvent` or an SDL user event fills.
+- Run `access_host` under Orca (WSLg or a Linux desktop) before and after.
+
+### `.` F271 — SDL3's forwarder drops a composition
+
+**Found** 2026-10-29 building F265: `kui_sdl3_event` forwards keys, text,
+the pointer and the wheel, and returns false for
+`SDL_EVENT_TEXT_EDITING`. An SDL3 host's user typing Japanese, Chinese or
+Korean sees nothing until the input method commits, and a focused editor
+draws no composition. GLFW reports no composition at all, so this is
+SDL3's alone. **Do.** Forward `SDL_EVENT_TEXT_EDITING` as
+`kui_input_preedit(ctx, text, start, end)` (SDL's `start` and `length`
+are in characters; kui's cursor is bytes), an empty text when the
+composition ends; and tell the platform where the candidate window goes
+— `SDL_SetTextInputArea` from `kui_ime_rect` after each frame, a helper
+the host calls. A test in `pointer.c`'s SDL half on
+hand-made editing events. Odin's `kui/sdl3` the same.
+
+### `.` F272 — GLFW and SDL3 report no touch phase, so their scroll misreads a trackpad
+
+**Found** 2026-10-29 building F265. Neither library says when a finger
+lands on or leaves a trackpad, which kui_run reads from winit's
+`TouchPhase`. The helpers' scroll therefore:
+- continues a glide's gesture when a finger is put down mid-glide, until
+  a 0.2 s pause, where kui_run starts a new one at the touch;
+- reads a swipe whose first delta happens to be whole as a wheel notch
+  (macOS tells a swipe from a wheel by a fractional delta);
+- scrolls about 4× too far on Wayland, whose GLFW backend sends a swipe's
+  pixels divided by 10 as if they were lines.
+
+**Do.** On macOS, read the phase and `hasPreciseScrollingDeltas` from
+`[NSApp currentEvent]` inside the scroll callback through the Objective-C
+runtime (`objc_msgSend`, so no `.m` file, but the host links libobjc);
+weigh that against a documented limit. On Wayland, a `coord`-style
+divisor the host sets, or GLFW 3.5's `glfwGetPlatform` to pick the scale.
+`pointer.c` cannot fake an NSEvent; check by hand with a trackpad.
+
+### `~` F273 — An island has no accessibility
+
+**Found** 2026-10-29 building F269, and written into ADR 0076's
+consequences: a surface window's context (ADR 0076) draws in the host's
+world, so its nodes have no rect in the window, and `kui_access_attach`
+takes a window's native handle, which an island does not have. A game's
+in-world UI — the tag on the gate ring — is silent to a screen reader,
+though its context holds the whole tree. **Do.** Decide with the user:
+the host gives each surface context the four corners of its quad in the
+window's px every frame (`kui_access_surface_quad(ctx, corners)`), and
+the main context's bridge grafts that context's tree under a node of its
+own with each rect projected through the quad; or a surface is not
+exposed, and an app that wants it reachable mirrors its controls in the
+HUD. The first is ADR work: a projected rect per node, and focus moving
+between contexts (ADR 0076 decision 5 leaves keys to the host).
+
+### `.` F274 — A scroll view reads as AXUnknown on macOS
+
+**Found** 2026-10-29 walking the ui-compare spike's window: the log's
+scroll container is `AXUnknown`, its rows under it. Not kui's mapping —
+`kui_access::role_of` sends AccessKit's `Role::ScrollView`, which
+`accesskit_macos` 0.27.1 maps to `NSAccessibilityUnknownRole`
+(`node.rs`, beside `GenericContainer` and `Pane`). VoiceOver passes
+through an unknown container to its children, so the rows are read; what
+is lost is "scroll area" when VO enters it and VoiceOver's own scroll
+commands on it, which kui's
+`ScrollUp`/`ScrollDown` actions could answer. Mapping it to `Group` in
+kui would say "group" instead, no better. **Do.** Upstream: what
+AppKit needs of an `AXScrollArea` (`AXContents`, its scroll bars, or
+neither for VoiceOver's purposes) asked of AccessKit, and a change there
+if it is small; kui follows when a release has it. Until then nothing in
+kui changes.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go
