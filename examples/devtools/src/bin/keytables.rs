@@ -512,11 +512,11 @@ static inline void kui_glfw_key(KuiCtx *ctx, int key, int scancode, int action, 
     if (upper && n == 1 && code[0] >= 'a' && code[0] <= 'z') code[0] = (char)(code[0] - 32);
     KuiStr none = {{NULL, 0}};
     if (action == GLFW_RELEASE) {{
-        kui_input_release(ctx, KUI_STR(code), KUI_STR(physical), kmods);
+        kui_input_release(ctx, kui__cstr(code), kui__cstr(physical), kmods);
     }} else if (types) {{
-        kui_input_key_down(ctx, KUI_STR(code), KUI_STR(physical), kmods, none, action == GLFW_REPEAT);
+        kui_input_key_down(ctx, kui__cstr(code), kui__cstr(physical), kmods, none, action == GLFW_REPEAT);
     }} else {{
-        kui_input_press(ctx, KUI_STR(code), KUI_STR(physical), kmods, none, action == GLFW_REPEAT);
+        kui_input_press(ctx, kui__cstr(code), kui__cstr(physical), kmods, none, action == GLFW_REPEAT);
     }}
 }}
 
@@ -539,7 +539,10 @@ static inline void kui_glfw_char(KuiCtx *ctx, unsigned int cp) {{
         s[n++] = (char)(0x80 | ((cp >> 6) & 0x3f));
         s[n++] = (char)(0x80 | (cp & 0x3f));
     }}
-    if (n) kui_input_text(ctx, (KuiStr){{(const uint8_t *)s, n}});
+    if (n) {{
+        KuiStr typed = {{(const uint8_t *)s, n}};
+        kui_input_text(ctx, typed);
+    }}
 }}
 "#
     );
@@ -919,17 +922,17 @@ static inline void kui_sdl3_key(KuiCtx *ctx, const SDL_KeyboardEvent *e) {{
     if (upper && n == 1 && code[0] >= 'a' && code[0] <= 'z') code[0] = (char)(code[0] - 32);
     KuiStr none = {{NULL, 0}};
     if (!e->down) {{
-        kui_input_release(ctx, KUI_STR(code), KUI_STR(physical), kmods);
+        kui_input_release(ctx, kui__cstr(code), kui__cstr(physical), kmods);
     }} else if (types) {{
-        kui_input_key_down(ctx, KUI_STR(code), KUI_STR(physical), kmods, none, e->repeat);
+        kui_input_key_down(ctx, kui__cstr(code), kui__cstr(physical), kmods, none, e->repeat);
     }} else {{
-        kui_input_press(ctx, KUI_STR(code), KUI_STR(physical), kmods, none, e->repeat);
+        kui_input_press(ctx, kui__cstr(code), kui__cstr(physical), kmods, none, e->repeat);
     }}
 }}
 
 /* An SDL_EVENT_TEXT_INPUT, into kui as typed text. */
 static inline void kui_sdl3_text(KuiCtx *ctx, const SDL_TextInputEvent *e) {{
-    if (e->text && e->text[0]) kui_input_text(ctx, KUI_STR(e->text));
+    if (e->text && e->text[0]) kui_input_text(ctx, kui__cstr(e->text));
 }}
 "#
     );

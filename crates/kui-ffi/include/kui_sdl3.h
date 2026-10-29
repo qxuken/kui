@@ -232,17 +232,17 @@ static inline void kui_sdl3_key(KuiCtx *ctx, const SDL_KeyboardEvent *e) {
     if (upper && n == 1 && code[0] >= 'a' && code[0] <= 'z') code[0] = (char)(code[0] - 32);
     KuiStr none = {NULL, 0};
     if (!e->down) {
-        kui_input_release(ctx, KUI_STR(code), KUI_STR(physical), kmods);
+        kui_input_release(ctx, kui__cstr(code), kui__cstr(physical), kmods);
     } else if (types) {
-        kui_input_key_down(ctx, KUI_STR(code), KUI_STR(physical), kmods, none, e->repeat);
+        kui_input_key_down(ctx, kui__cstr(code), kui__cstr(physical), kmods, none, e->repeat);
     } else {
-        kui_input_press(ctx, KUI_STR(code), KUI_STR(physical), kmods, none, e->repeat);
+        kui_input_press(ctx, kui__cstr(code), kui__cstr(physical), kmods, none, e->repeat);
     }
 }
 
 /* An SDL_EVENT_TEXT_INPUT, into kui as typed text. */
 static inline void kui_sdl3_text(KuiCtx *ctx, const SDL_TextInputEvent *e) {
-    if (e->text && e->text[0]) kui_input_text(ctx, KUI_STR(e->text));
+    if (e->text && e->text[0]) kui_input_text(ctx, kui__cstr(e->text));
 }
 
 /* -- The pointer (backlog F265) ------------------------------------------
