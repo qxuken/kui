@@ -4,6 +4,7 @@
 
 use super::*;
 use kui_core::Min;
+use kui_core::spec::Handler;
 
 // ---------------------------------------------------------------------------
 // Conversion helpers
@@ -13,7 +14,14 @@ pub(crate) fn kstr<'a>(s: KuiStr) -> std::borrow::Cow<'a, str> {
         return "".into();
     }
     let bytes = unsafe { std::slice::from_raw_parts(s.ptr, s.len) };
-    String::from_utf8_lossy(bytes)
+    // The check first: it reads ASCII a word at a time, where the lossy
+    // walk goes chunk by chunk, and every string a host passes is valid
+    // but for the odd one — a row's text cost a third of `kui_text` in
+    // the walk (backlog F281). The answer is the same either way.
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.into(),
+        Err(_) => String::from_utf8_lossy(bytes),
+    }
 }
 
 pub(crate) fn color_of(hex: u32) -> Color {
@@ -184,41 +192,60 @@ pub(crate) fn spec_of(
         2 => NodeSpec::table(),
         _ => NodeSpec::column(),
     };
-    // Straight into the spec, not through `min_width`, whose `Bound` has
-    // no word for undeclared: a 0 there is a declared 0.
-    spec.layout.min_w = min_of(s.min_w);
-    spec.layout.min_h = min_of(s.min_h);
-    spec = spec
-        .width(sizing_of(s.width))
-        .height(sizing_of(s.height))
-        .max_width(if s.max_w > 0.0 {
-            s.max_w
-        } else {
-            f32::INFINITY
-        })
-        .max_height(if s.max_h > 0.0 {
-            s.max_h
-        } else {
-            f32::INFINITY
-        })
-        .with_bounds(
+    // The fields every spec carries go straight in, not through the
+    // builders: each of those takes the 224-byte spec and hands it back,
+    // a copy out of line per call across the crate boundary, and the
+    // chain of them was a third of this function (backlog F281). Each
+    // store is what the builder it stands in for did.
+    let l = &mut spec.layout;
+    // Not through `min_width` either, whose `Bound` has no word for
+    // undeclared: a 0 there is a declared 0.
+    l.min_w = min_of(s.min_w);
+    l.min_h = min_of(s.min_h);
+    l.width = sizing_of(s.width);
+    l.height = sizing_of(s.height);
+    // `max_width`'s ceiling of a positive px is the px itself.
+    l.max_w = if s.max_w > 0.0 {
+        s.max_w
+    } else {
+        f32::INFINITY
+    };
+    l.max_h = if s.max_h > 0.0 {
+        s.max_h
+    } else {
+        f32::INFINITY
+    };
+    l.padding = Edges {
+        l: s.pad_l,
+        r: s.pad_r,
+        t: s.pad_t,
+        b: s.pad_b,
+    };
+    l.gap = s.gap;
+    l.cross_gap = s.cross_gap;
+    l.main_align = align_of(s.main_align);
+    l.cross_align = align_of(s.cross_align);
+    spec.style.bg = color_of(s.bg);
+    spec.style.radius = [s.radius; 4];
+    // Unconditional: the shadow draws only where its color is visible, and
+    // that check belongs at emission, not here — a zeroed struct is the
+    // default shadow either way.
+    spec.style.shadow = kui_core::Shadow {
+        color: color_of(s.shadow_color),
+        dx: s.shadow_x,
+        dy: s.shadow_y,
+        blur: s.shadow_blur,
+        spread: s.shadow_spread,
+    };
+    let bounds = [s.min_w_size, s.max_w_size, s.min_h_size, s.max_h_size];
+    if bounds.iter().any(|b| b.tag != 0) {
+        spec = spec.with_bounds(
             crate::size::bound_of(s.min_w_size),
             crate::size::bound_of(s.max_w_size),
             crate::size::bound_of(s.min_h_size),
             crate::size::bound_of(s.max_h_size),
-        )
-        .padding(Edges {
-            l: s.pad_l,
-            r: s.pad_r,
-            t: s.pad_t,
-            b: s.pad_b,
-        })
-        .gap(s.gap)
-        .cross_gap(s.cross_gap)
-        .main_align(align_of(s.main_align))
-        .cross_align(align_of(s.cross_align))
-        .bg(color_of(s.bg))
-        .radius(s.radius);
+        );
+    }
     if s.per_corner != 0 {
         spec = spec.radii(s.radius_tl, s.radius_tr, s.radius_br, s.radius_bl);
     }
@@ -231,17 +258,9 @@ pub(crate) fn spec_of(
     if s.wrap_children != 0 {
         spec = spec.wrap();
     }
-    // Unconditional: the shadow draws only where its color is visible, and
-    // that check belongs at emission, not here — a zeroed struct is the
-    // default shadow either way.
-    spec = spec.shadow(kui_core::Shadow {
-        color: color_of(s.shadow_color),
-        dx: s.shadow_x,
-        dy: s.shadow_y,
-        blur: s.shadow_blur,
-        spread: s.shadow_spread,
-    });
-    spec = spec.overflow_bits(s.overflow);
+    if s.overflow != 0 {
+        spec = spec.overflow_bits(s.overflow);
+    }
     if s.float_mode != 0 {
         // The struct spells every piece out, so every piece is "declared";
         // `kui_spec_float_preset` is how a caller gets a preset's numbers
@@ -259,19 +278,19 @@ pub(crate) fn spec_of(
         ));
     }
     if s.hoverable != 0 {
-        spec = spec.hoverable();
+        spec.hoverable = true;
     }
     if s.accent != 0 {
-        spec = spec.accent();
+        spec.accent = true;
     }
     if s.animate != 0 {
-        spec = spec.animate();
+        spec.animate = true;
     }
     if s.pixel_snap != 0 {
-        spec = spec.pixel_snap();
+        spec.style.pixel_snap = true;
     }
     if s.keep_focus != 0 {
-        spec = spec.keep_focus();
+        spec.events_mut().keep_focus = true;
     }
     if let Some(tag) = unsafe { s.on_focus.as_ref() } {
         spec = spec.on_focus(tag.0.clone());
@@ -351,10 +370,10 @@ pub(crate) fn spec_of(
         spec = spec.over_siblings();
     }
     if s.hover_bg != 0 {
-        spec = spec.hover_bg(color_of(s.hover_bg));
+        spec.interact_mut().hover_bg = Some(color_of(s.hover_bg));
     }
     if s.pressed_bg != 0 {
-        spec = spec.pressed_bg(color_of(s.pressed_bg));
+        spec.interact_mut().pressed_bg = Some(color_of(s.pressed_bg));
     }
     if !s.hover_group.ptr.is_null() && s.hover_group.len > 0 {
         spec = spec.hover_group(&kstr(s.hover_group));
@@ -501,19 +520,19 @@ pub(crate) fn spec_of(
     }
     if s.cursor != 0 {
         // KUI_CURSOR_* = schema index + 1, so zero can mean "derive".
-        spec = spec.cursor(kui_core::schema::cursor_idx(s.cursor as usize - 1));
+        spec.cursor = Some(kui_core::schema::cursor_idx(s.cursor as usize - 1));
     }
     if let Some(role) = role_of_code(s.role) {
-        spec = spec.role(role);
+        spec.access_mut().role = Some(role);
     }
     if !s.label.ptr.is_null() && s.label.len > 0 {
         spec = spec.label(kstr(s.label).as_ref());
     }
     if s.checked != 0 {
-        spec = spec.checked(true);
+        spec.access_mut().checked = true;
     }
     if s.selected != 0 {
-        spec = spec.selected(true);
+        spec.access_mut().selected = true;
     }
     if s.expanded != 0 {
         // KUI_EXPANDED_* = schema index + 1, so zero can mean "unset".
@@ -546,28 +565,28 @@ pub(crate) fn spec_of(
         spec = spec.caret_solid();
     }
     if s.focusable != 0 {
-        spec = spec.focusable();
+        spec.focusable = true;
     }
     if s.initial_focus != 0 {
-        spec = spec.initial_focus();
+        spec.initial_focus = true;
     }
     if s.disabled != 0 {
-        spec = spec.disabled(true);
+        spec.disabled = true;
     }
     if s.focus_bg != 0 {
-        spec = spec.focus_bg(color_of(s.focus_bg));
+        spec.interact_mut().focus_bg = Some(color_of(s.focus_bg));
     }
     if s.focus_ring != 0 {
-        spec = spec.focus_ring(color_of(s.focus_ring));
+        spec.interact_mut().focus_ring = Some(color_of(s.focus_ring));
     }
     if s.text_color != 0 {
-        spec = spec.text_color(color_of(s.text_color));
+        spec.interact_mut().text_color = Some(color_of(s.text_color));
     }
     if s.min_column > 0.0 {
         spec = spec.min_column(s.min_column);
     }
     if s.hidden != 0 {
-        spec = spec.hidden(true);
+        spec.hidden = true;
     }
     if s.essential_motion != 0 {
         spec = spec.essential_motion();
@@ -607,10 +626,10 @@ pub(crate) fn spec_of(
         spec = spec.description(d);
     }
     if let Some(v) = take_msg(on_click) {
-        spec = spec.on_click(v);
+        spec.events_mut().set(Handler::Click, v);
     }
     if let Some(v) = take_msg(on_drag) {
-        spec = spec.on_drag(v);
+        spec.events_mut().set(Handler::Drag, v);
     }
     if s.modifier_keys != 0 {
         spec = spec.modifier_keys();
@@ -619,10 +638,10 @@ pub(crate) fn spec_of(
         spec = spec.key_up();
     }
     if let Some(v) = take_msg(on_key) {
-        spec = spec.on_key(v);
+        spec.events_mut().set(Handler::Key, v);
     }
     if let Some(v) = take_msg(on_hover) {
-        spec = spec.on_hover(v);
+        spec.events_mut().set(Handler::Hover, v);
     }
     spec
 }
@@ -685,4 +704,128 @@ pub(crate) fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
 
 pub(crate) unsafe fn ctx<'a>(ptr: *mut KuiCtx) -> Option<&'a mut KuiCtx> {
     unsafe { ptr.as_mut() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn zeroed() -> KuiSpec {
+        unsafe { std::mem::zeroed() }
+    }
+
+    /// `NodeSpec` has no `PartialEq`; its `Debug` prints every field.
+    fn same(a: &NodeSpec, b: &NodeSpec) {
+        assert_eq!(format!("{a:?}"), format!("{b:?}"));
+    }
+
+    /// A zeroed struct is the column a builder starts from: the fields
+    /// `spec_of` stores without asking (backlog F281) store the defaults.
+    #[test]
+    fn a_zeroed_spec_is_a_plain_column() {
+        same(
+            &spec_of(&zeroed(), NONE, NONE, NONE, NONE),
+            &NodeSpec::column(),
+        );
+    }
+
+    /// The stores `spec_of` makes in place of builders land where the
+    /// builders put them.
+    #[test]
+    fn spec_of_stores_what_the_builders_would() {
+        let mut s = zeroed();
+        s.dir = 1;
+        s.width = KuiSizing { tag: 1, value: 2.0 };
+        s.height = KuiSizing {
+            tag: 2,
+            value: 30.0,
+        };
+        s.min_w = 10.0;
+        s.max_w = 300.0;
+        s.max_h = -1.0;
+        s.pad_l = 1.0;
+        s.pad_r = 2.0;
+        s.pad_t = 3.0;
+        s.pad_b = 4.0;
+        s.gap = 5.0;
+        s.cross_gap = 6.0;
+        s.main_align = 1;
+        s.cross_align = 2;
+        s.bg = 0x102030ff;
+        s.radius = 7.0;
+        s.shadow_color = 0x00000080;
+        s.shadow_y = 2.0;
+        s.shadow_blur = 8.0;
+        s.hoverable = 1;
+        s.accent = 1;
+        s.animate = 1;
+        s.pixel_snap = 1;
+        s.keep_focus = 1;
+        s.hover_bg = 0x203040ff;
+        s.pressed_bg = 0x304050ff;
+        s.focus_bg = 0x405060ff;
+        s.focus_ring = 0x506070ff;
+        s.text_color = 0x607080ff;
+        s.role = 1;
+        s.checked = 1;
+        s.selected = 1;
+        s.focusable = 1;
+        s.initial_focus = 1;
+        s.disabled = 1;
+        s.hidden = 1;
+        s.cursor = 2;
+        let click = Box::into_raw(Box::new(KuiValue(Value::str("click"))));
+        let drag = Box::into_raw(Box::new(KuiValue(Value::str("drag"))));
+        let key = Box::into_raw(Box::new(KuiValue(Value::str("key"))));
+        let hover = Box::into_raw(Box::new(KuiValue(Value::str("hover"))));
+        let got = spec_of(&s, click, drag, key, hover);
+
+        let mut want = NodeSpec::row()
+            .width(Sizing::Grow(2.0))
+            .height(Sizing::Fixed(30.0))
+            .max_width(300.0)
+            .padding(Edges {
+                l: 1.0,
+                r: 2.0,
+                t: 3.0,
+                b: 4.0,
+            })
+            .gap(5.0)
+            .cross_gap(6.0)
+            .main_align(align_of(1))
+            .cross_align(align_of(2))
+            .bg(Color::hex(0x102030ff))
+            .radius(7.0)
+            .shadow(kui_core::Shadow {
+                color: Color::hex(0x00000080),
+                dx: 0.0,
+                dy: 2.0,
+                blur: 8.0,
+                spread: 0.0,
+            })
+            .hoverable()
+            .accent()
+            .animate()
+            .pixel_snap()
+            .keep_focus()
+            .hover_bg(Color::hex(0x203040ff))
+            .pressed_bg(Color::hex(0x304050ff))
+            .cursor(kui_core::schema::cursor_idx(1))
+            .role(role_of_code(1).unwrap())
+            .checked(true)
+            .selected(true)
+            .focusable()
+            .initial_focus()
+            .disabled(true)
+            .focus_bg(Color::hex(0x405060ff))
+            .focus_ring(Color::hex(0x506070ff))
+            .text_color(Color::hex(0x607080ff))
+            .hidden(true)
+            .on_click("click")
+            .on_drag("drag")
+            .on_key("key")
+            .on_hover("hover");
+        want.layout.min_w = Min::px(10.0);
+        same(&got, &want);
+    }
 }
