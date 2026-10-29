@@ -8,6 +8,9 @@ members = [
     "crates/kui-trace",
     "crates/kui-wgpu",
     "crates/kui-native",
+    # The platform accessibility bridge, shared by the runner and a host's
+    # own window (backlog F269).
+    "crates/kui-access",
     "crates/kui-lua",
     "crates/kui-ffi",
     "crates/kui-node",
@@ -47,6 +50,10 @@ kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.71" }
 kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.71" }
 kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.71" }
 kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.71" }
+# `default-features = false` so the runner takes the translation alone and
+# nothing it brings its own of (`accesskit_winit`); kui-ffi asks for the
+# host's bridge with the `platform` feature.
+kui-access = { path = "crates/kui-access", version = "0.1.0-alpha.71", default-features = false }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
 kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.71", default-features = false }

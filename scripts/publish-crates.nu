@@ -23,7 +23,9 @@
 # Dependency order: each crate's verify build needs the ones before it.
 # kui-trace (ADR 0058) is before kui-core, which writes its format;
 # kui-value and kui-channel (ADR 0075) before both, which build on them.
-const CRATES = [kui-derive kui-value kui-channel kui-trace kui-core kui-wgpu kui-native kui-lua kui-ffi]
+# kui-access (backlog F269) after kui-core and before kui-native and
+# kui-ffi, which both bridge through it.
+const CRATES = [kui-derive kui-value kui-channel kui-trace kui-core kui-access kui-wgpu kui-native kui-lua kui-ffi]
 
 const INDEX = {
     crates-io: "https://index.crates.io"
