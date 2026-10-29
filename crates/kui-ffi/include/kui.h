@@ -2632,8 +2632,14 @@ typedef struct KuiDrawData {
  * instance), an opacity group's picture (none unless
  * kui_set_opacity_groups), a texture-backed image (KUI_QUAD_TEXTURE: kind 3
  * drawn with that image's texture bound in the atlas's place, a run of its
- * own) and a registered fragment (its own pipeline). The reference hosts
- * are examples/c/tools/wgpu_host.c (wgpu-native's C API, offscreen, its
+ * own) and a registered fragment (its own pipeline).
+ *
+ * On WebGPU all of the above is kui_wgpu.h, beside this header (backlog
+ * F263): header-only against webgpu.h, kui_wgpu_init for the pipeline,
+ * kui_wgpu_draw into a render pass you began, kui_wgpu_free; it leaves
+ * out the same four, drawing nothing where they are. Odin's is the
+ * kui/wgpu package. The reference hosts draw through them:
+ * examples/c/tools/wgpu_host.c (wgpu-native's C API, offscreen, its
  * pixels checked) and examples/odin/tools/wgpu_host.odin (vendor:wgpu, the
  * same offscreen, and --window on GLFW with kui over a world). */
 enum {

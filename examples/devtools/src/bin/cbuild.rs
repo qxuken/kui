@@ -15,9 +15,9 @@
 //!     surface          the header walk, every prototype called once
 //!     host_loop        kui.h's host loop with nothing from the runner
 //!     keys             the GLFW and SDL3 key tables (kui_glfw.h, kui_sdl3.h)
-//!     wgpu_host        kui's frame drawn on a wgpu-native device of its own,
-//!                      offscreen, and its pixels checked (where a
-//!                      wgpu-native is found: see `wgpu_native`)
+//!     wgpu_host        kui's frame drawn on a wgpu-native device of its own
+//!                      through kui_wgpu.h, offscreen, its pixels checked
+//!                      (where a wgpu-native is found: see `wgpu_native`)
 //!     conformance      the C adapter over the scene corpus
 //!     host             C as the host of a C *extension* (ADR 0014's C half)
 //!     panel.so/.dll    the panel, which either host loads
