@@ -9,13 +9,15 @@
 # and `publish` puts the crates on crates.io and the ten npm packages on
 # npmjs, while `packs` attaches to the tag's GitHub release:
 #
-#   kui-c-<version>-<platform>.tar.gz, kui-odin-<version>-<platform>.tar.gz
-#   (kui-c-<version>-win32-x64.zip, kui-odin-<version>-win32-x64.zip)
-#       libkui_ffi for one platform, shared and static, with and without
-#       the runner (the layout is scripts/pack-ffi.nu's)
-#   kui-c-<version>.tar.gz, kui-odin-<version>.tar.gz
-#       the same for all four platforms in one archive, for whoever
-#       vendors every target (backlog F268: until alpha.71 the only ones)
+#   kui-ffi-<version>-<platform>.tar.gz (kui-ffi-<version>-win32-x64.zip)
+#       libkui_ffi for one platform with the runner, shared and static,
+#       with the C headers and the Odin package (the layout is
+#       scripts/pack-ffi.nu's)
+#   kui-ffi-core-<version>-<platform>.tar.gz (.zip for win32-x64)
+#       the slim one: without the runner, shared only, the same headers
+#       and package (backlog F278: until alpha.72 a C and an Odin archive
+#       per platform, each with both libraries in both kinds, and the two
+#       again over all four platforms)
 #   kui-<version>-<platform>.tar.gz (kui-<version>-win32-x64.zip)
 #       the runner, one file `kui` (`kui.exe`) per platform
 #       (scripts/pack-runner.nu, ADR 0068)
@@ -226,7 +228,7 @@ jobs:
       # The C library, beside the addon and from the same target dir:
       # scripts/pack-ffi.nu builds this platform natively (through
       # cargo-zigbuild at glibc 2.28 on Linux, as the addon is) and lays
-      # it out in target/pack/kui-ffi-<version>-<platform>/.
+      # it out in target/pack/kui-pack-<version>-<platform>/.
       - name: Install nu
         shell: bash
         run: |
@@ -277,7 +279,7 @@ jobs:
       # one back, older versions' archives in it, and the uploads below
       # take every version's by their globs: alpha.71's release carried
       # the alpha.68 and alpha.70 runners beside its own, and each leg's
-      # kui-ffi artifact carried older packs to `packs`.
+      # pack artifact carried older packs to `packs`.
       - name: Clear old packs
         shell: bash
         run: rm -rf target/pack
@@ -303,8 +305,8 @@ jobs:
           compression-level: 0
 
       # Twice: with the runner, and without it (no kui_run, wgpu, winit or
-      # audio device) for a host that brings its own window - the
-      # tarballs' lib/<platform>/core/ (backlog F238).
+      # audio device) for a host that brings its own window - the full
+      # archive and the slim one (backlogs F238, F278).
       - name: Pack libkui_ffi
         shell: bash
         run: |
@@ -316,10 +318,11 @@ jobs:
 
       # The pack linked and run on the platform it is for, as a user would
       # take it out of the release: the C counter and the Odin one, each
-      # against the shared library and the static one, each --headless,
-      # and the host loop against the library without the runner. `bundle
-      # --partial` with this platform's packs alone writes this platform's
-      # two archives, as `packs` writes them for the release.
+      # against the full archive's shared library and its static one, each
+      # --headless, and the C and Odin host loops against the slim
+      # archive's. `bundle --partial` with this platform's packs alone
+      # writes this platform's two archives, as `packs` writes them for the
+      # release.
       # Not on Windows, which has no cc (pack-ffi.nu's `verify` says so).
       - name: Install Odin
         if: runner.os != 'Windows'
@@ -351,17 +354,17 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: kui-ffi-${{ matrix.prebuild }}
+          name: kui-pack-${{ matrix.prebuild }}
           path: |
-            target/pack/kui-ffi-*-${{ matrix.prebuild }}.tar.gz
-            target/pack/kui-ffi-*-${{ matrix.prebuild }}-no-runner.tar.gz
+            target/pack/kui-pack-*-${{ matrix.prebuild }}.tar.gz
+            target/pack/kui-pack-*-${{ matrix.prebuild }}-core.tar.gz
           if-no-files-found: error
           # Already a tarball; zipping it again buys nothing.
           compression-level: 0
 
-  # The four platforms' packs into the release's C and Odin archives, one
-  # of each per platform and the all-platform two, checked once more as
-  # shipped (the all-platform two and linux-x64's own, on this runner),
+  # The four platforms' packs into the release's archives, a full and a
+  # slim one per platform, checked once more as shipped (linux-x64's two,
+  # on this runner),
   # the four runners and the install scripts beside them, one SHA256SUMS
   # over everything, and all of it attached to the tag's GitHub release.
   # Not in `publish`'s way: see the top of this file.
@@ -397,7 +400,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: kui-ffi-*
+          pattern: kui-pack-*
           path: target/pack
           merge-multiple: true
 
@@ -410,15 +413,14 @@ jobs:
           set -eu
           ver=$(nu -c 'open Cargo.toml | get workspace.package.version')
           cd target/pack
-          for t in kui-ffi-*.tar.gz; do tar -xzf "$t"; done
+          for t in kui-pack-*.tar.gz; do tar -xzf "$t"; done
           cd ../..
           nu scripts/pack-ffi.nu bundle
-          for k in c odin; do
+          for k in ffi ffi-core; do
             for p in linux-x64 linux-arm64 darwin-arm64; do
               test -f "target/pack/release/kui-$k-$ver-$p.tar.gz" || { echo "missing kui-$k-$ver-$p.tar.gz" >&2; exit 1; }
             done
             test -f "target/pack/release/kui-$k-$ver-win32-x64.zip" || { echo "missing kui-$k-$ver-win32-x64.zip" >&2; exit 1; }
-            nu scripts/pack-ffi.nu verify "target/pack/release/kui-$k-$ver.tar.gz"
             nu scripts/pack-ffi.nu verify "target/pack/release/kui-$k-$ver-linux-x64.tar.gz"
           done
           ls -l target/pack/release
@@ -477,7 +479,7 @@ jobs:
             gh release upload "$tag" "${files[@]}" --clobber
           else
             gh release create "$tag" "${files[@]}" --verify-tag --prerelease --latest=false --title "$tag" \
-              --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The kui runner: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.sh | sh\` on macOS and Linux, \`irm https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.ps1 | iex\` on Windows, or the kui-${tag#v}-<platform> archives by hand (SHA256SUMS covers every asset). libkui_ffi for C is kui-c-${tag#v}-<platform>.tar.gz and for Odin kui-odin-${tag#v}-<platform>.tar.gz (.zip for win32-x64), shared and static, for linux-x64, linux-arm64, darwin-arm64 and win32-x64; kui-c-${tag#v}.tar.gz and kui-odin-${tag#v}.tar.gz hold all four; README.md in each says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui, and the runner as @qxuken/kui-cli)."
+              --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The kui runner: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.sh | sh\` on macOS and Linux, \`irm https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.ps1 | iex\` on Windows, or the kui-${tag#v}-<platform> archives by hand (SHA256SUMS covers every asset). libkui_ffi for C and Odin is kui-ffi-${tag#v}-<platform>.tar.gz (with the runner, shared and static) and kui-ffi-core-${tag#v}-<platform>.tar.gz (without it, shared only), .zip for win32-x64, for linux-x64, linux-arm64, darwin-arm64 and win32-x64; each carries the C headers and the Odin package, and its README.md says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui, and the runner as @qxuken/kui-cli)."
           fi
 
   # The ten npm packages, from the build legs' artifacts: the addon and the
@@ -628,7 +630,7 @@ jobs:
 
       # Every artifact the pattern matches lands in <path>/<artifact
       # name>/, which is exactly the prebuilds layout. The pattern is what
-      # keeps the kui-ffi-* packs and the kui-runner-* assets out.
+      # keeps the kui-pack-* packs and the kui-runner-* assets out.
       - uses: actions/download-artifact@v8
         with:
           pattern: '{linux,darwin,win32}-*'

@@ -26,9 +26,10 @@ emit_raw :: proc(m: ^C_Model, out_dir, layout_path: string) {
 // Spec, KUI_GROW -> GROW), and KuiStr is Odin's string.
 package kui_c
 
-// -- link: the release's Odin tarball carries libkui_ffi beside this file,
-// and scripts/pack-ffi.nu's bundle writes its own block here, from this
-// line to the end marker, linking those (static, or -define:KUI_SHARED=true).
+// -- link: the release's archives carry libkui_ffi in lib/<platform>/
+// beside this package, and scripts/pack-ffi.nu's bundle writes its own
+// block here, from this line to the end marker, linking that (static, or
+// -define:KUI_SHARED=true; shared alone in the kui-ffi-core archive).
 // The library to link: kui_ffi from the system search path by default,
 // which -extra-linker-flags:"-L<dir>" (/LIBPATH:<dir> on Windows) points at
 // a build. On Windows that is kui_ffi.dll's import library, kui_ffi.dll.lib:

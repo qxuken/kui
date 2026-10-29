@@ -2,8 +2,9 @@
  * its own window runs every turn - kui.h's "The host loop": build, drain,
  * draw, then input and drain again - with nothing from the runner. It
  * links against either library the release ships: the one with the runner
- * (lib/<platform>/shared, static) and the one without
- * (lib/<platform>/core/...), which pack-ffi.nu's verify links it against.
+ * (the kui-ffi archive's lib/<platform>/shared, static) and the one
+ * without (the kui-ffi-core archive's lib/<platform>/shared), which
+ * pack-ffi.nu's verify links it against.
  *
  *     cargo run -p kui-devtools --bin cbuild -- --run   builds and runs it
  */

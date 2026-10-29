@@ -8,12 +8,13 @@
 #   nu scripts/pack-ffi.nu --accept-msvc-license   Windows too (see below)
 #   nu scripts/pack-ffi.nu --no-runner             without the windowed runner (kui_run)
 #   nu scripts/pack-ffi.nu --platforms linux-x64 --zig   this Linux machine's own, at glibc 2.28
-#   nu scripts/pack-ffi.nu bundle [--partial]      the release's C and Odin archives, from the packs
-#   nu scripts/pack-ffi.nu verify <tarball>        link and run a counter against one
+#   nu scripts/pack-ffi.nu bundle [--partial]      the release's archives, from the packs
+#   nu scripts/pack-ffi.nu verify <archive>        link and run the C and Odin programs against one
 #
-# What lands in target/pack/, per platform:
+# What lands in target/pack/, per platform - the pack, a build leg's own
+# output, which `bundle` lays out into the release's archives:
 #
-#   kui-ffi-<version>-<platform>/
+#   kui-pack-<version>-<platform>/
 #     include/    HEADERS below: kui.h, kui_glfw.h and kui_sdl3.h (header-only
 #                 input helpers) and kui_wgpu.h (header-only, kui drawn on a
 #                 WebGPU device)
@@ -24,8 +25,12 @@
 #     link.txt    what a static link needs besides the archive (rustc's
 #                 native-static-libs: -lm, -framework Metal, ws2_32.lib, ...)
 #     BUILD.txt   the target, the features, the toolchain it was built with
-#   kui-ffi-<version>-<platform>.tar.gz, and SHA256SUMS over this version's
-#   (`-no-runner` after the platform for a --no-runner pack)
+#   kui-pack-<version>-<platform>.tar.gz, and SHA256SUMS over this version's
+#   (`-core` after the platform for a --no-runner pack: the library
+#   without the runner)
+#
+# Until alpha.73 the packs were kui-ffi-<version>-<platform>, the name the
+# release's archives have now.
 #
 # Where each is built: the machine's own platform natively with cargo, and
 # the rest in a Docker image this script builds once (pinned below):
@@ -47,58 +52,58 @@
 # what the release workflow does on its Linux runners, each building its
 # own platform (.github/workflows/release.yml).
 #
-# The release ships a C archive and an Odin one for each platform, and the
-# two again over all four, which `bundle` writes to target/pack/release/
-# with their SHA256SUMS:
+# The release ships two archives for each platform (backlog F278), which
+# `bundle` writes to target/pack/release/ with their SHA256SUMS, a .zip for
+# win32-x64 as the runner's is:
 #
-#   kui-c-<version>-<platform>.tar.gz     one platform's, a .zip for
-#   kui-odin-<version>-<platform>.tar.gz  win32-x64 as the runner's is
-#   kui-c-<version>.tar.gz                all four platforms, for whoever
-#   kui-odin-<version>.tar.gz             vendors every target
+#   kui-ffi-<version>-<platform>.tar.gz       the full library: the runner
+#                                             (kui_run) in, shared and static
+#   kui-ffi-core-<version>-<platform>.tar.gz  the slim one: no runner, no
+#                                             wgpu, winit or audio device,
+#                                             shared only
 #
-# One layout for both, the per-platform archive holding a single
-# lib/<platform>/, so a path the README gives is the same in either:
+# Each carries the C headers and the Odin package, over one copy of its
+# library:
 #
-#   kui-c-<version>[-<platform>]/
-#                         include/ (the HEADERS), lib/<platform>/ (and
-#                         core/ in it, the library without the runner, as
-#                         its own shared/ static/ BUILD.txt; and pkgconfig/
-#                         with kui, kui-static, kui-core, kui-core-static
-#                         .pc files, but on Windows)
-#   kui-odin-<version>[-<platform>]/
-#                         kui/, the Odin package (packages/odin/kui), with
-#                         the same libraries under kui/c/lib/<platform>/
-#     where <platform>/ is: shared/  libkui_ffi.so / .dylib, or
-#                                    kui_ffi.dll + kui_ffi.dll.lib
-#                           static/  libkui_ffi.a, or kui_ffi.lib and
-#                                    windows-targets' .libs, link.txt
-#                           BUILD.txt
-#     and in both:        README.md, LICENSE
+#   kui-ffi[-core]-<version>-<platform>/
+#     include/           the HEADERS
+#     lib/<platform>/    shared/  libkui_ffi.so / .dylib, or
+#                                 kui_ffi.dll + kui_ffi.dll.lib
+#                        static/  libkui_ffi.a, or kui_ffi.lib and
+#                                 windows-targets' .libs, link.txt
+#                                 (the full archive's alone)
+#                        BUILD.txt
+#                        pkgconfig/  kui.pc and kui-static.pc, or kui-core.pc
+#                                 (but on Windows)
+#     kui/               the Odin package (packages/odin/kui); its
+#                        kui/c/kui_c.odin links ../../lib/<platform>/, so
+#                        the package stays beside lib/
+#     README.md, LICENSE
 #
-# Until alpha.71 the release shipped the all-platform two alone: 265 MB
-# each to download and 978 MB unpacked, for a host that links one 12 MB
-# library (backlog F268). darwin-arm64's own is 55 MB, 175 MB unpacked,
-# at alpha.71; Linux's are larger (their static archives are). The
-# all-platform Odin archive is the one way to vendor the package for
-# several targets, since each archive's kui_c.odin names only the
-# platforms it carries; the C one is kept beside it for the same reader.
-#
-# The static archives stay in each platform's archive, though they are
-# most of its size: kui_c.odin links static by default, so the Odin
-# package's promise (an import, and nothing beside the program) is the
-# static library, and an archive without it would build nothing until a
-# second one were unpacked over it. A host beside another Rust library
-# links shared and carries the static one unused: 42 MB of darwin-arm64's
-# 55 at alpha.71, where it was some 200 MB of every platform's at once.
+# Until alpha.72 the release carried a C and an Odin archive per platform,
+# each with the runner's library and the core one, shared and static, and
+# the two again over all four platforms: 252 MB each of the all-platform
+# ones at alpha.71, 55 MB for darwin-arm64's own, in which the Odin
+# package carried a second copy of every library. The full archive is
+# what a program that opens its window with kui links, and the Odin
+# package's static default (an import, and nothing beside the program)
+# needs its static library; the slim one is what a host with its own
+# window and its own Rust beside kui links - shared, as such a host must
+# (below) - and at a quarter of the size. A project that vendors every
+# target unpacks the four of one kind into one directory: the layout is
+# one, each platform's files under its own lib/<platform>/, but the Odin
+# package's kui_c.odin, which each archive writes for its own platform.
 #
 # A kind to a directory, so `-L lib/<platform>/static -lkui_ffi` is the
 # static link and the same line with `shared` the dynamic one: a linker
 # handed a directory holding both takes the shared library. The Odin
-# pack's kui_c.odin names its own copy, static unless KUI_SHARED. `verify`
-# builds examples/c/apps/counter.c (from the C tarball) or
-# examples/odin/apps/counter.odin (from the Odin one) against each kind
-# for this machine's platform, as a user outside this repository would,
-# and runs it `--headless`; Linux and macOS, since Windows has no `cc`.
+# package's kui_c.odin names its own archive's library: in the full one,
+# static unless KUI_SHARED; in the slim one, shared. `verify` builds
+# examples/c/apps/counter.c and examples/odin/apps/counter.odin against
+# a full archive, each linked shared and static, and the C and Odin host
+# loops (examples/*/tools/host_loop) against a slim one, as a user outside
+# this repository would, and runs each `--headless`; Linux and macOS,
+# since Windows has no `cc`.
 #
 # Windows asks for --accept-msvc-license: the CRT and SDK xwin downloads are
 # Microsoft's, under Microsoft's license, and building the platform means
@@ -210,7 +215,7 @@ def main [
     # of one platform leaves the others' packs, and their sums, where they
     # were. An older version's tarballs stay on disk and out of the sums.
     cd $OUT
-    let sums = glob $"kui-ffi-(version)-*.tar.gz" | each {|t| sha256sum-of ($t | path basename) } | sort
+    let sums = glob $"kui-pack-(version)-*.tar.gz" | each {|t| sha256sum-of ($t | path basename) } | sort
     $sums | str join "\n" | save -f SHA256SUMS
     # A width of its own: off a terminal (a pipe, tee, a CI log) nu reads
     # the width as 1 and prints "Couldn't fit table" in place of it.
@@ -362,11 +367,11 @@ def libraries [target: string] {
     }
 }
 
-# target/pack/kui-ffi-<version>-<platform>/ and its tarball.
+# target/pack/kui-pack-<version>-<platform>[-core]/ and its tarball.
 def stage [row: record, built: record, feature_note: string, no_runner: bool] {
     # A pack without the runner is another library, so another name: it
     # used to overwrite the full pack of its platform.
-    let name = $"kui-ffi-(version)-($row.platform)(if $no_runner { '-no-runner' } else { '' })"
+    let name = $"kui-pack-(version)-($row.platform)(if $no_runner { '-core' } else { '' })"
     let dir = $OUT | path join $name
     rm -rf $dir
     mkdir ($dir | path join include) ($dir | path join lib)
@@ -401,7 +406,7 @@ def stage [row: record, built: record, feature_note: string, no_runner: bool] {
     let note = if ($bundled | is-empty) { "" } else { $" \(($bundled | str join ', ') are in lib/)" }
     $"# What linking lib/($static) needs besides the archive, as rustc's native-static-libs says it($note).\n($link)\n" | save -f ($dir | path join link.txt)
     [
-        $"kui-ffi (version), ($row.platform)"
+        $"kui-ffi (version), ($row.platform)(if $no_runner { ', without the runner' } else { '' })"
         $"target: ($row.target)"
         $"built: ($row.how)(if $row.how == 'native' { ', cargo' } else if $row.how == 'docker' { $', ($row.builder)' } else { '' })"
         $"features: ($feature_note)"
@@ -435,95 +440,66 @@ def sha256sum-of [file: string] {
     $"($sum)  ($file)"
 }
 
-# The release's C and Odin archives (see the top of this file), from the
-# per-platform packs `main` left in target/pack/ — in the release
-# workflow, the four its build legs uploaded: one of each per platform,
-# and the all-platform two once all four are packed.
+# The release's archives (see the top of this file), from the packs `main`
+# left in target/pack/ — in the release workflow, the four platforms' its
+# build legs uploaded: a full and a slim archive per platform.
 def "main bundle" [
     --partial # bundle the platforms that are packed, each on its own; without it all four must be
 ] {
     let v = version
     let all = $PLATFORMS | get platform
-    let have = $all | where {|p| $OUT | path join $"kui-ffi-($v)-($p)" | path exists }
+    let pack_of = {|p| $OUT | path join $"kui-pack-($v)-($p)" }
+    let core_of = {|p| $OUT | path join $"kui-pack-($v)-($p)-core" }
+    let have = $all | where {|p| do $pack_of $p | path exists }
+    let core = $all | where {|p| do $core_of $p | path exists }
+    if ($have | is-empty) and ($core | is-empty) {
+        error make { msg: $"no kui-pack-($v)-<platform> pack in ($OUT); run pack-ffi.nu first" }
+    }
     let missing = $all | where {|p| $p not-in $have }
-    if ($have | is-empty) {
-        error make { msg: $"no kui-ffi-($v)-<platform> pack in ($OUT); run pack-ffi.nu first" }
-    }
-    if ($missing | is-not-empty) {
+    let core_missing = $all | where {|p| $p not-in $core }
+    if ($missing | is-not-empty) or ($core_missing | is-not-empty) {
+        let what = [
+            (if ($missing | is-empty) { null } else { $"the runner's library for ($missing | str join ', ')" })
+            (if ($core_missing | is-empty) { null } else { $"the library without the runner for ($core_missing | str join ', ') \(--no-runner)" })
+        ] | compact | str join "; "
         if not $partial {
-            error make { msg: $"no pack for ($missing | str join ', ') in ($OUT); pack them, or pass --partial" }
+            error make { msg: $"no pack of ($what) in ($OUT); pack them, or pass --partial" }
         }
-        print -e $"bundling without ($missing | str join ', ')"
-    }
-    # The library without the runner, beside each platform's (backlog
-    # F238): every platform's in a release, as the runner one is.
-    let core = $have | where {|p| $OUT | path join $"kui-ffi-($v)-($p)-no-runner" | path exists }
-    let core_missing = $have | where {|p| $p not-in $core }
-    if ($core_missing | is-not-empty) {
-        if not $partial {
-            error make { msg: $"no kui-ffi-($v)-<platform>-no-runner pack for ($core_missing | str join ', ') in ($OUT); pack them with --no-runner, or pass --partial" }
-        }
-        print -e $"bundling without the no-runner library for ($core_missing | str join ', ')"
+        print -e $"bundling without ($what)"
     }
     let rel = $OUT | path join release
     rm -rf $rel
     mkdir $rel
-    # Each platform's own, then all four together: the all-platform name
-    # means all four, so a --partial run with some missing writes none.
-    let single = $have | each {|p|
-        [c odin] | each {|kind| archive-one $rel $kind $v $"kui-($kind)-($v)-($p)" [$p] ($core | where {|c| $c == $p }) }
-    } | flatten
-    let whole = if ($missing | is-empty) {
-        [c odin] | each {|kind| archive-one $rel $kind $v $"kui-($kind)-($v)" $have $core }
-    } else {
-        print -e "no all-platform archives: they want all four platforms packed"
-        []
-    }
-    let archives = $single ++ $whole
+    let archives = ($have | each {|p| archive-one $rel full $v $p (do $pack_of $p) }) ++ ($core | each {|p| archive-one $rel core $v $p (do $core_of $p) })
     cd $rel
     $archives | each {|t| sha256sum-of $t } | str join "\n" | save -f SHA256SUMS
     print ($archives | wrap archive | insert size {|r| ls $r.archive | get 0.size } | table --width 100)
     print $"in ($rel)"
 }
 
-# The archive of one kind (c or odin) over `platforms`, named `name`, in
-# `rel`: laid out in a directory of that name, then a .tar.gz of it, or a
-# .zip for an archive of win32-x64 alone, as the runner's is
-# (scripts/pack-runner.nu's asset-name). Its file name.
-def archive-one [rel: string, kind: string, v: string, name: string, platforms: list<string>, core: list<string>] {
+# One platform's archive of one kind - `full` (the runner's library, shared
+# and static) or `core` (the library without it, shared alone) - from
+# `pack`, in `rel`: laid out in a directory of its name, then a .tar.gz of
+# it, or a .zip for win32-x64, as the runner's is (scripts/pack-runner.nu's
+# asset-name). Its file name.
+def archive-one [rel: string, kind: string, v: string, platform: string, pack: string] {
+    let name = if $kind == "core" { $"kui-ffi-core-($v)-($platform)" } else { $"kui-ffi-($v)-($platform)" }
     let dir = $rel | path join $name
-    let pack_of = {|p| $OUT | path join $"kui-ffi-($v)-($p)" }
-    let core_of = {|p| $OUT | path join $"kui-ffi-($v)-($p)-no-runner" }
-    if $kind == "c" {
-        for p in $platforms {
-            lay-out-libs (do $pack_of $p) ($dir | path join lib $p)
-        }
-        for p in $core {
-            lay-out-libs (do $core_of $p) ($dir | path join lib $p core)
-        }
-        for p in ($platforms | where {|p| not ($p | str starts-with "win32") }) {
-            write-pkg-config ($dir | path join lib $p) $v ($p in $core)
-        }
-        # The pack's include/ whole: every header it carries (HEADERS).
-        cp -r (do $pack_of ($platforms | first) | path join include) $dir
-    } else {
-        # The libraries inside the package, beside the file that links
-        # them, as vendor:raylib carries its own: `import "kui"` is the
-        # whole of using the pack, and the package travels with them.
-        mkdir $dir
-        cp -r ($ROOT | path join packages odin kui) $dir
-        for p in $platforms {
-            lay-out-libs (do $pack_of $p) ($dir | path join kui c lib $p)
-        }
-        for p in $core {
-            lay-out-libs (do $core_of $p) ($dir | path join kui c lib $p core)
-        }
-        link-the-pack ($dir | path join kui c) $platforms $core
+    let lib = $dir | path join lib $platform
+    lay-out-libs $pack $lib ($kind == "core")
+    if not ($platform | str starts-with "win32") {
+        write-pkg-config $lib $v $kind
     }
+    # The pack's include/ whole: every header it carries (HEADERS).
+    cp -r ($pack | path join include) $dir
+    # The Odin package beside lib/, its link block naming the libraries
+    # there: one copy of each, the C host's and the Odin package's.
+    cp -r ($ROOT | path join packages odin kui) $dir
+    link-the-pack ($dir | path join kui c) $platform $kind
     cp ($ROOT | path join LICENSE) $dir
-    readme $kind $v $platforms | save -f ($dir | path join README.md)
+    readme $kind $v $platform | save -f ($dir | path join README.md)
     cd $rel
-    let file = if $platforms == [win32-x64] {
+    let file = if ($platform | str starts-with "win32") {
         zip-dir $name
         $"($name).zip"
     } else {
@@ -535,18 +511,23 @@ def archive-one [rel: string, kind: string, v: string, name: string, platforms: 
 }
 
 # One platform's pack, split by kind: shared/ the library a program loads
-# (with its import library on Windows), static/ the archive with
-# link.txt and what link.txt names that no system has.
-def lay-out-libs [pack: string, dst: string] {
+# (with its import library on Windows), static/ the archive with link.txt
+# and what link.txt names that no system has - left out with
+# `shared_only`, the slim archive's.
+def lay-out-libs [pack: string, dst: string, shared_only: bool] {
     let shared = $dst | path join shared
     let static = $dst | path join static
-    mkdir $shared $static
+    mkdir $shared
+    if not $shared_only { mkdir $static }
     for f in (ls ($pack | path join lib) | get name) {
         let base = $f | path basename
-        let to = if $base in [libkui_ffi.so libkui_ffi.dylib kui_ffi.dll kui_ffi.dll.lib] { $shared } else { $static }
-        cp $f $to
+        if $base in [libkui_ffi.so libkui_ffi.dylib kui_ffi.dll kui_ffi.dll.lib] {
+            cp $f $shared
+        } else if not $shared_only {
+            cp $f $static
+        }
     }
-    cp ($pack | path join link.txt) $static
+    if not $shared_only { cp ($pack | path join link.txt) $static }
     cp ($pack | path join BUILD.txt) $dst
 }
 
@@ -584,49 +565,50 @@ def odin-static-link [static_dir: string, lib: string, windows: bool] {
     { imports: ([$archive] | append ($imports | uniq)), flags: ($flags | uniq) }
 }
 
-# lib/<platform>/pkgconfig/ in the C pack: kui.pc and kui-static.pc, and
-# kui-core.pc and kui-core-static.pc for the library without the runner,
-# each finding its library from where the file is (${pcfiledir}), so the
-# tarball works wherever it is unpacked. A shared one carries its rpath; a
-# static one the platform's link.txt. Not for Windows, whose MSVC reads no
-# pkg-config.
-def write-pkg-config [lib_dir: string, v: string, core: bool] {
+# lib/<platform>/pkgconfig/: kui.pc and kui-static.pc in the full archive,
+# kui-core.pc in the slim one, each finding its library from where the
+# file is (${pcfiledir}), so the archive works wherever it is unpacked. A
+# shared one carries its rpath; a static one the platform's link.txt. Not
+# for Windows, whose MSVC reads no pkg-config.
+def write-pkg-config [lib_dir: string, v: string, kind: string] {
     let pc = $lib_dir | path join pkgconfig
     mkdir $pc
-    let variants = [
-        [name sub what];
-        [kui "" "kui's C library, with the windowed runner"]
-    ] | append (if $core { [[name sub what]; [kui-core "core/" "kui's C library without the runner (no kui_run, wgpu, winit or audio device)"]] } else { [] })
-    for var in $variants {
-        let link = open --raw ($lib_dir | path join $"($var.sub)static" link.txt) | lines | where {|l| not ($l | str starts-with "#") and ($l | str trim) != "" } | get -o 0 | default ""
-        for kind in [shared static] {
-            let name = if $kind == "shared" { $var.name } else { $"($var.name)-static" }
-            let libs = if $kind == "shared" {
-                "-L${libdir} -lkui_ffi -Wl,-rpath,${libdir}"
-            } else {
-                $"-L${libdir} -lkui_ffi ($link)" | str trim
-            }
-            $"prefix=${pcfiledir}/../../..
+    let rows = if $kind == "core" {
+        [[name dir what]; [kui-core shared "kui's C library without the runner (no kui_run, wgpu, winit or audio device), linked shared"]]
+    } else {
+        [
+            [name dir what];
+            [kui shared "kui's C library, with the windowed runner, linked shared"]
+            [kui-static static "kui's C library, with the windowed runner, linked static"]
+        ]
+    }
+    for row in $rows {
+        let libs = if $row.dir == "shared" {
+            "-L${libdir} -lkui_ffi -Wl,-rpath,${libdir}"
+        } else {
+            let link = open --raw ($lib_dir | path join static link.txt) | lines | where {|l| not ($l | str starts-with "#") and ($l | str trim) != "" } | get -o 0 | default ""
+            $"-L${libdir} -lkui_ffi ($link)" | str trim
+        }
+        $"prefix=${pcfiledir}/../../..
 includedir=${prefix}/include
-libdir=${pcfiledir}/../($var.sub)($kind)
+libdir=${pcfiledir}/../($row.dir)
 
-Name: ($name)
-Description: ($var.what), linked ($kind)
+Name: ($row.name)
+Description: ($row.what)
 Version: ($v)
 Cflags: -I${includedir}
 Libs: ($libs)
-" | save -f ($pc | path join $"($name).pc")
-        }
+" | save -f ($pc | path join $"($row.name).pc")
     }
 }
 
-# The Odin pack's link block: kui_c.odin's own, between its markers,
-# replaced by one that names the libraries under kui/c/lib/ for each
-# platform packed, with what each platform's link.txt says a static link
-# needs. Static unless -define:KUI_SHARED=true; the library without the
-# runner (lib/<platform>/core/) with -define:KUI_CORE=true, for the
-# platforms in `core`.
-def link-the-pack [c_dir: string, platforms: list<string>, core: list<string>] {
+# The Odin package's link block: kui_c.odin's own, between its markers,
+# replaced by one that names its archive's library, under ../../lib/
+# (lib/<platform>/ beside the package), with what the platform's link.txt
+# says a static link needs. The full archive links static unless
+# -define:KUI_SHARED=true; the slim one links its shared library whatever
+# is asked, since it carries no other.
+def link-the-pack [c_dir: string, platform: string, kind: string] {
     let file = $c_dir | path join kui_c.odin
     let text = open --raw $file
     let start = "// -- link:"
@@ -643,73 +625,59 @@ def link-the-pack [c_dir: string, platforms: list<string>, core: list<string>] {
         "win32-x64": "ODIN_OS == .Windows && ODIN_ARCH == .amd64"
     }
     let quoted = {|xs: list<string>| $xs | each {|x| $"\t\t\t\"($x)\"," } | str join "\n" }
-    let branches = $platforms | each {|p|
-        let windows = $p | str starts-with "win32"
-        let shared_of = {|lib: string| if $windows { [$"($lib)/shared/kui_ffi.dll.lib"] } else if ($p | str starts-with "darwin") { [$"($lib)/shared/libkui_ffi.dylib"] } else { [$"($lib)/shared/libkui_ffi.so"] } }
-        let attr_of = {|flags: list<string>| if $windows { $"\t\t@\(extra_linker_flags=\"($flags | str join ' ')\")\n" } else { "" } }
-        let lib = $"lib/($p)"
-        let full = odin-static-link ($c_dir | path join lib $p static) $lib $windows
-        # The core library's branches, or an assert that names the
-        # platform this pack has none for.
-        let core_branches = if $p in $core {
-            let clib = $"lib/($p)/core"
-            let cs = odin-static-link ($c_dir | path join lib $p core static) $clib $windows
-            $"\t} else when KUI_CORE && KUI_SHARED {
-\t\tforeign import lib {
-(do $quoted (do $shared_of $clib))
-\t\t}
-\t} else when KUI_CORE {
-(do $attr_of $cs.flags)\t\tforeign import lib {
-(do $quoted $cs.imports)
-\t\t}
+    let windows = $platform | str starts-with "win32"
+    let lib = $"../../lib/($platform)"
+    let shared = if $windows { [$"($lib)/shared/kui_ffi.dll.lib"] } else if ($platform | str starts-with "darwin") { [$"($lib)/shared/libkui_ffi.dylib"] } else { [$"($lib)/shared/libkui_ffi.so"] }
+    let shared_import = $"\t\tforeign import lib {\n(do $quoted $shared)\n\t\t}\n"
+    # A plugin reaches a branch on Windows only, where it imports from the
+    # host's kui_ffi.dll as a program does: the shared library, never a
+    # private static copy of kui.
+    let branch = if $kind == "core" {
+        $"} else when ($when_of | get $platform) {
+\t// The library without the runner, shared: the one this archive holds.
+\twhen true {
+($shared_import)\t}
 "
-        } else {
-            $"\t} else when KUI_CORE {
-\t\t#assert\(!KUI_CORE, \"this pack has no library without the runner for ($p)\")
-\t\tforeign import lib {
-(do $quoted (do $shared_of $lib))
-\t\t}
-"
-        }
-        # A plugin reaches a branch on Windows only, where it imports from
-        # the host's kui_ffi.dll as a program does: the shared library,
-        # never a private static copy of kui.
-        $"} else when ($when_of | get $p) {
-\twhen KUI_PLUGIN {
-\t\tforeign import lib {
-(do $quoted (do $shared_of $lib))
-\t\t}
-($core_branches)\t} else when KUI_SHARED {
-\t\tforeign import lib {
-(do $quoted (do $shared_of $lib))
-\t\t}
-\t} else {
-(do $attr_of $full.flags)\t\tforeign import lib {
+    } else {
+        let full = odin-static-link ($c_dir | path join $lib static) $lib $windows
+        let attr = if $windows { $"\t\t@\(extra_linker_flags=\"($full.flags | str join ' ')\")\n" } else { "" }
+        $"} else when ($when_of | get $platform) {
+\twhen KUI_CORE {
+\t\t#assert\(!KUI_CORE, \"the kui-ffi archive holds the runner's library; the library without the runner is the kui-ffi-core archive's\")
+($shared_import)\t} else when KUI_PLUGIN || KUI_SHARED {
+($shared_import)\t} else {
+($attr)\t\tforeign import lib {
 (do $quoted $full.imports)
 \t\t}
 \t}
 "
     }
-    let block = $"// -- link: this pack's own, written by scripts/pack-ffi.nu's bundle. It
-// links libkui_ffi from lib/<platform>/ beside this file: the static
-// library by default, so a program needs nothing beside it, or with
-// -define:KUI_SHARED=true the shared one, which the program then finds
-// at run time \(an rpath, or the library beside it); a Windows plugin
-// \(-define:KUI_PLUGIN=true) always links the shared one. With
-// -define:KUI_CORE=true either kind comes from lib/<platform>/core/, the
-// library without the runner: no kui_run, no wgpu, no winit, no audio
-// device, for a host that brings its own window. A platform the pack
-// does not carry falls back to KUI_LIB, as the repository's file does.
-KUI_SHARED :: #config\(KUI_SHARED, false)
-KUI_CORE :: #config\(KUI_CORE, false)
-KUI_LIB :: #config\(KUI_LIB, "system:kui_ffi.dll.lib" when ODIN_OS == .Windows else "system:kui_ffi")
+    let what = if $kind == "core" {
+        "the library without the runner (no kui_run, no wgpu, no winit, no
+// audio device), shared - the program finds it at run time, through an
+// rpath or beside it"
+    } else {
+        "the library with the runner, static by default, so a program needs
+// nothing beside it, or with -define:KUI_SHARED=true shared, which the
+// program then finds at run time (an rpath, or the library beside it); a
+// Windows plugin (-define:KUI_PLUGIN=true) always links the shared one"
+    }
+    let block = $"// -- link: this archive's own, written by scripts/pack-ffi.nu's bundle
+// \(backlog F278). It links libkui_ffi from lib/($platform)/ beside the
+// package \(../../lib from this file, so kui/ stays beside lib/):
+// ($what).
+// A platform the archive does not carry falls back to KUI_LIB, as the
+// repository's file does.
+KUI_SHARED :: #config\(KUI_SHARED, ($kind == 'core'))
+KUI_CORE :: #config\(KUI_CORE, ($kind == 'core'))
+KUI_LIB :: #config\(KUI_LIB, \"system:kui_ffi.dll.lib\" when ODIN_OS == .Windows else \"system:kui_ffi\")
 KUI_PLUGIN :: #config\(KUI_PLUGIN, false)
 
 when KUI_PLUGIN && ODIN_OS == .Darwin {
-\tforeign import lib "system:System"
+\tforeign import lib \"system:System\"
 } else when KUI_PLUGIN && ODIN_OS != .Windows {
-\tforeign import lib "system:c"
-($branches | str join '')} else {
+\tforeign import lib \"system:c\"
+($branch)} else {
 \tforeign import lib { KUI_LIB }
 }
 "
@@ -717,195 +685,194 @@ when KUI_PLUGIN && ODIN_OS == .Darwin {
     $out | save -f --raw $file
 }
 
-# README.md of a release archive: what is in it and the link lines, for
-# the platforms it holds; in one platform's, its paths spelled out.
-def readme [kind: string, v: string, platforms: list<string>] {
-    let text = readme-text $kind $v $platforms
-    # Every path to the libraries is `lib/<platform>`; the archives' own
-    # names keep their `<platform>`.
-    if ($platforms | length) == 1 { $text | str replace -a "lib/<platform>" $"lib/($platforms | first)" } else { $text }
+# README.md of a release archive: what is in it, and the link lines for C
+# and for Odin, its platform's paths spelled out.
+def readme [kind: string, v: string, platform: string] {
+    readme-text $kind $v $platform | str replace -a "lib/<platform>" $"lib/($platform)"
 }
 
-def readme-text [kind: string, v: string, platforms: list<string>] {
-    let for_which = if ($platforms | length) == 1 { $"for ($platforms | first)" } else { "for each platform" }
-    let what = if $kind == "c" {
-        $"the C library: `include/kui.h`, and `libkui_ffi` ($for_which); `include/kui_glfw.h` and `include/kui_sdl3.h` forward GLFW's or SDL3's keys and pointer, and `include/kui_wgpu.h` draws kui's frame on a WebGPU device of your own, all header-only"
+def readme-text [kind: string, v: string, platform: string] {
+    let core = $kind == "core"
+    let name = if $core { $"kui-ffi-core-($v)-($platform)" } else { $"kui-ffi-($v)-($platform)" }
+    let library = if $core {
+        "built without the runner: no `kui_run`, no wgpu, no winit, no audio device, for a host that brings its own window and draws `kui_draw_data` itself (`include/kui_wgpu.h` draws it on a WebGPU device of its own). Shared only: it is the library to link beside another Rust library (below), and a quarter of the full archive's size"
     } else {
-        $"the Odin binding: the `kui` package, and `libkui_ffi` ($for_which) it links; `kui/glfw` and `kui/sdl3` forward vendor:glfw's or vendor:sdl3's keys and pointer, and `kui/wgpu` draws kui's frame on a vendor:wgpu device of your own"
+        "with default features, so `kui_run` (the windowed runner) is in, shared and static"
     }
-    let use = if $kind == "c" {
-        $"With pkg-config \(not on Windows), point it at the platform's files and
-take what it says:
-
-```sh
+    let c_use = if $core {
+        "```sh
 export PKG_CONFIG_PATH=$PWD/lib/<platform>/pkgconfig
-cc -std=c11 app.c $\(pkg-config --cflags --libs kui) -o app          # shared, with its rpath
-cc -std=c11 app.c $\(pkg-config --cflags --libs kui-static) -o app   # static
-# kui-core and kui-core-static: the library without the runner
-```
-
-By hand:
-
-```sh
-# dynamic: found at run time through the rpath \(on Windows, kui_ffi.dll beside the program)
+cc -std=c11 app.c $(pkg-config --cflags --libs kui-core) -o app   # with its rpath
+# by hand
+cc -std=c11 -I include app.c -L lib/<platform>/shared -lkui_ffi -Wl,-rpath,'$ORIGIN/lib/<platform>/shared' -o app
+```"
+    } else {
+        "```sh
+export PKG_CONFIG_PATH=$PWD/lib/<platform>/pkgconfig
+cc -std=c11 app.c $(pkg-config --cflags --libs kui) -o app          # shared, with its rpath
+cc -std=c11 app.c $(pkg-config --cflags --libs kui-static) -o app   # static
+# by hand: the dynamic library, found at run time through the rpath
 cc -std=c11 -I include app.c -L lib/<platform>/shared -lkui_ffi -Wl,-rpath,'$ORIGIN/lib/<platform>/shared' -o app
 # static: link.txt's last line is what the archive needs besides itself
-cc -std=c11 -I include app.c -L lib/<platform>/static -lkui_ffi $\(tail -1 lib/<platform>/static/link.txt) -o app
-```
-
-On macOS the rpath is `@executable_path/...` rather than `$ORIGIN/...`. With
-MSVC: `cl /std:c11 /I include app.c /link /LIBPATH:lib\\win32-x64\\shared kui_ffi.dll.lib`,
-and for the static one `kui_ffi.lib`, link.txt's last line and `/NODEFAULTLIB:libcmt`
-from `lib\\win32-x64\\static`."
+cc -std=c11 -I include app.c -L lib/<platform>/static -lkui_ffi $(tail -1 lib/<platform>/static/link.txt) -o app
+```"
+    }
+    let msvc = if $core {
+        "With MSVC: `cl /std:c11 /I include app.c /link /LIBPATH:lib\\win32-x64\\shared kui_ffi.dll.lib`, with `kui_ffi.dll` beside the program."
     } else {
-        $"Copy `kui/` into your project, or point a collection at this directory,
-and import it — `import kui \"kui:kui\"` with `-collection:kui=<this
-directory>`, or by a path relative to your source; Odin takes no absolute
-import path. That is all: `kui/c/kui_c.odin` links libkui_ffi from
-`kui/c/lib/<platform>/` itself, as vendor:raylib links its own, the
-static library by default, so the program needs nothing beside it:
+        "With MSVC: `cl /std:c11 /I include app.c /link /LIBPATH:lib\\win32-x64\\shared kui_ffi.dll.lib`, with `kui_ffi.dll` beside the program; for the static one `kui_ffi.lib`, link.txt's last line and `/NODEFAULTLIB:libcmt` from `lib\\win32-x64\\static`."
+    }
+    let odin_use = if $core {
+        "`kui/c/kui_c.odin` links the shared library from `lib/<platform>/shared/`,
+which the program finds at run time:
+
+```sh
+odin build app -collection:kui=<this directory> \\
+  -extra-linker-flags:\"-Wl,-rpath,<absolute>/lib/<platform>/shared\"
+# on Windows, copy lib/win32-x64/shared/kui_ffi.dll beside the program
+```"
+    } else {
+        "`kui/c/kui_c.odin` links libkui_ffi from `lib/<platform>/` itself, as
+vendor:raylib links its own, the static library by default, so the
+program needs nothing beside it:
 
 ```sh
 odin build app -collection:kui=<this directory>
-# the shared library instead, found at run time through an rpath \(on
-# Windows, copy kui/c/lib/win32-x64/shared/kui_ffi.dll beside the program)
+# the shared library instead, found at run time through an rpath (on
+# Windows, copy lib/win32-x64/shared/kui_ffi.dll beside the program)
 odin build app -collection:kui=<this directory> -define:KUI_SHARED=true \\
-  -extra-linker-flags:\"-Wl,-rpath,<absolute>/kui/c/lib/<platform>/shared\"
-```
-
-`-define:KUI_LIB=<name>` links a library of your own instead, on a
-platform the pack does not carry. The package's own documentation is
-packages/odin/README.md in the repository."
+  -extra-linker-flags:\"-Wl,-rpath,<absolute>/lib/<platform>/shared\"
+```"
     }
-    $"# kui ($kind) ($v)
+    let other = if $core {
+        $"The full library - the runner in, shared and static - is
+`kui-ffi-($v)-<platform>`."
+    } else {
+        $"The library without the runner - no kui_run, wgpu, winit or audio
+device, shared only, for a host that brings its own window - is
+`kui-ffi-core-($v)-<platform>`, a quarter of this archive's size."
+    }
+    $"# ($name)
 
-This is ($what), as kui's release builds it:
-default features, so `kui_run` \(the windowed runner) is in. Each
-platform's `BUILD.txt` names the target, the toolchain and, on Linux, the
-glibc it needs \(2.28 or newer).
+kui's library for C and Odin on ($platform): `libkui_ffi`, ($library).
+`BUILD.txt` names the target, the toolchain and, on Linux, the glibc it
+needs \(2.28 or newer). `include/` holds the C headers: `kui.h`, and,
+header-only, `kui_glfw.h` and `kui_sdl3.h` \(GLFW's or SDL3's keys and
+pointer) and `kui_wgpu.h` \(kui's frame on a WebGPU device of your own).
+`kui/` is the Odin package, with `kui/glfw`, `kui/sdl3` and `kui/wgpu`
+the same three.
 
-Platforms: ($platforms | str join ', ').
+($other)
 
-Each release carries this archive for each platform on its own,
-`kui-($kind)-($v)-<platform>.tar.gz` \(`.zip` for win32-x64), and all four in
-`kui-($kind)-($v).tar.gz`, for a project that vendors every target. The
-layout is one: each platform's files are under its own `lib/` directory
-in either.
+## C
 
-($use)
+($c_use)
 
-## Without the runner
+On macOS the rpath is `@executable_path/...` rather than `$ORIGIN/...`.
+($msvc)
 
-`lib/<platform>/core/` \(`kui/c/lib/<platform>/core/` in the Odin pack)
-holds the same library built without the runner: no `kui_run`, no wgpu,
-no winit, no audio device - under half the size, for a host that brings
-its own window and draws `kui_draw_data` itself. Its `shared/` and
-`static/` link as the others do, with `core/` in the path; in Odin,
-`-define:KUI_CORE=true` picks it. Everything of kui.h but the runner's
-functions is in it.
+## Odin
+
+Point a collection at this directory and import the package - `import kui
+\"kui:kui\"` with `-collection:kui=<this directory>` - or copy `kui/` and
+`lib/` into your project side by side: the package links from `../../lib`
+beside it, so the two travel together. ($odin_use)
+
+`-define:KUI_LIB=<name>` links a library of your own instead. The
+package's own documentation is packages/odin/README.md in the repository.
 
 ## Beside another Rust library
 
 Every Rust static library carries its own copy of Rust's standard
-library, and this one also carries wgpu and winit for `kui_run`. Linked
-into one program with another \(wgpu-native's `libwgpu_native.a`, say), the
-linker stops at the symbols both define: `rust_eh_personality`, and on
-macOS `RawWindowMetalLayer`'s classes. Link the shared library instead;
-each keeps its copies to itself. The library without the runner leaves
-wgpu and winit out, and with them `RawWindowMetalLayer`, but not the
-standard library, so beside another Rust archive the shared kind is still
-the one.
+library, and the full one also carries wgpu and winit for `kui_run`.
+Linked into one program with another \(wgpu-native's `libwgpu_native.a`,
+say), the linker stops at the symbols both define: `rust_eh_personality`,
+and on macOS `RawWindowMetalLayer`'s classes. Link the shared library
+instead; each keeps its copies to itself.
 
 kui.h's `KUI_ABI_VERSION` is what this library answers from
 `kui_abi_version\(\)`; a program built against another header refuses it.
 "
 }
 
-# Links the counter against a release tarball for one platform, the
-# shared kind and then the static one, and the host loop against the
-# library without the runner, both kinds, and runs each `--headless`: the
-# check that what the release ships links and works outside this
-# repository. C needs `cc` (or $env.CC); Odin needs odin on PATH or ODIN.
+# Links the C and Odin programs against one platform's release archive
+# and runs each `--headless`: the counter, shared and static, against a
+# full archive, and the host loop - which calls nothing of the runner -
+# against a slim one: the check that what the release ships links and
+# works outside this repository. C needs `cc` (or $env.CC); Odin needs odin
+# on PATH or ODIN, and is left out with --no-odin.
 def "main verify" [
-    tarball: string # a kui-c-<version>[-<platform>].tar.gz or kui-odin-<version>[-<platform>].tar.gz
+    archive: string # a kui-ffi[-core]-<version>-<platform>.tar.gz
     --platform: string # whose libraries to link; default: this machine's
+    --no-odin # the C programs alone
 ] {
     let p = $platform | default (host-platform)
-    if ($p | str starts-with "win32") or ($tarball | str ends-with ".zip") {
+    if ($p | str starts-with "win32") or ($archive | str ends-with ".zip") {
         error make { msg: "verify links with cc or odin's own linker line, on Linux and macOS; Windows is not checked" }
     }
-    let tarball = $tarball | path expand
-    let name = $tarball | path basename | str replace ".tar.gz" ""
-    let kind = if ($name | str starts-with "kui-c-") { "c" } else if ($name | str starts-with "kui-odin-") { "odin" } else {
-        error make { msg: $"($name) is neither kui-c-<version> nor kui-odin-<version>" }
+    let archive = $archive | path expand
+    let name = $archive | path basename | str replace ".tar.gz" ""
+    if not ($name | str starts-with "kui-ffi-") {
+        error make { msg: $"($name) is not a kui-ffi[-core]-<version>-<platform> archive" }
     }
-    let work = $OUT | path join $"verify-($kind)-($p)"
+    let core = $name | str starts-with "kui-ffi-core-"
+    let work = $OUT | path join $"verify-($name)"
     rm -rf $work
     mkdir $work
-    tar -xzf $tarball -C $work
+    tar -xzf $archive -C $work
     let root = $work | path join $name
-    # The Odin pack carries its libraries inside the package.
-    let lib = if $kind == "odin" { $root | path join kui c lib $p } else { $root | path join lib $p }
+    let lib = $root | path join lib $p
     if not ($lib | path exists) {
         error make { msg: $"($name) has no libraries for ($p)" }
     }
-    # The counter against the runner's library, and the host loop - which
-    # calls nothing of the runner - against the library without it
-    # (lib/<platform>/core/, backlog F238).
-    let kinds = [
-        {how: shared, dir: ($lib | path join shared), core: false, prog: counter, sub: apps}
-        {how: static, dir: ($lib | path join static), core: false, prog: counter, sub: apps}
-        {how: "core shared", dir: ($lib | path join core shared), core: true, prog: host_loop, sub: tools}
-        {how: "core static", dir: ($lib | path join core static), core: true, prog: host_loop, sub: tools}
-    ]
-    if not ($lib | path join core | path exists) {
-        error make { msg: $"($name) has no library without the runner for ($p) \(lib/($p)/core)" }
-    }
-    let results = $kinds | each {|k|
-        let exe = $work | path join $"($k.prog)-($k.how | str replace ' ' '-')"
-        let shared = $k.how | str ends-with "shared"
-        if $kind == "c" {
-            mkdir ($work | path join src $k.sub)
+    let links = if $core { [shared] } else { [shared static] }
+    let langs = if $no_odin { [c] } else { [c odin] }
+    let prog = if $core { {name: host_loop, sub: tools} } else { {name: counter, sub: apps} }
+    let results = $langs | each {|lang| $links | each {|how|
+        let exe = $work | path join $"($lang)-($prog.name)-($how)"
+        let dir = $lib | path join $how
+        if $lang == "c" {
+            mkdir ($work | path join src $prog.sub)
             cp ($ROOT | path join examples c common.h) ($work | path join src)
-            cp ($ROOT | path join examples c $k.sub $"($k.prog).c") ($work | path join src $k.sub)
+            cp ($ROOT | path join examples c $prog.sub $"($prog.name).c") ($work | path join src $prog.sub)
             let cc = $env.CC? | default "cc"
-            let src = $work | path join src $k.sub $"($k.prog).c"
+            let src = $work | path join src $prog.sub $"($prog.name).c"
             if (which pkg-config | is-not-empty) {
-                # Through the pack's own .pc files, as its README says.
-                let pc = $"(if $k.core { 'kui-core' } else { 'kui' })(if $shared { '' } else { '-static' })"
+                # Through the archive's own .pc files, as its README says.
+                let pc = if $core { "kui-core" } else if $how == "static" { "kui-static" } else { "kui" }
                 let flags = with-env { PKG_CONFIG_PATH: ($lib | path join pkgconfig) } {
                     run-or-fail $"pkg-config ($pc)" pkg-config --cflags --libs $pc
                     ^pkg-config --cflags --libs $pc | str trim | split row " " | where {|a| $a != "" }
                 }
-                run-or-fail $"cc, ($k.how), pkg-config ($pc)" $cc -std=c11 $src ...$flags -o $exe
+                run-or-fail $"cc, ($how), pkg-config ($pc)" $cc -std=c11 $src ...$flags -o $exe
             } else {
-                let extra = if $shared { [$"-Wl,-rpath,($k.dir)"] } else {
-                    open --raw ($k.dir | path join link.txt) | lines | where {|l| not ($l | str starts-with "#") and ($l | str trim) != "" } | get -o 0 | default "" | split row " " | where {|a| $a != "" }
+                let extra = if $how == "shared" { [$"-Wl,-rpath,($dir)"] } else {
+                    open --raw ($dir | path join link.txt) | lines | where {|l| not ($l | str starts-with "#") and ($l | str trim) != "" } | get -o 0 | default "" | split row " " | where {|a| $a != "" }
                 }
-                run-or-fail $"cc, ($k.how)" $cc -std=c11 -I ($root | path join include) $src -L $k.dir -lkui_ffi ...$extra -o $exe
+                run-or-fail $"cc, ($how)" $cc -std=c11 -I ($root | path join include) $src -L $dir -lkui_ffi ...$extra -o $exe
             }
         } else {
-            let src = $work | path join src $"($k.prog).odin"
+            let src = $work | path join src $"($prog.name).odin"
             mkdir ($work | path join src)
-            open --raw ($ROOT | path join examples odin $k.sub $"($k.prog).odin")
+            open --raw ($ROOT | path join examples odin $prog.sub $"($prog.name).odin")
                 | str replace 'import kui "../../../packages/odin/kui"' 'import kui "kuipack:kui"'
                 | save -f --raw $src
             let odin = $env.ODIN? | default "odin"
-            # Nothing but the import: the pack's kui_c.odin names its own
-            # libraries, as vendor:raylib does. The shared build is told to
-            # be one, and where to find the library when it runs. Imported
-            # as a collection, as the tarball's README says: Odin takes no
+            # Nothing but the import: the package's kui_c.odin names its
+            # archive's library, as vendor:raylib does. A shared build is
+            # told where to find the library when it runs. Imported as a
+            # collection, as the archive's README says: Odin takes no
             # absolute import path.
-            let flags = (if $shared { ["-define:KUI_SHARED=true" $"-extra-linker-flags:-Wl,-rpath,($k.dir)"] } else { [] }) ++ (if $k.core { ["-define:KUI_CORE=true"] } else { [] })
-            run-or-fail $"odin, ($k.how)" $odin build $src -file $"-collection:kuipack=($root)" $"-out:($exe)" ...$flags
+            let flags = if $how == "shared" { [$"-extra-linker-flags:-Wl,-rpath,($dir)"] ++ (if $core { [] } else { ["-define:KUI_SHARED=true"] }) } else { [] }
+            run-or-fail $"odin, ($how)" $odin build $src -file $"-collection:kuipack=($root)" $"-out:($exe)" ...$flags
         }
         let r = do { ^$exe --headless } | complete
         if $r.exit_code != 0 {
             print -e $r.stdout $r.stderr
-            error make { msg: $"the ($kind) ($k.prog) linked ($k.how) exited ($r.exit_code)" }
+            error make { msg: $"the ($lang) ($prog.name) linked ($how) exited ($r.exit_code)" }
         }
-        { kind: $kind, platform: $p, link: $k.how, size: (ls $exe | get 0.size), run: ($r.stdout | lines | last) }
-    }
+        { lang: $lang, platform: $p, link: $how, program: $prog.name, size: (ls $exe | get 0.size), run: ($r.stdout | lines | last) }
+    } } | flatten
     print ($results | table --width 100)
 }
 
