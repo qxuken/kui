@@ -9,6 +9,7 @@
 //     r: kui_wgpu.Renderer
 //     kui_wgpu.init(&r, device, queue, surface_format)
 //     // each frame, after kui.frame:
+//     kui_wgpu.upload(&r, ui, enc)   // before the pass: optional, faster
 //     pass := wgpu.CommandEncoderBeginRenderPass(enc, &yours)
 //     // ...your world...
 //     kui_wgpu.draw(&r, ui, pass)
@@ -19,11 +20,25 @@
 // The draw goes into a pass the host began, so the load op, the clear and
 // any passes before or after are the host's; kui draws over what the pass
 // holds, scissored to Draw_Data.bounds, so a HUD over a game touches the
-// HUD's pixels alone. Before it records anything it writes the atlas (the
-// whole page when it is new, else atlas_dirty_rect alone), the uniform and
-// the instances through the queue: queue writes land before the next
-// submit, which is the one that carries the pass. So one Renderer draws
-// one frame a submit; two Uis drawn in one submit want a Renderer each.
+// HUD's pixels alone. Before it records anything the frame's data goes up:
+// the atlas (the whole page when it is new, else atlas_dirty_rect alone)
+// and the uniform through the queue, and the instances one of two ways
+// (backlog F277), as kui_wgpu.h does:
+//
+// - upload, called on the encoder before the pass begins (a copy cannot be
+//   recorded inside a pass), packs them straight into a staging buffer
+//   mapped ahead of time and records its copy into the vertex buffer. The
+//   staging buffers are a ring of RING, each mapped again once the GPU is
+//   done with it, asked for at the next upload, after the host's submit;
+//   the device fires the callback (.AllowSpontaneous), so no poll is asked
+//   of the host. With every one in flight it falls back to the writes below.
+// - draw alone writes them through the queue, in pieces under a page
+//   (WRITE_PIECE): wgpu-native stages each write in a buffer of its own,
+//   and on Metal one of 16 KiB or more costs ~100 µs more.
+//
+// Queue writes land before the next submit, which is the one that carries
+// the pass. So one Renderer draws one frame a submit, upload and draw of
+// the same finished frame; two Uis drawn in one submit want a Renderer each.
 //
 // The target is the viewport's size (Draw_Data's viewport_w/h, the frame's
 // size times its scale) and Unorm (.RGBA8Unorm, .BGRA8Unorm): kui's
@@ -54,10 +69,46 @@
 // pixels checked, and in a GLFW window with --window.
 package kui_wgpu
 
+import "base:intrinsics"
 import "base:runtime"
 import "vendor:wgpu"
 import kui ".."
 import kui_c "../c"
+
+// The staging buffers upload cycles through, and a queue write's largest
+// piece (under a page, a multiple of 4).
+RING :: 4
+WRITE_PIECE :: 16128
+
+// How the last frame's instances went up.
+Instances_By :: enum u8 {
+	None,
+	Staged, // copied from the ring
+	Written, // queue writes
+}
+
+// One staging buffer of the ring. `cell` is its map callback's (Cell), on
+// the heap so a callback arriving after destroy has somewhere to write;
+// whichever of the two comes last frees it.
+@(private)
+Staging :: struct {
+	buffer: wgpu.Buffer,
+	cell:   ^i32,
+	phase:  enum u8 {
+		None,
+		Free, // mapped, free
+		Copied, // copied from this frame
+		Mapping, // waiting for its map
+	},
+}
+
+@(private)
+Cell :: enum i32 {
+	Pending,
+	Mapped,
+	Failed,
+	Dead,
+}
 
 Renderer :: struct {
 	device:       wgpu.Device,
@@ -82,9 +133,17 @@ Renderer :: struct {
 	instance_cap: int,
 	packed:       []u8,
 	allocator:    runtime.Allocator,
-	// What the last draw uploaded of the atlas, x, y, w, h in texels: the
-	// page, a dirty rect, or zero for nothing.
+	// What the last upload put up of the atlas (upload's, or draw's without
+	// one), x, y, w, h in texels: the page, a dirty rect, or zero for
+	// nothing.
 	uploaded:     [4]u32,
+	// upload's ring, each staging buffer ring_cap bytes (the instance
+	// buffer's size), and how many instances it put up for the draw that
+	// follows (0: none; the draw writes them itself).
+	ring:         [RING]Staging,
+	ring_cap:     int,
+	staged:       int,
+	instances_by: Instances_By,
 }
 
 // kui.renderer_wgsl(dual) as a pipeline drawing into `format`, the bind
@@ -229,33 +288,159 @@ kind_drawn :: proc(kind: u32) -> bool {
 	return kind != kui_c.QUAD_TEXTURE && kind != kui_c.QUAD_FRAGMENT && kind != kui_c.QUAD_GROUP_END
 }
 
-// `ui`'s last finished frame into `pass`, over what it holds: the atlas,
-// uniform and instances written through the queue, then the draws
-// recorded, scissored to Draw_Data.bounds. Returns the instances drawn; 0
-// with nothing to draw (no finished frame, or an empty one), which records
+// The instance buffer, grown to twice a frame that outgrew it, and the
+// memory the queue writes are packed into.
+@(private)
+grow :: proc(r: ^Renderer, count: int) {
+	if count <= r.instance_cap do return
+	stride := int(kui_c.instance_stride())
+	if r.instances != nil do wgpu.BufferRelease(r.instances)
+	r.instance_cap = count * 2
+	r.instances = wgpu.DeviceCreateBuffer(r.device, &{usage = {.Vertex, .CopyDst}, size = u64(r.instance_cap * stride)})
+	delete(r.packed, r.allocator)
+	r.packed = make([]u8, r.instance_cap * stride, r.allocator)
+}
+
+// What every draw puts up first, with upload or without: the atlas and the
+// uniform through the queue, and the instance buffer grown to the frame.
+// Its instance count; 0 with nothing to draw.
+@(private)
+prepare :: proc(r: ^Renderer, ui: ^kui.Ui, dd: ^kui_c.DrawData) -> int {
+	dd^ = {size = size_of(kui_c.DrawData)}
+	if r.pipeline == nil || !kui_c.draw_data(ui, dd) do return 0
+	atlas_upload(r, dd)
+	globals := [8]f32{dd.viewport_w, dd.viewport_h, f32(r.atlas_size), f32(r.atlas_size), dd.time, dd.scale, 0, 0}
+	wgpu.QueueWriteBuffer(r.queue, r.globals, 0, &globals, size_of(globals))
+	count := int(kui_c.pack_instances(ui, nil, 0))
+	if count == 0 || dd.bounds[2] == 0 || dd.bounds[3] == 0 do return 0
+	grow(r, count)
+	return count
+}
+
+// The instances through the queue, in pieces under a page.
+@(private)
+write_instances :: proc(r: ^Renderer, ui: ^kui.Ui, bytes: int) {
+	kui_c.pack_instances(ui, raw_data(r.packed), uint(bytes))
+	for off := 0; off < bytes; off += WRITE_PIECE {
+		wgpu.QueueWriteBuffer(r.queue, r.instances, u64(off), &r.packed[off], uint(min(bytes - off, WRITE_PIECE)))
+	}
+	r.instances_by = .Written
+}
+
+@(private)
+mapped :: proc "c" (status: wgpu.MapAsyncStatus, message: wgpu.StringView, cell: rawptr, _: rawptr) {
+	now := Cell.Mapped if status == .Success else Cell.Failed
+	if Cell(intrinsics.atomic_exchange((^i32)(cell), i32(now))) == .Dead {
+		context = runtime.default_context()
+		free((^i32)(cell), runtime.heap_allocator())
+	}
+}
+
+// One staging buffer gone: released, and its cell freed, or left to the
+// callback still to come.
+@(private)
+staging_drop :: proc(s: ^Staging) {
+	if s.phase != .Mapping || Cell(intrinsics.atomic_exchange(s.cell, i32(Cell.Dead))) != .Pending {
+		if s.cell != nil do free(s.cell, runtime.heap_allocator())
+	}
+	if s.buffer != nil do wgpu.BufferRelease(s.buffer)
+	s^ = {}
+}
+
+// The instances packed into a mapped staging buffer, its copy recorded on
+// `enc`. Before picking one: the buffers last frame copied from (the host
+// has submitted since) are asked to map, and those whose map has come back
+// are free again. False when none is free, or one cannot be made.
+@(private)
+stage :: proc(r: ^Renderer, ui: ^kui.Ui, bytes: int, enc: wgpu.CommandEncoder) -> bool {
+	cap := r.instance_cap * int(kui_c.instance_stride())
+	if cap != r.ring_cap {
+		for &s in r.ring do staging_drop(&s)
+		r.ring_cap = cap
+	}
+	pick: ^Staging
+	for &s in r.ring {
+		if s.phase == .Copied {
+			s.cell = new(i32, runtime.heap_allocator())
+			s.phase = .Mapping
+			// .AllowSpontaneous, spelled AllowSpontaneos in vendor:wgpu.
+			wgpu.BufferMapAsync(s.buffer, {.Write}, 0, uint(cap), {mode = wgpu.CallbackMode(3), callback = mapped, userdata1 = s.cell})
+		}
+		if s.phase == .Mapping {
+			switch Cell(intrinsics.atomic_load(s.cell)) {
+			case .Mapped:
+				free(s.cell, runtime.heap_allocator())
+				s.cell, s.phase = nil, .Free
+			case .Failed:
+				staging_drop(&s)
+			case .Pending, .Dead:
+			}
+		}
+		if pick == nil && s.phase == .Free do pick = &s
+	}
+	for &s in r.ring {
+		if pick != nil do break
+		if s.phase != .None do continue
+		s.buffer = wgpu.DeviceCreateBuffer(r.device, &{usage = {.MapWrite, .CopySrc}, size = u64(cap), mappedAtCreation = true})
+		if s.buffer == nil do return false
+		s.phase = .Free
+		pick = &s
+	}
+	if pick == nil do return false
+	dst := wgpu.RawBufferGetMappedRange(pick.buffer, 0, uint(cap))
+	if dst == nil do return false
+	kui_c.pack_instances(ui, ([^]u8)(dst), uint(bytes))
+	wgpu.BufferUnmap(pick.buffer)
+	wgpu.CommandEncoderCopyBufferToBuffer(enc, pick.buffer, 0, r.instances, 0, u64(bytes))
+	pick.phase = .Copied
+	return true
+}
+
+// `ui`'s last finished frame put up on `enc`, before the host begins the
+// pass draw goes into (backlog F277): the atlas and the uniform through the
+// queue, the instances packed into a staging buffer of the ring and copied
+// on the encoder - or, with every staging buffer in flight, through the
+// queue in pieces. Then draw records the draws alone. Once a frame, after
+// the last frame's submit.
+upload :: proc(r: ^Renderer, ui: ^kui.Ui, enc: wgpu.CommandEncoder) {
+	dd: kui_c.DrawData
+	r.staged = 0
+	count := prepare(r, ui, &dd)
+	if count == 0 do return
+	bytes := count * int(kui_c.instance_stride())
+	if stage(r, ui, bytes, enc) {
+		r.instances_by = .Staged
+	} else {
+		write_instances(r, ui, bytes)
+	}
+	r.staged = count
+}
+
+// `ui`'s last finished frame into `pass`, over what it holds, scissored to
+// Draw_Data.bounds. After upload, what it put up; without one, the atlas,
+// uniform and instances written through the queue first. A frame finished
+// between the two is not drawn (its instances would be overwritten by the
+// upload's copy): upload it again. Returns the instances drawn; 0 with
+// nothing to draw (no finished frame, or an empty one), which records
 // nothing into the pass.
 draw :: proc(r: ^Renderer, ui: ^kui.Ui, pass: wgpu.RenderPassEncoder) -> int {
 	if r.pipeline == nil do return 0
-	dd := kui_c.DrawData{size = size_of(kui_c.DrawData)}
-	if !kui_c.draw_data(ui, &dd) do return 0
-	atlas_upload(r, &dd)
-	globals := [8]f32{dd.viewport_w, dd.viewport_h, f32(r.atlas_size), f32(r.atlas_size), dd.time, dd.scale, 0, 0}
-	wgpu.QueueWriteBuffer(r.queue, r.globals, 0, &globals, size_of(globals))
-
-	stride := int(kui_c.instance_stride())
-	count := int(kui_c.pack_instances(ui, nil, 0))
-	b := dd.bounds
-	if count == 0 || b[2] == 0 || b[3] == 0 do return 0
-	bytes := count * stride
-	if count > r.instance_cap {
-		if r.instances != nil do wgpu.BufferRelease(r.instances)
-		r.instance_cap = count * 2
-		r.instances = wgpu.DeviceCreateBuffer(r.device, &{usage = {.Vertex, .CopyDst}, size = u64(r.instance_cap * stride)})
-		delete(r.packed, r.allocator)
-		r.packed = make([]u8, r.instance_cap * stride, r.allocator)
+	dd: kui_c.DrawData
+	count: int
+	staged := r.staged
+	r.staged = 0
+	if staged != 0 {
+		dd = {size = size_of(kui_c.DrawData)}
+		if !kui_c.draw_data(ui, &dd) do return 0
+		count = int(kui_c.pack_instances(ui, nil, 0))
+		if count != staged do return 0
+	} else {
+		count = prepare(r, ui, &dd)
+		if count == 0 do return 0
+		write_instances(r, ui, count * int(kui_c.instance_stride()))
 	}
-	kui_c.pack_instances(ui, raw_data(r.packed), uint(bytes))
-	wgpu.QueueWriteBuffer(r.queue, r.instances, 0, raw_data(r.packed), uint(bytes))
+	bytes := count * int(kui_c.instance_stride())
+	b := dd.bounds
 
 	// Only where the frame drew: what is outside it stays the host's.
 	wgpu.RenderPassEncoderSetScissorRect(pass, b[0], b[1], b[2], b[3])
@@ -278,8 +463,10 @@ draw :: proc(r: ^Renderer, ui: ^kui.Ui, pass: wgpu.RenderPassEncoder) -> int {
 
 // Everything init and the draws made; `r` zeroed after, so a second
 // destroy, or one after a failed init, does nothing. The device and queue
-// are the host's and stay.
+// are the host's and stay. A staging buffer still waiting for its map
+// leaves its cell to the callback.
 destroy :: proc(r: ^Renderer) {
+	for &s in r.ring do staging_drop(&s)
 	if r.packed != nil do delete(r.packed, r.allocator)
 	if r.instances != nil do wgpu.BufferRelease(r.instances)
 	if r.group != nil do wgpu.BindGroupRelease(r.group)

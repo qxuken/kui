@@ -14,6 +14,10 @@
  * where its title is, the button's colour on the button. Then the button
  * is clicked, the frame rebuilt with its new label, and drawn again: the
  * label's new glyph reaches the atlas as a dirty rect, uploaded alone.
+ * The first frame's instances go up through kui_wgpu_upload's staging ring
+ * (backlog F277), the second's through kui_wgpu_draw's queue writes, and
+ * then twice the ring's length of frames through the ring again, the last
+ * checked: the staging buffers must come back mapped for that to hold.
  * That runs once with KUI_WGSL_SINGLE, and again with KUI_WGSL_DUAL and
  * subpixel text where the adapter offers dual-source blending.
  *
@@ -253,10 +257,12 @@ static void target_free(Target *t) {
 
 /* kui's last finished frame over the world: a pass that clears the target
  * to it - the host's load op - with kui_wgpu_draw inside, then the target
- * read back into `rgba` (t->row bytes a row). Returns the instances
- * drawn. */
-static size_t render(Gpu *g, KuiWgpu *kr, Target *t, KuiCtx *ui, uint8_t *rgba) {
+ * read back into `rgba` (t->row bytes a row). With `upload`, the frame goes
+ * up through kui_wgpu_upload on the encoder before the pass begins.
+ * Returns the instances drawn. */
+static size_t render(Gpu *g, KuiWgpu *kr, Target *t, KuiCtx *ui, uint8_t *rgba, bool upload) {
     WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(g->device, NULL);
+    if (upload) kui_wgpu_upload(kr, ui, enc);
     WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
     color.view = t->view;
     color.loadOp = WGPULoadOp_Clear;
@@ -423,8 +429,9 @@ static void run(Gpu *g, uint32_t variant) {
     /* The host loop's turn (kui.h): build, drain, draw. */
     build(ui, image, 0);
     drain(ui);
-    size_t drawn = render(g, &kr, &t, ui, rgba);
+    size_t drawn = render(g, &kr, &t, ui, rgba, true);
     CHECK(drawn > 0, "the first frame drew instances");
+    CHECK(kr.instances_by == KUI_WGPU_STAGED, "kui_wgpu_upload copied the first frame's instances from its ring");
     CHECK(drawn == kui_pack_instances(ui, NULL, 0) - 1, "the first frame drew every instance but the image's");
     CHECK(kr.uploaded[2] == kr.atlas_size, "the first frame uploaded the whole atlas page");
     snprintf(what, sizeof what, "%s, first frame", name);
@@ -450,16 +457,30 @@ static void run(Gpu *g, uint32_t variant) {
     CHECK(!kui_pointer_wants(ui), "past the panel the pointer is the world's");
     build(ui, image, clicks);
     drain(ui);
-    drawn = render(g, &kr, &t, ui, rgba);
+    drawn = render(g, &kr, &t, ui, rgba, false);
     CHECK(drawn > 0, "the second frame drew instances");
+    CHECK(kr.instances_by == KUI_WGPU_WRITTEN, "kui_wgpu_draw alone wrote the second frame's instances");
     CHECK(kr.uploaded[2] > 0 && kr.uploaded[2] < kr.atlas_size, "the second frame uploaded a dirty rect alone");
     snprintf(what, sizeof what, "%s, second frame", name);
+    check_frame(ui, &t, rgba, glyph, what);
+    uint32_t rect_w = kr.uploaded[2], rect_h = kr.uploaded[3];
+
+    /* Round the ring twice: each frame's staging buffer is asked to map at
+     * the next upload, and must have come back before its turn. */
+    int staged = 0;
+    for (int i = 0; i < 2 * KUI_WGPU_RING; i++) {
+        build(ui, image, clicks);
+        drain(ui);
+        drawn = render(g, &kr, &t, ui, rgba, true);
+        staged += kr.instances_by == KUI_WGPU_STAGED;
+    }
+    CHECK(staged == 2 * KUI_WGPU_RING, "every frame round the ring twice went up through a staging buffer");
+    snprintf(what, sizeof what, "%s, after the ring", name);
     check_frame(ui, &t, rgba, glyph, what);
 #undef CHECK
 
     printf("wgpu host %s: %s, %ux%u, %zu instances of %u bytes, the atlas a %u px page then a %ux%u rect\n",
-           name, g->adapter_name, t.width, t.height, drawn, kui_instance_stride(), kr.atlas_size, kr.uploaded[2],
-           kr.uploaded[3]);
+           name, g->adapter_name, t.width, t.height, drawn, kui_instance_stride(), kr.atlas_size, rect_w, rect_h);
     free(rgba);
     target_free(&t);
     kui_wgpu_free(&kr);
