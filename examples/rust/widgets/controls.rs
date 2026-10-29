@@ -156,7 +156,10 @@ impl App for Controls {
                     );
                 });
 
-                heading(ui, "progress and meter — read-only, no Tab stop, read with their value");
+                heading(
+                    ui,
+                    "progress and meter — read-only, no Tab stop, read with their value",
+                );
                 let caption = |ui: &mut Ui<'_>, s: &str| {
                     ui.text(s, TextStyle::new(13.0).color(t.fg));
                 };
@@ -258,7 +261,10 @@ impl Example for Controls {
         d.frame(self);
         d.check(self.channels == [true; 3], "and ticking it ticks every row")?;
         let set_up = node(&mut d, "Channels set up", Role::Progress)?;
-        d.check(set_up.number == Some(3.0), "and the bar follows: three of three")?;
+        d.check(
+            set_up.number == Some(3.0),
+            "and the bar follows: three of three",
+        )?;
         let all = node(&mut d, "All channels", Role::Checkbox)?;
         d.check(all.checked == Some(true), "then it reads checked")?;
 
