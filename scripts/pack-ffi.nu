@@ -14,7 +14,7 @@
 # What lands in target/pack/, per platform:
 #
 #   kui-ffi-<version>-<platform>/
-#     include/kui.h, and kui_glfw.h and kui_sdl3.h (header-only key tables)
+#     include/kui.h, and kui_glfw.h and kui_sdl3.h (header-only input helpers)
 #     lib/        libkui_ffi.so / .dylib / kui_ffi.dll + kui_ffi.dll.lib   dynamic
 #                 libkui_ffi.a / kui_ffi.lib                               static
 #                 windows.0.5x.0.lib (Windows): windows-targets' import
@@ -335,7 +335,7 @@ def stage [row: record, built: record, feature_note: string, no_runner: bool] {
     # With LF line ends whatever the checkout has: a CRLF one (Git for
     # Windows' autocrlf) would otherwise ship a header that differs by host.
     # kui_glfw.h and kui_sdl3.h ride beside it: header-only, a window
-    # library's keys as kui's (backlog F239).
+    # library's keys and pointer as kui's (backlog F239, F265).
     for h in [kui.h kui_glfw.h kui_sdl3.h] {
         open --raw ($ROOT | path join crates kui-ffi include $h) | str replace -a "\r\n" "\n" | save -f --raw ($dir | path join include $h)
     }
@@ -662,9 +662,9 @@ when KUI_PLUGIN && ODIN_OS == .Darwin {
 # the platforms it holds.
 def readme [kind: string, v: string, platforms: list<string>] {
     let what = if $kind == "c" {
-        "the C library: `include/kui.h`, and `libkui_ffi` for each platform; `include/kui_glfw.h` and `include/kui_sdl3.h` forward GLFW's or SDL3's keys, header-only"
+        "the C library: `include/kui.h`, and `libkui_ffi` for each platform; `include/kui_glfw.h` and `include/kui_sdl3.h` forward GLFW's or SDL3's keys and pointer, header-only"
     } else {
-        "the Odin binding: the `kui` package, and `libkui_ffi` for each platform it links; `kui/glfw` and `kui/sdl3` forward vendor:glfw's or vendor:sdl3's keys"
+        "the Odin binding: the `kui` package, and `libkui_ffi` for each platform it links; `kui/glfw` and `kui/sdl3` forward vendor:glfw's or vendor:sdl3's keys and pointer"
     }
     let use = if $kind == "c" {
         $"With pkg-config \(not on Windows), point it at the platform's files and

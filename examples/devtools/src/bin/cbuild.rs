@@ -15,6 +15,7 @@
 //!     surface          the header walk, every prototype called once
 //!     host_loop        kui.h's host loop with nothing from the runner
 //!     keys             the GLFW and SDL3 key tables (kui_glfw.h, kui_sdl3.h)
+//!     pointer          the same headers' pointer halves, on hand-made events
 //!     wgpu_host        kui's frame drawn on a wgpu-native device of its own,
 //!                      offscreen, and its pixels checked (where a
 //!                      wgpu-native is found: see `wgpu_native`)
@@ -397,6 +398,9 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
         .flat_map(|d| [s("-I"), s(d)])
         .collect();
     exe_with("examples/c/tools/keys.c", "keys", &brew, &[])?;
+    // Their pointer halves (backlog F265), the same way: neither library
+    // is linked, the test feeding the helpers events of its own.
+    exe_with("examples/c/tools/pointer.c", "pointer", &brew, &[])?;
     // A host drawing kui's frame on a wgpu device of its own (backlog
     // F234), built only where a wgpu-native is: it is not a dependency of
     // anything else here.
@@ -513,6 +517,12 @@ fn build_and_round(release: bool, run: bool) -> Result<(), String> {
             exe: format!("{bin}/{}", exe_name("keys")),
             args: vec![],
             note: "the GLFW and SDL3 key tables, for each library whose headers are installed",
+            must_fail: None,
+        },
+        Step {
+            exe: format!("{bin}/{}", exe_name("pointer")),
+            args: vec![],
+            note: "the GLFW and SDL3 pointer helpers: clicks, wheel gestures, leaving, chaining",
             must_fail: None,
         },
         Step {
