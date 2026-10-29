@@ -2495,7 +2495,8 @@ static inline int32_t kit_empty_with(KuiCtx *ctx, const KitEmpty *p, KuiChildren
 }
 
 /*
- * A bar that fills; with no value it moves to say work is going on.
+ * A bar that fills; with no value it moves to say work is going on. A reader
+ * hears a progress bar: its percent, or busy with no value.
  */
 typedef struct KitProgress {
     /*

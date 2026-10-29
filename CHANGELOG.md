@@ -44,6 +44,12 @@ functions; no struct moved).
   and the uploads took every version's by their globs. The cache leaves
   `target/pack` out, and each leg clears it before packing.
 
+- **Kit's `progress` reads as a progress bar** (backlog F267). It was a
+  disabled slider, so a screen reader announced a control that would not
+  move, with "under way" as its value while busy. It is a `progress` now:
+  its percent while it has a value, busy (indeterminate) with none, and no
+  Tab stop. It looks the same.
+
 - **`kui_glfw.h` and `kui_sdl3.h` compile as C++.** Their key forwarders
   (since F239) built strings with compound literals, which clang takes in
   C++ as an extension and MSVC's C++ refuses. `kui_wgpu.h` and kui.h's new

@@ -1373,7 +1373,8 @@ local record kit
   -- do.
   empty: function(props: EmptyProps, children?: {any:any}): kui.Node
 
-  -- A bar that fills; with no value it moves to say work is going on.
+  -- A bar that fills; with no value it moves to say work is going on. A
+  -- reader hears a progress bar: its percent, or busy with no value.
   progress: function(props: ProgressProps): kui.Node
 
   -- A placeholder for what is still loading: lines a text high, a block or a

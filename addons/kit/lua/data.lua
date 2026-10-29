@@ -1356,14 +1356,18 @@ transition = 320, easing = "snappy", when = { ctx.still() }, }
          transition = math.max(1400, w * 2.5),
       }
    end
+
+
+
+
+
    local track = row({
-      role = "slider",
+      role = "progress",
       label = str(p.label) or "progress",
       value_now = v and v * 100 or nil,
       value_min = 0,
       value_max = 100,
-      value_text = v and string.format("%d%%", math.floor(v * 100 + 0.5)) or "under way",
-      disabled = true,
+      value_text = v and string.format("%d%%", math.floor(v * 100 + 0.5)) or nil,
       key = "track",
       on_layout = not v and act(c, "progress.layout") or nil,
       width = "grow",

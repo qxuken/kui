@@ -2870,7 +2870,7 @@ fn an_under_way_bar_crosses_its_whole_track() {
     r.core.set_time(1.0);
     r.frames(3);
     let track = r
-        .node(|n| n.role == Some(kui_core::Role::Slider))
+        .node(|n| n.role == Some(kui_core::Role::Progress))
         .expect("the track")
         .rect;
     let mut right = f32::MIN;
@@ -2896,6 +2896,55 @@ fn an_under_way_bar_crosses_its_whole_track() {
         "and starts from its start: {left} vs {:?}",
         track
     );
+}
+
+#[test]
+fn a_kit_progress_reads_as_a_progress_bar() {
+    // It was a disabled slider (backlog F267): a reader heard a control
+    // that would not move, and "under way" as its reading while busy.
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = 400, height = "grow", pad = 20, gap = 8,
+            component("kit/progress", { label = "Upload", value = 0.4 }),
+            component("kit/progress", { label = "Under way" }) }
+        end
+        "#,
+    );
+    r.core.set_time(1.0);
+    r.frames(3);
+    let tree = r.core.access_tree();
+    let bar = |name: &str| {
+        tree.nodes
+            .iter()
+            .find(|n| n.role == kui_core::Role::Progress && n.name.as_deref() == Some(name))
+            .unwrap_or_else(|| panic!("a progress bar named {name}: {:#?}", tree.nodes))
+    };
+    let up = bar("Upload");
+    assert_eq!((up.number, up.max), (Some(40.0), Some(100.0)));
+    assert_eq!(up.value.as_deref(), Some("40%"));
+    let busy = bar("Under way");
+    assert_eq!(
+        (busy.number, busy.value.as_deref()),
+        (None, None),
+        "busy carries no number and no reading: indeterminate"
+    );
+    // Every node may be scrolled into view; a bar offers nothing else.
+    use kui_core::AccessAction as A;
+    let control = [A::Click, A::Focus, A::SetValue, A::Increment, A::Decrement]
+        .iter()
+        .fold(0, |m, a| m | a.bit());
+    for b in [up, busy] {
+        assert!(
+            !b.disabled && b.actions & control == 0,
+            "read-only, not a dead control: {b:#?}"
+        );
+    }
+    assert!(
+        !tree.nodes.iter().any(|n| n.role == kui_core::Role::Slider),
+        "no slider left in it"
+    );
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
 
 #[test]
