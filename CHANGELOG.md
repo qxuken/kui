@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.72 (unreleased)
+## 0.1.0-alpha.72 (2026-10-29)
 
 **What breaks.**
 
@@ -142,6 +142,36 @@ functions; no struct moved).
   windows bridge through (their audit unchanged, 106/106). It is
   kui-ffi's `access` feature, on by default and kept in the runner-less
   library. An island's context (ADR 0076) is not bridged yet.
+
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): `release-prep.nu` with
+Odin's generator (every generated file current), `test.nu --node` (3371
+tests over 253 suites and Node's; one failed, the devtools perf
+recording's verdict test, which missed its frame budget under the
+parallel run exactly as at alpha.71 and passed 5 of 5 alone — the second
+release in a row, so it wants a verdict that does not read the clock:
+backlog F275),
+the windowed round with the Node windows, the accessibility audit
+(106/106), and `bench-check.nu` against alpha.71. The windowed round's
+first pass had three runs hang to the 60 s timeout — `audio` on both
+bases and `align` on dark — which passed 3 of 3 alone and on a second
+full pass, where all 58 examples drew 120 frames on both bases and exited;
+a hang seen only eight at a time, not reproduced (backlog F276). The guard passed, every
+guarded row within ±1.1% of alpha.71 (`frame_10k_rects`
+−1.1%, `frame_1k_typical` −0.4%, `frame_10k_segments` +0.3%,
+`frame_10k_rects_with_access_tree` −0.4%). No row on a path this release
+touched moved: the largest readings (`copy_1080p_frame` +7.8%,
+`edit_value_doc` +3.3%, `frame_10k_rects_all_declaring_exit` −19%) were
+one pass's luck, and `edit_value_doc` read −13.4% on a filtered rerun.
+Five minutes each of the `scenes` (30,209 runs) and `events` (9,489
+runs) fuzz targets after, no crash.
+
+Not verified natively this release: Windows and Linux on a machine
+(smoke.yml's Windows round and ci.yml's Linux check run on GitHub's
+runners, and both block the release); the host bridge in `kui-access` on
+Linux, which is backlog F270; no read-only review round over the
+release's commits.
 
 ## 0.1.0-alpha.71 (2026-10-28)
 

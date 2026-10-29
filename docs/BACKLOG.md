@@ -4369,6 +4369,48 @@ neither for VoiceOver's purposes) asked of AccessKit, and a change there
 if it is small; kui follows when a release has it. Until then nothing in
 kui changes.
 
+## From the alpha.72 pre-tag round (2026-10-29)
+
+Two things the round on the Mac (M3 Pro) found and the release did not
+wait for, both in its Native verification. Two entries, F275–F276, filed
+and not built.
+
+### `.` F275 — The devtools perf test's verdict reads the clock
+
+**Found** 2026-10-29, the second release in a row:
+`the_perf_recording_keeps_each_frame_s_cause_holders_and_cost`
+(`runtime/devtools/tests.rs`) failed under `test.nu --node` at alpha.71
+and again at alpha.72, and passed 5 of 5 alone both times. It selects
+frame 3 and asserts the panel's verdict starts `wasted —`, `burn —` or
+`fine —`; the verdict is judged on the recording's real spans, and under
+the parallel run a frame's emit took 14.8 of its 19.5 ms, so the panel
+said `slow —` and the assertion failed. The samples the test pushes are
+fixed (`view_ms: 1.0`, …); the spans `kui_trace` records are not. A test
+that fails one run in a few gets read as noise, and the next real failure
+in it with it. **Do.** Give the verdict a budget the test sets (a frame
+budget on the recording, or a clock the trace reads that the test
+drives), so the frame it selects is within budget whatever the machine
+is doing; or assert the verdict's shape (one of the four, the frame's
+number in it) and test `slow —` on its own with a budget of zero. Either
+way, run it under `test.nu --node` ten times after.
+
+### `.` F276 — Windowed examples hung in a parallel smoke round
+
+**Found** 2026-10-29 in alpha.72's windowed round (`smoke -- --node`, 8
+at a time): `audio` on both bases and `align` on dark ran out the 60 s
+timeout, where each draws its 120 frames in about 2 s. They passed 3 of 3
+with `--only audio,align --jobs 1`, and a second full round passed all
+58 on both bases; no other round, here or on smoke.yml's runners, has
+shown it. The smoke round only reports the kill, so what the hung
+process was waiting on is gone. `audio` opens the output device, and two
+of its runs were in flight together; `align` has no audio. **Do.** Have
+`smoke` sample a run's stacks before it kills a hang (`sample <pid> 1`
+on macOS, a minidump on Windows, `/proc/<pid>/stack` on Linux) and keep
+them beside its stderr, so the next one says where it stopped. Then, if
+it is the device: whether two kira managers opening one CoreAudio device
+at once can block, and if `align` again: what it shares with `audio`
+that the other 56 do not.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go
