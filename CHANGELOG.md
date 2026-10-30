@@ -79,6 +79,33 @@ was the first bare bump to break an app in five releases).
   `try_transaction` whose function raised a database's error answers that
   error's code. The plain calls raise the message as they did.
 
+### Changed
+
+- **A row built through the C ABI costs 12% less, and a replayed
+  component 7% less** (backlog F281, F282). A new bench, `cargo bench -p
+  kui-ffi --bench rows`, builds a thousand log rows the way a C host
+  does: a keyed box with padding, a radius, a background, a hover
+  background and a click message from `kui_msg_int`, one `kui_text`,
+  `kui_close`. On an M3 Pro the frame went from 711 to 628 µs (the build
+  calls 311 → 271 µs, `kui_frame_finish` 331 → 286 µs), and the same rows
+  through the Rust builder from 601 to 552 µs. Three things went. The
+  spec conversion stored every field through the builders, each of which
+  copies the 224-byte spec in and out across the crate boundary; it
+  stores them in place. Every string a host passes went through the lossy
+  UTF-8 walk, which was a third of `kui_text`; a valid one, which is every
+  one in practice, takes the standard check now. And each frame cloned
+  every node's click message into its hit region and dropped last frame's
+  copy, a sixth of finishing the frame; it writes the new message over
+  the old one, reusing its strings, which a Rust app gets too.
+
+  A thousand components replaying those rows went from 999 to 934 µs
+  (775 → 718 µs with their props built once). That is still more than
+  building the rows directly. A replay skips the extension's view and
+  nothing else: it pushes the same nodes again, clones each kept spec (the
+  click message with it) and compares the props. A component per row
+  saves nothing over building the row; a component pays off when its view
+  is the expensive part, as a script's is.
+
 ### What you can delete
 
 - A pure-Lua base64 or hex, and the `openssl`/`security`/`secret-tool`
