@@ -4432,6 +4432,60 @@ script - with `benches/screens.rs`.
 
 ### `.` F283 — A C click message costs seven allocations, and a replay clones what it kept
 
+**Built in part** 2026-10-30 on `claude/ui-compare-f283-messages`:
+`kui_msg` and `kui_msg_int` are now Rust entry points, with their existing
+C signatures and ownership, constructing maps directly. No temporary
+boxed string or integer crosses the ABI. Counted in
+`crates/kui-ffi/tests/messages.rs`: `kui_msg_int` makes 5 allocations
+instead of 7 and frees no temporaries (previously 2); `kui_msg` makes
+4 instead of 5. This corrects the original profile's estimate of four
+temporary frees. The returned map still owns its keys and strings, keeps
+entry order, and replaces `kind` when the integer field names it.
+Both names are exported automatically to C plugins; the raw Odin
+binding exposes them, while typed Odin messages remain unchanged.
+Checked: 3,407 Rust/Node checks, the C and Odin rounds, C++17 linkage,
+and a C program compiled with the old header against the new library;
+fmt, clippy and the generated-file check are clean. The allocation
+tests also pass without the runner feature.
+
+The rows bench retains the former inline helper as a same-binary
+baseline. M3 Pro, one codegen unit, three runs alternating old/new order,
+middle medians: 1,000 complete rows 637.4 → 597.4 µs (−6.3%); build calls
+278.7 → 246.9 µs (−11.4%). Construction/free alone, batched to avoid
+timer quantization, is 26–28% cheaper. Full replay does not run these
+constructors, so this does not improve an already replayed Lua screen.
+
+**A second part**, 2026-10-30 on `claude/ui-compare-f283-replay-events`:
+replayed boxes reclaim their `EventSpec` from the tree just before it is
+discarded and restore its handlers, messages and flags from the untouched
+journal. The rest of the spec is freshly cloned as before, so hover,
+rules, layout and easing never become the next frame's declaration.
+The journal's existing spec box holds the spare pointer and node index;
+no allocation is added to plain builds, and a frame with no replayed
+handlers never scans the journals. A tree retained for exits is left
+intact and uses ordinary cloning. Both components and host memos use
+this path, regardless of the binding that built them.
+
+Counted in `tests/messages.rs`: a memo replaying one unlabelled clickable
+box with a two-field map uses five allocations on its first replay,
+zero on the next three (placement only, begin/finish outside the count).
+Interleaved one-codegen-unit runs against `32234fb5`, middle medians:
+replayed component rows with kept props 731.3 → 664.9 µs (−9.1%), the Lua
+screen 265.8 → 250.7 µs (−5.7%), a memoized screen 268.3 → 252.6 µs
+(−5.9%). Fresh Lua 1,610 → 1,615 µs; plain C rows 594.9 → 601.9 µs.
+The full core bench guard passes all nine rows; its largest increase was
+deep nesting at +6.1%, which read +1.9% isolated with ±2.1% run-to-run
+spread. Tests cover handler identity/count changes, spilled storage,
+all event flags, payload-buffer reuse without aliasing the declaration,
+repeated hover changes/click delivery and preservation of exit trees.
+Checked: 3,411 Rust/Node checks, the C and Odin rounds, fmt, clippy and
+`gen.nu --check`; all pass.
+
+**Still open.** Whole-spec reuse (including access/interaction/animation
+groups and the non-box replay doors), and recycling plain frames' spec
+storage. F284's layout/quad reuse is separate; its first conservative
+path is recorded below.
+
 **Found** 2026-10-30 profiling F281 and F282 (`cargo bench -p kui-ffi
 --bench rows`, M3 Pro):
 - `kui_msg_int` is a third of a row's build calls: kui.h's inline value
@@ -4447,6 +4501,71 @@ specs shared rather than cloned on replay, if that costs a plain build
 nothing; specs recycled between frames. `bench-check.nu` guards the rest.
 
 ### `.` F284 — A replayed instance is laid out and emitted again from scratch
+
+**Built in part** 2026-10-30 on `claude/ui-compare-f284-layout`, stacked
+after the F283 changes: a conservative complete-layout cache for frames
+containing component or memo replay, and cached quad runs for profitable
+plain-text nodes. The layout cache checks the viewport, scale, font and
+weight revisions, node keys/topology/content, every declared layout
+field and the text declarations. It retains computed layout fields,
+sizes, positions, wrap lines, baselines, and each text's per-width cache
+identity and claim state. Entries must still exist at the retained wrap
+width; reused forks are touched so they do not age out of the text cache.
+All work after layout still runs: diagnostics, layout/range events,
+focus, hits, text placement, selection, clipping and accessibility.
+
+This first path accepts boxes and shaped text, not scrollers, floats,
+tables, rules, hidden nodes, position animation, exits/kept rooms,
+editors, images, cells, fragments or paths. A frame refilling a recorded
+component/memo uses ordinary layout, rather than repeatedly capturing a
+snapshot it will never reuse. The snapshot is limited to 4,096 nodes.
+Longer plain text runs can reuse emitted quads only when position,
+style, opacity, clip geometry/id, text color/shape/wrap and atlas epoch
+match. Selections, decorations, own-clip modes and runs needing wrapping
+side effects stay on normal paint; the quad budget is 32,768. Tiny
+labels are not cached: a measured prototype cost more to check than to
+regenerate them. No public API changes; plain builds allocate no cache.
+
+Measured with isolated build outputs (a shared-target comparison produced
+identical binaries and was discarded), one codegen unit, three
+interleaved runs, middle medians: replayed Lua screen 250.8 → 204.7 µs
+(−18.4%), memoized screen 253.4 → 207.1 (−18.3%), eight panels all
+replayed 256.8 → 210.1 (−18.2%), a new longer-text `lua_prose_replayed`
+case 128.3 → 92.7 (−27.8%). One changing panel 472.6 → 468.6 µs, fresh
+Lua 1,645 → 1,640; ordinary Rust/C rows within 1%. The replayed screen's
+finish is now ~95 µs, versus ~140 µs fresh. Two complete core benchmark
+guard runs pass all nine rows; deep nesting was the largest increase,
++2.5% in the first and +4.7% on the final code (other final guards within
+1%, worst run-to-run spread 2.4%).
+
+Differential tests compare complete geometry, final layout fields,
+quads and clips against normal layout/paint through viewport, scale,
+font generation, atlas reset, color, opacity, rounded clips, hover,
+clicks, selection, baseline/wrap/fit clamps and unsupported features;
+they assert actual cache hits, not only identical fallback output.
+Budget tests exercise both node and quad limits.
+The final run passes 3,422 Rust/Node checks, with zero failures; C and
+Odin rounds, fmt, clippy and generated-file checks also pass. A regression
+test specifically invalidates paint on a shaping-generation change even
+when the atlas epoch and text keys stay unchanged.
+
+The +4.7% `deep_nesting_64_levels` reading in the second guard run did
+not reproduce: three further guard runs read −2.4%, +0.8%, +2.8%, and six
+direct interleaved rounds of that row read +0.8% — one noisy sample, not
+a regression. The first path did add a real per-node test of the paint
+cache inside `emit_node` (two loads through the reuse state, two branches,
+every node of every frame), which the `claude/ui-compare-f284-emit-hot-path`
+follow-up removed: one byte read once a frame, the bookkeeping
+`#[inline(never)]` off the plain path, split-field arguments as `painter!`
+takes so `leaf`'s borrows stay live. Six interleaved rounds then read
+97.0 → 96.0 µs (−1.1%), a full guard run −1.5% ±1.5%, and the screen
+gains survive (replayed −16.4%, three rounds).
+
+**Still open.** Independently retained subtrees when another panel
+refills, translation-only subtree reuse, support for the excluded
+layout/resource kinds, and broader paint reuse. Hit regions and access
+nodes are still rebuilt. The projected ~100 µs replayed frame below was
+not achieved by this first path; it is not a shipped performance claim.
 
 **Found** 2026-10-30, by `cargo bench -p kui-ffi --bench screens` (M3 Pro):
 a Lua screen of 240 rows (a header and four formatted cells each, 243
@@ -4492,8 +4611,9 @@ both Odin wrappers exercised in their surface walks.
 
 **Left open.** Node/JSX: the encoded frame reaches the core after the
 host has already run its render functions, so this needs a separate
-binding/protocol design. F284's layout/quad reuse is also still open;
-the new memo skips view construction only. No automatic event-based
+binding/protocol design. General subtree reuse under F284 remains open;
+the memo journal itself caches construction, with F284's conservative
+layout/paint cache available on eligible frames. No automatic event-based
 model invalidation is claimed for host memos: deps are explicit.
 
 **Found** 2026-10-30, discussing F283: the journal that replays a

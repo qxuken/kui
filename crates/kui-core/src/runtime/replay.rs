@@ -40,6 +40,26 @@ use crate::scroll::ScrollGeometry;
 use crate::slot::Instance;
 use crate::text::Span;
 
+/// A box's untouched declaration and event storage borrowed back from
+/// its last replayed tree node (F283). The box was already allocated for
+/// the declaration; no per-node allocation is added to ordinary builds.
+pub(crate) struct KeptSpec {
+    declared: NodeSpec,
+    events: Option<Box<crate::spec::EventSpec>>,
+    /// The last replay's node, valid only until the next tree discard.
+    at: Option<usize>,
+}
+
+impl KeptSpec {
+    pub(crate) fn new(spec: &NodeSpec) -> Self {
+        Self {
+            declared: spec.clone(),
+            events: None,
+            at: None,
+        }
+    }
+}
+
 /// How a component placement was filled: replayed from what was kept, or
 /// run fresh, and why. Every answer but `Replayed` left the instance
 /// filled and kept, so the next frame may replay it.
@@ -109,7 +129,7 @@ pub(crate) enum Op {
     /// A box opened; a `Close` ends it.
     Open {
         key: Key,
-        spec: Box<NodeSpec>,
+        spec: Box<KeptSpec>,
     },
     Close,
     Text {
@@ -525,6 +545,7 @@ impl Core {
         let Some((key, params)) = self.keep_next.take_if(|(k, _)| *k == slot.key) else {
             return;
         };
+        self.layout_reuse.refilled = true;
         self.recording = Some(Recording {
             slot_key: key,
             origin,
@@ -711,10 +732,11 @@ impl Core {
         filler: Option<&mut dyn crate::slot::Fill>,
         children: &mut dyn crate::slot::Children,
     ) {
+        self.note_layout_replay();
         let origin = kept.origin;
-        let ops = std::mem::take(&mut kept.ops);
+        let mut ops = std::mem::take(&mut kept.ops);
         self.fill_instance(slot, origin, filler, children, |ui| {
-            for op in &ops {
+            for op in &mut ops {
                 replay_op(ui, op);
             }
         });
@@ -725,11 +747,32 @@ impl Core {
 
     /// At `begin_frame`: no fill is being kept yet.
     pub(crate) fn replay_begin_frame(&mut self) {
+        self.layout_reuse.replayed = false;
+        self.layout_reuse.refilled = false;
         self.recording = None;
         self.suspended.clear();
         self.memo_depth = usize::MAX;
         self.memo_outer_slot = None;
         self.keep_next = None;
+    }
+
+    /// Recover only storage, never state, just before the old tree is
+    /// discarded. A departure needs the tree intact, so that frame uses
+    /// ordinary cloning. Clearing every index even then prevents a later
+    /// frame from treating a previous tree's position as a live node.
+    #[inline(never)]
+    pub(super) fn recycle_replayed_events(&mut self, preserve_tree: bool) {
+        for kept in self.kept_instances.values_mut() {
+            for op in &mut kept.ops {
+                if let Op::Open { key, spec } = op
+                    && let Some(at) = spec.at.take()
+                    && !preserve_tree
+                    && self.tree.keys.get(at) == Some(key)
+                {
+                    spec.events = self.tree.specs[at].events.take();
+                }
+            }
+        }
     }
 
     /// At `finish_frame`: an instance not placed this frame forgets what
@@ -746,6 +789,7 @@ impl Core {
     /// aside until [`Self::memo_leave`]; inside a fill that cannot keep it
     /// (a component placed in a kept fill), it is built and not kept.
     pub(crate) fn memo_enter(&mut self, key: Key, deps: &Value, replaying: bool) -> MemoScope {
+        self.layout_reuse.refilled |= !replaying;
         let nested = self.keeping();
         if nested {
             self.keep_op(Op::Memo(key));
@@ -868,10 +912,26 @@ impl Core {
 /// One journaled op, through the door it came in by — the node under the
 /// key it had, the spec as it was declared, so hover, accent and easing
 /// are resolved for this frame as a fresh fill's would be.
-pub(crate) fn replay_op(ui: &mut Ui<'_>, op: &Op) {
+pub(crate) fn replay_op(ui: &mut Ui<'_>, op: &mut Op) {
     let core = ui.core();
     match op {
-        Op::Open { key, spec } => core.open_with_key(*key, (**spec).clone()),
+        Op::Open { key, spec } => {
+            // Eventless boxes have nothing to recycle: keep their old
+            // clone path, including its bulk-copy optimization.
+            if spec.declared.events.is_none() {
+                core.open_with_key(*key, spec.declared.clone());
+                return;
+            }
+            let before = core.tree.len();
+            core.open_with_key(*key, spec.declared.clone_reusing_events(spec.events.take()));
+            // Kept rooms can insert nodes before this one. Find only in
+            // the newly appended range; never steal a sibling's storage.
+            spec.at = core.tree.keys[before..]
+                .iter()
+                .position(|k| *k == *key)
+                .map(|i| before + i);
+            core.replay_events_pending |= spec.at.is_some();
+        }
         Op::Close => core.close(),
         Op::Text {
             key,
@@ -944,5 +1004,45 @@ pub(crate) fn replay_op(ui: &mut Ui<'_>, op: &Op) {
             ui.slot_at(Some(*key), name, props);
         }
         Op::Memo(key) => ui.memo_replay(*key),
+    }
+}
+
+#[cfg(test)]
+mod recycling_tests {
+    use super::*;
+
+    #[test]
+    fn an_exit_keeps_the_previous_trees_event_storage_intact() {
+        let mut core = Core::new();
+        let body = |ui: &mut Ui<'_>| {
+            ui.leaf(
+                NodeSpec::row()
+                    .size(40.0, 20.0)
+                    .on_click(Value::map([("kind", Value::str("leave"))]))
+                    .exit(crate::Enter::default()),
+            );
+        };
+        for _ in 0..3 {
+            let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+            ui.memo("exit", &Value::Null, body);
+            ui.finish();
+        }
+        let before = core.tree.specs[1].events.as_deref().unwrap() as *const crate::spec::EventSpec;
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        let prev = &ui.core().prev_tree;
+        assert_eq!(
+            prev.specs[1].events.as_deref().unwrap() as *const crate::spec::EventSpec,
+            before
+        );
+        assert_eq!(ui.memo("exit", &Value::Null, body), FillAnswer::Replayed);
+        ui.finish();
+        assert_eq!(
+            core.tree.specs[1]
+                .events()
+                .on_click()
+                .unwrap()
+                .get_str("kind"),
+            Some("leave")
+        );
     }
 }

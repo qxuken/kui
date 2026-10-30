@@ -1063,6 +1063,9 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_animation_encoder_free",
         ];
         name.starts_with("kui_value_")
+            // Map constructors, formerly header-only (backlog F283):
+            // data, as the `kui_value_*` constructors are, not UI verbs.
+            || matches!(name, "kui_msg" | "kui_msg_int")
             // A channel's builder and readers make and read data, as
             // `kui_value_*` do; the verb is `Channel::table` (ADR 0065).
             || name.starts_with("kui_channel_")

@@ -5396,8 +5396,9 @@ void kui_value_free(KuiValue *v);
  *         kui_value_as_int(kui_value_get(ev.payload, KUI_STR("row")), &row))
  *         select(row);
  *
- * Header-only, as kui_str_eq is: they call the functions above and
- * nothing else. */
+ * The constructors are library entry points (since alpha.73): each builds
+ * its map directly, without temporary boxed values. The event readers
+ * below are header-only. */
 
 /* A NUL-terminated string as a KuiStr, for these helpers: KUI_STR is a
  * compound literal, which C++ (a host including this header) has not. */
@@ -5427,20 +5428,15 @@ static inline const KuiValue *kui_event_data(const KuiEvent *ev) {
 }
 
 /* {kind}: the message a click, a toggle or a menu choice is declared
- * with when it needs no field. Owned by you until a handler consumes it. */
-static inline KuiValue *kui_msg(const char *kind) {
-    KuiValue *m = kui_value_map();
-    kui_value_map_set(m, kui__cstr("kind"), kui_value_str(kui__cstr(kind)));
-    return m;
-}
+ * with when it needs no field. Owned by you until a handler consumes it.
+ * Copies the NUL-terminated name; NULL answers NULL. */
+KuiValue *kui_msg(const char *kind);
 
 /* {kind, field: n}: a message that says which - a row's index, an item's
- * id. Add more fields with kui_value_map_set on what it returns. */
-static inline KuiValue *kui_msg_int(const char *kind, const char *field, int64_t n) {
-    KuiValue *m = kui_msg(kind);
-    kui_value_map_set(m, kui__cstr(field), kui_value_int(n));
-    return m;
-}
+ * id. Add more fields with kui_value_map_set on what it returns. Copies
+ * both NUL-terminated strings; either NULL answers NULL. A field named
+ * "kind" replaces the name, as kui_value_map_set does. */
+KuiValue *kui_msg_int(const char *kind, const char *field, int64_t n);
 
 /* -- Windowed runner (winit + wgpu), blocks until the window closes ------ */
 /* These two are the library's `runner` feature, on by default and the only

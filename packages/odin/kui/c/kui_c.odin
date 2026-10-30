@@ -1597,6 +1597,8 @@ foreign lib {
 	value_as_float :: proc(v: ^Value, out: ^f64) -> bool ---
 	value_as_str :: proc(v: ^Value, out: ^string) -> bool ---
 	value_free :: proc(v: ^Value) ---
+	msg :: proc(kind: cstring) -> ^Value ---
+	msg_int :: proc(kind: cstring, field: cstring, n: i64) -> ^Value ---
 	run :: proc(title: string, view: ViewFn, on_event: EventFn, user: rawptr) -> bool ---
 	on_teardown :: proc(teardown: TeardownFn) ---
 	set_icon :: proc(rgba: [^]u8, width: u32, height: u32, resource: u32) -> bool ---

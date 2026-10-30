@@ -58,6 +58,13 @@ local function rows_of(t, from, to, seed)
 end
 
 components = {
+  prose = function(env, props, inst)
+    local t = { width = "grow", gap = 2 }
+    for i = 1, props.rows do
+      t[#t + 1] = text(string.format("Sector %03d: all telemetry links stable; fuel reserves sufficient, navigation synchronized, and docking permissions confirmed.", i), cell)
+    end
+    return column(t)
+  end,
   screen = function(env, props, inst)
     local t = { width = "grow", gap = 2 }
     t[1] = row { gap = 12, text("Fleet", head), text(string.format("%d units", props.rows), cell) }
@@ -175,6 +182,31 @@ fn lua_screen_replayed(bencher: divan::Bencher) {
     });
     assert_eq!(screen_frame(ctx, props), 0, "replayed (KUI_FILL_REPLAYED)");
     bencher.bench_local(|| screen_frame(ctx, props));
+    kui_value_free(props);
+    kui_ctx_free(ctx);
+}
+
+/// Longer ordinary text runs: enough glyphs per node for retaining the
+/// emitted quad run to be cheaper than regenerating it (F284).
+#[divan::bench]
+fn lua_prose_replayed(bencher: divan::Bencher) {
+    let ctx = screens_ctx();
+    let props = screen_props(0, false);
+    let run = || {
+        begin(ctx);
+        let fill = kui_component(ctx, ks("fleet/prose"), props, None, std::ptr::null_mut());
+        kui_frame_finish(ctx);
+        fill
+    };
+    checked_first(ctx, || {
+        run();
+    });
+    assert_eq!(run(), 0, "the prose component replays");
+    assert!(
+        quads(ctx) > 10000,
+        "the benchmark must actually emit the long runs"
+    );
+    bencher.bench_local(run);
     kui_value_free(props);
     kui_ctx_free(ctx);
 }

@@ -106,7 +106,7 @@ under a lucky 16-unit build's: one unit inlines more.
 | `walk` (`-p kui-lua --bench walk`) | a settings pane's worth of Lua tables (120 settings: a name, a line of spans, four chips with a background, a radius, a pad and a click payload), built once and lowered every frame, layout and emission included; the diagnostics off, as a release runner has them (on: ~1.75 ms) | ~1.64 ms |
 | `build_and_walk` | the same tables built by the view each frame, as a view does: the gap is the script's own time | ~2.50 ms |
 | `ffi_rows_1k` (`-p kui-ffi --bench rows`) | a thousand log rows built through the C ABI as a C host builds them: `kui_open_keyed` with a padded, rounded, hover-tracking box and a `kui_msg_int` click message, one `kui_text`, `kui_close`, the whole frame (measured 2026-10-30, with the seven rows below, three interleaved runs; it read ~711 µs before backlog F281) | ~628 µs |
-| `ffi_rows_1k_build` | only the build calls of that frame, one frame a sample: a third of it is the host's `kui_msg_int`, the value calls building the message | ~271 µs |
+| `ffi_rows_1k_build` | only the build calls of that frame, one frame a sample (the F281 result, before the direct F283 message constructor measured below) | ~271 µs |
 | `ffi_rows_1k_finish` | only its `kui_frame_finish`: layout, text emission, hit regions, draw data | ~286 µs |
 | `ffi_rows_1k_boxes_only` | the boxes without their text | ~332 µs |
 | `ffi_rows_1k_texts_only` | the texts without their boxes, straight under the root | ~281 µs |
@@ -130,6 +130,125 @@ under a lucky 16-unit build's: one unit inlines more.
 | `halve_4032x3024` (`--bench levels`) | a phone photo's first level (ADR 0044): three million texels, each the linear-light mean of four, opaque (measured 2026-10-09) | ~10.1 ms |
 | `first_small_draw` | the frame that first draws that photo on a 400×300 card at 2×: levels 1 to 3 made and level 3 blitted into the page — once per photo per session | ~13.2 ms |
 | `warm_small_draw` | every frame after it: the level is on the entry and in the page | ~0.33 µs |
+
+**F283's direct message construction (2026-10-30).** The `rows` bench now
+calls the exported `kui_msg_int` and retains the former helper in
+`*_inline_message` rows, so both paths run in the same binary. M3 Pro,
+one codegen unit (`CARGO_PROFILE_BENCH_CODEGEN_UNITS=1`), three runs with
+old/new order reversed on alternate runs, middle medians:
+
+| operation | former inline helper | direct entry point | change |
+|---|---:|---:|---:|
+| complete 1,000-row frame | 637.4 µs | 597.4 µs | −6.3% |
+| 1,000-row build calls only | 278.7 µs | 246.9 µs | −11.4% |
+
+The isolated `message_int_inline` / `message_int_direct` pair includes
+freeing the result and batches 10,000 calls per sample to avoid timer
+quantization: two runs read 103.1 → 74.6 ns and 105.0 → 78.2 ns
+(26–28% less). The allocation test (`cargo test -p kui-ffi --test
+messages`) counts seven allocations and two temporary frees for the old
+integer constructor, five allocations and no temporary frees for the
+direct one. Neither changes replay or layout; the older F281/F282 rows
+above are retained as their original measurements, not compared across
+sessions to claim another speedup.
+
+**F283's recycled replay handlers (2026-10-30).** Before/after binaries
+from `32234fb5` and the replay-event follow-up, one codegen unit, three
+interleaved runs with order reversed on alternate runs, middle medians
+(M3 Pro):
+
+| operation | before | after | change |
+|---|---:|---:|---:|
+| 1,000 replayed components, props kept | 731.3 µs | 664.9 µs | −9.1% |
+| 1,000 replayed components, props rebuilt | 954.0 µs | 890.4 µs | −6.7% |
+| Lua screen replayed | 265.8 µs | 250.7 µs | −5.7% |
+| Lua screen memoized | 268.3 µs | 252.6 µs | −5.9% |
+| Eight Lua panels all replayed | 272.5 µs | 257.1 µs | −5.7% |
+| Eight Lua panels, one changes | 481.0 µs | 475.3 µs | −1.2% |
+| Eight Lua panels, all change | 1,839 µs | 1,836 µs | −0.2% |
+| Lua screen fresh | 1,610 µs | 1,615 µs | +0.3% |
+| Plain C rows | 594.9 µs | 601.9 µs | +1.2% |
+| Plain Rust rows | 561.9 µs | 550.6 µs | −2.0% |
+
+The allocation test in `kui-ffi/tests/messages.rs` measures placement
+only: the first replay of one unlabelled clickable box allocates five
+times for its handler and message; the next three allocate nothing.
+Recycling reuses storage, not resolved state, and falls back to cloning
+when the previous tree must survive for exits. Other spec groups and
+non-box replay doors still clone normally. The journal box gains a spare
+event pointer and an optional node index, not another allocation; the
+ordinary `NodeSpec` size and clone implementation are unchanged.
+
+`bench-check.nu 32234fb5` passes all nine guarded core rows. The largest
+increase in the full suite was `deep_nesting_64_levels` at +6.1%; run
+alone it read +1.9% with ±2.1% spread. Other guarded increases were at
+most 2.6%. The isolated filter run's script exit is a missing-guards
+failure (it expects all nine), not a timing failure; the complete run
+passed. These small changes are reported rather than claiming every
+non-replay path became faster.
+
+**F284's conservative layout/paint reuse (2026-10-30).** Separate build
+outputs were used for before/after binaries (a shared-target trial
+produced byte-identical executables and was discarded). Against
+`5a794ae9`, with the same new prose benchmark on both sides, one codegen
+unit, three interleaved runs, order reversed on alternate runs, middle
+medians (M3 Pro):
+
+| operation | before | after | change |
+|---|---:|---:|---:|
+| Lua screen replayed | 250.8 µs | 204.7 µs | −18.4% |
+| Lua screen memoized | 253.4 µs | 207.1 µs | −18.3% |
+| Eight Lua panels replayed | 256.8 µs | 210.1 µs | −18.2% |
+| Eight panels, one changes | 472.6 µs | 468.6 µs | −0.8% |
+| Eight panels, all change | 1,837 µs | 1,838 µs | +0.1% |
+| Longer text runs (`lua_prose_replayed`) | 128.3 µs | 92.7 µs | −27.8% |
+| Component rows, props kept | 667.1 µs | 598.6 µs | −10.3% |
+| Component rows, props rebuilt | 885.7 µs | 811.5 µs | −8.4% |
+| Fresh Lua screen | 1,645 µs | 1,640 µs | −0.3% |
+| Plain C rows | 590.4 µs | 594.9 µs | +0.8% |
+| Plain Rust rows | 552.2 µs | 550.7 µs | −0.3% |
+
+The short-label screen benefits primarily from layout retention; caching
+each tiny glyph run proved more expensive than regenerating it. Quad
+reuse is restricted to longer plain runs with already prepared glyphs
+and no wrapping/clip/decoration side effects. A retained run checks the
+complete paint input, including atlas epoch and clip geometry/id.
+
+This is not general independent-subtree caching: the complete supported
+layout must match, and a refilled recorded panel falls back instead of
+paying to capture a layout that keeps changing. Scrollers, floats,
+tables, rules, hidden nodes, position animation, exits and non-text
+resource nodes are excluded. Snapshots are limited to 4,096 nodes and
+quad storage to 32,768 quads. Hits, text placement, selection, events,
+diagnostics, focus and accessibility still update every frame.
+
+`screen_phases` reads begin ~8 µs, placement ~100 µs and finish ~95 µs
+for replay, against finish ~140 µs fresh. The original F284 projection
+of ~100 µs for the entire frame remains a projection, not this result.
+Both complete `bench-check.nu 5a794ae9` runs pass all nine core guards.
+Deep nesting was the largest increase: +2.5% in the first run, +4.7% on
+the final code. Other final guarded rows were within 1%, with a worst
+run-to-run spread of 2.4%. These are not claims that every non-replay
+path became faster.
+
+**The +4.7% reading did not reproduce** (three further guard runs read
+−2.4%, +0.8%, +2.8%; six direct interleaved rounds of that one row read
++0.8%). It was one noisy sample, not a regression. What was real in the
+first F284 path was the per-node cost it added inside `emit_node` — the
+frame's hottest function, where C41 found +10% from register spills alone
+— to test the paint cache: two loads through the nested reuse state and
+two branches on every node of every frame, cached or not. The follow-up
+restructure (`claude/ui-compare-f284-emit-hot-path`) hoists that to one
+byte read once per frame (`Core::paint_cache_on`, set where `emit_frame`
+begins), with the bookkeeping — candidate check, text stamp, the cache
+lookup — in an `#[inline(never)]` function off the plain path, taking
+the fields it needs the way `painter!` splits them rather than `&mut
+self`, so a node's `leaf` borrows of the stroke and path stores stay
+live beside it. A plain frame's node is back to the branch it always
+took. Measured the same way: six interleaved rounds of
+`deep_nesting_64_levels` read base 97.0 → head 96.0 µs (−1.1%), a full
+guard run reads −1.5% with ±1.5% spread, and the screen gains survive
+(replayed 248.6 → 207.9 µs, −16.4%, three interleaved rounds).
 
 What the pairs say. Deriving the access tree costs **~1.10×** the frame it
 follows — it was 1.35× before ADR 0016's one built decision, the digest

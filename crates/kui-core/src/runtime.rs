@@ -72,7 +72,9 @@ mod gesture;
 mod groups;
 mod host_hit;
 pub mod inspect;
+mod layout_reuse;
 mod menu_api;
+mod paint_reuse;
 pub mod perf;
 mod reframe;
 /// A slot replayed by its host (ADR 0045).
@@ -332,6 +334,14 @@ pub struct Core {
     /// instance is replayed by default, so most of these are replayed
     /// every frame.
     kept_instances: rustc_hash::FxHashMap<Key, replay::Kept>,
+    layout_reuse: layout_reuse::LayoutReuse,
+    /// Whether this frame's nodes go through the retained-paint cache
+    /// (F284): set once at `emit_frame`, so `emit_node` reads one byte
+    /// instead of walking into the reuse state per node.
+    paint_cache_on: bool,
+    /// A replay put recyclable handler storage in the current tree
+    /// (F283). Frames without such a replay never scan the journals.
+    replay_events_pending: bool,
     /// The fills being drawn right now, innermost last: what a fill's
     /// `children()` asks of, and what the host's children are built
     /// against (ADR 0060).
@@ -1482,6 +1492,9 @@ impl Core {
             suspended: Vec::new(),
             keep_next: None,
             kept_instances: Default::default(),
+            layout_reuse: Default::default(),
+            paint_cache_on: false,
+            replay_events_pending: false,
             fill_frames: Vec::new(),
             placing_slot: None,
             ns_depth: usize::MAX,
@@ -2412,6 +2425,10 @@ impl Core {
             .and_then(|i| self.tree.specs[i].interact.as_deref())
             .and_then(|i| i.hover_group);
         let keep_prev = self.tree.any_exit;
+        if self.replay_events_pending {
+            self.replay_events_pending = false;
+            self.recycle_replayed_events(keep_prev);
+        }
         if keep_prev {
             std::mem::swap(&mut self.tree, &mut self.prev_tree);
         } else {

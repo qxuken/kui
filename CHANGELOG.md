@@ -116,8 +116,9 @@ was the first bare bump to break an app in five releases).
   The new `screens` bench draws a 240-row Lua screen: 1,621 µs fresh,
   268 µs as a replayed component, 269 µs with the enclosing Lua view
   running every frame and its expensive section memoized (M3 Pro, same
-  run). This skips view construction, not layout or emission; F284 is
-  still open. The Node/JSX form is not built yet: its frame is encoded
+  run, before F284's conservative layout/paint cache below). Memo itself
+  caches view construction; broader subtree reuse remains open. The
+  Node/JSX form is not built yet: its frame is encoded
   before the core can decide whether to call a body.
 
 - **Kit's `select` takes `menu_max_width` and `menu_wrap`.**
@@ -159,6 +160,60 @@ was the first bare bump to break an app in five releases).
   error's code. The plain calls raise the message as they did.
 
 ### Changed
+
+- **Unchanged replayed screens can reuse layout and longer text runs**
+  (backlog F284, first part). On frames containing component or memo
+  replay, the core can retain a complete supported layout when every
+  layout input agrees: viewport, scale, shaping revisions, topology,
+  declared sizing and text. It restores sizes, positions, resolved
+  clamps, baselines and per-width text state; frame-dependent diagnostics,
+  events, focus, hits, selection and accessibility still run. Longer plain
+  text runs also reuse quads when their position, style, opacity, clip,
+  color, shape and atlas epoch agree. Tiny labels and paint paths with
+  side effects remain on the ordinary emitter.
+
+  The first path is deliberately limited to boxes and shaped text, at
+  most 4,096 nodes and 32,768 retained quads; scrolling, floats, tables,
+  rules, hidden/position-animated nodes, exits and other resource kinds
+  fall back to normal layout. A recorded panel refilling also falls back,
+  so this does not yet retain the other subtrees independently. In
+  interleaved M3 Pro runs, a replayed Lua screen went from 251 to 205 µs,
+  a memoized screen from 253 to 207, and the new long-text case from
+  128 to 93. Fresh Lua and ordinary builds stayed within ~1%; no cache
+  allocation is added to a frame with no replay. General subtree reuse
+  remains open.
+
+- **Replayed boxes reuse their handler storage** (backlog F283, second
+  part). Before discarding last frame's tree, the journal takes back each
+  replayed box's event-handler allocation. Its next replay restores the
+  complete declaration with `Value::clone_from`, reusing message maps
+  and strings, rather than cloning and freeing them anew. The declared
+  spec stays untouched; resolved hover, rules and easing are still
+  recomputed. A tree retained for exit animations is never stripped.
+  Plain builds gain no per-node allocation, and frames without replayed
+  handlers skip the recycling pass. This is shared by component replay
+  and host memos, not specific to Lua.
+
+  The allocation test measures zero allocations for warmed replay of a
+  clickable box, down from five in its handler/message clone. Same-machine
+  interleaved benchmarks measure 9% off replayed component rows with
+  retained props, and 6% off the replayed or memoized Lua screen. Layout
+  and quad emission are unchanged; the rest of F283 and F284 remain open.
+
+- **A C message is built in one library call** (backlog F283, first
+  part). `kui_msg` and `kui_msg_int` retain their C signatures and
+  ownership, but are exported Rust entry points rather than inline
+  sequences of boxed-value calls. An integer message makes five
+  allocations instead of seven and frees no temporary boxes. The
+  same-binary rows benchmark measures 11% less time in the build calls
+  and 6% less in the whole frame (1,000 rows, M3 Pro, three interleaved
+  runs with one codegen unit). The returned map remains mutable; a field
+  named `kind` still replaces the name. Names are copied, invalid UTF-8
+  is replaced as before, and NULL names return NULL. An existing binary
+  compiled with the old inline helpers still works; recompiling with
+  this header needs this library's two new exports. No struct layout or
+  ABI version changes. This helps fresh C builds, not a Lua component
+  whose view is already skipped by replay.
 
 - **The C and Odin library comes as a full archive and a slim one per
   platform** (backlog F278). `kui-ffi-<version>-<platform>` is the library

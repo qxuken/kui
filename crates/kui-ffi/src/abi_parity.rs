@@ -115,7 +115,7 @@ macro_rules! c_type {
     };
 }
 c_type! {
-    () => "void", bool => "bool", u8 => "uint8_t", u16 => "uint16_t",
+    () => "void", bool => "bool", i8 => "int8_t", u8 => "uint8_t", u16 => "uint16_t",
     u32 => "uint32_t", u64 => "uint64_t", i32 => "int32_t", i64 => "int64_t",
     f32 => "float",
     f64 => "double", usize => "size_t", std::ffi::c_void => "void",
@@ -177,7 +177,14 @@ impl<T: CType> CType for *const T {
 macro_rules! abi_fn {
     ($out:expr, $names:expr, $name:ident ( $($a:ty),* $(,)? ) $(-> $r:ty)?) => {{
         let _: unsafe extern "C" fn($($a),*) $(-> $r)? = $name;
-        let args: Vec<String> = vec![$(<$a as CType>::c()),*];
+        // Rust's c_char aliases i8 or u8 by target; C's plain char is a
+        // distinct type from both. Preserve the source spelling here,
+        // while the coercion above still pins the actual Rust signature.
+        let args: Vec<String> = vec![$(if stringify!($a) == "*const std::ffi::c_char" {
+            "const char *".to_owned()
+        } else {
+            <$a as CType>::c()
+        }),*];
         let args = if args.is_empty() { "void".to_string() } else { args.join(", ") };
         let ret = abi_fn!(@ret $($r)?);
         writeln!($out, "{} {}({});", ret, stringify!($name), args).unwrap();
