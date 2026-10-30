@@ -152,6 +152,41 @@ direct one. Neither changes replay or layout; the older F281/F282 rows
 above are retained as their original measurements, not compared across
 sessions to claim another speedup.
 
+**F283's recycled replay handlers (2026-10-30).** Before/after binaries
+from `32234fb5` and the replay-event follow-up, one codegen unit, three
+interleaved runs with order reversed on alternate runs, middle medians
+(M3 Pro):
+
+| operation | before | after | change |
+|---|---:|---:|---:|
+| 1,000 replayed components, props kept | 731.3 µs | 664.9 µs | −9.1% |
+| 1,000 replayed components, props rebuilt | 954.0 µs | 890.4 µs | −6.7% |
+| Lua screen replayed | 265.8 µs | 250.7 µs | −5.7% |
+| Lua screen memoized | 268.3 µs | 252.6 µs | −5.9% |
+| Eight Lua panels all replayed | 272.5 µs | 257.1 µs | −5.7% |
+| Eight Lua panels, one changes | 481.0 µs | 475.3 µs | −1.2% |
+| Eight Lua panels, all change | 1,839 µs | 1,836 µs | −0.2% |
+| Lua screen fresh | 1,610 µs | 1,615 µs | +0.3% |
+| Plain C rows | 594.9 µs | 601.9 µs | +1.2% |
+| Plain Rust rows | 561.9 µs | 550.6 µs | −2.0% |
+
+The allocation test in `kui-ffi/tests/messages.rs` measures placement
+only: the first replay of one unlabelled clickable box allocates five
+times for its handler and message; the next three allocate nothing.
+Recycling reuses storage, not resolved state, and falls back to cloning
+when the previous tree must survive for exits. Other spec groups and
+non-box replay doors still clone normally. The journal box gains a spare
+event pointer and an optional node index, not another allocation; the
+ordinary `NodeSpec` size and clone implementation are unchanged.
+
+`bench-check.nu 32234fb5` passes all nine guarded core rows. The largest
+increase in the full suite was `deep_nesting_64_levels` at +6.1%; run
+alone it read +1.9% with ±2.1% spread. Other guarded increases were at
+most 2.6%. The isolated filter run's script exit is a missing-guards
+failure (it expects all nine), not a timing failure; the complete run
+passed. These small changes are reported rather than claiming every
+non-replay path became faster.
+
 What the pairs say. Deriving the access tree costs **~1.10×** the frame it
 follows — it was 1.35× before ADR 0016's one built decision, the digest
 that skips the derivation when nothing it reads has changed. Shadows under

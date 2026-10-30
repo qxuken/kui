@@ -4455,9 +4455,35 @@ middle medians: 1,000 complete rows 637.4 → 597.4 µs (−6.3%); build calls
 timer quantization, is 26–28% cheaper. Full replay does not run these
 constructors, so this does not improve an already replayed Lua screen.
 
-**Still open.** Sharing/moving kept specs without penalizing plain
-builds, and recycling last frame's spec storage. F284's layout/quad
-reuse is separate and remains unimplemented.
+**A second part**, 2026-10-30 on `claude/ui-compare-f283-replay-events`:
+replayed boxes reclaim their `EventSpec` from the tree just before it is
+discarded and restore its handlers, messages and flags from the untouched
+journal. The rest of the spec is freshly cloned as before, so hover,
+rules, layout and easing never become the next frame's declaration.
+The journal's existing spec box holds the spare pointer and node index;
+no allocation is added to plain builds, and a frame with no replayed
+handlers never scans the journals. A tree retained for exits is left
+intact and uses ordinary cloning. Both components and host memos use
+this path, regardless of the binding that built them.
+
+Counted in `tests/messages.rs`: a memo replaying one unlabelled clickable
+box with a two-field map uses five allocations on its first replay,
+zero on the next three (placement only, begin/finish outside the count).
+Interleaved one-codegen-unit runs against `32234fb5`, middle medians:
+replayed component rows with kept props 731.3 → 664.9 µs (−9.1%), the Lua
+screen 265.8 → 250.7 µs (−5.7%), a memoized screen 268.3 → 252.6 µs
+(−5.9%). Fresh Lua 1,610 → 1,615 µs; plain C rows 594.9 → 601.9 µs.
+The full core bench guard passes all nine rows; its largest increase was
+deep nesting at +6.1%, which read +1.9% isolated with ±2.1% run-to-run
+spread. Tests cover handler identity/count changes, spilled storage,
+all event flags, payload-buffer reuse without aliasing the declaration,
+repeated hover changes/click delivery and preservation of exit trees.
+Checked: 3,411 Rust/Node checks, the C and Odin rounds, fmt, clippy and
+`gen.nu --check`; all pass.
+
+**Still open.** Whole-spec reuse (including access/interaction/animation
+groups and the non-box replay doors), and recycling plain frames' spec
+storage. F284's layout/quad reuse is separate and remains unimplemented.
 
 **Found** 2026-10-30 profiling F281 and F282 (`cargo bench -p kui-ffi
 --bench rows`, M3 Pro):

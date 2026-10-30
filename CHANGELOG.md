@@ -160,6 +160,23 @@ was the first bare bump to break an app in five releases).
 
 ### Changed
 
+- **Replayed boxes reuse their handler storage** (backlog F283, second
+  part). Before discarding last frame's tree, the journal takes back each
+  replayed box's event-handler allocation. Its next replay restores the
+  complete declaration with `Value::clone_from`, reusing message maps
+  and strings, rather than cloning and freeing them anew. The declared
+  spec stays untouched; resolved hover, rules and easing are still
+  recomputed. A tree retained for exit animations is never stripped.
+  Plain builds gain no per-node allocation, and frames without replayed
+  handlers skip the recycling pass. This is shared by component replay
+  and host memos, not specific to Lua.
+
+  The allocation test measures zero allocations for warmed replay of a
+  clickable box, down from five in its handler/message clone. Same-machine
+  interleaved benchmarks measure 9% off replayed component rows with
+  retained props, and 6% off the replayed or memoized Lua screen. Layout
+  and quad emission are unchanged; the rest of F283 and F284 remain open.
+
 - **A C message is built in one library call** (backlog F283, first
   part). `kui_msg` and `kui_msg_int` retain their C signatures and
   ownership, but are exported Rust entry points rather than inline

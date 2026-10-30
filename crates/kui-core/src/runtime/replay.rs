@@ -756,6 +756,7 @@ impl Core {
     /// discarded. A departure needs the tree intact, so that frame uses
     /// ordinary cloning. Clearing every index even then prevents a later
     /// frame from treating a previous tree's position as a live node.
+    #[inline(never)]
     pub(super) fn recycle_replayed_events(&mut self, preserve_tree: bool) {
         for kept in self.kept_instances.values_mut() {
             for op in &mut kept.ops {
@@ -910,6 +911,12 @@ pub(crate) fn replay_op(ui: &mut Ui<'_>, op: &mut Op) {
     let core = ui.core();
     match op {
         Op::Open { key, spec } => {
+            // Eventless boxes have nothing to recycle: keep their old
+            // clone path, including its bulk-copy optimization.
+            if spec.declared.events.is_none() {
+                core.open_with_key(*key, spec.declared.clone());
+                return;
+            }
             let before = core.tree.len();
             core.open_with_key(*key, spec.declared.clone_reusing_events(spec.events.take()));
             // Kept rooms can insert nodes before this one. Find only in
@@ -918,6 +925,7 @@ pub(crate) fn replay_op(ui: &mut Ui<'_>, op: &mut Op) {
                 .iter()
                 .position(|k| *k == *key)
                 .map(|i| before + i);
+            core.replay_events_pending |= spec.at.is_some();
         }
         Op::Close => core.close(),
         Op::Text {
