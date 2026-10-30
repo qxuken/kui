@@ -4533,8 +4533,10 @@ interleaved runs, middle medians: replayed Lua screen 250.8 → 204.7 µs
 replayed 256.8 → 210.1 (−18.2%), a new longer-text `lua_prose_replayed`
 case 128.3 → 92.7 (−27.8%). One changing panel 472.6 → 468.6 µs, fresh
 Lua 1,645 → 1,640; ordinary Rust/C rows within 1%. The replayed screen's
-finish is now ~95 µs, versus ~140 µs fresh. The core benchmark guard
-passes all nine rows, worst increase +2.5% (deep nesting).
+finish is now ~95 µs, versus ~140 µs fresh. Two complete core benchmark
+guard runs pass all nine rows; deep nesting was the largest increase,
++2.5% in the first and +4.7% on the final code (other final guards within
+1%, worst run-to-run spread 2.4%).
 
 Differential tests compare complete geometry, final layout fields,
 quads and clips against normal layout/paint through viewport, scale,

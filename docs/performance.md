@@ -225,8 +225,11 @@ diagnostics, focus and accessibility still update every frame.
 `screen_phases` reads begin ~8 µs, placement ~100 µs and finish ~95 µs
 for replay, against finish ~140 µs fresh. The original F284 projection
 of ~100 µs for the entire frame remains a projection, not this result.
-The complete `bench-check.nu 5a794ae9` run passes all nine core guards;
-their changes range from −1.3% to +2.5% (worst run-to-run spread 1.8%).
+Both complete `bench-check.nu 5a794ae9` runs pass all nine core guards.
+Deep nesting was the largest increase: +2.5% in the first run, +4.7% on
+the final code. Other final guarded rows were within 1%, with a worst
+run-to-run spread of 2.4%. These are not claims that every non-replay
+path became faster.
 
 What the pairs say. Deriving the access tree costs **~1.10×** the frame it
 follows — it was 1.35× before ADR 0016's one built decision, the digest
