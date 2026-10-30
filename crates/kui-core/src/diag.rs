@@ -770,6 +770,20 @@ pub fn unclosed_node(innermost: Key, open: usize) -> Warning {
     }
 }
 
+/// The [`UNCLOSED_NODE`] warning for a memo's body (backlog F285) that
+/// returned with `open` nodes still open, keyed by the memo.
+pub fn unbalanced_memo(memo: Key, open: usize) -> Warning {
+    Warning {
+        code: UNCLOSED_NODE,
+        key: memo.str(UNCLOSED_NODE),
+        message: format!(
+            "a memo's body returned with {open} node{} still open; they were closed at the \
+             memo's end — an `open` without its `close`",
+            if open == 1 { "" } else { "s" }
+        ),
+    }
+}
+
 /// The [`LAYOUT_OF_WITHOUT_HANDLER`] warning for one key.
 pub fn layout_of_without_handler(key: Key) -> Warning {
     Warning {

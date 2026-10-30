@@ -56,6 +56,9 @@ use crate::tree::OriginId;
 use crate::value::Value;
 use crate::window::{WindowCommand, WindowConfig, WindowEvents, WindowId, WindowLifecycle};
 
+/// What a memo is called in a recording's placements (backlog F285).
+const MEMO: &str = "memo";
+
 pub struct Ui<'a> {
     core: &'a mut Core,
     /// What fills the slots this frame declares (`Core::frame_with`);
@@ -297,6 +300,105 @@ impl<'a> Ui<'a> {
     /// ```
     pub fn component(&mut self, name: &str, props: &Value) -> Option<FillAnswer> {
         self.place(name, props, None, None)
+    }
+
+    /// A part of the view built once and pushed again while `deps` hold
+    /// (backlog F285): `f` builds it, and every frame after, placed at the
+    /// same label with `deps` equal and nothing it read of the frame moved
+    /// (a hover it asked about, a scroll, the theme), the nodes it pushed
+    /// are pushed again without calling `f` — the journal a component
+    /// instance replays by (ADR 0060), with no extension behind it. What
+    /// the memo's nodes do is the view's own: their events are the
+    /// placer's, their labels are found by `key_of` as any other; only
+    /// their keys are derived from the memo's, so its siblings' do not
+    /// depend on what it holds. `deps` is everything `f` reads that the
+    /// core does not see — the model's numbers, the strings it formats —
+    /// and a memo whose `deps` leave one out draws it stale. A memo inside
+    /// a memo is kept on its own: the outer replays while both would, and
+    /// the inner while it would, when the outer is built again.
+    ///
+    /// ```rust
+    /// # use kui_core::{Core, NodeSpec, Size, TextStyle, Value, FillAnswer};
+    /// # let mut core = Core::new();
+    /// let units = 240;
+    /// for frame in 0..2 {
+    ///     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ///     let answer = ui.memo("fleet", &Value::Int(units), |ui| {
+    ///         for i in 0..units {
+    ///             ui.text(&format!("unit {i}"), TextStyle::new(13.0));
+    ///         }
+    ///     });
+    ///     assert_eq!(answer.replayed(), frame == 1);
+    ///     ui.finish();
+    /// }
+    /// ```
+    pub fn memo(&mut self, label: &str, deps: &Value, f: impl FnOnce(&mut Ui<'_>)) -> FillAnswer {
+        let key = self.core.child_key(label);
+        self.memo_at(key, deps, f)
+    }
+
+    /// [`Self::memo`] keyed by a data index, as `open_indexed` keys a
+    /// node: a list's rows each a memo keep theirs as the list shifts.
+    pub fn memo_indexed(
+        &mut self,
+        i: u64,
+        deps: &Value,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) -> FillAnswer {
+        let key = self.core.child_key_indexed(i);
+        self.memo_at(key, deps, f)
+    }
+
+    fn memo_at(&mut self, key: Key, deps: &Value, f: impl FnOnce(&mut Ui<'_>)) -> FillAnswer {
+        if self.core.tree.is_empty() {
+            return FillAnswer::NotKept;
+        }
+        // Inside a component a kept fill placed, which is filled fresh and
+        // not kept, nothing inside is kept either.
+        let can_keep = self.core.keeping() || !self.core.recording_busy();
+        let found = if can_keep {
+            self.core.take_replayable_instance(key, deps)
+        } else {
+            Err((
+                FillAnswer::NotKept,
+                Some("inside a fill drawn fresh".into()),
+            ))
+        };
+        let (answer, why) = match found {
+            Ok(kept) => {
+                self.memo_push(key, kept);
+                (FillAnswer::Replayed, None)
+            }
+            Err((answer, why)) => {
+                let scope = self.core.memo_enter(key, deps, false);
+                f(self);
+                self.core.memo_leave(scope);
+                (answer, why)
+            }
+        };
+        self.core.perf_placement(key, MEMO, answer, why.as_deref());
+        answer
+    }
+
+    /// What the memo at `key` kept, pushed again as it is: the op a kept
+    /// fill journaled for a memo inside it, replayed (`Op::Memo`).
+    pub(crate) fn memo_replay(&mut self, key: Key) {
+        if let Some(kept) = self.core.take_kept_memo(key) {
+            self.memo_push(key, kept);
+            self.core
+                .perf_placement(key, MEMO, FillAnswer::Replayed, None);
+        }
+    }
+
+    fn memo_push(&mut self, key: Key, mut kept: crate::runtime::replay::Kept) {
+        let scope = self.core.memo_enter(key, &Value::Null, true);
+        let ops = kept.take_ops();
+        for op in &ops {
+            crate::runtime::replay::replay_op(self, op);
+        }
+        kept.put_ops(ops);
+        self.core.keep_again(kept);
+        self.core.memo_leave(scope);
     }
 
     /// A contribution slot (ADR 0067): every component the loaded

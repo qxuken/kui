@@ -128,6 +128,8 @@ impl Core {
         let saved_origin = self.origin;
         let saved_ns = (self.ns_depth, self.ns_key);
         let saved_label = self.label_ns;
+        // A fill inside a memo is a fill: the memo's depth is not its.
+        let saved_memo = std::mem::replace(&mut self.memo_depth, usize::MAX);
         self.origin = origin;
         self.ns_depth = depth;
         self.ns_key = slot.key;
@@ -174,11 +176,15 @@ impl Core {
         self.origin = saved_origin;
         (self.ns_depth, self.ns_key) = saved_ns;
         self.label_ns = saved_label;
+        self.memo_depth = saved_memo;
     }
 
     /// The slot the nodes opened right now belong to: the fill being
     /// drawn, `None` in the host's own view (or its host children).
     pub(crate) fn current_fill_slot(&self) -> Option<Key> {
+        if self.ns_depth == self.memo_depth {
+            return self.memo_outer_slot;
+        }
         (self.ns_depth != usize::MAX).then_some(self.ns_key)
     }
 

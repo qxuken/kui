@@ -116,7 +116,13 @@ fn screen_props(seed: i64, fresh: bool) -> *mut KuiValue {
 /// One frame of the screen component; its KUI_FILL_* answer.
 fn screen_frame(ctx: *mut KuiCtx, props: *mut KuiValue) -> i32 {
     begin(ctx);
-    let fill = kui_component(ctx, ks("fleet/screen"), props, None, std::ptr::null_mut::<c_void>());
+    let fill = kui_component(
+        ctx,
+        ks("fleet/screen"),
+        props,
+        None,
+        std::ptr::null_mut::<c_void>(),
+    );
     kui_frame_finish(ctx);
     fill
 }
@@ -126,7 +132,11 @@ fn checked_first(ctx: *mut KuiCtx, frame: impl FnOnce()) {
     kui_set_diagnostics(ctx, true);
     frame();
     let mut out = [unsafe { std::mem::zeroed::<KuiWarning>() }; 1];
-    assert_eq!(kui_take_warnings(ctx, out.as_mut_ptr(), 1), 0, "the script draws cleanly");
+    assert_eq!(
+        kui_take_warnings(ctx, out.as_mut_ptr(), 1),
+        0,
+        "the script draws cleanly"
+    );
     kui_set_diagnostics(ctx, false);
 }
 
@@ -138,7 +148,11 @@ fn lua_screen_fresh(bencher: divan::Bencher) {
     checked_first(ctx, || {
         screen_frame(ctx, props);
     });
-    assert_eq!(screen_frame(ctx, props), 1, "fresh: filled again (KUI_FILL_NOT_KEPT)");
+    assert_eq!(
+        screen_frame(ctx, props),
+        1,
+        "fresh: filled again (KUI_FILL_NOT_KEPT)"
+    );
     bencher.bench_local(|| screen_frame(ctx, props));
     kui_value_free(props);
     kui_ctx_free(ctx);
@@ -234,7 +248,13 @@ fn panels_frame(ctx: *mut KuiCtx, seeds: &[i64; PANELS]) -> usize {
     let mut replayed = 0;
     for (p, seed) in seeds.iter().enumerate() {
         let props = panel_props(p, *seed);
-        let fill = kui_component(ctx, ks("fleet/panel"), props, None, std::ptr::null_mut::<c_void>());
+        let fill = kui_component(
+            ctx,
+            ks("fleet/panel"),
+            props,
+            None,
+            std::ptr::null_mut::<c_void>(),
+        );
         replayed += usize::from(fill == 0);
         kui_value_free(props);
     }
@@ -324,7 +344,13 @@ fn screen_phases(bencher: divan::Bencher) {
             let a = Instant::now();
             begin(ctx);
             let b = Instant::now();
-            kui_component(ctx, ks("fleet/screen"), props, None, std::ptr::null_mut::<c_void>());
+            kui_component(
+                ctx,
+                ks("fleet/screen"),
+                props,
+                None,
+                std::ptr::null_mut::<c_void>(),
+            );
             let c = Instant::now();
             kui_frame_finish(ctx);
             let d = Instant::now();

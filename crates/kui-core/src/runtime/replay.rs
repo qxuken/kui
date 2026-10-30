@@ -197,6 +197,10 @@ pub(crate) enum Op {
         name: Box<str>,
         props: Value,
     },
+    /// A memo the fill built (backlog F285), kept under its own key: a
+    /// replay pushes what the memo kept. The memo's reads are the fill's
+    /// too, so the fill replays only while the memo would.
+    Memo(Key),
 }
 
 /// A fact of the frame a kept fill read, with what it read: the replay
@@ -295,6 +299,17 @@ pub(crate) struct Recording {
     pause_from: u32,
 }
 
+/// What [`Core::memo_enter`] saved for [`Core::memo_leave`].
+pub(crate) struct MemoScope {
+    key: Key,
+    depth: usize,
+    counter: u64,
+    ns: (usize, Key),
+    memo: (usize, Option<Key>),
+    nested: bool,
+    kept: bool,
+}
+
 /// What a slot kept, between frames.
 pub(crate) struct Kept {
     slot_key: Key,
@@ -309,6 +324,15 @@ pub(crate) struct Kept {
 }
 
 impl Kept {
+    /// The journal a replay pushes, taken while it does.
+    pub(crate) fn take_ops(&mut self) -> Vec<Op> {
+        std::mem::take(&mut self.ops)
+    }
+
+    pub(crate) fn put_ops(&mut self, ops: Vec<Op>) {
+        self.ops = ops;
+    }
+
     /// How many nodes a replay pushes, for a reader.
     pub(crate) fn nodes(&self) -> usize {
         self.ops
@@ -354,6 +378,12 @@ impl Core {
     #[inline]
     pub(crate) fn keeping(&self) -> bool {
         self.recording.as_ref().is_some_and(|r| r.paused == 0)
+    }
+
+    /// Whether a fill is being kept and paused: a component it placed is
+    /// being filled fresh, and nothing inside that can be kept.
+    pub(crate) fn recording_busy(&self) -> bool {
+        self.recording.is_some()
     }
 
     /// Journals `op` for the fill being kept, if one is and it is not
@@ -691,6 +721,9 @@ impl Core {
     /// At `begin_frame`: no fill is being kept yet.
     pub(crate) fn replay_begin_frame(&mut self) {
         self.recording = None;
+        self.suspended.clear();
+        self.memo_depth = usize::MAX;
+        self.memo_outer_slot = None;
         self.keep_next = None;
     }
 
@@ -699,6 +732,122 @@ impl Core {
     pub(crate) fn replay_finish_frame(&mut self) {
         let now = self.frame_no;
         self.kept_instances.retain(|_, k| k.frame == now);
+    }
+
+    /// A memo's way in (backlog F285): the scope its nodes are built in -
+    /// keyed under `key` as a fill's are, its sibling count left where it
+    /// was - and, unless `replaying`, its recording begun. Nested in a
+    /// fill being kept, the memo is one op of it, and the fill is set
+    /// aside until [`Self::memo_leave`]; inside a fill that cannot keep it
+    /// (a component placed in a kept fill), it is built and not kept.
+    pub(crate) fn memo_enter(&mut self, key: Key, deps: &Value, replaying: bool) -> MemoScope {
+        let nested = self.keeping();
+        if nested {
+            self.keep_op(Op::Memo(key));
+            self.pause_keeping();
+            let outer = self.recording.take().expect("keeping");
+            self.suspended.push(outer);
+        }
+        let depth = self.stack.len();
+        let scope = MemoScope {
+            key,
+            depth,
+            counter: self.counters.last().copied().unwrap_or(0),
+            ns: (self.ns_depth, self.ns_key),
+            memo: (self.memo_depth, self.memo_outer_slot),
+            nested,
+            kept: false,
+        };
+        self.memo_outer_slot = self.current_fill_slot();
+        self.memo_depth = depth;
+        (self.ns_depth, self.ns_key) = (depth, key);
+        if let Some(c) = self.counters.last_mut() {
+            *c = 0;
+        }
+        let kept = !replaying && self.recording.is_none();
+        if kept {
+            self.recording = Some(Recording {
+                slot_key: key,
+                origin: self.origin,
+                params: deps.clone(),
+                ops: Vec::new(),
+                reads: RefCell::new(Vec::new()),
+                once: std::cell::Cell::new(0),
+                taint: None,
+                first: self.tree.len() as u32,
+                nodes: 0,
+                foreign: 0,
+                paused: 0,
+                pause_from: 0,
+            });
+        }
+        MemoScope { kept, ..scope }
+    }
+
+    /// A memo's way out: what it left open closed (and said), its
+    /// recording checked and kept, the scope put back, and - nested - the
+    /// fill around it resumed with the memo's reads and taint as its own.
+    pub(crate) fn memo_leave(&mut self, scope: MemoScope) {
+        if self.stack.len() > scope.depth {
+            let open = self.stack.len() - scope.depth;
+            self.diag
+                .raise(crate::diag::unbalanced_memo(scope.key, open));
+            self.stack.truncate(scope.depth);
+            self.counters.truncate(scope.depth);
+        }
+        if scope.kept
+            && let Some(mut r) = self.recording.take()
+        {
+            let pushed = (self.tree.len() as u32).saturating_sub(r.first);
+            if r.paused > 0 {
+                r.taint = Some("a pause left open");
+            } else if pushed.saturating_sub(r.foreign) != r.nodes {
+                r.taint = Some("a node pushed through a door the journal does not know");
+            }
+            self.kept_instances.insert(
+                r.slot_key,
+                Kept {
+                    slot_key: r.slot_key,
+                    origin: r.origin,
+                    params: r.params,
+                    ops: r.ops,
+                    reads: r.reads.into_inner(),
+                    taint: r.taint,
+                    frame: self.frame_no,
+                },
+            );
+        }
+        if let Some(c) = self.counters.last_mut() {
+            *c = scope.counter;
+        }
+        (self.ns_depth, self.ns_key) = scope.ns;
+        (self.memo_depth, self.memo_outer_slot) = scope.memo;
+        if scope.nested {
+            self.recording = self.suspended.pop();
+            self.resume_keeping();
+            let (reads, taint) = match self.kept_instances.get(&scope.key) {
+                Some(k) => (k.reads.clone(), k.taint),
+                None => (Vec::new(), Some("a memo inside it was not kept")),
+            };
+            if let Some(r) = self.recording.as_mut() {
+                r.reads.get_mut().extend(reads);
+                if r.taint.is_none() {
+                    r.taint = taint.map(|_| "a memo inside it cannot be replayed");
+                }
+            }
+        }
+    }
+
+    /// Takes what the memo at `key` kept, if it kept anything, whatever
+    /// its deps: a fill replaying the memo's op knows its deps held.
+    pub(crate) fn take_kept_memo(&mut self, key: Key) -> Option<Kept> {
+        self.kept_instances.remove(&key)
+    }
+
+    /// Puts back what a replayed memo kept, for the frame after.
+    pub(crate) fn keep_again(&mut self, mut kept: Kept) {
+        kept.frame = self.frame_no;
+        self.kept_instances.insert(kept.slot_key, kept);
     }
 
     /// How many nodes the instance at `key` kept, if it kept any.
@@ -710,7 +859,7 @@ impl Core {
 /// One journaled op, through the door it came in by — the node under the
 /// key it had, the spec as it was declared, so hover, accent and easing
 /// are resolved for this frame as a fresh fill's would be.
-fn replay_op(ui: &mut Ui<'_>, op: &Op) {
+pub(crate) fn replay_op(ui: &mut Ui<'_>, op: &Op) {
     let core = ui.core();
     match op {
         Op::Open { key, spec } => core.open_with_key(*key, (**spec).clone()),
@@ -785,5 +934,6 @@ fn replay_op(ui: &mut Ui<'_>, op: &Op) {
         Op::Slot { key, name, props } => {
             ui.slot_at(Some(*key), name, props);
         }
+        Op::Memo(key) => ui.memo_replay(*key),
     }
 }
