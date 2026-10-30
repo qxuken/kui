@@ -101,6 +101,25 @@ was the first bare bump to break an app in five releases).
   comparison's log of 10,000 rows built in 195 µs a frame this way, against
   6.3 ms built whole.
 
+- **Memoize a section of your own view, without an extension** (backlog
+  F285). Rust has `Ui::memo` and `memo_indexed`; C `kui_memo` and
+  `kui_memo_indexed` with a body callback; Odin `kui.memo` and
+  `memo_indexed`; Lua `memo(key, deps, function() return … end)`. While
+  the deps compare equal and the facts the body read still hold, the
+  component journal pushes its nodes again without calling the body.
+  Nested memos keep their own journals; their reads invalidate the outer
+  one too. Labels and events remain the enclosing view's, not a new
+  component's. `try_memo` (used by Lua) keeps nothing on an error. Deps
+  must include every model value the body uses that kui cannot track;
+  a click does not stand in for a changed dependency.
+
+  The new `screens` bench draws a 240-row Lua screen: 1,621 µs fresh,
+  268 µs as a replayed component, 269 µs with the enclosing Lua view
+  running every frame and its expensive section memoized (M3 Pro, same
+  run). This skips view construction, not layout or emission; F284 is
+  still open. The Node/JSX form is not built yet: its frame is encoded
+  before the core can decide whether to call a body.
+
 - **Kit's `select` takes `menu_max_width` and `menu_wrap`.**
   `menu_max_width` holds the open menu to a width in px below the
   window's (the field's width still its least); `menu_wrap` lets an option
@@ -185,6 +204,8 @@ was the first bare bump to break an app in five releases).
 
 ### What you can delete
 
+- An extension written only to cache a section of a host's own view:
+  use a memo with explicit model dependencies.
 - A pure-Lua base64 or hex, and the `openssl`/`security`/`secret-tool`
   processes an app ran to sign a request, encrypt a file or read a token.
 - Matching a `try_` form's message with `find("No such file")`,

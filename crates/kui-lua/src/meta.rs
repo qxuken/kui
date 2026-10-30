@@ -823,6 +823,9 @@ pub(crate) fn signature(
                 "opts" if f.name == "uniform_list" => (false, "kui.UniformList".into()),
                 "opts" if f.name == "list" => (false, "kui.List".into()),
                 "t" if f.name == "lazy" => (false, "kui.Lazy".into()),
+                // A memo may return one node, a node list, or nil. `any`
+                // also represents this faithfully in the Teal declarations.
+                "render" if f.name == "memo" => (false, "fun(): any".into()),
                 "measure" => (false, "fun(i: integer, width: number): number".into()),
                 "t" | "opts" => (
                     tolerates_nil(&f.body, p),

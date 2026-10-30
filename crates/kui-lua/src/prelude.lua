@@ -273,6 +273,20 @@ function lazy(t)
   return t
 end
 
+-- memo("fleet", { units = n, seed = s }, function() return column { … } end):
+-- a part of the view built once and pushed again while `deps` hold
+-- (backlog F285) -- the function runs on the first frame, and on every
+-- frame after it only when `deps` differ (compared as values) or a fact of
+-- the frame it read moved (a hover it asked about, a scroll, the theme);
+-- otherwise what it built last is drawn again without calling it. `deps`
+-- is everything the function reads that kui does not see: what it draws
+-- from your model. `key` is a string, or an integer for a list's rows.
+-- The function returns a node, a list of nodes, or nil. A memo inside a
+-- memo is kept on its own.
+function memo(key, deps, render)
+  return { type = "memo", key = key, deps = deps, render = render }
+end
+
 -- In a component's function (`components.card = function(env, props,
 -- inst) … end`): where the host's children of `group` go, the unnamed group
 -- without one.

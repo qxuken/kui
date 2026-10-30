@@ -96,3 +96,7 @@ name = "c_panel"
 path = "../../examples/c/features/slots/panel.rs"
 # The Rust host is a `kui-native` app, so it needs what `kui-native` needs.
 required-features = ["runner"]
+
+[[bench]]
+name = "screens"
+harness = false

@@ -408,6 +408,53 @@ component :: proc(ui: ^Ui, name: string, props: any = nil) -> i32 {
 	return c.component(ui, name, borrow(&scratch, props), nil, nil)
 }
 
+// A part of the view built once and pushed again while deps hold (backlog
+// F285): body builds it from data, and every frame after, at the same
+// label with equal deps (any value: a number, a struct of the model's
+// revisions, a map) and nothing it read of the frame moved, what it built
+// is pushed again without calling body. deps is everything body reads that
+// kui does not see; leave one out and it draws stale. The nodes are the
+// view's own: their events and labels too. A memo inside a memo is kept on
+// its own. Answers one of the FILL_* codes, FILL_REPLAYED when body was
+// not called. memo_indexed keys it by a data index. Rust: Ui::memo.
+//
+//     kui.memo(ui, "fleet", &game, proc(g: ^Game, ui: ^kui.Ui) { ... }, g.fleet_rev)
+memo :: proc(ui: ^Ui, label: string, data: ^$T, body: proc(data: ^T, ui: ^Ui), deps: any = nil) -> i32 {
+	Body :: struct {
+		data: ^T,
+		body: proc(data: ^T, ui: ^Ui),
+		ctx:  Saved_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.body(b.data, ui)
+	}
+	b := Body{data, body, context}
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return c.memo(ui, label, borrow(&scratch, deps), call, &b)
+}
+
+// memo keyed by a data index, as open_indexed keys a node: a list's rows
+// each a memo keep theirs as the list shifts.
+memo_indexed :: proc(ui: ^Ui, index: u64, data: ^$T, body: proc(data: ^T, ui: ^Ui), deps: any = nil) -> i32 {
+	Body :: struct {
+		data: ^T,
+		body: proc(data: ^T, ui: ^Ui),
+		ctx:  Saved_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.body(b.data, ui)
+	}
+	b := Body{data, body, context}
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return c.memo_indexed(ui, index, borrow(&scratch, deps), call, &b)
+}
+
 // A branch built only when it can be shown (ADR 0069): render runs when the
 // parent offers need_w x need_h (0 for an axis it does not name) - laid out
 // at exactly that size - or, with query a map of conditions (width / height

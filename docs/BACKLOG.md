@@ -4426,7 +4426,9 @@ written by hand in C - in ~200, Clay in 3 ms, RmlUi in 1.3 ms with 2.9 ms
 of draw. Seven entries, F277–F283; F277–F280 **built 2026-10-30** on
 `claude/ui-compare-f277-f282`, F281 and F282 in part by a worktree agent
 on `claude/ui-compare-perf`, merged into it, all six in the archive; F283,
-what the profile found and no safe change reached, is open.
+what the profile found and no safe change reached, is open, and F284 and
+F285, from measuring a component's main case - a screen drawn by a Lua
+script - with `benches/screens.rs`.
 
 ### `.` F283 — A C click message costs seven allocations, and a replay clones what it kept
 
@@ -4443,6 +4445,70 @@ what the profile found and no safe change reached, is open.
 (an entry point that takes the kind, the field and the number); kept
 specs shared rather than cloned on replay, if that costs a plain build
 nothing; specs recycled between frames. `bench-check.nu` guards the rest.
+
+### `.` F284 — A replayed instance is laid out and emitted again from scratch
+
+**Found** 2026-10-30, by `cargo bench -p kui-ffi --bench screens` (M3 Pro):
+a Lua screen of 240 rows (a header and four formatted cells each, 243
+access nodes, 5,318 quads) placed as one component costs 1,666 µs a frame
+fresh and 270 µs replayed - the script is 90% of a fresh frame and the
+replay spares it - against 334 µs for the same nodes built through the C
+ABI. Eight panel components cost 278 µs all replayed, 489 with one
+changing, 1,861 with all changing. A replayed frame's phases: begin 16 µs,
+placement 105, finish 144, the same finish as a fresh frame's. Profiled
+(Time Profiler, the replayed bench): placement 40% (`replay_op` 38%, of
+it `text_with_key` 20% - interning, the style key, the content hash -
+`Tree::push` 7%, `NodeSpec::clone` 6%), layout 24% (`fit_heights` 10%,
+`TextSystem::wrapped` 8%, `distribute_axis` 9%), emit 28% (text
+`emit_entry` 11%, the glyph quads' `Vec::extend` 9%), begin 5%. Text is
+~42% of the frame across the three.
+
+**Do.** Keep what a replayed instance's subtree came to, not only what
+built it: its sizes and positions relative to its root, reused when the
+root is given the same room, and its quads, hit regions and access nodes,
+translated when only its place moved - invalidated by anything inside that
+the kept fill does not see: a hover, press or focus a spec resolves, a
+transition or keyframe, a scroll offset, a caret, the theme, the scale.
+Each of layout's six passes (and floats, rules, hidden, easing) needs a
+skip for a reused subtree, so it goes a pass at a time behind the
+`screens` bench. Projected: finish 144 µs to 20-40, a replayed frame ~100.
+
+### `.` F285 — Memo is a component's alone: a host must write an extension to cache a view
+
+**Built in part** 2026-10-30 on `claude/ui-compare-f277-f282`: Rust
+`Ui::memo` / `memo_indexed` and the fallible `try_memo` forms, C
+`kui_memo` / `kui_memo_indexed`, Odin `kui.memo` / `memo_indexed`, Lua
+`memo(key, deps, function() … end)`. The C and Odin forms use a body
+callback rather than begin/end: its scope cannot leak into the next
+frame, and a borrowed context keeps the enclosing filler available.
+All use the same journal as components, with a separate key namespace;
+nested memo reads and replay refusal propagate to the outer recording.
+Labels and events remain the enclosing view's. Model changes after an
+event must be represented in deps, not inferred from event delivery.
+Errors keep nothing. The `screens` bench in one run: 1,621 µs fresh Lua,
+268 µs replayed component, 269 µs fresh enclosing view with a memoized
+screen. Tests: 13 core cases, two Lua cases, both C entry points and
+both Odin wrappers exercised in their surface walks.
+
+**Left open.** Node/JSX: the encoded frame reaches the core after the
+host has already run its render functions, so this needs a separate
+binding/protocol design. F284's layout/quad reuse is also still open;
+the new memo skips view construction only. No automatic event-based
+model invalidation is claimed for host memos: deps are explicit.
+
+**Found** 2026-10-30, discussing F283: the journal that replays a
+component (`replay.rs`) is not extension-specific, but the only way in is
+`kui_component`, which needs a loaded extension - a Lua script or a C
+plugin. A C, Odin, Rust or Node host with an expensive part of its own
+view, or a Lua app with an expensive section that is not a component,
+cannot cache it.
+
+**Do.** A host-side memo on the same journal: `kui_memo_begin(ui, key,
+deps)` answers false when the kept nodes were pushed again (replayed),
+`kui_memo_end`; `ui.memo(key, deps, |ui| ..)` in Rust, and the same in
+Lua, Odin and JSX. Keyed and invalidated as an instance is: the deps
+compared, the reads checked, an event heard inside refilling it. F283 and
+F284 then apply to whatever it replays.
 
 ## From the core impurities audit (2026-10-25)
 

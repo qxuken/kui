@@ -225,6 +225,68 @@ pub extern "C" fn kui_component(
     })
 }
 
+/// A part of the view built once and pushed again while `deps` hold
+/// (backlog F285): `body` builds it, called with `user` and a context
+/// borrowing the frame for the call, and every frame after, placed at the
+/// same `label` with equal `deps` (borrowed; NULL for none) and nothing
+/// it read of the frame moved, what it pushed is pushed again without
+/// calling `body`. `deps` is everything `body` reads that kui does not
+/// see. Returns how it was filled, a `KUI_FILL_*` code
+/// (`KUI_FILL_REPLAYED` when `body` was not called); outside a frame
+/// nothing is built and it answers `KUI_FILL_NOT_KEPT`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_memo(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    deps: *const KuiValue,
+    body: ViewFn,
+    user: *mut c_void,
+) -> i32 {
+    memo(ptr, MemoAt::Label(label), deps, body, user)
+}
+
+/// [`kui_memo`] keyed by a data index, as `kui_open_indexed` keys a node:
+/// a list's rows each a memo keep theirs as the list shifts.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_memo_indexed(
+    ptr: *mut KuiCtx,
+    index: u64,
+    deps: *const KuiValue,
+    body: ViewFn,
+    user: *mut c_void,
+) -> i32 {
+    memo(ptr, MemoAt::Index(index), deps, body, user)
+}
+
+enum MemoAt {
+    Label(KuiStr),
+    Index(u64),
+}
+
+fn memo(
+    ptr: *mut KuiCtx,
+    at: MemoAt,
+    deps: *const KuiValue,
+    body: ViewFn,
+    user: *mut c_void,
+) -> i32 {
+    guard(-1, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return -1;
+        };
+        let deps = unsafe { deps.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
+        let build = |ui: &mut kui_core::Ui<'_>| {
+            let mut inner = KuiCtx::borrowing_in(ui);
+            body(user, &mut inner);
+        };
+        let fill = with_host_ui(c, |ui| match at {
+            MemoAt::Label(label) => ui.memo(&kstr(label), deps, build),
+            MemoAt::Index(i) => ui.memo_indexed(i, deps, build),
+        });
+        fill.code()
+    })
+}
+
 /// Declares a contribution slot at the cursor (ADR 0067, decisions 9–16):
 /// every component the loaded extensions contribute to `name` (a C
 /// plugin's `kui_ext_contributions`, a script's `contributes`) is placed

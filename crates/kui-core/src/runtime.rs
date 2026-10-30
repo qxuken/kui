@@ -324,6 +324,9 @@ pub struct Core {
     /// A component instance replayed (ADR 0060, `runtime::replay`): the
     /// fill being kept and the ask for the next one to keep.
     recording: Option<replay::Recording>,
+    /// The fills a memo nested in them set aside while its own is kept
+    /// (backlog F285), innermost last: each resumes when the memo ends.
+    suspended: Vec<replay::Recording>,
     keep_next: Option<(Key, Value)>,
     /// What each component instance kept, by its key (ADR 0060): an
     /// instance is replayed by default, so most of these are replayed
@@ -345,6 +348,12 @@ pub struct Core {
     /// when no fill is in progress — one compare on the auto-key path.
     ns_depth: usize,
     ns_key: Key,
+    /// The depth `ns_depth` holds while a memo's nodes are built (backlog
+    /// F285), and the fill slot outside it: a memo keys its nodes as a
+    /// fill does but is no fill of its own, so `current_fill_slot` reads
+    /// through it. `usize::MAX` outside a memo.
+    memo_depth: usize,
+    memo_outer_slot: Option<Key>,
     /// The fill whose labels the nodes opened right now are (backlog
     /// C134): `ns_key` inside a fill's own nodes, and the placer's inside
     /// the host's children a component places — an app names its node in
@@ -1470,12 +1479,15 @@ impl Core {
             key_labels_last: LabelIndex::default(),
             label_misses: Vec::new(),
             recording: None,
+            suspended: Vec::new(),
             keep_next: None,
             kept_instances: Default::default(),
             fill_frames: Vec::new(),
             placing_slot: None,
             ns_depth: usize::MAX,
             ns_key: Key::ROOT,
+            memo_depth: usize::MAX,
+            memo_outer_slot: None,
             label_ns: Key::ROOT,
             dt_app: None,
             dt_dock: None,

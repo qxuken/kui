@@ -1020,6 +1020,9 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_list_begin",
             "kui_list_row",
             "kui_list_end",
+            // `kui_memo` by a data index (backlog F285): the memo door's
+            // row names both, as `open_indexed` is `open`'s.
+            "kui_memo_indexed",
             "kui_child_key",
             "kui_row_count",
             "kui_set_key_focus",
