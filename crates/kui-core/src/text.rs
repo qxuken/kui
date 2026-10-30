@@ -730,6 +730,133 @@ struct FrameText {
     color: Color,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct PaintTextStamp {
+    key: u64,
+    wrap: Option<u32>,
+    color: Color,
+    atlas: u64,
+}
+
+/// Text state needed by the conservative retained-layout path (F284).
+/// Input keys identify declarations; output keys may be per-width forks.
+/// Keeping the distinction is necessary when the same text appears in
+/// two boxes of different widths.
+#[derive(Default)]
+pub(crate) struct LayoutTextCache {
+    inputs: Vec<u64>,
+    laid: Vec<LaidText>,
+}
+
+struct LaidText {
+    key: u64,
+    wrap: Option<f32>,
+    claimed_wrap: Option<f32>,
+}
+
+impl LayoutTextCache {
+    pub(crate) fn clear(&mut self) {
+        self.inputs.clear();
+        self.laid.clear();
+    }
+}
+
+impl TextSystem {
+    pub(crate) fn paint_cache_candidate(&self, id: TextId) -> bool {
+        let Some(t) = self.frame.get(id.0 as usize) else {
+            return false;
+        };
+        matches!(self.entries.get(&t.cache_key), Some(Entry::Run(e))
+            if e.content.len() >= 48 && !e.clamp_w && e.initial.is_none()
+                && e.span_deco.len() == 1 && !e.span_deco[0].any()
+                && e.span_deco[0].color.is_none())
+    }
+
+    /// A plain, fully prepared run can reuse its emitted quads. Reject
+    /// anything whose paint has side effects (own clips, span joins,
+    /// selection) or whose glyph templates need rebuilding.
+    pub(crate) fn paint_stamp(&self, id: TextId, width: f32, atlas: u64) -> Option<PaintTextStamp> {
+        let t = self.frame.get(id.0 as usize)?;
+        let Entry::Run(e) = self.entries.get(&t.cache_key)? else {
+            return None;
+        };
+        let target = wrap_target(e, Some(width), self.scale);
+        if e.clamp_w
+            || e.initial.is_some()
+            || e.span_deco.len() != 1
+            || e.span_deco[0].any()
+            || e.span_deco[0].color.is_some()
+            || wrap_differs(e.wrap, target)
+            || (e.claimed == self.frame_no && wrap_differs(e.claimed_wrap, target))
+            || e.glyphs_built_for != Some((e.wrap.map(f32::to_bits), atlas))
+        {
+            return None;
+        }
+        Some(PaintTextStamp {
+            key: t.cache_key,
+            wrap: e.wrap.map(f32::to_bits),
+            color: t.color,
+            atlas,
+        })
+    }
+
+    pub(crate) fn layout_cacheable(&self) -> bool {
+        self.frame.iter().all(|t| {
+            matches!(self.entries.get(&t.cache_key),
+            Some(Entry::Run(e)) if e.initial.is_none())
+        })
+    }
+
+    pub(crate) fn layout_cache_matches(&self, cache: &LayoutTextCache) -> bool {
+        self.frame.len() == cache.inputs.len()
+            && self.frame.len() == cache.laid.len()
+            && self
+                .frame
+                .iter()
+                .zip(&cache.inputs)
+                .all(|(t, k)| t.cache_key == *k)
+            && cache.laid.iter().all(|t| {
+                matches!(self.entries.get(&t.key),
+                Some(Entry::Run(e)) if e.wrap == t.wrap && e.initial.is_none())
+            })
+    }
+
+    pub(crate) fn layout_cache_inputs(&self, cache: &mut LayoutTextCache) {
+        cache.inputs.clear();
+        cache.inputs.extend(self.frame.iter().map(|t| t.cache_key));
+        cache.laid.clear();
+    }
+
+    pub(crate) fn layout_cache_save(&self, cache: &mut LayoutTextCache) {
+        cache.laid.clear();
+        for t in self.frame.iter() {
+            let Some(Entry::Run(e)) = self.entries.get(&t.cache_key) else {
+                cache.clear();
+                return;
+            };
+            cache.laid.push(LaidText {
+                key: t.cache_key,
+                wrap: e.wrap,
+                claimed_wrap: e.claimed_wrap,
+            });
+        }
+    }
+
+    pub(crate) fn layout_cache_restore(&mut self, cache: &LayoutTextCache) {
+        for (t, laid) in self.frame.iter_mut().zip(&cache.laid) {
+            t.cache_key = laid.key;
+            // Matching checked existence, width and the shaping revision.
+            // Touch forks too, or a repeatedly reused layout could let
+            // its per-width text entries age out of the shaping budget.
+            if let Some(Entry::Run(e)) = self.entries.get_mut(&laid.key) {
+                e.last_used = self.frame_no;
+                e.claimed = self.frame_no;
+                e.claimed_wrap = laid.claimed_wrap;
+            }
+        }
+    }
+}
+
 /// One entry of the text cache: a shaped run, or a long line whose chunks
 /// are runs of their own in the same map. Whether a text is
 /// long is decided once, at [`TextSystem::add`], and lives here as the

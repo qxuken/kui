@@ -72,7 +72,9 @@ mod gesture;
 mod groups;
 mod host_hit;
 pub mod inspect;
+mod layout_reuse;
 mod menu_api;
+mod paint_reuse;
 pub mod perf;
 mod reframe;
 /// A slot replayed by its host (ADR 0045).
@@ -332,6 +334,7 @@ pub struct Core {
     /// instance is replayed by default, so most of these are replayed
     /// every frame.
     kept_instances: rustc_hash::FxHashMap<Key, replay::Kept>,
+    layout_reuse: layout_reuse::LayoutReuse,
     /// A replay put recyclable handler storage in the current tree
     /// (F283). Frames without such a replay never scan the journals.
     replay_events_pending: bool,
@@ -1485,6 +1488,7 @@ impl Core {
             suspended: Vec::new(),
             keep_next: None,
             kept_instances: Default::default(),
+            layout_reuse: Default::default(),
             replay_events_pending: false,
             fill_frames: Vec::new(),
             placing_slot: None,

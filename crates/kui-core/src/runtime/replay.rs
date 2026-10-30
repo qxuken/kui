@@ -545,6 +545,7 @@ impl Core {
         let Some((key, params)) = self.keep_next.take_if(|(k, _)| *k == slot.key) else {
             return;
         };
+        self.layout_reuse.refilled = true;
         self.recording = Some(Recording {
             slot_key: key,
             origin,
@@ -731,6 +732,7 @@ impl Core {
         filler: Option<&mut dyn crate::slot::Fill>,
         children: &mut dyn crate::slot::Children,
     ) {
+        self.note_layout_replay();
         let origin = kept.origin;
         let mut ops = std::mem::take(&mut kept.ops);
         self.fill_instance(slot, origin, filler, children, |ui| {
@@ -745,6 +747,8 @@ impl Core {
 
     /// At `begin_frame`: no fill is being kept yet.
     pub(crate) fn replay_begin_frame(&mut self) {
+        self.layout_reuse.replayed = false;
+        self.layout_reuse.refilled = false;
         self.recording = None;
         self.suspended.clear();
         self.memo_depth = usize::MAX;
@@ -785,6 +789,7 @@ impl Core {
     /// aside until [`Self::memo_leave`]; inside a fill that cannot keep it
     /// (a component placed in a kept fill), it is built and not kept.
     pub(crate) fn memo_enter(&mut self, key: Key, deps: &Value, replaying: bool) -> MemoScope {
+        self.layout_reuse.refilled |= !replaying;
         let nested = self.keeping();
         if nested {
             self.keep_op(Op::Memo(key));

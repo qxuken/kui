@@ -540,7 +540,36 @@ impl Core {
             }
         }
         let first_quad = self.display.quads.len();
-        painter!(self).paint_box(rect, &style, &paint, leaf);
+        let cache_paint = self.layout_reuse.paint.enabled && self.layout_reuse.paint_candidates[i];
+        let reused = if cache_paint {
+            let content = match &leaf {
+                Leaf::Text { tid, sel: None } => self
+                    .text
+                    .paint_stamp(*tid, rect.w, self.atlas.stamp)
+                    .map(super::paint_reuse::Content::Text),
+                _ => None,
+            };
+            self.layout_reuse.paint.reuse(
+                i,
+                self.tree.keys[i],
+                rect,
+                &style,
+                paint,
+                self.display.clips[paint.clip_id as usize],
+                content,
+                &mut self.display.quads,
+            )
+        } else {
+            false
+        };
+        if !reused {
+            painter!(self).paint_box(rect, &style, &paint, leaf);
+            if cache_paint {
+                self.layout_reuse
+                    .paint
+                    .save(i, &self.display.quads[first_quad..]);
+            }
+        }
         // A gradient over the background the box just painted. Out of
         // `emit_node` as the rules below are, and for the same reason.
         if self.tree.any_gradient
@@ -813,22 +842,25 @@ impl Core {
         if !self.pending_scroll_labels.is_empty() {
             self.resolve_scroll_labels();
         }
-        {
-            let sess = &mut *self.session.state();
-            let mut measure = Measure {
-                text: &mut self.text,
-                cells: &mut self.cells,
-                fonts: &mut sess.fonts,
-                edit: &mut self.edit,
-                resources: &sess.resources,
-            };
-            layout::compute(
-                &mut self.tree,
-                &mut measure,
-                &mut self.scroll,
-                self.viewport,
-                self.scale,
-            );
+        if !self.reuse_layout() {
+            {
+                let sess = &mut *self.session.state();
+                let mut measure = Measure {
+                    text: &mut self.text,
+                    cells: &mut self.cells,
+                    fonts: &mut sess.fonts,
+                    edit: &mut self.edit,
+                    resources: &sess.resources,
+                };
+                layout::compute(
+                    &mut self.tree,
+                    &mut measure,
+                    &mut self.scroll,
+                    self.viewport,
+                    self.scale,
+                );
+            }
+            self.save_layout();
         }
         // What each node's `when` entries matched, kept for the next
         // frame, and its `query` where that moved (ADR 0069).
@@ -1120,6 +1152,7 @@ impl Core {
     /// ring) at its end — and the hit and scroll regions the
     /// next input is tested against, in the same order.
     fn emit_frame(&mut self) {
+        self.layout_reuse.begin_paint();
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self
             .interaction
@@ -3824,8 +3857,8 @@ struct Walk<'a> {
     scale: f32,
 }
 
-#[derive(Clone, Copy)]
-struct Paint {
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct Paint {
     /// The rect of the clip the node was emitted under, logical px, in
     /// framebuffer space: what its hit and scroll regions are cut by. The
     /// whole clip — its radii, its turn, its inner clip (ADR 0043) — is
