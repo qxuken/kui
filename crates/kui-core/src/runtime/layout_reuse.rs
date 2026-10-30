@@ -49,13 +49,16 @@ pub(super) struct LayoutReuse {
 }
 
 impl LayoutReuse {
-    pub(super) fn begin_paint(&mut self) {
+    /// Answers whether this frame's nodes go through the retained-paint
+    /// cache, and readies the cache for them (F284).
+    pub(super) fn begin_paint(&mut self) -> bool {
         let enabled = self.valid
             && self.context.is_some()
             && self.replayed
             && !self.refilled
             && self.has_paint_candidates;
         self.paint.begin(self.inputs.len(), enabled);
+        enabled
     }
 
     fn clear(&mut self) {

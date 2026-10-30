@@ -335,6 +335,10 @@ pub struct Core {
     /// every frame.
     kept_instances: rustc_hash::FxHashMap<Key, replay::Kept>,
     layout_reuse: layout_reuse::LayoutReuse,
+    /// Whether this frame's nodes go through the retained-paint cache
+    /// (F284): set once at `emit_frame`, so `emit_node` reads one byte
+    /// instead of walking into the reuse state per node.
+    paint_cache_on: bool,
     /// A replay put recyclable handler storage in the current tree
     /// (F283). Frames without such a replay never scan the journals.
     replay_events_pending: bool,
@@ -1489,6 +1493,7 @@ impl Core {
             keep_next: None,
             kept_instances: Default::default(),
             layout_reuse: Default::default(),
+            paint_cache_on: false,
             replay_events_pending: false,
             fill_frames: Vec::new(),
             placing_slot: None,

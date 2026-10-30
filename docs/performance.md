@@ -231,6 +231,25 @@ the final code. Other final guarded rows were within 1%, with a worst
 run-to-run spread of 2.4%. These are not claims that every non-replay
 path became faster.
 
+**The +4.7% reading did not reproduce** (three further guard runs read
+−2.4%, +0.8%, +2.8%; six direct interleaved rounds of that one row read
++0.8%). It was one noisy sample, not a regression. What was real in the
+first F284 path was the per-node cost it added inside `emit_node` — the
+frame's hottest function, where C41 found +10% from register spills alone
+— to test the paint cache: two loads through the nested reuse state and
+two branches on every node of every frame, cached or not. The follow-up
+restructure (`claude/ui-compare-f284-emit-hot-path`) hoists that to one
+byte read once per frame (`Core::paint_cache_on`, set where `emit_frame`
+begins), with the bookkeeping — candidate check, text stamp, the cache
+lookup — in an `#[inline(never)]` function off the plain path, taking
+the fields it needs the way `painter!` splits them rather than `&mut
+self`, so a node's `leaf` borrows of the stroke and path stores stay
+live beside it. A plain frame's node is back to the branch it always
+took. Measured the same way: six interleaved rounds of
+`deep_nesting_64_levels` read base 97.0 → head 96.0 µs (−1.1%), a full
+guard run reads −1.5% with ±1.5% spread, and the screen gains survive
+(replayed 248.6 → 207.9 µs, −16.4%, three interleaved rounds).
+
 What the pairs say. Deriving the access tree costs **~1.10×** the frame it
 follows — it was 1.35× before ADR 0016's one built decision, the digest
 that skips the derivation when nothing it reads has changed. Shadows under

@@ -4549,6 +4549,18 @@ Odin rounds, fmt, clippy and generated-file checks also pass. A regression
 test specifically invalidates paint on a shaping-generation change even
 when the atlas epoch and text keys stay unchanged.
 
+The +4.7% `deep_nesting_64_levels` reading in the second guard run did
+not reproduce: three further guard runs read −2.4%, +0.8%, +2.8%, and six
+direct interleaved rounds of that row read +0.8% — one noisy sample, not
+a regression. The first path did add a real per-node test of the paint
+cache inside `emit_node` (two loads through the reuse state, two branches,
+every node of every frame), which the `claude/ui-compare-f284-emit-hot-path`
+follow-up removed: one byte read once a frame, the bookkeeping
+`#[inline(never)]` off the plain path, split-field arguments as `painter!`
+takes so `leaf`'s borrows stay live. Six interleaved rounds then read
+97.0 → 96.0 µs (−1.1%), a full guard run −1.5% ±1.5%, and the screen
+gains survive (replayed −16.4%, three rounds).
+
 **Still open.** Independently retained subtrees when another panel
 refills, translation-only subtree reuse, support for the excluded
 layout/resource kinds, and broader paint reuse. Hit regions and access

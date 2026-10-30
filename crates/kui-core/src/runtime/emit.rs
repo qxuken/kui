@@ -540,31 +540,39 @@ impl Core {
             }
         }
         let first_quad = self.display.quads.len();
-        let cache_paint = self.layout_reuse.paint.enabled && self.layout_reuse.paint_candidates[i];
-        let reused = if cache_paint {
-            let content = match &leaf {
-                Leaf::Text { tid, sel: None } => self
-                    .text
-                    .paint_stamp(*tid, rect.w, self.atlas.stamp)
-                    .map(super::paint_reuse::Content::Text),
+        // The retained-paint bookkeeping (F284) is kept out of line, and
+        // off the plain path entirely: `emit_node` is the frame's hottest
+        // function, and C41 found register spills in it costing +10% from
+        // changes that touched nothing it reads. A plain frame reads one
+        // byte (`paint_cache_on`, set once at `emit_frame`) and takes the
+        // branch it always took. `paint_reuse` takes the fields it needs
+        // the way `painter!` splits them, not `&mut self`, so `leaf`'s
+        // borrows of the stroke and path stores can stay live beside it.
+        let tid = if self.paint_cache_on {
+            match &leaf {
+                Leaf::Text { tid, sel: None } => Some(*tid),
                 _ => None,
-            };
-            self.layout_reuse.paint.reuse(
-                i,
-                self.tree.keys[i],
-                rect,
-                &style,
-                paint,
-                self.display.clips[paint.clip_id as usize],
-                content,
-                &mut self.display.quads,
-            )
+            }
         } else {
-            false
+            None
         };
-        if !reused {
+        let cached = self.paint_cache_on
+            && paint_reuse(
+                &mut self.layout_reuse.paint,
+                &self.layout_reuse.paint_candidates,
+                &mut self.text,
+                self.atlas.stamp,
+                &mut self.display,
+                self.tree.keys[i],
+                i,
+                rect,
+                style,
+                paint,
+                tid,
+            );
+        if !cached {
             painter!(self).paint_box(rect, &style, &paint, leaf);
-            if cache_paint {
+            if self.paint_cache_on {
                 self.layout_reuse
                     .paint
                     .save(i, &self.display.quads[first_quad..]);
@@ -1152,7 +1160,7 @@ impl Core {
     /// ring) at its end — and the hit and scroll regions the
     /// next input is tested against, in the same order.
     fn emit_frame(&mut self) {
-        self.layout_reuse.begin_paint();
+        self.paint_cache_on = self.layout_reuse.begin_paint();
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self
             .interaction
@@ -4170,6 +4178,47 @@ fn fade(quads: &mut [Quad], opacity: f32) {
         q.color.a *= opacity;
         q.border_color.a *= opacity;
     }
+}
+
+/// Whether node `i`'s quads were pushed from the retained-paint cache
+/// (F284), and so [`Core`]'s `emit_node` skips `paint_box` for it. A free
+/// function taking the fields it needs, as `painter!` splits them, rather
+/// than a method on `Core`: the node's `leaf` holds borrows of the stroke
+/// and path stores that must stay live beside it, and `&mut self` would
+/// end them. Only a node the frame recorded as a profitable candidate is
+/// asked for its text stamp.
+#[allow(clippy::too_many_arguments)]
+#[inline(never)]
+fn paint_reuse(
+    cache: &mut super::paint_reuse::PaintReuse,
+    candidates: &[bool],
+    text: &mut crate::text::TextSystem,
+    atlas_stamp: u64,
+    display: &mut crate::display::DisplayList,
+    tree_key: Key,
+    i: usize,
+    rect: Rect,
+    style: crate::spec::VisualStyle,
+    paint: Paint,
+    tid: Option<crate::tree::TextId>,
+) -> bool {
+    if !candidates[i] {
+        return false;
+    }
+    let content = tid
+        .and_then(|t| text.paint_stamp(t, rect.w, atlas_stamp))
+        .map(super::paint_reuse::Content::Text);
+    let clip = display.clips[paint.clip_id as usize];
+    cache.reuse(
+        i,
+        tree_key,
+        rect,
+        &style,
+        paint,
+        clip,
+        content,
+        &mut display.quads,
+    )
 }
 
 /// The thumb of a scrollbar along `axis`, inset from the far edge of the
