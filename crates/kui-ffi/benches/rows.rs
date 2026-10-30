@@ -23,8 +23,8 @@ fn ks(s: &str) -> KuiStr {
     }
 }
 
-/// `kui_msg_int` from kui.h, as the inline function spells it.
-fn msg_int(kind: &str, field: &str, n: i64) -> *mut KuiValue {
+/// The former header-only `kui_msg_int`, retained as a same-binary baseline.
+fn msg_int_inline(kind: &str, field: &str, n: i64) -> *mut KuiValue {
     let m = kui_value_map();
     kui_value_map_set(m, ks("kind"), kui_value_str(ks(kind)));
     kui_value_map_set(m, ks(field), kui_value_int(n));
@@ -79,11 +79,18 @@ fn text_style() -> KuiTextStyle {
 struct Parts {
     boxes: bool,
     texts: bool,
+    inline_message: bool,
 }
 
 const BOTH: Parts = Parts {
     boxes: true,
     texts: true,
+    inline_message: false,
+};
+
+const BOTH_INLINE: Parts = Parts {
+    inline_message: true,
+    ..BOTH
 };
 
 fn begin(ctx: *mut KuiCtx) {
@@ -105,7 +112,12 @@ fn build(ctx: *mut KuiCtx, log: &Log, parts: Parts) {
             } else {
                 &spec
             };
-            kui_open_keyed(ctx, ks(&log.labels[i]), s, msg_int("row", "line", i as i64));
+            let message = if parts.inline_message {
+                msg_int_inline("row", "line", i as i64)
+            } else {
+                kui_msg_int(c"row".as_ptr(), c"line".as_ptr(), i as i64)
+            };
+            kui_open_keyed(ctx, ks(&log.labels[i]), s, message);
         }
         if parts.texts {
             kui_text(ctx, ks(&log.lines[i]), &style);
@@ -143,6 +155,30 @@ fn ffi_rows_1k(bencher: divan::Bencher) {
     rows_bench(bencher, BOTH);
 }
 
+/// The same frame with the old message helper, for interleaved comparison.
+#[divan::bench]
+fn ffi_rows_1k_inline_message(bencher: divan::Bencher) {
+    rows_bench(bencher, BOTH_INLINE);
+}
+
+#[divan::bench(sample_size = 10000)]
+fn message_int_direct(bencher: divan::Bencher) {
+    bencher.bench_local(|| {
+        kui_value_free(divan::black_box(kui_msg_int(
+            c"row".as_ptr(),
+            c"line".as_ptr(),
+            42,
+        )));
+    });
+}
+
+#[divan::bench(sample_size = 10000)]
+fn message_int_inline(bencher: divan::Bencher) {
+    bencher.bench_local(|| {
+        kui_value_free(divan::black_box(msg_int_inline("row", "line", 42)));
+    });
+}
+
 /// The boxes alone, no text in them.
 #[divan::bench]
 fn ffi_rows_1k_boxes_only(bencher: divan::Bencher) {
@@ -151,6 +187,7 @@ fn ffi_rows_1k_boxes_only(bencher: divan::Bencher) {
         Parts {
             boxes: true,
             texts: false,
+            inline_message: false,
         },
     );
 }
@@ -163,6 +200,7 @@ fn ffi_rows_1k_texts_only(bencher: divan::Bencher) {
         Parts {
             boxes: false,
             texts: true,
+            inline_message: false,
         },
     );
 }
@@ -171,9 +209,18 @@ fn ffi_rows_1k_texts_only(bencher: divan::Bencher) {
 /// outside the timing, one frame a sample.
 #[divan::bench(sample_size = 1, sample_count = 2000)]
 fn ffi_rows_1k_build(bencher: divan::Bencher) {
+    build_bench(bencher, BOTH);
+}
+
+#[divan::bench(sample_size = 1, sample_count = 2000)]
+fn ffi_rows_1k_build_inline_message(bencher: divan::Bencher) {
+    build_bench(bencher, BOTH_INLINE);
+}
+
+fn build_bench(bencher: divan::Bencher, parts: Parts) {
     let log = Log::new();
     let ctx = kui_ctx_new();
-    frame(ctx, &log, BOTH);
+    frame(ctx, &log, parts);
     let mut open = false;
     bencher
         .with_inputs(|| {
@@ -183,7 +230,7 @@ fn ffi_rows_1k_build(bencher: divan::Bencher) {
             begin(ctx);
             open = true;
         })
-        .bench_local_values(|()| build(ctx, &log, BOTH));
+        .bench_local_values(|()| build(ctx, &log, parts));
     if open {
         kui_frame_finish(ctx);
     }

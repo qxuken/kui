@@ -4432,6 +4432,33 @@ script - with `benches/screens.rs`.
 
 ### `.` F283 — A C click message costs seven allocations, and a replay clones what it kept
 
+**Built in part** 2026-10-30 on `claude/ui-compare-f283-messages`:
+`kui_msg` and `kui_msg_int` are now Rust entry points, with their existing
+C signatures and ownership, constructing maps directly. No temporary
+boxed string or integer crosses the ABI. Counted in
+`crates/kui-ffi/tests/messages.rs`: `kui_msg_int` makes 5 allocations
+instead of 7 and frees no temporaries (previously 2); `kui_msg` makes
+4 instead of 5. This corrects the original profile's estimate of four
+temporary frees. The returned map still owns its keys and strings, keeps
+entry order, and replaces `kind` when the integer field names it.
+Both names are exported automatically to C plugins; the raw Odin
+binding exposes them, while typed Odin messages remain unchanged.
+Checked: 3,407 Rust/Node checks, the C and Odin rounds, C++17 linkage,
+and a C program compiled with the old header against the new library;
+fmt, clippy and the generated-file check are clean. The allocation
+tests also pass without the runner feature.
+
+The rows bench retains the former inline helper as a same-binary
+baseline. M3 Pro, one codegen unit, three runs alternating old/new order,
+middle medians: 1,000 complete rows 637.4 → 597.4 µs (−6.3%); build calls
+278.7 → 246.9 µs (−11.4%). Construction/free alone, batched to avoid
+timer quantization, is 26–28% cheaper. Full replay does not run these
+constructors, so this does not improve an already replayed Lua screen.
+
+**Still open.** Sharing/moving kept specs without penalizing plain
+builds, and recycling last frame's spec storage. F284's layout/quad
+reuse is separate and remains unimplemented.
+
 **Found** 2026-10-30 profiling F281 and F282 (`cargo bench -p kui-ffi
 --bench rows`, M3 Pro):
 - `kui_msg_int` is a third of a row's build calls: kui.h's inline value

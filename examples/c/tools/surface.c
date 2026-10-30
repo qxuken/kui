@@ -983,12 +983,32 @@ static int surface(void) {
               "a bar declared without a message posts nothing for a choice");
         /* The same bar with the message its choices arrive as (ADR 0048). */
         KuiValue *chose = kui_msg("chose");
+        KuiStr message_name = {0};
+        check(kui_value_as_str(kui_value_get(chose, KUI_STR("kind")), &message_name)
+                  && has(message_name, "chose"), "kui_msg constructs the named message");
         kui_frame_begin(ui, 320, 240, 1);
         check(kui_menu_bar_with(ui, menus, 1, chose), "kui_menu_bar_with declares and draws");
         kui_frame_finish(ui);
         check(!kui_menu_bar_has_standard_menus(ui), "a bar declared alone keeps no standard menus");
         /* The same bar beside the platform's standard menus (ADR 0052). */
         KuiValue *chose_too = kui_msg("chose");
+        KuiValue *picked = kui_msg_int("pick", "row", INT64_MAX);
+        int64_t picked_row = 0;
+        check(kui_value_as_int(kui_value_get(picked, KUI_STR("row")), &picked_row)
+                  && picked_row == INT64_MAX && kui_value_len(picked) == 2,
+              "kui_msg_int constructs the row without narrowing");
+        kui_value_map_set(picked, KUI_STR("row"), kui_value_int(-1));
+        check(kui_value_as_int(kui_value_get(picked, KUI_STR("row")), &picked_row)
+                  && picked_row == -1 && kui_value_len(picked) == 2,
+              "a constructed message remains mutable");
+        kui_value_free(picked);
+        picked = kui_msg_int("pick", "kind", 7);
+        check(kui_value_len(picked) == 1
+                  && kui_value_as_int(kui_value_get(picked, KUI_STR("kind")), &picked_row)
+                  && picked_row == 7, "kui_msg_int replaces kind rather than duplicating it");
+        kui_value_free(picked);
+        check(kui_msg(NULL) == NULL && kui_msg_int("pick", NULL, 7) == NULL,
+              "NULL message names are rejected");
         kui_frame_begin(ui, 320, 240, 1);
         check(kui_menu_bar_standard_menus(ui, menus, 1, chose_too),
               "kui_menu_bar_standard_menus declares and draws");

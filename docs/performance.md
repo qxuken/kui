@@ -106,7 +106,7 @@ under a lucky 16-unit build's: one unit inlines more.
 | `walk` (`-p kui-lua --bench walk`) | a settings pane's worth of Lua tables (120 settings: a name, a line of spans, four chips with a background, a radius, a pad and a click payload), built once and lowered every frame, layout and emission included; the diagnostics off, as a release runner has them (on: ~1.75 ms) | ~1.64 ms |
 | `build_and_walk` | the same tables built by the view each frame, as a view does: the gap is the script's own time | ~2.50 ms |
 | `ffi_rows_1k` (`-p kui-ffi --bench rows`) | a thousand log rows built through the C ABI as a C host builds them: `kui_open_keyed` with a padded, rounded, hover-tracking box and a `kui_msg_int` click message, one `kui_text`, `kui_close`, the whole frame (measured 2026-10-30, with the seven rows below, three interleaved runs; it read ~711 µs before backlog F281) | ~628 µs |
-| `ffi_rows_1k_build` | only the build calls of that frame, one frame a sample: a third of it is the host's `kui_msg_int`, the value calls building the message | ~271 µs |
+| `ffi_rows_1k_build` | only the build calls of that frame, one frame a sample (the F281 result, before the direct F283 message constructor measured below) | ~271 µs |
 | `ffi_rows_1k_finish` | only its `kui_frame_finish`: layout, text emission, hit regions, draw data | ~286 µs |
 | `ffi_rows_1k_boxes_only` | the boxes without their text | ~332 µs |
 | `ffi_rows_1k_texts_only` | the texts without their boxes, straight under the root | ~281 µs |
@@ -130,6 +130,27 @@ under a lucky 16-unit build's: one unit inlines more.
 | `halve_4032x3024` (`--bench levels`) | a phone photo's first level (ADR 0044): three million texels, each the linear-light mean of four, opaque (measured 2026-10-09) | ~10.1 ms |
 | `first_small_draw` | the frame that first draws that photo on a 400×300 card at 2×: levels 1 to 3 made and level 3 blitted into the page — once per photo per session | ~13.2 ms |
 | `warm_small_draw` | every frame after it: the level is on the entry and in the page | ~0.33 µs |
+
+**F283's direct message construction (2026-10-30).** The `rows` bench now
+calls the exported `kui_msg_int` and retains the former helper in
+`*_inline_message` rows, so both paths run in the same binary. M3 Pro,
+one codegen unit (`CARGO_PROFILE_BENCH_CODEGEN_UNITS=1`), three runs with
+old/new order reversed on alternate runs, middle medians:
+
+| operation | former inline helper | direct entry point | change |
+|---|---:|---:|---:|
+| complete 1,000-row frame | 637.4 µs | 597.4 µs | −6.3% |
+| 1,000-row build calls only | 278.7 µs | 246.9 µs | −11.4% |
+
+The isolated `message_int_inline` / `message_int_direct` pair includes
+freeing the result and batches 10,000 calls per sample to avoid timer
+quantization: two runs read 103.1 → 74.6 ns and 105.0 → 78.2 ns
+(26–28% less). The allocation test (`cargo test -p kui-ffi --test
+messages`) counts seven allocations and two temporary frees for the old
+integer constructor, five allocations and no temporary frees for the
+direct one. Neither changes replay or layout; the older F281/F282 rows
+above are retained as their original measurements, not compared across
+sessions to claim another speedup.
 
 What the pairs say. Deriving the access tree costs **~1.10×** the frame it
 follows — it was 1.35× before ADR 0016's one built decision, the digest

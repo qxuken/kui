@@ -160,6 +160,21 @@ was the first bare bump to break an app in five releases).
 
 ### Changed
 
+- **A C message is built in one library call** (backlog F283, first
+  part). `kui_msg` and `kui_msg_int` retain their C signatures and
+  ownership, but are exported Rust entry points rather than inline
+  sequences of boxed-value calls. An integer message makes five
+  allocations instead of seven and frees no temporary boxes. The
+  same-binary rows benchmark measures 11% less time in the build calls
+  and 6% less in the whole frame (1,000 rows, M3 Pro, three interleaved
+  runs with one codegen unit). The returned map remains mutable; a field
+  named `kind` still replaces the name. Names are copied, invalid UTF-8
+  is replaced as before, and NULL names return NULL. An existing binary
+  compiled with the old inline helpers still works; recompiling with
+  this header needs this library's two new exports. No struct layout or
+  ABI version changes. This helps fresh C builds, not a Lua component
+  whose view is already skipped by replay.
+
 - **The C and Odin library comes as a full archive and a slim one per
   platform** (backlog F278). `kui-ffi-<version>-<platform>` is the library
   with the runner, shared and static: what a program that opens its window

@@ -1,9 +1,66 @@
 //! `KuiValue`: the caller-owned payloads that ride on events and clicks.
 
 use super::*;
+use std::ffi::CStr;
 
 // ---------------------------------------------------------------------------
 // Values
+
+/// `{kind}` in one call, without temporary boxed values (backlog F283).
+/// The NUL-terminated name is copied. NULL answers NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_msg(kind: *const std::ffi::c_char) -> *mut KuiValue {
+    guard(std::ptr::null_mut(), || {
+        if kind.is_null() {
+            return std::ptr::null_mut();
+        }
+        let kind = unsafe { message_string(kind) };
+        Box::into_raw(Box::new(KuiValue(Value::Map(vec![(
+            "kind".to_owned(),
+            Value::Str(kind),
+        )]))))
+    })
+}
+
+/// `{kind, field: n}` in one call (backlog F283). Both NUL-terminated
+/// strings are copied. A field named `kind` replaces the name, just as
+/// `kui_value_map_set` did in the former inline helper. NULL answers NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_msg_int(
+    kind: *const std::ffi::c_char,
+    field: *const std::ffi::c_char,
+    n: i64,
+) -> *mut KuiValue {
+    guard(std::ptr::null_mut(), || {
+        if kind.is_null() || field.is_null() {
+            return std::ptr::null_mut();
+        }
+        let field = unsafe { message_string(field) };
+        let entries = if field == "kind" {
+            vec![(field, Value::Int(n))]
+        } else {
+            vec![
+                (
+                    "kind".to_owned(),
+                    Value::Str(unsafe { message_string(kind) }),
+                ),
+                (field, Value::Int(n)),
+            ]
+        };
+        Box::into_raw(Box::new(KuiValue(Value::Map(entries))))
+    })
+}
+
+/// The same UTF-8 conversion as the value doors, but from a C string.
+/// `ptr` must point to a readable NUL-terminated string, and be non-NULL.
+unsafe fn message_string(ptr: *const std::ffi::c_char) -> String {
+    let bytes = unsafe { CStr::from_ptr(ptr) }.to_bytes();
+    kstr(KuiStr {
+        ptr: bytes.as_ptr(),
+        len: bytes.len(),
+    })
+    .into_owned()
+}
 
 /// A new null value, owned by the caller. Where a handler's message is
 /// taken it asks for the behaviour with no message of the caller's: the
