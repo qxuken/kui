@@ -4475,6 +4475,27 @@ skip for a reused subtree, so it goes a pass at a time behind the
 
 ### `.` F285 — Memo is a component's alone: a host must write an extension to cache a view
 
+**Built in part** 2026-10-30 on `claude/ui-compare-f277-f282`: Rust
+`Ui::memo` / `memo_indexed` and the fallible `try_memo` forms, C
+`kui_memo` / `kui_memo_indexed`, Odin `kui.memo` / `memo_indexed`, Lua
+`memo(key, deps, function() … end)`. The C and Odin forms use a body
+callback rather than begin/end: its scope cannot leak into the next
+frame, and a borrowed context keeps the enclosing filler available.
+All use the same journal as components, with a separate key namespace;
+nested memo reads and replay refusal propagate to the outer recording.
+Labels and events remain the enclosing view's. Model changes after an
+event must be represented in deps, not inferred from event delivery.
+Errors keep nothing. The `screens` bench in one run: 1,621 µs fresh Lua,
+268 µs replayed component, 269 µs fresh enclosing view with a memoized
+screen. Tests: 13 core cases, two Lua cases, both C entry points and
+both Odin wrappers exercised in their surface walks.
+
+**Left open.** Node/JSX: the encoded frame reaches the core after the
+host has already run its render functions, so this needs a separate
+binding/protocol design. F284's layout/quad reuse is also still open;
+the new memo skips view construction only. No automatic event-based
+model invalidation is claimed for host memos: deps are explicit.
+
 **Found** 2026-10-30, discussing F283: the journal that replays a
 component (`replay.rs`) is not extension-specific, but the only way in is
 `kui_component`, which needs a loaded extension - a Lua script or a C

@@ -1900,6 +1900,16 @@ pub const DOORS: &[Door] = &[
         doc: "Places a component an extension provides — `ns/root` is an extension's view — keyed by where it is or by `key` in its props (a string by name, an integer by data index as `open_indexed`, so a list's rows keep their instances as it shifts): its fill reads the props, its events arrive as the messages in its `on*` props, the host's children are built where it asks, and an unchanged instance is replayed without the extension (ADR 0060, ADR 0067).",
     },
     Door {
+        rust: "Ui::memo",
+        c: Is("kui_memo"),
+        odin: Is("memo"),
+        node: No(
+            "a JSX frame is encoded whole before the core sees it, so the core cannot answer `replayed` before the function would run; backlog F285 leaves it",
+        ),
+        lua: As("`memo(key, deps, function() return … end)`"),
+        doc: "A part of the view built once and pushed again while `deps` hold (backlog F285): the function runs on the first frame, and after it only when `deps` differ or a fact of the frame it read moved (a hover it asked about, a scroll, the theme); otherwise what it built is pushed again without calling it, on the journal a component instance replays by. Keyed by a label, or a data index (`memo_indexed`, `kui_memo_indexed`, an integer key in Lua); its nodes are the view's own, their events and labels too; a memo inside a memo is kept on its own. `try_memo` keeps nothing when the body fails.",
+    },
+    Door {
         rust: "Ui::lazy",
         c: Is("kui_lazy"),
         odin: Is("lazy"),

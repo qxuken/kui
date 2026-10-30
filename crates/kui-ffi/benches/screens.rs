@@ -63,6 +63,13 @@ components = {
     t[1] = row { gap = 12, text("Fleet", head), text(string.format("%d units", props.rows), cell) }
     return column(rows_of(t, 1, props.rows, props.seed))
   end,
+  memo_screen = function(env, props, inst)
+    return memo("screen", { rows = props.rows, seed = props.seed }, function()
+      local t = { width = "grow", gap = 2 }
+      t[1] = row { gap = 12, text("Fleet", head), text(string.format("%d units", props.rows), cell) }
+      return column(rows_of(t, 1, props.rows, props.seed))
+    end)
+  end,
   panel = function(env, props, inst)
     local t = { width = "grow", gap = 2 }
     t[1] = text(string.format("Wing %d", props.panel), head)
@@ -168,6 +175,38 @@ fn lua_screen_replayed(bencher: divan::Bencher) {
     });
     assert_eq!(screen_frame(ctx, props), 0, "replayed (KUI_FILL_REPLAYED)");
     bencher.bench_local(|| screen_frame(ctx, props));
+    kui_value_free(props);
+    kui_ctx_free(ctx);
+}
+
+/// The enclosing Lua view runs every frame; only its expensive section
+/// is memoized. Same nodes as the screen component, no plugin boundary
+/// required for the cached section.
+#[divan::bench]
+fn lua_screen_memo(bencher: divan::Bencher) {
+    let ctx = screens_ctx();
+    let props = screen_props(0, true);
+    let run = || {
+        begin(ctx);
+        let fill = kui_component(
+            ctx,
+            ks("fleet/memo_screen"),
+            props,
+            None,
+            std::ptr::null_mut(),
+        );
+        kui_frame_finish(ctx);
+        assert_eq!(fill, 1, "the enclosing view runs every frame");
+    };
+    checked_first(ctx, run);
+    let count = quads(ctx);
+    run();
+    assert_eq!(quads(ctx), count);
+    let reference = screens_ctx();
+    screen_frame(reference, props);
+    assert_eq!(quads(reference), count, "memo draws the complete screen");
+    kui_ctx_free(reference);
+    bencher.bench_local(run);
     kui_value_free(props);
     kui_ctx_free(ctx);
 }

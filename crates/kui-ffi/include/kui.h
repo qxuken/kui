@@ -5907,6 +5907,29 @@ typedef void (*KuiChildrenFn)(void *user, KuiCtx *ctx, KuiStr group);
 int32_t kui_component(KuiCtx *ctx, KuiStr name, const KuiValue *props,
                       KuiChildrenFn children, void *user);
 
+/* A part of the view built once and pushed again while `deps` hold
+ * (backlog F285): body(user, ctx) builds it, with a context borrowing the
+ * frame for the call, and every frame after, placed at the same label
+ * with equal deps (borrowed; NULL for none) and nothing it read of the
+ * frame moved (a hover it asked about, a scroll, the theme), what it
+ * built is pushed again without calling body. deps is everything body
+ * reads that kui does not see - your model's numbers, the strings it
+ * formats; leave one out and it draws stale. The nodes are your view's
+ * own: their events are yours, their labels found by kui_key_of. A memo
+ * inside a memo is kept on its own. Returns a KUI_FILL_* code,
+ * KUI_FILL_REPLAYED when body was not called; outside a frame nothing is
+ * built and it answers KUI_FILL_NOT_KEPT. kui_memo_indexed keys it by a
+ * data index, as kui_open_indexed keys a node.
+ *
+ *   static void fleet(void *user, KuiCtx *ui) { ...build from (Game *)user... }
+ *   KuiValue *deps = kui_value_int(game.fleet_rev);
+ *   kui_memo(ui, KUI_STR("fleet"), deps, fleet, &game);
+ *   kui_value_free(deps);
+ */
+int32_t kui_memo(KuiCtx *ctx, KuiStr label, const KuiValue *deps, KuiViewFn body, void *user);
+int32_t kui_memo_indexed(KuiCtx *ctx, uint64_t index, const KuiValue *deps, KuiViewFn body,
+                         void *user);
+
 /* A contribution slot, declared at the cursor (ADR 0067): every component
  * the loaded extensions contribute to `name` (kui_ext_contributions, a
  * script's `contributes`) is placed here as siblings - in load order, then

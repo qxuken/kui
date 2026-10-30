@@ -334,6 +334,35 @@ impl<'a> Ui<'a> {
     /// ```
     pub fn memo(&mut self, label: &str, deps: &Value, f: impl FnOnce(&mut Ui<'_>)) -> FillAnswer {
         let key = self.core.child_key(label);
+        match self.memo_at(key, deps, |ui| {
+            f(ui);
+            Ok::<(), std::convert::Infallible>(())
+        }) {
+            Ok(answer) => answer,
+        }
+    }
+
+    /// [`Self::memo`] whose body can fail - a script's that raised: what
+    /// it pushed before the error stays in this frame, and nothing is
+    /// kept, so the next frame runs it again rather than replaying half.
+    pub fn try_memo<E>(
+        &mut self,
+        label: &str,
+        deps: &Value,
+        f: impl FnOnce(&mut Ui<'_>) -> Result<(), E>,
+    ) -> Result<FillAnswer, E> {
+        let key = self.core.child_key(label);
+        self.memo_at(key, deps, f)
+    }
+
+    /// [`Self::try_memo`] keyed by a data index.
+    pub fn try_memo_indexed<E>(
+        &mut self,
+        i: u64,
+        deps: &Value,
+        f: impl FnOnce(&mut Ui<'_>) -> Result<(), E>,
+    ) -> Result<FillAnswer, E> {
+        let key = self.core.child_key_indexed(i);
         self.memo_at(key, deps, f)
     }
 
@@ -346,13 +375,26 @@ impl<'a> Ui<'a> {
         f: impl FnOnce(&mut Ui<'_>),
     ) -> FillAnswer {
         let key = self.core.child_key_indexed(i);
-        self.memo_at(key, deps, f)
+        match self.memo_at(key, deps, |ui| {
+            f(ui);
+            Ok::<(), std::convert::Infallible>(())
+        }) {
+            Ok(answer) => answer,
+        }
     }
 
-    fn memo_at(&mut self, key: Key, deps: &Value, f: impl FnOnce(&mut Ui<'_>)) -> FillAnswer {
-        if self.core.tree.is_empty() {
-            return FillAnswer::NotKept;
+    fn memo_at<E>(
+        &mut self,
+        key: Key,
+        deps: &Value,
+        f: impl FnOnce(&mut Ui<'_>) -> Result<(), E>,
+    ) -> Result<FillAnswer, E> {
+        if !self.core.memo_building() {
+            return Ok(FillAnswer::NotKept);
         }
+        // Memos and component instances share a keep store, not an identity
+        // namespace: a component with the same label must not replay this body.
+        let key = key.str("kui:memo");
         // Inside a component a kept fill placed, which is filled fresh and
         // not kept, nothing inside is kept either.
         let can_keep = self.core.keeping() || !self.core.recording_busy();
@@ -371,13 +413,14 @@ impl<'a> Ui<'a> {
             }
             Err((answer, why)) => {
                 let scope = self.core.memo_enter(key, deps, false);
-                f(self);
-                self.core.memo_leave(scope);
+                let built = f(self);
+                self.core.memo_leave(scope, built.is_err());
+                built?;
                 (answer, why)
             }
         };
         self.core.perf_placement(key, MEMO, answer, why.as_deref());
-        answer
+        Ok(answer)
     }
 
     /// What the memo at `key` kept, pushed again as it is: the op a kept
@@ -398,7 +441,7 @@ impl<'a> Ui<'a> {
         }
         kept.put_ops(ops);
         self.core.keep_again(kept);
-        self.core.memo_leave(scope);
+        self.core.memo_leave(scope, false);
     }
 
     /// A contribution slot (ADR 0067): every component the loaded

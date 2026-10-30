@@ -314,6 +314,14 @@ static void lazy_fallback(void *user, KuiCtx *ui) {
     kui_close(ui);
 }
 
+/* A memo's body (backlog F285): `*rows` texts, counted. */
+static int memo_built;
+static void memo_body(void *user, KuiCtx *ui) {
+    memo_built++;
+    KuiTextStyle st = {.size = 12};
+    for (int i = 0; i < *(const int *)user; i++) kui_text(ui, KUI_STR("unit"), &st);
+}
+
 static int surface(void) {
     KuiCtx *ui = kui_ctx_new();
     if (!ui) {
@@ -2060,6 +2068,29 @@ static int surface(void) {
         kui_frame_finish(vl);
         check(built == last - first && first == 498, "KUI_LIST and KUI_LIST_ROW build the rows kui_list_begin answers");
         kui_ctx_free(vl);
+    }
+
+    /* A memo (backlog F285): built on the first frame, pushed again on the
+     * second without its body, built again when its deps move; by index
+     * the same. Outside a frame it builds nothing. */
+    {
+        KuiCtx *mc = kui_ctx_new();
+        int rows = 3, answers[3], indexed[3];
+        for (int pass = 0; pass < 3; pass++) {
+            if (pass == 2) rows = 4;
+            kui_frame_begin(mc, 320, 240, 1.0f);
+            KuiValue *deps = kui_value_int(rows);
+            answers[pass] = kui_memo(mc, KUI_STR("units"), deps, memo_body, &rows);
+            indexed[pass] = kui_memo_indexed(mc, 7, deps, memo_body, &rows);
+            kui_value_free(deps);
+            kui_frame_finish(mc);
+        }
+        check(answers[0] == KUI_FILL_NOT_KEPT && answers[1] == KUI_FILL_REPLAYED && answers[2] == KUI_FILL_PARAMS,
+              "kui_memo: built, replayed, built again for new deps");
+        check(indexed[1] == KUI_FILL_REPLAYED && memo_built == 4, "kui_memo_indexed: the body ran twice each");
+        check(kui_memo(mc, KUI_STR("units"), NULL, memo_body, &rows) == KUI_FILL_NOT_KEPT && memo_built == 4,
+              "kui_memo: outside a frame, nothing built");
+        kui_ctx_free(mc);
     }
 
     /* A faded subtree as one picture (ADR 0056): on a context of its own,

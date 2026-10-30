@@ -373,6 +373,11 @@ fn env_same(a: &EnvFacts, b: &EnvFacts) -> bool {
 }
 
 impl Core {
+    /// A memo cannot append nodes to the finished tree between frames.
+    pub(crate) fn memo_building(&self) -> bool {
+        self.building && !self.tree.is_empty()
+    }
+
     /// Whether a fill is being kept right now — what every door asks
     /// before it spends anything on the journal. One load.
     #[inline]
@@ -785,15 +790,19 @@ impl Core {
     }
 
     /// A memo's way out: what it left open closed (and said), its
-    /// recording checked and kept, the scope put back, and - nested - the
-    /// fill around it resumed with the memo's reads and taint as its own.
-    pub(crate) fn memo_leave(&mut self, scope: MemoScope) {
+    /// recording checked and kept - not when its body `failed` - the
+    /// scope put back, and - nested - the fill around it resumed with the
+    /// memo's reads and taint as its own.
+    pub(crate) fn memo_leave(&mut self, scope: MemoScope, failed: bool) {
         if self.stack.len() > scope.depth {
             let open = self.stack.len() - scope.depth;
             self.diag
                 .raise(crate::diag::unbalanced_memo(scope.key, open));
             self.stack.truncate(scope.depth);
             self.counters.truncate(scope.depth);
+        }
+        if scope.kept && failed {
+            self.recording = None;
         }
         if scope.kept
             && let Some(mut r) = self.recording.take()

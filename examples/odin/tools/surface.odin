@@ -1710,9 +1710,35 @@ virtual_list :: proc() -> bool {
 	return fails == 0
 }
 
+// The memo wrappers marshal deps and restore the caller's Odin context.
+memo_walk :: proc() -> bool {
+	State :: struct { built: int, rows: int }
+	body :: proc(s: ^State, ui: ^kui.Ui) {
+		s.built += 1
+		for _ in 0 ..< s.rows do kui.text(ui, "unit", {size = 12})
+	}
+	ui := kui.new_ui()
+	defer kui.free_ui(ui)
+	s := State{rows = 3}
+	for pass in 0 ..< 3 {
+		if pass == 2 do s.rows = 4
+		kui.frame_begin(ui, 320, 240, 1)
+		a := kui.memo(ui, "units", &s, body, s.rows)
+		b := kui.memo_indexed(ui, 7, &s, body, s.rows)
+		kui.frame_finish(ui)
+		want: i32 = kui.FILL_NOT_KEPT if pass == 0 else (kui.FILL_REPLAYED if pass == 1 else kui.FILL_PARAMS)
+		check(a == want && b == want, "memo: built, replayed, built again for new deps")
+	}
+	check(s.built == 4, "memo: both bodies called twice, never on replay")
+	kui.memo(ui, "units", &s, body, s.rows)
+	check(s.built == 4, "memo: nothing built outside a frame")
+	return fails == 0
+}
+
 main :: proc() {
 	// --headless is what the test runner passes; the walk has no window
 	// either way.
 	ok := surface()
-	os.exit(0 if virtual_list() && ok else 1)
+	list_ok := virtual_list()
+	os.exit(0 if memo_walk() && list_ok && ok else 1)
 }

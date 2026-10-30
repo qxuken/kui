@@ -3147,6 +3147,7 @@ fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             Ok(())
         }
         "lazy" => build_lazy(ui, t),
+        "memo" => build_memo(ui, t),
         // Where a component's fill puts its host's children (ADR 0060).
         "children" => {
             let group = t.get::<Option<String>>("group")?.unwrap_or_default();
@@ -3201,30 +3202,59 @@ fn build_lazy(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         Some(false) => t.get::<Option<mlua::Function>>("fallback")?,
         None => None,
     };
-    let result = (|| {
-        let Some(f) = pick else {
-            return Ok(());
-        };
-        match f.call::<mlua::Value>(())? {
-            mlua::Value::Nil => Ok(()),
-            mlua::Value::Table(node) => {
-                if matches!(node.get::<mlua::Value>("type")?, mlua::Value::Nil)
-                    && !matches!(node.get::<mlua::Value>("render")?, mlua::Value::Function(_))
-                {
-                    // A list of nodes.
-                    each_child(&node, |n| build_node(ui, &n))
-                } else {
-                    build_node(ui, &node)
-                }
-            }
-            other => Err(bad(format!(
-                "a lazy branch's function returned a {}, not a node",
-                other.type_name()
-            ))),
-        }
-    })();
+    let result = match pick {
+        Some(f) => build_rendered(ui, &f, "a lazy branch's function"),
+        None => Ok(()),
+    };
     ui.core().lazy_close();
     result
+}
+
+/// What a `render` function returned, built: a node, a list of nodes, or
+/// nil for nothing.
+fn build_rendered(ui: &mut Ui<'_>, f: &mlua::Function, what: &str) -> mlua::Result<()> {
+    match f.call::<mlua::Value>(())? {
+        mlua::Value::Nil => Ok(()),
+        mlua::Value::Table(node) => {
+            if matches!(node.get::<mlua::Value>("type")?, mlua::Value::Nil)
+                && !matches!(node.get::<mlua::Value>("render")?, mlua::Value::Function(_))
+            {
+                // A list of nodes.
+                each_child(&node, |n| build_node(ui, &n))
+            } else {
+                build_node(ui, &node)
+            }
+        }
+        other => Err(bad(format!(
+            "{what} returned a {}, not a node",
+            other.type_name()
+        ))),
+    }
+}
+
+/// A memo (backlog F285): `render` called only when `deps` moved or what
+/// it read did, its nodes pushed again otherwise. A string key names it,
+/// an integer (or a whole number) indexes it as a list's row.
+fn build_memo(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
+    let render: mlua::Function = t
+        .get::<Option<mlua::Function>>("render")?
+        .ok_or_else(|| bad("memo needs a function: memo(key, deps, function() return … end)"))?;
+    let deps = match t.get::<mlua::Value>("deps")? {
+        mlua::Value::Nil => Value::Null,
+        v => lua_to_value(&v)?,
+    };
+    let build = |ui: &mut Ui<'_>| build_rendered(ui, &render, "a memo's function");
+    match t.get::<mlua::Value>("key")? {
+        mlua::Value::String(s) => ui.try_memo(&s.to_str()?, &deps, build),
+        mlua::Value::Integer(i) => ui.try_memo_indexed(i as u64, &deps, build),
+        mlua::Value::Number(f) if f.fract() == 0.0 && f.is_finite() => {
+            ui.try_memo_indexed(f as i64 as u64, &deps, build)
+        }
+        _ => Err(bad(
+            "memo needs a key, a string or an integer: memo(key, deps, function() … end)",
+        )),
+    }?;
+    Ok(())
 }
 
 #[inline(never)]

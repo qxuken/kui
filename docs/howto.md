@@ -2467,6 +2467,41 @@ count.
 [ADR 0067](adr/0067-slots-fold-into-components.md) ·
 `crates/kui-core/tests/instance_replay.rs`
 
+### Can I cache part of my own view without making it a plugin?
+
+Use a memo (backlog F285). The body runs once and again when its explicit
+dependencies change or a tracked frame fact it read moves. Otherwise the
+component journal pushes its nodes again without calling it:
+
+```lua
+memo("fleet", { revision = model.fleet_revision }, function()
+  local items = { width = "grow" }
+  for _, unit in ipairs(model.units) do
+    items[#items + 1] = text(unit.name)
+  end
+  return column(items)
+end)
+```
+
+Rust: `ui.memo("fleet", &deps, |ui| build_fleet(ui, model))`; C:
+`kui_memo(ui, KUI_STR("fleet"), deps, build_fleet, &model)` (deps are
+borrowed); Odin: `kui.memo(ui, "fleet", &model, build_fleet, deps)`.
+The `_indexed` forms, or an integer key in Lua, follow a data row as its
+list shifts. The nodes' labels and events remain the enclosing view's.
+Nested memos retain their own bodies; an inner tracked read invalidates
+the outer one too. Rust's `try_memo` and Lua keep nothing after a body
+error.
+
+Dependencies must account for every model value the body uses: update
+the revision when an event changes the fleet. Delivery of a click alone
+does not invalidate a memo. Do not cache frame-level side effects (a
+title, a request for another frame); like a component fill, such a body
+is refused replay. A memo skips building the view, not layout, hit
+testing or quad emission. Node/JSX does not have this form yet.
+
+`crates/kui-core/tests/memo.rs` · `crates/kui-lua/tests/memo.rs` ·
+`cargo bench -p kui-ffi --bench screens`
+
 ### How do I redraw when a thread has new data?
 
 Take the `Waker` the loop hands `App::setup` and clone it into the thread —

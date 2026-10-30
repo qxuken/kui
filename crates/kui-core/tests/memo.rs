@@ -380,3 +380,72 @@ fn a_component_inside_a_memo_is_placed_again_by_its_replay() {
     assert_eq!(run(&mut core), FillAnswer::NotReplayable);
     assert_eq!(snapshot(&mut core), fresh);
 }
+
+#[test]
+fn a_memo_and_a_component_with_the_same_label_keep_different_bodies() {
+    let mut core = new_core();
+    let built = [Cell::new(0), Cell::new(0)];
+    for _ in 0..3 {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.memo("same", &Value::Null, |ui| {
+            built[0].set(built[0].get() + 1);
+            ui.text("memo", TextStyle::new(12.0));
+        });
+        ui.component_by(
+            "test/pane",
+            &Value::map([("key", Value::str("same"))]),
+            |_, _| {},
+            |_, ui| {
+                built[1].set(built[1].get() + 1);
+                ui.text("component", TextStyle::new(12.0));
+            },
+        );
+        ui.finish();
+        let names: Vec<_> = core
+            .access_tree()
+            .nodes
+            .iter()
+            .filter_map(|n| n.name.as_deref())
+            .collect();
+        assert!(
+            names.contains(&"memo") && names.contains(&"component"),
+            "{names:?}"
+        );
+    }
+    assert_eq!((built[0].get(), built[1].get()), (1, 1));
+}
+
+#[test]
+fn a_failed_inner_memo_never_leaves_a_replayable_outer() {
+    let mut core = new_core();
+    let built = Cell::new(0);
+    for fail in [true, false, false] {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.memo("outer", &Value::Null, |ui| {
+            built.set(built.get() + 1);
+            let result = ui.try_memo("inner", &Value::Null, |ui| {
+                ui.text("before", TextStyle::new(12.0));
+                if fail {
+                    return Err("failed");
+                }
+                ui.text("after", TextStyle::new(12.0));
+                Ok(())
+            });
+            assert_eq!(result.is_err(), fail);
+        });
+        ui.finish();
+        if !fail {
+            assert!(
+                core.access_tree()
+                    .nodes
+                    .iter()
+                    .any(|n| n.name.as_deref() == Some("after"))
+            );
+        }
+    }
+    assert_eq!(
+        built.get(),
+        2,
+        "the failed outer was rebuilt, then replayed"
+    );
+}

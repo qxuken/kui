@@ -1627,5 +1627,7 @@ foreign lib {
 	emit :: proc(ev: ^Event, prop: string, fields: ^Value) -> bool ---
 	children :: proc(ctx: ^Ctx, group: string) ---
 	component :: proc(ctx: ^Ctx, name: string, props: ^Value, children: ChildrenFn, user: rawptr) -> i32 ---
+	memo :: proc(ctx: ^Ctx, label: string, deps: ^Value, body: ViewFn, user: rawptr) -> i32 ---
+	memo_indexed :: proc(ctx: ^Ctx, index: u64, deps: ^Value, body: ViewFn, user: rawptr) -> i32 ---
 	slot :: proc(ctx: ^Ctx, name: string, props: ^Value) -> uint ---
 }
