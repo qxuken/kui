@@ -435,8 +435,8 @@ impl<'a> Ui<'a> {
 
     fn memo_push(&mut self, key: Key, mut kept: crate::runtime::replay::Kept) {
         let scope = self.core.memo_enter(key, &Value::Null, true);
-        let ops = kept.take_ops();
-        for op in &ops {
+        let mut ops = kept.take_ops();
+        for op in &mut ops {
             crate::runtime::replay::replay_op(self, op);
         }
         kept.put_ops(ops);

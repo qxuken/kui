@@ -888,7 +888,7 @@ impl Core {
         if self.keeping() {
             self.keep_op(replay::Op::Open {
                 key,
-                spec: Box::new(spec.clone()),
+                spec: Box::new(replay::KeptSpec::new(&spec)),
             });
         }
         self.open_content(key, spec, NodeContent::Container);

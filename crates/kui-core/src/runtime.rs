@@ -2412,6 +2412,7 @@ impl Core {
             .and_then(|i| self.tree.specs[i].interact.as_deref())
             .and_then(|i| i.hover_group);
         let keep_prev = self.tree.any_exit;
+        self.recycle_replayed_events(keep_prev);
         if keep_prev {
             std::mem::swap(&mut self.tree, &mut self.prev_tree);
         } else {

@@ -234,3 +234,43 @@ fn constructing_messages_eliminates_temporary_boxes_and_frees() {
         }
     );
 }
+
+#[test]
+fn replay_reuses_a_boxs_handler_and_message_buffers_without_allocating() {
+    use kui_core::{Core, FillAnswer, NodeSpec, Size, Value};
+    let mut core = Core::new();
+    let body = |ui: &mut kui_core::Ui<'_>| {
+        ui.leaf(NodeSpec::row().size(100.0, 20.0).on_click(Value::map([
+            ("kind", Value::str("pick")),
+            ("row", Value::Int(42)),
+        ])));
+    };
+    let mut counts = Vec::new();
+    for frame in 0..5 {
+        // Begin/finish are deliberately outside the count: measure the
+        // replay itself, not caches populated by layout and hit testing.
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        let (answer, allocated) = measure(|| ui.memo("list", &Value::Null, body));
+        assert_eq!(
+            answer,
+            if frame == 0 {
+                FillAnswer::NotKept
+            } else {
+                FillAnswer::Replayed
+            }
+        );
+        counts.push(allocated);
+        ui.finish();
+    }
+    // First replay has no recycled handler yet: one box, one map, and
+    // its three strings. Subsequent replays restore into that storage.
+    assert_eq!(
+        counts[1],
+        Counts {
+            alloc: 5,
+            free: 0,
+            realloc: 0
+        }
+    );
+    assert_eq!(&counts[2..], &[Counts::default(); 3]);
+}

@@ -630,6 +630,33 @@ fn a_replay_resolves_hover_for_its_own_frame() {
         .map(|n| n.bg)
         .expect("the row");
     assert_eq!(bg, Color::hex(0x3355ffff), "painted hovered");
+    // Reclaimed handler storage must not bring the resolved appearance
+    // back into the declaration. Exercise both directions repeatedly.
+    for hovered in [false, true, false, true] {
+        let at = if hovered {
+            Vec2::new(rect.x + 1.0, rect.y + 1.0)
+        } else {
+            Vec2::new(390.0, 290.0)
+        };
+        r.core.handle_input(InputEvent::CursorMoved(at));
+        assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
+        let bg = r.core.nodes().iter().find(|n| n.key == key).unwrap().bg;
+        assert_eq!(
+            bg,
+            if hovered {
+                Color::hex(0x3355ffff)
+            } else {
+                row(1).style.bg
+            }
+        );
+    }
+    let events = kui_core::testing::click_at(&mut r.core, rect.x + 1.0, rect.y + 1.0);
+    assert!(events.iter().any(|e| e.payload.get_int("row") == Some(1)));
+    assert_eq!(
+        r.views.get(),
+        1,
+        "all these frames replayed the original declaration"
+    );
 }
 
 /// What a theme change does to a kept fill: one that read the palette

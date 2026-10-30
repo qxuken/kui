@@ -980,6 +980,67 @@ pub struct NodeSpec {
     pub interact: Option<Box<InteractSpec>>,
 }
 
+impl NodeSpec {
+    /// Replay's ordinary clone, except the handler box and its messages
+    /// can reuse storage from the discarded tree (F283). All declared
+    /// fields are restored; resolved hover/rules/layout state is never
+    /// carried back into the journal. Ordinary builds do not call this.
+    pub(crate) fn clone_reusing_events(&self, mut reuse: Option<Box<EventSpec>>) -> Self {
+        // Exhaustive, deliberately without `..`: a new field must be
+        // accounted for here instead of silently inheriting its default.
+        let Self {
+            layout,
+            style,
+            hoverable,
+            animate,
+            accent,
+            window,
+            transition,
+            slide,
+            over_siblings,
+            floats_in_order,
+            focusable,
+            initial_focus,
+            disabled,
+            cursor,
+            hidden,
+            events,
+            anim,
+            access,
+            interact,
+        } = self;
+        let events = match (events, reuse.as_deref_mut()) {
+            (Some(source), Some(target)) => {
+                target.clone_from_reusing(source);
+                reuse
+            }
+            (Some(source), None) => Some(source.clone()),
+            (None, _) => None,
+        };
+        Self {
+            layout: *layout,
+            style: *style,
+            hoverable: *hoverable,
+            animate: *animate,
+            accent: *accent,
+            window: *window,
+            transition: *transition,
+            slide: *slide,
+            over_siblings: *over_siblings,
+            floats_in_order: *floats_in_order,
+            focusable: *focusable,
+            initial_focus: *initial_focus,
+            disabled: *disabled,
+            cursor: *cursor,
+            hidden: *hidden,
+            events,
+            anim: anim.clone(),
+            access: access.clone(),
+            interact: interact.clone(),
+        }
+    }
+}
+
 /// A handler row a node can declare: which message an event of its kind
 /// arrives as (ADR 0047). [`EventSpec`] keeps the rows a node declares and
 /// reads each with the accessor named for it ([`EventSpec::on_click`], …).
@@ -1253,6 +1314,34 @@ pub struct EventSpec {
 }
 
 impl EventSpec {
+    /// Restore the complete declaration while reusing message buffers.
+    /// Handler identities may differ after a widget or rule touched the
+    /// live spec, so restore those too, not just the payloads.
+    fn clone_from_reusing(&mut self, source: &Self) {
+        let Self {
+            handlers,
+            key_up,
+            modifier_keys,
+            buttons,
+            scroll_axes,
+            scroll_mods,
+            keep_focus,
+        } = source;
+        let common = self.handlers.len().min(handlers.len());
+        for ((handler, value), (src_handler, src_value)) in self.handlers.iter_mut().zip(handlers) {
+            *handler = *src_handler;
+            value.clone_from(src_value);
+        }
+        self.handlers.truncate(handlers.len());
+        self.handlers.extend(handlers[common..].iter().cloned());
+        self.key_up = *key_up;
+        self.modifier_keys = *modifier_keys;
+        self.buttons = *buttons;
+        self.scroll_axes = *scroll_axes;
+        self.scroll_mods = *scroll_mods;
+        self.keep_focus = *keep_focus;
+    }
+
     /// The group as a node that declares none of it — what
     /// `NodeSpec`'s accessor hands back when the box is `None`.
     pub const EMPTY: Self = Self {
@@ -3894,6 +3983,84 @@ impl PartialEq for NodeSpec {
 #[cfg(test)]
 mod size_tests {
     use super::*;
+
+    #[test]
+    fn replay_clone_restores_every_field_and_reuses_only_event_storage() {
+        let payload = |kind: &str| Value::map([("kind", Value::str(kind)), ("row", Value::Int(7))]);
+        let source = NodeSpec::row()
+            .size(90.0, 30.0)
+            .on_click(payload("new"))
+            .hover_bg(Color::hex(0x123456ff))
+            .label("row")
+            .rotate(0.25)
+            .exit(Enter::default());
+        let mut previous = source.clone();
+        previous.events_mut().set(Handler::Click, payload("old"));
+        let old_box = previous.events.as_deref().unwrap() as *const EventSpec;
+        let old_string = previous
+            .events()
+            .on_click()
+            .unwrap()
+            .get_str("kind")
+            .unwrap()
+            .as_ptr();
+        let mut cloned = source.clone_reusing_events(previous.events.take());
+        assert_eq!(cloned, source.clone());
+        assert_eq!(
+            cloned.events.as_deref().unwrap() as *const EventSpec,
+            old_box
+        );
+        assert_eq!(
+            cloned
+                .events()
+                .on_click()
+                .unwrap()
+                .get_str("kind")
+                .unwrap()
+                .as_ptr(),
+            old_string
+        );
+        // Reuse is not sharing: mutating this frame cannot change the
+        // untouched declaration in the journal.
+        cloned.events_mut().set(Handler::Click, payload("bad"));
+        assert_eq!(
+            source.events().on_click().unwrap().get_str("kind"),
+            Some("new")
+        );
+        assert!(
+            NodeSpec::default()
+                .clone_reusing_events(cloned.events.take())
+                .events
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn replay_event_restore_handles_changed_rows_flags_and_spilled_storage() {
+        let kinds = [Handler::Click, Handler::Drag, Handler::Key, Handler::Hover];
+        for old_len in 0..=kinds.len() {
+            for new_len in 0..=kinds.len() {
+                let mut source = NodeSpec::default();
+                let mut old = Box::new(EventSpec::default());
+                for kind in kinds.iter().take(old_len) {
+                    old.set(*kind, Value::str("old"));
+                }
+                for kind in kinds.iter().rev().take(new_len) {
+                    source
+                        .events_mut()
+                        .set(*kind, Value::list([Value::str("new"), Value::Int(3)]));
+                }
+                let events = source.events_mut();
+                events.key_up = true;
+                events.modifier_keys = true;
+                events.buttons = Buttons::MIDDLE;
+                events.scroll_axes = ScrollAxes::Y;
+                events.scroll_mods = crate::input::KeyMods::NONE.with_shift();
+                events.keep_focus = true;
+                assert_eq!(source.clone_reusing_events(Some(old)), source.clone());
+            }
+        }
+    }
 
     /// `NodeSpec` is moved by value for every node a frame builds — through
     /// the builder chain, `Core::open`, `open_with_key` and into
