@@ -136,14 +136,16 @@ release pipeline:
   build leg also packs `libkui_ffi` for its platform (`scripts/pack-ffi.nu`, from
   the same target dir: the addon's tree is the library's but for 18
   crates) and, off Windows, links and runs the C and Odin counters
-  against it shared and static; `packs`, beside `publish` and not in its
-  way, bundles the four into a C and an Odin archive per platform,
-  `kui-c-<version>-<platform>.tar.gz` and
-  `kui-odin-<version>-<platform>.tar.gz` (`.zip` for win32-x64), and
-  the all-platform `kui-c-<version>.tar.gz` and
-  `kui-odin-<version>.tar.gz` for whoever vendors every target (one
-  layout; until alpha.71 the all-platform two were the only ones, 252 MB
-  each), checks the all-platform two and linux-x64's own again, adds the
+  against it shared and static, and the C and Odin host loops against
+  the library without the runner; `packs`, beside `publish` and not in
+  its way, bundles the four into two archives per platform, each with the
+  C headers and the Odin package over one copy of its library:
+  `kui-ffi-<version>-<platform>.tar.gz`, the library with the runner,
+  shared and static, and `kui-ffi-core-<version>-<platform>.tar.gz`,
+  the library without it, shared only (`.zip` for win32-x64; backlog
+  F278 — until alpha.72 a C and an Odin archive per platform, each with
+  both libraries in both kinds, and the two again over all four
+  platforms, 252 MB each at alpha.71), checks linux-x64's two again, adds the
   four runner assets and the two install scripts, writes one `SHA256SUMS`
   over all of it, installs the linux-x64 runner through `install.sh`
   from those files laid out as a mirror, and attaches everything to the

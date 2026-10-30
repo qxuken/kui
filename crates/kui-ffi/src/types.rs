@@ -203,6 +203,10 @@ pub struct KuiCtx {
     /// never set.
     #[cfg_attr(not(feature = "access"), allow(dead_code))]
     pub(crate) access: Option<Box<crate::access::CtxAccess>>,
+    /// The lists `kui_list_begin` has open and `kui_list_end` has not
+    /// closed, innermost last: what `kui_list_row` forces a row's stride
+    /// from (backlog F280). Last, as every field since `captures`.
+    pub(crate) lists: Vec<kui_core::widgets::UniformSlice>,
 }
 
 /// What a context keeps its captures in: the runner's server, or nothing
@@ -290,6 +294,7 @@ impl KuiCtx {
             perf_trace: Vec::new(),
             waker: std::ptr::null(),
             access: None,
+            lists: Vec::new(),
         }
     }
 

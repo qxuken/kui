@@ -105,6 +105,14 @@ under a lucky 16-unit build's: one unit inlines more.
 | `edit_value_doc_splice` | the same document declared a value one character away from its text every frame: the copy and the span search, then what a keystroke costs, which read ~195 µs typed into the same document | ~147 µs |
 | `walk` (`-p kui-lua --bench walk`) | a settings pane's worth of Lua tables (120 settings: a name, a line of spans, four chips with a background, a radius, a pad and a click payload), built once and lowered every frame, layout and emission included; the diagnostics off, as a release runner has them (on: ~1.75 ms) | ~1.64 ms |
 | `build_and_walk` | the same tables built by the view each frame, as a view does: the gap is the script's own time | ~2.50 ms |
+| `ffi_rows_1k` (`-p kui-ffi --bench rows`) | a thousand log rows built through the C ABI as a C host builds them: `kui_open_keyed` with a padded, rounded, hover-tracking box and a `kui_msg_int` click message, one `kui_text`, `kui_close`, the whole frame (measured 2026-10-30, with the seven rows below, three interleaved runs; it read ~711 µs before backlog F281) | ~628 µs |
+| `ffi_rows_1k_build` | only the build calls of that frame, one frame a sample: a third of it is the host's `kui_msg_int`, the value calls building the message | ~271 µs |
+| `ffi_rows_1k_finish` | only its `kui_frame_finish`: layout, text emission, hit regions, draw data | ~286 µs |
+| `ffi_rows_1k_boxes_only` | the boxes without their text | ~332 µs |
+| `ffi_rows_1k_texts_only` | the texts without their boxes, straight under the root | ~281 µs |
+| `core_rows_1k` | the same frame through the Rust builder: the gap to `ffi_rows_1k` is what the boundary costs: the message built by value calls, the spec converted, the strings checked | ~552 µs |
+| `ffi_components_1k_replayed` | the rows as a thousand components a loaded extension provides, every one replayed, their props built each frame as a C host builds them (`kui_value_map` and four `kui_value_map_set`) — more than building the rows, since a replay pushes the same nodes, clones each kept spec and compares the props (backlog F282) | ~934 µs |
+| `ffi_components_1k_replayed_props_kept` | the same with the props built once | ~718 µs |
 | `warm_50x200` (`--bench stream`) | fifty 200-column mono lines, the same every frame — a terminal pane at rest | ~85 µs |
 | `stream_50x200_log` | the same pane with every line new each frame, thirty-word log vocabulary plus numbers | ~25 ms |
 | `stream_50x200_random` | every line new and random printable ASCII, nothing for the shape-run cache to hit | ~64 ms |

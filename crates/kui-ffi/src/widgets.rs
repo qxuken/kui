@@ -699,3 +699,97 @@ fn text_edit(
             .0
     })
 }
+
+// ---------------------------------------------------------------------------
+// The virtual list in two halves (backlog F280): `uniform_list`, which the
+// Rust, Lua and Node frontends call with a row callback, split around the
+// rows so a C or Odin host builds them in a loop of its own.
+
+/// Opens a virtual list of `rows` uniform rows `row_h` logical px tall,
+/// labelled `label`, its container `spec` forced to a scrolling column
+/// with no gap: the list's length (`kui_row_count`) and the spacer above
+/// what can be seen are declared, and `*first` .. `*last` (end exclusive)
+/// are the rows to build, by data index — what is in view plus two each
+/// side, sliced by the last frame's geometry. Build each with
+/// [`kui_list_row`] (or `kui_open_indexed` at a spec `row_h` tall), then
+/// [`kui_list_end`]. Returns the container's key, for `kui_set_scroll`
+/// (`0, i * row_h` puts row `i` at the top). Either pointer may be NULL;
+/// both read 0 outside a frame.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_list_begin(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    spec: *const KuiSpec,
+    rows: u64,
+    row_h: f32,
+    first: *mut u64,
+    last: *mut u64,
+) -> u64 {
+    let (mut from, mut to, mut key) = (0, 0, 0);
+    with_ui_ctx(ptr, |c| {
+        let spec = unsafe { spec.as_ref() }
+            .map_or_else(NodeSpec::column, |s| spec_of(s, NONE, NONE, NONE, NONE));
+        let slice = kui_core::widgets::uniform_list_begin(
+            &mut kui_core::Ui::wrap(c.core()),
+            &kstr(label),
+            spec,
+            rows as usize,
+            row_h,
+        );
+        (from, to, key) = (slice.rows.start as u64, slice.rows.end as u64, slice.key.0);
+        c.lists.push(slice);
+    });
+    unsafe {
+        if let Some(f) = first.as_mut() {
+            *f = from;
+        }
+        if let Some(l) = last.as_mut() {
+            *l = to;
+        }
+    }
+    key
+}
+
+/// Opens row `index` of the innermost open list: [`kui_open_indexed`] with
+/// the spec made the list's stride tall, and as wide as the list where its
+/// width is left fit. Close it with `kui_close`. Outside a list it is
+/// `kui_open_indexed`. `on_click` is consumed when given.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_list_row(
+    ptr: *mut KuiCtx,
+    index: u64,
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+) -> u64 {
+    guard(0, || {
+        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            return 0;
+        };
+        let mut node = spec_of(s, on_click, NONE, NONE, NONE);
+        if let Some(slice) = c.lists.last() {
+            node = slice.row_spec(node);
+        }
+        let key = c.core().open_indexed(index, node);
+        c.push_tooltip(key, s.tooltip);
+        key.0
+    })
+}
+
+/// Closes the innermost list [`kui_list_begin`] opened: the spacer below
+/// what can be seen, and the container. Nothing without one open.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_list_end(ptr: *mut KuiCtx) {
+    with_ui_ctx(ptr, |c| {
+        if let Some(slice) = c.lists.pop() {
+            kui_core::widgets::uniform_list_end(&mut kui_core::Ui::wrap(c.core()), &slice);
+        }
+    });
+}
+
+fn with_ui_ctx(ptr: *mut KuiCtx, f: impl FnOnce(&mut KuiCtx)) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            f(c);
+        }
+    });
+}

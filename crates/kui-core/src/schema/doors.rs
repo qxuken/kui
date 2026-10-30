@@ -1897,7 +1897,7 @@ pub const DOORS: &[Door] = &[
         odin: Is("component"),
         node: As("`<component name props groups fresh>children</component>`"),
         lua: As("`component(name, props, children)`"),
-        doc: "Places a component an extension provides — `ns/root` is an extension's view — keyed by where it is or by `key` in its props: its fill reads the props, its events arrive as the messages in its `on*` props, the host's children are built where it asks, and an unchanged instance is replayed without the extension (ADR 0060, ADR 0067).",
+        doc: "Places a component an extension provides — `ns/root` is an extension's view — keyed by where it is or by `key` in its props (a string by name, an integer by data index as `open_indexed`, so a list's rows keep their instances as it shifts): its fill reads the props, its events arrive as the messages in its `on*` props, the host's children are built where it asks, and an unchanged instance is replayed without the extension (ADR 0060, ADR 0067).",
     },
     Door {
         rust: "Ui::lazy",

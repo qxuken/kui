@@ -3863,6 +3863,35 @@ uint64_t kui_open_indexed(KuiCtx *ctx, uint64_t index, const KuiSpec *spec, KuiV
  * row's length when that row was not built - cut it to the row. A new
  * symbol, so KUI_ABI_VERSION stays 15. */
 void kui_row_count(KuiCtx *ctx, uint64_t rows);
+/* A virtual list of `rows` rows `row_h` logical px tall, built a screenful
+ * at a time (backlog F280): uniform_list, which Rust, Lua and JSX take with
+ * a row callback, in two halves around a loop of your own.
+ * kui_list_begin opens the container (`spec` made a scrolling column with
+ * no gap: put the spacing inside row_h, as a row that pads itself),
+ * declares kui_row_count and the spacer above the view, and writes the
+ * rows to build to *first .. *last (end exclusive, by data index): what
+ * the last frame's geometry shows plus two each side. kui_list_row opens
+ * one, kui_open_indexed with the spec made the stride tall (and as wide as
+ * the list where its width is fit), so a row keeps its hover, focus and
+ * edit buffer as the list scrolls; close it with kui_close. kui_list_end
+ * declares the spacer below and closes the list. The first frame, laid out
+ * nowhere yet, builds a screenful and asks for the frame that slices by
+ * its geometry. kui_list_begin returns the container's key, for
+ * kui_set_scroll (0, i * row_h puts row i at the top: a row nobody built
+ * cannot be revealed). KUI_LIST and KUI_LIST_ROW are the scoped forms:
+ *
+ *   uint64_t first, last;
+ *   KUI_LIST(ui, "log", n, 28, &first, &last, .width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}) {
+ *       for (uint64_t i = first; i < last; i++)
+ *           KUI_LIST_ROW(ui, i, kui_msg_int("row", "row", i), .pad_l = 6, .hover_bg = hover) {
+ *               kui_text(ui, KUI_STR(lines[i]), &body);
+ *           }
+ *   }
+ */
+uint64_t kui_list_begin(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, uint64_t rows, float row_h,
+                        uint64_t *first, uint64_t *last);
+uint64_t kui_list_row(KuiCtx *ctx, uint64_t index, const KuiSpec *spec, KuiValue *on_click);
+void kui_list_end(KuiCtx *ctx);
 /* -- Extensions: loading one from C --------------------------- */
 
 /* Load the extension at `path` into this context, under `namespace` - the
@@ -4438,6 +4467,11 @@ void kui_close(KuiCtx *ctx);
     KUI__SCOPE(kui_open((ctx), &(KuiSpec){__VA_ARGS__}, NULL), kui_close(ctx))
 #define KUI_BOX_KEYED(ctx, label, ...) \
     KUI__SCOPE(kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, NULL), kui_close(ctx))
+#define KUI_LIST(ctx, label, rows, row_h, first, last, ...) \
+    KUI__SCOPE(kui_list_begin((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, (rows), (row_h), (first), (last)), \
+               kui_list_end(ctx))
+#define KUI_LIST_ROW(ctx, index, message, ...) \
+    KUI__SCOPE(kui_list_row((ctx), (index), &(KuiSpec){__VA_ARGS__}, (message)), kui_close(ctx))
 #define KUI_BOX_KEY(ctx, key_out, label, ...) \
     KUI__SCOPE(*(key_out) = kui_open_keyed((ctx), KUI_STR(label), &(KuiSpec){__VA_ARGS__}, NULL), \
                kui_close(ctx))
@@ -5850,7 +5884,9 @@ void kui_children(KuiCtx *ctx, KuiStr group);
 /* A component an extension provides, placed at the cursor (ADR 0060, ADR
  * 0067): name is namespace/component - "namespace/root" is that
  * extension's view, drawn fresh every frame; props (borrowed, NULL for
- * none) is what its fill reads - "key" keys the instance, "fresh": true
+ * none) is what its fill reads - "key" keys the instance (a string by
+ * name; an integer by data index, as kui_open_indexed, so a list's rows
+ * keep their instances as the list shifts; backlog F279), "fresh": true
  * asks every frame, and its on* entries are the messages its events arrive
  * as. children builds your own children where the component asks, with a
  * context borrowing the frame for the call and the group (empty for the

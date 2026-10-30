@@ -93,22 +93,28 @@ has no rpath. Outside this repository, pass your own
 ## Linking a prebuilt library
 
 Outside this repository there is no cargo build to link. Each release on
-GitHub carries `kui-odin-<version>-<platform>.tar.gz` (`.zip` for
-win32-x64) for linux-x64, linux-arm64, darwin-arm64 and win32-x64: this
-package as `kui/`, with that platform's `libkui_ffi` inside it, under
-`kui/c/lib/<platform>/{shared,static}/`, and a `kui/c/kui_c.odin` that
-links it itself, the way `vendor:raylib` links its own.
-`kui-odin-<version>.tar.gz` is the same package with all four platforms'
-libraries, for a project that vendors the package for every target: each
-archive's `kui_c.odin` names only the platforms it carries, so two
-platforms' archives unpacked over each other build for the last one
-alone. Importing the package is all a program does:
+GitHub carries, for linux-x64, linux-arm64, darwin-arm64 and win32-x64,
+`kui-ffi-<version>-<platform>.tar.gz` (the library with the runner,
+shared and static) and `kui-ffi-core-<version>-<platform>.tar.gz` (the
+library without it, shared only), `.zip` for win32-x64: this package as
+`kui/` beside kui.h, with that platform's `libkui_ffi` under
+`lib/<platform>/`, and a `kui/c/kui_c.odin` that links it itself from
+`../../lib`, the way `vendor:raylib` links its own - so keep `kui/` and
+`lib/` side by side (backlog F278; until alpha.72 the Odin archive was
+its own, with a second copy of the libraries inside the package). Each
+archive's `kui_c.odin` names its own platform: a project that vendors
+the package for several targets unpacks their archives into one
+directory and keeps one `kui_c.odin` per target, or links by
+`KUI_LIB`. Importing the package is all a program does:
 
 ```sh
 odin build app -collection:kui=$ODIN_PACK          # import kui "kui:kui": static, nothing beside the program
 odin build app -collection:kui=$ODIN_PACK -define:KUI_SHARED=true \
-  -extra-linker-flags:"-Wl,-rpath,$ODIN_PACK/kui/c/lib/linux-x64/shared"   # the shared library, found at run time
+  -extra-linker-flags:"-Wl,-rpath,$ODIN_PACK/lib/linux-x64/shared"   # the shared library, found at run time
 ```
+
+The `kui-ffi-core` archive's `kui_c.odin` links its shared library
+whatever is asked: it carries no other.
 
 The static build is the default and takes the system libraries its
 `link.txt` lists (ALSA's `asound` on Linux, the frameworks on macOS); on a
@@ -120,9 +126,10 @@ winit for `run` as well, so a program that also links wgpu-native's
 `libwgpu_native.a` (`vendor:wgpu`) stops at the linker with
 `duplicate symbol '_rust_eh_personality'` and, on macOS,
 `RawWindowMetalLayer`'s classes. `-define:KUI_SHARED=true` with the rpath
-above keeps each library's copies to itself. Building kui without the
-runner (`nu scripts/pack-ffi.nu --no-runner`) drops wgpu and winit for a
-host with its own window, but not the standard library.
+above keeps each library's copies to itself. The library without the
+runner (the `kui-ffi-core` archive, or `nu scripts/pack-ffi.nu
+--no-runner`) drops wgpu and winit for a host with its own window, but
+not the standard library.
 
 The Linux and macOS packs are checked as packed, by `nu scripts/pack-ffi.nu
 verify` on each release's runners: the counter built against each kind,

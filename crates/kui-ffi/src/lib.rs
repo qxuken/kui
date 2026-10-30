@@ -339,6 +339,7 @@ fn ctx_around(mut owned: Box<Core>) -> *mut KuiCtx {
             perf_trace: Vec::new(),
             waker: std::ptr::null(),
             access: None,
+            lists: Vec::new(),
         }))
     }
 }

@@ -10,8 +10,11 @@
 // panel's colour, the clear colour around it, the shadow, the title's
 // glyphs, the button, nothing where the texture-backed image kui/wgpu
 // leaves out is - then the button is clicked and the frame drawn again,
-// the label's new glyph uploaded as the atlas's dirty rect alone. That
-// runs with the single shader, and again with the dual one and subpixel
+// the label's new glyph uploaded as the atlas's dirty rect alone. The
+// first frame's instances go up through kui_wgpu.upload's staging ring
+// (backlog F277), the second's through kui_wgpu.draw's queue writes, then
+// twice the ring's length of frames through the ring, the last checked.
+// That runs with the single shader, and again with the dual one and subpixel
 // text where the adapter offers dual-source blending.
 // examples/c/tools/wgpu_host.c is the same in C. With no GPU adapter it
 // says so and exits 0, unless KUI_REQUIRE_GPU is set (CI sets it over
@@ -267,10 +270,12 @@ draw_over :: proc(r: ^kui_wgpu.Renderer, ui: ^kui.Ui, enc: wgpu.CommandEncoder, 
 	return drawn
 }
 
-// The frame drawn into the target and read back into t.pixels.
-render_offscreen :: proc(g: ^Gpu, r: ^kui_wgpu.Renderer, ui: ^kui.Ui, t: ^Target) -> int {
+// The frame drawn into the target and read back into t.pixels; with
+// `upload`, put up through kui_wgpu.upload before the pass begins.
+render_offscreen :: proc(g: ^Gpu, r: ^kui_wgpu.Renderer, ui: ^kui.Ui, t: ^Target, upload: bool) -> int {
 	enc := wgpu.DeviceCreateCommandEncoder(g.device, nil)
 	defer wgpu.CommandEncoderRelease(enc)
+	if upload do kui_wgpu.upload(r, ui, enc)
 	drawn := draw_over(r, ui, enc, t.view, WORLDS[0])
 	wgpu.CommandEncoderCopyTextureToBuffer(enc, &{texture = t.texture, aspect = .All}, &{buffer = t.buffer, layout = {bytesPerRow = t.row, rowsPerImage = t.h}}, &{t.w, t.h, 1})
 	cmd := wgpu.CommandEncoderFinish(enc, nil)
@@ -410,8 +415,9 @@ run :: proc(g: ^Gpu, dual: bool) {
 	// The host loop's turn (kui.h): build, drain, draw.
 	kui.frame(ui, &s, view, W, H, SCALE)
 	drain(ui, &s)
-	drawn := render_offscreen(g, &r, ui, &t)
+	drawn := render_offscreen(g, &r, ui, &t, true)
 	check(drawn > 0, fmt.tprintf("%s: the first frame drew instances", name))
+	check(r.instances_by == .Staged, fmt.tprintf("%s: kui_wgpu.upload copied the first frame's instances from its ring", name))
 	check(drawn == len(kui.pack_instances(ui)) / int(kui.instance_stride()) - 1, fmt.tprintf("%s: the first frame drew every instance but the image's", name))
 	check(r.uploaded[2] == r.atlas_size, fmt.tprintf("%s: the first frame uploaded the whole atlas page", name))
 	check_frame(ui, &t, glyph, fmt.tprintf("%s, first frame", name))
@@ -432,12 +438,26 @@ run :: proc(g: ^Gpu, dual: bool) {
 	check(!kui.pointer_wants(ui), fmt.tprintf("%s: past the panel the pointer is the world's", name))
 	kui.frame(ui, &s, view, W, H, SCALE)
 	drain(ui, &s)
-	drawn = render_offscreen(g, &r, ui, &t)
+	drawn = render_offscreen(g, &r, ui, &t, false)
 	check(drawn > 0, fmt.tprintf("%s: the second frame drew instances", name))
+	check(r.instances_by == .Written, fmt.tprintf("%s: kui_wgpu.draw alone wrote the second frame's instances", name))
 	check(r.uploaded[2] > 0 && r.uploaded[2] < r.atlas_size, fmt.tprintf("%s: the second frame uploaded a dirty rect alone", name))
 	check_frame(ui, &t, glyph, fmt.tprintf("%s, second frame", name))
+	rect := r.uploaded
 
-	fmt.printfln("wgpu host %s: %s, %dx%d, %d instances of %d bytes, the atlas a %d px page then a %dx%d rect", name, g.name, t.w, t.h, drawn, kui.instance_stride(), r.atlas_size, r.uploaded[2], r.uploaded[3])
+	// Round the ring twice: each frame's staging buffer is asked to map at
+	// the next upload, and must have come back before its turn.
+	staged := 0
+	for _ in 0 ..< 2 * kui_wgpu.RING {
+		kui.frame(ui, &s, view, W, H, SCALE)
+		drain(ui, &s)
+		drawn = render_offscreen(g, &r, ui, &t, true)
+		if r.instances_by == .Staged do staged += 1
+	}
+	check(staged == 2 * kui_wgpu.RING, fmt.tprintf("%s: every frame round the ring twice went up through a staging buffer", name))
+	check_frame(ui, &t, glyph, fmt.tprintf("%s, after the ring", name))
+
+	fmt.printfln("wgpu host %s: %s, %dx%d, %d instances of %d bytes, the atlas a %d px page then a %dx%d rect", name, g.name, t.w, t.h, drawn, kui.instance_stride(), r.atlas_size, rect[2], rect[3])
 }
 
 offscreen :: proc() -> int {
@@ -623,6 +643,7 @@ window :: proc(max_frames: int) -> int {
 		}
 		frame := wgpu.TextureCreateView(st.texture, nil)
 		enc := wgpu.DeviceCreateCommandEncoder(g.device, nil)
+		kui_wgpu.upload(&r, app.ui, enc)
 		draw_over(&r, app.ui, enc, frame, WORLDS[app.state.world])
 		cmd := wgpu.CommandEncoderFinish(enc, nil)
 		wgpu.QueueSubmit(g.queue, {cmd})

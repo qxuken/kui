@@ -4411,6 +4411,39 @@ it is the device: whether two kira managers opening one CoreAudio device
 at once can block, and if `align` again: what it shares with `audio`
 that the other 56 do not.
 
+## From the UI library comparison, second round (2026-10-30)
+
+The comparison (`playground/ui-compare`) moved to alpha.72 - the kui HUD
+76 lines and its glue 80 after F263–F269 - and grew a fourth library,
+RmlUi 6.3 on GLFW and OpenGL 3, and a timed build of every spike
+(`bench/`: the UI build and the UI draw on the main thread, process CPU,
+memory, startup, against a no-UI baseline per stack). Per element, kui
+costs about 10× Dear ImGui (2.4 µs a log row against 0.23; Clay 0.57),
+about 1.4 µs of it the row's text and 1.3 µs its box; accessibility, the
+key and the click message within noise. Long lists split the libraries:
+at 10,000 rows ImGui's clipper builds in 85 µs, kui's `uniform_list` -
+written by hand in C - in ~200, Clay in 3 ms, RmlUi in 1.3 ms with 2.9 ms
+of draw. Seven entries, F277–F283; F277–F280 **built 2026-10-30** on
+`claude/ui-compare-f277-f282`, F281 and F282 in part by a worktree agent
+on `claude/ui-compare-perf`, merged into it, all six in the archive; F283,
+what the profile found and no safe change reached, is open.
+
+### `.` F283 — A C click message costs seven allocations, and a replay clones what it kept
+
+**Found** 2026-10-30 profiling F281 and F282 (`cargo bench -p kui-ffi
+--bench rows`, M3 Pro):
+- `kui_msg_int` is a third of a row's build calls: kui.h's inline value
+  calls make about seven allocations and four frees a message;
+- re-pushing a replayed component's kept nodes is 69% of `kui_component`,
+  cloning each kept spec 39% of that (two thirds the click message);
+- dropping last frame's specs at `kui_frame_begin` is ~17% of finishing a
+  frame; `Tree::push` is 13 vector pushes and the spec's move.
+
+**Do.** Weigh each against a plain frame: a message built in one call
+(an entry point that takes the kind, the field and the number); kept
+specs shared rather than cloned on replay, if that costs a plain build
+nothing; specs recycled between frames. `bench-check.nu` guards the rest.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go
@@ -6427,6 +6460,15 @@ move.
 - `~` **F267** — [A progress bar or meter has no role](backlog/closed-2026-09.md#-f267--a-progress-bar-or-meter-has-no-role--done-2026-10-29) — done (2026-10-29) — roles `progress` and `meter` (AccessKit ProgressIndicator / Meter), a stock `progress` in every binding; Node protocol v29
 - `.` **F268** — [The C and Odin packs carry every platform: 252 MB to download, 978 MB unpacked](backlog/closed-2026-09.md#-f268--the-c-and-odin-packs-carry-every-platform-252-mb-to-download-978-mb-unpacked--done-2026-10-29) — done (2026-10-29) — `kui-c-<v>-<platform>` and `kui-odin-<v>-<platform>` beside the all-platform two; the release cache no longer carries old packs
 - `~` **F269** — [A host with its own window has no accessibility bridge: a screen reader finds the window empty](backlog/closed-2026-09.md#-f269--a-host-with-its-own-window-has-no-accessibility-bridge-a-screen-reader-finds-the-window-empty--done-2026-10-29) — done (2026-10-29) — `kui_access_attach` / `kui_access_detach` on the new `kui-access` crate's `HostBridge`; the runner shares its translation
+
+**From the UI library comparison, second round (2026-10-30)** — F277–F282, F277–F280 built the same day
+
+- `.` **F277** — [`kui_wgpu.h` writes a frame's instances in one queue write, which costs ~100 µs at a page or more](backlog/closed-2026-09.md#-f277--kui_wgpuh-writes-a-frames-instances-in-one-queue-write-which-costs-100-µs-at-a-page-or-more--done-2026-10-30) — done (2026-10-30) — `kui_wgpu_upload`: a staging ring copied on the host's encoder; the draw alone writes in pieces under a page; Odin's `upload`
+- `.` **F278** — [Two archives per platform carry each library twice and both libraries in both kinds](backlog/closed-2026-09.md#-f278--two-archives-per-platform-carry-each-library-twice-and-both-libraries-in-both-kinds--done-2026-10-30) — done (2026-10-30) — `kui-ffi-<v>-<platform>` (the runner, shared and static) and `kui-ffi-core-<v>-<platform>` (shared), each with kui.h and the Odin package; no all-platform archives
+- `.` **F279** — [A component's integer `key` is no key, so a shifting list refills every row](backlog/closed-2026-09.md#-f279--a-components-integer-key-is-no-key-so-a-shifting-list-refills-every-row--done-2026-10-30) — done (2026-10-30) — an integer or a whole float keys by data index, as `open_indexed`
+- `.` **F280** — [C and Odin have no virtual list: every host writes the window arithmetic](backlog/closed-2026-09.md#-f280--c-and-odin-have-no-virtual-list-every-host-writes-the-window-arithmetic--done-2026-10-30) — done (2026-10-30) — `kui_list_begin` / `kui_list_row` / `kui_list_end`, `KUI_LIST`, Odin `kui.list`; `uniform_list_begin` / `_end` in Rust
+- `.` **F281** — [A row through the C ABI costs 2.4 µs, about ten times Dear ImGui's](backlog/closed-2026-09.md#-f281--a-row-through-the-c-abi-costs-24-µs-about-ten-times-dear-imguis--done-in-part-2026-10-30) — done, in part (2026-10-30) — a rows bench; `spec_of` in place, the UTF-8 fast path, hit-region messages written over: a row 12% cheaper
+- `.` **F282** — [A replayed component costs more than building its row](backlog/closed-2026-09.md#-f282--a-replayed-component-costs-more-than-building-its-row--done-in-part-2026-10-30) — done, in part (2026-10-30) — 7% cheaper with F281's changes; the re-push and the spec clone are F283's
 
 **From a pinch that zoomed nothing (2026-10-28)** — F256, filed and built the same day
 

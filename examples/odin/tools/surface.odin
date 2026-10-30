@@ -1676,8 +1676,43 @@ rest :: proc() {
 	check(!kui.emit(kui.Event{}, "onPong", "pong"), "emit: an event with no sink takes none")
 }
 
+// The virtual list's scoped forms (backlog F280): a thousand rows 20 px
+// tall in a 200 px box; the first frame builds a screenful, the next what
+// the box shows plus two each side, and scrolled to row 500 the rows start
+// two above it.
+virtual_list :: proc() -> bool {
+	ui := kui.new_ui()
+	defer kui.free_ui(ui)
+	first, last, built, list: u64
+	for pass in 0 ..< 3 {
+		kui.frame_begin(ui, 320, 240, 1)
+		built = 0
+		if f, l, ok := kui.list(ui, "log", 1000, 20, {width = kui.px(120), height = kui.px(200)}); ok {
+			first, last = f, l
+			for i in f ..< l {
+				if kui.list_row_box(ui, i, {}) do built += 1
+			}
+		}
+		kui.frame_finish(ui)
+		list = kui.key_of(ui, "log")
+		switch pass {
+		case 0:
+			check(first == 0 && last == 14, "list: the first frame builds a screenful")
+		case 1:
+			check(first == 0 && last == 12 && built == 12, "list: then what the box shows, plus two, each a list_row_box")
+			g, ok := kui.scroll_geometry(ui, list)
+			check(ok && g.content_h == 1000 * 20, "list: the spacers hold the whole list's height")
+			kui.set_scroll(ui, list, 0, 500 * 20)
+		case 2:
+			check(first == 498 && last == 512, "list: scrolled to row 500, rows from 498")
+		}
+	}
+	return fails == 0
+}
+
 main :: proc() {
 	// --headless is what the test runner passes; the walk has no window
 	// either way.
-	os.exit(0 if surface() else 1)
+	ok := surface()
+	os.exit(0 if virtual_list() && ok else 1)
 }

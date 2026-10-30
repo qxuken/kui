@@ -4,9 +4,10 @@
 // Spec, KUI_GROW -> GROW), and KuiStr is Odin's string.
 package kui_c
 
-// -- link: the release's Odin tarball carries libkui_ffi beside this file,
-// and scripts/pack-ffi.nu's bundle writes its own block here, from this
-// line to the end marker, linking those (static, or -define:KUI_SHARED=true).
+// -- link: the release's archives carry libkui_ffi in lib/<platform>/
+// beside this package, and scripts/pack-ffi.nu's bundle writes its own
+// block here, from this line to the end marker, linking that (static, or
+// -define:KUI_SHARED=true; shared alone in the kui-ffi-core archive).
 // The library to link: kui_ffi from the system search path by default,
 // which -extra-linker-flags:"-L<dir>" (/LIBPATH:<dir> on Windows) points at
 // a build. On Windows that is kui_ffi.dll's import library, kui_ffi.dll.lib:
@@ -1344,6 +1345,9 @@ foreign lib {
 	open_keyed :: proc(ctx: ^Ctx, label: string, spec: ^Spec, on_click: ^Value) -> u64 ---
 	open_indexed :: proc(ctx: ^Ctx, index: u64, spec: ^Spec, on_click: ^Value) -> u64 ---
 	row_count :: proc(ctx: ^Ctx, rows: u64) ---
+	list_begin :: proc(ctx: ^Ctx, label: string, spec: ^Spec, rows: u64, row_h: f32, first: ^u64, last: ^u64) -> u64 ---
+	list_row :: proc(ctx: ^Ctx, index: u64, spec: ^Spec, on_click: ^Value) -> u64 ---
+	list_end :: proc(ctx: ^Ctx) ---
 	ctx_add_extension :: proc(ctx: ^Ctx, namespace_: string, path: string) -> bool ---
 	ctx_extension_error :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	ctx_extension_count :: proc(ctx: ^Ctx) -> u32 ---

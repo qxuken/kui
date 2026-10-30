@@ -325,10 +325,11 @@ impl<'a> Ui<'a> {
         if self.core.tree.is_empty() {
             return 0;
         }
-        let key = match (at, props.get_str("key")) {
-            (Some(k), _) => k,
-            (None, Some(l)) => self.core.child_key(l),
-            (None, None) => self.core.child_key(name),
+        let key = match at {
+            Some(k) => k,
+            None => self
+                .prop_key(props)
+                .unwrap_or_else(|| self.core.child_key(name)),
         };
         let found = match self.filler.as_deref() {
             Some(f) => f.contributions(name),
@@ -456,11 +457,11 @@ impl<'a> Ui<'a> {
         if self.core.tree.is_empty() {
             return None;
         }
+        // A string key also names the instance in the devtools.
         let label = props.get_str("key");
-        let key = match (at, label) {
-            (Some(k), _) => k,
-            (None, Some(l)) => self.core.child_key(l),
-            (None, None) => self.core.auto_key(),
+        let key = match at {
+            Some(k) => k,
+            None => self.prop_key(props).unwrap_or_else(|| self.core.auto_key()),
         };
         // A `root` is drawn fresh every frame: a view's state can change
         // without an event the core sees (ADR 0067).
@@ -798,6 +799,24 @@ impl<'a> Ui<'a> {
     /// The key the `i`th child gets from auto-keying; see `open_indexed`.
     pub fn child_key_indexed(&self, i: u64) -> Key {
         self.core.child_key_indexed(i)
+    }
+
+    /// The key a placement's `key` prop names (backlog F279): a string is a
+    /// name, as `child_key`; an integer, or a float with no fraction (a
+    /// number from Lua or JavaScript), a data index, as `open_indexed` -
+    /// so a row of a list keeps its instance, and what its fill kept, while
+    /// the list shifts under it. Names and indices never collide. `None`
+    /// without one, or for another kind, which keys by position. Until
+    /// alpha.73 an integer was read as no key at all.
+    fn prop_key(&self, props: &Value) -> Option<Key> {
+        match props.get("key")? {
+            Value::Str(label) => Some(self.core.child_key(label)),
+            Value::Int(i) => Some(self.core.child_key_indexed(*i as u64)),
+            Value::Float(f) if f.fract() == 0.0 && f.is_finite() => {
+                Some(self.core.child_key_indexed(*f as i64 as u64))
+            }
+            _ => None,
+        }
     }
 
     /// Whether the pointer is over `key`, as of the last input. Only a
