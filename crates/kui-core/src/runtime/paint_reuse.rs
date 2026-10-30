@@ -1,4 +1,4 @@
-//! Bounded copies of simple nodes' emitted quad runs (F284). Only the
+//! Bounded copies of longer plain-text nodes' quad runs (F284). Only the
 //! paint call is skipped: placement, hit regions, selection resolution,
 //! clip construction, focus rings and frame-level passes still run.
 
@@ -42,6 +42,16 @@ pub(super) struct PaintReuse {
 }
 
 impl PaintReuse {
+    pub(super) fn invalidate(&mut self) {
+        // Shaping can rebuild an entry under the same text/style key
+        // without resetting the atlas (for example a family reweight).
+        // A later node sharing that entry must not reuse old-font quads.
+        for e in &mut self.entries {
+            e.valid = false;
+            e.input = None;
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn retained_capacity(&self) -> usize {
         self.capacity

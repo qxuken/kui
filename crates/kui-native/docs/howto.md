@@ -2496,8 +2496,13 @@ Dependencies must account for every model value the body uses: update
 the revision when an event changes the fleet. Delivery of a click alone
 does not invalidate a memo. Do not cache frame-level side effects (a
 title, a request for another frame); like a component fill, such a body
-is refused replay. A memo skips building the view, not layout, hit
-testing or quad emission. Node/JSX does not have this form yet.
+is refused replay. Memo itself caches view construction. On supported
+unchanged replay frames the core can also reuse layout and longer plain
+text quad runs (F284); hits, events, selection and accessibility still
+update. Scrolling, floats, tables, rules, exits and other unsupported
+layouts use the normal pipeline, as do frames refilling a recorded
+panel. Independent subtree retention is not built yet. Node/JSX does
+not have this memo form yet.
 
 `crates/kui-core/tests/memo.rs` · `crates/kui-lua/tests/memo.rs` ·
 `cargo bench -p kui-ffi --bench screens`

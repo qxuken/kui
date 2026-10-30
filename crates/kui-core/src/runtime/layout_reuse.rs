@@ -1,6 +1,7 @@
 //! Conservative layout retention for frames containing replayed content
 //! (F284). This first path reuses a complete supported layout only when
-//! all layout inputs match. It never bypasses events, hits or painting.
+//! all layout inputs match. Only layout computation and eligible quad
+//! generation are skipped; frame-dependent state still updates normally.
 
 use super::*;
 use crate::spec::LayoutSpec;
@@ -129,6 +130,9 @@ impl Core {
             })
         };
         let cache = &mut self.layout_reuse;
+        if cache.context != Some(context) {
+            cache.paint.invalidate();
+        }
         if cache.valid
             && cache.context == Some(context)
             && cache.inputs.len() == self.tree.len()
@@ -381,6 +385,25 @@ mod tests {
         frame(&mut cached, 400.0, 1.0, "outside", false);
         frame(&mut reference, 400.0, 1.0, "outside", true);
         assert!(!cached.layout_reuse.used);
+        equal(&cached, &reference);
+    }
+
+    #[test]
+    fn shaping_generation_invalidates_quads_even_when_atlas_and_text_keys_stay_the_same() {
+        let (mut cached, mut reference) = (Core::new(), Core::new());
+        for _ in 0..5 {
+            styled(&mut cached, Color::WHITE, 1.0, 0.0, false);
+            styled(&mut reference, Color::WHITE, 1.0, 0.0, true);
+        }
+        assert!(cached.layout_reuse.paint.reused > 0);
+        let stamp = cached.atlas.stamp;
+        cached.session.state().fonts_rev += 1;
+        reference.session.state().fonts_rev += 1;
+        styled(&mut cached, Color::WHITE, 1.0, 0.0, false);
+        styled(&mut reference, Color::WHITE, 1.0, 0.0, true);
+        assert_eq!(cached.atlas.stamp, stamp);
+        assert!(!cached.layout_reuse.used);
+        assert_eq!(cached.layout_reuse.paint.reused, 0);
         equal(&cached, &reference);
     }
 

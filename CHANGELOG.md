@@ -116,8 +116,9 @@ was the first bare bump to break an app in five releases).
   The new `screens` bench draws a 240-row Lua screen: 1,621 µs fresh,
   268 µs as a replayed component, 269 µs with the enclosing Lua view
   running every frame and its expensive section memoized (M3 Pro, same
-  run). This skips view construction, not layout or emission; F284 is
-  still open. The Node/JSX form is not built yet: its frame is encoded
+  run, before F284's conservative layout/paint cache below). Memo itself
+  caches view construction; broader subtree reuse remains open. The
+  Node/JSX form is not built yet: its frame is encoded
   before the core can decide whether to call a body.
 
 - **Kit's `select` takes `menu_max_width` and `menu_wrap`.**
@@ -159,6 +160,28 @@ was the first bare bump to break an app in five releases).
   error's code. The plain calls raise the message as they did.
 
 ### Changed
+
+- **Unchanged replayed screens can reuse layout and longer text runs**
+  (backlog F284, first part). On frames containing component or memo
+  replay, the core can retain a complete supported layout when every
+  layout input agrees: viewport, scale, shaping revisions, topology,
+  declared sizing and text. It restores sizes, positions, resolved
+  clamps, baselines and per-width text state; frame-dependent diagnostics,
+  events, focus, hits, selection and accessibility still run. Longer plain
+  text runs also reuse quads when their position, style, opacity, clip,
+  color, shape and atlas epoch agree. Tiny labels and paint paths with
+  side effects remain on the ordinary emitter.
+
+  The first path is deliberately limited to boxes and shaped text, at
+  most 4,096 nodes and 32,768 retained quads; scrolling, floats, tables,
+  rules, hidden/position-animated nodes, exits and other resource kinds
+  fall back to normal layout. A recorded panel refilling also falls back,
+  so this does not yet retain the other subtrees independently. In
+  interleaved M3 Pro runs, a replayed Lua screen went from 251 to 205 µs,
+  a memoized screen from 253 to 207, and the new long-text case from
+  128 to 93. Fresh Lua and ordinary builds stayed within ~1%; no cache
+  allocation is added to a frame with no replay. General subtree reuse
+  remains open.
 
 - **Replayed boxes reuse their handler storage** (backlog F283, second
   part). Before discarding last frame's tree, the journal takes back each

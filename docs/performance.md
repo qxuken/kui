@@ -187,6 +187,47 @@ failure (it expects all nine), not a timing failure; the complete run
 passed. These small changes are reported rather than claiming every
 non-replay path became faster.
 
+**F284's conservative layout/paint reuse (2026-10-30).** Separate build
+outputs were used for before/after binaries (a shared-target trial
+produced byte-identical executables and was discarded). Against
+`5a794ae9`, with the same new prose benchmark on both sides, one codegen
+unit, three interleaved runs, order reversed on alternate runs, middle
+medians (M3 Pro):
+
+| operation | before | after | change |
+|---|---:|---:|---:|
+| Lua screen replayed | 250.8 µs | 204.7 µs | −18.4% |
+| Lua screen memoized | 253.4 µs | 207.1 µs | −18.3% |
+| Eight Lua panels replayed | 256.8 µs | 210.1 µs | −18.2% |
+| Eight panels, one changes | 472.6 µs | 468.6 µs | −0.8% |
+| Eight panels, all change | 1,837 µs | 1,838 µs | +0.1% |
+| Longer text runs (`lua_prose_replayed`) | 128.3 µs | 92.7 µs | −27.8% |
+| Component rows, props kept | 667.1 µs | 598.6 µs | −10.3% |
+| Component rows, props rebuilt | 885.7 µs | 811.5 µs | −8.4% |
+| Fresh Lua screen | 1,645 µs | 1,640 µs | −0.3% |
+| Plain C rows | 590.4 µs | 594.9 µs | +0.8% |
+| Plain Rust rows | 552.2 µs | 550.7 µs | −0.3% |
+
+The short-label screen benefits primarily from layout retention; caching
+each tiny glyph run proved more expensive than regenerating it. Quad
+reuse is restricted to longer plain runs with already prepared glyphs
+and no wrapping/clip/decoration side effects. A retained run checks the
+complete paint input, including atlas epoch and clip geometry/id.
+
+This is not general independent-subtree caching: the complete supported
+layout must match, and a refilled recorded panel falls back instead of
+paying to capture a layout that keeps changing. Scrollers, floats,
+tables, rules, hidden nodes, position animation, exits and non-text
+resource nodes are excluded. Snapshots are limited to 4,096 nodes and
+quad storage to 32,768 quads. Hits, text placement, selection, events,
+diagnostics, focus and accessibility still update every frame.
+
+`screen_phases` reads begin ~8 µs, placement ~100 µs and finish ~95 µs
+for replay, against finish ~140 µs fresh. The original F284 projection
+of ~100 µs for the entire frame remains a projection, not this result.
+The complete `bench-check.nu 5a794ae9` run passes all nine core guards;
+their changes range from −1.3% to +2.5% (worst run-to-run spread 1.8%).
+
 What the pairs say. Deriving the access tree costs **~1.10×** the frame it
 follows — it was 1.35× before ADR 0016's one built decision, the digest
 that skips the derivation when nothing it reads has changed. Shadows under
