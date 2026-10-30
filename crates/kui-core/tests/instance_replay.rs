@@ -715,10 +715,7 @@ fn shifting_list(key: fn(i64) -> Option<Value>) -> usize {
         ui.configure_root(NodeSpec::column().fill());
         for i in 0..n {
             let line = frame + n - 1 - i;
-            let mut p = vec![(
-                "title".to_owned(),
-                Value::Str(format!("line {line}")),
-            )];
+            let mut p = vec![("title".to_owned(), Value::Str(format!("line {line}")))];
             if let Some(k) = key(line) {
                 p.push(("key".to_owned(), k));
             }

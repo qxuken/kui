@@ -75,6 +75,12 @@ kui-lua.workspace = true
 # The examples' devtools (docs/adr/0021), for the Rust host below.
 [dev-dependencies]
 kui-devtools.workspace = true
+divan.workspace = true
+
+# What a row costs a C host, and a replayed component (backlog F281, F282).
+[[bench]]
+name = "rows"
+harness = false
 
 [package.metadata.kui]
 headless = ["c_panel"]

@@ -192,6 +192,17 @@ impl Core {
             .then(|| self.enclosing_press(i))
             .flatten()
             .map(|j| self.tree.keys[j]);
+        // Over one of last frame's messages, whose strings it reuses.
+        let payload = spec.events().on_click().filter(|_| live).map(|v| {
+            if v.owns_buffers()
+                && let Some(mut old) = self.hit_payloads.pop()
+            {
+                old.clone_from(v);
+                old
+            } else {
+                v.clone()
+            }
+        });
         hits.push(HitRegion {
             press_to,
             key: self.tree.keys[i],
@@ -200,7 +211,7 @@ impl Core {
             clip,
             turn: turn.map(Box::new),
             shape,
-            payload: spec.events().on_click().cloned().filter(|_| live),
+            payload,
             drag: spec.events().on_drag().cloned().filter(|_| live),
             parent_rect,
             key_sink: spec.events().on_key().cloned().filter(|_| live),
@@ -1110,7 +1121,9 @@ impl Core {
     /// next input is tested against, in the same order.
     fn emit_frame(&mut self) {
         let scale = self.scale;
-        let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
+        let mut hits: Vec<HitRegion> = self
+            .interaction
+            .take_hit_buffer_and_payloads(&mut self.hit_payloads);
         self.hit_shapes = self.interaction.take_shape_buffer();
         self.blockers = self.interaction.take_blocker_buffer();
         self.record_blockers = self.host_asked.load(std::sync::atomic::Ordering::Relaxed);
@@ -1677,6 +1690,8 @@ impl Core {
             self.audit_frame();
         }
 
+        // What no region took this frame; the buffer stays.
+        self.hit_payloads.clear();
         let shapes = std::mem::take(&mut self.hit_shapes);
         self.interaction.set_hits_shaped(hits, shapes);
         self.interaction

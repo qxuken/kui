@@ -44,7 +44,7 @@ pub use kui_derive::Message;
 
 /// A dynamically typed value: null, bool, int, float, string, list or an
 /// ordered string-keyed map. See the [module docs](self) for an example.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub enum Value {
     #[default]
     Null,
@@ -56,7 +56,52 @@ pub enum Value {
     Map(Vec<(String, Value)>),
 }
 
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        match self {
+            Value::Null => Value::Null,
+            Value::Bool(b) => Value::Bool(*b),
+            Value::Int(i) => Value::Int(*i),
+            Value::Float(f) => Value::Float(*f),
+            Value::Str(s) => Value::Str(s.clone()),
+            Value::List(items) => Value::List(items.clone()),
+            Value::Map(entries) => Value::Map(entries.clone()),
+        }
+    }
+
+    /// Into the buffers `self` already has where the two are the same
+    /// shape — a string into a string, a map into a map, entry by entry —
+    /// so a value written over with another like it allocates nothing:
+    /// what the core does with every click message every frame (backlog
+    /// F281). The result is `source.clone()` either way.
+    fn clone_from(&mut self, source: &Self) {
+        match (self, source) {
+            (Value::Str(a), Value::Str(b)) => a.clone_from(b),
+            (Value::List(a), Value::List(b)) => a.clone_from(b),
+            (Value::Map(a), Value::Map(b)) => {
+                // Not `Vec::clone_from`: a tuple's `clone_from` is a fresh
+                // clone, which would allocate every key and value again.
+                a.truncate(b.len());
+                for ((ka, va), (kb, vb)) in a.iter_mut().zip(b) {
+                    ka.clone_from(kb);
+                    va.clone_from(vb);
+                }
+                let have = a.len();
+                a.extend(b[have..].iter().cloned());
+            }
+            (this, source) => *this = source.clone(),
+        }
+    }
+}
+
 impl Value {
+    /// Whether the value holds a heap buffer — a string, a list or a map —
+    /// that [`Clone::clone_from`] can write another like it into.
+    #[inline]
+    pub fn owns_buffers(&self) -> bool {
+        matches!(self, Value::Str(_) | Value::List(_) | Value::Map(_))
+    }
+
     /// A string value.
     pub fn str(s: impl Into<String>) -> Value {
         Value::Str(s.into())
@@ -286,6 +331,59 @@ mod tests {
         assert_eq!(v.get("kind").and_then(Value::as_str), Some("inc"));
         assert_eq!(v.get("by").and_then(Value::as_int), Some(2));
         assert_eq!(v.get("missing"), None);
+    }
+
+    #[test]
+    fn clone_from_is_a_clone_whatever_it_overwrites() {
+        let shapes = [
+            Value::Null,
+            Value::Bool(true),
+            Value::Int(-3),
+            Value::Float(2.5),
+            Value::str("row"),
+            Value::str(""),
+            Value::List(vec![Value::Int(1), Value::str("two")]),
+            Value::List(Vec::new()),
+            Value::map([("kind", Value::str("row")), ("line", Value::Int(7))]),
+            Value::map([
+                ("kind", Value::str("a longer kind")),
+                ("x", Value::Float(1.0)),
+            ]),
+            Value::map([("only", Value::Null)]),
+            Value::map([
+                ("kind", Value::str("row")),
+                ("line", Value::Int(7)),
+                (
+                    "nested",
+                    Value::map([("deep", Value::List(vec![Value::Bool(false)]))]),
+                ),
+            ]),
+        ];
+        for into in &shapes {
+            for from in &shapes {
+                let mut v = into.clone();
+                v.clone_from(from);
+                assert_eq!(&v, from, "{from:?} written over {into:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn clone_from_keeps_the_buffers_of_a_value_like_it() {
+        let mut v = Value::map([("kind", Value::str("row")), ("line", Value::Int(1))]);
+        let Value::Map(entries) = &v else {
+            unreachable!()
+        };
+        let (keys, text) = (entries.as_ptr(), entries[0].0.as_ptr());
+        v.clone_from(&Value::map([
+            ("kind", Value::str("cut")),
+            ("line", Value::Int(2)),
+        ]));
+        let Value::Map(entries) = &v else {
+            unreachable!()
+        };
+        assert_eq!((entries.as_ptr(), entries[0].0.as_ptr()), (keys, text));
+        assert_eq!(v.get_str("kind"), Some("cut"));
     }
 
     #[test]

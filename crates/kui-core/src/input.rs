@@ -2587,6 +2587,23 @@ impl Interaction {
         hits
     }
 
+    /// [`Self::take_hit_buffer`], the click messages of the regions it
+    /// held moved into `payloads` rather than dropped, for emission to
+    /// write the new ones over.
+    pub(crate) fn take_hit_buffer_and_payloads(
+        &mut self,
+        payloads: &mut Vec<Value>,
+    ) -> Vec<HitRegion> {
+        let mut hits = std::mem::take(&mut self.hits);
+        // Only a message with buffers to reuse: a number is a copy either way.
+        payloads.extend(
+            hits.iter_mut()
+                .filter_map(|h| h.payload.take_if(|p| p.owns_buffers())),
+        );
+        hits.clear();
+        hits
+    }
+
     /// The previous frame's point list (cleared), on the same terms.
     pub fn take_shape_buffer(&mut self) -> HitShapes {
         let mut shapes = HitShapes {
