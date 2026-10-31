@@ -4369,6 +4369,59 @@ neither for VoiceOver's purposes) asked of AccessKit, and a change there
 if it is small; kui follows when a release has it. Until then nothing in
 kui changes.
 
+## From the alpha.73 pre-tag round (2026-10-31)
+
+Five entries, FZ21–FZ25, filed and built the same day. The corpus-reuse
+check also reproduced the open direction-cache issue (FZ14/FZ18) in 608 of
+11,944 `events` runs; `scenes` was clean.
+
+### `!` FZ21 — A corrupt recording's string length can wrap the trace reader's offset
+
+**Found** 2026-10-31 by the `trace` target in the alpha.73 pre-tag fuzz
+round; **not a regression**, alpha.72 has the same read. A string record's
+varint length, near `usize::MAX`, made `Cursor::bytes` overflow while it
+formed `self.at + n`, panicking before the slice's bounds check could
+refuse it. A corrupt `.kuitrace` dropped on kui-perf could crash it.
+`Cursor::bytes` forms the end with `checked_add` now and reads the record
+as cut off, like any other truncated record. The 16-byte input is
+`fuzz/regressions/trace/fz21-string-length-past-the-input`.
+
+### `!` FZ22 — A corrupt recording's frame ends before it begins
+
+**Found** 2026-10-31 by the `trace` target immediately after FZ21's fix;
+**not a regression**, alpha.72 has the same arithmetic. A frame whose end
+was before its begin underflowed `Frame::core_us`, so the analyses and
+adapters the target drives panicked on a recording the decoder accepted.
+The Chrome adapter's slice duration had the same unchecked subtraction.
+Both saturate at zero now, as a backwards gap already does. The 23-byte
+input is `fuzz/regressions/trace/fz22-frame-end-before-its-begin`.
+
+### `!` FZ23 — A corrupt recording's clock arithmetic can overflow
+
+**Found** 2026-10-31 by the `trace` target after FZ22's fix; **not a
+regression**, alpha.72 has the same arithmetic. A timestamp delta could
+overflow the decoder's running `i64` time before its clamp at zero, and an
+input's declared duration could overflow its `u64` end. Both calculations
+saturate now. The 31-byte input is
+`fuzz/regressions/trace/fz23-input-wait-past-the-clock`.
+
+### `!` FZ24 — A backwards timeline range panics its query
+
+**Found** 2026-10-31 by the `trace` target after FZ23's fix; **not a
+regression**, alpha.72 has the same slicing. Corrupt timestamps could put
+a query's `from` after its `to`, making the partition points a reversed
+slice. Every timeline query with a `[from, to)` range now returns no
+records when the range is empty or backwards. The 28-byte input is
+`fuzz/regressions/trace/fz24-backwards-timeline-range`.
+
+### `!` FZ25 — A corrupt span's end can pass the trace clock
+
+**Found** 2026-10-31 by the `trace` target after FZ24's fix; **not a
+regression**, alpha.72 has the same addition. A span's `start + dur` could
+overflow while the timeline placed it. `Span::end` saturates now, as do
+frame work and the equivalent present and Lua placement calculations. The
+94-byte input is `fuzz/regressions/trace/fz25-span-end-past-the-clock`.
+
 ## From the alpha.72 pre-tag round (2026-10-29)
 
 Two things the round on the Mac (M3 Pro) found and the release did not

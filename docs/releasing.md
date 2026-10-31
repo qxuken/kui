@@ -21,7 +21,7 @@ nothing but the dependency:
 
 ```toml
 # Cargo.toml
-kui-native = "0.1.0-alpha.72"  # `use kui_native::…`; `cargo add kui-native` writes it
+kui-native = "0.1.0-alpha.73"  # `use kui_native::…`; `cargo add kui-native` writes it
 ```
 
 crates.io has had them since 0.1.0-alpha.33; every earlier version is on

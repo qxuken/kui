@@ -366,8 +366,9 @@ impl Cursor<'_> {
     }
 
     fn bytes(&mut self, n: usize) -> Option<&[u8]> {
-        let s = self.b.get(self.at..self.at + n)?;
-        self.at += n;
+        let end = self.at.checked_add(n)?;
+        let s = self.b.get(self.at..end)?;
+        self.at = end;
         Some(s)
     }
 
@@ -447,7 +448,7 @@ impl<'a> Reader<'a> {
 impl Decoder {
     fn t(&mut self, c: &mut Cursor<'_>) -> Option<u64> {
         let d = c.i()?;
-        self.prev_t = (self.prev_t as i64 + d).max(0) as u64;
+        self.prev_t = (self.prev_t as i64).saturating_add(d).max(0) as u64;
         Some(self.prev_t)
     }
 
@@ -531,7 +532,7 @@ impl Decoder {
                     kind: c.u32()?,
                     os_t: c.opt()?,
                     count: c.u32()?,
-                    until: t + c.u()?,
+                    until: t.saturating_add(c.u()?),
                 }
             }
             tag::EVENT => Record::Event {

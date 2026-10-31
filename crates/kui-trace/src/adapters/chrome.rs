@@ -62,7 +62,7 @@ pub fn write(m: &Model) -> String {
             ev,
             ",\"ph\":\"X\",\"ts\":{},\"dur\":{},\"pid\":1,\"tid\":{},\"args\":",
             s.start,
-            s.end - s.start,
+            s.end.saturating_sub(s.start),
             m.lanes[s.lane].tid
         );
         object(&mut ev, &s.args);

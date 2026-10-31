@@ -74,7 +74,7 @@ pub struct Span {
 
 impl Span {
     pub fn end(&self) -> u64 {
-        self.start + self.dur
+        self.start.saturating_add(self.dur)
     }
 }
 

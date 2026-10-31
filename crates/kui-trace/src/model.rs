@@ -247,13 +247,14 @@ impl Frame {
 
     /// The core's part: begin to end, µs.
     pub fn core_us(&self) -> u64 {
-        self.end_or_begin() - self.begin
+        self.end_or_begin().saturating_sub(self.begin)
     }
 
     /// Its work: the core's part and the driver's render, not vsync's
     /// wait, µs.
     pub fn work_us(&self) -> u64 {
-        self.core_us() + self.present.map_or(0, |p| p.render)
+        self.core_us()
+            .saturating_add(self.present.map_or(0, |p| p.render))
     }
 }
 
@@ -521,6 +522,9 @@ impl Timeline {
 
     /// The spans that start in `[from, to)`.
     pub fn spans_in(&self, from: u64, to: u64) -> &[Span] {
+        if from >= to {
+            return &[];
+        }
         let a = self.spans.partition_point(|s| s.start < from);
         let b = self.spans.partition_point(|s| s.start < to);
         &self.spans[a..b]
@@ -528,6 +532,9 @@ impl Timeline {
 
     /// The inputs that arrived in `[from, to)`.
     pub fn inputs_in(&self, from: u64, to: u64) -> &[Input] {
+        if from >= to {
+            return &[];
+        }
         let a = self.inputs.partition_point(|i| i.t < from);
         let b = self.inputs.partition_point(|i| i.t < to);
         &self.inputs[a..b]
@@ -535,6 +542,9 @@ impl Timeline {
 
     /// The events handed out in `[from, to)`.
     pub fn events_in(&self, from: u64, to: u64) -> &[Event] {
+        if from >= to {
+            return &[];
+        }
         let a = self.events.partition_point(|e| e.t < from);
         let b = self.events.partition_point(|e| e.t < to);
         &self.events[a..b]
@@ -542,6 +552,9 @@ impl Timeline {
 
     /// The loop's records in `[from, to)`.
     pub fn loops_in(&self, from: u64, to: u64) -> &[(u64, LoopEvent)] {
+        if from >= to {
+            return &[];
+        }
         let a = self.loops.partition_point(|l| l.0 < from);
         let b = self.loops.partition_point(|l| l.0 < to);
         &self.loops[a..b]
@@ -549,6 +562,9 @@ impl Timeline {
 
     /// The wakes in `[from, to)`.
     pub fn wakes_in(&self, from: u64, to: u64) -> &[(u64, NameId)] {
+        if from >= to {
+            return &[];
+        }
         let a = self.wakes.partition_point(|w| w.0 < from);
         let b = self.wakes.partition_point(|w| w.0 < to);
         &self.wakes[a..b]
@@ -556,6 +572,9 @@ impl Timeline {
 
     /// The marks in `[from, to)`.
     pub fn marks_in(&self, from: u64, to: u64) -> &[Mark] {
+        if from >= to {
+            return &[];
+        }
         let a = self.marks.partition_point(|m| m.t < from);
         let b = self.marks.partition_point(|m| m.t < to);
         &self.marks[a..b]
@@ -563,6 +582,9 @@ impl Timeline {
 
     /// The notes written in `[from, to)`.
     pub fn notes_in(&self, from: u64, to: u64) -> &[(u64, String)] {
+        if from >= to {
+            return &[];
+        }
         let a = self.notes.partition_point(|n| n.0 < from);
         let b = self.notes.partition_point(|n| n.0 < to);
         &self.notes[a..b]
@@ -570,6 +592,9 @@ impl Timeline {
 
     /// The components placed in `[from, to)`.
     pub fn placements_in(&self, from: u64, to: u64) -> &[Placement] {
+        if from >= to {
+            return &[];
+        }
         let a = self.placements.partition_point(|p| p.t < from);
         let b = self.placements.partition_point(|p| p.t < to);
         &self.placements[a..b]
@@ -577,6 +602,9 @@ impl Timeline {
 
     /// The requests in `[from, to)`.
     pub fn requests_in(&self, from: u64, to: u64) -> &[Request] {
+        if from >= to {
+            return &[];
+        }
         let a = self.requests.partition_point(|r| r.t < from);
         let b = self.requests.partition_point(|r| r.t < to);
         &self.requests[a..b]

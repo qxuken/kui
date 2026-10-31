@@ -29,7 +29,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.72"
+version = "0.1.0-alpha.73"
 edition = "2024"
 license = "MIT"
 # `homepage` is the book (docs/book), which is what a reader arriving from
@@ -43,21 +43,21 @@ categories = ["gui"]
 # No `registry` key: the kui crates resolve from crates.io, which is where
 # they publish (scripts/publish-crates.nu), and crates.io refuses a
 # dependency from any other registry.
-kui-value = { path = "crates/kui-value", version = "0.1.0-alpha.72" }
-kui-channel = { path = "crates/kui-channel", version = "0.1.0-alpha.72" }
-kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.72" }
-kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.72" }
-kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.72" }
-kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.72" }
-kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.72" }
+kui-value = { path = "crates/kui-value", version = "0.1.0-alpha.73" }
+kui-channel = { path = "crates/kui-channel", version = "0.1.0-alpha.73" }
+kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.73" }
+kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.73" }
+kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.73" }
+kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.73" }
+kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.73" }
 # `default-features = false` so the runner takes the translation alone and
 # nothing it brings its own of (`accesskit_winit`); kui-ffi asks for the
 # host's bridge with the `platform` feature.
-kui-access = { path = "crates/kui-access", version = "0.1.0-alpha.72", default-features = false }
+kui-access = { path = "crates/kui-access", version = "0.1.0-alpha.73", default-features = false }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
-kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.72", default-features = false }
-kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.72" }
+kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.73", default-features = false }
+kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.73" }
 kui-devtools = { path = "examples/devtools" }
 # Kit's generated Rust wrappers and the generator itself (ADR 0066); never
 # published yet.

@@ -363,7 +363,10 @@ impl Model {
                 // The driver reports once render and the wait are done;
                 // both after the frame, neither into the next.
                 let limit = tl.frames.get(i + 1).map_or(u64::MAX, |n| n.begin.max(end));
-                let rs = p.t.saturating_sub(p.render + p.wait).max(end).min(limit);
+                let rs =
+                    p.t.saturating_sub(p.render.saturating_add(p.wait))
+                        .max(end)
+                        .min(limit);
                 let re = rs.saturating_add(p.render).min(limit);
                 let we = re.saturating_add(p.wait).min(limit);
                 for (name, a, b) in [("render", rs, re), ("vsync wait", re, we)] {

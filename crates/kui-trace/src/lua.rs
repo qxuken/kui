@@ -1036,11 +1036,11 @@ fn frame_detail(lua: &Lua, r: &Recording, i: usize) -> mlua::Result<Table> {
 fn placement_of<'t>(tl: &'t Timeline, trace: &Trace, s: &Span) -> Option<&'t Placement> {
     const PLACED_WITHIN_US: u64 = 50;
     let ns = trace.name(s.name).strip_prefix("fill ")?;
-    let end = s.start + s.dur;
+    let end = s.end();
     let at = tl.placements.partition_point(|p| p.t < end);
     tl.placements
         .get(at)
-        .filter(|p| p.t <= end + PLACED_WITHIN_US)
+        .filter(|p| p.t <= end.saturating_add(PLACED_WITHIN_US))
         .filter(|p| {
             trace
                 .name(p.component)

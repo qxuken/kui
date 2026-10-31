@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.73 (unreleased)
+## 0.1.0-alpha.73 (2026-10-31)
 
 **What breaks.**
 
@@ -64,6 +64,33 @@ was the first bare bump to break an app in five releases).
   99.3%). An integer, or a float with no fraction (a Lua or JavaScript
   number), is a data index now, as `kui_open_indexed` and `open_indexed`
   key a node, and a namespace apart from names. kui.h, `docs/props.md`.
+
+- **A corrupt recording cannot wrap the trace reader's offset** (backlog
+  FZ21, from the pre-tag fuzz round). A string record declaring a length
+  near `usize::MAX` panicked `Cursor::bytes` while it formed the slice's
+  end, before the bounds check could refuse it. The end is checked now and
+  the record reads as cut off, as any other truncated record does.
+
+- **A corrupt recording's backwards frame reads as no duration** (backlog
+  FZ22, from the same round). A frame ending before it began underflowed
+  `Frame::core_us`, and the Chrome adapter's slice duration had the same
+  unchecked subtraction. Both now saturate at zero, as a backwards gap
+  already does.
+
+- **A corrupt recording cannot overflow the trace clock** (backlog FZ23,
+  from the same round). A timestamp delta could overflow the decoder's
+  running time, and an input's declared duration could overflow its end.
+  Both calculations saturate now.
+
+- **A backwards timeline range reads as empty** (backlog FZ24, from the
+  same round). Corrupt timestamps could make a range query's start follow
+  its end and panic on the slice. Every timeline query with a `[from, to)`
+  range now answers no records when the range is empty or backwards.
+
+- **A span ending past the trace clock reads as the clock's end** (backlog
+  FZ25, from the same round). A corrupt span's `start + dur` could overflow;
+  span endpoints, frame work and the equivalent adapter and Lua placement
+  calculations now saturate instead of panicking.
 
 ### Added
 
@@ -275,6 +302,30 @@ was the first bare bump to break an app in five releases).
 - Turning a list row's integer id into a string for a component's `key`.
 - Downloading the 55 MB archive, or unpacking a C and an Odin one, to link
   the shared library without the runner: `kui-ffi-core` is 5 MB.
+
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): `release-prep.nu` with
+Odin's generator (every generated file current), `test.nu --node` on the
+final tree (3422 tests over 256 suites and Node's, none failed), the
+windowed round with the Node windows (all 58 examples drew 120 frames on
+both bases and exited), the accessibility audit (106/106), and
+`bench-check.nu` against alpha.72. All nine guarded rows passed; the worst
+guarded run-to-run spread was 4.9%, and the largest guarded increase was
+`frame_10k_rects` at +4.0%.
+
+Five minutes each of all eleven fuzz targets found five pre-existing
+malformed-recording panics in `trace`, FZ21–FZ25, each fixed and kept as a
+minimized regression. The other ten targets were clean; after the fixes,
+`trace` completed five minutes and 612,902 runs without a crash. The
+corpus-reuse check was clean for `scenes`; 608 of 11,944 `events` runs
+differed with the already open cosmic-text direction-cache issue
+(FZ14/FZ18), not a new failure from this release.
+
+Not verified natively this release: Windows and Linux on a machine
+(smoke.yml's Windows round and ci.yml's Linux check run on GitHub's
+runners, and both block the release); no read-only review round over the
+release's commits.
 
 ## 0.1.0-alpha.72 (2026-10-29)
 
