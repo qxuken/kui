@@ -6,9 +6,9 @@ local kit = require("kit.ui")
 local demo = {
   title = "Fields",
   note = "controlled: the value is yours, change proposes the next; an error shows whole, at the field's end with room and under it without",
-  call = 'kit.text_field({ label = "Name", value = model.name, on_change = { kind = "name" } })\nkit.text_field({ label = "Version", value = model.version, mono = true,\n  error = version_error(model.version), on_change = { kind = "version" } })',
+  call = 'kit.text_field({ label = "Name", value = model.name, on_change = { kind = "name" } })\nkit.text_field({ label = "Version", value = model.version, mono = true,\n  error = version_error(model.version), on_change = { kind = "version" } })\nkit.password({ label = "Password", value = model.password, on_change = { kind = "password" } })',
   -- What the card keeps in the app's model.
-  state = { name = "kit", version = "1.4", query = "", mode = "auto" },
+  state = { name = "kit", version = "1.4", password = "correct horses", query = "", mode = "auto" },
 }
 
 -- What is wrong with a version, or nil.
@@ -21,6 +21,7 @@ function demo.update(m, msg)
   local k = msg.kind
   if k == "name" then m.name = msg.change.text
   elseif k == "version" then m.version = msg.change.text
+  elseif k == "password" then m.password = msg.change.text
   elseif k == "query" then m.query = msg.change.text
   elseif k == "mode" then m.mode = msg.change.value
   end
@@ -31,6 +32,7 @@ function demo.view(m)
       kit.text_field({ label = "Name", value = m.name, on_change = { kind = "name" } }),
       kit.text_field({ label = "Version", value = m.version, mono = true, error = version_error(m.version),
         on_change = { kind = "version" } }),
+      kit.password({ label = "Password", value = m.password, on_change = { kind = "password" } }),
       kit.search({ value = m.query, placeholder = "Search requests", count = m.query ~= "" and "12 of 340" or nil,
         on_change = { kind = "query" } }),
       kit.select({ label = "Mode", value = m.mode, on_change = { kind = "mode" },

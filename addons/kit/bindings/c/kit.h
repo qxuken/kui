@@ -1235,6 +1235,98 @@ static inline int32_t kit_text_field(KuiCtx *ctx, const KitTextField *p) {
 }
 
 /*
+ * A password field in the skin's field style, masked by kui, with a show/hide
+ * eye that resets while the field is away.
+ */
+typedef struct KitPassword {
+    /*
+     * Its password: yours to keep, from `change`.
+     */
+    KuiStr value;
+    /*
+     * Its label, above it; its name.
+     */
+    KuiStr label;
+    /*
+     * The label names the field but is not drawn: a field whose place says what
+     * it is.
+     */
+    bool hide_label;
+    bool hide_label_set;
+    /*
+     * Shown while it is empty.
+     */
+    KuiStr placeholder;
+    /*
+     * Unavailable, including the show/hide eye.
+     */
+    bool disabled;
+    bool disabled_set;
+    /*
+     * Its width in px; grows when left out.
+     */
+    double width;
+    bool width_set;
+    /*
+     * Takes the keyboard each time this number changes while the field is on
+     * screen.
+     */
+    int64_t focus;
+    bool focus_set;
+    /*
+     * Takes the keyboard as it first shows.
+     */
+    bool autofocus;
+    bool autofocus_set;
+    /*
+     * What is wrong with the password, in the danger colour, its edge in danger
+     * too, and read after its name. It is shown whole: at the end of the field
+     * while there is room, and under it, wrapping, while there is not. An empty
+     * string marks the field only.
+     */
+    KuiStr error;
+    /*
+     * The message `change` arrives as, consumed; NULL for none. The password
+     * changed.
+     */
+    KuiValue *on_change;
+    /*
+     * The message `submit` arrives as, consumed; NULL for none. Enter.
+     */
+    KuiValue *on_submit;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitPassword;
+
+static inline KuiValue *kit_password_props(const KitPassword *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->hide_label_set) kui_value_map_set(m, KUI_STR("hide_label"), kui_value_bool(p->hide_label));
+    if (p->placeholder.len > 0) kui_value_map_set(m, KUI_STR("placeholder"), kui_value_str(p->placeholder));
+    if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
+    if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
+    if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
+    if (p->autofocus_set) kui_value_map_set(m, KUI_STR("autofocus"), kui_value_bool(p->autofocus));
+    if (p->error.len > 0) kui_value_map_set(m, KUI_STR("error"), kui_value_str(p->error));
+    if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
+    if (p->on_submit != NULL) kui_value_map_set(m, KUI_STR("on_submit"), p->on_submit);
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/password: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_password(KuiCtx *ctx, const KitPassword *p) {
+    KuiValue *props = kit_password_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/password"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
  * A text field of several lines, in a well in every skin: a note, a request
  * body.
  */

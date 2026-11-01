@@ -425,6 +425,52 @@ export interface TextFieldSubmit {
 /** Your message `T` as `submit` arrives. */
 export type TextFieldSubmitMsg<T = {}> = T & { submit: TextFieldSubmit };
 
+/** The props of `kit/password`. */
+export interface PasswordProps {
+  /** Its password: yours to keep, from `change`. */
+  value: string;
+  /** Its label, above it; its name. */
+  label?: string;
+  /** The label names the field but is not drawn: a field whose place says what it is. */
+  hideLabel?: boolean;
+  /** Shown while it is empty. */
+  placeholder?: string;
+  /** Unavailable, including the show/hide eye. */
+  disabled?: boolean;
+  /** Its width in px; grows when left out. */
+  width?: number;
+  /** Takes the keyboard each time this number changes while the field is on screen. */
+  focus?: number;
+  /** Takes the keyboard as it first shows. */
+  autofocus?: boolean;
+  /** What is wrong with the password, in the danger colour, its edge in danger too, and read after its name. It is shown whole: at the end of the field while there is room, and under it, wrapping, while there is not. An empty string marks the field only. */
+  error?: string;
+  /** The message change arrives as: yours, with `change: PasswordChange` in it — register it as `PasswordChangeMsg<…>`. The password changed. */
+  onChange?: HandlerMsg<{ change: PasswordChange }>;
+  /** The message submit arrives as: yours, with `submit: PasswordSubmit` in it — register it as `PasswordSubmitMsg<…>`. Enter. */
+  onSubmit?: HandlerMsg<{ submit: PasswordSubmit }>;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** What `onChange`'s message carries under `change`. */
+export interface PasswordChange {
+  /** The whole password. */
+  text: string;
+}
+/** Your message `T` as `change` arrives. */
+export type PasswordChangeMsg<T = {}> = T & { change: PasswordChange };
+
+/** What `onSubmit`'s message carries under `submit`. */
+export interface PasswordSubmit {
+  /** The whole password. */
+  text: string;
+}
+/** Your message `T` as `submit` arrives. */
+export type PasswordSubmitMsg<T = {}> = T & { submit: PasswordSubmit };
+
 /** The props of `kit/text_area`. */
 export interface TextAreaProps {
   /** Its text: yours to keep, from `change`. */
@@ -1398,6 +1444,9 @@ export declare function IconButton(props: IconButtonProps, children?: KuiNode): 
 /** A one-line text field, the skin's field style (an underline in Ledger). */
 export declare function TextField(props: TextFieldProps, children?: KuiNode): KuiNode;
 
+/** A password field in the skin's field style, masked by kui, with a show/hide eye that resets while the field is away. */
+export declare function Password(props: PasswordProps, children?: KuiNode): KuiNode;
+
 /** A text field of several lines, in a well in every skin: a note, a request body. */
 export declare function TextArea(props: TextAreaProps, children?: KuiNode): KuiNode;
 
@@ -1506,6 +1555,7 @@ export interface Kit {
   Button: typeof Button;
   IconButton: typeof IconButton;
   TextField: typeof TextField;
+  Password: typeof Password;
   TextArea: typeof TextArea;
   Search: typeof Search;
   Select: typeof Select;

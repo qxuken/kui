@@ -169,6 +169,12 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)
         kit::TextField::new("hello").label("Name").place(ui),
     );
     put(
+        "password",
+        kit::Password::new("correct horse")
+            .label("Password")
+            .place(ui),
+    );
+    put(
         "text_field_error",
         kit::TextField::new("a/b")
             .label("Device")
@@ -426,6 +432,62 @@ fn every_component_draws_without_a_warning() {
         .filter(|(_, a)| *a == Some(FillAnswer::Replayed))
         .count();
     assert!(replayed >= 10, "{again:?}");
+    assert!(r.core.take_warnings().is_empty());
+}
+
+#[test]
+fn a_password_masks_reveals_and_hides_the_same_editor() {
+    let mut r = rig();
+    let view = |ui: &mut Ui<'_>| {
+        kit::Password::new("correct horse")
+            .label("Password")
+            .place(ui);
+    };
+    r.frame(view);
+    r.frame(view);
+    let tree = r.core.access_tree().clone();
+    let field = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Password"))
+        .expect("the password field");
+    assert_eq!(field.role, kui_core::Role::PasswordInput);
+    assert_eq!(field.value.as_deref(), Some("•••••••••••••"));
+
+    assert!(r.click("Show password").is_empty());
+    r.frame(view);
+    let tree = r.core.access_tree().clone();
+    let field = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Password"))
+        .expect("the revealed field");
+    assert_eq!(field.role, kui_core::Role::TextInput);
+    assert_eq!(field.value.as_deref(), Some("correct horse"));
+
+    r.frame(|_| {});
+    r.frame(view);
+    let tree = r.core.access_tree().clone();
+    let field = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Password"))
+        .expect("the field back after a tab away");
+    assert_eq!(field.role, kui_core::Role::PasswordInput);
+    assert_eq!(field.value.as_deref(), Some("•••••••••••••"));
+
+    assert!(r.click("Show password").is_empty());
+    r.frame(view);
+    assert!(r.click("Hide password").is_empty());
+    r.frame(view);
+    let tree = r.core.access_tree().clone();
+    let field = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Password"))
+        .expect("the hidden field");
+    assert_eq!(field.role, kui_core::Role::PasswordInput);
+    assert_eq!(field.value.as_deref(), Some("•••••••••••••"));
     assert!(r.core.take_warnings().is_empty());
 }
 

@@ -8,7 +8,7 @@ Lua places a component with `kit.<name>(props, children)` after `local kit = req
 
 ## Contents
 
-Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.checklist`](#kitchecklist), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.markdown`](#kitmarkdown), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
+Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.password`](#kitpassword), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.checklist`](#kitchecklist), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.markdown`](#kitmarkdown), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
 
 Types: [`Variant`](#variant), [`Tone`](#tone), [`Align`](#align), [`Axis`](#axis), [`Skin`](#skin), [`Density`](#density), [`Level`](#level), [`Browse`](#browse), [`XFormat`](#xformat), [`Appearance`](#appearance), [`ShaderPreset`](#shaderpreset), [`Selection`](#selection), [`SkeletonShape`](#skeletonshape), [`Choice`](#choice), [`Column`](#column), [`Tab`](#tab), [`Item`](#item), [`Check`](#check), [`Entry`](#entry), [`RowRange`](#rowrange), [`Series`](#series).
 
@@ -208,6 +208,29 @@ Lua `kit.text_field(props)` · Node `<TextField />`
 |---|---|---|---|
 | `on_change` | `onChange` | `change` = { `text`: string — The whole text. } | The text changed, or a path was picked. |
 | `on_submit` | `onSubmit` | `submit` = { `text`: string — The whole text. } | Enter. |
+
+## kit.password
+
+A password field in the skin's field style, masked by kui, with a show/hide eye that resets while the field is away.
+
+Lua `kit.password(props)` · Node `<Password />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `value` | `value` | string | Its password: yours to keep, from `change`. |
+| `label` | `label` | string? | Its label, above it; its name. |
+| `hide_label` | `hideLabel` | boolean? | The label names the field but is not drawn: a field whose place says what it is. |
+| `placeholder` | `placeholder` | string? | Shown while it is empty. |
+| `disabled` | `disabled` | boolean? | Unavailable, including the show/hide eye. |
+| `width` | `width` | number? | Its width in px; grows when left out. |
+| `focus` | `focus` | integer? | Takes the keyboard each time this number changes while the field is on screen. |
+| `autofocus` | `autofocus` | boolean? | Takes the keyboard as it first shows. |
+| `error` | `error` | string? | What is wrong with the password, in the danger colour, its edge in danger too, and read after its name. It is shown whole: at the end of the field while there is room, and under it, wrapping, while there is not. An empty string marks the field only. |
+
+| event | Node | carries | description |
+|---|---|---|---|
+| `on_change` | `onChange` | `change` = { `text`: string — The whole password. } | The password changed. |
+| `on_submit` | `onSubmit` | `submit` = { `text`: string — The whole password. } | Enter. |
 
 ## kit.text_area
 

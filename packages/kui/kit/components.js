@@ -204,6 +204,27 @@ function make(namespace) {
         children: flat(children ?? props.children),
       };
     },
+    Password(props = {}, children) {
+      const wire = {};
+      if (props.value !== undefined) wire.value = props.value;
+      if (props.label !== undefined) wire.label = props.label;
+      if (props.hideLabel !== undefined) wire.hide_label = props.hideLabel;
+      if (props.placeholder !== undefined) wire.placeholder = props.placeholder;
+      if (props.disabled !== undefined) wire.disabled = props.disabled;
+      if (props.width !== undefined) wire.width = props.width;
+      if (props.focus !== undefined) wire.focus = props.focus;
+      if (props.autofocus !== undefined) wire.autofocus = props.autofocus;
+      if (props.error !== undefined) wire.error = props.error;
+      if (props.onChange !== undefined) wire.on_change = props.onChange;
+      if (props.onSubmit !== undefined) wire.on_submit = props.onSubmit;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/password`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
     TextArea(props = {}, children) {
       const wire = {};
       if (props.value !== undefined) wire.value = props.value;
@@ -737,6 +758,6 @@ function make(namespace) {
 }
 
 const kit = make('kit');
-export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Checklist, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Markdown, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
+export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, Password, TextArea, Search, Select, Checkbox, Checklist, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Markdown, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
 export const at = make;
 export default kit;

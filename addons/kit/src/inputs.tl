@@ -282,6 +282,8 @@ local record Asked
   -- Choose… was pressed: the next fill asks for the dialog (a view's
   -- verb; an event handler holds no env).
   browse: boolean
+  shown: boolean
+  edit_focus: boolean
 end
 
 -- `focus` is a request: each new number takes the keyboard to the field.
@@ -338,20 +340,38 @@ local function browse_button(c: Ctx, p: P, value: string): kui.Node
   return pressed_face(c, "default", t)
 end
 
-function M.text_field(c: Ctx, p: P): kui.Node
+local function line_field(c: Ctx, p: P, password: boolean): kui.Node
   focus_request(c, p)
+  local visible = false
+  if password then
+    local st = ctx.state(c, function(): Asked return { seen = false } end)
+    -- Kui forgets a secure editor left undeclared. Its absence here means
+    -- the field is arriving too, so a reveal left behind does not return.
+    if st.shown and c.env.edit_text("edit") == nil then
+      st.shown, st.edit_focus = false, nil
+    end
+    visible = st.shown == true
+    if st.edit_focus then
+      st.edit_focus = false
+      pcall(c.env.set_focus, "edit")
+    end
+  end
   local focused = c.env.is_focused("edit")
   local value = str(p.value) or ""
   local err = str(p.error)
+  local action = password and "password" or "text_field"
   local pad_x = c.s.skin.field_box and 8 or 2
+  local reveal = visible and "Hide password" or "Show password"
   local box: kui.Props = {
     height = "$kitCtl",
     width = "grow",
+    gap = password and 6 or nil,
     pad = { x = pad_x },
     cross_align = "center",
     edit {
       key = "edit",
       value = value,
+      secure = password and not visible or nil,
       placeholder = str(p.placeholder),
       label = str(p.label) or str(p.placeholder),
       width = "grow",
@@ -362,9 +382,19 @@ function M.text_field(c: Ctx, p: P): kui.Node
       -- The error is read after the name, as what to fix.
       description = err ~= "" and err or nil,
       key_focus = p.autofocus == true or nil,
-      on_change = act(c, "text_field.change"),
-      on_submit = act(c, "text_field.submit", { text = value }),
+      on_change = act(c, action .. ".change"),
+      on_submit = act(c, action .. ".submit", { text = value }),
     },
+    password and row {
+      key = "reveal", role = "button", label = reveal, tooltip = reveal,
+      selected = visible, disabled = p.disabled == true,
+      width = 20, height = 20, main_align = "center", cross_align = "center",
+      radius = "$kitRadius", bg = visible and ref(c, "sel") or nil,
+      hover_bg = ref(c, "hover"), cursor = "pointer",
+      opacity = p.disabled == true and "$disabledOpacity" or nil,
+      on_click = act(c, "password.toggle"),
+      icons.node(c, "eye", 14, visible and "sel_fg" or "muted"),
+    } or nil,
     error_tag(c, err),
   }
   -- The message whole, beside the text while the well has room for it
@@ -374,11 +404,12 @@ function M.text_field(c: Ctx, p: P): kui.Node
   local room: number = nil
   if err and err ~= "" then
     box.gap = 6
-    room = error_room(c, err, value, p.mono == true, pad_x)
+    room = error_room(c, err, value, p.mono == true, pad_x) + (password and 26 or 0)
     box.when = { { width = { below = room }, hidden = { "error" } } }
   end
   well(c, box, focused, err ~= nil)
-  local chooser = browse_button(c, p, value)
+  local chooser: kui.Node = nil
+  if not password then chooser = browse_button(c, p, value) end
   -- The field takes what its row leaves, down to 80 px (its text scrolls
   -- in the editor); a Choose… button beside it keeps its whole label.
   local field_t = ctx.up_to({ gap = 0, row(box), underline(c, focused, err ~= nil),
@@ -394,6 +425,14 @@ function M.text_field(c: Ctx, p: P): kui.Node
   end
   if p.hide_label == true then return field end
   return labelled(c, str(p.label), field, p.width)
+end
+
+function M.text_field(c: Ctx, p: P): kui.Node
+  return line_field(c, p, false)
+end
+
+function M.password(c: Ctx, p: P): kui.Node
+  return line_field(c, p, true)
 end
 
 -- A field of several lines: a well in every skin (an underline under a
@@ -1021,7 +1060,7 @@ end
 function M.event(m: P, kit: string): any
   if kit == "button.press" or kit == "icon_button.press" then
     return emit("on_press", {})
-  elseif kit == "text_field.change" or kit == "search.change" or kit == "text_area.change" then
+  elseif kit == "text_field.change" or kit == "password.change" or kit == "search.change" or kit == "text_area.change" then
     local ch = m.change as P
     return emit("on_change", { text = ch and ch.text or "" })
   elseif kit == "text_field.browse" then
@@ -1031,7 +1070,13 @@ function M.event(m: P, kit: string): any
     local f = m.files as P
     local paths = f and f.paths as {string}
     if paths and paths[1] then return emit("on_change", { text = paths[1] }) end
-  elseif kit == "text_field.submit" or kit == "search.submit" then
+  elseif kit == "password.toggle" then
+    local st = ctx.peek(m.inst as integer) as Asked
+    if st then
+      st.shown = not st.shown
+      st.edit_focus = true
+    end
+  elseif kit == "text_field.submit" or kit == "password.submit" or kit == "search.submit" then
     return emit("on_submit", { text = m.text or "" })
   elseif kit == "search.clear" then
     return emit("on_change", { text = "" })

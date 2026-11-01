@@ -1079,6 +1079,93 @@ text_field_in :: proc(ui: ^kui.Ui, namespace: string, p: TextField) -> i32 {
 	return c.component(ui, name, props, nil, nil)
 }
 
+// A password field in the skin's field style, masked by kui, with a show/hide
+// eye that resets while the field is away.
+Password :: struct {
+	// Its password: yours to keep, from `change`.
+	value: string,
+	// Its label, above it; its name.
+	label: string,
+	// The label names the field but is not drawn: a field whose place says what it
+	// is.
+	hide_label: Maybe(bool),
+	// Shown while it is empty.
+	placeholder: string,
+	// Unavailable, including the show/hide eye.
+	disabled: Maybe(bool),
+	// Its width in px; grows when left out.
+	width: Maybe(f64),
+	// Takes the keyboard each time this number changes while the field is on
+	// screen.
+	focus: Maybe(i64),
+	// Takes the keyboard as it first shows.
+	autofocus: Maybe(bool),
+	// What is wrong with the password, in the danger colour, its edge in danger
+	// too, and read after its name. It is shown whole: at the end of the field
+	// while there is room, and under it, wrapping, while there is not. An empty
+	// string marks the field only.
+	error: string,
+	// The message `change` arrives as. The password changed.
+	on_change: any,
+	// The message `submit` arrives as. Enter.
+	on_submit: any,
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+// What `change` carries: The password changed.
+Password_Change :: struct {
+	// The whole password.
+	text: string,
+}
+
+// Embed with `using _:` in the message passed as `on_change`.
+With_Password_Change :: struct {
+	change: Password_Change,
+}
+
+// What `submit` carries: Enter.
+Password_Submit :: struct {
+	// The whole password.
+	text: string,
+}
+
+// Embed with `using _:` in the message passed as `on_submit`.
+With_Password_Submit :: struct {
+	submit: Password_Submit,
+}
+
+@(private)
+password_props :: proc(p: Password) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "value", c.value_str(p.value))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
+	if x, ok := p.hide_label.?; ok do c.value_map_set(m, "hide_label", c.value_bool(x))
+	if p.placeholder != "" do c.value_map_set(m, "placeholder", c.value_str(p.placeholder))
+	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
+	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
+	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
+	if x, ok := p.autofocus.?; ok do c.value_map_set(m, "autofocus", c.value_bool(x))
+	if p.error != "" do c.value_map_set(m, "error", c.value_str(p.error))
+	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
+	if p.on_submit != nil do c.value_map_set(m, "on_submit", (^c.Value)(kui.encode(p.on_submit)))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+password :: proc(ui: ^kui.Ui, p: Password) -> i32 {
+	return password_in(ui, NAMESPACE, p)
+}
+
+password_in :: proc(ui: ^kui.Ui, namespace: string, p: Password) -> i32 {
+	props := password_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/password")
+	return c.component(ui, name, props, nil, nil)
+}
+
 // A text field of several lines, in a well in every skin: a note, a request
 // body.
 TextArea :: struct {
