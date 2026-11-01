@@ -86,7 +86,7 @@ end
 
 provide(layout, { "panel", "toolbar", "statusbar", "split", "tabs", "section", "divider" })
 provide(inputs, {
-   "button", "icon_button", "text_field", "search", "select", "checkbox", "checklist", "switch",
+   "button", "icon_button", "text_field", "password", "search", "select", "checkbox", "checklist", "switch",
    "radio_group", "segmented", "slider", "text_area",
 })
 provide(data, { "table", "list", "inspector", "log", "badge", "stat", "code", "markdown", "empty", "progress", "notice", "skeleton", "shader" })

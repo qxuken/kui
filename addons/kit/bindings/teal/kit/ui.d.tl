@@ -425,6 +425,49 @@ local record kit
     text: string
   end
 
+  -- The props of `kit/password`.
+  record PasswordProps
+    -- Its password: yours to keep, from `change`.
+    value: string
+    -- Its label, above it; its name.
+    label: string
+    -- The label names the field but is not drawn: a field whose place says
+    -- what it is.
+    hide_label: boolean
+    -- Shown while it is empty.
+    placeholder: string
+    -- Unavailable, including the show/hide eye.
+    disabled: boolean
+    -- Its width in px; grows when left out.
+    width: number
+    -- Takes the keyboard each time this number changes while the field is on
+    -- screen.
+    focus: integer
+    -- Takes the keyboard as it first shows.
+    autofocus: boolean
+    -- What is wrong with the password, in the danger colour, its edge in
+    -- danger too, and read after its name. It is shown whole: at the end of
+    -- the field while there is room, and under it, wrapping, while there is
+    -- not. An empty string marks the field only.
+    error: string
+    -- The message `change` arrives as. The password changed.
+    on_change: any
+    -- The message `submit` arrives as. Enter.
+    on_submit: any
+    key: string
+    fresh: boolean
+  end
+
+  -- What `on_change`'s message carries under `change`.
+  record PasswordChange
+    text: string
+  end
+
+  -- What `on_submit`'s message carries under `submit`.
+  record PasswordSubmit
+    text: string
+  end
+
   -- The props of `kit/text_area`.
   record TextAreaProps
     -- Its text: yours to keep, from `change`.
@@ -1312,6 +1355,10 @@ local record kit
 
   -- A one-line text field, the skin's field style (an underline in Ledger).
   text_field: function(props: TextFieldProps): kui.Node
+
+  -- A password field in the skin's field style, masked by kui, with a
+  -- show/hide eye that resets while the field is away.
+  password: function(props: PasswordProps): kui.Node
 
   -- A text field of several lines, in a well in every skin: a note, a request
   -- body.

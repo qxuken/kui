@@ -2291,6 +2291,230 @@ impl TextFieldSubmit {
     }
 }
 
+/// A password field in the skin's field style, masked by kui, with a show/hide
+/// eye that resets while the field is away.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Password {
+    /// Its password: yours to keep, from `change`.
+    pub value: String,
+    /// Its label, above it; its name.
+    pub label: Option<String>,
+    /// The label names the field but is not drawn: a field whose place says
+    /// what it is.
+    pub hide_label: Option<bool>,
+    /// Shown while it is empty.
+    pub placeholder: Option<String>,
+    /// Unavailable, including the show/hide eye.
+    pub disabled: Option<bool>,
+    /// Its width in px; grows when left out.
+    pub width: Option<f64>,
+    /// Takes the keyboard each time this number changes while the field is on
+    /// screen.
+    pub focus: Option<i64>,
+    /// Takes the keyboard as it first shows.
+    pub autofocus: Option<bool>,
+    /// What is wrong with the password, in the danger colour, its edge in
+    /// danger too, and read after its name. It is shown whole: at the end of
+    /// the field while there is room, and under it, wrapping, while there is
+    /// not. An empty string marks the field only.
+    pub error: Option<String>,
+    /// The message `change` arrives as, with `change: PasswordChange` in it.
+    /// The password changed.
+    pub on_change: Option<Value>,
+    /// The message `submit` arrives as, with `submit: PasswordSubmit` in it.
+    /// Enter.
+    pub on_submit: Option<Value>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Password {
+    /// What it needs; the rest by their setters.
+    pub fn new(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+            label: None,
+            hide_label: None,
+            placeholder: None,
+            disabled: None,
+            width: None,
+            focus: None,
+            autofocus: None,
+            error: None,
+            on_change: None,
+            on_submit: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Its label, above it; its name.
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
+        self
+    }
+
+    /// The label names the field but is not drawn: a field whose place says
+    /// what it is.
+    pub fn hide_label(mut self, v: bool) -> Self {
+        self.hide_label = Some(v);
+        self
+    }
+
+    /// Shown while it is empty.
+    pub fn placeholder(mut self, v: impl Into<String>) -> Self {
+        self.placeholder = Some(v.into());
+        self
+    }
+
+    /// Unavailable, including the show/hide eye.
+    pub fn disabled(mut self, v: bool) -> Self {
+        self.disabled = Some(v);
+        self
+    }
+
+    /// Its width in px; grows when left out.
+    pub fn width(mut self, v: f64) -> Self {
+        self.width = Some(v);
+        self
+    }
+
+    /// Takes the keyboard each time this number changes while the field is on
+    /// screen.
+    pub fn focus(mut self, v: i64) -> Self {
+        self.focus = Some(v);
+        self
+    }
+
+    /// Takes the keyboard as it first shows.
+    pub fn autofocus(mut self, v: bool) -> Self {
+        self.autofocus = Some(v);
+        self
+    }
+
+    /// What is wrong with the password, in the danger colour, its edge in
+    /// danger too, and read after its name. It is shown whole: at the end of
+    /// the field while there is room, and under it, wrapping, while there is
+    /// not. An empty string marks the field only.
+    pub fn error(mut self, v: impl Into<String>) -> Self {
+        self.error = Some(v.into());
+        self
+    }
+
+    /// The message `change` arrives as. The password changed.
+    pub fn on_change(mut self, msg: impl Into<Value>) -> Self {
+        self.on_change = Some(msg.into());
+        self
+    }
+
+    /// The message `submit` arrives as. Enter.
+    pub fn on_submit(mut self, msg: impl Into<Value>) -> Self {
+        self.on_submit = Some(msg.into());
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("value".into(), Value::str((&self.value).as_str())));
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.hide_label {
+            m.push(("hide_label".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.placeholder {
+            m.push(("placeholder".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.disabled {
+            m.push(("disabled".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.width {
+            m.push(("width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.focus {
+            m.push(("focus".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.autofocus {
+            m.push(("autofocus".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.error {
+            m.push(("error".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.on_change {
+            m.push(("on_change".into(), v.clone()));
+        }
+        if let Some(v) = &self.on_submit {
+            m.push(("on_submit".into(), v.clone()));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/password`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/password", &self.props())
+    }
+
+    /// Places it under `<namespace>/password`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/password"), &self.props())
+    }
+}
+
+/// What `on_change`'s message carries under `change`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PasswordChange {
+    /// The whole password.
+    pub text: String,
+}
+
+impl PasswordChange {
+    /// Read off an event's payload: the fields under `change`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("change")?;
+        Some(Self {
+            text: _d.get_str("text").map(str::to_string).unwrap_or_default(),
+        })
+    }
+}
+
+/// What `on_submit`'s message carries under `submit`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PasswordSubmit {
+    /// The whole password.
+    pub text: String,
+}
+
+impl PasswordSubmit {
+    /// Read off an event's payload: the fields under `submit`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("submit")?;
+        Some(Self {
+            text: _d.get_str("text").map(str::to_string).unwrap_or_default(),
+        })
+    }
+}
+
 /// A text field of several lines, in a well in every skin: a note, a request
 /// body.
 #[derive(Clone, Debug, PartialEq)]

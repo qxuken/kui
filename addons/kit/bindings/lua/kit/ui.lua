@@ -249,6 +249,30 @@
 ---@class kit.TextFieldSubmit
 ---@field text string The whole text.
 
+---The props of `kit/password`.
+---@class kit.PasswordProps
+---@field value string Its password: yours to keep, from `change`.
+---@field label? string Its label, above it; its name.
+---@field hide_label? boolean The label names the field but is not drawn: a field whose place says what it is.
+---@field placeholder? string Shown while it is empty.
+---@field disabled? boolean Unavailable, including the show/hide eye.
+---@field width? number Its width in px; grows when left out.
+---@field focus? integer Takes the keyboard each time this number changes while the field is on screen.
+---@field autofocus? boolean Takes the keyboard as it first shows.
+---@field error? string What is wrong with the password, in the danger colour, its edge in danger too, and read after its name. It is shown whole: at the end of the field while there is room, and under it, wrapping, while there is not. An empty string marks the field only.
+---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.PasswordChange). The password changed.
+---@field on_submit? any The message it arrives as: yours, with `submit = {…}` in it (kit.PasswordSubmit). Enter.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---What `on_change`'s message carries under `change`.
+---@class kit.PasswordChange
+---@field text string The whole password.
+
+---What `on_submit`'s message carries under `submit`.
+---@class kit.PasswordSubmit
+---@field text string The whole password.
+
 ---The props of `kit/text_area`.
 ---@class kit.TextAreaProps
 ---@field value string Its text: yours to keep, from `change`.
@@ -852,6 +876,14 @@ local function make(namespace)
   ---@return kui.Node
   function M.text_field(props)
     return component(namespace .. "/text_field", props)
+  end
+
+  ---A password field in the skin's field style, masked by kui, with a
+  ---show/hide eye that resets while the field is away.
+  ---@param props kit.PasswordProps
+  ---@return kui.Node
+  function M.password(props)
+    return component(namespace .. "/password", props)
   end
 
   ---A text field of several lines, in a well in every skin: a note, a request

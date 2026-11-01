@@ -218,6 +218,23 @@ return {
         { "change", doc = "The text changed, or a path was picked.", fields = { { "text", "string", doc = "The whole text." } } },
         { "submit", doc = "Enter.", fields = { { "text", "string", doc = "The whole text." } } },
       } },
+    { "password",
+      doc = "A password field in the skin's field style, masked by kui, with a show/hide eye that resets while the field is away.",
+      props = {
+        { "value", "string", doc = "Its password: yours to keep, from `change`." },
+        { "label", "string?", doc = "Its label, above it; its name." },
+        { "hide_label", "boolean?", doc = "The label names the field but is not drawn: a field whose place says what it is." },
+        { "placeholder", "string?", doc = "Shown while it is empty." },
+        { "disabled", "boolean?", doc = "Unavailable, including the show/hide eye." },
+        { "width", "number?", doc = "Its width in px; grows when left out." },
+        { "focus", "integer?", doc = "Takes the keyboard each time this number changes while the field is on screen." },
+        { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows." },
+        { "error", "string?", doc = "What is wrong with the password, in the danger colour, its edge in danger too, and read after its name. It is shown whole: at the end of the field while there is room, and under it, wrapping, while there is not. An empty string marks the field only." },
+      },
+      events = {
+        { "change", doc = "The password changed.", fields = { { "text", "string", doc = "The whole password." } } },
+        { "submit", doc = "Enter.", fields = { { "text", "string", doc = "The whole password." } } },
+      } },
     { "text_area",
       doc = "A text field of several lines, in a well in every skin: a note, a request body.",
       props = {
