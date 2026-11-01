@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.74 (unreleased)
+## 0.1.0-alpha.74 (2026-11-01)
 
 **What breaks.**
 
@@ -43,6 +43,27 @@ was the first bare bump to break an app in five releases).
 - A password field assembled from Kit's ordinary text field and a separate
   reveal button: `password` keeps the secure editor, reveal state and events
   together.
+
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): `release-prep.nu` with
+Odin's generator (every generated file current), `test.nu --node -j 4` on the
+final tree (3423 tests over 256 suites and Node's, none failed), the windowed
+round with the Node windows (all 58 examples drew 120 frames on both bases and
+exited), and the accessibility audit (106/106). The default 12-way test run
+twice hit the Kit app's timing-sensitive focus test; it passed alone and with
+its whole test binary, and the four-way full suite was clean. The audit's first
+pass, with its fixture window in the background, failed eight focus checks;
+a fresh foreground launch passed all 106. `bench-check.nu` against alpha.73
+passed all nine guarded rows; the worst guarded run-to-run spread was 5.2%,
+and the largest guarded increase was `frame_10k_rects_with_access_tree` at
++3.1%.
+
+Not verified natively this release: Windows and Linux on a machine
+(smoke.yml's Windows round and ci.yml's Linux check run on GitHub's
+runners, and both block the release); no fuzz round, since this release
+changes Kit's component composition rather than a parser, decoder, wire or
+input path; no read-only review round over the release's commits.
 
 ## 0.1.0-alpha.73 (2026-10-31)
 
