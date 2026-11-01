@@ -21,6 +21,29 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.74 (unreleased)
+
+**What breaks.**
+
+- Nothing.
+
+### Added
+
+- **Kit's password field.** `kit.password` in Lua and Teal, `<Password>` in
+  Node, `kit_password` in C, `kit.password` in Odin and `kit::Password` in
+  Rust put a secure one-line editor in Kit's field style. It starts masked,
+  one bullet per grapheme, and its eye shows or hides the same editor without
+  losing the text or caret; leaving the view hides it again. `value`, `label`,
+  `hide_label`, `placeholder`, `disabled`, `width`, `focus`, `autofocus` and
+  `error` are the field's props; `change` carries the whole password and
+  `submit` fires on Enter. The gallery's Fields page has an example.
+
+### What you can delete
+
+- A password field assembled from Kit's ordinary text field and a separate
+  reveal button: `password` keeps the secure editor, reveal state and events
+  together.
+
 ## 0.1.0-alpha.73 (2026-10-31)
 
 **What breaks.**
