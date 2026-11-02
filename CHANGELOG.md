@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.75 (unreleased)
+## 0.1.0-alpha.75 (2026-11-02)
 
 **What breaks.**
 
@@ -53,6 +53,24 @@ was the first bare bump to break an app in five releases).
 - A terminal-only launcher, or a copied `PATH` in every child process's
   `opts.env`, kept only so a packed macOS app can find the user's tools.
 - A repository checkout kept only to open Kit's gallery: `kui play`.
+
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): `release-prep.nu` with
+Odin's generator (every generated file current), `test.nu --node -j 4` on the
+final tree (3432 tests over 256 suites and Node's, none failed), the windowed
+round with the Node windows (all 59 examples drew 120 frames on both bases and
+exited), and the accessibility audit (106/106). The first windowed round caught
+`host_pass` running from a stale binary built without its required feature and
+not honouring `KUI_SMOKE_FRAMES`; both were fixed, and the final full round was
+clean. `bench-check.nu` against alpha.74 passed all nine guarded rows; the
+worst guarded run-to-run spread was 7.8%, and the largest guarded increase was
+`frame_10k_rects_with_access_tree` at +2.9%.
+
+Not verified natively this release: Windows and Linux on a machine
+(smoke.yml's Windows round and ci.yml's Linux check run on GitHub's
+runners, and both block the release); no fuzz round; no read-only review round
+over the release's commits.
 
 ## 0.1.0-alpha.74 (2026-11-01)
 

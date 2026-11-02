@@ -185,6 +185,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .position(|arg| arg == "--frames")
         .and_then(|index| std::env::args().nth(index + 2))
         .and_then(|value| value.parse::<u64>().ok());
+    #[cfg(any(debug_assertions, feature = "smoke"))]
+    let max_frames = max_frames.or_else(|| {
+        std::env::var("KUI_SMOKE_FRAMES")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+    });
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App::new(max_frames);

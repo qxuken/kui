@@ -412,9 +412,14 @@ fn windowed(opts: &Opts) -> Result<Vec<String>, String> {
             "kui-native",
             "--examples",
         ];
-        if opts.release {
-            args.extend(["--features", "smoke"]);
-        }
+        args.extend([
+            "--features",
+            if opts.release {
+                "smoke,host-pass"
+            } else {
+                "host-pass"
+            },
+        ]);
         cargo(&args)?;
     }
     let mut failed = Vec::new();
