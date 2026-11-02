@@ -21,7 +21,24 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.75 (unreleased)
+
+**What breaks.**
+
+- Nothing.
+
+### Fixed
+
+- **A packed macOS app's child processes inherit the user's shell
+  environment.** LaunchServices does not run the login and interactive shell
+  configuration that sets `PATH`, so an app opened from Finder could not find
+  tools a terminal could. The runner reads `PATH` and `SHELL` from Nu, Zsh,
+  Bash or PowerShell in the background; the first `kui.process` call waits if
+  that read is still running, and an explicit `opts.env` still wins.
+- **macOS shows no input-source bubble without a focused caret.** A window
+  with no editor to compose in now turns the input method off, keeping AppKit
+  from placing the bubble at the window's default text origin. A focused
+  editor's caret turns it back on; an explicit `ime_off` still wins.
 
 ### Added
 
@@ -30,6 +47,12 @@ was the first bare bump to break an app in five releases).
   and design guidance, the Theme panel and the design-system pages. The
   runner carries the app's Lua, guides and design tokens, so no repository
   checkout or download is needed (the gallery part of ADR 0073).
+
+### What you can delete
+
+- A terminal-only launcher, or a copied `PATH` in every child process's
+  `opts.env`, kept only so a packed macOS app can find the user's tools.
+- A repository checkout kept only to open Kit's gallery: `kui play`.
 
 ## 0.1.0-alpha.74 (2026-11-01)
 
