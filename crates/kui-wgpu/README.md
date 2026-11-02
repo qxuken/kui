@@ -65,6 +65,27 @@ fn shot(core: &mut kui_core::Core) -> Result<kui_wgpu::Capture, Box<dyn std::err
 }
 ```
 
+## Into a host's existing pass
+
+A game that wants its world and Kui on one encoder uses `render_into`, then
+`submit` after every host command has been recorded. `LoadOp::Load` preserves
+the world; no offscreen texture or composite pass is needed.
+
+```rust,no_run
+let (list, atlas) = core.output();
+renderer.render_into(list, atlas, &mut encoder, &view, wgpu::LoadOp::Load)?;
+renderer.submit(encoder.finish());
+```
+
+`Renderer::submit` also handles mapped frame slots, so the host must use it
+rather than calling the queue directly. The complete Replicator Bloom game in
+`examples/rust/apps/host_pass` demonstrates the pattern, behind the example's
+own feature:
+
+```sh
+cargo run -p kui-native --example host_pass --features host-pass
+```
+
 ## Where it fits
 
 | Crate | What it is |

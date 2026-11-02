@@ -16,6 +16,7 @@ kui-core.workspace = true
 kui-wgpu.workspace = true
 winit.workspace = true
 pollster.workspace = true
+bytemuck = { workspace = true, optional = true }
 # 3.6: the version F84's `exclude_from_*` writes were built and tested
 # against — a bare "3" let a resolver pick one without them (RG35).
 arboard = "3.6"
@@ -74,6 +75,9 @@ accesskit = ["dep:kui-access", "dep:accesskit_winit"]
 # the only reason to want a
 # shipping build that closes its own window. See `Launcher::smoke_frames`.
 smoke = []
+# The host-pass game example: direct wgpu rendering and host latency metrics.
+# Opt in so ordinary builds do not compile the example or its host bridge.
+host-pass = ["accesskit", "kui-access/platform", "dep:bytemuck"]
 
 # Same version winit pins, so the tree compiles it once. Dwm and
 # Globalization are the accent colour and the locale (`mod system_env`);
@@ -299,6 +303,11 @@ headless = [
 [[example]]
 name = "counter"
 path = "../../examples/rust/apps/counter.rs"
+
+[[example]]
+name = "host_pass"
+path = "../../examples/rust/apps/host_pass/main.rs"
+required-features = ["host-pass"]
 
 [[example]]
 name = "splitmux"

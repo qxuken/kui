@@ -37,12 +37,24 @@ was the first bare bump to break an app in five releases).
   `hide_label`, `placeholder`, `disabled`, `width`, `focus`, `autofocus` and
   `error` are the field's props; `change` carries the whole password and
   `submit` fires on Enter. The gallery's Fields page has an example.
+- **Kui draws into a host's existing wgpu pass (backlog F286).**
+  `Renderer::render_into` takes the display list, atlas, encoder, target view
+  and first pass's `LoadOp`: `Load` preserves the host's world, `Clear` clears
+  it as `render` and `render_to` do. `Renderer::submit` is public for the one
+  submission that follows, unmapping and remapping Kui's frame slot where
+  needed. The full Replicator Bloom game in `examples/rust/apps/host_pass`
+  demonstrates one world pass, Kui over it and one submit, with the stock
+  latency HUD fed by host `FrameSample`s. A GPU test proves
+  the host's pixels survive; three interleaved release runs measured 16.8 µs
+  for Rust's direct render against 279.2 µs for its old offscreen composite.
 
 ### What you can delete
 
 - A password field assembled from Kit's ordinary text field and a separate
   reveal button: `password` keeps the secure editor, reveal state and events
   together.
+- An offscreen Kui texture and a fullscreen composite pass when the host only
+  needs Kui over its world: `render_into` records both on one encoder.
 
 ### Native verification
 

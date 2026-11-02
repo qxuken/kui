@@ -76,7 +76,9 @@
 //! - [`Renderer::windowless`] on [`Gpu::windowless`] or a host's own
 //!   [`Gpu`]: no window; [`Renderer::render_to`] draws a frame into a
 //!   texture the host owns, for a host compositing kui with content of
-//!   its own (backlog C55).
+//!   its own (backlog C55). [`Renderer::render_into`] instead records into
+//!   the host's existing pass, with [`Renderer::submit`] finalizing the
+//!   world and UI together (backlog F286; `examples/rust/apps/host_pass`).
 //! - [`Renderer::capture`]: a frame read back as straight RGBA
 //!   ([`Capture`]), what a test or a screenshot wants; in two halves,
 //!   [`Renderer::capture_begin`] and [`PendingCapture::wait`], for a
@@ -2263,16 +2265,56 @@ impl Renderer {
         }
         self.config.width = target.width();
         self.config.height = target.height();
-        self.sync_atlas(atlas, true);
-        atlas.mark_uploaded();
-        let prep = self.prepare(dl);
         let view = target.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .gpu
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
-        self.draw(&mut encoder, dl, &prep, &view);
+        self.render_into(
+            dl,
+            atlas,
+            &mut encoder,
+            &view,
+            wgpu::LoadOp::Clear(self.clear_color),
+        )?;
         self.submit(encoder.finish());
+        Ok(())
+    }
+
+    /// Draws `dl` into `target` on `encoder`, without acquiring, clearing
+    /// unless `load` says so, submitting or presenting. This is the host-pass
+    /// form of [`Renderer::render_to`]: a game can record its world and kui's
+    /// frame on one encoder and submit them together.
+    ///
+    /// `target` must be a view of a [`Renderer::format`] texture with
+    /// `RENDER_ATTACHMENT` usage. `load` applies to kui's first pass;
+    /// `wgpu::LoadOp::Load` preserves what the host already drew. Later passes
+    /// needed by blurs and opacity groups always load. The atlas is uploaded
+    /// when changed and its `dirty` flag cleared, as [`Renderer::render`] does,
+    /// so this is the renderer for that core.
+    ///
+    /// Call [`Renderer::submit`] after every host command has been recorded:
+    /// on a device with mapped frame buffers, that is what unmaps the frame's
+    /// slot and asks for it back. Calling the queue directly would leave the
+    /// slot mapped while the GPU reads it.
+    ///
+    /// [`RenderError::DeviceLost`] on a dead device. The view's format and
+    /// usage are wgpu's to validate at submission.
+    pub fn render_into(
+        &mut self,
+        dl: &DisplayList,
+        atlas: &mut GlyphAtlas,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        load: wgpu::LoadOp<wgpu::Color>,
+    ) -> Result<(), RenderError> {
+        if self.gpu.lost() {
+            return Err(RenderError::DeviceLost);
+        }
+        self.sync_atlas(atlas, true);
+        atlas.mark_uploaded();
+        let prep = self.prepare(dl);
+        self.draw_with_load(encoder, dl, &prep, target, load);
         Ok(())
     }
 
@@ -2553,6 +2595,24 @@ impl Renderer {
         prep: &Prepared,
         surface_view: &wgpu::TextureView,
     ) {
+        self.draw_with_load(
+            encoder,
+            dl,
+            prep,
+            surface_view,
+            wgpu::LoadOp::Clear(self.clear_color),
+        );
+    }
+
+    /// The same, with the first pass's load operation in the caller's hands.
+    fn draw_with_load(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        dl: &DisplayList,
+        prep: &Prepared,
+        surface_view: &wgpu::TextureView,
+        first_load: wgpu::LoadOp<wgpu::Color>,
+    ) {
         // The groups' pictures first, each pass reading only the
         // pictures one depth deeper (ADR 0056), bound in the atlas's place
         // with this frame's globals.
@@ -2597,7 +2657,7 @@ impl Renderer {
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: if next == 0 {
-                                wgpu::LoadOp::Clear(self.clear_color)
+                                first_load
                             } else {
                                 wgpu::LoadOp::Load
                             },
@@ -2668,9 +2728,11 @@ impl Renderer {
         }
     }
 
-    /// Submits a frame's commands, its frame slot unmapped around them
-    /// on a device with mapped frames.
-    fn submit(&mut self, commands: wgpu::CommandBuffer) {
+    /// Submits a frame's commands, its frame slot unmapped around them on a
+    /// device with mapped frames and asked for again after submission. A host
+    /// using [`Renderer::render_into`] calls this after recording its world
+    /// and kui's frame, rather than calling the queue directly.
+    pub fn submit(&mut self, commands: wgpu::CommandBuffer) {
         let mapped = self.gpu.0.mapped_frames;
         let slot = &self.slots[self.slot];
         if mapped {
