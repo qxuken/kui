@@ -54,6 +54,56 @@ fn main() {
     gz.write_all(&raw).unwrap();
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("docs.bin.gz");
     std::fs::write(&out, gz.finish().unwrap()).unwrap();
+    bundle_gallery(&root);
+}
+
+/// Kit's gallery, the same app `kui play` and `kui run addons/kit/app` open.
+/// Paths and UTF-8 sources alternate behind little-endian u32 lengths, as in
+/// the docs bundle. Walking the app here means a new demo or guide is carried
+/// without a second list to keep current.
+fn bundle_gallery(root: &Path) {
+    fn walk(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) {
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                walk(root, &path, files);
+            } else if path
+                .extension()
+                .is_some_and(|x| x == "lua" || x == "md" || x == "json")
+                && path.file_name().is_some_and(|n| n != ".luarc.json")
+            {
+                let name = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                files.push((name, path));
+            }
+        }
+    }
+
+    let app = root.join("addons/kit/app");
+    println!("cargo:rerun-if-changed={}", app.display());
+    let mut files = Vec::new();
+    walk(&app, &app, &mut files);
+    let mut raw = Vec::new();
+    for (name, path) in files {
+        println!("cargo:rerun-if-changed={}", path.display());
+        let text = read(&path);
+        for part in [name.as_bytes(), text.as_bytes()] {
+            raw.extend_from_slice(&(part.len() as u32).to_le_bytes());
+            raw.extend_from_slice(part);
+        }
+    }
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    gz.write_all(&raw).unwrap();
+    let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("gallery.bin.gz");
+    std::fs::write(&out, gz.finish().unwrap()).unwrap();
 }
 
 /// A chapter's mdBook `{{#include file:anchor}}` and `{{#rustdoc_include

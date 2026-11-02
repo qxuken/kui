@@ -212,7 +212,8 @@ read-only.
 - **Kit** — fields, tables of a hundred thousand rows, charts, a trace
   waterfall, dialogs, toasts, three skins — is in
   [`addons/kit`](https://github.com/qxuken/kui/tree/main/addons/kit);
-  `kui run addons/kit/app` opens its gallery.
+  `kui play` opens its gallery, carried inside the runner. From a repository
+  checkout, `kui run addons/kit/app` opens the same app.
 - **The samples** in
   [`addons/kit/samples`](https://github.com/qxuken/kui/tree/main/addons/kit/samples)
   are four whole apps on the runner: an HTTP client with its own mock

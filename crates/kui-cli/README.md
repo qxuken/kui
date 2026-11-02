@@ -61,6 +61,7 @@ end
 | Command | What |
 | --- | --- |
 | `kui run [path]` | Runs the app at `path`: a `.lua` or `.tl` file, or a folder (its `kui.config.lua` names the entry, else `main.lua`, `main.tl`, `app.lua`). `kui <path>` is the same. |
+| `kui play` | Opens Kit's gallery, carried inside the runner: every component live, its source and guide, the design system and Theme panel. No repository checkout is needed; the run options apply. |
 | `--watch` | Reloads when the app's files change, keeping `model`; a load that fails keeps the old code and shows the error over the window. |
 | `--headless` | No window: a server, a script, a test. |
 | `--shot out.png [--after ms]` | No window: writes a frame after `ms` (800) and ends. |
@@ -232,7 +233,8 @@ Kit is built in: `require("kit.ui")`. Its palette is readable from the app
 too — `bg = "$kitPanel"` follows the skin.
 
 ```bash
-kui run addons/kit/app
+kui play
 ```
 
-is the Kit app, every component live (from the repository root).
+opens the Kit app, every component live. From the repository root,
+`kui run --watch addons/kit/app` opens the same app for editing.
