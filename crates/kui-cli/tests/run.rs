@@ -2264,6 +2264,90 @@ fn a_fused_binary_runs_its_app_with_every_argument_the_apps() {
     assert!(s.contains("asset\tan asset"), "{s}");
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn a_packed_app_loads_path_and_shell_before_its_first_process() {
+    let dir = app(
+        "pack-shell-env",
+        &[
+            (
+                "kui.config.lua",
+                r#"return { name = "ShellEnv", id = "dev.kui.test.shell-env", version = "1.0.0" }"#,
+            ),
+            (
+                "main.lua",
+                r#"
+                local r = kui.process.run("shell-tool")
+                print("tool", r.code, r.stdout:gsub("%s+$", ""))
+                local s = kui.process.run("/bin/sh", { "-c", 'printf %s "$SHELL"' })
+                print("shell", s.stdout)
+                local o = kui.process.run("/bin/sh", { "-c", 'printf %s "$SHELL"' }, {
+                  env = { SHELL = "/override" }
+                })
+                print("override", o.stdout)
+                kui.exit(0)
+                "#,
+            ),
+        ],
+    );
+    let cache = dir.join(".cache");
+    let o = kui_env(
+        &dir,
+        &[
+            "pack",
+            "--target",
+            "linux-x64",
+            "--format",
+            "bin",
+            "--runner",
+            KUI,
+            "--out",
+            "dist",
+        ],
+        &[],
+        &cache,
+        60,
+    );
+    assert!(o.status.success(), "{}", out(&o));
+    let tar = Command::new("tar")
+        .args(["-xzf", "shellenv-1.0.0-linux-x64.tar.gz"])
+        .current_dir(dir.join("dist"))
+        .status()
+        .unwrap();
+    assert!(tar.success());
+
+    let tools = dir.join("tools");
+    std::fs::create_dir_all(&tools).unwrap();
+    let tool = tools.join("shell-tool");
+    std::fs::write(&tool, "#!/bin/sh\nprintf 'tool-ok\\n'\n").unwrap();
+    let shell = dir.join("zsh");
+    std::fs::write(
+        &shell,
+        format!(
+            "#!/bin/sh\nsleep 0.2\nprintf '__KUI_PATH__{}\\0__KUI_SHELL__/probe/zsh\\0'\n",
+            tools.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    for path in [&tool, &shell] {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let o = Command::new(dir.join("dist/shellenv"))
+        .env("KUI_FLAGS", "--headless")
+        .env("KUI_CACHE_DIR", &cache)
+        .env("PATH", "/usr/bin:/bin")
+        .env("SHELL", &shell)
+        .output()
+        .unwrap();
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(s.contains("tool\t0\ttool-ok"), "{s}");
+    assert!(s.contains("shell\t/probe/zsh"), "{s}");
+    assert!(s.contains("override\t/override"), "{s}");
+}
+
 #[test]
 fn pack_asks_for_an_id_and_run_warns_on_a_pin_it_does_not_cover() {
     let dir = app(

@@ -74,10 +74,14 @@ fn command(
     if let Some(cwd) = &o.cwd {
         c.current_dir(cwd);
     }
+    Ok((c, o))
+}
+
+fn environment(c: &mut Command, o: &Opts) {
+    crate::shell_env::apply(c);
     for (k, v) in &o.env {
         c.env(k, v);
     }
-    Ok((c, o))
 }
 
 #[derive(Default)]
@@ -360,6 +364,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 let s = shared(lua);
                 let id = s.ops.id();
                 ops::run(&s.ops, id, move || {
+                    environment(&mut c, &o);
                     c.stdin(if o.stdin.is_some() {
                         Stdio::piped()
                     } else {
@@ -404,6 +409,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             lua,
             |lua, (cmd, args, opts): (String, Option<Vec<String>>, Option<Table>)| {
                 let (mut c, o) = command(lua, &cmd, args, opts)?;
+                environment(&mut c, &o);
                 c.stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());

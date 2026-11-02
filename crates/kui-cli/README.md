@@ -167,6 +167,10 @@ A `try_transaction` whose function raised a database's error (a plain
 | `kui.next_frame(fn)` | Runs `fn(env)` before the next `view`: `env.set_clipboard`, `env.set_focus`, `env.measure_text` from `update`, a task or a timer. |
 | `kui.exit(code)` | Ends the app: the window closes, then `on_exit()` runs, then what it spawned is ended. Ctrl-C, `SIGTERM` and `SIGHUP` do the same. |
 
+A packed macOS app reads `PATH` and `SHELL` from the user's Nu, Zsh, Bash,
+or PowerShell login/interactive configuration in the background. Its first
+process waits if that read is still running; an explicit `opts.env` wins.
+
 State a `--watch` reload must keep goes in `model` or a global: the app's
 modules load afresh, so a module's locals start over while the processes,
 servers and workers they held run on.
