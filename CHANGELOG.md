@@ -65,7 +65,8 @@ exited), and the accessibility audit (106/106). The first windowed round caught
 not honouring `KUI_SMOKE_FRAMES`; both were fixed, and the final full round was
 clean. `bench-check.nu` against alpha.74 passed all nine guarded rows; the
 worst guarded run-to-run spread was 7.8%, and the largest guarded increase was
-`frame_10k_rects_with_access_tree` at +2.9%.
+`frame_10k_rects_with_access_tree` at +2.9%. `host_pass` also passes
+`cargo check` for `x86_64-pc-windows-msvc`.
 
 Not verified natively this release: Windows and Linux on a machine
 (smoke.yml's Windows round and ci.yml's Linux check run on GitHub's

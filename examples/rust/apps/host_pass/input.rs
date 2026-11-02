@@ -267,7 +267,7 @@ pub fn attach_access(window: &Window) -> Option<HostBridge> {
         let RawWindowHandle::Win32(handle) = raw else {
             return None;
         };
-        unsafe { HostBridge::attach(handle.hwnd.as_ptr()) }
+        unsafe { HostBridge::attach(handle.hwnd.get() as *mut std::ffi::c_void) }
     }
     #[cfg(target_os = "linux")]
     {
