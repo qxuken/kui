@@ -153,6 +153,7 @@ scripts beside it in `11_extensions/`, and it has tests too.
 | Example | Shows | Headless | By hand |
 |---|---|---|---|
 | [`counter.rs`](rust/apps/counter.rs) | The smallest app that is the whole pattern, and the one every binding has in the same shape: the Elm loop, a button, a right-click that declares a `modal` menu — its messages a `#[derive(Message)]` enum, as the book's step 3 spells them | ✓ the Rosetta drive | |
+| [`host_pass/main.rs`](rust/apps/host_pass/main.rs) | Replicator Bloom over a host-owned wgpu world: `render_into` + one submit, the stock latency HUD fed by host `FrameSample`s; gated by `host-pass` | | Harvest/build, select and scroll the log, move the ship |
 | [`splitmux.rs`](rust/apps/splitmux.rs) | tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data, the app owns the chord keymap, and its messages are a `#[derive(Message)]` enum | ✓ the chords, the clicks and a divider drag, and `cargo test` (its `mod tests`) | ⌘-drag a pane |
 | [`modal_editor.rs`](rust/apps/modal_editor.rs) | Helix-flavored modal editing; the app owns the document, the keymap, the modes, the mouse (a press carries `line`/`byte`/`clicks`) and the clipboard (`y`/`p`), and its caret blinks on `caret_visible` | ✓ `jjj ww v lll`, `dd` + `p`, `:help`, a click and a double click, the off phase | `pbpaste` after `y` |
 | [`syntax_view.rs`](rust/apps/syntax_view.rs) | Syntax highlighting as coalesced style runs; the frame shape the `highlight` bench measures | ✓ `j`, `G`, `k`, `tab` | |
