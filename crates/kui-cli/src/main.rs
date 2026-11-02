@@ -30,6 +30,7 @@ mod perf;
 mod project;
 mod release;
 mod rename;
+mod shell_env;
 mod teal;
 mod tooling;
 
@@ -321,6 +322,7 @@ fn exit(result: Result<i32, String>) -> ExitCode {
 /// A packed app: every argument is the app's, and the runner's own flags
 /// come from `KUI_FLAGS` (ADR 0068, decision 19).
 fn run_packed(p: packed::Packed) -> Result<i32, String> {
+    crate::shell_env::start();
     let flags: Vec<String> = std::env::var("KUI_FLAGS")
         .unwrap_or_default()
         .split_whitespace()
