@@ -202,6 +202,92 @@ fn render_to_draws_into_the_host_s_texture() {
     ));
 }
 
+/// A host pass keeps what was already in the target, and its commands submit
+/// through the renderer's mapped-frame lifecycle.
+#[test]
+fn render_into_loads_the_host_s_existing_pass() {
+    let Some(gpu) = gpu() else { return };
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(40.0, 30.0), 2.0);
+    ui.leaf_keyed(
+        "red",
+        NodeSpec::column()
+            .size(10.0, 10.0)
+            .bg(Color::hex(0xff0000ff)),
+    );
+    ui.text("Hi", TextStyle::new(8.0));
+    ui.finish();
+    let format = wgpu::TextureFormat::Rgba8Unorm;
+    let mut r = Renderer::windowless(&gpu, format).expect("a renderer");
+    let device = gpu.device();
+    let target = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("host pass"),
+        size: wgpu::Extent3d {
+            width: 80,
+            height: 60,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut enc = device.create_command_encoder(&Default::default());
+    let green = wgpu::RenderPassColorAttachment {
+        view: &view,
+        depth_slice: None,
+        resolve_target: None,
+        ops: wgpu::Operations {
+            load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+            store: wgpu::StoreOp::Store,
+        },
+    };
+    drop(enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("host world"),
+        color_attachments: &[Some(green)],
+        ..Default::default()
+    }));
+    let (dl, atlas) = core.output();
+    r.render_into(dl, atlas, &mut enc, &view, wgpu::LoadOp::Load)
+        .expect("drawn into the host pass");
+    r.submit(enc.finish());
+    assert!(!atlas.dirty, "uploaded and cleared, as render_to does");
+
+    let buf = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 512 * 60,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut enc = device.create_command_encoder(&Default::default());
+    enc.copy_texture_to_buffer(
+        target.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buf,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(512),
+                rows_per_image: Some(60),
+            },
+        },
+        target.size(),
+    );
+    gpu.queue().submit([enc.finish()]);
+    buf.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+    let _ = device.poll(wgpu::PollType::Wait {
+        submission_index: None,
+        timeout: None,
+    });
+    let data = buf.slice(..).get_mapped_range().expect("mapped");
+    let px = |x: usize, y: usize| &data[y * 512 + x * 4..y * 512 + x * 4 + 4];
+    assert_eq!(px(79, 59), [0, 255, 0, 255], "the host's clear survives");
+    assert_eq!(px(10, 10), [255, 0, 0, 255]);
+    assert_eq!(px(70, 55), [0, 255, 0, 255], "and outside kui's box");
+}
+
 #[test]
 fn a_list_with_no_viewport_is_refused() {
     let Some(gpu) = gpu() else { return };

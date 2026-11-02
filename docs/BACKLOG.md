@@ -4683,6 +4683,26 @@ Lua, Odin and JSX. Keyed and invalidated as an instance is: the deps
 compared, the reads checked, an event heard inside refilling it. F283 and
 F284 then apply to whatever it replays.
 
+### `.` F286 — Rust can render Kui only by owning the frame or an offscreen submit
+
+**Built** 2026-11-02 on `main`: `Renderer::render_into` records a frame on
+the host's encoder and takes its first pass's `LoadOp`; `Renderer::submit`
+is public so the host's world and Kui share one submission and mapped frame
+slots are unmapped and remapped correctly. `render_to` now uses the same
+path. `examples/rust/apps/host_pass` is the complete Replicator Bloom game,
+with the world, accessible HUD, virtual log and one submit. Its stock latency
+HUD is fed by host `FrameSample`s for input, view, layout, render and wait. The GPU test
+pre-clears a target, draws Kui with `Load` and checks both the old and new
+pixels. In three interleaved release rounds, the direct Rust render's median
+was 16.8 µs against 279.2 µs for the old offscreen composite; C's was 32.3
+µs. UI construction was 126.5 µs against C's 171.6 µs.
+
+**Found** in the Rust version of the UI comparison: `kui-wgpu` could present
+a frame itself or `render_to` an offscreen texture, but had no public way to
+draw into a host's existing pass. The game needed an offscreen UI texture,
+a fullscreen composite and two submits, so Rust built the HUD faster than C
+but cost more overall.
+
 ## From the core impurities audit (2026-10-25)
 
 The user, after F203: "all system calls and integrations should go
