@@ -86,8 +86,11 @@ kit.button(ui, {label = "Run", variant = .Primary, on_press = Run{}})
 ## The Kit app
 
 ```bash
-kui run addons/kit/app
+kui play
 ```
+
+The gallery is carried inside the runner. From a repository checkout,
+`kui run --watch addons/kit/app` opens the same app for editing.
 
 `app/` is Kit on the `kui` runner (ADR 0064): every component on nine
 pages, Kit's design system on four more, a worker building 100,000 rows

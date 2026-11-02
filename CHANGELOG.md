@@ -21,6 +21,16 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+### Added
+
+- **The Kit gallery travels with the runner.** `kui play` opens the same
+  gallery as `kui run addons/kit/app`, with every component live, its source
+  and design guidance, the Theme panel and the design-system pages. The
+  runner carries the app's Lua, guides and design tokens, so no repository
+  checkout or download is needed (the gallery part of ADR 0073).
+
 ## 0.1.0-alpha.74 (2026-11-01)
 
 **What breaks.**

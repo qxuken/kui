@@ -2,6 +2,7 @@
 //! nothing else to install (ADR 0064).
 //!
 //!   kui run [path] [--headless] [--watch] [--size WxH] [--appearance light|dark] [--platform p] [-- app args]
+//!   kui play [run options]
 //!   kui check [path]
 //!   kui new <dir> [--docs] [--agents]
 //!   kui types [path] [--docs] [--agents]
@@ -17,6 +18,7 @@
 mod archive;
 mod compat;
 mod docs;
+mod gallery;
 mod host;
 mod icons;
 mod kit;
@@ -68,6 +70,7 @@ kui — run a Lua or Teal app with Kit and a standard library
 
 usage:
   kui run [path] [options]   run the app at path (a .lua or .tl file, or a folder; default .)
+  kui play [options]         open Kit's gallery, carried in this runner (run options apply)
   kui check [path]           type-check the app's .tl files
   kui new <dir>              start an app in dir
   kui types [path]           write editor declarations (LuaLS, Teal) into path/.kui/types
@@ -148,7 +151,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
         tooling: project::Tooling::default(),
     };
     match it.peek().map(String::as_str) {
-        Some("run" | "check" | "new" | "types" | "perf") => a.cmd = it.next().unwrap(),
+        Some("run" | "play" | "check" | "new" | "types" | "perf") => a.cmd = it.next().unwrap(),
         Some("-h" | "--help" | "help") => {
             it.next();
             a.cmd = "help".into();
@@ -238,6 +241,9 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
             }
         }
     }
+    if a.cmd == "play" && path.is_some() {
+        return Err("kui play takes no path: it opens the gallery carried in this runner".into());
+    }
     if let Some(p) = path {
         a.path = p;
     }
@@ -284,6 +290,12 @@ fn main() -> ExitCode {
         "check" => check(&args),
         "new" => new(&args),
         "types" => types(&args.path, args.tooling).map(|()| 0),
+        // Kit's gallery, carried at this runner's version (ADR 0073).
+        "play" => gallery::folder().and_then(|dir| {
+            let mut a = args;
+            a.path = dir;
+            run(&a, None)
+        }),
         // The inspector the runner carries, the recording its argument.
         "perf" => perf::folder().and_then(|dir| {
             let mut a = args;

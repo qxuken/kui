@@ -3,6 +3,7 @@
 -- channel, timers feeding a live chart and a log, and an HTTP server
 -- serving the app's state.
 --
+--   kui play                          the gallery carried in the runner
 --   kui run addons/kit/app            (from the repository root)
 --   kui run --watch addons/kit/app    edit a card under demos/ and watch it reload
 --

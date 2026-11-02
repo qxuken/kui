@@ -306,6 +306,34 @@ fn kui_perf_drives_and_checks() {
     assert!(out(&c).contains("ok: 3 file(s) checked"), "{}", out(&c));
 }
 
+/// ADR 0073: the runner opens the gallery it carries from a folder with no
+/// app or repository beside it, and the run options apply to that app.
+#[test]
+fn kui_play_opens_the_carried_gallery_from_any_folder() {
+    let dir = app("kui-play", &[]);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cache = dir.join(".cache");
+    let shot = dir.join("gallery.png");
+    let o = kui_env(
+        &dir,
+        &["play", "--shot", shot.to_str().unwrap(), "--after", "300"],
+        &[],
+        &cache,
+        60,
+    );
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(shot.is_file(), "{s}");
+    let gallery = cache.join("gallery").join(env!("CARGO_PKG_VERSION"));
+    for file in ["main.lua", "demos/inputs/fields.lua", "design/tokens.json"] {
+        assert!(gallery.join(file).is_file(), "the cache carries {file}");
+    }
+    assert!(
+        !dir.join("main.lua").exists(),
+        "nothing was written into cwd"
+    );
+}
+
 #[test]
 fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
     let dir = app(
