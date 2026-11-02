@@ -458,11 +458,17 @@ pub(crate) struct Pane {
     pub(crate) nc: Option<windows_nc::NcHitTest>,
 }
 
+fn ime_off_wanted(core: &Core, held: &[PhysicalKey]) -> bool {
+    core.ime_off() || !held.is_empty() || (cfg!(target_os = "macos") && core.ime_rect().is_none())
+}
+
 impl Pane {
-    /// Whether this window's IME should be off now: the frame asked, or a
-    /// key pressed while it was off is still down (`ime_off_held`).
+    /// Whether this window's IME should be off now: the frame asked, a key
+    /// pressed while it was off is still down (`ime_off_held`), or on macOS
+    /// there is no focused caret to compose at. The last keeps AppKit from
+    /// showing its input-source bubble at the window's default text origin.
     pub(crate) fn ime_off_wanted(&self) -> bool {
-        self.core.ime_off() || !self.ime_off_held.is_empty()
+        ime_off_wanted(&self.core, &self.ime_off_held)
     }
 
     /// Applies [`Self::ime_off_wanted`] to the window if it changed —
@@ -956,6 +962,31 @@ mod tests {
         assert_eq!(ime_off_change(false, &mut applied), Some(false));
         assert!(!applied);
         assert_eq!(ime_off_change(false, &mut applied), None);
+    }
+
+    /// On macOS, a window with no caret has no input method to show a
+    /// composition or an input-source bubble. A focused editor's caret turns
+    /// it back on; an explicit `ime_off` still wins over that caret.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_ime_follows_the_focused_caret() {
+        use kui_core::{NodeSpec, Role, Size, TextStyle};
+        let mut core = Core::new();
+        assert!(ime_off_wanted(&core, &[]));
+
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        let sink = ui.with_keyed("editor", NodeSpec::column().fill().key_sink(), |ui| {
+            ui.with(NodeSpec::row().role(Role::Line).caret(1), |ui| {
+                ui.text("a", TextStyle::new(14.0))
+            });
+        });
+        ui.take_key_focus(sink);
+        ui.finish();
+        assert!(core.ime_rect().is_some());
+        assert!(!ime_off_wanted(&core, &[]));
+
+        core.set_ime_off(true);
+        assert!(ime_off_wanted(&core, &[]));
     }
 
     /// A key that went down with the IME off holds it off until it comes
