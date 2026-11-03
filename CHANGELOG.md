@@ -21,6 +21,29 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- A focused terminal's declared cell cursor now enables and anchors the
+  platform input method; `ime_off` still disables it explicitly.
+
+### Fixed
+
+- **A terminal's cursor anchors the IME.** A `cells` grid under the
+  focused key sink now supplies its cursor cell as the input-method
+  anchor, including padding, display scale and rotation. Previously only
+  editor carets supplied an anchor: switching to a terminal left the
+  previous editor's native coordinates cached and, on macOS, disabled
+  the input method entirely. Missing or out-of-bounds cursors supply no
+  anchor; other panes and nested key sinks cannot supply one for the
+  focused sink. The app still owns its terminal cursor's blinking.
+
+### What you can delete
+
+- A synthetic text-line caret kept only to anchor a terminal's input
+  method: declare the cell grid's cursor instead.
+
 ## 0.1.0-alpha.75 (2026-11-02)
 
 **What breaks.**
