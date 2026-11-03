@@ -735,8 +735,9 @@ pub struct Core {
     /// Why frames run: the reasons, and — traced — who held an owed one
     /// and whether a frame changed anything (`runtime/cause.rs`).
     trace: cause::Trace,
-    /// The focused editor's caret rect (logical, viewport coords) as of the
-    /// last finish_frame — where drivers should anchor the OS IME window.
+    /// The focused editor's caret or terminal's cursor cell (logical,
+    /// viewport coords) as of the last finish_frame — where drivers
+    /// should anchor the OS IME window.
     ime_rect: Option<Rect>,
     /// A custom editor's caret as of the last frame: the `line` under the
     /// focused sink that declares `caret`, and the offset it declares.

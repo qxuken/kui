@@ -157,7 +157,10 @@ pub struct CellGrid<'a> {
     pub cols: usize,
     pub cells: &'a [Cell],
     pub style: TextStyle,
-    /// `(row, col, shape, colour)`.
+    /// `(row, col, shape, colour)`. Under the focused key sink, this cell
+    /// anchors the platform's input method. The anchor covers the whole
+    /// cell for every shape; an absent or out-of-bounds cursor supplies
+    /// no anchor. Cursor blinking remains the app's.
     pub cursor: Option<(usize, usize, CursorShape, Color)>,
     /// The absolute line number of row 0: where this screenful sits in
     /// the app's own history.
@@ -366,6 +369,30 @@ impl CellStore {
         let key = self.table(&style, res, fs);
         let t = &self.tables[&key];
         Size::new(t.cell_w / self.scale, t.cell_h / self.scale)
+    }
+
+    /// The cursor's whole cell in viewport coordinates, logical px.
+    /// Use the same snapped origin and cell metrics as `emit`, regardless
+    /// of whether the cursor is drawn as a block, bar or underline.
+    pub(crate) fn cursor_rect(
+        &mut self,
+        id: CellsId,
+        origin: Vec2,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> Option<Rect> {
+        let e = &self.frame[id.0 as usize];
+        let (row, col, _, _) = e.cursor?;
+        if row >= e.rows || col >= e.cols {
+            return None;
+        }
+        let cell = self.cell_size(id, false, res, fs);
+        Some(Rect::new(
+            crate::geom::snap_px(origin.x * self.scale) / self.scale + col as f32 * cell.w,
+            crate::geom::snap_px(origin.y * self.scale) / self.scale + row as f32 * cell.h,
+            cell.w,
+            cell.h,
+        ))
     }
 
     /// The absolute line the grid's row 0 is (`CellGrid::origin_line`).

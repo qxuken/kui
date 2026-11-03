@@ -989,6 +989,36 @@ mod tests {
         assert!(ime_off_wanted(&core, &[]));
     }
 
+    /// A terminal has a cell cursor rather than a `line` caret. It must
+    /// still turn the input method on, including under a wrapper sink.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_ime_follows_the_terminal_cursor() {
+        use kui_core::{CellCursor, CellGrid, Color, NodeSpec, Size, TextStyle};
+        let mut core = Core::new();
+        for cursor in [Some((1, 2)), None] {
+            let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+            let sink = ui.with_keyed("terminal", NodeSpec::column().key_sink(), |ui| {
+                ui.cells(
+                    &CellGrid {
+                        rows: 2,
+                        cols: 4,
+                        cells: &[],
+                        style: TextStyle::new(14.0).mono().line_height(20.0),
+                        cursor: cursor.map(|(r, c)| (r, c, CellCursor::Block, Color::WHITE)),
+                        origin_line: 0,
+                    },
+                    NodeSpec::column(),
+                );
+            });
+            ui.take_key_focus(sink);
+            ui.finish();
+            assert_eq!(ime_off_wanted(&core, &[]), cursor.is_none());
+            core.set_ime_off(true);
+            assert!(ime_off_wanted(&core, &[]), "an explicit request still wins");
+        }
+    }
+
     /// A key that went down with the IME off holds it off until it comes
     /// up: recorded on its press, kept through its repeats, forgotten on
     /// its release — and the release of the last one is the moment the

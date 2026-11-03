@@ -2991,8 +2991,8 @@ impl Core {
     }
 
     /// See the `ime_rect` field. None when nothing with a caret is
-    /// focused: neither a stock editor nor a sink holding a `line` that
-    /// declares one.
+    /// focused: neither a stock editor nor a sink holding a `line` caret
+    /// or a cell grid's cursor.
     pub fn ime_rect(&self) -> Option<Rect> {
         self.ime_rect
     }
@@ -3036,10 +3036,54 @@ impl Core {
         // where the caret is — a byte offset into that line's runs, which
         // is the question `caret_rect` answers. This runs after the text
         // pass, so the places it reads are this frame's.
-        let (l, caret, _) = self.sink_caret_line()?;
-        self.text
-            .caret_at(self.tree.keys[l], caret as usize, false)
-            .map(|r| drawn(&self.clips, l, r))
+        if let Some((l, caret, _)) = self.sink_caret_line() {
+            return self
+                .text
+                .caret_at(self.tree.keys[l], caret as usize, false)
+                .map(|r| drawn(&self.clips, l, r));
+        }
+        // A terminal draws cells rather than text lines. Its cursor is
+        // still a place to compose: without it the native runner leaves
+        // the last editor's coordinates in place and macOS turns IME off.
+        let (i, rect) = self.sink_cell_cursor_rect()?;
+        Some(drawn(&self.clips, i, rect))
+    }
+
+    /// The first grid cursor owned by the focused key sink. A terminal
+    /// may put `on_key` on the grid itself or on a wrapper around it.
+    /// Nested sinks own their own grids, so a shell cannot borrow an
+    /// unfocused terminal's cursor as its input-method anchor.
+    fn sink_cell_cursor_rect(&mut self) -> Option<(usize, Rect)> {
+        let i = self.focus_index()?;
+        let sink = if self.tree.specs[i].events().on_key().is_some() {
+            i
+        } else {
+            self.enclosing_sink(i)?
+        };
+        if !self.interactive(sink) {
+            return None;
+        }
+        let end = self.tree.subtree_end(sink);
+        let mut i = sink;
+        while i < end {
+            let spec = &self.tree.specs[i];
+            if spec.disabled || (i != sink && spec.events().on_key().is_some()) {
+                i = self.tree.subtree_end(i);
+                continue;
+            }
+            if let NodeContent::Cells(id) = self.tree.content[i] {
+                let origin = self.cells_origin(i);
+                let sess = &mut *self.session.state();
+                if let Some(rect) =
+                    self.cells
+                        .cursor_rect(id, origin, &sess.resources, &mut sess.fonts)
+                {
+                    return Some((i, rect));
+                }
+            }
+            i += 1;
+        }
+        None
     }
 
     /// The `line` under the focused node that declares `caret`, the
