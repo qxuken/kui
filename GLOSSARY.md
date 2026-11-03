@@ -134,3 +134,42 @@ _Avoid_: default value, initial value
 The text a view declares for an editor on every frame. When it differs
 from the editor's text, the editor is brought to it.
 _Avoid_: controlled text, model text
+
+## Presentations
+
+**Deck**:
+An ordered collection of slides presented as one talk or demonstration.
+_Avoid_: slideshow, presentation document
+
+**Slide**:
+One audience-facing composition in a deck, which may include interactive
+content as well as text and visuals.
+_Avoid_: page, frame (those already have other meanings in kui)
+
+**Slide key**:
+The stable name of a slide within its deck, independent of its position
+in the talk.
+_Avoid_: node key, slide index
+
+**Step**:
+One position in a slide's reveal sequence, starting with its initial
+composition and progressing through its staged content.
+_Avoid_: slide (a slide can have several steps), animation frame
+
+**Reveal**:
+Content whose visibility depends on the current step of its slide.
+_Avoid_: slide, transition
+
+**Audience window**:
+The window showing the deck to its audience, without the presenter's
+private notes and controls.
+_Avoid_: presenter window, stage (which could also mean a slide's canvas)
+
+**Presenter window**:
+The private view of a talk's notes, navigation, timer and slide previews.
+_Avoid_: audience window, presenter screen (a screen is a physical display)
+
+**Snapshot view**:
+A noninteractive representation of a slide for previews and export,
+without its live demonstration activity.
+_Avoid_: live preview (which implies running the demonstration)
