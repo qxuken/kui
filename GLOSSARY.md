@@ -135,6 +135,27 @@ The text a view declares for an editor on every frame. When it differs
 from the editor's text, the editor is brought to it.
 _Avoid_: controlled text, model text
 
+## Kit styling
+
+**Skin**:
+Kit's visual treatment of controls and tool surfaces, including their
+shapes, borders and label conventions.
+_Avoid_: content theme
+
+**Content theme**:
+A reusable look for Kit content: its colours, typography and visual
+rhythm, independent of the arrangement of content.
+_Avoid_: layout preset, skin
+
+**Layout preset**:
+A reusable arrangement of content regions and their adaptive behavior.
+_Avoid_: theme
+
+**Style preset**:
+A named pairing of a content theme and a layout preset whose parts remain
+independently selectable.
+_Avoid_: theme (when the arrangement is also being selected)
+
 ## Presentations
 
 **Deck**:

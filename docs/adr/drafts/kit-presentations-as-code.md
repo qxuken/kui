@@ -11,11 +11,12 @@ shared understanding. This record does not describe an implemented feature.
 
 The user requested a visual spike before production implementation.
 [The throwaway native prototype](../../../addons/kit/samples/presentation-prototype/README.md)
-compares Paper, Signal and Stage compositions on branch
+compares Paper, Signal, Stage and Minimal compositions on branch
 `codex/presentation-style-spike`. It exercises real Kit charts, controls,
-adaptive layout and reveal navigation. No visual direction has been
-selected; the proposed public interface below is not implemented by the
-spike.
+adaptive layout and reveal navigation. The user found value in every
+original direction and requested a minimalistic addition. The spike now
+allows theme and layout to be selected independently. The proposed public
+interface below is not implemented by the spike.
 
 ## Context
 
@@ -92,6 +93,8 @@ as code using Kit.
   on macOS and Ctrl+Shift+P elsewhere. It opens or focuses the presenter
   window from either presentation window. Closing either window leaves
   the session alive while another remains; closing the last ends it.
+- Preserve Paper, Signal and Stage as useful design directions rather
+  than picking a single winner, and add a Minimal direction.
 
 This preserves the ability to generate content programmatically and reuse
 application views. A constrained slide description or Markdown format
@@ -140,6 +143,39 @@ preset supplies common title/section composition rather than overloading
 the existing collapsible `section`. Extend `stat` for large-number
 compositions and `code` for syntax highlighting and line emphasis rather
 than introducing parallel components for the same content.
+
+#### Themes and layout presets
+
+Proposed result of the visual spike: retain all four directions as
+reusable themes and supply matching layout defaults through style presets.
+Themes belong to base Kit content and its gallery, so ordinary apps can
+use them too. A theme selects colours, content typography and visual
+rhythm; a layout preset selects content arrangement and adaptive behavior.
+Selecting a named style preset is a convenient way to choose both, with
+independent overrides afterward.
+
+Here, theme means a content theme. It does not redefine the core's
+existing `Theme` palette type.
+
+| Style preset | Theme | Matching layout preset |
+| --- | --- | --- |
+| Paper | Quiet paper tones and editorial serif typography. | Editorial spread. |
+| Signal | Technical typography, dark green surfaces and restrained lime. | Briefing with navigation and evidence first. |
+| Stage | Strong contrast and a warm accent. | Asymmetric split with a dominant visual. |
+| Minimal | Quiet sans-serif typography, whitespace and little framing. | Focused reading column. |
+
+For example, Paper's theme can accompany the split layout, or Minimal's
+theme can accompany a chart-led briefing. A theme change must not rewrite
+a slide's structure, navigation or demo state. Layout defaults apply to
+templated content regions; arbitrary authored views retain their explicit
+structure. Existing Ledger, Phosphor and Neutral skins remain the control
+and tool-surface treatment. A preset may choose a matching skin default,
+but content theming must not force large type onto presenter controls.
+
+The spike currently varies palette, face and skin independently from four
+render functions. Production themes additionally need configurable type
+scales, content spacing, code colours and chart readability. This does not
+introduce a new browser renderer or change the adaptive-layout default.
 
 All components retain useful defaults for regular applications. Reading
 sizes, spacing, alignment, colours and content presets are configurable;

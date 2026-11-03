@@ -1,6 +1,6 @@
 -- THROWAWAY UI SPIKE: which hierarchy, density and authoring feel fits Kit?
--- Three structurally different native compositions, one deck, no persistence.
--- Native equivalent of ?variant=: -- --variant paper|signal|stage.
+-- Four native presets with independently selectable themes and layouts.
+-- Native equivalent of ?variant=: -- --variant paper|signal|stage|minimal.
 -- This deliberately uses today's Kit + core; it is not the future public API.
 local kit = require("kit.ui")
 
@@ -14,13 +14,17 @@ local variants = {
   { key = "stage", name = "Stage / bold composition", skin = "neutral", appearance = "dark",
     bg = 0x171616ff, fg = 0xf6f0e8ff, muted = 0xa99f96ff, accent = 0xff8054ff,
     panel = 0x252221ff, rule = 0x443a35ff, font = "Helvetica Neue" },
+  { key = "minimal", name = "Minimal / quiet composition", skin = "neutral", appearance = "light",
+    bg = 0xffffffff, fg = 0x25272aff, muted = 0x74777cff, accent = 0x315ccaff,
+    panel = 0xffffffff, rule = 0xe4e5e7ff, font = "Helvetica Neue" },
 }
+local layout_names = { "editorial", "briefing", "split", "minimal" }
 
 local slides = {
   { title = "Make ideas executable.", steps = 2,
     notes = "Start with the idea: a slide can be a living view, not a screenshot.\n\nAdvance to reveal the argument. Try the same content in each direction." },
   { title = "Let the evidence speak.", steps = 2,
-    notes = "The data is identical in all three compositions.\n\nHover the real Kit chart. Does it remain legible from across a room? Reveal the interpretation after the audience sees the evidence." },
+    notes = "The data is identical in every composition.\n\nHover the real Kit chart. Does it remain legible from across a room? Reveal the interpretation after the audience sees the evidence." },
   { title = "Show it. Change it.", steps = 1,
     notes = "Move the concurrency slider or press Run. The output changes in the same view.\n\nThen navigate away and return: the small demo keeps its state. These controls use Kit as it exists today." },
 }
@@ -33,15 +37,21 @@ end
 function init()
   local variant = 1
   for i, v in ipairs(variants) do if args.variant == v.key then variant = i end end
+  local theme, layout = variant, variant
+  for i, v in ipairs(variants) do
+    if args.theme == v.key then theme = i end
+    if args.layout == v.key or args.layout == layout_names[i] then layout = i end
+  end
   local slide = math.max(1, math.min(3, tonumber(args.slide) or 1))
-  return { variant = variant, slide = slide,
+  return { variant = variant, theme = theme, layout = layout, chrome = args.clean == nil, slide = slide,
     step = math.max(0, math.min(slides[slide].steps, tonumber(args.step) or 0)), notes = args.presenter ~= nil,
     overview = false, workers = 4, runs = 0 }
 end
 
 local function state()
-  print(string.format("prototype variant=%s slide=%d step=%d workers=%d runs=%d notes=%s overview=%s",
-    variants[model.variant].key, model.slide, model.step, model.workers, model.runs,
+  print(string.format("prototype theme=%s layout=%s slide=%d step=%d workers=%d runs=%d notes=%s overview=%s",
+    variants[model.theme or model.variant].key, layout_names[model.layout or model.variant],
+    model.slide, model.step, model.workers, model.runs,
     tostring(model.notes), tostring(model.overview)))
 end
 
@@ -56,8 +66,12 @@ end
 function update(msg)
   if msg.kind == "next" then move(1)
   elseif msg.kind == "previous" then move(-1)
-  elseif msg.kind == "variant" then model.variant = msg.index
-  elseif msg.kind == "cycle" then model.variant = (model.variant - 1 + msg.direction) % #variants + 1
+  elseif msg.kind == "variant" then model.variant, model.theme, model.layout = msg.index, msg.index, msg.index
+  elseif msg.kind == "cycle" then
+    model.variant = (model.variant - 1 + msg.direction) % #variants + 1
+    model.theme, model.layout = model.variant, model.variant
+  elseif msg.kind == "theme" then model.theme = (model.theme or model.variant) % #variants + 1
+  elseif msg.kind == "layout" then model.layout = (model.layout or model.variant) % #variants + 1
   elseif msg.kind == "pick" then model.slide, model.step, model.overview = msg.slide, 0, false
   elseif msg.kind == "notes" then model.notes = not model.notes
   elseif msg.kind == "overview" then model.overview = not model.overview
@@ -68,7 +82,11 @@ function update(msg)
     if k.ctrl or k.super or k.alt then return end
     if k.code == "right" or k.code == "pagedown" or k.code == "space" then move(k.shift and -1 or 1)
     elseif k.code == "left" or k.code == "pageup" then move(-1)
-    elseif k.code == "1" or k.code == "2" or k.code == "3" then model.variant = tonumber(k.code)
+    elseif k.code:match("^[1-4]$") then
+      model.variant = tonumber(k.code); model.theme, model.layout = model.variant, model.variant
+    elseif k.code:lower() == "t" then model.theme = (model.theme or model.variant) % #variants + 1
+    elseif k.code:lower() == "l" then model.layout = (model.layout or model.variant) % #variants + 1
+    elseif k.code:lower() == "h" then model.chrome = model.chrome == false
     elseif k.code:lower() == "p" then model.notes = not model.notes
     elseif k.code:lower() == "o" then model.overview = not model.overview
     elseif k.code == "escape" then model.overview, model.notes = false, false
@@ -88,7 +106,7 @@ local function mono(s, size, color)
   return words(s, size, color, { family = "Menlo" })
 end
 local function title(s, v, size)
-  return words(s, size, v.fg, { family = v.font, bold = v.key ~= "paper", line_height = size * 1.06 })
+  return words(s, size, v.fg, { family = v.font, bold = v.key ~= "paper" and v.key ~= "minimal", line_height = size * 1.06 })
 end
 local function rule(v) return column { width = "grow", height = 1, bg = v.rule } end
 local function space() return column { height = "grow", min_height = 12 } end
@@ -287,6 +305,37 @@ local function stage(v, narrow)
     when = { { width = { below = 900 }, dir = "column" } }, column(hero), visual }
 end
 
+-- D: a quiet document. One reading column, plain type, no decorative panels.
+local function minimal(v, narrow)
+  local body = { key = "minimal." .. model.slide, width = "grow", max_width = 1120,
+    height = "grow", pad = { x = narrow and 28 or 64, y = narrow and 28 or 48 }, gap = 24,
+    row { width = "grow", words("kui", 16, v.fg), column { width = "grow" },
+      words(string.format("%d / %d", model.slide, #slides), 14, v.muted) },
+    space(),
+    title(slides[model.slide].title, v, narrow and 40 or 56),
+  }
+  if model.slide == 1 then
+    body[#body + 1] = words("A presentation can be a place to think.\nNot just a place to put the answer.", 24, v.muted,
+      { line_height = 35 })
+    body[#body + 1] = column { height = 16 }
+    body[#body + 1] = reveal(1, v, "Compose a story with ordinary interface components.", 22)
+    body[#body + 1] = reveal(2, v, "Let the audience explore the idea.", 22)
+  elseif model.slide == 2 then
+    body[#body + 1] = chart(v, narrow and 170 or 220)
+    body[#body + 1] = reveal(1, v, "42% lower tail latency, with the same workload.", 23)
+    body[#body + 1] = reveal(2, v, "Inspect the evidence before explaining the result.", 20)
+  else
+    body[#body + 1] = words("Change a value. Observe the result.", 23, v.muted)
+    body[#body + 1] = row { width = "grow", gap = 24,
+      when = { { width = { below = 720 }, dir = "column" } },
+      column { width = "grow", code(v, true) }, column { width = "grow", demo(v) } }
+    body[#body + 1] = reveal(1, v, "The explanation and the experiment stay together.", 21)
+  end
+  body[#body + 1] = space()
+  body[#body + 1] = words("A living deck.", 14, v.muted)
+  return column { width = "grow", height = "grow", cross_align = "center", column(body) }
+end
+
 local function overview(v)
   local t = { width = "grow", height = "grow", pad = 40, gap = 26,
     title("The story, at a glance.", v, 44), words("Choose a chapter. Each starts at its first reveal.", 20, v.muted) }
@@ -312,20 +361,24 @@ local function notes(v)
   }
 end
 
-local renderers = { paper, signal, stage }
+local renderers = { paper, signal, stage, minimal }
 function view(env)
-  local v = variants[model.variant]
+  local theme_index, layout_index = model.theme or model.variant, model.layout or model.variant
+  local v = variants[theme_index]
   local narrow = env.viewport_w - (model.notes and 290 or 0) < 1000
-  local bar = row { key = "prototype-controls", width = "grow", max_width = 900, min_height = 60,
+  local bar = row { key = "prototype-controls", width = "grow", max_width = 1120, min_height = 60,
     float = { anchor = "viewport", at = { "center", "end" }, self = { "center", "end" }, dy = -42 },
     bg = 0x25262aff, radius = 12, pad = { x = 12, y = 10 }, gap = 8, cross_align = "center", wrap_children = true,
     kit.button({ label = "‹", name = "Previous style", on_press = { kind = "cycle", direction = -1 } }),
   }
   for i, item in ipairs(variants) do
-    bar[#bar + 1] = kit.button({ label = i .. "  " .. item.key, variant = i == model.variant and "primary" or "default",
+    bar[#bar + 1] = kit.button({ label = i .. "  " .. item.key,
+      variant = i == theme_index and i == layout_index and "primary" or "default",
       name = item.name, on_press = { kind = "variant", index = i } })
   end
   bar[#bar + 1] = kit.button({ label = "›", name = "Next style", on_press = { kind = "cycle", direction = 1 } })
+  bar[#bar + 1] = kit.button({ label = "Theme: " .. v.key, on_press = { kind = "theme" } })
+  bar[#bar + 1] = kit.button({ label = "Layout: " .. layout_names[layout_index], on_press = { kind = "layout" } })
   bar[#bar + 1] = column { width = "grow" }
   bar[#bar + 1] = kit.button({ label = "Overview", on_press = { kind = "overview" } })
   bar[#bar + 1] = kit.button({ label = "Notes", on_press = { kind = "notes" } })
@@ -336,13 +389,14 @@ function view(env)
     key_focus = env.focus == nil or nil,
     kit.settings({ skin = v.skin, appearance = v.appearance, shadows = false, radius = 5,
       roles = { accent = v.accent, bg = v.bg, panel = v.panel } }),
-    row { width = "grow", height = "grow", pad = { b = 126 },
+    row { width = "grow", height = "grow", pad = { b = model.chrome == false and 0 or 146 },
       column { width = "grow", height = "grow", scroll_y = true,
-        model.overview and overview(v) or renderers[model.variant](v, narrow) },
+        model.overview and overview(v) or renderers[layout_index](v, narrow) },
       model.notes and notes(v) or nil,
     },
-    bar,
-    row { float = { anchor = "viewport", at = { "center", "end" }, self = { "center", "end" }, dy = -14 },
-      mono("THROWAWAY SPIKE   /   1–3 STYLE · ← → REVEALS · O OVERVIEW · P NOTES", 10, v.muted) },
+    model.chrome ~= false and bar or nil,
+    model.chrome ~= false and row {
+      float = { anchor = "viewport", at = { "center", "end" }, self = { "center", "end" }, dy = -14 },
+      mono("SPIKE / 1–4 PRESET · T THEME · L LAYOUT · H HIDE CONTROLS · ← → REVEALS · O OVERVIEW · P NOTES", 10, v.muted) } or nil,
   }
 end
