@@ -90,8 +90,8 @@ mod svg_node;
 mod when;
 mod windows;
 
-/// Wheel line-delta to logical px, at the standard feel.
-const SCROLL_LINE_PX: f32 = WheelFeel::STANDARD.line_px;
+/// Wheel line-delta to logical px, at the legacy relaxed feel.
+const SCROLL_LINE_PX: f32 = WheelFeel::RELAXED.line_px;
 
 /// What a `Core::focus_region` call asked to enter, held until the frame
 /// finishes: the main ring,

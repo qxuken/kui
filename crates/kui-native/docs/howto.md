@@ -1537,8 +1537,8 @@ wheel does, where Windows and Linux leave that to the app (macOS does
 it itself). A trackpad's swipe goes the way it is swiped.
 
 How far a notch goes and how quickly it lands is the wheel feel, also
-the app's: a preset by name, slow to fast `gentle`, `standard` (the
-default, 40 px a notch), `brisk` (a touch faster, 48 px) and `swift`
+the app's: a preset by name, slow to fast `gentle`, `relaxed` (40 px), `standard` (the
+default, 48 px a notch) and `swift`
 (64 px), or the numbers themselves — `line_px`, the glide's `response`
 in seconds and its `kick`. `Launcher::wheel_feel(WheelFeel::BRISK)`,
 `wheelFeel: 'brisk'` to `runWindowed`, `kui_set_wheel_preset(ctx,

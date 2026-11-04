@@ -1,8 +1,8 @@
 //! The wheel feel, tried by hand: how far a mouse wheel's notch goes and
 //! how quickly its glide lands (ADR 0050, `WheelFeel`).
 //!
-//! - a select picks a preset, slow to fast: `gentle`, `standard` (the
-//!   default), `brisk` (a touch faster), `swift`;
+//! - a select picks a preset, slow to fast: `gentle`, `relaxed`, `standard` (the
+//!   default), `swift`;
 //! - three sliders set the numbers themselves — the line in px, the
 //!   glide's response in seconds and its kick — and the select reads
 //!   `custom` once they match no preset;
@@ -274,8 +274,8 @@ impl Example for WheelFeelDemo {
         };
         let y = notch(&mut d, self);
         d.check(
-            y == 40.0,
-            &format!("a standard notch lands 40 px down: {y}"),
+            y == 48.0,
+            &format!("a standard notch lands 48 px down: {y}"),
         )?;
 
         // The select: open it, choose `swift`.
@@ -307,7 +307,7 @@ impl Example for WheelFeelDemo {
         )?;
         d.move_to(self, over.x, over.y);
         let y = notch(&mut d, self);
-        d.check(y == 104.0, &format!("a swift notch goes 64 px more: {y}"))?;
+        d.check(y == 112.0, &format!("a swift notch goes 64 px more: {y}"))?;
 
         // A slider's step: the line, two px further; no preset any more.
         let line = d
@@ -353,7 +353,7 @@ impl Example for WheelFeelDemo {
         d.advance(1.0 / 60.0);
         d.frame(self);
         let y = d.core.scroll_geometry(list).map_or(-1.0, |g| g.offset.y);
-        d.check(y == 170.0, &format!("a jump of the line, at once: {y}"))?;
+        d.check(y == 178.0, &format!("a jump of the line, at once: {y}"))?;
         let warned = d.warnings();
         d.check(warned.is_empty(), &format!("nothing warned: {warned:?}"))
     }

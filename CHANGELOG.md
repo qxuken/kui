@@ -25,6 +25,9 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.**
 
+- Default wheel scrolling uses the `standard` preset: 48 logical pixels per
+  notch with a quicker glide. Set `WheelFeel::RELAXED` or `KUI_WHEEL=relaxed`
+  to keep the previous feel. `brisk` remains an alias for `standard`.
 - A focused terminal's declared cell cursor now enables and anchors the
   platform input method; `ime_off` still disables it explicitly.
 - Enlarged static text now uses higher-resolution glyph masks; screenshots

@@ -1266,7 +1266,7 @@ pub extern "C" fn kui_set_wheel_feel(ptr: *mut KuiCtx, line_px: f32, response: f
     });
 }
 
-/// Sets the feel to the preset called `name` (`gentle`, `standard`,
+/// Sets the feel to the preset called `name` (`gentle`, `relaxed`, `standard`,
 /// `brisk`, `swift`, any case). False, and nothing changed, for any other
 /// name or a bad context.
 #[unsafe(no_mangle)]

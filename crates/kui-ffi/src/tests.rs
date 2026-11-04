@@ -4928,17 +4928,17 @@ mod wheel_headless {
         kui_input_wheel(ctx, 0.0, -1.0, true);
         t += 1.0 / 60.0;
         let first = frame(ctx, t);
-        assert!(first > 0.0 && first < 40.0, "part-way: {first}");
+        assert!(first > 0.0 && first < 48.0, "part-way: {first}");
         for _ in 0..30 {
             t += 1.0 / 60.0;
             frame(ctx, t);
         }
-        assert_eq!(frame(ctx, t), 40.0, "lands on the notch");
+        assert_eq!(frame(ctx, t), 48.0, "lands on the notch");
         kui_set_smooth_wheel(ctx, false);
         assert!(!kui_smooth_wheel(ctx));
         kui_input_wheel(ctx, 0.0, -1.0, true);
         t += 1.0 / 60.0;
-        assert_eq!(frame(ctx, t), 80.0, "a jump");
+        assert_eq!(frame(ctx, t), 96.0, "a jump");
 
         // The feel: a preset by name, its line the next notch's jump, the
         // numbers read back; an unknown name changes nothing.
@@ -4947,18 +4947,18 @@ mod wheel_headless {
             kui_wheel_feel(ctx, &mut l, &mut r, &mut k);
             (l, r, k)
         };
-        assert_eq!(read(std::ptr::null_mut()), (40.0, 0.30, 0.6));
-        assert_eq!(read(ctx), (40.0, 0.30, 0.6), "standard by default");
+        assert_eq!(read(std::ptr::null_mut()), (48.0, 0.27, 0.6));
+        assert_eq!(read(ctx), (48.0, 0.27, 0.6), "standard by default");
         assert!(kui_set_wheel_preset(ctx, ks("Brisk")));
         assert_eq!(read(ctx), (48.0, 0.27, 0.6));
         kui_input_wheel(ctx, 0.0, -1.0, true);
         t += 1.0 / 60.0;
-        assert_eq!(frame(ctx, t), 128.0, "a brisk notch");
+        assert_eq!(frame(ctx, t), 144.0, "a brisk notch");
         assert!(!kui_set_wheel_preset(ctx, ks("turbo")));
         assert!(!kui_set_wheel_preset(std::ptr::null_mut(), ks("brisk")));
         assert_eq!(read(ctx), (48.0, 0.27, 0.6), "unchanged");
         kui_set_wheel_feel(ctx, 100.0, f32::NAN, 2.0);
-        assert_eq!(read(ctx), (100.0, 0.30, 1.0), "clamped");
+        assert_eq!(read(ctx), (100.0, 0.27, 1.0), "clamped");
         kui_wheel_feel(
             ctx,
             std::ptr::null_mut(),

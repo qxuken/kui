@@ -4884,13 +4884,13 @@ void kui_set_diagnostics(KuiCtx *ctx, bool on);
  * motion jumps either way. */
 void kui_set_smooth_wheel(KuiCtx *ctx, bool on);
 bool kui_smooth_wheel(KuiCtx *ctx);
-/* How a wheel's notch scrolls: how far a line goes (logical px, 40 by
- * default), the glide's response (seconds, 0.30) and its kick (0..1, 0.6).
+/* How a wheel's notch scrolls: how far a line goes (logical px, 48 by
+ * default), the glide's response (seconds, 0.27) and its kick (0..1, 0.6).
  * Clamped into what the glide can use; a number that is not finite takes
  * the standard one. Off, a notch still jumps its line_px. */
 void kui_set_wheel_feel(KuiCtx *ctx, float line_px, float response, float kick);
-/* Sets it to a preset by name, slow to fast: "gentle", "standard" (the
- * default), "brisk" (a touch faster), "swift"; any case. False, and nothing
+/* Sets it to a preset by name, slow to fast: "gentle", "relaxed", "standard" (the
+ * default), "brisk" (an alias of standard), "swift"; any case. False, and nothing
  * changed, for any other name. */
 bool kui_set_wheel_preset(KuiCtx *ctx, KuiStr name);
 /* The feel, read back as clamped; any out pointer may be NULL. */
