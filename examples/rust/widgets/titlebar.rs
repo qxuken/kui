@@ -101,6 +101,7 @@ impl App for Chrome {
                         win.always_on_top,
                         match win.native_controls {
                             Some(r) => format!("{}×{} at the origin (the strip insets past them)", r.w.round(), r.h.round()),
+                            None if win.fullscreen => "none (hidden in fullscreen)".into(),
                             None => "none (the strip draws its own buttons)".into(),
                         }
                     );
@@ -134,7 +135,9 @@ impl App for Chrome {
                             .border(1.0, t.border),
                         |ui| {
                             widgets::window_buttons(ui);
-                            if win.native_controls.is_some() || !win.custom_chrome {
+                            if win.fullscreen {
+                                ui.text("(no buttons in fullscreen)", TextStyle::new(11.0).color(t.faint));
+                            } else if win.native_controls.is_some() || !win.custom_chrome {
                                 ui.text("(the OS's are the buttons here)", TextStyle::new(11.0).color(t.faint));
                             }
                         },

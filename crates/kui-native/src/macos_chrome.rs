@@ -46,6 +46,21 @@ pub fn native_controls(window: &Window) -> Rect {
     measure(window).unwrap_or(ASSUMED)
 }
 
+/// The empty toolbar only supplies windowed titlebar geometry. In full
+/// screen AppKit gives it a separate toolbar window, which intercepts
+/// mouse input intended for the app's strip underneath.
+pub fn sync_toolbar(window: &Window) {
+    let Some(ns_window) = ns_window(window) else {
+        return;
+    };
+    if let Some(toolbar) = ns_window.toolbar() {
+        let visible = window.fullscreen().is_none();
+        if toolbar.isVisible() != visible {
+            toolbar.setVisible(visible);
+        }
+    }
+}
+
 /// Gives `window` the titlebar `titlebar` names: none of a toolbar for
 /// `Standard`, an empty one in the style that makes the strip as tall for
 /// the others. Called once, before the window is shown.

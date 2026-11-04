@@ -209,6 +209,40 @@ fn titlebar_widget_declares_chrome_from_env() {
         vec![WindowCommand::StartDrag(WindowId::MAIN)]
     );
 }
+
+#[test]
+fn fullscreen_titlebar_has_no_controls_or_native_inset() {
+    use kui_core::widgets;
+    let mut core = Core::new();
+    core.env.window.custom_chrome = true;
+    core.env.window.fullscreen = true;
+    core.env.window.native_controls = None;
+    core.set_platform_titlebar_h(Some(52.0));
+    let mut ui = core.frame(Size::new(640.0, 360.0), 1.0);
+    assert_eq!(widgets::titlebar_height(&ui), 52.0);
+    ui.configure_root(NodeSpec::column().fill());
+    widgets::titlebar(&mut ui, "app");
+    ui.finish();
+    let tree = core.access_tree();
+    let title = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("app"))
+        .unwrap();
+    assert_eq!(title.rect.x, 12.0);
+    drive(
+        &mut core,
+        &[
+            InputEvent::CursorMoved(Vec2::new(617.0, 20.0)),
+            InputEvent::mouse_down(1),
+        ],
+    );
+    assert_eq!(
+        core.take_window_commands(),
+        vec![WindowCommand::StartDrag(WindowId::MAIN)]
+    );
+}
+
 /// The cluster alone in a row that fits its content — the titlebar
 /// example's second use of it — is a titlebar tall, and clicks there. A
 /// grow child adds nothing to a fit parent's height, and the cluster's row
