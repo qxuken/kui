@@ -691,14 +691,14 @@ pub fn titlebar_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
 }
 
 /// The minimize/maximize/close cluster. Renders nothing when the OS already
-/// provides controls (native decorations, or macOS traffic lights), so it
-/// is always safe to call. It grows to the height it is given — the
+/// provides controls (native decorations, or macOS traffic lights), or in
+/// fullscreen, so it is always safe to call. It grows to the height it is given — the
 /// strip's, in [`titlebar_with`] — and is a titlebar tall where nothing
 /// gives it one, since a grow child adds nothing to a fit parent's
 /// height.
 pub fn window_buttons(ui: &mut Ui<'_>) {
     let win = ui.env().window;
-    if !win.custom_chrome || win.native_controls.is_some() {
+    if !win.custom_chrome || win.fullscreen || win.native_controls.is_some() {
         return;
     }
     let h = titlebar_height(ui);

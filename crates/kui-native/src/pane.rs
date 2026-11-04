@@ -27,6 +27,21 @@ pub(crate) fn sync_env(
 ) {
     let window = &pane.window;
     let chrome = pane.chrome;
+    #[cfg(target_os = "macos")]
+    if chrome == Chrome::Custom {
+        macos_chrome::sync_toolbar(window);
+        // Fullscreen hides the lights. Re-measure on return as AppKit
+        // restores the toolbar; a creation-time rect stays stale forever.
+        pane.native_controls = window
+            .fullscreen()
+            .is_none()
+            .then(|| macos_chrome::native_controls(window));
+        // Keep the windowed strip height in fullscreen, even though its
+        // keep-out area is gone.
+        if let Some(r) = pane.native_controls {
+            pane.core.set_platform_titlebar_h(Some(r.h));
+        }
+    }
     // Per-frame so it self-corrects when the window moves to another
     // monitor.
     pane.core.env.refresh_hz = window
@@ -285,9 +300,9 @@ pub(crate) struct Pane {
     /// Linux compositor's blur objects).
     pub(crate) _backdrop_keep: Option<Box<dyn std::any::Any>>,
     /// The keep-out rect `env.window.native_controls` reports: measured
-    /// from the window once it exists (`macos_chrome`), on the one
+    /// from the window before each frame (`macos_chrome`), on the one
     /// platform whose custom chrome keeps controls of the OS's over the
-    /// content. `None` everywhere else, and under native chrome.
+    /// content. `None` in fullscreen, everywhere else, and under native chrome.
     pub(crate) native_controls: Option<Rect>,
     /// The main window only: the minimum inner size last handed to the
     /// OS — the launcher's, plus what a docked devtools pane takes
