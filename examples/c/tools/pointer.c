@@ -164,7 +164,8 @@ static void glfw_checks(void) {
     /* Back up, no pause: the outer scroller, latched - unless the pointer
      * moved, which begins a gesture at the inner one, which can go up. */
     now_s = 4.52;
-    kui_glfw_cursor(&g, 51, 60);
+    /* The outer notch moved the inner bottom to y=60; aim inside it. */
+    kui_glfw_cursor(&g, 51, 55);
     now_s = 4.55;
     kui_glfw_scroll(&g, 0, 1);
     check(offset(ui, inner) == 0 && offset(ui, outer) == 48, "glfw: the pointer moving begins a wheel's gesture");
