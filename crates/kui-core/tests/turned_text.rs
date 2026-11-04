@@ -222,8 +222,8 @@ fn enlarged_static_text_uses_higher_resolution_masks_without_changing_layout() {
                     QuadKind::GlyphMask | QuadKind::GlyphSubpixel | QuadKind::GlyphColor
                 )
             })
+            .copied()
             .unwrap()
-            .clone()
     };
     let upright = sample(1.0);
     let enlarged = sample(2.0);
