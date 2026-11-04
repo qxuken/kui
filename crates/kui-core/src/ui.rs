@@ -98,6 +98,7 @@ impl<'a> Ui<'a> {
     /// extension list of its own (the C context, a headless Node one), so
     /// its `slot` and `finish` are this type's rather than a copy of them.
     pub fn with_filler(core: &'a mut Core, filler: &'a mut dyn Fill) -> Self {
+        filler.begin(core.env.window.id);
         Self {
             core,
             filler: Some(filler),
@@ -2111,6 +2112,26 @@ impl<'a> Ui<'a> {
     /// way. See `Core::focus_window`.
     pub fn focus_window(&mut self, window: WindowId) {
         self.core.focus_window(window);
+    }
+
+    /// The driver's current display names, indexed by fullscreen requests.
+    pub fn display_names(&self) -> &[String] {
+        &self.core.display_names
+    }
+
+    /// Request borderless fullscreen on the chosen or current display.
+    pub fn set_window_fullscreen(&mut self, window: WindowId, enabled: bool, display: Option<u32>) {
+        self.core.set_window_fullscreen(window, enabled, display);
+    }
+
+    /// Show/hide a window while preserving its context.
+    pub fn set_window_visible(&mut self, window: WindowId, visible: bool) {
+        self.core.set_window_visible(window, visible);
+    }
+
+    /// Make a close button hide this window while another remains visible.
+    pub fn set_window_close_hides(&mut self, window: WindowId, enabled: bool) {
+        self.core.set_window_close_hides(window, enabled);
     }
 
     /// Runs layout and emission; results land in `Core::output()`. A frame

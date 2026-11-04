@@ -16,6 +16,9 @@ Use a stat for a headline number: requests a second, a latency, an error rate, o
 | `delta` | `delta` | string? | How it moved: `+12%`. |
 | `tone` | `tone` | Tone? (neutral · info · accent · ok · warn · danger) | Whether the move is good news. |
 
+| `display` | `display` | boolean? | Use Settings' display size and title face for a headline number. |
+| `size` | `size` | number? | Explicit value size in px. |
+
 Every component also takes `key` and `fresh`.
 
 ## Do

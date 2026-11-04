@@ -540,6 +540,24 @@ pub enum WindowCommand {
     /// Give `window` keyboard focus (`Core::focus_window`). Advisory, like
     /// every focus request an app makes of a window manager.
     Focus(WindowId),
+    /// Borderless fullscreen on a display (zero-based in `display_names`),
+    /// or the current display when omitted. The driver may decline.
+    SetFullscreen {
+        window: WindowId,
+        enabled: bool,
+        display: Option<u32>,
+    },
+    /// Show/hide without destroying the context or its session state.
+    SetVisible {
+        window: WindowId,
+        visible: bool,
+    },
+    /// An OS/chrome close hides this window while another is visible.
+    /// Explicit application Quit still ends the session.
+    SetCloseHides {
+        window: WindowId,
+        enabled: bool,
+    },
     /// Draw `window` again: something another window's frame or input
     /// changed is shown there (the devtools window's row hover outlines a
     /// node in the main window). A driver that redraws every window on
@@ -548,8 +566,7 @@ pub enum WindowCommand {
 }
 
 impl WindowCommand {
-    /// The command's wire name: `startDrag`, `close`, `minimize`,
-    /// `toggleMaximize`, `open`, `setSize`, `focus`, `redraw`.
+    /// The command's wire name, shared by the Lua and Node bindings.
     pub fn kind_name(&self) -> &'static str {
         match self {
             WindowCommand::StartDrag(_) => "startDrag",
@@ -559,12 +576,17 @@ impl WindowCommand {
             WindowCommand::Open { .. } => "open",
             WindowCommand::SetSize { .. } => "setSize",
             WindowCommand::Focus(_) => "focus",
+            WindowCommand::SetFullscreen { .. } => "setFullscreen",
+            WindowCommand::SetVisible { .. } => "setVisible",
+            WindowCommand::SetCloseHides { .. } => "setCloseHides",
             WindowCommand::Redraw(_) => "redraw",
         }
     }
 
     /// `{kind, window}` plus what the variant carries: `width`/`height`
-    /// for `setSize`; `owner`, `origin` and `config` for `open`.
+    /// for `setSize`; `enabled` and `display` for fullscreen; `visible`
+    /// or `enabled` for visibility/close policy; `owner`, `origin` and
+    /// `config` for `open`.
     pub fn to_value(&self) -> crate::value::Value {
         use crate::value::Value;
         let mut out = vec![
@@ -572,6 +594,21 @@ impl WindowCommand {
             ("window".to_string(), Value::Int(self.window().0 as i64)),
         ];
         match self {
+            WindowCommand::SetFullscreen {
+                enabled, display, ..
+            } => {
+                out.push(("enabled".into(), Value::Bool(*enabled)));
+                out.push((
+                    "display".into(),
+                    display.map(|d| Value::Int(d as i64)).unwrap_or(Value::Null),
+                ));
+            }
+            WindowCommand::SetVisible { visible, .. } => {
+                out.push(("visible".into(), Value::Bool(*visible)))
+            }
+            WindowCommand::SetCloseHides { enabled, .. } => {
+                out.push(("enabled".into(), Value::Bool(*enabled)))
+            }
             WindowCommand::SetSize { size, .. } => {
                 out.push(("width".into(), Value::float(size.w)));
                 out.push(("height".into(), Value::float(size.h)));
@@ -601,7 +638,10 @@ impl WindowCommand {
             | WindowCommand::Focus(w)
             | WindowCommand::Redraw(w) => w,
             WindowCommand::Open { id, .. } => id,
-            WindowCommand::SetSize { window, .. } => window,
+            WindowCommand::SetSize { window, .. }
+            | WindowCommand::SetFullscreen { window, .. }
+            | WindowCommand::SetVisible { window, .. }
+            | WindowCommand::SetCloseHides { window, .. } => window,
         }
     }
 }

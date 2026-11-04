@@ -18,6 +18,352 @@ const VIEW: Size = Size {
     h: 900.0,
 };
 
+#[test]
+fn select_keyboard_events_survive_another_windows_frame() {
+    use kui_core::{KeyCode, KeyMods, KeyPress, WindowId};
+    let mut r = LuaRig::new(
+        r#"
+      function view(env)
+        if env.window.id ~= 0 then return column { text("Another window") } end
+        return column { width = "grow", height = "grow", pad = 40,
+          component("kit/button", { label = "Before" }),
+          component("kit/select", { label = "Mode", value = "a", options = {
+            { value = "a", label = "Alpha" }, { value = "b", label = "Beta" } } }),
+          component("kit/button", { label = "After" }) }
+      end
+    "#,
+    );
+    r.frames(2);
+    let field = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Mode: Alpha"))
+        .unwrap()
+        .key;
+    for _ in 0..3 {
+        if r.core.key_focus() == Some(field) {
+            break;
+        }
+        let events = r.core.press(KeyPress::new(KeyCode::Tab, KeyMods::NONE));
+        r.route(events);
+        r.frames(1);
+    }
+    assert_eq!(r.core.key_focus(), Some(field));
+    let mut other = Core::new_in(r.core.session());
+    other.env.window.id = WindowId(1);
+    std::mem::swap(&mut r.core, &mut other);
+    r.frames(2);
+    std::mem::swap(&mut r.core, &mut other);
+    let events = r.core.press(KeyPress::new(KeyCode::Space, KeyMods::NONE));
+    r.route(events);
+    r.frames(2);
+    assert!(
+        r.text("Beta").is_some(),
+        "keyboard input still invalidates the Select after the other window drew"
+    );
+    let events = r.core.press(KeyPress::new(KeyCode::Escape, KeyMods::NONE));
+    r.route(events);
+    r.frames(2);
+    std::mem::swap(&mut r.core, &mut other);
+    r.frames(1);
+    std::mem::swap(&mut r.core, &mut other);
+    let events = r.core.press(KeyPress::new(KeyCode::Tab, KeyMods::NONE));
+    r.route(events);
+    r.frames(2);
+    assert_eq!(
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.focused)
+            .and_then(|n| n.name.as_deref()),
+        Some("After")
+    );
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+}
+
+#[test]
+fn selects_at_the_same_path_keep_private_state_per_window() {
+    use kui_core::{KeyCode, KeyMods, KeyPress, WindowId};
+    let mut r = LuaRig::new(
+        r#"
+      function view(env)
+        return column { width = 300, component("kit/select", { label = "Mode", value = "a", options = {
+          { value = "a", label = "Alpha" }, { value = "b", label = "Beta" } } }) }
+      end
+    "#,
+    );
+    r.frames(2);
+    let mut other = Core::new_in(r.core.session());
+    other.env.window.id = WindowId(1);
+    std::mem::swap(&mut r.core, &mut other);
+    r.frames(2);
+    std::mem::swap(&mut r.core, &mut other);
+    for code in [KeyCode::Tab, KeyCode::Space] {
+        let events = r.core.press(KeyPress::new(code, KeyMods::NONE));
+        r.route(events);
+        r.frames(2);
+    }
+    assert!(r.text("Beta").is_some(), "the audience's own Select opened");
+    std::mem::swap(&mut r.core, &mut other);
+    r.frames(2);
+    assert!(
+        r.text("Beta").is_none(),
+        "the other window's same-key Select stays closed"
+    );
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+}
+
+#[test]
+fn presentation_routes_real_window_contexts_to_audience_and_presenter_views() {
+    let source = format!(
+        "local wrappers = (function() {} end)()\npackage.preload['kit.ui'] = function() return wrappers end\nlocal presentation = (function() {} end)()\n{}",
+        include_str!("../../../addons/kit/bindings/lua/kit/ui.lua"),
+        include_str!("../../../addons/kit/host/lua/kit/presentation.lua"),
+        r#"
+          local p = presentation.new({ title = "A talk", slides = {
+            { key = "hello", title = "Hello", notes = "Private speaker notes",
+              view = function(c) return c.content({ title = "Audience slide" }, {}) end }
+          } }, { presenter = true, clock = function() return 0 end })
+          function view(env) return p:view(env) end
+          function on_event(ev) p:update(ev) end
+          function show_overview() p:update({ presentation = "overview" }) end
+        "#
+    );
+    let mut r = LuaRig::new(&source);
+    r.frames(2);
+    assert_eq!(r.core.window_title(), Some("A talk — Audience"));
+    assert!(
+        !r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("Speaker notes"))
+    );
+    let presenter_id = r
+        .core
+        .take_window_commands()
+        .iter()
+        .find_map(|cmd| match cmd {
+            kui_core::WindowCommand::Open { id, .. } => Some(*id),
+            _ => None,
+        })
+        .expect("the audience declares the presenter window");
+    let mut other = Core::new_in(r.core.session());
+    other.env.window.id = presenter_id;
+    other.env.window.custom_chrome = true;
+    std::mem::swap(&mut r.core, &mut other);
+    r.frames(2);
+    assert_eq!(r.core.window_title(), Some("A talk — Presenter"));
+    let tree = r.core.access_tree();
+    for label in ["Speaker notes", "Next", "Display", "Timer"] {
+        assert!(
+            tree.nodes.iter().any(|n| n.name.as_deref() == Some(label)),
+            "missing {label}"
+        );
+    }
+    let next = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Next"))
+        .unwrap();
+    assert!(
+        next.rect.y >= 34.0 && next.rect.y < 90.0,
+        "navigation belongs below the titlebar"
+    );
+    assert!(
+        !tree
+            .nodes
+            .iter()
+            .any(|n| matches!(n.name.as_deref(), Some("Theme" | "Layout")))
+    );
+    let toggle = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Live sync"))
+        .unwrap()
+        .key;
+    for _ in 0..20 {
+        if r.core.key_focus() == Some(toggle) {
+            break;
+        }
+        let events = r.core.press(kui_core::KeyPress::new(
+            kui_core::KeyCode::Tab,
+            kui_core::KeyMods::NONE,
+        ));
+        r.route(events);
+        r.frames(2);
+    }
+    assert_eq!(r.core.key_focus(), Some(toggle), "Tab reaches Live sync");
+    for _ in 0..3 {
+        let events = r.core.press(kui_core::KeyPress::new(
+            kui_core::KeyCode::Space,
+            kui_core::KeyMods::NONE,
+        ));
+        r.route(events);
+        r.frames(2);
+        assert_eq!(
+            r.core.key_focus(),
+            Some(toggle),
+            "changing Live sync retains focus through footer changes"
+        );
+    }
+    let events = r.core.press(kui_core::KeyPress::new(
+        kui_core::KeyCode::Tab,
+        kui_core::KeyMods::NONE,
+    ));
+    r.route(events);
+    r.frames(2);
+    assert_ne!(r.core.key_focus(), Some(toggle), "Tab leaves the toggle");
+    let events = r.core.press(kui_core::KeyPress::new(
+        kui_core::KeyCode::Tab,
+        kui_core::KeyMods::NONE.with_shift(),
+    ));
+    r.route(events);
+    r.frames(2);
+    assert_eq!(
+        r.core.key_focus(),
+        Some(toggle),
+        "Shift-Tab returns to the toggle"
+    );
+    r.app
+        .globals()
+        .get::<mlua::Function>("show_overview")
+        .unwrap()
+        .call::<()>(())
+        .unwrap();
+    r.frames(2);
+    assert!(
+        r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("Overview"))
+    );
+    std::mem::swap(&mut r.core, &mut other);
+    r.frames(2);
+    assert!(!r.core.access_tree().nodes.iter().any(|n| matches!(
+        n.name.as_deref(),
+        Some("Overview" | "Speaker notes" | "Restart…" | "Presenter" | "Slide 1 of 1")
+    )));
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+}
+
+#[test]
+fn content_presets_merge_project_fonts_colors_and_sizes_and_invalidate_tokens() {
+    let mut r = rig();
+    for heading in [58.0, 72.0] {
+        r.frame(|ui| {
+            kit::Settings::new()
+                .theme(kit::ContentTheme::Paper)
+                .font_title(vec!["Project Display".into(), "mono".into()])
+                .font_content(vec!["Project Reading".into(), "serif".into()])
+                .sizes(kit::Sizes::new().heading(heading).content(25.0))
+                .roles(Value::map([("accent", Value::Int(0x8c3e70ff))]))
+                .place(ui);
+            assert_eq!(ui.token_length("kitHeading"), Some(heading as f32));
+            assert_eq!(ui.token_length("kitContentSize"), Some(25.0));
+            assert_eq!(
+                ui.token_length("kitCodeSize"),
+                Some(18.0),
+                "unoverridden preset field survives"
+            );
+            assert_eq!(
+                ui.token_length("kitSizeLabel"),
+                Some(12.0),
+                "content presets keep tool labels compact"
+            );
+            assert_eq!(
+                ui.token_family("kitTitle"),
+                Some(kui_core::FontFamily::Mono)
+            );
+            assert_eq!(
+                ui.token_family("kitContent"),
+                Some(kui_core::FontFamily::Serif)
+            );
+            assert_eq!(ui.token_color("kitAccent").unwrap().to_hex(), 0x8c3e70ff);
+        });
+    }
+    assert!(r.core.take_warnings().is_empty());
+}
+
+#[test]
+fn content_visibility_reserves_layout_but_removes_hits_access_and_tab_stops() {
+    let mut r = LuaRig::new(
+        r#"
+      shown = true
+      function view(env)
+        return column { width = 400, gap = 8,
+          component("kit/visibility", { visible = shown }, {
+            component("kit/button", { label = "Revealed", on_press = { kind = "unexpected" } }) }),
+          text("After"), component("kit/button", { label = "Always" }) }
+      end
+    "#,
+    );
+    r.frames(2);
+    let rect = r.named("Revealed");
+    let after = r.text("After").unwrap();
+    r.app.globals().set("shown", false).unwrap();
+    r.frames(2);
+    assert_eq!(
+        r.text("After").unwrap(),
+        after,
+        "the reveal keeps its layout space"
+    );
+    assert!(
+        !r.core
+            .access_tree()
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("Revealed"))
+    );
+    r.click(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+    assert!(
+        r.host.is_empty(),
+        "invisible controls cannot emit input: {:?}",
+        r.host
+    );
+    r.core.set_focus(None);
+    kui_core::testing::tab(&mut r.core, false);
+    r.frames(1);
+    let focus = r.core.focus();
+    let always = r
+        .core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Always"))
+        .unwrap()
+        .key;
+    assert_eq!(focus, Some(always));
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+}
+
+#[test]
+fn syntax_highlighting_is_lossless_across_multiline_strings_comments_and_unknown_languages() {
+    let lua = mlua::Lua::new();
+    let module: mlua::Table = lua
+        .load(include_str!("../../../addons/kit/lua/syntax.lua"))
+        .eval()
+        .unwrap();
+    lua.globals().set("syntax", module).unwrap();
+    lua.load(r#"
+      for _, language in ipairs({ "lua", "typescript", "json", "unknown" }) do
+        local source = "local value = [[one\ntwo]]\n-- comment\nreturn \"a\\\"b\"\n"
+        local lines = syntax.lines(source, language, "accent", "muted", "literal")
+        local result = {}
+        for _, line in ipairs(lines) do
+          local parts = {}
+          for _, span in ipairs(line) do parts[#parts + 1] = type(span) == "table" and span[1] or span end
+          result[#result + 1] = table.concat(parts)
+        end
+        assert(table.concat(result, "\n") == source, language)
+      end
+    "#).exec().unwrap();
+}
+
 fn msg(kind: &str) -> Value {
     Value::map([("kind", Value::str(kind))])
 }

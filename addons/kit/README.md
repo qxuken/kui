@@ -7,12 +7,21 @@ typed wrappers generated from [`schema.lua`](schema.lua) (ADR 0066).
 
 | Group | Components |
 | --- | --- |
+| Content | `heading`, `paragraph`, `content`, `columns`, `comparison`, `quote`, `figure`, `visibility` |
 | Layout | `panel`, `toolbar`, `statusbar`, `split`, `tabs`, `section`, `divider` |
 | Inputs | `button`, `icon_button`, `text_field`, `text_area`, `search`, `select`, `checkbox`, `checklist`, `switch`, `radio_group`, `segmented`, `slider` |
 | Data | `table`, `list`, `log` (over a channel, ADR 0065), `inspector`, `badge`, `stat`, `code`, `empty`, `progress`, `notice`, `skeleton`, `shader` |
 | Overlays | `dialog`, `popover`, `menu`, `toast` |
 | Charts | `sparkline`, `line_chart`, `bar_chart`, `histogram`, `waterfall` — each reads out the value under the pointer (a line chart from the keyboard too, with `focusable`) |
-| Look | `settings`: the skin (Ledger, Phosphor, Neutral), light or dark held or the OS's, the density, the shadows, the radius, hairline and rule widths, the faces, brand roles |
+| Look | `settings`: the skin (Ledger, Phosphor, Neutral), light or dark held or the OS's, the density, the shadows, the radius, hairline and rule widths, the faces, brand roles; content themes Paper, Signal, Stage, Minimal and per-project sizes |
+
+Native presentations can be authored in Lua/Teal or TSX with navigation,
+reveals, notes, presenter windows and PNG export. Start with the
+[authoring guide](PRESENTATIONS.md) or the
+[runnable deck](samples/presentations/). Themes are Settings presets with
+project fonts, colors and sizes; they work outside decks too.
+Open `kui play` and choose **Presentations** to try an embedded deck, then
+run your own with `kui run path/to/deck --watch -- --presenter`.
 
 Every component is controlled: what it shows is the host's prop, and an
 event proposes the next value as the host's own message, with the event's
@@ -92,7 +101,7 @@ kui play
 The gallery is carried inside the runner. From a repository checkout,
 `kui run --watch addons/kit/app` opens the same app for editing.
 
-`app/` is Kit on the `kui` runner (ADR 0064): every component on nine
+`app/` is Kit on the `kui` runner (ADR 0064): every component on ten
 pages, Kit's design system on four more, a worker building 100,000 rows
 as a channel, live chart and log feeds, and an HTTP server — a living
 reference, and the template for an app of your own (`kui run --watch

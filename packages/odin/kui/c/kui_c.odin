@@ -226,6 +226,9 @@ CMD_OPEN :: 5
 CMD_SET_SIZE :: 6
 CMD_FOCUS :: 7
 CMD_REDRAW :: 8
+CMD_SET_FULLSCREEN :: 9
+CMD_SET_VISIBLE :: 10
+CMD_SET_CLOSE_HIDES :: 11
 
 REPEAT_NORMAL :: 0
 REPEAT_REVERSE :: 1
@@ -1319,6 +1322,9 @@ foreign lib {
 	window_declare_with :: proc(ctx: ^Ctx, name: string, cfg: ^WindowConfig, on_window: ^Value, on_dismiss: ^Value) ---
 	set_window_size :: proc(ctx: ^Ctx, window: u32, w: f32, h: f32) ---
 	focus_window :: proc(ctx: ^Ctx, window: u32) ---
+	set_window_fullscreen :: proc(ctx: ^Ctx, window: u32, enabled: bool, display: i32) ---
+	set_window_visible :: proc(ctx: ^Ctx, window: u32, visible: bool) ---
+	set_window_close_hides :: proc(ctx: ^Ctx, window: u32, enabled: bool) ---
 	window_dismissed :: proc(ctx: ^Ctx, id: u32, reason: u32) ---
 	ctx_window :: proc(ctx: ^Ctx) -> u32 ---
 	ctx_window_name :: proc(ctx: ^Ctx, out: ^string) -> bool ---

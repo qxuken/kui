@@ -8,9 +8,9 @@ Lua places a component with `kit.<name>(props, children)` after `local kit = req
 
 ## Contents
 
-Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.password`](#kitpassword), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.checklist`](#kitchecklist), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.markdown`](#kitmarkdown), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
+Components: [`kit.settings`](#kitsettings), [`kit.panel`](#kitpanel), [`kit.toolbar`](#kittoolbar), [`kit.statusbar`](#kitstatusbar), [`kit.split`](#kitsplit), [`kit.tabs`](#kittabs), [`kit.section`](#kitsection), [`kit.divider`](#kitdivider), [`kit.heading`](#kitheading), [`kit.paragraph`](#kitparagraph), [`kit.content`](#kitcontent), [`kit.columns`](#kitcolumns), [`kit.comparison`](#kitcomparison), [`kit.quote`](#kitquote), [`kit.figure`](#kitfigure), [`kit.visibility`](#kitvisibility), [`kit.button`](#kitbutton), [`kit.icon_button`](#kiticon_button), [`kit.text_field`](#kittext_field), [`kit.password`](#kitpassword), [`kit.text_area`](#kittext_area), [`kit.search`](#kitsearch), [`kit.select`](#kitselect), [`kit.checkbox`](#kitcheckbox), [`kit.checklist`](#kitchecklist), [`kit.switch`](#kitswitch), [`kit.radio_group`](#kitradio_group), [`kit.segmented`](#kitsegmented), [`kit.slider`](#kitslider), [`kit.table`](#kittable), [`kit.list`](#kitlist), [`kit.inspector`](#kitinspector), [`kit.log`](#kitlog), [`kit.badge`](#kitbadge), [`kit.stat`](#kitstat), [`kit.code`](#kitcode), [`kit.markdown`](#kitmarkdown), [`kit.notice`](#kitnotice), [`kit.empty`](#kitempty), [`kit.progress`](#kitprogress), [`kit.skeleton`](#kitskeleton), [`kit.shader`](#kitshader), [`kit.dialog`](#kitdialog), [`kit.popover`](#kitpopover), [`kit.menu`](#kitmenu), [`kit.toast`](#kittoast), [`kit.toaster`](#kittoaster), [`kit.sparkline`](#kitsparkline), [`kit.line_chart`](#kitline_chart), [`kit.bar_chart`](#kitbar_chart), [`kit.histogram`](#kithistogram), [`kit.waterfall`](#kitwaterfall).
 
-Types: [`Variant`](#variant), [`Tone`](#tone), [`Align`](#align), [`Axis`](#axis), [`Skin`](#skin), [`Density`](#density), [`Level`](#level), [`Browse`](#browse), [`XFormat`](#xformat), [`Appearance`](#appearance), [`ShaderPreset`](#shaderpreset), [`Selection`](#selection), [`SkeletonShape`](#skeletonshape), [`Choice`](#choice), [`Column`](#column), [`Tab`](#tab), [`Item`](#item), [`Check`](#check), [`Entry`](#entry), [`RowRange`](#rowrange), [`Series`](#series).
+Types: [`Variant`](#variant), [`Tone`](#tone), [`Align`](#align), [`Axis`](#axis), [`Skin`](#skin), [`ContentTheme`](#contenttheme), [`ContentLayout`](#contentlayout), [`Density`](#density), [`Level`](#level), [`Browse`](#browse), [`XFormat`](#xformat), [`Appearance`](#appearance), [`ShaderPreset`](#shaderpreset), [`Selection`](#selection), [`SkeletonShape`](#skeletonshape), [`Sizes`](#sizes), [`Choice`](#choice), [`Column`](#column), [`Tab`](#tab), [`Item`](#item), [`Check`](#check), [`Entry`](#entry), [`RowRange`](#rowrange), [`Series`](#series).
 
 ## kit.settings
 
@@ -21,6 +21,7 @@ Lua `kit.settings(props)` · Node `<Settings />`
 | prop | Node | type | description |
 |---|---|---|---|
 | `skin` | `skin` | [Skin](#skin)? | The skin; Ledger when left out. |
+| `theme` | `theme` | [ContentTheme](#contenttheme)? | Optional content settings preset: Paper, Signal, Stage or Minimal. Explicit skin, fonts, roles and individual sizes override the preset; layout stays the author's. |
 | `density` | `density` | [Density](#density)? | Comfortable when left out. |
 | `shadows` | `shadows` | boolean? | The skin's hard shadows; on when left out. |
 | `radius` | `radius` | number? | Corner radius in px, for a brand with its own; the skin's when left out. |
@@ -30,6 +31,9 @@ Lua `kit.settings(props)` · Node `<Settings />`
 | `rule` | `rule` | number? | The region rule's width in px (a panel's frame, a control's border); the skin's when left out. |
 | `font_ui` | `fontUi` | {string}? | The UI face, as a family list (`{ "Inter", "sans" }`); the skin's when left out. |
 | `font_data` | `fontData` | {string}? | The data face (ids, numbers, code), as a family list; the skin's when left out. |
+| `font_title` | `fontTitle` | {string}? | Content heading/quote families; the preset's, else the UI face. |
+| `font_content` | `fontContent` | {string}? | Reading-text families; the UI face when omitted. |
+| `sizes` | `sizes` | [Sizes](#sizes)? | Project typography and content spacing. Fields merge over the preset individually; sizes are logical px. |
 
 ## kit.panel
 
@@ -56,6 +60,10 @@ Children:
 A row of controls at the control height, its trailing group pushed to the far side.
 
 Lua `kit.toolbar(props, children)` · Node `<Toolbar />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `window_chrome` | `windowChrome` | boolean? | Opt into the native drag strip under custom window chrome. Reserves the OS window controls and keeps gaps draggable. False by default; native-decorated windows keep the normal content toolbar. Configure custom chrome and a medium/tall titlebar in the host when opting in. |
 
 Children:
 
@@ -142,6 +150,135 @@ Children:
 A rule between groups, as the skin draws regions.
 
 Lua `kit.divider(props)` · Node `<Divider />`
+
+## kit.heading
+
+An adaptive content heading in the project's title face.
+
+Lua `kit.heading(props)` · Node `<Heading />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `text` | `text` | string | The heading. |
+| `level` | `level` | integer? | Hierarchy, 1 to 6; 1 by default. |
+| `size` | `size` | number? | Override the theme's heading size. |
+| `family` | `family` | string? | A family name or family token. |
+| `color` | `color` | color? | Override the foreground role. |
+| `bold` | `bold` | boolean? | Bold by default. |
+| `line_height` | `lineHeight` | number? | Line height in logical px. |
+
+## kit.paragraph
+
+Wrapping reading text in the project's content face.
+
+Lua `kit.paragraph(props)` · Node `<Paragraph />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `text` | `text` | string | The text. |
+| `size` | `size` | number? | Override the reading size. |
+| `family` | `family` | string? | A family name or family token. |
+| `color` | `color` | color? | Override the foreground role. |
+| `line_height` | `lineHeight` | number? | Line height in logical px. |
+| `selectable` | `selectable` | boolean? | Allow selecting and copying its text. |
+
+## kit.content
+
+A reading composition with project spacing, optional width limit and title/section centering.
+
+Lua `kit.content(props, children)` · Node `<Content />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `layout` | `layout` | [ContentLayout](#contentlayout)? | Layout preset; ordinary reading flow if omitted. |
+| `title` | `title` | string? | Optional composition heading. |
+| `subtitle` | `subtitle` | string? | Optional reading lead. |
+| `eyebrow` | `eyebrow` | string? | Optional small introductory label. |
+| `preset` | `preset` | string? | title or section centers the content vertically; other values use regular flow. |
+| `grow` | `grow` | boolean? | Take available height. |
+| `max_width` | `maxWidth` | number? | Maximum reading width. |
+| `pad` | `pad` | number? | Inset; theme default if omitted. |
+| `gap` | `gap` | number? | Spacing; theme default if omitted. |
+| `bg` | `bg` | color? | Optional background. |
+
+Children:
+
+- the list part is the composition.
+- `aside` is the supporting visual in editorial, briefing or split layouts; below in minimal/regular flow.
+
+## kit.columns
+
+Two content regions that stack when the available width is narrow.
+
+Lua `kit.columns(props, children)` · Node `<Columns />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `collapse_at` | `collapseAt` | number? | Stack below this width, 760 by default. |
+| `gap` | `gap` | number? | Column gap. |
+
+Children:
+
+- `first` is the first region.
+- `second` is the second region.
+
+## kit.comparison
+
+Titled before/after regions with adaptive stacking.
+
+Lua `kit.comparison(props, children)` · Node `<Comparison />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `first_title` | `firstTitle` | string? | First title; Before by default. |
+| `second_title` | `secondTitle` | string? | Second title; After by default. |
+| `collapse_at` | `collapseAt` | number? | Stack below this width, 760 by default. |
+
+Children:
+
+- `first` is the first composition.
+- `second` is the second composition.
+
+## kit.quote
+
+A quotation in the title face with an optional attribution.
+
+Lua `kit.quote(props)` · Node `<Quote />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `text` | `text` | string | The quotation. |
+| `attribution` | `attribution` | string? | Its author or source. |
+| `size` | `size` | number? | Override reading size. |
+
+## kit.figure
+
+Any visual with a wrapping caption in the project's caption size.
+
+Lua `kit.figure(props, children)` · Node `<Figure />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `caption` | `caption` | string? | The caption. |
+
+Children:
+
+- the list part is the visual, such as an image, SVG, chart or custom view.
+
+## kit.visibility
+
+Retained content whose visibility can change without changing layout. Invisible content has no paint, pointer input, accessibility presence or Tab stops.
+
+Lua `kit.visibility(props, children)` · Node `<Visibility />`
+
+| prop | Node | type | description |
+|---|---|---|---|
+| `visible` | `visible` | boolean | Whether the content is visible and interactive. |
+| `collapse` | `collapse` | boolean? | Remove layout space too when invisible; otherwise reserve it. |
+
+Children:
+
+- the list part is retained even when invisible.
 
 ## kit.button
 
@@ -516,6 +653,8 @@ Lua `kit.stat(props)` · Node `<Stat />`
 |---|---|---|---|
 | `label` | `label` | string | What it counts. |
 | `value` | `value` | string | The number, as text. |
+| `display` | `display` | boolean? | Use the project's display size for a presentation or headline statistic. |
+| `size` | `size` | number? | Override the value size in logical px. |
 | `delta` | `delta` | string? | How it moved: `+12%`. |
 | `tone` | `tone` | [Tone](#tone)? | Whether the move is good news. |
 
@@ -528,6 +667,10 @@ Lua `kit.code(props)` · Node `<Code />`
 | prop | Node | type | description |
 |---|---|---|---|
 | `text` | `text` | string | The text. |
+| `language` | `language` | string? | Syntax highlighting: lua, teal, javascript, typescript, json, rust, python, c, css, shell or sql. Other languages remain plain text. |
+| `highlight_lines` | `highlightLines` | {integer}? | One-based line numbers to emphasize. |
+| `size` | `size` | number? | Code size in logical px; project code size when omitted. |
+| `line_height` | `lineHeight` | number? | Line height; derived from the code size when omitted. |
 | `wrap` | `wrap` | boolean? | Wraps rather than scrolls sideways. |
 | `max_lines` | `maxLines` | integer? | At most this many lines high, the rest scrolled to. |
 | `line_numbers` | `lineNumbers` | boolean? | Each line's number in a gutter beside it, outside the selection (not with `wrap`). |
@@ -839,6 +982,18 @@ The look: Ledger's paper and ink, Phosphor's terminal, or Neutral's quiet chrome
 
 One of `"ledger"`, `"phosphor"`, `"neutral"`.
 
+### ContentTheme
+
+A settings preset, with project fonts, roles and sizes applied over it. Independent of content layout.
+
+One of `"paper"`, `"signal"`, `"stage"`, `"minimal"`.
+
+### ContentLayout
+
+A reusable adaptive composition, independent of the content theme.
+
+One of `"editorial"`, `"briefing"`, `"split"`, `"minimal"`.
+
 ### Density
 
 Row and control heights: 22 and 26 px, or 20 and 22 px compact.
@@ -886,6 +1041,24 @@ One of `"single"`, `"multiple"`, `"none"`.
 What a skeleton stands in for: lines of text, a block (an image, a chart), or a circle (an avatar).
 
 One of `"text"`, `"block"`, `"circle"`.
+
+### Sizes
+
+Project typography and content spacing in logical px. Omitted fields keep the preset or skin default. Content sizes do not enlarge tool controls.
+
+| field | Node | type | description |
+|---|---|---|---|
+| `body` | `body` | number? | Tool body text. |
+| `label` | `label` | number? | Tool labels. |
+| `title` | `title` | number? | Small titles and level-two headings. |
+| `heading` | `heading` | number? | Level-one content headings. |
+| `display` | `display` | number? | Large statistics and display text. |
+| `content` | `content` | number? | Reading text. |
+| `caption` | `caption` | number? | Figure captions. |
+| `code` | `code` | number? | Code text. |
+| `chart` | `chart` | number? | Chart axis and data labels. |
+| `gap` | `gap` | number? | Default content spacing. |
+| `pad` | `pad` | number? | Default content inset. |
 
 ### Choice
 

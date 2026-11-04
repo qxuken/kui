@@ -120,6 +120,49 @@ static inline KuiStr kit_skin_name(KitSkin v) {
 }
 
 /*
+ * A settings preset, with project fonts, roles and sizes applied over it.
+ * Independent of content layout.
+ */
+typedef enum KitContentTheme {
+    KIT_CONTENT_THEME_UNSET = 0,
+    KIT_CONTENT_THEME_PAPER,
+    KIT_CONTENT_THEME_SIGNAL,
+    KIT_CONTENT_THEME_STAGE,
+    KIT_CONTENT_THEME_MINIMAL,
+} KitContentTheme;
+
+static inline KuiStr kit_content_theme_name(KitContentTheme v) {
+    switch (v) {
+    case KIT_CONTENT_THEME_PAPER: return KUI_STR("paper");
+    case KIT_CONTENT_THEME_SIGNAL: return KUI_STR("signal");
+    case KIT_CONTENT_THEME_STAGE: return KUI_STR("stage");
+    case KIT_CONTENT_THEME_MINIMAL: return KUI_STR("minimal");
+    default: return KUI_STR("");
+    }
+}
+
+/*
+ * A reusable adaptive composition, independent of the content theme.
+ */
+typedef enum KitContentLayout {
+    KIT_CONTENT_LAYOUT_UNSET = 0,
+    KIT_CONTENT_LAYOUT_EDITORIAL,
+    KIT_CONTENT_LAYOUT_BRIEFING,
+    KIT_CONTENT_LAYOUT_SPLIT,
+    KIT_CONTENT_LAYOUT_MINIMAL,
+} KitContentLayout;
+
+static inline KuiStr kit_content_layout_name(KitContentLayout v) {
+    switch (v) {
+    case KIT_CONTENT_LAYOUT_EDITORIAL: return KUI_STR("editorial");
+    case KIT_CONTENT_LAYOUT_BRIEFING: return KUI_STR("briefing");
+    case KIT_CONTENT_LAYOUT_SPLIT: return KUI_STR("split");
+    case KIT_CONTENT_LAYOUT_MINIMAL: return KUI_STR("minimal");
+    default: return KUI_STR("");
+    }
+}
+
+/*
  * Row and control heights: 22 and 26 px, or 20 and 22 px compact.
  */
 typedef enum KitDensity {
@@ -274,6 +317,84 @@ static inline KuiStr kit_skeleton_shape_name(KitSkeletonShape v) {
     case KIT_SKELETON_SHAPE_CIRCLE: return KUI_STR("circle");
     default: return KUI_STR("");
     }
+}
+
+/*
+ * Project typography and content spacing in logical px. Omitted fields keep the
+ * preset or skin default. Content sizes do not enlarge tool controls.
+ */
+typedef struct KitSizes {
+    /*
+     * Tool body text.
+     */
+    double body;
+    bool body_set;
+    /*
+     * Tool labels.
+     */
+    double label;
+    bool label_set;
+    /*
+     * Small titles and level-two headings.
+     */
+    double title;
+    bool title_set;
+    /*
+     * Level-one content headings.
+     */
+    double heading;
+    bool heading_set;
+    /*
+     * Large statistics and display text.
+     */
+    double display;
+    bool display_set;
+    /*
+     * Reading text.
+     */
+    double content;
+    bool content_set;
+    /*
+     * Figure captions.
+     */
+    double caption;
+    bool caption_set;
+    /*
+     * Code text.
+     */
+    double code;
+    bool code_set;
+    /*
+     * Chart axis and data labels.
+     */
+    double chart;
+    bool chart_set;
+    /*
+     * Default content spacing.
+     */
+    double gap;
+    bool gap_set;
+    /*
+     * Default content inset.
+     */
+    double pad;
+    bool pad_set;
+} KitSizes;
+
+static inline KuiValue *kit_sizes_value(const KitSizes *p) {
+    KuiValue *m = kui_value_map();
+    if (p->body_set) kui_value_map_set(m, KUI_STR("body"), kui_value_float(p->body));
+    if (p->label_set) kui_value_map_set(m, KUI_STR("label"), kui_value_float(p->label));
+    if (p->title_set) kui_value_map_set(m, KUI_STR("title"), kui_value_float(p->title));
+    if (p->heading_set) kui_value_map_set(m, KUI_STR("heading"), kui_value_float(p->heading));
+    if (p->display_set) kui_value_map_set(m, KUI_STR("display"), kui_value_float(p->display));
+    if (p->content_set) kui_value_map_set(m, KUI_STR("content"), kui_value_float(p->content));
+    if (p->caption_set) kui_value_map_set(m, KUI_STR("caption"), kui_value_float(p->caption));
+    if (p->code_set) kui_value_map_set(m, KUI_STR("code"), kui_value_float(p->code));
+    if (p->chart_set) kui_value_map_set(m, KUI_STR("chart"), kui_value_float(p->chart));
+    if (p->gap_set) kui_value_map_set(m, KUI_STR("gap"), kui_value_float(p->gap));
+    if (p->pad_set) kui_value_map_set(m, KUI_STR("pad"), kui_value_float(p->pad));
+    return m;
 }
 
 /*
@@ -559,6 +680,12 @@ typedef struct KitSettings {
      */
     KitSkin skin;
     /*
+     * Optional content settings preset: Paper, Signal, Stage or Minimal.
+     * Explicit skin, fonts, roles and individual sizes override the preset;
+     * layout stays the author's.
+     */
+    KitContentTheme theme;
+    /*
      * Comfortable when left out.
      */
     KitDensity density;
@@ -613,6 +740,21 @@ typedef struct KitSettings {
      */
     const KuiStr *font_data;
     size_t font_data_count;
+    /*
+     * Content heading/quote families; the preset's, else the UI face.
+     */
+    const KuiStr *font_title;
+    size_t font_title_count;
+    /*
+     * Reading-text families; the UI face when omitted.
+     */
+    const KuiStr *font_content;
+    size_t font_content_count;
+    /*
+     * Project typography and content spacing. Fields merge over the preset
+     * individually; sizes are logical px.
+     */
+    const KitSizes *sizes;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -622,6 +764,7 @@ typedef struct KitSettings {
 static inline KuiValue *kit_settings_props(const KitSettings *p) {
     KuiValue *m = kui_value_map();
     if (p->skin != 0) kui_value_map_set(m, KUI_STR("skin"), kui_value_str(kit_skin_name(p->skin)));
+    if (p->theme != 0) kui_value_map_set(m, KUI_STR("theme"), kui_value_str(kit_content_theme_name(p->theme)));
     if (p->density != 0) kui_value_map_set(m, KUI_STR("density"), kui_value_str(kit_density_name(p->density)));
     if (p->shadows_set) kui_value_map_set(m, KUI_STR("shadows"), kui_value_bool(p->shadows));
     if (p->radius_set) kui_value_map_set(m, KUI_STR("radius"), kui_value_float(p->radius));
@@ -639,6 +782,17 @@ static inline KuiValue *kit_settings_props(const KitSettings *p) {
         for (size_t i = 0; i < p->font_data_count; i++) kui_value_list_push(list, kui_value_str(p->font_data[i]));
         kui_value_map_set(m, KUI_STR("font_data"), list);
     }
+    if (p->font_title != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->font_title_count; i++) kui_value_list_push(list, kui_value_str(p->font_title[i]));
+        kui_value_map_set(m, KUI_STR("font_title"), list);
+    }
+    if (p->font_content != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->font_content_count; i++) kui_value_list_push(list, kui_value_str(p->font_content[i]));
+        kui_value_map_set(m, KUI_STR("font_content"), list);
+    }
+    if (p->sizes != NULL) kui_value_map_set(m, KUI_STR("sizes"), kit_sizes_value(p->sizes));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -721,6 +875,14 @@ static inline int32_t kit_panel_with(KuiCtx *ctx, const KitPanel *p, KuiChildren
  * side.
  */
 typedef struct KitToolbar {
+    /*
+     * Opt into the native drag strip under custom window chrome. Reserves the
+     * OS window controls and keeps gaps draggable. False by default;
+     * native-decorated windows keep the normal content toolbar. Configure
+     * custom chrome and a medium/tall titlebar in the host when opting in.
+     */
+    bool window_chrome;
+    bool window_chrome_set;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -729,6 +891,7 @@ typedef struct KitToolbar {
 
 static inline KuiValue *kit_toolbar_props(const KitToolbar *p) {
     KuiValue *m = kui_value_map();
+    if (p->window_chrome_set) kui_value_map_set(m, KUI_STR("window_chrome"), kui_value_bool(p->window_chrome));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -982,6 +1145,441 @@ static inline KuiValue *kit_divider_props(const KitDivider *p) {
 static inline int32_t kit_divider(KuiCtx *ctx, const KitDivider *p) {
     KuiValue *props = kit_divider_props(p);
     int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/divider"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * An adaptive content heading in the project's title face.
+ */
+typedef struct KitHeading {
+    /*
+     * The heading.
+     */
+    KuiStr text;
+    /*
+     * Hierarchy, 1 to 6; 1 by default.
+     */
+    int64_t level;
+    bool level_set;
+    /*
+     * Override the theme's heading size.
+     */
+    double size;
+    bool size_set;
+    /*
+     * A family name or family token.
+     */
+    KuiStr family;
+    /*
+     * Override the foreground role.
+     */
+    uint32_t color; /* 0xRRGGBBAA, 0 = unset */
+    /*
+     * Bold by default.
+     */
+    bool bold;
+    bool bold_set;
+    /*
+     * Line height in logical px.
+     */
+    double line_height;
+    bool line_height_set;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitHeading;
+
+static inline KuiValue *kit_heading_props(const KitHeading *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("text"), kui_value_str(p->text));
+    if (p->level_set) kui_value_map_set(m, KUI_STR("level"), kui_value_int(p->level));
+    if (p->size_set) kui_value_map_set(m, KUI_STR("size"), kui_value_float(p->size));
+    if (p->family.len > 0) kui_value_map_set(m, KUI_STR("family"), kui_value_str(p->family));
+    if (p->color != 0) kui_value_map_set(m, KUI_STR("color"), kui_value_int((int64_t)p->color));
+    if (p->bold_set) kui_value_map_set(m, KUI_STR("bold"), kui_value_bool(p->bold));
+    if (p->line_height_set) kui_value_map_set(m, KUI_STR("line_height"), kui_value_float(p->line_height));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/heading: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_heading(KuiCtx *ctx, const KitHeading *p) {
+    KuiValue *props = kit_heading_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/heading"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * Wrapping reading text in the project's content face.
+ */
+typedef struct KitParagraph {
+    /*
+     * The text.
+     */
+    KuiStr text;
+    /*
+     * Override the reading size.
+     */
+    double size;
+    bool size_set;
+    /*
+     * A family name or family token.
+     */
+    KuiStr family;
+    /*
+     * Override the foreground role.
+     */
+    uint32_t color; /* 0xRRGGBBAA, 0 = unset */
+    /*
+     * Line height in logical px.
+     */
+    double line_height;
+    bool line_height_set;
+    /*
+     * Allow selecting and copying its text.
+     */
+    bool selectable;
+    bool selectable_set;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitParagraph;
+
+static inline KuiValue *kit_paragraph_props(const KitParagraph *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("text"), kui_value_str(p->text));
+    if (p->size_set) kui_value_map_set(m, KUI_STR("size"), kui_value_float(p->size));
+    if (p->family.len > 0) kui_value_map_set(m, KUI_STR("family"), kui_value_str(p->family));
+    if (p->color != 0) kui_value_map_set(m, KUI_STR("color"), kui_value_int((int64_t)p->color));
+    if (p->line_height_set) kui_value_map_set(m, KUI_STR("line_height"), kui_value_float(p->line_height));
+    if (p->selectable_set) kui_value_map_set(m, KUI_STR("selectable"), kui_value_bool(p->selectable));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/paragraph: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_paragraph(KuiCtx *ctx, const KitParagraph *p) {
+    KuiValue *props = kit_paragraph_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/paragraph"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * A reading composition with project spacing, optional width limit and
+ * title/section centering.
+ */
+typedef struct KitContent {
+    /*
+     * Layout preset; ordinary reading flow if omitted.
+     */
+    KitContentLayout layout;
+    /*
+     * Optional composition heading.
+     */
+    KuiStr title;
+    /*
+     * Optional reading lead.
+     */
+    KuiStr subtitle;
+    /*
+     * Optional small introductory label.
+     */
+    KuiStr eyebrow;
+    /*
+     * title or section centers the content vertically; other values use regular
+     * flow.
+     */
+    KuiStr preset;
+    /*
+     * Take available height.
+     */
+    bool grow;
+    bool grow_set;
+    /*
+     * Maximum reading width.
+     */
+    double max_width;
+    bool max_width_set;
+    /*
+     * Inset; theme default if omitted.
+     */
+    double pad;
+    bool pad_set;
+    /*
+     * Spacing; theme default if omitted.
+     */
+    double gap;
+    bool gap_set;
+    /*
+     * Optional background.
+     */
+    uint32_t bg; /* 0xRRGGBBAA, 0 = unset */
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitContent;
+
+static inline KuiValue *kit_content_props(const KitContent *p) {
+    KuiValue *m = kui_value_map();
+    if (p->layout != 0) kui_value_map_set(m, KUI_STR("layout"), kui_value_str(kit_content_layout_name(p->layout)));
+    if (p->title.len > 0) kui_value_map_set(m, KUI_STR("title"), kui_value_str(p->title));
+    if (p->subtitle.len > 0) kui_value_map_set(m, KUI_STR("subtitle"), kui_value_str(p->subtitle));
+    if (p->eyebrow.len > 0) kui_value_map_set(m, KUI_STR("eyebrow"), kui_value_str(p->eyebrow));
+    if (p->preset.len > 0) kui_value_map_set(m, KUI_STR("preset"), kui_value_str(p->preset));
+    if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
+    if (p->max_width_set) kui_value_map_set(m, KUI_STR("max_width"), kui_value_float(p->max_width));
+    if (p->pad_set) kui_value_map_set(m, KUI_STR("pad"), kui_value_float(p->pad));
+    if (p->gap_set) kui_value_map_set(m, KUI_STR("gap"), kui_value_float(p->gap));
+    if (p->bg != 0) kui_value_map_set(m, KUI_STR("bg"), kui_value_int((int64_t)p->bg));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/content: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_content(KuiCtx *ctx, const KitContent *p) {
+    KuiValue *props = kit_content_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/content"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/* kit_content with your children: `children` builds the group it asks for. */
+static inline int32_t kit_content_with(KuiCtx *ctx, const KitContent *p, KuiChildrenFn children,
+    void *user) {
+    KuiValue *props = kit_content_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/content"), props, children, user);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * Two content regions that stack when the available width is narrow.
+ */
+typedef struct KitColumns {
+    /*
+     * Stack below this width, 760 by default.
+     */
+    double collapse_at;
+    bool collapse_at_set;
+    /*
+     * Column gap.
+     */
+    double gap;
+    bool gap_set;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitColumns;
+
+static inline KuiValue *kit_columns_props(const KitColumns *p) {
+    KuiValue *m = kui_value_map();
+    if (p->collapse_at_set) kui_value_map_set(m, KUI_STR("collapse_at"), kui_value_float(p->collapse_at));
+    if (p->gap_set) kui_value_map_set(m, KUI_STR("gap"), kui_value_float(p->gap));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/columns: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_columns(KuiCtx *ctx, const KitColumns *p) {
+    KuiValue *props = kit_columns_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/columns"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/* kit_columns with your children: `children` builds the group it asks for. */
+static inline int32_t kit_columns_with(KuiCtx *ctx, const KitColumns *p, KuiChildrenFn children,
+    void *user) {
+    KuiValue *props = kit_columns_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/columns"), props, children, user);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * Titled before/after regions with adaptive stacking.
+ */
+typedef struct KitComparison {
+    /*
+     * First title; Before by default.
+     */
+    KuiStr first_title;
+    /*
+     * Second title; After by default.
+     */
+    KuiStr second_title;
+    /*
+     * Stack below this width, 760 by default.
+     */
+    double collapse_at;
+    bool collapse_at_set;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitComparison;
+
+static inline KuiValue *kit_comparison_props(const KitComparison *p) {
+    KuiValue *m = kui_value_map();
+    if (p->first_title.len > 0) kui_value_map_set(m, KUI_STR("first_title"), kui_value_str(p->first_title));
+    if (p->second_title.len > 0) kui_value_map_set(m, KUI_STR("second_title"), kui_value_str(p->second_title));
+    if (p->collapse_at_set) kui_value_map_set(m, KUI_STR("collapse_at"), kui_value_float(p->collapse_at));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/comparison: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_comparison(KuiCtx *ctx, const KitComparison *p) {
+    KuiValue *props = kit_comparison_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/comparison"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/* kit_comparison with your children: `children` builds the group it asks for. */
+static inline int32_t kit_comparison_with(KuiCtx *ctx, const KitComparison *p, KuiChildrenFn children,
+    void *user) {
+    KuiValue *props = kit_comparison_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/comparison"), props, children, user);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * A quotation in the title face with an optional attribution.
+ */
+typedef struct KitQuote {
+    /*
+     * The quotation.
+     */
+    KuiStr text;
+    /*
+     * Its author or source.
+     */
+    KuiStr attribution;
+    /*
+     * Override reading size.
+     */
+    double size;
+    bool size_set;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitQuote;
+
+static inline KuiValue *kit_quote_props(const KitQuote *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("text"), kui_value_str(p->text));
+    if (p->attribution.len > 0) kui_value_map_set(m, KUI_STR("attribution"), kui_value_str(p->attribution));
+    if (p->size_set) kui_value_map_set(m, KUI_STR("size"), kui_value_float(p->size));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/quote: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_quote(KuiCtx *ctx, const KitQuote *p) {
+    KuiValue *props = kit_quote_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/quote"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * Any visual with a wrapping caption in the project's caption size.
+ */
+typedef struct KitFigure {
+    /*
+     * The caption.
+     */
+    KuiStr caption;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitFigure;
+
+static inline KuiValue *kit_figure_props(const KitFigure *p) {
+    KuiValue *m = kui_value_map();
+    if (p->caption.len > 0) kui_value_map_set(m, KUI_STR("caption"), kui_value_str(p->caption));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/figure: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_figure(KuiCtx *ctx, const KitFigure *p) {
+    KuiValue *props = kit_figure_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/figure"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/* kit_figure with your children: `children` builds the group it asks for. */
+static inline int32_t kit_figure_with(KuiCtx *ctx, const KitFigure *p, KuiChildrenFn children,
+    void *user) {
+    KuiValue *props = kit_figure_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/figure"), props, children, user);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * Retained content whose visibility can change without changing layout.
+ * Invisible content has no paint, pointer input, accessibility presence or Tab
+ * stops.
+ */
+typedef struct KitVisibility {
+    /*
+     * Whether the content is visible and interactive.
+     */
+    bool visible;
+    /*
+     * Remove layout space too when invisible; otherwise reserve it.
+     */
+    bool collapse;
+    bool collapse_set;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitVisibility;
+
+static inline KuiValue *kit_visibility_props(const KitVisibility *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("visible"), kui_value_bool(p->visible));
+    if (p->collapse_set) kui_value_map_set(m, KUI_STR("collapse"), kui_value_bool(p->collapse));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/visibility: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_visibility(KuiCtx *ctx, const KitVisibility *p) {
+    KuiValue *props = kit_visibility_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/visibility"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/* kit_visibility with your children: `children` builds the group it asks for. */
+static inline int32_t kit_visibility_with(KuiCtx *ctx, const KitVisibility *p, KuiChildrenFn children,
+    void *user) {
+    KuiValue *props = kit_visibility_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/visibility"), props, children, user);
     kui_value_free(props);
     return fill;
 }
@@ -2380,6 +2978,16 @@ typedef struct KitStat {
      */
     KuiStr value;
     /*
+     * Use the project's display size for a presentation or headline statistic.
+     */
+    bool display;
+    bool display_set;
+    /*
+     * Override the value size in logical px.
+     */
+    double size;
+    bool size_set;
+    /*
      * How it moved: `+12%`.
      */
     KuiStr delta;
@@ -2397,6 +3005,8 @@ static inline KuiValue *kit_stat_props(const KitStat *p) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
+    if (p->display_set) kui_value_map_set(m, KUI_STR("display"), kui_value_bool(p->display));
+    if (p->size_set) kui_value_map_set(m, KUI_STR("size"), kui_value_float(p->size));
     if (p->delta.len > 0) kui_value_map_set(m, KUI_STR("delta"), kui_value_str(p->delta));
     if (p->tone != 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(kit_tone_name(p->tone)));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
@@ -2420,6 +3030,26 @@ typedef struct KitCode {
      * The text.
      */
     KuiStr text;
+    /*
+     * Syntax highlighting: lua, teal, javascript, typescript, json, rust,
+     * python, c, css, shell or sql. Other languages remain plain text.
+     */
+    KuiStr language;
+    /*
+     * One-based line numbers to emphasize.
+     */
+    const int64_t *highlight_lines;
+    size_t highlight_lines_count;
+    /*
+     * Code size in logical px; project code size when omitted.
+     */
+    double size;
+    bool size_set;
+    /*
+     * Line height; derived from the code size when omitted.
+     */
+    double line_height;
+    bool line_height_set;
     /*
      * Wraps rather than scrolls sideways.
      */
@@ -2455,6 +3085,14 @@ typedef struct KitCode {
 static inline KuiValue *kit_code_props(const KitCode *p) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("text"), kui_value_str(p->text));
+    if (p->language.len > 0) kui_value_map_set(m, KUI_STR("language"), kui_value_str(p->language));
+    if (p->highlight_lines != NULL) {
+        KuiValue *list = kui_value_list();
+        for (size_t i = 0; i < p->highlight_lines_count; i++) kui_value_list_push(list, kui_value_int(p->highlight_lines[i]));
+        kui_value_map_set(m, KUI_STR("highlight_lines"), list);
+    }
+    if (p->size_set) kui_value_map_set(m, KUI_STR("size"), kui_value_float(p->size));
+    if (p->line_height_set) kui_value_map_set(m, KUI_STR("line_height"), kui_value_float(p->line_height));
     if (p->wrap_set) kui_value_map_set(m, KUI_STR("wrap"), kui_value_bool(p->wrap));
     if (p->max_lines_set) kui_value_map_set(m, KUI_STR("max_lines"), kui_value_int(p->max_lines));
     if (p->line_numbers_set) kui_value_map_set(m, KUI_STR("line_numbers"), kui_value_bool(p->line_numbers));

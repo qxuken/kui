@@ -215,6 +215,8 @@ pub struct Core {
     pub stats: FrameStats,
     /// Host facts pushed by the frame driver (refresh rate, focus).
     pub env: Env,
+    /// Display names supplied by a window driver; empty headlessly.
+    pub display_names: Vec<String>,
     /// Where this window's palette comes from; see [`crate::theme`].
     /// `Derived` unless the app said otherwise, so an app that never
     /// mentions themes still follows the OS.
@@ -1461,6 +1463,7 @@ impl Core {
             depart: DepartStore::default(),
             stats: FrameStats::default(),
             env: Env::default(),
+            display_names: Vec::new(),
             theme_source: ThemeSource::Derived,
             theme: Theme::default(),
             theme_gen: 0,

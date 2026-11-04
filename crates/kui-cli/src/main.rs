@@ -93,6 +93,9 @@ run options:
   --shot FILE    no window: write a frame to FILE (.png) and end
   --after MS     with --shot, how long to run first (default 800)
   --record MS    with --shot, record MS of frames into FILE (.gif, .png) instead of one
+  --export DIR   export a Kit presentation as numbered PNGs and manifest.json
+  --steps        with --export, capture every reveal step (default: final steps)
+  --time MS      with --export, pin the snapshot clock (default 0)
   --appearance light|dark
                  pin the light or dark appearance over the OS's (headless has none of its own)
   --platform macos|windows|linux
@@ -119,6 +122,10 @@ struct Args {
     /// monitor's).
     scale: f32,
     shot: Option<PathBuf>,
+    export: Option<PathBuf>,
+    export_steps: bool,
+    export_time: f64,
+    capture_time: Option<f64>,
     after: f64,
     record: Option<f64>,
     /// After `--`: the app's own arguments.
@@ -142,6 +149,10 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
         size: None,
         scale: 1.0,
         shot: None,
+        export: None,
+        export_steps: false,
+        export_time: 0.0,
+        capture_time: None,
         after: 800.0,
         record: None,
         rest: Vec::new(),
@@ -200,6 +211,28 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
                     .parse()
                     .map_err(|_| format!("--after: bad milliseconds {v}"))?;
             }
+            "--export" => {
+                a.export = Some(PathBuf::from(
+                    it.next().ok_or("--export needs a directory")?,
+                ));
+                a.headless = true;
+            }
+            "--steps" => a.export_steps = true,
+            "--time" => {
+                a.export_time = it
+                    .next()
+                    .ok_or("--time needs milliseconds")?
+                    .parse()
+                    .map_err(|_| "bad --time")?;
+            }
+            "--capture-time" => {
+                a.capture_time = Some(
+                    it.next()
+                        .ok_or("--capture-time needs milliseconds")?
+                        .parse()
+                        .map_err(|_| "bad --capture-time")?,
+                );
+            }
             "--appearance" => {
                 a.appearance = match it.next().as_deref() {
                     Some("light") => kui_native::Appearance::Light,
@@ -241,6 +274,17 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
                 }
             }
         }
+    }
+    if !a.export_time.is_finite()
+        || a.export_time < 0.0
+        || a.capture_time.is_some_and(|t| !t.is_finite() || t < 0.0)
+    {
+        return Err("snapshot time must be finite and nonnegative".into());
+    }
+    if a.size
+        .is_some_and(|(w, h)| !w.is_finite() || !h.is_finite() || w <= 0.0 || h <= 0.0)
+    {
+        return Err("--size needs positive dimensions".into());
     }
     if a.cmd == "play" && path.is_some() {
         return Err("kui play takes no path: it opens the gallery carried in this runner".into());
@@ -373,7 +417,20 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
         kui_native::set_runner(exe);
     }
     project::load_dotenv(&project.dir);
-    modules::set_args(args.rest.clone());
+    let mut app_args = args.rest.clone();
+    if args.export.is_some() {
+        let (w, h) = args.size.unwrap_or(project.size);
+        app_args.extend([
+            "--presentation-plan".into(),
+            "--presentation-time".into(),
+            args.export_time.to_string(),
+            "--presentation-width".into(),
+            w.to_string(),
+            "--presentation-height".into(),
+            h.to_string(),
+        ]);
+    }
+    modules::set_args(app_args);
     modules::set_name(project.name.clone());
     modules::set_app(modules::AppInfo {
         id: project.id.clone(),
@@ -416,6 +473,9 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
         return Ok(code);
     }
     let (ext, baseline, load_error) = loaded?;
+    if let Some(directory) = &args.export {
+        return export_presentation(args, &project, ext.lua(), directory);
+    }
     let lua = ext.lua().clone();
     let kit =
         kit::extension().map_err(|e| format!("Kit failed to load (a bug in the runner): {e}"))?;
@@ -430,7 +490,9 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
         } else {
             std::env::current_dir().unwrap_or_default().join(p)
         };
-        host::Shot::new(p, args.after).recording(args.record)
+        host::Shot::new(p, args.after)
+            .recording(args.record)
+            .fixed_time(args.capture_time)
     });
     let runner = host::Runner::new(
         lua,
@@ -497,6 +559,101 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
         launcher.size(w, h).run(runner).map_err(|e| e.to_string())?;
     }
     Ok(shared.exit.lock().unwrap().unwrap_or(0))
+}
+
+/// Each exported composition gets a fresh process/host state. Preview
+/// callbacks and fixed clocks are shared with the normal deck contract;
+/// live activation hooks never run, and capture errors identify the target.
+fn export_presentation(
+    args: &Args,
+    project: &project::Project,
+    lua: &mlua::Lua,
+    directory: &std::path::Path,
+) -> Result<i32, String> {
+    let export = || -> mlua::Result<()> {
+        let encode: mlua::Function = lua
+            .globals()
+            .get::<mlua::Table>("kui")?
+            .get::<mlua::Table>("json")?
+            .get("encode")?;
+        let decode: mlua::Function = lua
+            .globals()
+            .get::<mlua::Table>("kui")?
+            .get::<mlua::Table>("json")?
+            .get("decode")?;
+        let plan_fn: mlua::Function = lua
+            .globals()
+            .get("__kit_export_plan")
+            .map_err(|_| mlua::Error::runtime("--export requires a kit.presentation deck"))?;
+        let plan: mlua::Table = decode.call(plan_fn.call::<String>(args.export_steps)?)?;
+        let directory = std::path::absolute(directory).map_err(mlua::Error::external)?;
+        std::fs::create_dir_all(&directory).map_err(mlua::Error::external)?;
+        let exe = std::env::current_exe().map_err(mlua::Error::external)?;
+        let (w, h) = args.size.unwrap_or(project.size);
+        let appearance = if args.appearance == kui_native::Appearance::Dark {
+            "dark"
+        } else {
+            "light"
+        };
+        for (ordinal, item) in plan.clone().sequence_values::<mlua::Table>().enumerate() {
+            let item = item?;
+            let key: String = item.get("key")?;
+            let step: u32 = item.get("step")?;
+            let image = format!("{:04}.png", ordinal + 1);
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.arg("run")
+                .arg(&args.path)
+                .arg("--shot")
+                .arg(directory.join(&image))
+                .args([
+                    "--after",
+                    "0",
+                    "--size",
+                    &format!("{w}x{h}"),
+                    "--scale",
+                    &args.scale.to_string(),
+                    "--appearance",
+                    appearance,
+                    "--capture-time",
+                    &args.export_time.to_string(),
+                    "--",
+                ])
+                .args(&args.rest)
+                .args([
+                    "--presentation-capture",
+                    &key,
+                    "--presentation-step",
+                    &step.to_string(),
+                    "--presentation-time",
+                    &args.export_time.to_string(),
+                    "--presentation-width",
+                    &w.to_string(),
+                    "--presentation-height",
+                    &h.to_string(),
+                ]);
+            let result = cmd.output().map_err(mlua::Error::external)?;
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            if !result.status.success() || stderr.contains("warning [") {
+                return Err(mlua::Error::runtime(format!(
+                    "export slide {key}, step {step}: {stderr}"
+                )));
+            }
+            item.set("image", image)?;
+            item.set("timestamp_ms", args.export_time)?;
+        }
+        let manifest = lua.create_table()?;
+        manifest.set("version", 1)?;
+        manifest.set("width", w)?;
+        manifest.set("height", h)?;
+        manifest.set("scale", args.scale)?;
+        manifest.set("appearance", appearance)?;
+        manifest.set("frames", plan)?;
+        let text: String = encode.call(manifest)?;
+        std::fs::write(directory.join("manifest.json"), text).map_err(mlua::Error::external)?;
+        println!("kui: exported presentation to {}", directory.display());
+        Ok(())
+    };
+    export().map(|()| 0).map_err(|e| e.to_string())
 }
 
 fn check(args: &Args) -> Result<i32, String> {

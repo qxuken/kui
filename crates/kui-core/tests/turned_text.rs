@@ -195,3 +195,49 @@ fn a_sinks_line_and_byte_read_through_a_turn_below_it() {
     assert_eq!(read(0.5, 0.0), upright, "the sink turned");
     assert_eq!(read(0.0, 0.5), upright, "a column inside it turned");
 }
+
+#[test]
+fn enlarged_static_text_uses_higher_resolution_masks_without_changing_layout() {
+    use kui_core::QuadKind;
+    let mut core = Core::new();
+    let mut sample = |scale| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.with(NodeSpec::column().size(100.0, 60.0).scale(scale), |ui| {
+            ui.text(
+                "M",
+                TextStyle {
+                    size: 20.0,
+                    ..TextStyle::default()
+                },
+            );
+        });
+        ui.finish();
+        let (display, _) = core.output();
+        display
+            .quads
+            .iter()
+            .find(|q| {
+                matches!(
+                    q.kind,
+                    QuadKind::GlyphMask | QuadKind::GlyphSubpixel | QuadKind::GlyphColor
+                )
+            })
+            .unwrap()
+            .clone()
+    };
+    let upright = sample(1.0);
+    let enlarged = sample(2.0);
+    assert!(
+        enlarged.uv[2] > upright.uv[2],
+        "the enlarged glyph gets more source pixels"
+    );
+    assert!(
+        (enlarged.rect.w - upright.rect.w).abs() <= 2.0,
+        "the pre-transform glyph keeps its logical size"
+    );
+    assert_eq!(
+        sample(1.0).uv,
+        upright.uv,
+        "returning to scale one recovers the original cached mask"
+    );
+}

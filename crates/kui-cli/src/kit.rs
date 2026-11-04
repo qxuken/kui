@@ -8,6 +8,10 @@ use mlua::Lua;
 /// Kit's modules, as `addons/kit/build.lua` writes them.
 pub const MODULES: &[(&str, &str)] = &[
     ("charts", include_str!("../../../addons/kit/lua/charts.lua")),
+    (
+        "content",
+        include_str!("../../../addons/kit/lua/content.lua"),
+    ),
     ("ctx", include_str!("../../../addons/kit/lua/ctx.lua")),
     ("data", include_str!("../../../addons/kit/lua/data.lua")),
     ("icons", include_str!("../../../addons/kit/lua/icons.lua")),
@@ -27,6 +31,8 @@ pub const MODULES: &[(&str, &str)] = &[
         include_str!("../../../addons/kit/lua/phosphor.lua"),
     ),
     ("skin", include_str!("../../../addons/kit/lua/skin.lua")),
+    ("syntax", include_str!("../../../addons/kit/lua/syntax.lua")),
+    ("themes", include_str!("../../../addons/kit/lua/themes.lua")),
     (
         "waterfall",
         include_str!("../../../addons/kit/lua/waterfall.lua"),
@@ -67,7 +73,12 @@ pub fn extension() -> mlua::Result<LuaExtension> {
 
 /// Makes `require("kit.ui")` Kit's host module in the app's state.
 pub fn install_ui(lua: &Lua) -> mlua::Result<()> {
-    preload(lua, "kit.ui", UI)
+    preload(lua, "kit.ui", UI)?;
+    preload(
+        lua,
+        "kit.presentation",
+        include_str!("../../../addons/kit/host/lua/kit/presentation.lua"),
+    )
 }
 
 #[cfg(test)]

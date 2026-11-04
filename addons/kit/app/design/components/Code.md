@@ -18,6 +18,14 @@ Use a code block for text the user reads or copies verbatim: a response body, a 
 | `copy` | `copy` | boolean? | A Copy button over the text that puts it on the clipboard and says Copied for a moment. |
 | `label` | `label` | string? | A caption over the text (a file's name), and the block's accessible name. |
 
+| `language` | `language` | string? | Lexical highlighting: lua, teal, javascript, typescript, json, rust, python, c, css, shell, sql. Unknown languages remain plain. |
+| `highlight_lines` | `highlightLines` | {integer}? | One-based source lines to emphasize. |
+| `size` | `size` | number? | Font size; otherwise Settings' code size. |
+| `line_height` | `lineHeight` | number? | Explicit line height in px. |
+
+Highlighting preserves source bytes; Copy copies the original source.
+Content themes choose readable code sizes without enlarging the Copy button.
+
 Every component also takes `key` and `fresh`.
 
 ## Do

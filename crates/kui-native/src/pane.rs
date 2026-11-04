@@ -66,6 +66,11 @@ pub(crate) fn sync_env(
         native_controls: pane.native_controls,
         backdrop: pane.backdrop,
     };
+    pane.core.display_names = window
+        .available_monitors()
+        .enumerate()
+        .map(|(i, m)| m.name().unwrap_or_else(|| format!("Display {}", i + 1)))
+        .collect();
     // One device per app, so every pane reads the same state; per-frame
     // because the driver opens it off-thread and closes it when idle, and
     // both of those happen between frames.
@@ -382,6 +387,8 @@ pub(crate) struct Pane {
     /// a Mac, where the press's own click count says.
     #[cfg(not(target_os = "macos"))]
     pub(crate) last_titlebar_press: Option<std::time::Instant>,
+    pub(crate) close_hides: bool,
+    pub(crate) hidden_by_app: bool,
     /// Last cursor position (logical px), for multi-click distance checks.
     pub(crate) cursor: Vec2,
     /// The last Force Touch stage this window reported (0 none, 1 a

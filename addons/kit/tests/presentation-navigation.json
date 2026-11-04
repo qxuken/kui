@@ -1,0 +1,14 @@
+[
+  {"action":"start","key":"a","step":0},
+  {"action":"next","key":"a","step":1},
+  {"action":"next","key":"a","step":2},
+  {"action":"next","key":"b","step":0},
+  {"action":"next","key":"b","step":1},
+  {"action":"previous","key":"b","step":0},
+  {"action":"previous","key":"a","step":2},
+  {"action":"jump","slide":"c","key":"c","step":0},
+  {"action":"next","key":"c","step":0},
+  {"action":"previous","key":"b","step":1},
+  {"action":"jump","slide":"a","key":"a","step":0},
+  {"action":"previous","key":"a","step":0}
+]

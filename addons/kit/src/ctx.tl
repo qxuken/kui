@@ -8,7 +8,8 @@ local skin = require("skin")
 local record Ctx
   env: kui.Env
   s: skin.Settings
-  -- The instance's key: what its own events carry back to find its state.
+  -- Private state identity, including the window: its own events carry
+  -- this back. The core's routing identity remains the event's instance.
   inst: integer
 end
 

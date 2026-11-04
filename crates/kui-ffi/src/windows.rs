@@ -172,6 +172,47 @@ pub extern "C" fn kui_focus_window(ptr: *mut KuiCtx, window: u32) {
     });
 }
 
+/// Request fullscreen; display -1 means the current display, otherwise a
+/// zero-based driver display index. Queues KUI_CMD_SET_FULLSCREEN.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_window_fullscreen(
+    ptr: *mut KuiCtx,
+    window: u32,
+    enabled: bool,
+    display: i32,
+) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_window_fullscreen(
+                WindowId(window),
+                enabled,
+                (display >= 0).then_some(display as u32),
+            );
+        }
+    });
+}
+
+/// Show/hide without discarding the context. Queues KUI_CMD_SET_VISIBLE.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_window_visible(ptr: *mut KuiCtx, window: u32, visible: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_window_visible(WindowId(window), visible);
+        }
+    });
+}
+
+/// OS/chrome close hides while another window remains visible. Explicit
+/// application Quit still ends the session. Queues KUI_CMD_SET_CLOSE_HIDES.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_window_close_hides(ptr: *mut KuiCtx, window: u32, enabled: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_window_close_hides(WindowId(window), enabled);
+        }
+    });
+}
+
 /// Which window this context draws: `env.window.id`, as
 /// `kui_env_set_window` set it — `KUI_WINDOW_MAIN` for the launcher's, and
 /// in a `kui_run` view callback the id of the window being drawn.

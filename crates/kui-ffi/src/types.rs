@@ -2192,6 +2192,12 @@ pub const KUI_CMD_FOCUS: u32 = 7;
 /// changed what it shows. A host that redraws every window on every event
 /// may ignore it.
 pub const KUI_CMD_REDRAW: u32 = 8;
+/// `width`: 0/1 enabled; `height`: display index + 1, or 0 for current.
+pub const KUI_CMD_SET_FULLSCREEN: u32 = 9;
+/// `width`: 0/1 visible. Preserve the window's context when hiding.
+pub const KUI_CMD_SET_VISIBLE: u32 = 10;
+/// `width`: 0/1 enabled. OS close hides while another window stays visible.
+pub const KUI_CMD_SET_CLOSE_HIDES: u32 = 11;
 
 /// One window command (`kui_take_window_command`): what a chrome node
 /// asked for, or what the declared window set's diff decided. Plain data
@@ -2286,6 +2292,23 @@ pub(crate) fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
         }
         WindowCommand::Focus(_) => (KUI_CMD_FOCUS, 0, KuiWindowConfig::default()),
         WindowCommand::Redraw(_) => (KUI_CMD_REDRAW, 0, KuiWindowConfig::default()),
+        WindowCommand::SetFullscreen {
+            enabled, display, ..
+        } => {
+            size = Size::new(
+                if enabled { 1.0 } else { 0.0 },
+                display.map_or(0.0, |d| d as f32 + 1.0),
+            );
+            (KUI_CMD_SET_FULLSCREEN, 0, KuiWindowConfig::default())
+        }
+        WindowCommand::SetVisible { visible, .. } => {
+            size.w = if visible { 1.0 } else { 0.0 };
+            (KUI_CMD_SET_VISIBLE, 0, KuiWindowConfig::default())
+        }
+        WindowCommand::SetCloseHides { enabled, .. } => {
+            size.w = if enabled { 1.0 } else { 0.0 };
+            (KUI_CMD_SET_CLOSE_HIDES, 0, KuiWindowConfig::default())
+        }
     };
     KuiWindowCommand {
         kind,

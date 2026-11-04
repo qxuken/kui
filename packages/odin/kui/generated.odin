@@ -439,6 +439,9 @@ Window_Cmd :: enum u32 {
 	Set_Size = 6, // KUI_CMD_SET_SIZE
 	Focus = 7, // KUI_CMD_FOCUS
 	Redraw = 8, // KUI_CMD_REDRAW
+	Set_Fullscreen = 9, // KUI_CMD_SET_FULLSCREEN
+	Set_Visible = 10, // KUI_CMD_SET_VISIBLE
+	Set_Close_Hides = 11, // KUI_CMD_SET_CLOSE_HIDES
 }
 
 Dismiss_Reason :: enum u32 {
@@ -2846,6 +2849,25 @@ set_window_size :: proc(ui: ^Ui, window: u32, w: f32, h: f32) {
 // Rust: Ui::focus_window.
 focus_window :: proc(ui: ^Ui, window: u32) {
 	c.focus_window(ui, window)
+}
+
+// Requests borderless fullscreen on the current or chosen display.
+// Rust: Ui::set_window_fullscreen.
+set_window_fullscreen :: proc(ui: ^Ui, window: u32, enabled: bool, display: i32) {
+	c.set_window_fullscreen(ui, window, enabled, display)
+}
+
+// Shows or hides a window without discarding its context or session state.
+// Rust: Ui::set_window_visible.
+set_window_visible :: proc(ui: ^Ui, window: u32, visible: bool) {
+	c.set_window_visible(ui, window, visible)
+}
+
+// Opts into OS/chrome close hiding a window while another normal window
+// remains visible.
+// Rust: Ui::set_window_close_hides.
+set_window_close_hides :: proc(ui: ^Ui, window: u32, enabled: bool) {
+	c.set_window_close_hides(ui, window, enabled)
 }
 
 // The driver reports a popup dismissed, with why (ADR 0003 step 4).

@@ -138,7 +138,7 @@ end
 -- Label widths in a chart's label face, kept by text under the settings
 -- in force — replaced whole when the skin moves, so its face is part of
 -- the key: a live axis asks for the same few labels on every tick.
-local LABEL: kui.Props = { size = 10, family = "$kitData" }
+local LABEL: kui.Props = { size = "$kitChartSize", family = "$kitData" }
 local widths: {skin.Settings:{string:number}} = setmetatable({}, { __mode = "k" })
 local widths_n: {skin.Settings:integer} = setmetatable({}, { __mode = "k" })
 
@@ -832,7 +832,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
       float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
       width = "grow", main_align = "end",
       slide = true, transition = GLIDE_MS, enter = fade, exit = { opacity = 0 }, when = { ctx.still() },
-      ctx.data(c, ylabels[i], { size = 10, color = ref(c, "faint") }),
+      ctx.data(c, ylabels[i], { size = "$kitChartSize", color = ref(c, "faint") }),
     }
   end
   -- The x axis: ticks at round steps as close as their labels allow, each
@@ -874,7 +874,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     if shown[i] then
       axis_moving[#axis_moving + 1] = row { key = "x" .. i, width = tick_w[i],
         float = { anchor = "parent", dx = placed[i], dy = 0 },
-        text(tick_label[i], { size = 10, family = "$kitData", color = faint, max_lines = 1 }) }
+        text(tick_label[i], { size = "$kitChartSize", family = "$kitData", color = faint, max_lines = 1 }) }
     end
   end
   axis[#axis + 1] = column(axis_moving)
@@ -1111,7 +1111,7 @@ local function bars(c: Ctx, h: number, values: {number}, names: {string}, kit: s
     end
     if shown then
       plot[#plot + 1] = column { key = "c" .. i, width = "grow", min_width = 0, gap = 2, cross_align = "center",
-        ctx.data(c, said, { size = 10, color = ref(c, "muted"), max_lines = 1 }),
+        ctx.data(c, said, { size = "$kitChartSize", color = ref(c, "muted"), max_lines = 1 }),
         column(t) }
     else
       plot[#plot + 1] = column(t)
@@ -1138,7 +1138,7 @@ local function lying(c: Ctx, values: {number}, names: {string}, kit: string, uni
       label = (names[i] or "") .. ": " .. said, tooltip = (names[i] or "") .. ": " .. said,
       row { width = label_w, min_width = 0, ctx.text(c, names[i] or "", { size = "$kitSizeLabel", max_lines = 1, ellipsis = true }) },
       row { width = "grow", min_width = 0, cross_align = "center", gap = 6, row(bar),
-        ctx.data(c, said, { size = 10, color = ref(c, "muted"), max_lines = 1 }) },
+        ctx.data(c, said, { size = "$kitChartSize", color = ref(c, "muted"), max_lines = 1 }) },
     }
     if kit then r.on_click = act(c, kit, { row = i - 1 }); r.cursor = "pointer"; r.hover_bg = ref(c, "hover") end
     t[#t + 1] = row(r)
@@ -1174,7 +1174,7 @@ function M.bar_chart(c: Ctx, p: P): kui.Node
     while v <= top_tick + step / 2 do
       local s = with_unit(short(v), unit)
       labels[#labels + 1] = s
-      local m = c.env.measure_text(s, { size = 10, family = "$kitData" } as kui.Props, nil)
+      local m = c.env.measure_text(s, { size = "$kitChartSize", family = "$kitData" } as kui.Props, nil)
       if m and m.width > label_w then label_w = m.width end
       v = v + step
     end
@@ -1192,7 +1192,7 @@ function M.bar_chart(c: Ctx, p: P): kui.Node
     scale[#scale + 1] = row {
       float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
       width = scale_w, main_align = "end",
-      ctx.data(c, labels[k], { size = 10, color = ref(c, "faint") }),
+      ctx.data(c, labels[k], { size = "$kitChartSize", color = ref(c, "faint") }),
     }
     if v > 0 then
       plot[#plot + 1] = line { from = { 0, y }, to = { 8192, y }, width = 1, color = ref(c, "rule") }
@@ -1204,7 +1204,7 @@ function M.bar_chart(c: Ctx, p: P): kui.Node
   local axis: kui.Props = { width = "grow", gap = 2, cross_align = "start" }
   for i = 1, n do
     axis[#axis + 1] = row { width = "grow", min_width = 0, main_align = "center",
-      ctx.muted(c, names[i], { size = 10, max_lines = 2, ellipsis = true, wrap = "word" }) }
+      ctx.muted(c, names[i], { size = "$kitChartSize", max_lines = 2, ellipsis = true, wrap = "word" }) }
   end
   local picks = p.on_select ~= nil and "bar_chart.select" or nil
   plot[#plot + 1] = bars(c, h, values, names, picks, top_tick, plot_h, p.values ~= false, unit)
@@ -1251,9 +1251,9 @@ function M.histogram(c: Ctx, p: P): kui.Node
     bars(c, (p.height or 120) as number, b.counts, b.names, nil, nil, nil, false, nil),
     ctx.rule(c, "ink", "$kitHair"),
     row { width = "grow",
-      ctx.data(c, short(b.lo), { size = 10, color = ref(c, "faint") }),
+      ctx.data(c, short(b.lo), { size = "$kitChartSize", color = ref(c, "faint") }),
       ctx.grow(),
-      ctx.data(c, short(b.hi), { size = 10, color = ref(c, "faint") }) },
+      ctx.data(c, short(b.hi), { size = "$kitChartSize", color = ref(c, "faint") }) },
   }
 end
 

@@ -108,6 +108,39 @@ SKIN_NAMES := [Skin]string {
 	.Neutral = "neutral",
 }
 
+// A settings preset, with project fonts, roles and sizes applied over it.
+// Independent of content layout.
+ContentTheme :: enum {
+	Paper,
+	Signal,
+	Stage,
+	Minimal,
+}
+
+@(private)
+CONTENT_THEME_NAMES := [ContentTheme]string {
+	.Paper = "paper",
+	.Signal = "signal",
+	.Stage = "stage",
+	.Minimal = "minimal",
+}
+
+// A reusable adaptive composition, independent of the content theme.
+ContentLayout :: enum {
+	Editorial,
+	Briefing,
+	Split,
+	Minimal,
+}
+
+@(private)
+CONTENT_LAYOUT_NAMES := [ContentLayout]string {
+	.Editorial = "editorial",
+	.Briefing = "briefing",
+	.Split = "split",
+	.Minimal = "minimal",
+}
+
 // Row and control heights: 22 and 26 px, or 20 and 22 px compact.
 Density :: enum {
 	Comfortable,
@@ -223,6 +256,50 @@ SKELETON_SHAPE_NAMES := [SkeletonShape]string {
 	.Text = "text",
 	.Block = "block",
 	.Circle = "circle",
+}
+
+// Project typography and content spacing in logical px. Omitted fields keep the
+// preset or skin default. Content sizes do not enlarge tool controls.
+Sizes :: struct {
+	// Tool body text.
+	body: Maybe(f64),
+	// Tool labels.
+	label: Maybe(f64),
+	// Small titles and level-two headings.
+	title: Maybe(f64),
+	// Level-one content headings.
+	heading: Maybe(f64),
+	// Large statistics and display text.
+	display: Maybe(f64),
+	// Reading text.
+	content: Maybe(f64),
+	// Figure captions.
+	caption: Maybe(f64),
+	// Code text.
+	code: Maybe(f64),
+	// Chart axis and data labels.
+	chart: Maybe(f64),
+	// Default content spacing.
+	gap: Maybe(f64),
+	// Default content inset.
+	pad: Maybe(f64),
+}
+
+@(private)
+sizes_value :: proc(p: Sizes) -> ^c.Value {
+	m := c.value_map()
+	if x, ok := p.body.?; ok do c.value_map_set(m, "body", c.value_float(x))
+	if x, ok := p.label.?; ok do c.value_map_set(m, "label", c.value_float(x))
+	if x, ok := p.title.?; ok do c.value_map_set(m, "title", c.value_float(x))
+	if x, ok := p.heading.?; ok do c.value_map_set(m, "heading", c.value_float(x))
+	if x, ok := p.display.?; ok do c.value_map_set(m, "display", c.value_float(x))
+	if x, ok := p.content.?; ok do c.value_map_set(m, "content", c.value_float(x))
+	if x, ok := p.caption.?; ok do c.value_map_set(m, "caption", c.value_float(x))
+	if x, ok := p.code.?; ok do c.value_map_set(m, "code", c.value_float(x))
+	if x, ok := p.chart.?; ok do c.value_map_set(m, "chart", c.value_float(x))
+	if x, ok := p.gap.?; ok do c.value_map_set(m, "gap", c.value_float(x))
+	if x, ok := p.pad.?; ok do c.value_map_set(m, "pad", c.value_float(x))
+	return m
 }
 
 // A choice: what it is, and what it reads as.
@@ -415,6 +492,10 @@ series_value :: proc(p: Series) -> ^c.Value {
 Settings :: struct {
 	// The skin; Ledger when left out.
 	skin: Maybe(Skin),
+	// Optional content settings preset: Paper, Signal, Stage or Minimal. Explicit
+	// skin, fonts, roles and individual sizes override the preset; layout stays
+	// the author's.
+	theme: Maybe(ContentTheme),
 	// Comfortable when left out.
 	density: Maybe(Density),
 	// The skin's hard shadows; on when left out.
@@ -445,6 +526,13 @@ Settings :: struct {
 	// The data face (ids, numbers, code), as a family list; the skin's when left
 	// out.
 	font_data: []string,
+	// Content heading/quote families; the preset's, else the UI face.
+	font_title: []string,
+	// Reading-text families; the UI face when omitted.
+	font_content: []string,
+	// Project typography and content spacing. Fields merge over the preset
+	// individually; sizes are logical px.
+	sizes: Maybe(Sizes),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -454,6 +542,7 @@ Settings :: struct {
 settings_props :: proc(p: Settings) -> ^c.Value {
 	m := c.value_map()
 	if x, ok := p.skin.?; ok do c.value_map_set(m, "skin", c.value_str(SKIN_NAMES[x]))
+	if x, ok := p.theme.?; ok do c.value_map_set(m, "theme", c.value_str(CONTENT_THEME_NAMES[x]))
 	if x, ok := p.density.?; ok do c.value_map_set(m, "density", c.value_str(DENSITY_NAMES[x]))
 	if x, ok := p.shadows.?; ok do c.value_map_set(m, "shadows", c.value_bool(x))
 	if x, ok := p.radius.?; ok do c.value_map_set(m, "radius", c.value_float(x))
@@ -463,6 +552,9 @@ settings_props :: proc(p: Settings) -> ^c.Value {
 	if x, ok := p.rule.?; ok do c.value_map_set(m, "rule", c.value_float(x))
 	if p.font_ui != nil do c.value_map_set(m, "font_ui", kit_list(p.font_ui, proc(x: string) -> ^c.Value { return c.value_str(x) }))
 	if p.font_data != nil do c.value_map_set(m, "font_data", kit_list(p.font_data, proc(x: string) -> ^c.Value { return c.value_str(x) }))
+	if p.font_title != nil do c.value_map_set(m, "font_title", kit_list(p.font_title, proc(x: string) -> ^c.Value { return c.value_str(x) }))
+	if p.font_content != nil do c.value_map_set(m, "font_content", kit_list(p.font_content, proc(x: string) -> ^c.Value { return c.value_str(x) }))
+	if x, ok := p.sizes.?; ok do c.value_map_set(m, "sizes", sizes_value(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -543,6 +635,11 @@ panel_with :: proc(ui: ^kui.Ui, p: Panel, data: ^$T, children: proc(data: ^T, ui
 // A row of controls at the control height, its trailing group pushed to the far
 // side.
 Toolbar :: struct {
+	// Opt into the native drag strip under custom window chrome. Reserves the OS
+	// window controls and keeps gaps draggable. False by default; native-decorated
+	// windows keep the normal content toolbar. Configure custom chrome and a
+	// medium/tall titlebar in the host when opting in.
+	window_chrome: Maybe(bool),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -551,6 +648,7 @@ Toolbar :: struct {
 @(private)
 toolbar_props :: proc(p: Toolbar) -> ^c.Value {
 	m := c.value_map()
+	if x, ok := p.window_chrome.?; ok do c.value_map_set(m, "window_chrome", c.value_bool(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -857,6 +955,410 @@ divider_in :: proc(ui: ^kui.Ui, namespace: string, p: Divider) -> i32 {
 	defer c.value_free(props)
 	name := concat(namespace, "/divider")
 	return c.component(ui, name, props, nil, nil)
+}
+
+// An adaptive content heading in the project's title face.
+Heading :: struct {
+	// The heading.
+	text: string,
+	// Hierarchy, 1 to 6; 1 by default.
+	level: Maybe(i64),
+	// Override the theme's heading size.
+	size: Maybe(f64),
+	// A family name or family token.
+	family: string,
+	// Override the foreground role.
+	color: Maybe(u32),
+	// Bold by default.
+	bold: Maybe(bool),
+	// Line height in logical px.
+	line_height: Maybe(f64),
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+heading_props :: proc(p: Heading) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "text", c.value_str(p.text))
+	if x, ok := p.level.?; ok do c.value_map_set(m, "level", c.value_int(x))
+	if x, ok := p.size.?; ok do c.value_map_set(m, "size", c.value_float(x))
+	if p.family != "" do c.value_map_set(m, "family", c.value_str(p.family))
+	if x, ok := p.color.?; ok do c.value_map_set(m, "color", c.value_int(i64(x)))
+	if x, ok := p.bold.?; ok do c.value_map_set(m, "bold", c.value_bool(x))
+	if x, ok := p.line_height.?; ok do c.value_map_set(m, "line_height", c.value_float(x))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+heading :: proc(ui: ^kui.Ui, p: Heading) -> i32 {
+	return heading_in(ui, NAMESPACE, p)
+}
+
+heading_in :: proc(ui: ^kui.Ui, namespace: string, p: Heading) -> i32 {
+	props := heading_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/heading")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// Wrapping reading text in the project's content face.
+Paragraph :: struct {
+	// The text.
+	text: string,
+	// Override the reading size.
+	size: Maybe(f64),
+	// A family name or family token.
+	family: string,
+	// Override the foreground role.
+	color: Maybe(u32),
+	// Line height in logical px.
+	line_height: Maybe(f64),
+	// Allow selecting and copying its text.
+	selectable: Maybe(bool),
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+paragraph_props :: proc(p: Paragraph) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "text", c.value_str(p.text))
+	if x, ok := p.size.?; ok do c.value_map_set(m, "size", c.value_float(x))
+	if p.family != "" do c.value_map_set(m, "family", c.value_str(p.family))
+	if x, ok := p.color.?; ok do c.value_map_set(m, "color", c.value_int(i64(x)))
+	if x, ok := p.line_height.?; ok do c.value_map_set(m, "line_height", c.value_float(x))
+	if x, ok := p.selectable.?; ok do c.value_map_set(m, "selectable", c.value_bool(x))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+paragraph :: proc(ui: ^kui.Ui, p: Paragraph) -> i32 {
+	return paragraph_in(ui, NAMESPACE, p)
+}
+
+paragraph_in :: proc(ui: ^kui.Ui, namespace: string, p: Paragraph) -> i32 {
+	props := paragraph_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/paragraph")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// A reading composition with project spacing, optional width limit and
+// title/section centering.
+Content :: struct {
+	// Layout preset; ordinary reading flow if omitted.
+	layout: Maybe(ContentLayout),
+	// Optional composition heading.
+	title: string,
+	// Optional reading lead.
+	subtitle: string,
+	// Optional small introductory label.
+	eyebrow: string,
+	// title or section centers the content vertically; other values use regular
+	// flow.
+	preset: string,
+	// Take available height.
+	grow: Maybe(bool),
+	// Maximum reading width.
+	max_width: Maybe(f64),
+	// Inset; theme default if omitted.
+	pad: Maybe(f64),
+	// Spacing; theme default if omitted.
+	gap: Maybe(f64),
+	// Optional background.
+	bg: Maybe(u32),
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+content_props :: proc(p: Content) -> ^c.Value {
+	m := c.value_map()
+	if x, ok := p.layout.?; ok do c.value_map_set(m, "layout", c.value_str(CONTENT_LAYOUT_NAMES[x]))
+	if p.title != "" do c.value_map_set(m, "title", c.value_str(p.title))
+	if p.subtitle != "" do c.value_map_set(m, "subtitle", c.value_str(p.subtitle))
+	if p.eyebrow != "" do c.value_map_set(m, "eyebrow", c.value_str(p.eyebrow))
+	if p.preset != "" do c.value_map_set(m, "preset", c.value_str(p.preset))
+	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
+	if x, ok := p.max_width.?; ok do c.value_map_set(m, "max_width", c.value_float(x))
+	if x, ok := p.pad.?; ok do c.value_map_set(m, "pad", c.value_float(x))
+	if x, ok := p.gap.?; ok do c.value_map_set(m, "gap", c.value_float(x))
+	if x, ok := p.bg.?; ok do c.value_map_set(m, "bg", c.value_int(i64(x)))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+content :: proc(ui: ^kui.Ui, p: Content) -> i32 {
+	return content_in(ui, NAMESPACE, p)
+}
+
+content_in :: proc(ui: ^kui.Ui, namespace: string, p: Content) -> i32 {
+	props := content_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/content")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// content with your children: `children` builds the group it asks for.
+content_with :: proc(ui: ^kui.Ui, p: Content, data: ^$T, children: proc(data: ^T, ui: ^kui.Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^kui.Ui, group: string),
+		ctx:      Body_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	props := content_props(p)
+	defer c.value_free(props)
+	return c.component(ui, concat(NAMESPACE, "/content"), props, call, &b)
+}
+
+// Two content regions that stack when the available width is narrow.
+Columns :: struct {
+	// Stack below this width, 760 by default.
+	collapse_at: Maybe(f64),
+	// Column gap.
+	gap: Maybe(f64),
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+columns_props :: proc(p: Columns) -> ^c.Value {
+	m := c.value_map()
+	if x, ok := p.collapse_at.?; ok do c.value_map_set(m, "collapse_at", c.value_float(x))
+	if x, ok := p.gap.?; ok do c.value_map_set(m, "gap", c.value_float(x))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+columns :: proc(ui: ^kui.Ui, p: Columns) -> i32 {
+	return columns_in(ui, NAMESPACE, p)
+}
+
+columns_in :: proc(ui: ^kui.Ui, namespace: string, p: Columns) -> i32 {
+	props := columns_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/columns")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// columns with your children: `children` builds the group it asks for.
+columns_with :: proc(ui: ^kui.Ui, p: Columns, data: ^$T, children: proc(data: ^T, ui: ^kui.Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^kui.Ui, group: string),
+		ctx:      Body_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	props := columns_props(p)
+	defer c.value_free(props)
+	return c.component(ui, concat(NAMESPACE, "/columns"), props, call, &b)
+}
+
+// Titled before/after regions with adaptive stacking.
+Comparison :: struct {
+	// First title; Before by default.
+	first_title: string,
+	// Second title; After by default.
+	second_title: string,
+	// Stack below this width, 760 by default.
+	collapse_at: Maybe(f64),
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+comparison_props :: proc(p: Comparison) -> ^c.Value {
+	m := c.value_map()
+	if p.first_title != "" do c.value_map_set(m, "first_title", c.value_str(p.first_title))
+	if p.second_title != "" do c.value_map_set(m, "second_title", c.value_str(p.second_title))
+	if x, ok := p.collapse_at.?; ok do c.value_map_set(m, "collapse_at", c.value_float(x))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+comparison :: proc(ui: ^kui.Ui, p: Comparison) -> i32 {
+	return comparison_in(ui, NAMESPACE, p)
+}
+
+comparison_in :: proc(ui: ^kui.Ui, namespace: string, p: Comparison) -> i32 {
+	props := comparison_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/comparison")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// comparison with your children: `children` builds the group it asks for.
+comparison_with :: proc(ui: ^kui.Ui, p: Comparison, data: ^$T, children: proc(data: ^T, ui: ^kui.Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^kui.Ui, group: string),
+		ctx:      Body_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	props := comparison_props(p)
+	defer c.value_free(props)
+	return c.component(ui, concat(NAMESPACE, "/comparison"), props, call, &b)
+}
+
+// A quotation in the title face with an optional attribution.
+Quote :: struct {
+	// The quotation.
+	text: string,
+	// Its author or source.
+	attribution: string,
+	// Override reading size.
+	size: Maybe(f64),
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+quote_props :: proc(p: Quote) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "text", c.value_str(p.text))
+	if p.attribution != "" do c.value_map_set(m, "attribution", c.value_str(p.attribution))
+	if x, ok := p.size.?; ok do c.value_map_set(m, "size", c.value_float(x))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+quote :: proc(ui: ^kui.Ui, p: Quote) -> i32 {
+	return quote_in(ui, NAMESPACE, p)
+}
+
+quote_in :: proc(ui: ^kui.Ui, namespace: string, p: Quote) -> i32 {
+	props := quote_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/quote")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// Any visual with a wrapping caption in the project's caption size.
+Figure :: struct {
+	// The caption.
+	caption: string,
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+figure_props :: proc(p: Figure) -> ^c.Value {
+	m := c.value_map()
+	if p.caption != "" do c.value_map_set(m, "caption", c.value_str(p.caption))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+figure :: proc(ui: ^kui.Ui, p: Figure) -> i32 {
+	return figure_in(ui, NAMESPACE, p)
+}
+
+figure_in :: proc(ui: ^kui.Ui, namespace: string, p: Figure) -> i32 {
+	props := figure_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/figure")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// figure with your children: `children` builds the group it asks for.
+figure_with :: proc(ui: ^kui.Ui, p: Figure, data: ^$T, children: proc(data: ^T, ui: ^kui.Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^kui.Ui, group: string),
+		ctx:      Body_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	props := figure_props(p)
+	defer c.value_free(props)
+	return c.component(ui, concat(NAMESPACE, "/figure"), props, call, &b)
+}
+
+// Retained content whose visibility can change without changing layout.
+// Invisible content has no paint, pointer input, accessibility presence or Tab
+// stops.
+Visibility :: struct {
+	// Whether the content is visible and interactive.
+	visible: bool,
+	// Remove layout space too when invisible; otherwise reserve it.
+	collapse: Maybe(bool),
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+visibility_props :: proc(p: Visibility) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "visible", c.value_bool(p.visible))
+	if x, ok := p.collapse.?; ok do c.value_map_set(m, "collapse", c.value_bool(x))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+visibility :: proc(ui: ^kui.Ui, p: Visibility) -> i32 {
+	return visibility_in(ui, NAMESPACE, p)
+}
+
+visibility_in :: proc(ui: ^kui.Ui, namespace: string, p: Visibility) -> i32 {
+	props := visibility_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/visibility")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// visibility with your children: `children` builds the group it asks for.
+visibility_with :: proc(ui: ^kui.Ui, p: Visibility, data: ^$T, children: proc(data: ^T, ui: ^kui.Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^kui.Ui, group: string),
+		ctx:      Body_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	props := visibility_props(p)
+	defer c.value_free(props)
+	return c.component(ui, concat(NAMESPACE, "/visibility"), props, call, &b)
 }
 
 // A button. Space, Enter and assistive technology press it as a click does.
@@ -2173,6 +2675,10 @@ Stat :: struct {
 	label: string,
 	// The number, as text.
 	value: string,
+	// Use the project's display size for a presentation or headline statistic.
+	display: Maybe(bool),
+	// Override the value size in logical px.
+	size: Maybe(f64),
 	// How it moved: `+12%`.
 	delta: string,
 	// Whether the move is good news.
@@ -2187,6 +2693,8 @@ stat_props :: proc(p: Stat) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "label", c.value_str(p.label))
 	c.value_map_set(m, "value", c.value_str(p.value))
+	if x, ok := p.display.?; ok do c.value_map_set(m, "display", c.value_bool(x))
+	if x, ok := p.size.?; ok do c.value_map_set(m, "size", c.value_float(x))
 	if p.delta != "" do c.value_map_set(m, "delta", c.value_str(p.delta))
 	if x, ok := p.tone.?; ok do c.value_map_set(m, "tone", c.value_str(TONE_NAMES[x]))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
@@ -2209,6 +2717,15 @@ stat_in :: proc(ui: ^kui.Ui, namespace: string, p: Stat) -> i32 {
 Code :: struct {
 	// The text.
 	text: string,
+	// Syntax highlighting: lua, teal, javascript, typescript, json, rust, python,
+	// c, css, shell or sql. Other languages remain plain text.
+	language: string,
+	// One-based line numbers to emphasize.
+	highlight_lines: []i64,
+	// Code size in logical px; project code size when omitted.
+	size: Maybe(f64),
+	// Line height; derived from the code size when omitted.
+	line_height: Maybe(f64),
 	// Wraps rather than scrolls sideways.
 	wrap: Maybe(bool),
 	// At most this many lines high, the rest scrolled to.
@@ -2230,6 +2747,10 @@ Code :: struct {
 code_props :: proc(p: Code) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "text", c.value_str(p.text))
+	if p.language != "" do c.value_map_set(m, "language", c.value_str(p.language))
+	if p.highlight_lines != nil do c.value_map_set(m, "highlight_lines", kit_list(p.highlight_lines, proc(x: i64) -> ^c.Value { return c.value_int(x) }))
+	if x, ok := p.size.?; ok do c.value_map_set(m, "size", c.value_float(x))
+	if x, ok := p.line_height.?; ok do c.value_map_set(m, "line_height", c.value_float(x))
 	if x, ok := p.wrap.?; ok do c.value_map_set(m, "wrap", c.value_bool(x))
 	if x, ok := p.max_lines.?; ok do c.value_map_set(m, "max_lines", c.value_int(x))
 	if x, ok := p.line_numbers.?; ok do c.value_map_set(m, "line_numbers", c.value_bool(x))

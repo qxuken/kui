@@ -153,6 +153,7 @@ function M.defaults()
   return {
     skin = "ledger", appearance = "system", density = "comfortable", shadows = true,
     accent = nil, radius = nil, hair = nil, rule = nil, font_ui = "skin", font_data = "skin",
+    content_theme = "none", font_title = "skin", heading_size = nil, content_size = nil,
     -- The family list: which face a pick sets, the filter, and a font file
     -- loaded from disk (its path as typed or chosen).
     font_target = "ui", font_filter = "", font_file = nil,
@@ -187,6 +188,9 @@ function M.settings(t)
     skin = t.skin, appearance = t.appearance, density = t.density, shadows = t.shadows,
     radius = t.radius, hair = t.hair, rule = t.rule,
     font_ui = face_list(t.font_ui, "sans"), font_data = face_list(t.font_data, "mono"),
+    theme = t.content_theme ~= "none" and t.content_theme or nil,
+    font_title = face_list(t.font_title, "serif"),
+    sizes = { heading = t.heading_size, content = t.content_size },
     roles = roles,
   }
 end
@@ -202,6 +206,12 @@ end
 function M.lua(t)
   local lines = { "kit.settings({", string.format("  skin = %q,", t.skin) }
   local function add(s) lines[#lines + 1] = "  " .. s end
+  if t.content_theme and t.content_theme ~= "none" then add(string.format("theme = %q,", t.content_theme)) end
+  local title = face_list(t.font_title, "serif")
+  if title then add("font_title = " .. lua_list(title) .. ",") end
+  if t.heading_size or t.content_size then
+    add(string.format("sizes = { heading = %s, content = %s },", tostring(t.heading_size), tostring(t.content_size)))
+  end
   if t.appearance ~= "system" then add(string.format("appearance = %q,", t.appearance)) end
   if t.density ~= "comfortable" then add(string.format("density = %q,", t.density)) end
   if not t.shadows then add("shadows = false,") end
@@ -382,6 +392,13 @@ function M.view(m, env)
       { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" }),
     setting("Skin", kit.segmented({ label = "Skin", options = SKINS, value = t.skin,
       on_change = { kind = "theme", field = "skin" } })),
+    kit.select({ label = "Content preset", value = t.content_theme or "none", on_change = { kind = "theme", field = "content_theme" },
+      options = { { value = "none", label = "Skin defaults" }, { value = "paper", label = "Paper" },
+        { value = "signal", label = "Signal" }, { value = "stage", label = "Stage" }, { value = "minimal", label = "Minimal" } } }),
+    kit.select({ label = "Content title face", value = t.font_title or "skin", on_change = { kind = "theme", field = "font_title" },
+      options = choices({ "sans", "serif" }, nil, t.font_title or "skin") }),
+    length(t, "heading_size", "Content heading size", 24, 96, 1, lengths.kitHeading or 32),
+    length(t, "content_size", "Reading text size", 14, 40, 1, lengths.kitContentSize or 18),
     setting("Appearance", kit.segmented({ label = "Appearance", value = t.appearance,
       on_change = { kind = "theme", field = "appearance" },
       options = { { value = "system", label = "System" }, { value = "light", label = "Light" }, { value = "dark", label = "Dark" } } })),

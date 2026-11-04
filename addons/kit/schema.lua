@@ -14,6 +14,8 @@ return {
     { name = "Align", doc = "Where a cell's content sits.", "start", "center", "end" },
     { name = "Axis", doc = "Which way a split divides.", "row", "column" },
     { name = "Skin", doc = "The look: Ledger's paper and ink, Phosphor's terminal, or Neutral's quiet chrome.", "ledger", "phosphor", "neutral" },
+    { name = "ContentTheme", doc = "A settings preset, with project fonts, roles and sizes applied over it. Independent of content layout.", "paper", "signal", "stage", "minimal" },
+    { name = "ContentLayout", doc = "A reusable adaptive composition, independent of the content theme.", "editorial", "briefing", "split", "minimal" },
     { name = "Density", doc = "Row and control heights: 22 and 26 px, or 20 and 22 px compact.", "comfortable", "compact" },
     { name = "Level", doc = "A log line's level.", "debug", "info", "warn", "error" },
     { name = "Browse", doc = "What a field's Choose… button asks the system for: a folder, a file to open, or where to save one.", "folder", "open", "save" },
@@ -25,6 +27,19 @@ return {
   },
 
   records = {
+    { name = "Sizes", doc = "Project typography and content spacing in logical px. Omitted fields keep the preset or skin default. Content sizes do not enlarge tool controls.", fields = {
+      { "body", "number?", doc = "Tool body text." },
+      { "label", "number?", doc = "Tool labels." },
+      { "title", "number?", doc = "Small titles and level-two headings." },
+      { "heading", "number?", doc = "Level-one content headings." },
+      { "display", "number?", doc = "Large statistics and display text." },
+      { "content", "number?", doc = "Reading text." },
+      { "caption", "number?", doc = "Figure captions." },
+      { "code", "number?", doc = "Code text." },
+      { "chart", "number?", doc = "Chart axis and data labels." },
+      { "gap", "number?", doc = "Default content spacing." },
+      { "pad", "number?", doc = "Default content inset." },
+    } },
     { name = "Choice", doc = "A choice: what it is, and what it reads as.",
       fields = {
         { "value", "string", doc = "What the choice is; what the event carries." },
@@ -90,6 +105,7 @@ return {
       doc = "Kit's look for this window: the skin, the density, the hard shadows and any role the brand overrides. Place it once a frame, before the components; it draws nothing.",
       props = {
         { "skin", "Skin?", doc = "The skin; Ledger when left out." },
+        { "theme", "ContentTheme?", doc = "Optional content settings preset: Paper, Signal, Stage or Minimal. Explicit skin, fonts, roles and individual sizes override the preset; layout stays the author's." },
         { "density", "Density?", doc = "Comfortable when left out." },
         { "shadows", "boolean?", doc = "The skin's hard shadows; on when left out." },
         { "radius", "number?", doc = "Corner radius in px, for a brand with its own; the skin's when left out." },
@@ -99,6 +115,9 @@ return {
         { "rule", "number?", doc = "The region rule's width in px (a panel's frame, a control's border); the skin's when left out." },
         { "font_ui", "{string}?", doc = "The UI face, as a family list (`{ \"Inter\", \"sans\" }`); the skin's when left out." },
         { "font_data", "{string}?", doc = "The data face (ids, numbers, code), as a family list; the skin's when left out." },
+        { "font_title", "{string}?", doc = "Content heading/quote families; the preset's, else the UI face." },
+        { "font_content", "{string}?", doc = "Reading-text families; the UI face when omitted." },
+        { "sizes", "Sizes?", doc = "Project typography and content spacing. Fields merge over the preset individually; sizes are logical px." },
       } },
 
     -- Layout ---------------------------------------------------------------
@@ -118,6 +137,9 @@ return {
       } },
     { "toolbar",
       doc = "A row of controls at the control height, its trailing group pushed to the far side.",
+      props = {
+        { "window_chrome", "boolean?", doc = "Opt into the native drag strip under custom window chrome. Reserves the OS window controls and keeps gaps draggable. False by default; native-decorated windows keep the normal content toolbar. Configure custom chrome and a medium/tall titlebar in the host when opting in." },
+      },
       children = {
         { "", doc = "starts it." },
         { "trailing", doc = "ends it, at the far side." },
@@ -172,6 +194,47 @@ return {
         { "actions", doc = "goes after the heading, at the far side: a status, an action on the whole section." },
       } },
     { "divider", doc = "A rule between groups, as the skin draws regions." },
+
+    -- Content --------------------------------------------------------------
+    { "heading", doc = "An adaptive content heading in the project's title face.", props = {
+      { "text", "string", doc = "The heading." }, { "level", "integer?", doc = "Hierarchy, 1 to 6; 1 by default." },
+      { "size", "number?", doc = "Override the theme's heading size." }, { "family", "string?", doc = "A family name or family token." },
+      { "color", "color?", doc = "Override the foreground role." }, { "bold", "boolean?", doc = "Bold by default." },
+      { "line_height", "number?", doc = "Line height in logical px." },
+    } },
+    { "paragraph", doc = "Wrapping reading text in the project's content face.", props = {
+      { "text", "string", doc = "The text." }, { "size", "number?", doc = "Override the reading size." },
+      { "family", "string?", doc = "A family name or family token." }, { "color", "color?", doc = "Override the foreground role." },
+      { "line_height", "number?", doc = "Line height in logical px." }, { "selectable", "boolean?", doc = "Allow selecting and copying its text." },
+    } },
+    { "content", doc = "A reading composition with project spacing, optional width limit and title/section centering.", props = {
+      { "layout", "ContentLayout?", doc = "Layout preset; ordinary reading flow if omitted." },
+      { "title", "string?", doc = "Optional composition heading." },
+      { "subtitle", "string?", doc = "Optional reading lead." },
+      { "eyebrow", "string?", doc = "Optional small introductory label." },
+      { "preset", "string?", doc = "title or section centers the content vertically; other values use regular flow." },
+      { "grow", "boolean?", doc = "Take available height." }, { "max_width", "number?", doc = "Maximum reading width." },
+      { "pad", "number?", doc = "Inset; theme default if omitted." }, { "gap", "number?", doc = "Spacing; theme default if omitted." },
+      { "bg", "color?", doc = "Optional background." },
+    }, children = { { "", doc = "is the composition." }, { "aside", doc = "is the supporting visual in editorial, briefing or split layouts; below in minimal/regular flow." } } },
+    { "columns", doc = "Two content regions that stack when the available width is narrow.", props = {
+      { "collapse_at", "number?", doc = "Stack below this width, 760 by default." }, { "gap", "number?", doc = "Column gap." },
+    }, children = { { "first", doc = "is the first region." }, { "second", doc = "is the second region." } } },
+    { "comparison", doc = "Titled before/after regions with adaptive stacking.", props = {
+      { "first_title", "string?", doc = "First title; Before by default." }, { "second_title", "string?", doc = "Second title; After by default." },
+      { "collapse_at", "number?", doc = "Stack below this width, 760 by default." },
+    }, children = { { "first", doc = "is the first composition." }, { "second", doc = "is the second composition." } } },
+    { "quote", doc = "A quotation in the title face with an optional attribution.", props = {
+      { "text", "string", doc = "The quotation." }, { "attribution", "string?", doc = "Its author or source." },
+      { "size", "number?", doc = "Override reading size." },
+    } },
+    { "figure", doc = "Any visual with a wrapping caption in the project's caption size.", props = {
+      { "caption", "string?", doc = "The caption." },
+    }, children = { { "", doc = "is the visual, such as an image, SVG, chart or custom view." } } },
+    { "visibility", doc = "Retained content whose visibility can change without changing layout. Invisible content has no paint, pointer input, accessibility presence or Tab stops.", props = {
+      { "visible", "boolean", doc = "Whether the content is visible and interactive." },
+      { "collapse", "boolean?", doc = "Remove layout space too when invisible; otherwise reserve it." },
+    }, children = { { "", doc = "is retained even when invisible." } } },
 
     -- Inputs ---------------------------------------------------------------
     { "button",
@@ -447,6 +510,8 @@ return {
       props = {
         { "label", "string", doc = "What it counts." },
         { "value", "string", doc = "The number, as text." },
+        { "display", "boolean?", doc = "Use the project's display size for a presentation or headline statistic." },
+        { "size", "number?", doc = "Override the value size in logical px." },
         { "delta", "string?", doc = "How it moved: `+12%`." },
         { "tone", "Tone?", doc = "Whether the move is good news." },
       } },
@@ -454,6 +519,10 @@ return {
       doc = "Text in the data face on the panel colour: a payload, a command, a stack.",
       props = {
         { "text", "string", doc = "The text." },
+        { "language", "string?", doc = "Syntax highlighting: lua, teal, javascript, typescript, json, rust, python, c, css, shell or sql. Other languages remain plain text." },
+        { "highlight_lines", "{integer}?", doc = "One-based line numbers to emphasize." },
+        { "size", "number?", doc = "Code size in logical px; project code size when omitted." },
+        { "line_height", "number?", doc = "Line height; derived from the code size when omitted." },
         { "wrap", "boolean?", doc = "Wraps rather than scrolls sideways." },
         { "max_lines", "integer?", doc = "At most this many lines high, the rest scrolled to." },
         { "line_numbers", "boolean?", doc = "Each line's number in a gutter beside it, outside the selection (not with `wrap`)." },

@@ -27,6 +27,40 @@ was the first bare bump to break an app in five releases).
 
 - A focused terminal's declared cell cursor now enables and anchors the
   platform input method; `ime_off` still disables it explicitly.
+- Enlarged static text now uses higher-resolution glyph masks; screenshots
+  of scaled subtrees can change as text becomes sharper.
+
+### Added
+
+- Native presentations as Lua/Teal or TSX code: keyed slides, reveals,
+  overview, private notes, presenter previews and timer, fullscreen/display
+  choice, compatible watch reload, managed demo lifecycle and PNG/manifest
+  export. Adaptive layout by default, optional fixed canvas.
+- Kit content themes Paper, Signal, Stage and Minimal are Settings presets
+  with project fonts, colors and sizes. Reusable content layouts,
+  typography, visibility, syntax highlighting and code line emphasis are
+  available to ordinary apps and the gallery. Shared window commands add
+  fullscreen, visibility and opt-in close-to-hide behavior.
+- Audience views stay slide-only; macOS menu accelerators and private
+  `?` help recover the presenter. Presenter uses Kit's toolbar, panels and
+  status footer, with numbered boxes around upcoming reveals. Window
+  decorations remain the application's choice. Toolbar's `window_chrome`
+  (`windowChrome` in Node) explicitly integrates it with custom chrome,
+  reserving native controls and leaving gaps draggable.
+- Presentations run as ordinary apps with `kui run`, including watch and
+  PNG export. The Kit gallery has an interactive Presentations page and
+  the book walks through authoring a deck with retained demo state.
+
+- Live sync defaults on and lives in the presenter footer. Disable it to
+  browse a private slide/reveal selection; Present slide (Cmd/Ctrl+Enter)
+  publishes it. The audience's
+  live work keeps running until a different slide is presented. Turning
+  sync back on publishes the selection and resumes following navigation.
+- Holding navigation arrows or Page Up/Page Down repeats. Space and toggle
+  shortcuts remain single press; focused controls keep their own keys.
+- Previous and Next disable at the selected position's first/last reveal,
+  including private browsing. The footer's Live sync toggle replaces the
+  redundant timer status; Statusbar grows to fit a mode control's height.
 
 ### Fixed
 
@@ -39,10 +73,29 @@ was the first bare bump to break an app in five releases).
   anchor; other panes and nested key sinks cannot supply one for the
   focused sink. The app still owns its terminal cursor's blinking.
 
+- Node presentation launchers receive the app loop correctly, retain
+  theme/layout/canvas overrides during watch reload, and honor live size
+  and appearance flags. Scale is explicitly export-only. Both hosts retain
+  the nearest private browsing position when its slide is removed.
+- Live sync keeps keyboard focus when toggled: an explicit component key
+  preserves its identity as the audience-position label appears or disappears.
+- Select keyboard input survives sibling-window redraws: Tab/Shift-Tab
+  leave it and Space/arrows work without a prior mouse click. Extension
+  routes and Kit's internal control state are scoped per window. Headless
+  Node loops redraw for input handled entirely by an extension too.
+- Multiwindow Lua apps refresh sibling windows after extension-handled
+  input, even when no timer is running. Audience navigation, presenter
+  navigation and live demo changes propagate on the next frame.
+
 ### What you can delete
 
 - A synthetic text-line caret kept only to anchor a terminal's input
   method: declare the cell grid's cursor instead.
+
+- A deck's own navigation, reveal and presenter-window plumbing, and the
+  timers kept running merely because a demo's slide was visited earlier.
+- Copied slide-specific typography/palette tables: Settings presets accept
+  per-project overrides and keep compact controls at their normal sizes.
 
 ## 0.1.0-alpha.75 (2026-11-02)
 

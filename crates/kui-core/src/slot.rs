@@ -55,6 +55,7 @@ use crate::runtime::Extension;
 use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::value::Value;
+use crate::window::WindowId;
 
 /// Which component instance an extension is drawing, handed to
 /// `Extension::view` and `Extension::component`.
@@ -248,8 +249,11 @@ pub fn split_name(full: &str) -> (&str, &str) {
 /// placed it, and `Ui::finish` calls [`Fill::finish`] once the host's view
 /// is done.
 pub trait Fill {
+    /// A frame starts in this window. Instance keys are local to its tree;
+    /// a shared extension list must retain other windows' event routes.
+    fn begin(&mut self, _window: WindowId) {}
     /// After the host's view: place every `ns/root` the host did not, and
-    /// forget the instances this frame did not place.
+    /// forget the instances this window's frame did not place.
     fn finish(&mut self, ui: &mut Ui<'_>);
     /// Loads `ext` under `namespace`, mid-frame, and answers with the
     /// origin it got — what a guest that hosts guests of its own calls
@@ -347,15 +351,16 @@ struct Entry {
 #[derive(Default)]
 pub struct Extensions {
     list: Vec<Entry>,
-    /// Each component instance placed last frame, by its key: where its
+    /// Each window's component instances from its last frame: where
     /// events go and the messages its host passed for them (ADR 0060).
-    instances: rustc_hash::FxHashMap<Key, PlacedInstance>,
-    /// Bumped by every `finish`: an instance not placed since is dropped.
+    instances: rustc_hash::FxHashMap<(WindowId, Key), PlacedInstance>,
+    window: WindowId,
+    /// Bumped by every `finish`: unplaced instances of that window drop.
     generation: u32,
     /// Instances an event reached since they were last placed: their
     /// extension may have changed what it would draw, so the next
     /// placement asks it rather than replaying.
-    heard: rustc_hash::FxHashSet<Key>,
+    heard: rustc_hash::FxHashSet<(WindowId, Key)>,
 }
 
 /// What [`Extensions::route`] needs of a placed instance after the frame.
@@ -580,9 +585,9 @@ impl Extensions {
             };
             let replies = ext.on_event(&ev);
             if let Some(inst) = ev.instance
-                && self.instances.contains_key(&inst)
+                && self.instances.contains_key(&(ev.window, inst))
             {
-                self.heard.insert(inst);
+                self.heard.insert((ev.window, inst));
             }
             for payload in replies {
                 // A component's event (ADR 0060): the host's own message
@@ -590,7 +595,7 @@ impl Extensions {
                 // whoever placed it.
                 if let Some((prop, fields)) = emit_of(&payload)
                     && let Some(inst) = ev.instance
-                    && let Some(rec) = self.instances.get(&inst)
+                    && let Some(rec) = self.instances.get(&(ev.window, inst))
                 {
                     let Some((field, message)) = rec
                         .events
@@ -622,12 +627,25 @@ impl Extensions {
     /// from the last tree (`Core::reframe`, backlog C138). An extension
     /// that does not say is never still.
     pub fn roots_unchanged(&self) -> bool {
+        // Component handlers can change private state without emitting
+        // to the host or changing an extension root's revision. A kept
+        // whole-window tree must not bypass their next placement.
+        if !self.heard.is_empty() {
+            return false;
+        }
         let last = self.generation.wrapping_sub(1);
         self.list.iter().all(|e| {
             e.root_drawn != last
                 || e.root_kept.is_some()
                     && e.ext.as_ref().and_then(|x| x.root_state()) == e.root_kept
         })
+    }
+
+    /// Retire the routing records of a window that has closed. Other
+    /// windows keep their instances and pending component invalidations.
+    pub fn forget_window(&mut self, window: WindowId) {
+        self.instances.retain(|(w, _), _| *w != window);
+        self.heard.retain(|(w, _)| *w != window);
     }
 
     /// Draws `name` of the extension at `i` as its origin, at the cursor.
@@ -731,11 +749,17 @@ impl TryFrom<Vec<Box<dyn Extension>>> for Extensions {
 /// always). A view that errors leaves its message in the tree (red, where
 /// the instance would have been) and raises `extension-view-error`.
 impl Fill for Extensions {
+    fn begin(&mut self, window: WindowId) {
+        self.window = window;
+    }
+
     fn finish(&mut self, ui: &mut Ui<'_>) {
         // The instances this frame placed are the ones whose events can
         // still arrive; the rest are gone (ADR 0060).
         let generation = self.generation;
-        self.instances.retain(|_, r| r.generation == generation);
+        let window = self.window;
+        self.instances
+            .retain(|(w, _), r| *w != window || r.generation == generation);
         // `heard` is pruned at the end, not here: the roots drawn below
         // place their instances after this point, and an instance a root
         // places (every instance of a runner app, whose view is its
@@ -768,7 +792,8 @@ impl Fill for Extensions {
             i += 1;
         }
         // After the roots, which record their instances under this one.
-        self.instances.retain(|_, r| r.generation == generation);
+        self.instances
+            .retain(|(w, _), r| *w != window || r.generation == generation);
         if !self.heard.is_empty() {
             let instances = &self.instances;
             self.heard.retain(|k| instances.contains_key(k));
@@ -813,8 +838,9 @@ impl Fill for Extensions {
         slot: Option<Key>,
     ) -> bool {
         let generation = self.generation;
-        let heard = !self.heard.is_empty() && self.heard.remove(&key);
-        match self.instances.get_mut(&key) {
+        let address = (self.window, key);
+        let heard = !self.heard.is_empty() && self.heard.remove(&address);
+        match self.instances.get_mut(&address) {
             Some(rec) => {
                 if !rec.same_events(props) {
                     rec.events = PlacedInstance::events_of(props);
@@ -827,7 +853,7 @@ impl Fill for Extensions {
                 let (ns, _) = split_name(full_name);
                 if self.list.iter().any(|e| e.namespace == ns) {
                     self.instances.insert(
-                        key,
+                        address,
                         PlacedInstance {
                             placer,
                             slot,

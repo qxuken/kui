@@ -22,6 +22,24 @@ Place `kit.settings` once a frame, before the components; it draws nothing. It p
 | `font_ui` | `fontUi` | {string}? | The UI face, as a family list (`{ "Inter", "sans" }`); the skin's when left out. |
 | `font_data` | `fontData` | {string}? | The data face (ids, numbers, code), as a family list; the skin's when left out. |
 
+Content themes are settings presets: `theme = "paper"`, `"signal"`,
+`"stage"` or `"minimal"`. They supply content typography, spacing and a
+palette. Explicit settings override each field; `roles` and `sizes` merge
+by name. They do not change a layout or enlarge control labels.
+
+| Lua prop | Node prop | type | what it is |
+|---|---|---|---|
+| `theme` | `theme` | ContentTheme? | A content preset. |
+| `font_title` | `fontTitle` | {string}? | Heading/display family fallbacks. |
+| `font_content` | `fontContent` | {string}? | Reading text family fallbacks. |
+| `sizes` | `sizes` | Sizes? | Overrides for heading, display, content, caption, code, chart, gap, pad; body, label and title for compact tools. |
+
+For example, `{ theme = "minimal", font_title = { "Georgia", "serif" },
+roles = { accent = 0x8c3e70ff }, sizes = { heading = 58, content = 24 } }`.
+Use `$kitHeading`, `$kitContentSize`, `$kitCodeSize`, `$kitChartSize`,
+`$kitContentGap`, `$kitContentPad`, `$kitTitle` and `$kitContent` in authored
+content. Registered or system fonts are selected by family name.
+
 Every component also takes `key` and `fresh`.
 
 ## Do

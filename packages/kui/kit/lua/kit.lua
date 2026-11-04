@@ -14,6 +14,8 @@
 
 
 local skin = require("skin")
+local themes = require("themes")
+local content = require("content")
 local ctx = require("ctx")
 local ledger = require("ledger")
 local phosphor = require("phosphor")
@@ -31,7 +33,7 @@ local waterfall = require("waterfall")
 local SKINS = { ledger = ledger, phosphor = phosphor, neutral = neutral }
 
 local settings = { skin = ledger, density = "comfortable", shadows = true }
-local declared = nil
+local declared = {}
 
 
 
@@ -39,10 +41,11 @@ local declared = nil
 
 local function ensure_tokens(env)
    local k = skin.key(settings)
-   if declared ~= k then
+   local window = env.window.id
+   if declared[window] ~= k then
       env.set_tokens(skin.tokens(settings))
       env.set_rules_appearance(settings.appearance)
-      declared = k
+      declared[window] = k
    end
 end
 
@@ -57,6 +60,7 @@ local function faces(v)
 end
 
 local function apply(p)
+   p = themes.settings(p)
    local roles = p.roles
    settings = {
       skin = SKINS[p.skin] or ledger,
@@ -69,6 +73,9 @@ local function apply(p)
       rule_w = num(p.rule),
       font_ui = faces(p.font_ui),
       font_data = faces(p.font_data),
+      font_title = faces(p.font_title),
+      font_content = faces(p.font_content),
+      sizes = p.sizes,
    }
 end
 
@@ -93,6 +100,7 @@ provide(data, { "table", "list", "inspector", "log", "badge", "stat", "code", "m
 provide(overlays, { "dialog", "popover", "menu", "toast", "toaster" })
 provide(charts, { "sparkline", "line_chart", "bar_chart", "histogram" })
 provide(waterfall, { "waterfall" })
+provide(content, { "heading", "paragraph", "content", "columns", "comparison", "quote", "figure", "visibility" })
 
 
 
@@ -107,7 +115,10 @@ components = {
 for name, view in pairs(VIEWS) do
    components[name] = function(env, props, inst)
       ensure_tokens(env)
-      local c = { env = env, s = settings, inst = inst.key }
+
+
+      local state_key = inst.key ~ (env.window.id * -7046029254386353131)
+      local c = { env = env, s = settings, inst = state_key }
       local node = view(c, props or {})
 
 

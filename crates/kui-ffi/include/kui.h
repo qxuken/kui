@@ -847,6 +847,9 @@ enum {
      * (the devtools window hovering a node the main window outlines). A host
      * that redraws every window on every event may ignore it. */
     KUI_CMD_REDRAW = 8,
+    KUI_CMD_SET_FULLSCREEN = 9, /* width: enabled 0/1; height: display+1, 0=current */
+    KUI_CMD_SET_VISIBLE = 10, /* width: visible 0/1 */
+    KUI_CMD_SET_CLOSE_HIDES = 11, /* width: enabled 0/1 */
 };
 
 /* [in] */
@@ -3669,6 +3672,12 @@ void kui_window_declare_with(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cf
  * was granted through kui_env_set's focused - neither is a reply here. */
 void kui_set_window_size(KuiCtx *ctx, uint32_t window, float w, float h);
 void kui_focus_window(KuiCtx *ctx, uint32_t window);
+/* Fullscreen on display (-1=current). A driver may decline the request. */
+void kui_set_window_fullscreen(KuiCtx *ctx, uint32_t window, bool enabled, int32_t display);
+/* Keep context/state when hiding. */
+void kui_set_window_visible(KuiCtx *ctx, uint32_t window, bool visible);
+/* OS close hides while another window remains; application Quit still exits. */
+void kui_set_window_close_hides(KuiCtx *ctx, uint32_t window, bool enabled);
 /* Reports that window `id` was asked to go away: a press landed outside it
  * (KUI_DISMISS_OUTSIDE) or Escape reached it (KUI_DISMISS_ESCAPE). The app
  * gets the window's on_dismiss message (kui_window_declare_with) with

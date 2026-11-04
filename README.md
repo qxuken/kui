@@ -7,6 +7,11 @@ an iced-style `view` / `on_event` loop, and text shaping is part of the
 core. Because a frame is data all the way down, Lua, C and Node bind to
 the same contract the Rust builders use.
 
+Kit also supports native [presentations as code](addons/kit/PRESENTATIONS.md)
+in Lua/Teal and TSX: interactive content, reveals, private presenter views
+and PNG export. Theme presets accept the project's fonts, colors and sizes.
+Try `kui run addons/kit/samples/presentations -- --presenter`.
+
 ## Crates
 
 | crate | role | |

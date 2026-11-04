@@ -184,10 +184,14 @@ const LARGE_GLYPH: f32 = 1024.0;
 /// `i32::MAX` and then adds one to it, which overflows; such a glyph is
 /// past any surface, so it is not drawn.
 pub(crate) fn physical(glyph: &cosmic_text::LayoutGlyph) -> Option<cosmic_text::PhysicalGlyph> {
+    physical_at(glyph, 1.0)
+}
+
+fn physical_at(glyph: &cosmic_text::LayoutGlyph, scale: f32) -> Option<cosmic_text::PhysicalGlyph> {
     const REACH: f32 = i32::MAX as f32;
     let x = glyph.x + glyph.font_size * glyph.x_offset;
     let y = glyph.y - glyph.font_size * glyph.y_offset;
-    (x.abs() < REACH && y.abs() < REACH).then(|| glyph.physical((0.0, 0.0), 1.0))
+    (x.abs() * scale < REACH && y.abs() * scale < REACH).then(|| glyph.physical((0.0, 0.0), scale))
 }
 
 /// Rasterizes one glyph into the atlas (shared by static text and editors).
@@ -315,8 +319,8 @@ pub(crate) struct CachedText {
     /// What each span asked for, by the index its glyphs carry as
     /// metadata; one entry for plain text.
     span_deco: Vec<SpanDeco>,
-    /// (wrap, atlas stamp) the template cache was built for.
-    glyphs_built_for: Option<(Option<u32>, u64)>,
+    /// (wrap, atlas stamp, raster factor) the template cache was built for.
+    glyphs_built_for: Option<(Option<u32>, u64, u32)>,
     /// The frame a node last wrapped this run for, and the wrap it asked:
     /// a second node of that frame asking another width wraps a copy of
     /// its own ([`TextSystem::own_wrap`]), since the queries read the
@@ -788,7 +792,7 @@ impl TextSystem {
             || e.span_deco[0].color.is_some()
             || wrap_differs(e.wrap, target)
             || (e.claimed == self.frame_no && wrap_differs(e.claimed_wrap, target))
-            || e.glyphs_built_for != Some((e.wrap.map(f32::to_bits), atlas))
+            || e.glyphs_built_for != Some((e.wrap.map(f32::to_bits), atlas, 1))
         {
             return None;
         }
@@ -3422,7 +3426,7 @@ fn emit_entry_rows(
     out: &mut Vec<Quad>,
     joins: &mut Vec<JoinBg>,
 ) {
-    build_templates(entry, raster, fs, atlas);
+    build_templates(entry, raster, fs, atlas, clip.transform.max_factor());
     // What can show, in the glyphs' own space (ADR 0043).
     let vis = clip.visible();
     // A decoration rect spans glyphs of the unwrapped run; the row a
@@ -3657,10 +3661,17 @@ fn build_templates(
     raster: &mut Raster,
     fs: &mut FontSystem,
     atlas: &mut GlyphAtlas,
+    magnification: f32,
 ) {
+    // Layout remains in the original space. Rasterize enlarged subtrees
+    // at their output resolution, then shrink glyph quads back before
+    // the clip transform draws them. Integer buckets bound atlas churn
+    // during scale animation while preserving sharp fixed canvases.
+    let factor = magnification.ceil().clamp(1.0, 8.0) as u32;
+    let resolution = factor as f32;
     {
         // Steady state: same wrap, same atlas — reuse positioned templates.
-        let built_for = (entry.wrap.map(f32::to_bits), atlas.stamp);
+        let built_for = (entry.wrap.map(f32::to_bits), atlas.stamp, factor);
         if entry.glyphs_built_for != Some(built_for) {
             entry.glyphs.clear();
             entry.deco.clear();
@@ -3688,17 +3699,19 @@ fn build_templates(
                     build_decorations(&run, &places.parts, &entry.span_deco, fs, &mut entry.deco);
                 }
                 for (i, glyph) in run.glyphs.iter().enumerate() {
-                    let Some(physical) = physical(glyph) else {
+                    let Some(physical) = physical_at(glyph, resolution) else {
                         continue;
                     };
                     let Some(slot) = raster_glyph(physical.cache_key, fs, raster, atlas) else {
                         continue;
                     };
                     let template = GlyphTemplate {
-                        x: physical.x as f32 + slot.left as f32,
-                        y: run.line_y.round() + physical.y as f32 - slot.top as f32,
-                        w: slot.w as f32,
-                        h: slot.h as f32,
+                        x: (physical.x as f32 + slot.left as f32) / resolution,
+                        y: ((run.line_y * resolution).round() + physical.y as f32
+                            - slot.top as f32)
+                            / resolution,
+                        w: slot.w as f32 / resolution,
+                        h: slot.h as f32 / resolution,
                         uv: [slot.x, slot.y, slot.w, slot.h],
                         kind: glyph_kind(&slot),
                         color: glyph
@@ -3756,7 +3769,7 @@ fn build_templates(
             // Rasterizing may have extended the page mid-build, which
             // keeps every slot where it was but moves the stamp: keep the
             // one we ended on.
-            entry.glyphs_built_for = Some((entry.wrap.map(f32::to_bits), atlas.stamp));
+            entry.glyphs_built_for = Some((entry.wrap.map(f32::to_bits), atlas.stamp, factor));
         }
     }
 }
@@ -3779,7 +3792,7 @@ fn emit_entry(
     out: &mut Vec<Quad>,
     joins: &mut Vec<JoinBg>,
 ) {
-    build_templates(entry, raster, fs, atlas);
+    build_templates(entry, raster, fs, atlas, clip.transform.max_factor());
     // What can show, in the glyphs' own space (ADR 0043).
     let vis = clip.visible();
     {

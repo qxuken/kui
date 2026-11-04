@@ -1,12 +1,13 @@
 # Kit samples
 
-Four semi-real apps on the `kui` runner with Kit and believable dummy
+Four semi-real apps and a presentation on the `kui` runner with Kit and believable dummy
 data: to see Kit at work in a whole window rather than a gallery, and to
-start an app of your own from. Each has a manifest, a README, a headless
+start an app of your own from. The four apps each have a manifest, a README, a headless
 test that drives its `update` and checks the state, and a picture script.
 
 | Sample | What it is | Pictures |
 | --- | --- | --- |
+| [presentations](presentations/) | A native deck with reveals, private notes, charts, highlighted code and a stateful demonstration. Four themes, independent layouts and project overrides. Lua; [TSX counterpart](../../../examples/node/apps/presentation.tsx). | `kui run addons/kit/samples/presentations -- --presenter` |
 | [relay](relay/) | An HTTP client that serves its own mock API (Larder, a grocery-delivery backend): history, method and URL, params and headers, body, and the response's status, body, headers and timing waterfall. Lua. | [body](relay/shots/relay-body.png) · [timing](relay/shots/relay-timing.png) · [headers](relay/shots/relay-headers.png) · [POST](relay/shots/relay-post.png) · [not JSON](relay/shots/relay-badjson.png) · [error](relay/shots/relay-error.png) · [sending](relay/shots/relay-sending.png) · [empty](relay/shots/relay-empty.png) |
 | [watchtower](watchtower/) | An ops dashboard over a simulated fleet mid-incident: headline stats, live charts, a sortable services table, a service's detail with restart and scale, the event log. **Teal** (`kui check`). | [overview](watchtower/shots/watchtower-overview.png) · [attention](watchtower/shots/watchtower-attention.png) · [restart](watchtower/shots/watchtower-restart.png) · [scale](watchtower/shots/watchtower-scale.png) · [errors](watchtower/shots/watchtower-errors.png) · [spread](watchtower/shots/watchtower-spread.png) · [empty](watchtower/shots/watchtower-empty.png) |
 | [field-notes](field-notes/) | Notes with checklists in notebooks, kept in sqlite: search, pin, sort, autosave, a confirm before deleting. Lua. | [note](field-notes/shots/field-notes-note.png) · [checklist](field-notes/shots/field-notes-checklist.png) · [search](field-notes/shots/field-notes-search.png) · [delete](field-notes/shots/field-notes-delete.png) · [empty](field-notes/shots/field-notes-empty.png) · [error](field-notes/shots/field-notes-error.png) |

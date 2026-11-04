@@ -1681,10 +1681,20 @@ global type kui = record
     open_menu: function(key: KeyRef, x: number, y: number, items: {any}, opts?: {string: any}): boolean
     -- Closes it.
     close_menu: function(): boolean
+    -- The name of the window this context draws.
+    window_name: function(): string
     -- Asks the driver to resize a window.
     set_window_size: function(window: integer, w: number, h: number)
     -- Asks the driver to bring a window to the front.
     focus_window: function(window: integer)
+    -- The driver's current display names, indexed from zero; empty headlessly. Display indices may change when displays are connected or removed.
+    display_names: function(): {string}
+    -- Requests borderless fullscreen on the current or chosen display. A driver may decline; read window.fullscreen for the result.
+    set_window_fullscreen: function(window: integer, enabled: boolean, display?: integer)
+    -- Shows or hides a window without discarding its context or session state.
+    set_window_visible: function(window: integer, visible: boolean)
+    -- Opts into OS/chrome close hiding a window while another normal window remains visible. Closing the last visible window or explicitly quitting ends the session.
+    set_window_close_hides: function(window: integer, enabled: boolean)
     -- Declares the origin's colour and length tokens (ADR 0027).
     set_tokens: function(decl: any)
     -- Loads a DTCG token file or resolver (ADR 0062): colours with two halves, lengths, families; Node and Lua answer the table, C adds it.

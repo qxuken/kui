@@ -218,6 +218,59 @@ impl Skin {
     }
 }
 
+/// A settings preset, with project fonts, roles and sizes applied over it.
+/// Independent of content layout.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ContentTheme {
+    #[default]
+    Paper,
+    Signal,
+    Stage,
+    Minimal,
+}
+
+impl ContentTheme {
+    /// The value's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ContentTheme::Paper => "paper",
+            ContentTheme::Signal => "signal",
+            ContentTheme::Stage => "stage",
+            ContentTheme::Minimal => "minimal",
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::str(self.as_str())
+    }
+}
+
+/// A reusable adaptive composition, independent of the content theme.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ContentLayout {
+    #[default]
+    Editorial,
+    Briefing,
+    Split,
+    Minimal,
+}
+
+impl ContentLayout {
+    /// The value's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ContentLayout::Editorial => "editorial",
+            ContentLayout::Briefing => "briefing",
+            ContentLayout::Split => "split",
+            ContentLayout::Minimal => "minimal",
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::str(self.as_str())
+    }
+}
+
 /// Row and control heights: 22 and 26 px, or 20 and 22 px compact.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Density {
@@ -412,6 +465,158 @@ impl SkeletonShape {
 
     pub fn to_value(&self) -> Value {
         Value::str(self.as_str())
+    }
+}
+
+/// Project typography and content spacing in logical px. Omitted fields keep
+/// the preset or skin default. Content sizes do not enlarge tool controls.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Sizes {
+    /// Tool body text.
+    pub body: Option<f64>,
+    /// Tool labels.
+    pub label: Option<f64>,
+    /// Small titles and level-two headings.
+    pub title: Option<f64>,
+    /// Level-one content headings.
+    pub heading: Option<f64>,
+    /// Large statistics and display text.
+    pub display: Option<f64>,
+    /// Reading text.
+    pub content: Option<f64>,
+    /// Figure captions.
+    pub caption: Option<f64>,
+    /// Code text.
+    pub code: Option<f64>,
+    /// Chart axis and data labels.
+    pub chart: Option<f64>,
+    /// Default content spacing.
+    pub gap: Option<f64>,
+    /// Default content inset.
+    pub pad: Option<f64>,
+}
+
+impl Sizes {
+    /// What it needs; the rest by their setters.
+    pub fn new() -> Self {
+        Self {
+            body: None,
+            label: None,
+            title: None,
+            heading: None,
+            display: None,
+            content: None,
+            caption: None,
+            code: None,
+            chart: None,
+            gap: None,
+            pad: None,
+        }
+    }
+
+    /// Tool body text.
+    pub fn body(mut self, v: f64) -> Self {
+        self.body = Some(v);
+        self
+    }
+
+    /// Tool labels.
+    pub fn label(mut self, v: f64) -> Self {
+        self.label = Some(v);
+        self
+    }
+
+    /// Small titles and level-two headings.
+    pub fn title(mut self, v: f64) -> Self {
+        self.title = Some(v);
+        self
+    }
+
+    /// Level-one content headings.
+    pub fn heading(mut self, v: f64) -> Self {
+        self.heading = Some(v);
+        self
+    }
+
+    /// Large statistics and display text.
+    pub fn display(mut self, v: f64) -> Self {
+        self.display = Some(v);
+        self
+    }
+
+    /// Reading text.
+    pub fn content(mut self, v: f64) -> Self {
+        self.content = Some(v);
+        self
+    }
+
+    /// Figure captions.
+    pub fn caption(mut self, v: f64) -> Self {
+        self.caption = Some(v);
+        self
+    }
+
+    /// Code text.
+    pub fn code(mut self, v: f64) -> Self {
+        self.code = Some(v);
+        self
+    }
+
+    /// Chart axis and data labels.
+    pub fn chart(mut self, v: f64) -> Self {
+        self.chart = Some(v);
+        self
+    }
+
+    /// Default content spacing.
+    pub fn gap(mut self, v: f64) -> Self {
+        self.gap = Some(v);
+        self
+    }
+
+    /// Default content inset.
+    pub fn pad(mut self, v: f64) -> Self {
+        self.pad = Some(v);
+        self
+    }
+
+    /// As the extension reads it.
+    pub fn to_value(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.body {
+            m.push(("body".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.title {
+            m.push(("title".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.heading {
+            m.push(("heading".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.display {
+            m.push(("display".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.content {
+            m.push(("content".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.caption {
+            m.push(("caption".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.code {
+            m.push(("code".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.chart {
+            m.push(("chart".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.gap {
+            m.push(("gap".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.pad {
+            m.push(("pad".into(), Value::Float(*v)));
+        }
+        Value::Map(m)
     }
 }
 
@@ -850,6 +1055,10 @@ impl Series {
 pub struct Settings {
     /// The skin; Ledger when left out.
     pub skin: Option<Skin>,
+    /// Optional content settings preset: Paper, Signal, Stage or Minimal.
+    /// Explicit skin, fonts, roles and individual sizes override the preset;
+    /// layout stays the author's.
+    pub theme: Option<ContentTheme>,
     /// Comfortable when left out.
     pub density: Option<Density>,
     /// The skin's hard shadows; on when left out.
@@ -881,6 +1090,13 @@ pub struct Settings {
     /// The data face (ids, numbers, code), as a family list; the skin's when
     /// left out.
     pub font_data: Option<Vec<String>>,
+    /// Content heading/quote families; the preset's, else the UI face.
+    pub font_title: Option<Vec<String>>,
+    /// Reading-text families; the UI face when omitted.
+    pub font_content: Option<Vec<String>>,
+    /// Project typography and content spacing. Fields merge over the preset
+    /// individually; sizes are logical px.
+    pub sizes: Option<Sizes>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -892,6 +1108,7 @@ impl Settings {
     pub fn new() -> Self {
         Self {
             skin: None,
+            theme: None,
             density: None,
             shadows: None,
             radius: None,
@@ -901,6 +1118,9 @@ impl Settings {
             rule: None,
             font_ui: None,
             font_data: None,
+            font_title: None,
+            font_content: None,
+            sizes: None,
             key: None,
             fresh: false,
         }
@@ -909,6 +1129,14 @@ impl Settings {
     /// The skin; Ledger when left out.
     pub fn skin(mut self, v: Skin) -> Self {
         self.skin = Some(v);
+        self
+    }
+
+    /// Optional content settings preset: Paper, Signal, Stage or Minimal.
+    /// Explicit skin, fonts, roles and individual sizes override the preset;
+    /// layout stays the author's.
+    pub fn theme(mut self, v: ContentTheme) -> Self {
+        self.theme = Some(v);
         self
     }
 
@@ -979,6 +1207,25 @@ impl Settings {
         self
     }
 
+    /// Content heading/quote families; the preset's, else the UI face.
+    pub fn font_title(mut self, v: Vec<String>) -> Self {
+        self.font_title = Some(v);
+        self
+    }
+
+    /// Reading-text families; the UI face when omitted.
+    pub fn font_content(mut self, v: Vec<String>) -> Self {
+        self.font_content = Some(v);
+        self
+    }
+
+    /// Project typography and content spacing. Fields merge over the preset
+    /// individually; sizes are logical px.
+    pub fn sizes(mut self, v: Sizes) -> Self {
+        self.sizes = Some(v);
+        self
+    }
+
     /// Keys the instance.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = Some(key.into());
@@ -996,6 +1243,9 @@ impl Settings {
         let mut m: Vec<(String, Value)> = Vec::new();
         if let Some(v) = &self.skin {
             m.push(("skin".into(), v.to_value()));
+        }
+        if let Some(v) = &self.theme {
+            m.push(("theme".into(), v.to_value()));
         }
         if let Some(v) = &self.density {
             m.push(("density".into(), v.to_value()));
@@ -1029,6 +1279,21 @@ impl Settings {
                 "font_data".into(),
                 Value::List(v.iter().map(|x| Value::str(x.as_str())).collect()),
             ));
+        }
+        if let Some(v) = &self.font_title {
+            m.push((
+                "font_title".into(),
+                Value::List(v.iter().map(|x| Value::str(x.as_str())).collect()),
+            ));
+        }
+        if let Some(v) = &self.font_content {
+            m.push((
+                "font_content".into(),
+                Value::List(v.iter().map(|x| Value::str(x.as_str())).collect()),
+            ));
+        }
+        if let Some(v) = &self.sizes {
+            m.push(("sizes".into(), v.to_value()));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -1179,6 +1444,11 @@ impl Panel {
 /// far side.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Toolbar {
+    /// Opt into the native drag strip under custom window chrome. Reserves the
+    /// OS window controls and keeps gaps draggable. False by default;
+    /// native-decorated windows keep the normal content toolbar. Configure
+    /// custom chrome and a medium/tall titlebar in the host when opting in.
+    pub window_chrome: Option<bool>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -1189,9 +1459,19 @@ impl Toolbar {
     /// What it needs; the rest by their setters.
     pub fn new() -> Self {
         Self {
+            window_chrome: None,
             key: None,
             fresh: false,
         }
+    }
+
+    /// Opt into the native drag strip under custom window chrome. Reserves the
+    /// OS window controls and keeps gaps draggable. False by default;
+    /// native-decorated windows keep the normal content toolbar. Configure
+    /// custom chrome and a medium/tall titlebar in the host when opting in.
+    pub fn window_chrome(mut self, v: bool) -> Self {
+        self.window_chrome = Some(v);
+        self
     }
 
     /// Keys the instance.
@@ -1209,6 +1489,9 @@ impl Toolbar {
     /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.window_chrome {
+            m.push(("window_chrome".into(), Value::Bool(*v)));
+        }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
         }
@@ -1715,6 +1998,856 @@ impl Divider {
     /// Places it under `<namespace>/divider`.
     pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
         ui.component(&format!("{namespace}/divider"), &self.props())
+    }
+}
+
+/// An adaptive content heading in the project's title face.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Heading {
+    /// The heading.
+    pub text: String,
+    /// Hierarchy, 1 to 6; 1 by default.
+    pub level: Option<i64>,
+    /// Override the theme's heading size.
+    pub size: Option<f64>,
+    /// A family name or family token.
+    pub family: Option<String>,
+    /// Override the foreground role.
+    pub color: Option<Paint>,
+    /// Bold by default.
+    pub bold: Option<bool>,
+    /// Line height in logical px.
+    pub line_height: Option<f64>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Heading {
+    /// What it needs; the rest by their setters.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            level: None,
+            size: None,
+            family: None,
+            color: None,
+            bold: None,
+            line_height: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Hierarchy, 1 to 6; 1 by default.
+    pub fn level(mut self, v: i64) -> Self {
+        self.level = Some(v);
+        self
+    }
+
+    /// Override the theme's heading size.
+    pub fn size(mut self, v: f64) -> Self {
+        self.size = Some(v);
+        self
+    }
+
+    /// A family name or family token.
+    pub fn family(mut self, v: impl Into<String>) -> Self {
+        self.family = Some(v.into());
+        self
+    }
+
+    /// Override the foreground role.
+    pub fn color(mut self, v: impl Into<Paint>) -> Self {
+        self.color = Some(v.into());
+        self
+    }
+
+    /// Bold by default.
+    pub fn bold(mut self, v: bool) -> Self {
+        self.bold = Some(v);
+        self
+    }
+
+    /// Line height in logical px.
+    pub fn line_height(mut self, v: f64) -> Self {
+        self.line_height = Some(v);
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("text".into(), Value::str((&self.text).as_str())));
+        if let Some(v) = &self.level {
+            m.push(("level".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.size {
+            m.push(("size".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.family {
+            m.push(("family".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.color {
+            m.push(("color".into(), v.to_value()));
+        }
+        if let Some(v) = &self.bold {
+            m.push(("bold".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.line_height {
+            m.push(("line_height".into(), Value::Float(*v)));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/heading`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/heading", &self.props())
+    }
+
+    /// Places it under `<namespace>/heading`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/heading"), &self.props())
+    }
+}
+
+/// Wrapping reading text in the project's content face.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Paragraph {
+    /// The text.
+    pub text: String,
+    /// Override the reading size.
+    pub size: Option<f64>,
+    /// A family name or family token.
+    pub family: Option<String>,
+    /// Override the foreground role.
+    pub color: Option<Paint>,
+    /// Line height in logical px.
+    pub line_height: Option<f64>,
+    /// Allow selecting and copying its text.
+    pub selectable: Option<bool>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Paragraph {
+    /// What it needs; the rest by their setters.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            size: None,
+            family: None,
+            color: None,
+            line_height: None,
+            selectable: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Override the reading size.
+    pub fn size(mut self, v: f64) -> Self {
+        self.size = Some(v);
+        self
+    }
+
+    /// A family name or family token.
+    pub fn family(mut self, v: impl Into<String>) -> Self {
+        self.family = Some(v.into());
+        self
+    }
+
+    /// Override the foreground role.
+    pub fn color(mut self, v: impl Into<Paint>) -> Self {
+        self.color = Some(v.into());
+        self
+    }
+
+    /// Line height in logical px.
+    pub fn line_height(mut self, v: f64) -> Self {
+        self.line_height = Some(v);
+        self
+    }
+
+    /// Allow selecting and copying its text.
+    pub fn selectable(mut self, v: bool) -> Self {
+        self.selectable = Some(v);
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("text".into(), Value::str((&self.text).as_str())));
+        if let Some(v) = &self.size {
+            m.push(("size".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.family {
+            m.push(("family".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.color {
+            m.push(("color".into(), v.to_value()));
+        }
+        if let Some(v) = &self.line_height {
+            m.push(("line_height".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.selectable {
+            m.push(("selectable".into(), Value::Bool(*v)));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/paragraph`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/paragraph", &self.props())
+    }
+
+    /// Places it under `<namespace>/paragraph`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/paragraph"), &self.props())
+    }
+}
+
+/// A reading composition with project spacing, optional width limit and
+/// title/section centering.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Content {
+    /// Layout preset; ordinary reading flow if omitted.
+    pub layout: Option<ContentLayout>,
+    /// Optional composition heading.
+    pub title: Option<String>,
+    /// Optional reading lead.
+    pub subtitle: Option<String>,
+    /// Optional small introductory label.
+    pub eyebrow: Option<String>,
+    /// title or section centers the content vertically; other values use
+    /// regular flow.
+    pub preset: Option<String>,
+    /// Take available height.
+    pub grow: Option<bool>,
+    /// Maximum reading width.
+    pub max_width: Option<f64>,
+    /// Inset; theme default if omitted.
+    pub pad: Option<f64>,
+    /// Spacing; theme default if omitted.
+    pub gap: Option<f64>,
+    /// Optional background.
+    pub bg: Option<Paint>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Content {
+    /// What it needs; the rest by their setters.
+    pub fn new() -> Self {
+        Self {
+            layout: None,
+            title: None,
+            subtitle: None,
+            eyebrow: None,
+            preset: None,
+            grow: None,
+            max_width: None,
+            pad: None,
+            gap: None,
+            bg: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Layout preset; ordinary reading flow if omitted.
+    pub fn layout(mut self, v: ContentLayout) -> Self {
+        self.layout = Some(v);
+        self
+    }
+
+    /// Optional composition heading.
+    pub fn title(mut self, v: impl Into<String>) -> Self {
+        self.title = Some(v.into());
+        self
+    }
+
+    /// Optional reading lead.
+    pub fn subtitle(mut self, v: impl Into<String>) -> Self {
+        self.subtitle = Some(v.into());
+        self
+    }
+
+    /// Optional small introductory label.
+    pub fn eyebrow(mut self, v: impl Into<String>) -> Self {
+        self.eyebrow = Some(v.into());
+        self
+    }
+
+    /// title or section centers the content vertically; other values use
+    /// regular flow.
+    pub fn preset(mut self, v: impl Into<String>) -> Self {
+        self.preset = Some(v.into());
+        self
+    }
+
+    /// Take available height.
+    pub fn grow(mut self, v: bool) -> Self {
+        self.grow = Some(v);
+        self
+    }
+
+    /// Maximum reading width.
+    pub fn max_width(mut self, v: f64) -> Self {
+        self.max_width = Some(v);
+        self
+    }
+
+    /// Inset; theme default if omitted.
+    pub fn pad(mut self, v: f64) -> Self {
+        self.pad = Some(v);
+        self
+    }
+
+    /// Spacing; theme default if omitted.
+    pub fn gap(mut self, v: f64) -> Self {
+        self.gap = Some(v);
+        self
+    }
+
+    /// Optional background.
+    pub fn bg(mut self, v: impl Into<Paint>) -> Self {
+        self.bg = Some(v.into());
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.layout {
+            m.push(("layout".into(), v.to_value()));
+        }
+        if let Some(v) = &self.title {
+            m.push(("title".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.subtitle {
+            m.push(("subtitle".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.eyebrow {
+            m.push(("eyebrow".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.preset {
+            m.push(("preset".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.grow {
+            m.push(("grow".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.max_width {
+            m.push(("max_width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.pad {
+            m.push(("pad".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.gap {
+            m.push(("gap".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.bg {
+            m.push(("bg".into(), v.to_value()));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/content`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/content", &self.props())
+    }
+
+    /// Places it under `<namespace>/content`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/content"), &self.props())
+    }
+
+    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"aside"` where it asks.
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
+        ui.component_with("kit/content", &self.props(), children)
+    }
+}
+
+/// Two content regions that stack when the available width is narrow.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Columns {
+    /// Stack below this width, 760 by default.
+    pub collapse_at: Option<f64>,
+    /// Column gap.
+    pub gap: Option<f64>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Columns {
+    /// What it needs; the rest by their setters.
+    pub fn new() -> Self {
+        Self {
+            collapse_at: None,
+            gap: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Stack below this width, 760 by default.
+    pub fn collapse_at(mut self, v: f64) -> Self {
+        self.collapse_at = Some(v);
+        self
+    }
+
+    /// Column gap.
+    pub fn gap(mut self, v: f64) -> Self {
+        self.gap = Some(v);
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.collapse_at {
+            m.push(("collapse_at".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.gap {
+            m.push(("gap".into(), Value::Float(*v)));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/columns`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/columns", &self.props())
+    }
+
+    /// Places it under `<namespace>/columns`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/columns"), &self.props())
+    }
+
+    /// Places it with your children: `children(group, ui)` builds `"first"`, `"second"` where it asks.
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
+        ui.component_with("kit/columns", &self.props(), children)
+    }
+}
+
+/// Titled before/after regions with adaptive stacking.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Comparison {
+    /// First title; Before by default.
+    pub first_title: Option<String>,
+    /// Second title; After by default.
+    pub second_title: Option<String>,
+    /// Stack below this width, 760 by default.
+    pub collapse_at: Option<f64>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Comparison {
+    /// What it needs; the rest by their setters.
+    pub fn new() -> Self {
+        Self {
+            first_title: None,
+            second_title: None,
+            collapse_at: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// First title; Before by default.
+    pub fn first_title(mut self, v: impl Into<String>) -> Self {
+        self.first_title = Some(v.into());
+        self
+    }
+
+    /// Second title; After by default.
+    pub fn second_title(mut self, v: impl Into<String>) -> Self {
+        self.second_title = Some(v.into());
+        self
+    }
+
+    /// Stack below this width, 760 by default.
+    pub fn collapse_at(mut self, v: f64) -> Self {
+        self.collapse_at = Some(v);
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.first_title {
+            m.push(("first_title".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.second_title {
+            m.push(("second_title".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.collapse_at {
+            m.push(("collapse_at".into(), Value::Float(*v)));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/comparison`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/comparison", &self.props())
+    }
+
+    /// Places it under `<namespace>/comparison`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/comparison"), &self.props())
+    }
+
+    /// Places it with your children: `children(group, ui)` builds `"first"`, `"second"` where it asks.
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
+        ui.component_with("kit/comparison", &self.props(), children)
+    }
+}
+
+/// A quotation in the title face with an optional attribution.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Quote {
+    /// The quotation.
+    pub text: String,
+    /// Its author or source.
+    pub attribution: Option<String>,
+    /// Override reading size.
+    pub size: Option<f64>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Quote {
+    /// What it needs; the rest by their setters.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            attribution: None,
+            size: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Its author or source.
+    pub fn attribution(mut self, v: impl Into<String>) -> Self {
+        self.attribution = Some(v.into());
+        self
+    }
+
+    /// Override reading size.
+    pub fn size(mut self, v: f64) -> Self {
+        self.size = Some(v);
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("text".into(), Value::str((&self.text).as_str())));
+        if let Some(v) = &self.attribution {
+            m.push(("attribution".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.size {
+            m.push(("size".into(), Value::Float(*v)));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/quote`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/quote", &self.props())
+    }
+
+    /// Places it under `<namespace>/quote`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/quote"), &self.props())
+    }
+}
+
+/// Any visual with a wrapping caption in the project's caption size.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Figure {
+    /// The caption.
+    pub caption: Option<String>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Figure {
+    /// What it needs; the rest by their setters.
+    pub fn new() -> Self {
+        Self {
+            caption: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// The caption.
+    pub fn caption(mut self, v: impl Into<String>) -> Self {
+        self.caption = Some(v.into());
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.caption {
+            m.push(("caption".into(), Value::str(v.as_str())));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/figure`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/figure", &self.props())
+    }
+
+    /// Places it under `<namespace>/figure`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/figure"), &self.props())
+    }
+
+    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
+        ui.component_with("kit/figure", &self.props(), children)
+    }
+}
+
+/// Retained content whose visibility can change without changing layout.
+/// Invisible content has no paint, pointer input, accessibility presence or Tab
+/// stops.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Visibility {
+    /// Whether the content is visible and interactive.
+    pub visible: bool,
+    /// Remove layout space too when invisible; otherwise reserve it.
+    pub collapse: Option<bool>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Visibility {
+    /// What it needs; the rest by their setters.
+    pub fn new(visible: bool) -> Self {
+        Self {
+            visible,
+            collapse: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Remove layout space too when invisible; otherwise reserve it.
+    pub fn collapse(mut self, v: bool) -> Self {
+        self.collapse = Some(v);
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+    /// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("visible".into(), Value::Bool(*(&self.visible))));
+        if let Some(v) = &self.collapse {
+            m.push(("collapse".into(), Value::Bool(*v)));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/visibility`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+        ui.component("kit/visibility", &self.props())
+    }
+
+    /// Places it under `<namespace>/visibility`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+        ui.component(&format!("{namespace}/visibility"), &self.props())
+    }
+
+    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
+    pub fn place_with(
+        &self,
+        ui: &mut Ui<'_>,
+        children: impl FnMut(&str, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
+        ui.component_with("kit/visibility", &self.props(), children)
     }
 }
 
@@ -4909,6 +6042,10 @@ pub struct Stat {
     pub label: String,
     /// The number, as text.
     pub value: String,
+    /// Use the project's display size for a presentation or headline statistic.
+    pub display: Option<bool>,
+    /// Override the value size in logical px.
+    pub size: Option<f64>,
     /// How it moved: `+12%`.
     pub delta: Option<String>,
     /// Whether the move is good news.
@@ -4925,11 +6062,25 @@ impl Stat {
         Self {
             label: label.into(),
             value: value.into(),
+            display: None,
+            size: None,
             delta: None,
             tone: None,
             key: None,
             fresh: false,
         }
+    }
+
+    /// Use the project's display size for a presentation or headline statistic.
+    pub fn display(mut self, v: bool) -> Self {
+        self.display = Some(v);
+        self
+    }
+
+    /// Override the value size in logical px.
+    pub fn size(mut self, v: f64) -> Self {
+        self.size = Some(v);
+        self
     }
 
     /// How it moved: `+12%`.
@@ -4961,6 +6112,12 @@ impl Stat {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("label".into(), Value::str((&self.label).as_str())));
         m.push(("value".into(), Value::str((&self.value).as_str())));
+        if let Some(v) = &self.display {
+            m.push(("display".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.size {
+            m.push(("size".into(), Value::Float(*v)));
+        }
         if let Some(v) = &self.delta {
             m.push(("delta".into(), Value::str(v.as_str())));
         }
@@ -4992,6 +6149,15 @@ impl Stat {
 pub struct Code {
     /// The text.
     pub text: String,
+    /// Syntax highlighting: lua, teal, javascript, typescript, json, rust,
+    /// python, c, css, shell or sql. Other languages remain plain text.
+    pub language: Option<String>,
+    /// One-based line numbers to emphasize.
+    pub highlight_lines: Option<Vec<i64>>,
+    /// Code size in logical px; project code size when omitted.
+    pub size: Option<f64>,
+    /// Line height; derived from the code size when omitted.
+    pub line_height: Option<f64>,
     /// Wraps rather than scrolls sideways.
     pub wrap: Option<bool>,
     /// At most this many lines high, the rest scrolled to.
@@ -5016,6 +6182,10 @@ impl Code {
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
+            language: None,
+            highlight_lines: None,
+            size: None,
+            line_height: None,
             wrap: None,
             max_lines: None,
             line_numbers: None,
@@ -5024,6 +6194,31 @@ impl Code {
             key: None,
             fresh: false,
         }
+    }
+
+    /// Syntax highlighting: lua, teal, javascript, typescript, json, rust,
+    /// python, c, css, shell or sql. Other languages remain plain text.
+    pub fn language(mut self, v: impl Into<String>) -> Self {
+        self.language = Some(v.into());
+        self
+    }
+
+    /// One-based line numbers to emphasize.
+    pub fn highlight_lines(mut self, v: Vec<i64>) -> Self {
+        self.highlight_lines = Some(v);
+        self
+    }
+
+    /// Code size in logical px; project code size when omitted.
+    pub fn size(mut self, v: f64) -> Self {
+        self.size = Some(v);
+        self
+    }
+
+    /// Line height; derived from the code size when omitted.
+    pub fn line_height(mut self, v: f64) -> Self {
+        self.line_height = Some(v);
+        self
     }
 
     /// Wraps rather than scrolls sideways.
@@ -5075,6 +6270,21 @@ impl Code {
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("text".into(), Value::str((&self.text).as_str())));
+        if let Some(v) = &self.language {
+            m.push(("language".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.highlight_lines {
+            m.push((
+                "highlight_lines".into(),
+                Value::List(v.iter().map(|x| Value::Int(*x)).collect()),
+            ));
+        }
+        if let Some(v) = &self.size {
+            m.push(("size".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.line_height {
+            m.push(("line_height".into(), Value::Float(*v)));
+        }
         if let Some(v) = &self.wrap {
             m.push(("wrap".into(), Value::Bool(*v)));
         }

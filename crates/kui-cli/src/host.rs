@@ -198,6 +198,8 @@ pub struct Shot {
     /// `--record`: how long to record, in seconds, and when it stops.
     record: Option<f64>,
     stop_at: Option<f64>,
+    fixed_time: Option<f64>,
+    warmup: u32,
 }
 
 impl Shot {
@@ -209,12 +211,19 @@ impl Shot {
             since: 0,
             record: None,
             stop_at: None,
+            fixed_time: None,
+            warmup: 0,
         }
     }
 
     /// Records `ms` of frames instead of taking one.
     pub fn recording(mut self, ms: Option<f64>) -> Self {
         self.record = ms.map(|ms| ms / 1000.0);
+        self
+    }
+
+    pub fn fixed_time(mut self, ms: Option<f64>) -> Self {
+        self.fixed_time = ms.map(|v| v / 1000.0);
         self
     }
 }
@@ -464,6 +473,10 @@ impl App for Runner {
     }
 
     fn view(&mut self, ui: &mut Ui<'_>) {
+        if let Some(time) = self.shot.as_ref().and_then(|s| s.fixed_time) {
+            ui.core().set_time(time);
+            ui.core().env.system.motion = kui_core::MotionPref::Reduced;
+        }
         ui.configure_root(NodeSpec::column().fill());
         // Kit's palette before the app's first node: the app's root is
         // lowered before the `kit.settings` inside it runs, so its
@@ -511,7 +524,12 @@ impl App for Runner {
         } else if let Some(shot) = &mut self.shot {
             let now = ui.now();
             let at = *shot.at.get_or_insert(now + shot.after);
-            if shot.since > 0 {
+            if shot.fixed_time.is_some() && shot.warmup < 3 {
+                // Geometry-reading components settle their layout events
+                // before export samples the fixed-clock composition.
+                shot.warmup += 1;
+                ui.request_frame();
+            } else if shot.since > 0 {
                 shot.since += 1;
                 if shot.since > 3 {
                     eprintln!("kui: wrote {}", shot.path.display());
@@ -540,7 +558,11 @@ impl App for Runner {
     /// revision, which the runner moves with every wake, every event and
     /// every drain that did something.
     fn view_state(&self) -> Option<u64> {
-        kui_lua::root_rev(&self.lua)
+        if self.shot.as_ref().is_some_and(|s| s.fixed_time.is_some()) {
+            None
+        } else {
+            kui_lua::root_rev(&self.lua)
+        }
     }
 
     fn on_event(&mut self, ev: UiEvent) {

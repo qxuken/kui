@@ -31,6 +31,7 @@ function make(namespace) {
     Settings(props = {}, children) {
       const wire = {};
       if (props.skin !== undefined) wire.skin = props.skin;
+      if (props.theme !== undefined) wire.theme = props.theme;
       if (props.density !== undefined) wire.density = props.density;
       if (props.shadows !== undefined) wire.shadows = props.shadows;
       if (props.radius !== undefined) wire.radius = props.radius;
@@ -40,6 +41,9 @@ function make(namespace) {
       if (props.rule !== undefined) wire.rule = props.rule;
       if (props.fontUi !== undefined) wire.font_ui = props.fontUi;
       if (props.fontData !== undefined) wire.font_data = props.fontData;
+      if (props.fontTitle !== undefined) wire.font_title = props.fontTitle;
+      if (props.fontContent !== undefined) wire.font_content = props.fontContent;
+      if (props.sizes !== undefined) wire.sizes = props.sizes;
       const groups = undefined;
       return {
         type: 'component',
@@ -67,6 +71,7 @@ function make(namespace) {
     },
     Toolbar(props = {}, children) {
       const wire = {};
+      if (props.windowChrome !== undefined) wire.window_chrome = props.windowChrome;
       const groups = {};
       if (props.trailing !== undefined) groups.trailing = flat(props.trailing);
       return {
@@ -141,6 +146,125 @@ function make(namespace) {
         type: 'component',
         key: props.key != null ? String(props.key) : undefined,
         props: { name: `${namespace}/divider`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Heading(props = {}, children) {
+      const wire = {};
+      if (props.text !== undefined) wire.text = props.text;
+      if (props.level !== undefined) wire.level = props.level;
+      if (props.size !== undefined) wire.size = props.size;
+      if (props.family !== undefined) wire.family = props.family;
+      if (props.color !== undefined) wire.color = props.color;
+      if (props.bold !== undefined) wire.bold = props.bold;
+      if (props.lineHeight !== undefined) wire.line_height = props.lineHeight;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/heading`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Paragraph(props = {}, children) {
+      const wire = {};
+      if (props.text !== undefined) wire.text = props.text;
+      if (props.size !== undefined) wire.size = props.size;
+      if (props.family !== undefined) wire.family = props.family;
+      if (props.color !== undefined) wire.color = props.color;
+      if (props.lineHeight !== undefined) wire.line_height = props.lineHeight;
+      if (props.selectable !== undefined) wire.selectable = props.selectable;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/paragraph`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Content(props = {}, children) {
+      const wire = {};
+      if (props.layout !== undefined) wire.layout = props.layout;
+      if (props.title !== undefined) wire.title = props.title;
+      if (props.subtitle !== undefined) wire.subtitle = props.subtitle;
+      if (props.eyebrow !== undefined) wire.eyebrow = props.eyebrow;
+      if (props.preset !== undefined) wire.preset = props.preset;
+      if (props.grow !== undefined) wire.grow = props.grow;
+      if (props.maxWidth !== undefined) wire.max_width = props.maxWidth;
+      if (props.pad !== undefined) wire.pad = props.pad;
+      if (props.gap !== undefined) wire.gap = props.gap;
+      if (props.bg !== undefined) wire.bg = props.bg;
+      const groups = {};
+      if (props.aside !== undefined) groups.aside = flat(props.aside);
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/content`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Columns(props = {}, children) {
+      const wire = {};
+      if (props.collapseAt !== undefined) wire.collapse_at = props.collapseAt;
+      if (props.gap !== undefined) wire.gap = props.gap;
+      const groups = {};
+      if (props.first !== undefined) groups.first = flat(props.first);
+      if (props.second !== undefined) groups.second = flat(props.second);
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/columns`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Comparison(props = {}, children) {
+      const wire = {};
+      if (props.firstTitle !== undefined) wire.first_title = props.firstTitle;
+      if (props.secondTitle !== undefined) wire.second_title = props.secondTitle;
+      if (props.collapseAt !== undefined) wire.collapse_at = props.collapseAt;
+      const groups = {};
+      if (props.first !== undefined) groups.first = flat(props.first);
+      if (props.second !== undefined) groups.second = flat(props.second);
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/comparison`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Quote(props = {}, children) {
+      const wire = {};
+      if (props.text !== undefined) wire.text = props.text;
+      if (props.attribution !== undefined) wire.attribution = props.attribution;
+      if (props.size !== undefined) wire.size = props.size;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/quote`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Figure(props = {}, children) {
+      const wire = {};
+      if (props.caption !== undefined) wire.caption = props.caption;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/figure`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Visibility(props = {}, children) {
+      const wire = {};
+      if (props.visible !== undefined) wire.visible = props.visible;
+      if (props.collapse !== undefined) wire.collapse = props.collapse;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/visibility`, props: wire, groups, fresh: props.fresh },
         children: flat(children ?? props.children),
       };
     },
@@ -477,6 +601,8 @@ function make(namespace) {
       const wire = {};
       if (props.label !== undefined) wire.label = props.label;
       if (props.value !== undefined) wire.value = props.value;
+      if (props.display !== undefined) wire.display = props.display;
+      if (props.size !== undefined) wire.size = props.size;
       if (props.delta !== undefined) wire.delta = props.delta;
       if (props.tone !== undefined) wire.tone = props.tone;
       const groups = undefined;
@@ -490,6 +616,10 @@ function make(namespace) {
     Code(props = {}, children) {
       const wire = {};
       if (props.text !== undefined) wire.text = props.text;
+      if (props.language !== undefined) wire.language = props.language;
+      if (props.highlightLines !== undefined) wire.highlight_lines = props.highlightLines;
+      if (props.size !== undefined) wire.size = props.size;
+      if (props.lineHeight !== undefined) wire.line_height = props.lineHeight;
       if (props.wrap !== undefined) wire.wrap = props.wrap;
       if (props.maxLines !== undefined) wire.max_lines = props.maxLines;
       if (props.lineNumbers !== undefined) wire.line_numbers = props.lineNumbers;
@@ -758,6 +888,6 @@ function make(namespace) {
 }
 
 const kit = make('kit');
-export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, Password, TextArea, Search, Select, Checkbox, Checklist, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Markdown, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
+export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Heading, Paragraph, Content, Columns, Comparison, Quote, Figure, Visibility, Button, IconButton, TextField, Password, TextArea, Search, Select, Checkbox, Checklist, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Markdown, Notice, Empty, Progress, Skeleton, Shader, Dialog, Popover, Menu, Toast, Toaster, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
 export const at = make;
 export default kit;

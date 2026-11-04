@@ -56,13 +56,12 @@ impl DynShell<'_> {
                     }
                     let _ = pane.window.drag_window();
                 }
-                WindowCommand::Close(id) if id == WindowId::MAIN => self.exit_requested = true,
                 // The chrome close button: the user closed it, as far as
                 // the declared set is concerned, so it stays closed while
                 // still declared. A `Close` the diff produced has already
                 // been taken out of the set, and reporting it again is a
                 // no-op there.
-                WindowCommand::Close(id) => self.close_pane(event_loop, id),
+                WindowCommand::Close(id) => self.request_close(event_loop, id),
                 WindowCommand::Minimize(id) => {
                     if let Some(i) = self.pane_of(id) {
                         self.panes[i].window.set_minimized(true);
@@ -146,6 +145,35 @@ impl DynShell<'_> {
                 WindowCommand::Focus(id) => {
                     if let Some(i) = self.pane_of(id) {
                         self.panes[i].window.focus_window();
+                    }
+                }
+                WindowCommand::SetFullscreen {
+                    window,
+                    enabled,
+                    display,
+                } => {
+                    if let Some(i) = self.pane_of(window) {
+                        let w = &self.panes[i].window;
+                        let monitor = display
+                            .and_then(|n| w.available_monitors().nth(n as usize))
+                            .or_else(|| w.current_monitor());
+                        w.set_fullscreen(
+                            enabled.then_some(winit::window::Fullscreen::Borderless(monitor)),
+                        );
+                    }
+                }
+                WindowCommand::SetVisible { window, visible } => {
+                    if let Some(i) = self.pane_of(window) {
+                        self.panes[i].hidden_by_app = !visible;
+                        self.panes[i].window.set_visible(visible);
+                        if visible {
+                            self.panes[i].window.request_redraw();
+                        }
+                    }
+                }
+                WindowCommand::SetCloseHides { window, enabled } => {
+                    if let Some(i) = self.pane_of(window) {
+                        self.panes[i].close_hides = enabled;
                     }
                 }
                 // Another window's input changed what this one shows
@@ -528,6 +556,8 @@ impl DynShell<'_> {
             alt_held: (false, false),
             #[cfg(not(target_os = "macos"))]
             last_titlebar_press: None,
+            close_hides: false,
+            hidden_by_app: false,
             cursor: Vec2::ZERO,
             last_click: None,
             blink_visible: true,
@@ -641,6 +671,23 @@ impl DynShell<'_> {
         self.apply_commands(event_loop, cmds);
     }
 
+    pub(super) fn request_close(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
+        let Some(i) = self.pane_of(id) else { return };
+        let other_visible = self
+            .panes
+            .iter()
+            .any(|p| p.id != id && !p.hidden_by_app && p.kind == WindowKind::Normal);
+        if self.panes[i].close_hides && other_visible {
+            self.panes[i].window.set_fullscreen(None);
+            self.panes[i].window.set_visible(false);
+            self.panes[i].hidden_by_app = true;
+        } else if id == WindowId::MAIN {
+            self.exit_main(event_loop);
+        } else {
+            self.close_pane(event_loop, id);
+        }
+    }
+
     pub(super) fn close_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
         let Some(i) = self.pane_of(id) else { return };
         // A context menu's popup the OS asked to close (Alt+F4 while it
@@ -677,6 +724,14 @@ impl DynShell<'_> {
             macos_key::release(&self.panes[i].window);
         }
         self.panes.remove(i);
+        self.extensions.forget_window(id);
+        if !self
+            .panes
+            .iter()
+            .any(|p| !p.hidden_by_app && p.kind == WindowKind::Normal)
+        {
+            self.exit_requested = true;
+        }
         if let Some(j) = hand_back.and_then(|o| self.pane_of(o)) {
             self.panes[j].os_focused = true;
             self.panes[j].window.focus_window();
