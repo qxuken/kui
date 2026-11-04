@@ -8,7 +8,7 @@
 use kui_core::{Core, InputEvent, KeyMods, NodeSpec, Size, UiEvent, Value, Vec2};
 
 const VIEW: Size = Size { w: 300.0, h: 200.0 };
-/// The strip's travel: one notch (40 px) and a bit.
+/// The strip's travel: one notch (48 px) and a bit.
 const STRIP_TRAVEL: f32 = 60.0;
 
 /// A page that scrolls down, holding a strip that scrolls only sideways
@@ -78,7 +78,7 @@ fn at(core: &mut Core, name: &str) -> Vec2 {
 fn a_plain_notch_moves_a_sideways_only_scroller() {
     let mut core = setup(false);
     notch(&mut core, STRIP, -1.0, true);
-    assert_eq!(at(&mut core, "strip"), Vec2::new(40.0, 0.0));
+    assert_eq!(at(&mut core, "strip"), Vec2::new(48.0, 0.0));
     assert_eq!(at(&mut core, "page"), Vec2::ZERO, "the page stays");
     // Up goes back toward the start.
     notch(&mut core, STRIP, 1.0, true);
@@ -104,7 +104,7 @@ fn a_sideways_scroller_at_its_end_hands_on_to_the_page() {
     notch(&mut core, STRIP, -1.0, true);
     assert_eq!(
         at(&mut core, "page"),
-        Vec2::new(0.0, 40.0),
+        Vec2::new(0.0, 48.0),
         "a new turn goes on"
     );
     assert_eq!(at(&mut core, "strip").x, STRIP_TRAVEL);
@@ -116,15 +116,15 @@ fn a_sideways_scroller_at_its_end_hands_on_to_the_page() {
 fn shift_turns_a_notch_sideways() {
     let mut core = setup(false);
     notch(&mut core, BOTH, -1.0, true);
-    assert_eq!(at(&mut core, "both"), Vec2::new(0.0, 40.0));
+    assert_eq!(at(&mut core, "both"), Vec2::new(0.0, 48.0));
     core.handle_input(InputEvent::Modifiers(KeyMods::NONE.with_shift()));
     notch(&mut core, BOTH, -1.0, true);
-    assert_eq!(at(&mut core, "both"), Vec2::new(40.0, 40.0));
+    assert_eq!(at(&mut core, "both"), Vec2::new(48.0, 48.0));
     assert_eq!(at(&mut core, "page"), Vec2::ZERO);
     // Over the strip too, and over nothing that goes sideways it moves
     // nothing: the page under it does not scroll down instead.
     notch(&mut core, STRIP, -1.0, true);
-    assert_eq!(at(&mut core, "strip"), Vec2::new(40.0, 0.0));
+    assert_eq!(at(&mut core, "strip"), Vec2::new(48.0, 0.0));
     notch(&mut core, 190.0, -1.0, true);
     assert_eq!(at(&mut core, "page"), Vec2::ZERO);
 }
