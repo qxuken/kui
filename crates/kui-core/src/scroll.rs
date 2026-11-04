@@ -161,8 +161,8 @@ struct Glide {
 /// | preset     | a notch | first frame | nine tenths | landed  |
 /// |------------|---------|-------------|-------------|---------|
 /// | `gentle`   | 40 px   | 6.5 px      | 183 ms      | 333 ms  |
-/// | `standard` | 40 px   | 7.8 px      | 167 ms      | 283 ms  |
-/// | `brisk`    | 48 px   | 10.2 px     | 150 ms      | 267 ms  |
+/// | `relaxed`  | 40 px   | 7.8 px      | 167 ms      | 283 ms  |
+/// | `standard` | 48 px   | 10.2 px     | 150 ms      | 267 ms  |
 /// | `swift`    | 64 px   | 15.5 px     | 133 ms      | 267 ms  |
 ///
 /// Every one keeps notches a slow hand turns 150 ms apart running into
@@ -191,47 +191,53 @@ pub struct WheelFeel {
 }
 
 impl WheelFeel {
-    /// Softer than the default: the same 40 px a notch, eased a little
+    /// The gentlest preset: 40 px a notch, eased a little
     /// longer.
     pub const GENTLE: Self = Self {
         line_px: 40.0,
         response: 0.34,
         kick: 0.55,
     };
-    /// The default. A notch is 40 px, nine tenths there by 167 ms and
+    /// The relaxed preset. A notch is 40 px, nine tenths there by 167 ms and
     /// within half a pixel by about 283 ms; at 0.21 s and a whole kick a
     /// slow hand's notches had each stopped before the next and lurched
     /// off at full speed (the 2026-10-24 amendment).
-    pub const STANDARD: Self = Self {
+    pub const RELAXED: Self = Self {
         line_px: 40.0,
         response: 0.30,
         kick: 0.6,
     };
-    /// A touch faster: a fifth further a notch, and quicker to land.
-    pub const BRISK: Self = Self {
+    /// The default: a fifth further than relaxed per notch, and quicker to land.
+    pub const STANDARD: Self = Self {
         line_px: 48.0,
         response: 0.27,
         kick: 0.6,
     };
-    /// Faster still: 64 px a notch, landed as soon as `brisk` lands 48.
+    /// Faster still: 64 px a notch, landed as soon as `standard` lands 48.
     pub const SWIFT: Self = Self {
         line_px: 64.0,
         response: 0.24,
         kick: 0.62,
     };
 
+    /// Compatibility alias for the preset now called standard.
+    pub const BRISK: Self = Self::STANDARD;
+
     /// The presets by name, slow to fast — what [`Self::preset`] reads,
     /// and the names the bindings and `KUI_WHEEL` take.
     pub const PRESETS: [(&'static str, Self); 4] = [
         ("gentle", Self::GENTLE),
+        ("relaxed", Self::RELAXED),
         ("standard", Self::STANDARD),
-        ("brisk", Self::BRISK),
         ("swift", Self::SWIFT),
     ];
 
     /// The preset called `name`, ignoring case; `None` for any other.
     pub fn preset(name: &str) -> Option<Self> {
         let name = name.trim();
+        if name.eq_ignore_ascii_case("brisk") {
+            return Some(Self::STANDARD);
+        }
         Self::PRESETS
             .iter()
             .find(|(n, _)| n.eq_ignore_ascii_case(name))

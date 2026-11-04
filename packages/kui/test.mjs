@@ -2763,28 +2763,28 @@ test('wheel: a notch glides to its place, and jumps with smoothWheel off', () =>
   ctx.wheel(0, -1, true);
   t += 1 / 60;
   const first = frame();
-  assert.ok(first > 0 && first < 40, `part-way: ${first}`);
+  assert.ok(first > 0 && first < 48, `part-way: ${first}`);
   for (let i = 0; i < 30; i++) {
     t += 1 / 60;
     frame();
   }
-  assert.equal(frame(), 40, 'lands on the notch');
+  assert.equal(frame(), 48, 'lands on the notch');
   ctx.setSmoothWheel(false);
   assert.equal(ctx.smoothWheel(), false);
   ctx.wheel(0, -1, true);
   t += 1 / 60;
-  assert.equal(frame(), 80, 'a jump');
+  assert.equal(frame(), 96, 'a jump');
 
   // The feel: a preset by name, or the numbers to change; the next notch
   // goes its line.
   const near = (a, b) => Math.abs(a - b) < 1e-6;
   const standard = ctx.wheelFeel();
-  assert.ok(near(standard.linePx, 40) && near(standard.response, 0.3) && near(standard.kick, 0.6));
+  assert.ok(near(standard.linePx, 48) && near(standard.response, 0.27) && near(standard.kick, 0.6));
   ctx.setWheelFeel('brisk');
   assert.equal(ctx.wheelFeel().linePx, 48);
   ctx.wheel(0, -1, true);
   t += 1 / 60;
-  assert.equal(frame(), 128, 'a brisk notch');
+  assert.equal(frame(), 144, 'a brisk notch');
   ctx.setWheelFeel({ linePx: 100 });
   const mixed = ctx.wheelFeel();
   assert.ok(mixed.linePx === 100 && near(mixed.response, 0.27), 'the rest kept');

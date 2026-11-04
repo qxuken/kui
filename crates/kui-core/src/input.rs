@@ -86,7 +86,7 @@ pub enum InputEvent {
     },
     /// A wheel's notches, in lines (positive y = scroll up), as part of
     /// a scroll gesture: routed and latched as [`InputEvent::ScrollGesture`]
-    /// is, at 40 px a line, and on a scroll container a whole notch glides
+    /// is, at the wheel feel's line distance (48 px by default), and on a scroll container a whole notch glides
     /// toward a target every further notch moves rather than jumping
     /// (ADR 0050) — unless `Core::set_smooth_wheel(false)` or the
     /// system's reduced motion. A fraction of a line — a precision

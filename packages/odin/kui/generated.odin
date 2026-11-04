@@ -4143,8 +4143,8 @@ smooth_wheel :: proc(ui: ^Ui) -> bool {
 	return c.smooth_wheel(ui)
 }
 
-// How a wheel's notch scrolls (`WheelFeel`): how far a line goes (40 px by
-// default), the glide's response (0.30 s) and its kick (0.6).
+// How a wheel's notch scrolls (`WheelFeel`): how far a line goes (48 px by
+// default), the glide's response (0.27 s) and its kick (0.6).
 // Rust: Core::set_wheel_feel.
 set_wheel_feel :: proc(ui: ^Ui, line_px: f32, response: f32, kick: f32) {
 	c.set_wheel_feel(ui, line_px, response, kick)

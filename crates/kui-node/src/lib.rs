@@ -896,7 +896,7 @@ impl Ctx {
     }
 
     /// A wheel's notches, in lines (+y = scroll up), as part of a scroll
-    /// gesture: latched as `scrollGesture` is, at 40 px a line, and on a
+    /// gesture: latched as `scrollGesture` is, at 48 px a line by default, and on a
     /// scroll container a whole notch glides toward a target further
     /// notches move (ADR 0050) — `advance` the clock to see it land. A
     /// fraction of a line is applied as it comes.
@@ -3812,10 +3812,10 @@ macro_rules! core_methods {
             }
 
             /// How a wheel's notch scrolls: a preset's name, slow to
-            /// fast `'gentle'`, `'standard'` (the default), `'brisk'` (a
-            /// touch faster), `'swift'`; or `{ linePx, response, kick }`,
+            /// fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
+            /// alias of standard), `'swift'`; or `{ linePx, response, kick }`,
             /// any left out kept as they are — how far a line goes in
-            /// logical px (40), the glide's response in seconds (0.30)
+            /// logical px (48), the glide's response in seconds (0.27)
             /// and its kick, 0 to 1 (0.6). Clamped into what the glide
             /// can use. Off, a notch still jumps its `linePx`.
             /// `runWindowed` takes it for the whole app as `wheelFeel`.

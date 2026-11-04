@@ -1506,7 +1506,7 @@ pub const DOORS: &[Door] = &[
         odin: Is("set_wheel_feel"),
         node: Is("setWheelFeel"),
         lua: No(GUEST),
-        doc: "How a wheel's notch scrolls (`WheelFeel`): how far a line goes (40 px by default), the glide's response (0.30 s) and its kick (0.6). Off, a notch still jumps its line.",
+        doc: "How a wheel's notch scrolls (`WheelFeel`): how far a line goes (48 px by default), the glide's response (0.27 s) and its kick (0.6). Off, a notch still jumps its line.",
     },
     Door {
         rust: "WheelFeel::preset",
@@ -1514,7 +1514,7 @@ pub const DOORS: &[Door] = &[
         odin: As("`set_wheel_preset`, which sets it"),
         node: As("a name to `setWheelFeel`"),
         lua: No(GUEST),
-        doc: "A feel by name, slow to fast: `gentle`, `standard` (the default), `brisk` (a touch faster), `swift`.",
+        doc: "A feel by name, slow to fast: `gentle`, `relaxed`, `standard` (the default), `swift`; `brisk` aliases `standard`.",
     },
     Door {
         rust: "Core::wheel_feel",

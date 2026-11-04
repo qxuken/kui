@@ -33,6 +33,7 @@ fn list(core: &mut Core) {
 /// A core with the list laid out, the clock at 0 and the pointer over it.
 fn setup() -> (Core, Key) {
     let mut core = Core::new();
+    core.set_wheel_feel(WheelFeel::RELAXED);
     core.set_time(0.0);
     list(&mut core);
     list(&mut core);
@@ -267,6 +268,7 @@ fn off_or_reduced_motion_jumps() {
 #[test]
 fn a_glide_headed_for_the_end_hands_the_next_gesture_on() {
     let mut core = Core::new();
+    core.set_wheel_feel(WheelFeel::RELAXED);
     core.set_time(0.0);
     let page = |core: &mut Core| {
         let mut ui = core.frame(VIEW, 1.0);
@@ -307,6 +309,7 @@ fn a_glide_headed_for_the_end_hands_the_next_gesture_on() {
 #[test]
 fn a_handler_hears_the_pixels() {
     let mut core = Core::new();
+    core.set_wheel_feel(WheelFeel::RELAXED);
     core.set_time(0.0);
     let term = |core: &mut Core| {
         let mut ui = core.frame(VIEW, 1.0);
@@ -335,11 +338,13 @@ fn a_handler_hears_the_pixels() {
 fn presets_go_by_name() {
     assert_eq!(WheelFeel::default(), WheelFeel::STANDARD);
     assert_eq!(Core::new().wheel_feel(), WheelFeel::STANDARD);
-    assert_eq!(WheelFeel::preset("brisk"), Some(WheelFeel::BRISK));
+    assert_eq!(WheelFeel::preset("brisk"), Some(WheelFeel::STANDARD));
+    assert_eq!(WheelFeel::preset("standard"), Some(WheelFeel::default()));
+    assert_eq!(WheelFeel::preset("relaxed"), Some(WheelFeel::RELAXED));
     assert_eq!(WheelFeel::preset(" Swift "), Some(WheelFeel::SWIFT));
     assert_eq!(WheelFeel::preset("turbo"), None);
     let names: Vec<_> = WheelFeel::PRESETS.iter().map(|(n, _)| *n).collect();
-    assert_eq!(names, ["gentle", "standard", "brisk", "swift"]);
+    assert_eq!(names, ["gentle", "relaxed", "standard", "swift"]);
 }
 
 /// A feel's line is how far a notch goes: glided, jumped, and what a
@@ -406,7 +411,7 @@ fn a_feel_is_clamped() {
     assert_eq!(
         core.wheel_feel(),
         WheelFeel {
-            line_px: 40.0,
+            line_px: 48.0,
             response: 0.05,
             kick: 1.0,
         }
