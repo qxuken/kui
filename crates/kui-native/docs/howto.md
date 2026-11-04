@@ -1577,7 +1577,7 @@ is the list: a scroll container that names a key for its own zoom
 scrolls for every other wheel. On the window's root it is
 the whole window's zoom; a canvas inside can name the same key and take
 the gesture for itself, the innermost winning. Positive `dy` is the
-wheel rolling up, "bigger". A mouse's notch is 40 px and a trackpad's
+wheel rolling up, "bigger". A mouse's notch is 48 px by default and a trackpad's
 swipe comes in small pixel steps, so add `dy` up and step when the sum
 crosses your notch rather than once an event. The `scroll` field's `mods` are
 the keys held when the gesture began: a swipe begun with the key held
