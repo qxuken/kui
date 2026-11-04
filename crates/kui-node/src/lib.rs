@@ -896,7 +896,7 @@ impl Ctx {
     }
 
     /// A wheel's notches, in lines (+y = scroll up), as part of a scroll
-    /// gesture: latched as `scrollGesture` is, at 40 px a line, and on a
+    /// gesture: latched as `scrollGesture` is, at 48 px a line by default, and on a
     /// scroll container a whole notch glides toward a target further
     /// notches move (ADR 0050) — `advance` the clock to see it land. A
     /// fraction of a line is applied as it comes.

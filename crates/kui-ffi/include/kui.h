@@ -2791,7 +2791,7 @@ void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
 void kui_input_scroll_gesture(KuiCtx *ctx, float dx, float dy, bool begins);
 /* A wheel's notches, in lines (+y = scroll up), as part of a scroll
  * gesture, latched as kui_input_scroll_gesture is at kui_wheel_feel's
- * line_px a line (40 by default). On a
+ * line_px a line (48 by default). On a
  * scroll container a whole notch glides toward a target further notches
  * move, rather than jumping (ADR 0050), unless kui_set_smooth_wheel turned
  * that off or the system asks for reduced motion; a fraction of a line is

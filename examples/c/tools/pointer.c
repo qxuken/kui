@@ -160,14 +160,14 @@ static void glfw_checks(void) {
     check(offset(ui, inner) == 40 && offset(ui, outer) == 0, "glfw: a notch with no pause stays with its scroller");
     now_s = 4.5;
     kui_glfw_scroll(&g, 0, -1);
-    check(offset(ui, outer) == 40, "glfw: after a pause the notch begins a gesture of its own");
+    check(offset(ui, outer) == 48, "glfw: after a pause the notch begins a gesture of its own");
     /* Back up, no pause: the outer scroller, latched - unless the pointer
      * moved, which begins a gesture at the inner one, which can go up. */
     now_s = 4.52;
     kui_glfw_cursor(&g, 51, 60);
     now_s = 4.55;
     kui_glfw_scroll(&g, 0, 1);
-    check(offset(ui, inner) == 0 && offset(ui, outer) == 40, "glfw: the pointer moving begins a wheel's gesture");
+    check(offset(ui, inner) == 0 && offset(ui, outer) == 48, "glfw: the pointer moving begins a wheel's gesture");
 #if defined(__APPLE__)
     /* macOS: a delta with a fraction is a trackpad's points over 10, and a
      * whole one in its gesture is too. */
@@ -287,7 +287,7 @@ static void sdl3_checks(void) {
     check(offset(ui, inner) == 40 && offset(ui, outer) == 0, "sdl3: a notch with no pause stays with its scroller");
     e = wheel(-1, 10.5);
     kui_sdl3_event(&s, &e);
-    check(offset(ui, outer) == 40, "sdl3: after a pause the notch begins a gesture of its own");
+    check(offset(ui, outer) == 48, "sdl3: after a pause the notch begins a gesture of its own");
 
     /* Leaving the window, and coming back. */
     e = motion(40, 12);

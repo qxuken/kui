@@ -4882,7 +4882,7 @@ mod wheel_headless {
     use super::*;
 
     /// A wheel's notches through C (ADR 0050): `kui_input_wheel` takes
-    /// lines and a notch glides to its 40 px over the clock;
+    /// lines and a notch glides to its 48 px over the clock;
     /// `kui_set_smooth_wheel(false)` makes the next one jump, and
     /// `kui_smooth_wheel` reads the switch back — true for no context.
     #[test]

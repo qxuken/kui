@@ -1376,7 +1376,7 @@ static int surface(void) {
               "kui_input_scroll_gesture moves the card it began over");
 
         /* A wheel's notch (ADR 0050) glides by default; with the switch
-         * off it jumps its 40 px on the next frame, clamped to the card's
+         * off it jumps its 48 px on the next frame, clamped to the card's
          * travel. Shift and Ctrl are still held from the pointer state
          * above, and a notch under Shift turns sideways (backlog F202):
          * let go of them first. */
@@ -1384,7 +1384,7 @@ static int surface(void) {
         check(kui_smooth_wheel(ui), "kui_smooth_wheel: on by default");
         kui_set_smooth_wheel(ui, false);
         check(!kui_smooth_wheel(ui), "kui_set_smooth_wheel turns it off");
-        float want = sy - 40 * way;
+        float want = sy - 48 * way;
         want = want < 0 ? 0 : want > geo.max_offset_y ? geo.max_offset_y : want;
         kui_input_wheel(ui, 0, way, true);
         kui_frame_begin(ui, 800, 600, 2.0f);
@@ -1396,7 +1396,7 @@ static int surface(void) {
         /* The feel: a preset makes the next notch go its own line. */
         float line = 0, response = 0, kick = 0;
         kui_wheel_feel(ui, &line, &response, &kick);
-        check(line == 40 && kick > 0, "kui_wheel_feel: the standard feel by default");
+        check(line == 48 && response == 0.27f && kick == 0.6f, "kui_wheel_feel: the standard feel by default");
         check(kui_set_wheel_preset(ui, KUI_STR("swift")), "kui_set_wheel_preset takes a name");
         check(!kui_set_wheel_preset(ui, KUI_STR("turbo")), "and refuses one it does not know");
         kui_wheel_feel(ui, &line, NULL, NULL);
@@ -1418,7 +1418,7 @@ static int surface(void) {
         float after = -1;
         kui_scroll_offset(ui, k.card, NULL, &after);
         check(after == sy, "kui_input_pinch scrolls no container");
-        kui_set_wheel_feel(ui, 40, 0.30f, 0.6f);
+        kui_set_wheel_feel(ui, 48, 0.27f, 0.6f);
         kui_set_smooth_wheel(ui, true);
 
         /* The edge scroll (ADR 0029): the feel reads back, a preset sets
