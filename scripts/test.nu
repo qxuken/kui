@@ -10,6 +10,12 @@
 #   nu scripts/test.nu -p kui-core,kui-lua
 #   nu scripts/test.nu --node                Node's `npm test` alongside
 #   nu scripts/test.nu -j 4 --no-doc
+#   nu scripts/test.nu --no-artifacts        reuse the existing C artifacts
+#
+# Rebuilds the C examples and kui_ffi first, so the real-plugin tests do
+# not skip on a clean checkout or load a plugin from an older ABI. Needs
+# a C compiler (cbuild finds Visual Studio on Windows); --no-artifacts
+# skips this step for a Rust-only run or when the artifacts are current.
 #
 # `cargo test` runs its ~130 binaries in turn, so a run is the sum of them
 # and the slowest few (the wgpu coverage mirrors, the corpus) are waited on
@@ -87,6 +93,7 @@ def main [
     --package (-p): string      # packages to test, comma-separated (default: the workspace)
     --node                      # also run Node's `npm test` in packages/kui
     --no-doc                    # leave out the doctests
+    --no-artifacts              # skip rebuilding the C examples and their shared library
     ...args: string             # handed to every test binary (a filter; libtest flags after `--`)
 ] {
     let t0 = date now
@@ -102,6 +109,19 @@ def main [
     # A `-p` selection that does not reach kui-core cannot take its feature.
     let wants_core = ($packages | is-empty) or ((^cargo tree ...$select -e normal,dev -i kui-core | complete).exit_code == 0)
     let cargo_args = if $wants_core { $select | append ["--features" "kui-core/conformance"] } else { $select }
+
+    # Finish the native artifacts before starting any test binary: panel
+    # imports kui_ffi.dll on Windows, and both must be from this checkout.
+    # Cargo alone does not rebuild panel.c when the ABI header changes.
+    if not $no_artifacts {
+        print "rebuilding C artifacts (skip with --no-artifacts)"
+        try {
+            ^cargo run -p kui-devtools --bin cbuild
+        } catch {
+            print -e "the C artifacts failed to build"
+            exit 2
+        }
+    }
 
     # Build: the binaries' paths come out of cargo's JSON, one per test
     # target. Cargo's own progress and errors go to the terminal; the JSON
