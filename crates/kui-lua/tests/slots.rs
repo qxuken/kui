@@ -563,7 +563,13 @@ fn a_script_loads_a_c_plugin_and_places_it() {
 
     // The script loaded it, so it is in the frame's list with an origin
     // of its own, and it drew where the script said.
-    assert_eq!(exts.len(), 2, "the script's plugin joined the one list");
+    let warnings = core.take_warnings();
+    assert_eq!(
+        exts.len(),
+        2,
+        "the script's plugin joined the one list: {:?}",
+        warnings
+    );
     assert_eq!(exts.namespace_of(OriginId(2)), Some("todos"));
     let row = core.access_tree().nodes.iter().find_map(|n| {
         let name = n.name.as_deref()?;
@@ -571,7 +577,7 @@ fn a_script_loads_a_c_plugin_and_places_it() {
             .then(|| Vec2::new(n.rect.x + n.rect.w / 2.0, n.rect.y + n.rect.h / 2.0))
     });
     let row = row.expect("the plugin drew no rows — was it placed?");
-    assert!(core.take_warnings().is_empty());
+    assert!(warnings.is_empty(), "{warnings:?}");
 
     // Click one of its todos and let the frame resolve the press.
     core.handle_input(InputEvent::CursorMoved(row));
