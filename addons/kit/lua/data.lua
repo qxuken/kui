@@ -8,6 +8,7 @@ local ctx = require("ctx")
 local icons = require("icons")
 local inputs = require("inputs")
 local skin = require("skin")
+local syntax = require("syntax")
 
 
 
@@ -978,7 +979,7 @@ function M.stat(c, p)
       label = (str(p.label) or "") .. ": " .. (str(p.value) or ""),
       gap = 2,
       ctx.muted(c, ctx.label(c, str(p.label) or ""), { bold = true }),
-      ctx.data(c, str(p.value) or "", { size = 22, bold = true }),
+      ctx.data(c, str(p.value) or "", { size = (p.size) or (p.display == true and "$kitDisplay" or 22), bold = true }),
    }
    if str(p.delta) then
       local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or "muted"
@@ -1000,10 +1001,22 @@ local LINE = 16
 local COPIED_S = 1.5
 
 function M.code(c, p)
-   local text = str(p.text) or ""
+   local source = str(p.text) or ""
    local wrap = p.wrap == true
    local lines = p.max_lines
-   local body = ctx.data(c, text, { wrap = wrap and "glyph" or "none", line_height = LINE })
+   local size = (p.size) or (c.s.sizes and c.s.sizes.code) or c.s.skin.size
+   local line_height = (p.line_height) or math.max(LINE, size * 1.4)
+   local spans = syntax.lines(source, str(p.language) or "", ref(c, "accent_text"), ref(c, "muted"), ref(c, "ok"))
+   local emphasized = {}
+   for _, n in ipairs((p.highlight_lines or {})) do emphasized[n] = true end
+   local code = { key = "source", width = "grow" }
+   for i, line in ipairs(spans) do
+      if #line == 0 then line[1] = " " end
+      code[#code + 1] = column({ width = "grow", bg = emphasized[i] and ref(c, "hover") or nil,
+text(line, { size = size, family = "$kitData", color = ref(c, "fg"),
+line_height = line_height, wrap = wrap and "glyph" or "none", }), })
+   end
+   local body = column(code)
 
 
    local inner = { key = "lines", width = "grow", selectable = true }
@@ -1011,20 +1024,20 @@ function M.code(c, p)
 
 
       local n = 1
-      for _ in text:gmatch("\n") do n = n + 1 end
+      for _ in source:gmatch("\n") do n = n + 1 end
       local nums = {}
       for i = 1, n do nums[i] = tostring(i) end
       inner.selectable = nil
       inner[1] = row({ width = "grow", gap = 12,
 column({ cross_align = "end",
-ctx.data(c, table.concat(nums, "\n"), { line_height = LINE, color = ref(c, "faint") }), }),
+ctx.data(c, table.concat(nums, "\n"), { size = size, line_height = line_height, color = ref(c, "faint") }), }),
 column({ key = "text", width = "grow", min_width = 0, selectable = true, scroll_x = true, body }), })
    else
       inner[1] = body
       inner.scroll_x = not wrap
    end
    if lines then
-      inner.max_height = lines * LINE
+      inner.max_height = lines * line_height
       inner.scroll_y = true
    end
    local frame = {
@@ -1045,7 +1058,7 @@ column({ key = "text", width = "grow", min_width = 0, selectable = true, scroll_
          local st = ctx.state(c, function() return {} end)
          if st.ask then
             st.ask = false
-            env.set_clipboard(text)
+            env.set_clipboard(source)
             st.at = env.now or 0
          end
          local said = st.at ~= nil and (env.now or 0) < st.at + COPIED_S

@@ -8,6 +8,113 @@ use std::time::{Duration, Instant};
 
 const KUI: &str = env!("CARGO_BIN_EXE_kui");
 
+#[test]
+fn run_preserves_native_chrome_on_an_ordinary_sample() {
+    let dir = app(
+        "presentation-preserves-chrome",
+        &[(
+            "main.lua",
+            r#"
+      function view(env)
+        assert(not env.window.custom_chrome, "ordinary samples must keep native window decorations")
+        print("native chrome preserved")
+        kui.exit(0)
+        return column { text("Sample") }
+      end
+    "#,
+        )],
+    );
+    let output = kui(&dir, &["run", "--headless"], 20);
+    let text = out(&output);
+    assert!(
+        output.status.success() && text.contains("native chrome preserved"),
+        "{text}"
+    );
+}
+
+#[test]
+fn presentation_export_is_an_isolated_fixed_clock_png_sequence() {
+    let dir = app(
+        "presentation-export",
+        &[(
+            "main.lua",
+            r#"
+      local kit = require("kit.ui")
+      require("kit.presentation")({ theme = "minimal", settings = { sizes = { heading = 58 } }, slides = {
+        { key = "clock", title = "A fixed clock", notes = "Private notes stay off the audience",
+          activate = function() error("export activated live work") end,
+          view = function(c)
+            assert(c.mode == "snapshot" and c.now == 2500)
+            return c.content({ title = "A fixed clock" }, {
+              c.reveal(1, { kit.paragraph({ text = tostring(c.now) }) }) })
+          end },
+      } })
+    "#,
+        )],
+    );
+    let args = [
+        "run",
+        "--export",
+        "slides",
+        "--steps",
+        "--time",
+        "2500",
+        "--size",
+        "800x600",
+        "--appearance",
+        "light",
+    ];
+    for run in 0..2 {
+        let output = kui(&dir, &args, 20);
+        let text = out(&output);
+        assert!(
+            output.status.success() && !text.contains("warning ["),
+            "{text}"
+        );
+        let png = std::fs::read(dir.join("slides/0002.png")).unwrap();
+        assert_eq!(u32::from_be_bytes(png[16..20].try_into().unwrap()), 800);
+        assert_eq!(u32::from_be_bytes(png[20..24].try_into().unwrap()), 600);
+        if run == 0 {
+            std::fs::write(dir.join("first.png"), &png).unwrap();
+        } else {
+            assert_eq!(png, std::fs::read(dir.join("first.png")).unwrap());
+        }
+    }
+    let manifest = std::fs::read_to_string(dir.join("slides/manifest.json")).unwrap();
+    for field in [
+        "\"key\":\"clock\"",
+        "\"step\":0",
+        "\"step\":1",
+        "\"timestamp_ms\":2500",
+    ] {
+        assert!(manifest.contains(field), "missing {field}: {manifest}");
+    }
+    assert!(!manifest.contains("Private notes"));
+}
+
+#[test]
+fn presentation_navigation_lifecycle_and_reload_match_the_shared_contract() {
+    let dir = app(
+        "presentation-contract",
+        &[
+            (
+                "main.lua",
+                include_str!("../../../addons/kit/tests/presentation.lua"),
+            ),
+            (
+                "presentation-navigation.json",
+                include_str!("../../../addons/kit/tests/presentation-navigation.json"),
+            ),
+        ],
+    );
+    let output = kui(&dir, &["run", "--headless"], 20);
+    let text = out(&output);
+    assert!(
+        output.status.success() && text.contains("presentation contract OK"),
+        "{text}"
+    );
+}
+
 /// A fresh folder holding `files`.
 fn app(name: &str, files: &[(&str, &str)]) -> PathBuf {
     let dir = std::env::temp_dir()

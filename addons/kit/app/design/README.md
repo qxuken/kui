@@ -43,9 +43,9 @@ Kit's voice is a careful colleague at a terminal: plain, specific, unexcited. Wr
 ### Type
 
 - Set UI text in the skin's UI face (`ui`, `neutral-ui` or `phosphor`) and every id, timing, number, path, code and log line in the data face (`data`, `neutral-data` or `phosphor`).
-- Use the skin's three sizes and nothing between: body at `$kitSize` (`ledger-body`, 12px), labels at `$kitSizeLabel` (`ledger-label`, 11px), titles at `$kitSizeTitle` (`ledger-title`, 13px bold). Line height is 1.35 times the size, rounded (16, 15, 18).
+- For tool controls, use the skin's three sizes: body at `$kitSize` (`ledger-body`, 12px), labels at `$kitSizeLabel` (`ledger-label`, 11px), titles at `$kitSizeTitle` (`ledger-title`, 13px bold). Line height is 1.35 times the size, rounded (16, 15, 18). Reading content uses Settings' content sizes and title/content faces; Paper, Signal, Stage and Minimal are presets with project overrides. These do not enlarge controls.
 - Labels on controls, tabs and panel and table headers are bold capitals in Ledger and Phosphor (`ledger-label`, `phosphor-label`), regular sentence case in Neutral (`neutral-label`). A field's, slider's or stat's label is that caption in `muted`.
-- Headline numbers are `stat`: 22px bold in the data face. Chart labels are `tick`: 10px data face in `faint`.
+- Default tool headline numbers are `stat`: 22px bold in the data face. Display Stats use the content display size. Default chart labels are `tick`: 10px data face in `faint`; Settings' `sizes.chart` overrides them for reading content.
 - Kit ships no font files. Space Grotesk, IBM Plex Sans, IBM Plex Mono, Inter and JetBrains Mono are on Google Fonts; each stack falls back to the system face.
 
 ### Spacing and density

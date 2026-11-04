@@ -5325,6 +5325,37 @@ macro_rules! core_methods {
                 Ok(())
             }
 
+            /// Display names, indexed by setWindowFullscreen's display.
+            #[napi]
+            pub fn display_names(&mut self) -> Vec<String> {
+                self.$core().display_names.clone()
+            }
+
+            /// Request borderless fullscreen on the current or chosen display.
+            #[napi]
+            pub fn set_window_fullscreen(&mut self, window: f64, enabled: bool, display: Option<f64>) -> Result<()> {
+                let display = display.map(|d| count(d, "setWindowFullscreen: display")).transpose()?;
+                self.$core().set_window_fullscreen(kui_core::WindowId(count(window, "setWindowFullscreen: window")?), enabled, display);
+                self.$redraw();
+                Ok(())
+            }
+
+            /// Show or hide a window without losing its context.
+            #[napi]
+            pub fn set_window_visible(&mut self, window: f64, visible: bool) -> Result<()> {
+                self.$core().set_window_visible(kui_core::WindowId(count(window, "setWindowVisible: window")?), visible);
+                self.$redraw();
+                Ok(())
+            }
+
+            /// Have OS close hide a window while another stays visible.
+            #[napi]
+            pub fn set_window_close_hides(&mut self, window: f64, enabled: bool) -> Result<()> {
+                self.$core().set_window_close_hides(kui_core::WindowId(count(window, "setWindowCloseHides: window")?), enabled);
+                self.$redraw();
+                Ok(())
+            }
+
             // -- Editors ----------------------------------------------------
 
             #[napi]
@@ -5404,6 +5435,11 @@ impl Ctx {
     /// an extension's event to the extension, its replies to the queue the
     /// app polls. See [`absorb`].
     fn take_events(&mut self, events: Vec<UiEvent>) {
+        if !events.is_empty() {
+            // Kit may consume the whole batch without emitting to JS.
+            // Its internal state still needs another frame.
+            self.core.request_frame();
+        }
         absorb(&mut self.extensions, events, &mut self.events);
     }
 

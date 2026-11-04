@@ -9,6 +9,16 @@ Use one toolbar across the top of a window: the window's name, the controls that
 
 ## What you provide
 
+| Lua prop | Node prop | type | what it is |
+|---|---|---|---|
+| `window_chrome` | `windowChrome` | boolean? | Explicitly integrate this toolbar with a custom titlebar. False by default. Native-decorated windows keep the ordinary content toolbar. |
+
+When opting in, configure custom window chrome and preferably a medium
+or tall titlebar in the host. Kit reserves the OS control inset through
+kui's titlebar component and leaves noninteractive space draggable.
+Buttons and other controls keep their own input. Without this prop,
+place a separate titlebar before the toolbar when custom chrome needs one.
+
 
 Children:
 
@@ -28,3 +38,4 @@ Every component also takes `key` and `fresh`.
 - Put more than one primary button in it.
 - Add your own spacer between the two groups: the unnamed group already takes the room; a spacer inside it pushes what follows to the group's end.
 - Use it as a panel header: a panel has its own head with `actions`.
+- Assume a toolbar belongs under native window controls: integration is explicit, and ordinary examples keep their configured chrome.

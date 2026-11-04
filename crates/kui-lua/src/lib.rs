@@ -2332,6 +2332,47 @@ fn env_table(
         })?,
     )?;
     t.set(
+        "window_name",
+        lua.create_function(move |_, ()| Ok(ui.borrow()?.window_name().to_string()))?,
+    )?;
+    t.set(
+        "display_names",
+        lua.create_function(move |_, ()| Ok(ui.borrow()?.display_names().to_vec()))?,
+    )?;
+    t.set(
+        "set_window_fullscreen",
+        lua.create_function(
+            move |_, (window, enabled, display): (mlua::Value, bool, Option<mlua::Value>)| {
+                let id = window_arg(&window, "set_window_fullscreen: window")?;
+                let display = display
+                    .as_ref()
+                    .map(|d| window_arg(d, "set_window_fullscreen: display"))
+                    .transpose()?;
+                ui.borrow_mut()?
+                    .set_window_fullscreen(kui_core::WindowId(id), enabled, display);
+                Ok(())
+            },
+        )?,
+    )?;
+    t.set(
+        "set_window_visible",
+        lua.create_function(move |_, (window, visible): (mlua::Value, bool)| {
+            let id = window_arg(&window, "set_window_visible: window")?;
+            ui.borrow_mut()?
+                .set_window_visible(kui_core::WindowId(id), visible);
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "set_window_close_hides",
+        lua.create_function(move |_, (window, enabled): (mlua::Value, bool)| {
+            let id = window_arg(&window, "set_window_close_hides: window")?;
+            ui.borrow_mut()?
+                .set_window_close_hides(kui_core::WindowId(id), enabled);
+            Ok(())
+        })?,
+    )?;
+    t.set(
         "measure_text",
         lua.create_function(
             move |lua, (s, opts, max_w): (mlua::Value, Option<Table>, Option<f32>)| {

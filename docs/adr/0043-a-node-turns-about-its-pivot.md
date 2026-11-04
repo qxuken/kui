@@ -222,6 +222,11 @@ date: 2026-10-08
   `scale` times as soft; a UI scale stays near 1.
 - **The devtools' facts show `rotate` and `scale`** beside `opacity`.
 
+**2026-11-04 update:** [ADR 0077](0077-kit-presentations-as-code.md)
+adds output-resolution rasterization for enlarged static glyphs, including
+fixed presentation canvases. Rotation still resamples glyphs, and SDF
+edge ramps retain the scaling behavior described above.
+
 ## Open questions
 
 - **The path's own turn.** When a release can break `path`, its

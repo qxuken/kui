@@ -548,7 +548,7 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
       if (isVirtualLayout(ev)) continue;
       app.dispatch(ev.payload, ev);
     }
-    return events.length > 0;
+    return events.length > 0 || (lowersAtOnce && surface.owed?.().requested === true);
   }
 
   // A frame, without the `stats()` round trip `render` hands back — the

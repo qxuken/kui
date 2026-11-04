@@ -134,3 +134,63 @@ _Avoid_: default value, initial value
 The text a view declares for an editor on every frame. When it differs
 from the editor's text, the editor is brought to it.
 _Avoid_: controlled text, model text
+
+## Kit styling
+
+**Skin**:
+Kit's visual treatment of controls and tool surfaces, including their
+shapes, borders and label conventions.
+_Avoid_: content theme
+
+**Content theme**:
+A reusable look for Kit content: its colours, typography and visual
+rhythm, independent of the arrangement of content.
+_Avoid_: layout preset, skin
+
+**Layout preset**:
+A reusable arrangement of content regions and their adaptive behavior.
+_Avoid_: theme
+
+**Style preset**:
+A named pairing of a content theme and a layout preset whose parts remain
+independently selectable.
+_Avoid_: theme (when the arrangement is also being selected)
+
+## Presentations
+
+**Deck**:
+An ordered collection of slides presented as one talk or demonstration.
+_Avoid_: slideshow, presentation document
+
+**Slide**:
+One audience-facing composition in a deck, which may include interactive
+content as well as text and visuals.
+_Avoid_: page, frame (those already have other meanings in kui)
+
+**Slide key**:
+The stable name of a slide within its deck, independent of its position
+in the talk.
+_Avoid_: node key, slide index
+
+**Step**:
+One position in a slide's reveal sequence, starting with its initial
+composition and progressing through its staged content.
+_Avoid_: slide (a slide can have several steps), animation frame
+
+**Reveal**:
+Content whose visibility depends on the current step of its slide.
+_Avoid_: slide, transition
+
+**Audience window**:
+The window showing the deck to its audience, without the presenter's
+private notes and controls.
+_Avoid_: presenter window, stage (which could also mean a slide's canvas)
+
+**Presenter window**:
+The private view of a talk's notes, navigation, timer and slide previews.
+_Avoid_: audience window, presenter screen (a screen is a physical display)
+
+**Snapshot view**:
+A noninteractive representation of a slide for previews and export,
+without its live demonstration activity.
+_Avoid_: live preview (which implies running the demonstration)

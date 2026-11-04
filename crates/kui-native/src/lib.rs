@@ -2637,8 +2637,8 @@ impl DynShell<'_> {
         if self.panes[i].menu_pane.is_some() {
             events.clear();
         }
-        let reached_app = self.route_events(events);
-        self.owe_for(reached_app && completes);
+        let changed = self.route_events(events);
+        self.owe_for(changed && completes);
         self.apply_menu_actions(event_loop, i);
         self.apply_window_commands(event_loop);
         self.apply_audio();
@@ -2720,19 +2720,19 @@ impl DynShell<'_> {
         }
     }
 
-    /// An input's events reached the app: under `deferred_events` the next
+    /// Input may have moved shared state: under `deferred_events` the next
     /// frame owes the host's answer (see `frame_waits_for_host`).
-    fn owe_for(&self, reached_app: bool) {
-        if reached_app && self.deferred_events {
+    fn owe_for(&self, changed: bool) {
+        if changed && self.deferred_events {
             self.owed.set(true);
         }
     }
 
-    /// Returns whether anything reached the app (as against an extension
-    /// answering for itself).
+    /// Returns whether a handler may have changed shared state, including
+    /// an extension that handles the event without emitting to the host.
     fn route_events(&mut self, events: Vec<UiEvent>) -> bool {
         self.stamp_clock();
-        let mut reached_app = false;
+        let changed = !events.is_empty();
         // An extension's emits go to whoever placed its instance (ADR
         // 0060, ADR 0067): not routed by origin — an emit is addressed by
         // the instance it came from — and arriving as the placer's own
@@ -2748,7 +2748,6 @@ impl DynShell<'_> {
             ..
         } = self;
         extensions.route(events, |ev| {
-            reached_app = true;
             // Lent the core of the window the event came from (ADR 0036).
             // Timed as `handler` in a recording (ADR 0058, decision 5).
             match window_core(panes, main_core, ev.window) {
@@ -2764,16 +2763,18 @@ impl DynShell<'_> {
         // input in *this* window can change what *another* window declares
         // — choosing an item in a popup is the app closing the popup, and
         // the declaration that closes it lives in the window that opened
-        // it. So anything that reached the app redraws every window; the
-        // caller has already redrawn the one the input landed in. Guarded
+        // it. Extensions also share their state across windows: the Lua
+        // app handles its own events without emitting to the outer host.
+        // So any delivered event redraws every window; the caller has
+        // already redrawn the one the input landed in. Guarded
         // on there being more than one, so the single-window path — every
         // hover, every keystroke — is exactly what it was.
-        if reached_app && self.panes.len() > 1 {
+        if changed && self.panes.len() > 1 {
             for p in &self.panes {
                 p.redraw_for(FrameCause::ELSEWHERE);
             }
         }
-        reached_app
+        changed
     }
 
     /// Direct edits (cut) mutate the document outside `handle_input`, so
@@ -2785,8 +2786,8 @@ impl DynShell<'_> {
         let events = self.panes[i].core.take_pending_events();
         // A cut is input too: the frame that shows the text gone should
         // show what the app made of `change`.
-        let reached_app = self.route_events(events);
-        self.owe_for(reached_app);
+        let changed = self.route_events(events);
+        self.owe_for(changed);
         // The one caller is the runner's own ⌘X, which the core never
         // hears as a key.
         self.panes[i].redraw_for(FrameCause::KEY);
@@ -3497,12 +3498,8 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         }
         match event {
             WinitWindowEvent::CloseRequested => {
-                if self.panes[i].id == WindowId::MAIN {
-                    self.exit_main(event_loop);
-                } else {
-                    let id = self.panes[i].id;
-                    self.close_pane(event_loop, id);
-                }
+                let id = self.panes[i].id;
+                self.request_close(event_loop, id);
             }
             // On Windows minimizing and restoring are each a `WM_SIZE`:
             // the first is where the window went dark, the second the
@@ -4298,6 +4295,55 @@ fn lose_device_at() -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extension_updates_in_either_window_invalidate_the_shared_view_without_a_timer() {
+        use std::{cell::RefCell, rc::Rc};
+        struct Deck(Rc<RefCell<Vec<WindowId>>>);
+        impl Extension for Deck {
+            fn name(&self) -> &str {
+                "deck"
+            }
+            fn view(&mut self, _: &kui_core::Instance<'_>, _: &mut Ui<'_>) -> Result<(), String> {
+                Ok(())
+            }
+            fn on_event(&mut self, ev: &UiEvent) -> Vec<kui_core::Value> {
+                self.0.borrow_mut().push(ev.window);
+                Vec::new() // The Lua app updates its model without emitting to the runner.
+            }
+        }
+        let updates = Rc::new(RefCell::new(Vec::new()));
+        let mut shell = app("deck")
+            .diagnostics(false)
+            .extensions(vec![Box::new(Deck(updates.clone()))])
+            .dyn_shell(Empty);
+        assert!(
+            !shell.route_events(Vec::new()),
+            "idle routing should not request frames"
+        );
+        for window in [WindowId::MAIN, WindowId(2)] {
+            let mut ev = UiEvent::declared(
+                kui_core::EventKind::Click,
+                kui_core::OriginId(1),
+                kui_core::Key(1),
+                None,
+                kui_core::Value::Null,
+            );
+            ev.window = window;
+            let changed = shell.route_events(vec![ev]);
+            assert_eq!(updates.borrow().last(), Some(&window));
+            assert!(
+                changed,
+                "an extension update from {window:?} must schedule the other window immediately"
+            );
+            shell.deferred_events = true;
+            shell.owe_for(changed);
+            assert!(
+                shell.owed.replace(false),
+                "deferred hosts must also wake for extension updates"
+            );
+        }
+    }
 
     /// `KUI_WHEEL` reads a preset's name or up to three numbers, the rest
     /// at the standard feel's; anything else is nothing.

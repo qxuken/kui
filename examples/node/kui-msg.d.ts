@@ -50,6 +50,7 @@ type AppMessages =
   | DragMsg<{ tag: 'nudge' }>
   | EditChangeMsg<{ kind: 'note' }>
   | SliderChangeMsg<{ kind: 'tally' }>
+  | SliderChangeMsg<{ kind: 'workers' }>
   // tools/types.tsx: a Kit button's press and a Kit segmented control's
   // change, registered as they arrive, as the core's are.
   | ButtonPressMsg<{ kind: 'run' }>

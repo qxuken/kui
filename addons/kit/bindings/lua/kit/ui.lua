@@ -22,6 +22,13 @@
 ---chrome.
 ---@alias kit.Skin "ledger"|"phosphor"|"neutral"
 
+---A settings preset, with project fonts, roles and sizes applied over it.
+---Independent of content layout.
+---@alias kit.ContentTheme "paper"|"signal"|"stage"|"minimal"
+
+---A reusable adaptive composition, independent of the content theme.
+---@alias kit.ContentLayout "editorial"|"briefing"|"split"|"minimal"
+
 ---Row and control heights: 22 and 26 px, or 20 and 22 px compact.
 ---@alias kit.Density "comfortable"|"compact"
 
@@ -52,6 +59,21 @@
 ---What a skeleton stands in for: lines of text, a block (an image, a chart),
 ---or a circle (an avatar).
 ---@alias kit.SkeletonShape "text"|"block"|"circle"
+
+---Project typography and content spacing in logical px. Omitted fields keep
+---the preset or skin default. Content sizes do not enlarge tool controls.
+---@class kit.Sizes
+---@field body? number Tool body text.
+---@field label? number Tool labels.
+---@field title? number Small titles and level-two headings.
+---@field heading? number Level-one content headings.
+---@field display? number Large statistics and display text.
+---@field content? number Reading text.
+---@field caption? number Figure captions.
+---@field code? number Code text.
+---@field chart? number Chart axis and data labels.
+---@field gap? number Default content spacing.
+---@field pad? number Default content inset.
 
 ---A choice: what it is, and what it reads as.
 ---@class kit.Choice
@@ -114,6 +136,7 @@
 ---The props of `kit/settings`.
 ---@class kit.SettingsProps
 ---@field skin? kit.Skin The skin; Ledger when left out.
+---@field theme? kit.ContentTheme Optional content settings preset: Paper, Signal, Stage or Minimal. Explicit skin, fonts, roles and individual sizes override the preset; layout stays the author's.
 ---@field density? kit.Density Comfortable when left out.
 ---@field shadows? boolean The skin's hard shadows; on when left out.
 ---@field radius? number Corner radius in px, for a brand with its own; the skin's when left out.
@@ -123,6 +146,9 @@
 ---@field rule? number The region rule's width in px (a panel's frame, a control's border); the skin's when left out.
 ---@field font_ui? string[] The UI face, as a family list (`{ "Inter", "sans" }`); the skin's when left out.
 ---@field font_data? string[] The data face (ids, numbers, code), as a family list; the skin's when left out.
+---@field font_title? string[] Content heading/quote families; the preset's, else the UI face.
+---@field font_content? string[] Reading-text families; the UI face when omitted.
+---@field sizes? kit.Sizes Project typography and content spacing. Fields merge over the preset individually; sizes are logical px.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -138,6 +164,7 @@
 
 ---The props of `kit/toolbar`.
 ---@class kit.ToolbarProps
+---@field window_chrome? boolean Opt into the native drag strip under custom window chrome. Reserves the OS window controls and keeps gaps draggable. False by default; native-decorated windows keep the normal content toolbar. Configure custom chrome and a medium/tall titlebar in the host when opting in.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -187,6 +214,80 @@
 
 ---The props of `kit/divider`.
 ---@class kit.DividerProps
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/heading`.
+---@class kit.HeadingProps
+---@field text string The heading.
+---@field level? integer Hierarchy, 1 to 6; 1 by default.
+---@field size? number Override the theme's heading size.
+---@field family? string A family name or family token.
+---@field color? integer|string Override the foreground role.
+---@field bold? boolean Bold by default.
+---@field line_height? number Line height in logical px.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/paragraph`.
+---@class kit.ParagraphProps
+---@field text string The text.
+---@field size? number Override the reading size.
+---@field family? string A family name or family token.
+---@field color? integer|string Override the foreground role.
+---@field line_height? number Line height in logical px.
+---@field selectable? boolean Allow selecting and copying its text.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/content`.
+---@class kit.ContentProps
+---@field layout? kit.ContentLayout Layout preset; ordinary reading flow if omitted.
+---@field title? string Optional composition heading.
+---@field subtitle? string Optional reading lead.
+---@field eyebrow? string Optional small introductory label.
+---@field preset? string title or section centers the content vertically; other values use regular flow.
+---@field grow? boolean Take available height.
+---@field max_width? number Maximum reading width.
+---@field pad? number Inset; theme default if omitted.
+---@field gap? number Spacing; theme default if omitted.
+---@field bg? integer|string Optional background.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/columns`.
+---@class kit.ColumnsProps
+---@field collapse_at? number Stack below this width, 760 by default.
+---@field gap? number Column gap.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/comparison`.
+---@class kit.ComparisonProps
+---@field first_title? string First title; Before by default.
+---@field second_title? string Second title; After by default.
+---@field collapse_at? number Stack below this width, 760 by default.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/quote`.
+---@class kit.QuoteProps
+---@field text string The quotation.
+---@field attribution? string Its author or source.
+---@field size? number Override reading size.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/figure`.
+---@class kit.FigureProps
+---@field caption? string The caption.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/visibility`.
+---@class kit.VisibilityProps
+---@field visible boolean Whether the content is visible and interactive.
+---@field collapse? boolean Remove layout space too when invisible; otherwise reserve it.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -543,6 +644,8 @@
 ---@class kit.StatProps
 ---@field label string What it counts.
 ---@field value string The number, as text.
+---@field display? boolean Use the project's display size for a presentation or headline statistic.
+---@field size? number Override the value size in logical px.
 ---@field delta? string How it moved: `+12%`.
 ---@field tone? kit.Tone Whether the move is good news.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -551,6 +654,10 @@
 ---The props of `kit/code`.
 ---@class kit.CodeProps
 ---@field text string The text.
+---@field language? string Syntax highlighting: lua, teal, javascript, typescript, json, rust, python, c, css, shell or sql. Other languages remain plain text.
+---@field highlight_lines? integer[] One-based line numbers to emphasize.
+---@field size? number Code size in logical px; project code size when omitted.
+---@field line_height? number Line height; derived from the code size when omitted.
 ---@field wrap? boolean Wraps rather than scrolls sideways.
 ---@field max_lines? integer At most this many lines high, the rest scrolled to.
 ---@field line_numbers? boolean Each line's number in a gutter beside it, outside the selection (not with `wrap`).
@@ -855,6 +962,85 @@ local function make(namespace)
   ---@return kui.Node
   function M.divider(props)
     return component(namespace .. "/divider", props)
+  end
+
+  ---An adaptive content heading in the project's title face.
+  ---@param props kit.HeadingProps
+  ---@return kui.Node
+  function M.heading(props)
+    return component(namespace .. "/heading", props)
+  end
+
+  ---Wrapping reading text in the project's content face.
+  ---@param props kit.ParagraphProps
+  ---@return kui.Node
+  function M.paragraph(props)
+    return component(namespace .. "/paragraph", props)
+  end
+
+  ---A reading composition with project spacing, optional width limit and
+  ---title/section centering.
+  ---
+  ---Your children: its list part is the composition; `aside` is the
+  ---supporting visual in editorial, briefing or split layouts; below in
+  ---minimal/regular flow.
+  ---@param props kit.ContentProps
+  ---@param children? table
+  ---@return kui.Node
+  function M.content(props, children)
+    return component(namespace .. "/content", props, children)
+  end
+
+  ---Two content regions that stack when the available width is narrow.
+  ---
+  ---Your children: `first` is the first region; `second` is the second
+  ---region.
+  ---@param props kit.ColumnsProps
+  ---@param children? table
+  ---@return kui.Node
+  function M.columns(props, children)
+    return component(namespace .. "/columns", props, children)
+  end
+
+  ---Titled before/after regions with adaptive stacking.
+  ---
+  ---Your children: `first` is the first composition; `second` is the second
+  ---composition.
+  ---@param props kit.ComparisonProps
+  ---@param children? table
+  ---@return kui.Node
+  function M.comparison(props, children)
+    return component(namespace .. "/comparison", props, children)
+  end
+
+  ---A quotation in the title face with an optional attribution.
+  ---@param props kit.QuoteProps
+  ---@return kui.Node
+  function M.quote(props)
+    return component(namespace .. "/quote", props)
+  end
+
+  ---Any visual with a wrapping caption in the project's caption size.
+  ---
+  ---Your children: its list part is the visual, such as an image, SVG, chart
+  ---or custom view.
+  ---@param props kit.FigureProps
+  ---@param children? table
+  ---@return kui.Node
+  function M.figure(props, children)
+    return component(namespace .. "/figure", props, children)
+  end
+
+  ---Retained content whose visibility can change without changing layout.
+  ---Invisible content has no paint, pointer input, accessibility presence or
+  ---Tab stops.
+  ---
+  ---Your children: its list part is retained even when invisible.
+  ---@param props kit.VisibilityProps
+  ---@param children? table
+  ---@return kui.Node
+  function M.visibility(props, children)
+    return component(namespace .. "/visibility", props, children)
   end
 
   ---A button. Space, Enter and assistive technology press it as a click does.

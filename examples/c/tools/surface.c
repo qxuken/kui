@@ -735,6 +735,9 @@ static int surface(void) {
     {
         kui_set_window_size(ui, KUI_WINDOW_MAIN, 640, 480);
         kui_focus_window(ui, KUI_WINDOW_MAIN);
+        kui_set_window_fullscreen(ui, KUI_WINDOW_MAIN, true, 1);
+        kui_set_window_visible(ui, KUI_WINDOW_MAIN, false);
+        kui_set_window_close_hides(ui, KUI_WINDOW_MAIN, true);
         KuiWindowCommand cmd = KUI_WINDOW_COMMAND_INIT;
         check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_SET_SIZE
                   && cmd.window == KUI_WINDOW_MAIN && cmd.width == 640 && cmd.height == 480,
@@ -742,7 +745,13 @@ static int surface(void) {
         check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_FOCUS
                   && cmd.window == KUI_WINDOW_MAIN,
               "and the focus request behind it");
-        check(!kui_take_window_command(ui, &cmd), "both drained once");
+        check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_SET_FULLSCREEN
+                  && cmd.width == 1 && cmd.height == 2, "fullscreen carries enabled and display index plus one");
+        check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_SET_VISIBLE
+                  && cmd.width == 0, "visibility carries false");
+        check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_SET_CLOSE_HIDES
+                  && cmd.width == 1, "close policy carries true");
+        check(!kui_take_window_command(ui, &cmd), "commands drained once");
     }
 
     /* What the size handshake buys, standing in for a host that predates

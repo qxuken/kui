@@ -118,6 +118,7 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
     ("answer_typeahead", "key: KeyRef, index: integer", "boolean"),
     ("add_fragment", "wgsl: string", "integer"),
     ("system_font_families", "", "{string}"),
+    ("window_name", "", "string"),
     ("load_font_file", "path: string", "string, string"),
     ("set_rules_appearance", "appearance?: string", ""),
     ("set_clipboard", "text: string, html?: string", ""),
@@ -159,6 +160,22 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
         "{string:any}",
     ),
     ("focus_window", "window: integer", ""),
+    ("display_names", "", "{string}"),
+    (
+        "set_window_fullscreen",
+        "window: integer, enabled: boolean, display?: integer",
+        "",
+    ),
+    (
+        "set_window_visible",
+        "window: integer, visible: boolean",
+        "",
+    ),
+    (
+        "set_window_close_hides",
+        "window: integer, enabled: boolean",
+        "",
+    ),
     (
         "measure_text",
         "s: string | number | {any:any}, opts?: Props, max_w?: number",

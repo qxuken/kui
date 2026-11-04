@@ -134,6 +134,42 @@ fn rig(kit: Kit) -> Rig {
     }
 }
 
+#[test]
+fn shared_extensions_keep_same_key_event_routes_for_each_window() {
+    let mut r = rig(Kit::default());
+    let mut other = Core::new_in(r.core.session());
+    other.env.window.id = kui_core::WindowId(2);
+    let place = |ui: &mut Ui<'_>, tag: &str| {
+        ui.component(
+            "kit/button",
+            &Value::map([("onClick", Value::map([("side", Value::str(tag))]))]),
+        );
+    };
+    r.frame(|ui| place(ui, "audience"));
+    std::mem::swap(&mut r.core, &mut other);
+    r.frame(|ui| place(ui, "presenter"));
+    for (side, window) in [
+        ("audience", kui_core::WindowId::MAIN),
+        ("presenter", kui_core::WindowId(2)),
+    ] {
+        std::mem::swap(&mut r.core, &mut other);
+        let events = click_at(&mut r.core, 20.0, 18.0);
+        let mut arrived = Vec::new();
+        r.exts.route(events, |ev| arrived.push(ev));
+        assert!(
+            !r.exts.roots_unchanged(),
+            "pending component updates must prevent whole-window replay"
+        );
+        assert!(
+            arrived
+                .iter()
+                .any(|ev| ev.window == window && ev.payload.get_str("side") == Some(side)),
+            "{side}: {arrived:?}"
+        );
+        r.frame(|ui| place(ui, side));
+    }
+}
+
 impl Rig {
     fn frame(&mut self, view: impl FnOnce(&mut Ui<'_>)) {
         let mut ui = self.core.frame_with(VIEW, 1.0, &mut self.exts);

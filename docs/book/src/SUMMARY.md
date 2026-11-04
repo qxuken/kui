@@ -17,6 +17,7 @@
 - [Warnings and the devtools](devtools.md)
 - [Extensions: components and slots](extensions.md)
 - [Apps in Lua: Kit and the runner](runner.md)
+- [Presentations as code](presentations.md)
 - [Where next](where-next.md)
 
 # Examples

@@ -21,6 +21,12 @@ export type Axis = 'row' | 'column';
 /** The look: Ledger's paper and ink, Phosphor's terminal, or Neutral's quiet chrome. */
 export type Skin = 'ledger' | 'phosphor' | 'neutral';
 
+/** A settings preset, with project fonts, roles and sizes applied over it. Independent of content layout. */
+export type ContentTheme = 'paper' | 'signal' | 'stage' | 'minimal';
+
+/** A reusable adaptive composition, independent of the content theme. */
+export type ContentLayout = 'editorial' | 'briefing' | 'split' | 'minimal';
+
 /** Row and control heights: 22 and 26 px, or 20 and 22 px compact. */
 export type Density = 'comfortable' | 'compact';
 
@@ -44,6 +50,32 @@ export type Selection = 'single' | 'multiple' | 'none';
 
 /** What a skeleton stands in for: lines of text, a block (an image, a chart), or a circle (an avatar). */
 export type SkeletonShape = 'text' | 'block' | 'circle';
+
+/** Project typography and content spacing in logical px. Omitted fields keep the preset or skin default. Content sizes do not enlarge tool controls. */
+export interface Sizes {
+  /** Tool body text. */
+  body?: number;
+  /** Tool labels. */
+  label?: number;
+  /** Small titles and level-two headings. */
+  title?: number;
+  /** Level-one content headings. */
+  heading?: number;
+  /** Large statistics and display text. */
+  display?: number;
+  /** Reading text. */
+  content?: number;
+  /** Figure captions. */
+  caption?: number;
+  /** Code text. */
+  code?: number;
+  /** Chart axis and data labels. */
+  chart?: number;
+  /** Default content spacing. */
+  gap?: number;
+  /** Default content inset. */
+  pad?: number;
+}
 
 /** A choice: what it is, and what it reads as. */
 export interface Choice {
@@ -147,6 +179,8 @@ export interface Series {
 export interface SettingsProps {
   /** The skin; Ledger when left out. */
   skin?: Skin;
+  /** Optional content settings preset: Paper, Signal, Stage or Minimal. Explicit skin, fonts, roles and individual sizes override the preset; layout stays the author's. */
+  theme?: ContentTheme;
   /** Comfortable when left out. */
   density?: Density;
   /** The skin's hard shadows; on when left out. */
@@ -165,6 +199,12 @@ export interface SettingsProps {
   fontUi?: string[];
   /** The data face (ids, numbers, code), as a family list; the skin's when left out. */
   fontData?: string[];
+  /** Content heading/quote families; the preset's, else the UI face. */
+  fontTitle?: string[];
+  /** Reading-text families; the UI face when omitted. */
+  fontContent?: string[];
+  /** Project typography and content spacing. Fields merge over the preset individually; sizes are logical px. */
+  sizes?: Sizes;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -197,6 +237,8 @@ export interface PanelProps {
 
 /** The props of `kit/toolbar`. */
 export interface ToolbarProps {
+  /** Opt into the native drag strip under custom window chrome. Reserves the OS window controls and keeps gaps draggable. False by default; native-decorated windows keep the normal content toolbar. Configure custom chrome and a medium/tall titlebar in the host when opting in. */
+  windowChrome?: boolean;
   /** starts it. */
   children?: KuiNode;
   /** ends it, at the far side. */
@@ -307,6 +349,154 @@ export type SectionToggleMsg<T = {}> = T & { toggle: SectionToggle };
 
 /** The props of `kit/divider`. */
 export interface DividerProps {
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/heading`. */
+export interface HeadingProps {
+  /** The heading. */
+  text: string;
+  /** Hierarchy, 1 to 6; 1 by default. */
+  level?: number;
+  /** Override the theme's heading size. */
+  size?: number;
+  /** A family name or family token. */
+  family?: string;
+  /** Override the foreground role. */
+  color?: ColorProp;
+  /** Bold by default. */
+  bold?: boolean;
+  /** Line height in logical px. */
+  lineHeight?: number;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/paragraph`. */
+export interface ParagraphProps {
+  /** The text. */
+  text: string;
+  /** Override the reading size. */
+  size?: number;
+  /** A family name or family token. */
+  family?: string;
+  /** Override the foreground role. */
+  color?: ColorProp;
+  /** Line height in logical px. */
+  lineHeight?: number;
+  /** Allow selecting and copying its text. */
+  selectable?: boolean;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/content`. */
+export interface ContentProps {
+  /** Layout preset; ordinary reading flow if omitted. */
+  layout?: ContentLayout;
+  /** Optional composition heading. */
+  title?: string;
+  /** Optional reading lead. */
+  subtitle?: string;
+  /** Optional small introductory label. */
+  eyebrow?: string;
+  /** title or section centers the content vertically; other values use regular flow. */
+  preset?: string;
+  /** Take available height. */
+  grow?: boolean;
+  /** Maximum reading width. */
+  maxWidth?: number;
+  /** Inset; theme default if omitted. */
+  pad?: number;
+  /** Spacing; theme default if omitted. */
+  gap?: number;
+  /** Optional background. */
+  bg?: ColorProp;
+  /** is the composition. */
+  children?: KuiNode;
+  /** is the supporting visual in editorial, briefing or split layouts; below in minimal/regular flow. */
+  aside?: KuiNode;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/columns`. */
+export interface ColumnsProps {
+  /** Stack below this width, 760 by default. */
+  collapseAt?: number;
+  /** Column gap. */
+  gap?: number;
+  /** is the first region. */
+  first?: KuiNode;
+  /** is the second region. */
+  second?: KuiNode;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/comparison`. */
+export interface ComparisonProps {
+  /** First title; Before by default. */
+  firstTitle?: string;
+  /** Second title; After by default. */
+  secondTitle?: string;
+  /** Stack below this width, 760 by default. */
+  collapseAt?: number;
+  /** is the first composition. */
+  first?: KuiNode;
+  /** is the second composition. */
+  second?: KuiNode;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/quote`. */
+export interface QuoteProps {
+  /** The quotation. */
+  text: string;
+  /** Its author or source. */
+  attribution?: string;
+  /** Override reading size. */
+  size?: number;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/figure`. */
+export interface FigureProps {
+  /** The caption. */
+  caption?: string;
+  /** is the visual, such as an image, SVG, chart or custom view. */
+  children?: KuiNode;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/visibility`. */
+export interface VisibilityProps {
+  /** Whether the content is visible and interactive. */
+  visible: boolean;
+  /** Remove layout space too when invisible; otherwise reserve it. */
+  collapse?: boolean;
+  /** is retained even when invisible. */
+  children?: KuiNode;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -983,6 +1173,10 @@ export interface StatProps {
   label: string;
   /** The number, as text. */
   value: string;
+  /** Use the project's display size for a presentation or headline statistic. */
+  display?: boolean;
+  /** Override the value size in logical px. */
+  size?: number;
   /** How it moved: `+12%`. */
   delta?: string;
   /** Whether the move is good news. */
@@ -997,6 +1191,14 @@ export interface StatProps {
 export interface CodeProps {
   /** The text. */
   text: string;
+  /** Syntax highlighting: lua, teal, javascript, typescript, json, rust, python, c, css, shell or sql. Other languages remain plain text. */
+  language?: string;
+  /** One-based line numbers to emphasize. */
+  highlightLines?: number[];
+  /** Code size in logical px; project code size when omitted. */
+  size?: number;
+  /** Line height; derived from the code size when omitted. */
+  lineHeight?: number;
   /** Wraps rather than scrolls sideways. */
   wrap?: boolean;
   /** At most this many lines high, the rest scrolled to. */
@@ -1435,6 +1637,30 @@ export declare function Section(props: SectionProps, children?: KuiNode): KuiNod
 /** A rule between groups, as the skin draws regions. */
 export declare function Divider(props: DividerProps, children?: KuiNode): KuiNode;
 
+/** An adaptive content heading in the project's title face. */
+export declare function Heading(props: HeadingProps, children?: KuiNode): KuiNode;
+
+/** Wrapping reading text in the project's content face. */
+export declare function Paragraph(props: ParagraphProps, children?: KuiNode): KuiNode;
+
+/** A reading composition with project spacing, optional width limit and title/section centering. */
+export declare function Content(props: ContentProps, children?: KuiNode): KuiNode;
+
+/** Two content regions that stack when the available width is narrow. */
+export declare function Columns(props: ColumnsProps, children?: KuiNode): KuiNode;
+
+/** Titled before/after regions with adaptive stacking. */
+export declare function Comparison(props: ComparisonProps, children?: KuiNode): KuiNode;
+
+/** A quotation in the title face with an optional attribution. */
+export declare function Quote(props: QuoteProps, children?: KuiNode): KuiNode;
+
+/** Any visual with a wrapping caption in the project's caption size. */
+export declare function Figure(props: FigureProps, children?: KuiNode): KuiNode;
+
+/** Retained content whose visibility can change without changing layout. Invisible content has no paint, pointer input, accessibility presence or Tab stops. */
+export declare function Visibility(props: VisibilityProps, children?: KuiNode): KuiNode;
+
 /** A button. Space, Enter and assistive technology press it as a click does. */
 export declare function Button(props: ButtonProps, children?: KuiNode): KuiNode;
 
@@ -1552,6 +1778,14 @@ export interface Kit {
   Tabs: typeof Tabs;
   Section: typeof Section;
   Divider: typeof Divider;
+  Heading: typeof Heading;
+  Paragraph: typeof Paragraph;
+  Content: typeof Content;
+  Columns: typeof Columns;
+  Comparison: typeof Comparison;
+  Quote: typeof Quote;
+  Figure: typeof Figure;
+  Visibility: typeof Visibility;
   Button: typeof Button;
   IconButton: typeof IconButton;
   TextField: typeof TextField;

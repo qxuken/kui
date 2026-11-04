@@ -17,6 +17,8 @@ M.PAGES = {
   { value = "overview", label = "Overview", cards = { "overview/start" } },
   { value = "inputs", label = "Inputs", cards = { "inputs/buttons", "inputs/fields", "inputs/text_areas", "inputs/choices", "inputs/checklist" } },
   { value = "data", label = "Data", cards = { "data/table", { "data/list", "data/notices" }, "data/log", "data/badges" } },
+  { value = "content", label = "Content", cards = { "content/reading", "content/code" } },
+  { value = "presentations", label = "Presentations", cards = { "presentations/deck" } },
   { value = "charts", label = "Charts", cards = { "charts/live_line", { "charts/sparkline", "charts/histogram" }, "charts/bars", "charts/bars_lying" } },
   { value = "trace", label = "Trace", cards = { "trace/waterfall" } },
   { value = "overlays", label = "Overlays", cards = { "overlays/dialog", "overlays/menu", "overlays/toasts" } },

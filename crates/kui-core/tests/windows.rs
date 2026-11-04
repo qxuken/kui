@@ -313,3 +313,25 @@ fn a_dismissed_popup_closes_nothing_until_the_app_stops_declaring_it() {
         "no dismissal of a closed window"
     );
 }
+
+#[test]
+fn fullscreen_visibility_and_close_policy_are_advisory_commands() {
+    let mut core = Core::new();
+    core.set_window_fullscreen(kui_core::WindowId(3), true, Some(1));
+    core.set_window_visible(kui_core::WindowId(3), false);
+    core.set_window_close_hides(kui_core::WindowId(3), true);
+    let commands = core.take_window_commands();
+    assert_eq!(commands.len(), 3);
+    assert!(commands.iter().all(|c| c.window() == kui_core::WindowId(3)));
+    let fullscreen = commands[0].to_value();
+    assert_eq!(fullscreen.get_str("kind"), Some("setFullscreen"));
+    assert_eq!(fullscreen.get_bool("enabled"), Some(true));
+    assert_eq!(fullscreen.get("display"), Some(&Value::Int(1)));
+    assert_eq!(commands[1].to_value().get_bool("visible"), Some(false));
+    assert_eq!(commands[2].to_value().get_bool("enabled"), Some(true));
+    assert!(core.take_window_commands().is_empty());
+    assert!(
+        !core.env.window.fullscreen,
+        "the core reports the host's answer, not the request"
+    );
+}

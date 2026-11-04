@@ -64,7 +64,15 @@ function M.panel(c, p)
    return column(t)
 end
 
-function M.toolbar(c, _p)
+function M.toolbar(c, p)
+   if p.window_chrome == true and c.env.window.custom_chrome then
+      return column({ width = "grow", bg = ref(c, "side"),
+      titlebar({
+         row({ width = "grow", height = "grow", pad = { x = 8 }, gap = 6, cross_align = "center",
+row({ width = "grow", height = "grow", min_width = 0, gap = 6, cross_align = "center", children("") }),
+row({ height = "grow", gap = 6, cross_align = "center", children("trailing") }), }),
+      }), ctx.rule(c, "rule", "$kitHair"), })
+   end
    return column({
       width = "grow",
       bg = ref(c, "side"),
@@ -94,7 +102,7 @@ function M.statusbar(c, _p)
       bg = ref(c, "side"),
       ctx.rule(c, "rule", "$kitHair"),
       row({
-         width = "grow", height = 22, pad = { x = 10 }, gap = 14, cross_align = "center",
+         width = "grow", min_height = 22, pad = { x = 10 }, gap = 14, cross_align = "center",
          row({ width = "grow", gap = 14, cross_align = "center", children("") }),
          row({ gap = 14, cross_align = "center", children("trailing") }),
       }),

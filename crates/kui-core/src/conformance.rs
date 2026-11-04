@@ -7677,6 +7677,23 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
         ),
         WindowCommand::Focus(w) => writeln!(out, "cmd focus {}", w.0),
         WindowCommand::Redraw(w) => writeln!(out, "cmd redraw {}", w.0),
+        WindowCommand::SetFullscreen {
+            window,
+            enabled,
+            display,
+        } => writeln!(
+            out,
+            "cmd fullscreen {} {} {}",
+            window.0,
+            enabled as u8,
+            display.map_or(-1, |d| d as i64)
+        ),
+        WindowCommand::SetVisible { window, visible } => {
+            writeln!(out, "cmd visible {} {}", window.0, visible as u8)
+        }
+        WindowCommand::SetCloseHides { window, enabled } => {
+            writeln!(out, "cmd closehides {} {}", window.0, enabled as u8)
+        }
     };
 }
 

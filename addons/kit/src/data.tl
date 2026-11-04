@@ -7,6 +7,7 @@ local ctx = require("ctx")
 local icons = require("icons")
 local inputs = require("inputs")
 local skin = require("skin")
+local syntax = require("syntax")
 
 local type Ctx = ctx.Ctx
 local type P = {string:any}
@@ -977,7 +978,7 @@ function M.stat(c: Ctx, p: P): kui.Node
     label = (str(p.label) or "") .. ": " .. (str(p.value) or ""),
     gap = 2,
     ctx.muted(c, ctx.label(c, str(p.label) or ""), { bold = true }),
-    ctx.data(c, str(p.value) or "", { size = 22, bold = true }),
+    ctx.data(c, str(p.value) or "", { size = (p.size as number) or (p.display == true and "$kitDisplay" or 22), bold = true }),
   }
   if str(p.delta) then
     local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or "muted"
@@ -999,10 +1000,22 @@ end
 local COPIED_S = 1.5
 
 function M.code(c: Ctx, p: P): kui.Node
-  local text = str(p.text) or ""
+  local source = str(p.text) or ""
   local wrap = p.wrap == true
   local lines = p.max_lines as integer
-  local body = ctx.data(c, text, { wrap = wrap and "glyph" or "none", line_height = LINE })
+  local size = (p.size as number) or (c.s.sizes and c.s.sizes.code) or c.s.skin.size
+  local line_height = (p.line_height as number) or math.max(LINE, size * 1.4)
+  local spans = syntax.lines(source, str(p.language) or "", ref(c, "accent_text"), ref(c, "muted"), ref(c, "ok"))
+  local emphasized: {integer:boolean} = {}
+  for _, n in ipairs((p.highlight_lines or {}) as {integer}) do emphasized[n] = true end
+  local code: kui.Props = { key = "source", width = "grow" }
+  for i, line in ipairs(spans) do
+    if #line == 0 then line[1] = " " end
+    code[#code + 1] = column { width = "grow", bg = emphasized[i] and ref(c, "hover") or nil,
+      text(line, { size = size, family = "$kitData", color = ref(c, "fg"),
+        line_height = line_height, wrap = wrap and "glyph" or "none" }) }
+  end
+  local body = column(code)
   -- The padding on an outer frame and the scroll on an inner box of whole
   -- lines, so a scrolled code block shows no half line at either end.
   local inner: kui.Props = { key = "lines", width = "grow", selectable = true }
@@ -1010,20 +1023,20 @@ function M.code(c: Ctx, p: P): kui.Node
     -- The numbers in a gutter of their own, outside the selection and the
     -- sideways scroll, in one text so they keep the code's line height.
     local n = 1
-    for _ in text:gmatch("\n") do n = n + 1 end
+    for _ in source:gmatch("\n") do n = n + 1 end
     local nums: {string} = {}
     for i = 1, n do nums[i] = tostring(i) end
     inner.selectable = nil
     inner[1] = row { width = "grow", gap = 12,
       column { cross_align = "end",
-        ctx.data(c, table.concat(nums, "\n"), { line_height = LINE, color = ref(c, "faint") }) },
+        ctx.data(c, table.concat(nums, "\n"), { size = size, line_height = line_height, color = ref(c, "faint") }) },
       column { key = "text", width = "grow", min_width = 0, selectable = true, scroll_x = true, body } }
   else
     inner[1] = body
     inner.scroll_x = not wrap
   end
   if lines then
-    inner.max_height = lines * LINE
+    inner.max_height = lines * line_height
     inner.scroll_y = true
   end
   local frame: kui.Props = {
@@ -1044,7 +1057,7 @@ function M.code(c: Ctx, p: P): kui.Node
       local st = ctx.state(c, function(): Copied return {} end)
       if st.ask then
         st.ask = false
-        env.set_clipboard(text)
+        env.set_clipboard(source)
         st.at = env.now or 0
       end
       local said = st.at ~= nil and (env.now or 0) < st.at + COPIED_S

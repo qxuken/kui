@@ -5,7 +5,7 @@ A thin row at a window's foot for state: counts, the connection, the clock.
 
 ## When to use
 
-Use a statusbar at the very bottom of a window for facts that are always true of the whole window: how many rows, which environment, whether the server is up, when it last saved. It is 22px tall on the side colour, with a hairline above, items 14px apart.
+Use a statusbar at the very bottom of a window for facts that are always true of the whole window: how many rows, which environment, whether the server is up, when it last saved. It is at least 22px tall on the side colour, with a hairline above, items 14px apart. A mode switch can raise it to the control's height so the whole hit target fits.
 
 ## What you provide
 

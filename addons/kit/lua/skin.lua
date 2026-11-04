@@ -107,6 +107,9 @@ local Settings = {}
 
 
 
+
+
+
 local ROLES = {
    "bg", "side", "panel", "raised", "sunken", "hover", "press", "rule", "ink",
    "fg", "muted", "faint", "sel", "sel_fg", "accent", "on_accent", "focus",
@@ -558,6 +561,7 @@ function M.tokens(s)
       end
    end
    local shadow = s.shadows and skin.shadow or 0
+   local z = s.sizes or {}
    return {
       colors = colors,
       lengths = {
@@ -568,11 +572,21 @@ function M.tokens(s)
          kitHair = s.hair or skin.hair,
          kitShadow = shadow,
          kitShadowBlur = s.shadows and skin.shadow_blur or 0,
-         kitSize = skin.size,
-         kitSizeLabel = skin.size_label,
-         kitSizeTitle = skin.size_title,
+         kitSize = z.body or skin.size,
+         kitSizeLabel = z.label or skin.size_label,
+         kitSizeTitle = z.title or skin.size_title,
+         kitHeading = z.heading or 32,
+         kitDisplay = z.display or 56,
+         kitContentSize = z.content or 18,
+         kitCaptionSize = z.caption or 12,
+         kitCodeSize = z.code or skin.size,
+         kitChartSize = z.chart or 10,
+         kitContentGap = z.gap or 20,
+         kitContentPad = z.pad or 24,
       },
-      families = { kitUi = s.font_ui or skin.font_ui, kitData = s.font_data or skin.font_data },
+      families = { kitUi = s.font_ui or skin.font_ui, kitData = s.font_data or skin.font_data,
+kitTitle = s.font_title or s.font_ui or skin.font_ui,
+kitContent = s.font_content or s.font_ui or skin.font_ui, },
       export = true,
    }
 end
@@ -595,7 +609,14 @@ end
 function M.key(s)
    local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius),
 tostring(s.appearance), tostring(s.hair), tostring(s.rule_w),
-s.font_ui and table.concat(s.font_ui, ",") or "", s.font_data and table.concat(s.font_data, ",") or "", }
+s.font_ui and table.concat(s.font_ui, ",") or "", s.font_data and table.concat(s.font_data, ",") or "",
+s.font_title and table.concat(s.font_title, ",") or "", s.font_content and table.concat(s.font_content, ",") or "", }
+   if s.sizes then
+      local names = {}
+      for k in pairs(s.sizes) do names[#names + 1] = k end
+      table.sort(names)
+      for _, k in ipairs(names) do parts[#parts + 1] = "size." .. k .. "=" .. tostring(s.sizes[k]) end
+   end
    if s.roles then
       local names = {}
       for k in pairs(s.roles) do names[#names + 1] = k end

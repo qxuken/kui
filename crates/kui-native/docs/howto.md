@@ -11,11 +11,34 @@ already shipped and was documented in their own `node_modules`. The examples
 are JSX; the Lua and C spellings of every row named here are in the same
 `props.md` table, one column over.
 
+- [Presentations](#presentations)
 - [Draw and animate](#draw-and-animate)
 - [Interaction, focus and reading](#interaction-focus-and-reading)
 - [Sound and effects](#sound-and-effects)
 - [Test it](#test-it)
 - [Ship and upgrade](#ship-and-upgrade)
+
+## Presentations
+
+### How do I create a native presentation as code?
+
+Use `require("kit.presentation")` on the Lua/Teal runner or `present` from
+`@qxuken/kui/kit/presentation` in TSX. Supply keyed slides with
+`view(context)`, optional notes and ordinary Kit content. `context.reveal`
+stages content; `context.content` supplies adaptive layout. Launch with
+`kui run path/to/deck --watch -- --presenter`. Cmd/Ctrl+Shift+P reopens
+the presenter. Disable **Live sync** there to browse privately, then use
+**Present slide** or Cmd/Ctrl+Enter to update the audience. Re-enabling
+Live sync presents the selection and resumes following navigation. Hold
+an arrow key to navigate repeatedly. `--export DIR --steps --size 1920x1080 --appearance light`
+writes PNGs and a manifest without activating live demonstrations.
+
+Paper, Signal, Stage and Minimal are Settings presets. `font_title`,
+`font_content`, `font_data`, `roles` and `sizes` override individual fields;
+TSX spells font fields in camel case. Themes and layouts remain independent.
+See [the book chapter](book/src/presentations.md),
+[the authoring guide](https://github.com/qxuken/kui/blob/main/addons/kit/PRESENTATIONS.md)
+and [ADR 0077](https://github.com/qxuken/kui/blob/main/docs/adr/0077-kit-presentations-as-code.md).
 
 ## Draw and animate
 

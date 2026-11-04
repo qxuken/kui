@@ -30,6 +30,17 @@ local record kit
     "ledger" "phosphor" "neutral"
   end
 
+  -- A settings preset, with project fonts, roles and sizes applied over it.
+  -- Independent of content layout.
+  enum ContentTheme
+    "paper" "signal" "stage" "minimal"
+  end
+
+  -- A reusable adaptive composition, independent of the content theme.
+  enum ContentLayout
+    "editorial" "briefing" "split" "minimal"
+  end
+
   -- Row and control heights: 22 and 26 px, or 20 and 22 px compact.
   enum Density
     "comfortable" "compact"
@@ -75,6 +86,33 @@ local record kit
   -- chart), or a circle (an avatar).
   enum SkeletonShape
     "text" "block" "circle"
+  end
+
+  -- Project typography and content spacing in logical px. Omitted fields keep
+  -- the preset or skin default. Content sizes do not enlarge tool controls.
+  record Sizes
+    -- Tool body text.
+    body: number
+    -- Tool labels.
+    label: number
+    -- Small titles and level-two headings.
+    title: number
+    -- Level-one content headings.
+    heading: number
+    -- Large statistics and display text.
+    display: number
+    -- Reading text.
+    content: number
+    -- Figure captions.
+    caption: number
+    -- Code text.
+    code: number
+    -- Chart axis and data labels.
+    chart: number
+    -- Default content spacing.
+    gap: number
+    -- Default content inset.
+    pad: number
   end
 
   -- A choice: what it is, and what it reads as.
@@ -185,6 +223,10 @@ local record kit
   record SettingsProps
     -- The skin; Ledger when left out.
     skin: Skin
+    -- Optional content settings preset: Paper, Signal, Stage or Minimal.
+    -- Explicit skin, fonts, roles and individual sizes override the preset;
+    -- layout stays the author's.
+    theme: ContentTheme
     -- Comfortable when left out.
     density: Density
     -- The skin's hard shadows; on when left out.
@@ -217,6 +259,13 @@ local record kit
     -- The data face (ids, numbers, code), as a family list; the skin's when
     -- left out.
     font_data: {string}
+    -- Content heading/quote families; the preset's, else the UI face.
+    font_title: {string}
+    -- Reading-text families; the UI face when omitted.
+    font_content: {string}
+    -- Project typography and content spacing. Fields merge over the preset
+    -- individually; sizes are logical px.
+    sizes: Sizes
     key: string
     fresh: boolean
   end
@@ -240,6 +289,11 @@ local record kit
 
   -- The props of `kit/toolbar`.
   record ToolbarProps
+    -- Opt into the native drag strip under custom window chrome. Reserves the
+    -- OS window controls and keeps gaps draggable. False by default;
+    -- native-decorated windows keep the normal content toolbar. Configure
+    -- custom chrome and a medium/tall titlebar in the host when opting in.
+    window_chrome: boolean
     key: string
     fresh: boolean
   end
@@ -312,6 +366,123 @@ local record kit
 
   -- The props of `kit/divider`.
   record DividerProps
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/heading`.
+  record HeadingProps
+    -- The heading.
+    text: string
+    -- Hierarchy, 1 to 6; 1 by default.
+    level: integer
+    -- Override the theme's heading size.
+    size: number
+    -- A family name or family token.
+    family: string
+    -- Override the foreground role.
+    color: integer | string
+    -- Bold by default.
+    bold: boolean
+    -- Line height in logical px.
+    line_height: number
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/paragraph`.
+  record ParagraphProps
+    -- The text.
+    text: string
+    -- Override the reading size.
+    size: number
+    -- A family name or family token.
+    family: string
+    -- Override the foreground role.
+    color: integer | string
+    -- Line height in logical px.
+    line_height: number
+    -- Allow selecting and copying its text.
+    selectable: boolean
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/content`.
+  record ContentProps
+    -- Layout preset; ordinary reading flow if omitted.
+    layout: ContentLayout
+    -- Optional composition heading.
+    title: string
+    -- Optional reading lead.
+    subtitle: string
+    -- Optional small introductory label.
+    eyebrow: string
+    -- title or section centers the content vertically; other values use
+    -- regular flow.
+    preset: string
+    -- Take available height.
+    grow: boolean
+    -- Maximum reading width.
+    max_width: number
+    -- Inset; theme default if omitted.
+    pad: number
+    -- Spacing; theme default if omitted.
+    gap: number
+    -- Optional background.
+    bg: integer | string
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/columns`.
+  record ColumnsProps
+    -- Stack below this width, 760 by default.
+    collapse_at: number
+    -- Column gap.
+    gap: number
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/comparison`.
+  record ComparisonProps
+    -- First title; Before by default.
+    first_title: string
+    -- Second title; After by default.
+    second_title: string
+    -- Stack below this width, 760 by default.
+    collapse_at: number
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/quote`.
+  record QuoteProps
+    -- The quotation.
+    text: string
+    -- Its author or source.
+    attribution: string
+    -- Override reading size.
+    size: number
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/figure`.
+  record FigureProps
+    -- The caption.
+    caption: string
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/visibility`.
+  record VisibilityProps
+    -- Whether the content is visible and interactive.
+    visible: boolean
+    -- Remove layout space too when invisible; otherwise reserve it.
+    collapse: boolean
     key: string
     fresh: boolean
   end
@@ -924,6 +1095,11 @@ local record kit
     label: string
     -- The number, as text.
     value: string
+    -- Use the project's display size for a presentation or headline
+    -- statistic.
+    display: boolean
+    -- Override the value size in logical px.
+    size: number
     -- How it moved: `+12%`.
     delta: string
     -- Whether the move is good news.
@@ -936,6 +1112,15 @@ local record kit
   record CodeProps
     -- The text.
     text: string
+    -- Syntax highlighting: lua, teal, javascript, typescript, json, rust,
+    -- python, c, css, shell or sql. Other languages remain plain text.
+    language: string
+    -- One-based line numbers to emphasize.
+    highlight_lines: {integer}
+    -- Code size in logical px; project code size when omitted.
+    size: number
+    -- Line height; derived from the code size when omitted.
+    line_height: number
     -- Wraps rather than scrolls sideways.
     wrap: boolean
     -- At most this many lines high, the rest scrolled to.
@@ -1346,6 +1531,33 @@ local record kit
 
   -- A rule between groups, as the skin draws regions.
   divider: function(props: DividerProps): kui.Node
+
+  -- An adaptive content heading in the project's title face.
+  heading: function(props: HeadingProps): kui.Node
+
+  -- Wrapping reading text in the project's content face.
+  paragraph: function(props: ParagraphProps): kui.Node
+
+  -- A reading composition with project spacing, optional width limit and
+  -- title/section centering.
+  content: function(props: ContentProps, children?: {any:any}): kui.Node
+
+  -- Two content regions that stack when the available width is narrow.
+  columns: function(props: ColumnsProps, children?: {any:any}): kui.Node
+
+  -- Titled before/after regions with adaptive stacking.
+  comparison: function(props: ComparisonProps, children?: {any:any}): kui.Node
+
+  -- A quotation in the title face with an optional attribution.
+  quote: function(props: QuoteProps): kui.Node
+
+  -- Any visual with a wrapping caption in the project's caption size.
+  figure: function(props: FigureProps, children?: {any:any}): kui.Node
+
+  -- Retained content whose visibility can change without changing layout.
+  -- Invisible content has no paint, pointer input, accessibility presence or
+  -- Tab stops.
+  visibility: function(props: VisibilityProps, children?: {any:any}): kui.Node
 
   -- A button. Space, Enter and assistive technology press it as a click does.
   button: function(props: ButtonProps): kui.Node

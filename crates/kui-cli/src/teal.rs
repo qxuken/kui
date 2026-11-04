@@ -102,6 +102,14 @@ pub fn write_types(dir: &Path) -> std::io::Result<()> {
     write_whole(&dir.join("kui.lua"), KUI_META)?;
     write_whole(&dir.join("kui_runner.lua"), RUNNER_META)?;
     write_whole(&dir.join("kit").join("ui.lua"), KIT_META)?;
+    write_whole(
+        &dir.join("kit").join("presentation.d.tl"),
+        include_str!("../../../addons/kit/host/lua/kit/presentation.d.tl"),
+    )?;
+    write_whole(
+        &dir.join("kit").join("presentation.lua"),
+        include_str!("../../../addons/kit/host/lua/kit/presentation.lua"),
+    )?;
     Ok(())
 }
 

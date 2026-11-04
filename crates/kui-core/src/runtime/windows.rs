@@ -295,6 +295,30 @@ impl Core {
             .push(crate::window::WindowCommand::Focus(window));
     }
 
+    /// Request fullscreen on a display, with an OS-controlled fallback.
+    pub fn set_window_fullscreen(
+        &mut self,
+        window: crate::window::WindowId,
+        enabled: bool,
+        display: Option<u32>,
+    ) {
+        self.push_window_command(crate::window::WindowCommand::SetFullscreen {
+            window,
+            enabled,
+            display,
+        });
+    }
+
+    /// Show or hide a live window without discarding its context.
+    pub fn set_window_visible(&mut self, window: crate::window::WindowId, visible: bool) {
+        self.push_window_command(crate::window::WindowCommand::SetVisible { window, visible });
+    }
+
+    /// Opt into retaining the context when its OS close button is pressed.
+    pub fn set_window_close_hides(&mut self, window: crate::window::WindowId, enabled: bool) {
+        self.push_window_command(crate::window::WindowCommand::SetCloseHides { window, enabled });
+    }
+
     /// Drains window intents queued since the last drain — by chrome nodes,
     /// by `push_window_command`, `set_window_size` and `focus_window` — in
     /// the order they were queued. Frame drivers call this after each input

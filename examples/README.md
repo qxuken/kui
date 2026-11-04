@@ -281,6 +281,7 @@ needs it; the corpus already proves the four bindings lower alike.
 | Example | Shows | Headless |
 |---|---|---|
 | [`apps/counter.tsx`](node/apps/counter.tsx) | The counter in JSX, the same shape as the other three | ✓ `node dist/apps/counter.mjs --headless` |
+| [`apps/presentation.tsx`](node/apps/presentation.tsx) | Native Kit deck with reveals, private presenter notes, live demos, theme presets and PNG export | ✓ `node dist/apps/presentation.mjs --headless` |
 | [`features/window.tsx`](node/features/window.tsx) | The Node windowed driver: `init` handed the window, `resize` messages, images and sounds as the window's resources, custom chrome | |
 | [`features/relaunch.tsx`](node/features/relaunch.tsx) | A second `runWindowed` in one process: the window closes and the same app reopens under the other chrome, on the event loop the first runner parked (F58) — the harness's `after` hook | **by hand:** press the button; under `KUI_SMOKE_FRAMES` the round passes only if the second window opened |
 | [`features/slide.tsx`](node/features/slide.tsx) | `slide`: a canvas of floats and `line` connectors that eases everything or nothing, panned by an `onDrag` root — the by-hand check for F15 | ✓ the model's pan; **by hand:** drag the empty canvas and watch it while the button is down |

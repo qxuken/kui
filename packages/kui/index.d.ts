@@ -871,6 +871,10 @@ export type WindowCommand =
   | { kind: 'startDrag' | 'close' | 'minimize' | 'toggleMaximize'; window: number }
   | { kind: 'setSize'; window: number; width: number; height: number }
   | { kind: 'focus'; window: number }
+  | { kind: 'redraw'; window: number }
+  | { kind: 'setFullscreen'; window: number; enabled: boolean; display: number | null }
+  | { kind: 'setVisible'; window: number; visible: boolean }
+  | { kind: 'setCloseHides'; window: number; enabled: boolean }
   | {
       kind: 'open';
       window: number;
@@ -881,7 +885,7 @@ export type WindowCommand =
       /** Whose declaration won: 0 is your app, 1+ an extension. */
       origin: number;
       config: {
-        kind: 'normal' | 'popup';
+        kind: 'normal' | 'popup' | 'surface';
         width: number;
         height: number;
         activates: boolean;
@@ -4780,6 +4784,14 @@ export declare class Ctx {
    * `env().focused` on the frames that follow, not as a reply.
    */
   focusWindow(window: number): void
+  /** Display names, indexed by setWindowFullscreen's display. */
+  displayNames(): Array<string>
+  /** Request borderless fullscreen on the current or chosen display. */
+  setWindowFullscreen(window: number, enabled: boolean, display?: number | undefined | null): void
+  /** Show or hide a window without losing its context. */
+  setWindowVisible(window: number, visible: boolean): void
+  /** Have OS close hide a window while another stays visible. */
+  setWindowCloseHides(window: number, enabled: boolean): void
   editText(key: string): string | null
   /**
    * Replaces an editor's text, leaving the caret at the end.
@@ -6535,6 +6547,14 @@ export declare class KuiWindow {
    * `env().focused` on the frames that follow, not as a reply.
    */
   focusWindow(window: number): void
+  /** Display names, indexed by setWindowFullscreen's display. */
+  displayNames(): Array<string>
+  /** Request borderless fullscreen on the current or chosen display. */
+  setWindowFullscreen(window: number, enabled: boolean, display?: number | undefined | null): void
+  /** Show or hide a window without losing its context. */
+  setWindowVisible(window: number, visible: boolean): void
+  /** Have OS close hide a window while another stays visible. */
+  setWindowCloseHides(window: number, enabled: boolean): void
   editText(key: string): string | null
   /**
    * Replaces an editor's text, leaving the caret at the end.

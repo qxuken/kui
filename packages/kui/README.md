@@ -42,6 +42,13 @@ The `kui` runner, for apps written in Lua or Teal, is `@qxuken/kui-cli` on
 npm (the same shape: a `bin` shim over `@qxuken/kui-cli-<platform>`), or
 the release's `install.sh` / `install.ps1`.
 
+Native presentations use `present` from `@qxuken/kui/kit/presentation`:
+keyed TSX slide views with reveals, notes, presenter controls and PNG
+export. Paper, Signal, Stage and Minimal are Kit Settings presets; project
+fonts, colors and sizes merge over them. See the
+[authoring guide](https://github.com/qxuken/kui/blob/main/addons/kit/PRESENTATIONS.md)
+and [TSX example](https://github.com/qxuken/kui/blob/main/examples/node/apps/presentation.tsx).
+
 ```tsx
 // tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 import { createApp, runWindowed } from '@qxuken/kui';
