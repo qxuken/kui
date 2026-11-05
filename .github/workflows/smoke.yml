@@ -61,7 +61,8 @@ on:
 # `${{ github.workflow }}-${{ github.ref }}` too, so a shared group would
 # have one cancel the other.
 concurrency:
-  group: smoke-${{ github.workflow }}-${{ github.ref }}
+  # Focused diagnostics must not cancel a full platform round.
+  group: smoke-${{ github.workflow }}-${{ github.ref }}-${{ inputs.http_only || false }}
   cancel-in-progress: true
 
 permissions:
@@ -79,7 +80,8 @@ jobs:
       matrix:
         os: [macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
-    # `inputs` is empty on a push or a manual run: non-blocking there.
+    # The full round is non-blocking on pushes and manual runs. Releases
+    # and focused HTTP diagnostics fail when either platform fails.
     continue-on-error: ${{ !inputs.blocking && !inputs.http_only }}
     steps:
       - uses: actions/checkout@v7
