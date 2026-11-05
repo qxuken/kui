@@ -15,6 +15,7 @@ use crate::ops::{self, Inbound};
 use super::{fail, shared, try_fn};
 
 mod pinning;
+mod progress;
 
 /// One running server: what stops it and the requests waiting on a handler.
 pub struct Server {
@@ -381,6 +382,9 @@ fn validate_base_url(base: &str) -> mlua::Result<()> {
 }
 
 fn resolve_url(base: Option<&str>, url: &str) -> mlua::Result<String> {
+    if url.is_empty() && base.is_none() {
+        return Err(super::fail_as("invalid", "http: no url"));
+    }
     if let Ok(uri) = url.parse::<ureq::http::Uri>()
         && uri.scheme().is_some()
     {
@@ -448,7 +452,11 @@ fn http_code(e: &ureq::Error) -> &'static str {
     }
 }
 
-fn fetch(r: Req, request: &RequestGuard) -> Result<Value, String> {
+fn fetch(
+    r: Req,
+    request: &RequestGuard,
+    progress: Option<progress::Target>,
+) -> Result<Value, String> {
     let pins = match r.client.pin_file {
         Some(path) => Some(pinning::Pins::from_file(&path)?),
         None => r.client.pins,
@@ -488,13 +496,31 @@ fn fetch(r: Req, request: &RequestGuard) -> Result<Value, String> {
         }};
     }
     let body = r.body.unwrap_or_default();
+    macro_rules! send_body {
+        ($builder:expr) => {{
+            let mut builder = with_headers!($builder);
+            if let Some(progress) = &progress {
+                if !r.client.headers.iter().any(|(key, _)| {
+                    key.eq_ignore_ascii_case("content-length")
+                        || key.eq_ignore_ascii_case("transfer-encoding")
+                }) {
+                    builder = builder.header("content-length", body.len().to_string());
+                }
+                let total = body.len() as u64;
+                let reader = progress.reader(std::io::Cursor::new(body), "upload", Some(total));
+                builder.send(ureq::SendBody::from_owned_reader(reader))
+            } else {
+                builder.send(&body[..])
+            }
+        }};
+    }
     let res = match r.method.as_str() {
         "GET" => with_headers!(agent.get(&r.url)).call(),
         "HEAD" => with_headers!(agent.head(&r.url)).call(),
         "DELETE" => with_headers!(agent.delete(&r.url)).call(),
-        "POST" => with_headers!(agent.post(&r.url)).send(&body[..]),
-        "PUT" => with_headers!(agent.put(&r.url)).send(&body[..]),
-        "PATCH" => with_headers!(agent.patch(&r.url)).send(&body[..]),
+        "POST" => send_body!(agent.post(&r.url)),
+        "PUT" => send_body!(agent.put(&r.url)),
+        "PATCH" => send_body!(agent.patch(&r.url)),
         other => return Err(super::coded("invalid", format!("http: no method {other}"))),
     };
     let mut res =
@@ -512,12 +538,45 @@ fn fetch(r: Req, request: &RequestGuard) -> Result<Value, String> {
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    let text = res
+    let total = if r.method == "HEAD" || matches!(status, 204 | 304) {
+        Some(0)
+    } else {
+        res.body().content_length().or_else(|| {
+            (!res.headers().contains_key("transfer-encoding")
+                && !res.headers().contains_key("content-encoding")
+                && res
+                    .headers()
+                    .get("content-length")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.parse::<u64>().ok())
+                    == Some(0))
+            .then_some(0)
+        })
+    };
+    let mut reader = res
         .body_mut()
         .with_config()
         .limit(256 * 1024 * 1024)
-        .read_to_string()
-        .map_err(|e| super::coded(http_code(&e), format!("{} {} body: {e}", r.method, r.url)))?;
+        .reader();
+    let mut text = String::new();
+    use std::io::Read;
+    let read_result = if let Some(progress) = progress {
+        let mut reader = progress.reader(&mut reader, "download", total);
+        let result = reader.read_to_string(&mut text);
+        if result.is_ok() {
+            reader.finish();
+        }
+        result
+    } else {
+        reader.read_to_string(&mut text)
+    };
+    read_result.map_err(|e| {
+        let error = ureq::Error::from(e);
+        super::coded(
+            http_code(&error),
+            format!("{} {} body: {error}", r.method, r.url),
+        )
+    })?;
     let mut out = vec![
         ("status", Value::Int(status.into())),
         ("ok", Value::Bool((200..300).contains(&status))),
@@ -668,17 +727,27 @@ fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
         })?,
     )?;
     http.set(
+        "__try_progress",
+        try_fn(lua, |_, (callback, event): (mlua::Function, Table)| {
+            callback.call::<()>(event)
+        })?,
+    )?;
+    http.set(
         "__try_request",
         try_fn(
             lua,
-            move |lua, (target, method, extra): (mlua::Value, Option<String>, Option<Table>)| {
-                let mut r = request_opts(target, method.as_deref().unwrap_or("GET"), extra)?;
+            move |lua, (target, method, report): (mlua::Value, Option<String>, Option<bool>)| {
+                let mut r = request_opts(target, method.as_deref().unwrap_or("GET"), None)?;
                 let s = shared(lua);
                 r.client.resolve_paths(&s.dir);
                 let request = client.pool.begin().map_err(mlua::Error::RuntimeError)?;
                 let id = s.ops.id();
+                let progress = report.unwrap_or(false).then(|| progress::Target {
+                    ops: s.ops.clone(),
+                    id,
+                });
                 ops::run(&s.ops, id, move || {
-                    let result = fetch(r, &request);
+                    let result = fetch(r, &request, progress);
                     if result.is_err() && request.pool.state.lock().unwrap().destroyed {
                         Err(closed())
                     } else {

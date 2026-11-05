@@ -259,6 +259,42 @@ HTTP status codes, including 4xx/5xx, remain responses. Body-read failures,
 truncated bodies, timeouts and response-limit errors propagate as failures
 through middleware and the usual `try_`/raising calls.
 
+Observe upload and download progress with a per-request callback:
+
+```lua
+local response = api:get("/download", {
+  on_progress = function(p)
+    kui.dispatch {
+      kind = "http_progress", direction = p.direction,
+      loaded = p.loaded, total = p.total, done = p.done,
+    }
+  end,
+})
+```
+
+The event has `direction` (`"upload"` or `"download"`), `loaded` body bytes,
+optional `total` and `fraction` (`loaded / total`), and `done`. Upload counts
+body bytes read by the HTTP sender, excluding headers; upload completion
+means the body was handed to the transport. Download counts decoded body
+bytes from the final response. Chunked, close-delimited and decompressed
+responses have no known `total` or `fraction`. Known empty bodies finish
+with `loaded = 0`, `total = 0`, and `fraction = 1`.
+
+Updates are throttled to about one per 50 ms per direction, with initial
+and terminal updates delivered as well. Failed transfers preserve their
+last byte count and do not report download completion. Small transfers
+may only have initial and terminal updates. Middleware can set or wrap
+`request.on_progress`; each call to `next(request)` starts fresh counts.
+A middleware-provided cached response has no network progress events.
+
+Callbacks run synchronously on the initiating Lua state/coroutine, for
+both tasks and blocking calls, including workers. Keep them short; use
+`kui.dispatch` for UI updates or spawn a task for waiting work. Callbacks
+must not yield. If a callback raises, further callback delivery stops and
+the network operation drains before its normal result is replaced with
+the callback error through the usual `try_`/raising interface. Progress
+callbacks are request options, rather than shared client defaults.
+
 Composed views share their source's configuration, pool and lifecycle.
 Reconfiguring a view affects its siblings, while each request retains its
 snapshot. Middleware functions belong to their Lua state; construct a view

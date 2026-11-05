@@ -10,6 +10,7 @@ local waiting = {}
 -- The task being resumed right now, so a waiting call can tell a task's
 -- yield from a coroutine of the app's own.
 local current = nil
+local progress_callback_thread = nil
 
 -- The runner's convention for a call that can fail on its input or on the
 -- world: its `try_` form answers `true` and the value, or `false`, the
@@ -75,6 +76,7 @@ end
 -- a failure's code.
 function kui.__try_await(id)
   local co = coroutine.running()
+  if co == progress_callback_thread then error("http progress callbacks must not yield; use kui.dispatch or spawn a task", 2) end
   if current ~= nil and co == current then
     return coroutine.yield(id)
   end
@@ -90,6 +92,7 @@ end
 -- A waiting call's `try_` form: `start(...)`, a Rust `try_` form that
 -- answers an operation's id, then the operation's answer.
 local function waits(start, ...)
+  if coroutine.running() == progress_callback_thread then error("http progress callbacks must not yield; use kui.dispatch or spawn a task", 2) end
   local ok, id, code = start(...)
   if not ok then return false, id, code end
   return kui.__try_await(id)
@@ -377,13 +380,41 @@ local function checked_http_dispatch(dispatch)
   end
 end
 
+-- Progress events use the same operation id as the final answer. This keeps
+-- their order intact for tasks, workers, and calls that block outside a task.
+local function http_wait(native, request)
+  local callback = request.on_progress
+  if callback == nil then return waits(native.__try_request, request, nil, nil) end
+  if type(callback) ~= "function" then return false, "http: on_progress must be a function", "invalid" end
+  if coroutine.running() == progress_callback_thread then error("http progress callbacks must not yield; use kui.dispatch or spawn a task", 2) end
+  local ok, id, code = native.__try_request(request, nil, true)
+  if not ok then return false, id, code end
+  local callback_error, callback_code
+  while true do
+    local ok, value, code = kui.__try_await(id)
+    if ok and type(value) == "table" and value.__http_progress then
+      value.__http_progress = nil
+      if callback_error == nil then
+        local outer = progress_callback_thread
+        progress_callback_thread = coroutine.running()
+        local called, err, failure = native.__try_progress(callback, value)
+        progress_callback_thread = outer
+        if not called then callback_error, callback_code = err, failure end
+      end
+    else
+      if callback_error ~= nil then return false, callback_error, callback_code end
+      return ok, value, code
+    end
+  end
+end
+
 local function install_http_client(native, methods, dispatch)
   local client = methods and {} or native
   dispatch = dispatch or checked_http_dispatch(function(request)
     local ok, url, code = native.__try_resolve(request.url, request.base_url)
     if not ok then return false, url, code end
     request.url = url
-    return waits(native.__try_request, request, nil, nil)
+    return http_wait(native, request)
   end)
   local function perform(target, method, extra)
     local ok, request, code = native.__try_defaults()

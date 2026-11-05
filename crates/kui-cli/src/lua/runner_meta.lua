@@ -74,7 +74,17 @@
 ---@field head fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): kui.Response
 ---@field try_head fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
 
+---@class kui.HttpProgress
+---@field direction "upload"|"download"
+---@field loaded integer Body bytes transferred, excluding HTTP headers.
+---@field total? integer Nil when the decoded download size is unknown.
+---@field fraction? number loaded/total when total is known.
+---@field done boolean This direction completed successfully.
+
+---@alias kui.HttpProgressHandler fun(progress: kui.HttpProgress)
+
 ---@class kui.RequestOpts
+---@field on_progress? kui.HttpProgressHandler Runs on the caller's Lua state and must not yield. Callback errors fail the request after it drains.
 ---@field base_url? string Overrides the client prefix for relative request URLs.
 ---@field url? string
 ---@field method? string

@@ -2869,7 +2869,12 @@ kui.spawn(function()
   local response = kui.http.get(url)
   assert(response.status == 200 and response.body == "ordinary HTTP")
   client:configure { base_url = url, timeout = 1000 }
-  assert(observed:get("").body == "ordinary HTTP")
+  local progressed = false
+  assert(observed:get("", { on_progress = function(p: kui.HttpProgress)
+    assert(p.direction == "download" and p.loaded >= 0)
+    if p.done then progressed = true end
+  end }).body == "ordinary HTTP")
+  assert(progressed)
   assert(client:request { url = url }.status == 200)
   client:close()
   client:destroy()
@@ -3864,4 +3869,325 @@ end)
         );
         server.join().unwrap();
     }
+}
+
+#[test]
+fn http_progress_reports_upload_and_download_on_the_request_coroutine() {
+    let dir = app(
+        "http-progress-task",
+        &[(
+            "main.lua",
+            r#"
+kui.spawn(function()
+  local owner = coroutine.running()
+  local server = kui.http.serve { port = 0 }
+  local body = string.rep("x", 512 * 1024)
+  server:post("/echo", function(req)
+    assert(req.body == body)
+    return req.body
+  end)
+  server:get("/empty", function() return "" end)
+  local api = kui.http.client { base_url = "http://127.0.0.1:" .. server.port }
+  local counts, last, finished = {}, {}, {}
+  local nested = false
+  local function progress(p)
+    assert(coroutine.running() == owner, "callback ran on a different coroutine")
+    assert(p.__http_progress == nil)
+    assert(p.loaded >= (last[p.direction] or 0) and p.loaded <= #body)
+    if p.total ~= nil then assert(p.total == #body and p.fraction >= 0 and p.fraction <= 1)
+    else assert(p.direction == "download" and p.fraction == nil) end
+    counts[p.direction] = (counts[p.direction] or 0) + 1
+    last[p.direction] = p.loaded
+    if p.done then assert(p.loaded == #body and (p.fraction == nil or p.fraction == 1)); finished[p.direction] = true end
+    if p.direction == "upload" and p.loaded == 0 then
+      kui.spawn(function() kui.sleep(1); nested = true end)
+    end
+  end
+  local wrapped = api:compose(function(next)
+    return function(req)
+      local callback = req.on_progress
+      if callback then req.on_progress = function(p) callback(p) end end
+      return next(req)
+    end
+  end)
+  assert(wrapped:post("/echo", { body = body, on_progress = progress }).body == body)
+  assert(finished.upload and finished.download and counts.upload >= 2 and counts.download >= 2)
+  assert(last.upload == #body and last.download == #body)
+  while not nested do kui.sleep(1) end
+  local empty_done = false
+  assert(api:get("/empty", { on_progress = function(p)
+    assert(p.direction == "download" and p.loaded == 0 and p.total == 0)
+    if p.done then assert(p.fraction == 1); empty_done = true end
+  end }).body == "")
+  assert(empty_done)
+  local invalid, _, invalid_code = api:try_get("/empty", { on_progress = false })
+  assert(not invalid and invalid_code == "invalid")
+  local calls = 0
+  local ok, err, code = api:try_get("/empty", { on_progress = function()
+    calls = calls + 1
+    error("progress callback failed")
+  end })
+  assert(not ok and code == "failed" and err:find("progress callback failed") and calls == 1)
+  local waited, wait_err = api:try_get("/empty", { on_progress = function() kui.sleep(1) end })
+  assert(not waited and wait_err:find("must not yield"))
+  local yielded, yield_err = api:try_get("/empty", { on_progress = function() coroutine.yield() end })
+  assert(not yielded and yield_err:find("yield"))
+  assert(api:get("/empty").status == 200)
+  api:close()
+  print("task progress OK")
+  kui.exit(0)
+end)
+"#,
+        )],
+    );
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("task progress OK"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
+fn http_progress_handles_blocking_calls_chunked_and_compressed_bodies() {
+    use std::io::{Read, Write};
+    let decoded = vec![b'x'; 256 * 1024];
+    for mode in ["known", "chunked", "gzip"] {
+        let payload = if mode == "gzip" {
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(&decoded).unwrap();
+            encoder.finish().unwrap()
+        } else {
+            decoded.clone()
+        };
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://127.0.0.1:{}/",
+            listener.local_addr().unwrap().port()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut header = Vec::new();
+            let mut byte = [0];
+            while !header.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).unwrap();
+                header.push(byte[0]);
+            }
+            let framing = if mode == "chunked" {
+                "Transfer-Encoding: chunked\r\n".into()
+            } else {
+                format!(
+                    "Content-Length: {}\r\n{}",
+                    payload.len(),
+                    if mode == "gzip" {
+                        "Content-Encoding: gzip\r\n"
+                    } else {
+                        ""
+                    }
+                )
+            };
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n{framing}Connection: close\r\n\r\n"
+            )
+            .unwrap();
+            for chunk in payload.chunks(64 * 1024) {
+                if mode == "chunked" {
+                    write!(socket, "{:x}\r\n", chunk.len()).unwrap();
+                }
+                socket.write_all(chunk).unwrap();
+                if mode == "chunked" {
+                    socket.write_all(b"\r\n").unwrap();
+                }
+                if mode != "gzip" {
+                    std::thread::sleep(Duration::from_millis(65));
+                }
+            }
+            if mode == "chunked" {
+                socket.write_all(b"0\r\n\r\n").unwrap();
+            }
+        });
+        let source = format!(
+            r#"
+local owner = coroutine.running()
+local last, updates, done = 0, 0, false
+local api = kui.http.client()
+local response = api:get("{url}", {{ on_progress = function(p)
+  assert(coroutine.running() == owner)
+  assert(p.direction == "download" and p.loaded >= last)
+  last, updates, done = p.loaded, updates + 1, p.done
+  if "{mode}" == "known" then assert(p.total == 262144 and p.fraction == p.loaded / p.total)
+  else assert(p.total == nil and p.fraction == nil) end
+end }})
+assert(#response.body == 262144 and last == 262144 and done and updates >= 2)
+if "{mode}" ~= "gzip" then assert(updates <= 8) end
+api:close()
+print("blocking progress OK")
+kui.exit(0)
+"#
+        );
+        let dir = app(&format!("http-progress-{mode}"), &[("main.lua", &source)]);
+        let output = kui_env(
+            &dir,
+            &["run", "--headless"],
+            &[
+                ("KUI_EXTRA_CA_CERTS", ""),
+                ("NO_PROXY", "*"),
+                ("no_proxy", "*"),
+            ],
+            &dir.join("cache"),
+            20,
+        );
+        assert!(
+            output.status.success() && out(&output).contains("blocking progress OK"),
+            "{mode}: {}",
+            out(&output)
+        );
+        server.join().unwrap();
+    }
+}
+
+#[test]
+fn http_progress_does_not_finish_a_truncated_download() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!(
+        "http://127.0.0.1:{}/",
+        listener.local_addr().unwrap().port()
+    );
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let mut header = Vec::new();
+        let mut byte = [0];
+        while !header.ends_with(b"\r\n\r\n") {
+            socket.read_exact(&mut byte).unwrap();
+            header.push(byte[0]);
+        }
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nshort")
+            .unwrap();
+    });
+    let source = format!(
+        r#"
+kui.spawn(function()
+  local last, updates = 0, 0
+  local ok, _, code = kui.http.try_get("{url}", {{ on_progress = function(p)
+    assert(p.direction == "download" and p.total == 10 and not p.done)
+    last, updates = p.loaded, updates + 1
+  end }})
+  assert(not ok and code ~= nil and last == 5 and updates >= 2)
+  print("failed progress OK")
+  kui.exit(0)
+end)
+"#
+    );
+    let dir = app("http-progress-failure", &[("main.lua", &source)]);
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("failed progress OK"),
+        "{}",
+        out(&output)
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn http_progress_runs_inside_a_workers_blocking_request() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!(
+        "http://127.0.0.1:{}/",
+        listener.local_addr().unwrap().port()
+    );
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let mut header = Vec::new();
+        let mut byte = [0];
+        while !header.ends_with(b"\r\n\r\n") {
+            socket.read_exact(&mut byte).unwrap();
+            header.push(byte[0]);
+        }
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nworker")
+            .unwrap();
+    });
+    let worker = format!(
+        r#"
+local owner = coroutine.running()
+local updates, done, loaded = 0, false, 0
+local api = kui.http.client()
+local response = api:get("{url}", {{ on_progress = function(p)
+  assert(coroutine.running() == owner and p.total == 6)
+  updates, done, loaded = updates + 1, p.done, p.loaded
+end }})
+api:close()
+kui.dispatch {{ kind = "progress done", body = response.body, updates = updates, done = done, loaded = loaded }}
+"#
+    );
+    let dir = app(
+        "http-progress-worker",
+        &[
+            ("jobs/download.lua", &worker),
+            (
+                "main.lua",
+                r#"
+function update(message)
+  if message.kind == "progress done" then
+    assert(message.body == "worker" and message.updates >= 2 and message.done and message.loaded == 6)
+    print("worker progress OK")
+    kui.exit(0)
+  end
+end
+kui.worker("jobs/download.lua")
+"#,
+            ),
+        ],
+    );
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("worker progress OK"),
+        "{}",
+        out(&output)
+    );
+    server.join().unwrap();
 }

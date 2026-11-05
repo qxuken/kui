@@ -341,7 +341,19 @@
     pin_file: string
     ca_file: string
   end
+  record HttpProgress
+    -- "upload" or "download"; loaded counts body bytes, excluding headers.
+    direction: string
+    loaded: integer
+    -- Nil for chunked, close-delimited, or decompressed download bodies.
+    total: integer
+    fraction: number
+    done: boolean
+  end
+  type HttpProgressHandler = function(progress: HttpProgress)
   record RequestOpts
+    -- Called on the initiating Lua state. Must not yield; errors fail the request after it drains.
+    on_progress: HttpProgressHandler
     base_url: string
     url: string
     method: string

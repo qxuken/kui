@@ -50,6 +50,10 @@ was the first bare bump to break an app in five releases).
   explicit retries, caching and error recovery. Composed views share a pool;
   `close` drains it and `destroy` interrupts open connections. Pools isolate
   CA contents and pins, including changes to certificate files.
+- HTTP requests accept `on_progress` for throttled upload/download byte
+  counts on the caller's Lua state. Unknown decoded sizes remain unknown;
+  failed downloads never report completion, and callback failures reach
+  the normal request error path.
 - Native presentations as Lua/Teal or TSX code: keyed slides, reveals,
   overview, private notes, presenter previews and timer, fullscreen/display
   choice, compatible watch reload, managed demo lifecycle and PNG/manifest
