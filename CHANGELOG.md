@@ -21,6 +21,23 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- A custom editor's blank caret line now supplies an IME anchor even
+  when it draws no text node.
+
+### Fixed
+
+- **Blank custom-editor lines keep the IME at the caret.** A `line`
+  declaring a caret no longer loses its anchor when it holds no text.
+  The empty line's content box supplies the position, or an explicit
+  empty text run marks the text column after an inline gutter. Previously
+  native coordinates stayed at the last nonempty line, leaving macOS's
+  source indicator behind as the editor moved. Padding, rotation and
+  clipping still apply.
+
 ## 0.1.0-alpha.76 (2026-11-05)
 
 **What breaks.**

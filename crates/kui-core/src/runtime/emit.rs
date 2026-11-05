@@ -3040,6 +3040,7 @@ impl Core {
             return self
                 .text
                 .caret_at(self.tree.keys[l], caret as usize, false)
+                .or_else(|| self.empty_line_caret_rect(l))
                 .map(|r| drawn(&self.clips, l, r));
         }
         // A terminal draws cells rather than text lines. Its cursor is
@@ -3047,6 +3048,48 @@ impl Core {
         // the last editor's coordinates in place and macOS turns IME off.
         let (i, rect) = self.sink_cell_cursor_rect()?;
         Some(drawn(&self.clips, i, rect))
+    }
+
+    /// A blank custom-editor line may draw only a block or bar cursor,
+    /// with no text run to measure. Its insertion point is still the
+    /// start of its content box, as the access tree's empty run reads it.
+    /// Do not use this fallback for nonempty text that was clipped away.
+    fn empty_line_caret_rect(&self, line: usize) -> Option<Rect> {
+        let end = self.tree.subtree_end(line);
+        let mut i = line;
+        let mut empty_text = None;
+        while i < end {
+            if self.tree.specs[i].access().role == Some(crate::access::Role::None) {
+                i = self.tree.subtree_end(i);
+                continue;
+            }
+            if let NodeContent::Text(id) = self.tree.content[i] {
+                if self.text.content_len(id) > 0 {
+                    return None;
+                }
+                empty_text = Some(i);
+            }
+            i += 1;
+        }
+        // An explicit empty run marks the text column when the row also
+        // holds a gutter. It has zero width and is culled from painting,
+        // but its layout still gives the insertion point and font height.
+        let at = empty_text.unwrap_or(line);
+        let pos = self.tree.pos[at];
+        let size = self.tree.size[at];
+        let pad = self.tree.specs[at].layout.padding;
+        let rect = Rect::new(
+            pos.x + pad.l,
+            pos.y + pad.t,
+            0.0,
+            (size.h - pad.t - pad.b).max(0.0),
+        );
+        let visible = self
+            .clips
+            .get(line)
+            .map_or(crate::display::NO_CLIP, |c| c.visible());
+        let probe = Rect::new(rect.x, rect.y, 1.0 / self.scale, rect.h).intersect(&visible);
+        (probe.w > 0.0 && probe.h > 0.0).then_some(rect)
     }
 
     /// The first grid cursor owned by the focused key sink. A terminal
