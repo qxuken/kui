@@ -99,6 +99,9 @@ was the first bare bump to break an app in five releases).
   sharp in scaled content and fixed-canvas presentations.
 - HTTP response-body read failures now propagate to `try_` calls and
   middleware instead of returning a successful response with an empty body.
+- Destroying an HTTP client rejects an interrupted close-delimited response
+  with `closed`, even when socket shutdown produces a valid EOF. Cancelled
+  downloads do not emit a successful progress-completion event.
 
 - **A terminal's cursor anchors the IME.** A `cells` grid under the
   focused key sink now supplies its cursor cell as the input-method
@@ -161,10 +164,12 @@ fixture failures. The destroy test now holds the response open until after
 destroying the client instead of racing a 50 ms response. TLS fixtures stop
 when their clients finish and still assert delivered HTTP request counts,
 without requiring a platform-dependent number of handshake connections.
-After those changes, all 73 runner integration tests and strict Clippy passed
-locally; the lifecycle reproduction passed 10/10 with coarse polling, against
-10/10 failures before the fixture change. A fresh platform smoke run must pass
-before tagging.
+The lifecycle reproduction passed 10/10 with coarse polling, against 10/10
+failures before the fixture change. A further regression test reproduced a
+destroyed close-delimited body being returned as success and reporting
+download completion; both cancellation paths now check the client's destroyed
+state. All 59 runner unit tests, 74 integration tests and strict Clippy passed
+locally. A fresh platform smoke run must pass before tagging.
 
 No native Windows or Linux workstation pass, fuzz round or read-only review
 round was performed for this preparation.

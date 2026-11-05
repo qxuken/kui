@@ -3813,6 +3813,82 @@ end)
 }
 
 #[test]
+fn http_destroy_rejects_a_close_delimited_body_as_success() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut header = Vec::new();
+        let mut byte = [0];
+        while !header.ends_with(b"\r\n\r\n") {
+            socket.read_exact(&mut byte).unwrap();
+            header.push(byte[0]);
+        }
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\npartial")
+            .unwrap();
+        // Only the client can finish this response, by shutting down its
+        // socket. EOF is valid framing, but cancellation is not success.
+        match socket.read(&mut byte) {
+            Ok(0) => {}
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionAborted
+                        | std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::NotConnected
+                ) => {}
+            other => panic!("destroy did not close the response socket: {other:?}"),
+        }
+    });
+    let source = format!(
+        r#"
+kui.spawn(function()
+  local api = kui.http.client {{ timeout = 5000 }}
+  local reading, completed, result = false, false, nil
+  kui.spawn(function()
+    local ok, value, code = api:try_get("{url}", {{ on_progress = function(p)
+      if p.direction == "download" then reading = true; completed = p.done end
+    end }})
+    result = {{ ok = ok, value = value, code = code }}
+  end)
+  while not reading do kui.sleep(1) end
+  api:destroy()
+  while result == nil do kui.sleep(1) end
+  assert(not result.ok and result.code == "closed",
+    "destroyed body: ok=" .. tostring(result.ok) .. ", code=" .. tostring(result.code) .. ", value=" .. tostring(result.value))
+  assert(not completed, "destroyed download reported completion")
+  print("destroyed body rejected")
+  kui.exit(0)
+end)
+"#
+    );
+    let dir = app("http-destroy-body", &[("main.lua", &source)]);
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    server.join().unwrap();
+    assert!(
+        output.status.success() && out(&output).contains("destroyed body rejected"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
 fn http_body_read_errors_and_timeouts_reach_middleware() {
     use std::io::{Read, Write};
     for (name, response, hold) in [
