@@ -323,7 +323,7 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: node npm nu odin
+          tools: node npm nu odin gh
 
       - name: Install ALSA
         run: |
