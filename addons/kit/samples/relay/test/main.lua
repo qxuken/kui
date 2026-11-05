@@ -8,6 +8,9 @@
 package.path = kui.dir .. "/../?.lua;" .. package.path
 kui.args = { "--port", "0" }
 require("main")
+-- The Rust harness reserves a non-listening port, independent of any
+-- discard service or filtering on the sample's illustrative port 9.
+BASES.staging = kui.env.KUI_TEST_REFUSED_URL or BASES.staging
 ---@type any
 model = init()
 

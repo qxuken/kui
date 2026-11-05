@@ -129,6 +129,32 @@ fn app(name: &str, files: &[(&str, &str)]) -> PathBuf {
     dir
 }
 
+/// Reserve a TCP port without listening: connects are refused, and no
+/// service can take it while the fixture lives. Port 9 may be a discard
+/// service or silently filtered (including through WSL's localhost bridge).
+fn refused_http() -> (socket2::Socket, String) {
+    let socket = socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::STREAM, None)
+        .expect("TCP socket");
+    socket
+        .bind(&std::net::SocketAddr::from(([127, 0, 0, 1], 0)).into())
+        .expect("reserve a refused port");
+    let addr = socket.local_addr().unwrap().as_socket().unwrap();
+    (socket, format!("http://{addr}/"))
+}
+
+fn app_with_refused_http(name: &str, files: &[(&str, &str)]) -> (PathBuf, socket2::Socket) {
+    let (socket, url) = refused_http();
+    let sources: Vec<_> = files
+        .iter()
+        .map(|(path, source)| (*path, source.replace("http://127.0.0.1:9/", &url)))
+        .collect();
+    let files: Vec<_> = sources
+        .iter()
+        .map(|(path, source)| (*path, source.as_str()))
+        .collect();
+    (app(name, &files), socket)
+}
+
 /// Runs `kui <args>` in `dir`, killing it past `secs` (times
 /// `KUI_TEST_TIMEOUT_SCALE`, for a slow machine) and saying so.
 ///
@@ -445,7 +471,7 @@ fn kui_play_opens_the_carried_gallery_from_any_folder() {
 
 #[test]
 fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
-    let dir = app(
+    let (dir, _refused) = app_with_refused_http(
         "try-twins",
         &[
             ("bad.json", "{ not json"),
@@ -523,7 +549,7 @@ fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
 
 #[test]
 fn a_try_twins_failure_says_its_code() {
-    let dir = app(
+    let (dir, _refused) = app_with_refused_http(
         "try-codes",
         &[
             ("bad.json", "{ not json"),
@@ -1706,7 +1732,12 @@ fn kit_sample(name: &str) {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../addons/kit/samples")
         .join(name);
-    let o = kui(&dir, &["run", "test", "--headless"], 60);
+    let (_refused, url) = refused_http();
+    let mut cmd = Command::new(KUI);
+    cmd.args(["run", "test", "--headless"])
+        .current_dir(&dir)
+        .env("KUI_TEST_REFUSED_URL", url.trim_end_matches('/'));
+    let o = run_kui(cmd, 60);
     let s = out(&o);
     assert!(
         o.status.success() && s.contains("PASS: 0 failure(s)"),
