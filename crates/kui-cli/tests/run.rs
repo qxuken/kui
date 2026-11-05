@@ -138,15 +138,21 @@ fn app(name: &str, files: &[(&str, &str)]) -> PathBuf {
 /// output lost — three tests failed on the first Windows runner that way,
 /// reading as apps that said nothing.
 fn kui(dir: &Path, args: &[&str], secs: u64) -> Output {
+    let mut cmd = Command::new(KUI);
+    cmd.args(args).current_dir(dir);
+    run_kui(cmd, secs)
+}
+
+/// Both launch helpers drain pipes while running and report their deadline.
+fn run_kui(mut cmd: Command, secs: u64) -> Output {
     use std::io::Read;
     let scale: f64 = std::env::var("KUI_TEST_TIMEOUT_SCALE")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(1.0);
     let secs = (secs as f64 * scale).ceil() as u64;
-    let mut child = Command::new(KUI)
-        .args(args)
-        .current_dir(dir)
+    let description = format!("{cmd:?}");
+    let mut child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -167,11 +173,7 @@ fn kui(dir: &Path, args: &[&str], secs: u64) -> Output {
         }
         if start.elapsed() > Duration::from_secs(secs) {
             let _ = child.kill();
-            eprintln!(
-                "kui {} in {}: killed after {secs} s",
-                args.join(" "),
-                dir.display()
-            );
+            eprintln!("{description}: killed after {secs} s");
             break child.wait().unwrap();
         }
         std::thread::sleep(Duration::from_millis(20));
@@ -2181,16 +2183,7 @@ fn kui_env(dir: &Path, args: &[&str], env: &[(&str, &str)], cache: &Path, secs: 
     for (k, v) in env {
         cmd.env(k, v);
     }
-    let mut child = cmd.spawn().expect("run kui");
-    let start = Instant::now();
-    while child.try_wait().unwrap().is_none() {
-        if start.elapsed() > Duration::from_secs(secs) {
-            let _ = child.kill();
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    child.wait_with_output().unwrap()
+    run_kui(cmd, secs)
 }
 
 /// An app that says what it can see of itself when packed, then ends.
@@ -2822,6 +2815,9 @@ fn a_timer_that_dispatches_draws_one_frame_a_tick() {
     assert!(frames <= 26, "{frames} frames for 20 ticks:\n{s}");
 }
 
+// Async HTTP fixtures start on a timer so request deadlines begin only
+// after the host has initialized. Starting them while loading the script
+// races system-font discovery on a cold Windows runner.
 #[test]
 fn http_pins_type_check_and_report_invalid_options_without_disabling_http() {
     let dir = app(
@@ -2845,7 +2841,7 @@ local observed = client:compose(function(next: kui.HttpDispatch): kui.HttpDispat
     return next(request)
   end
 end)
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   server:get("/", function(_req: kui.Request): any
     return { body = "ordinary HTTP" }
@@ -2930,7 +2926,7 @@ impl TlsTestServer {
         let ca = params.self_signed(&ca_key).unwrap().pem();
         let issuer = Issuer::new(params, ca_key);
         let key = KeyPair::generate().unwrap();
-        let cert = CertificateParams::new(vec!["localhost".into()])
+        let cert = CertificateParams::new(vec!["127.0.0.1".into()])
             .unwrap()
             .signed_by(&key, &issuer)
             .unwrap();
@@ -2956,10 +2952,9 @@ impl TlsTestServer {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
-        let url = format!(
-            "https://localhost:{}",
-            listener.local_addr().unwrap().port()
-        );
+        // Match the listener's address: localhost may try ::1 first, and
+        // Windows can spend a second refusing it for every TLS request.
+        let url = format!("https://{}", listener.local_addr().unwrap());
         let tls = self.config.clone();
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -3019,7 +3014,7 @@ fn http_extra_ca_bundle_extends_trust_and_preserves_pins() {
     let (b, server_b) = second.serve("trusted");
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   assert(kui.http.get("{a}").body == "trusted")
   -- Trust is cached across requests and Lua states; changes require a restart.
   kui.fs.write("trust/bundle.pem", "no longer a certificate")
@@ -3097,7 +3092,7 @@ fn http_ca_file_trust_is_scoped_to_the_request() {
     let (url, server) = identity.serve("trusted");
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   assert(kui.http.get("{url}", {{ ca_file = "ca.pem" }}).status == 200)
   local ok = kui.http.try_get("{url}")
   assert(not ok, "request trust leaked")
@@ -3147,7 +3142,7 @@ fn http_invalid_extra_ca_bundles_report_tls_errors() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   for i = 1, 2 do
     local ok, err, code = kui.http.try_get("https://127.0.0.1:9/", { timeout = 100 })
     assert(not ok and code == "tls" and err:find("KUI_EXTRA_CA_CERTS"), tostring(err))
@@ -3192,7 +3187,7 @@ fn http_configure_merges_headers_replaces_defaults_and_resets() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   local function echo(req) return { value = req.headers["x-value"], kept = req.headers["x-keep"] } end
   server:get("/", echo)
@@ -3267,7 +3262,7 @@ function update(message)
     end)
   end
 end
-kui.spawn(function()
+kui.timer.after(0, function()
   kui.http.configure {{ ca_file = "ca-a.pem", pin_file = "leaf-a.pem" }}
   assert(kui.http.get("{a}").body == "trusted")
   local valid, _, invalid = kui.http.try_configure {{ pins = {{}} }}
@@ -3324,7 +3319,7 @@ fn http_clients_isolate_tls_configuration_and_support_request_overrides() {
     let (b, server_b) = second.serve("trusted");
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   kui.http.configure {{ ca_file = "missing.pem", pins = {{ "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }} }}
   local a = kui.http.client {{ ca_file = "ca-a.pem", pin_file = "leaf-a.pem" }}
   local b = kui.http.client {{ ca_file = "ca-b.pem", pin_file = "leaf-b.pem" }}
@@ -3393,7 +3388,7 @@ fn http_compose_middleware_wraps_dispatch_and_keeps_views_independent() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   server:get("/", function(req) return { value = req.headers["x-value"] } end)
   server:post("/", function(req) return { value = req.json.value } end)
@@ -3510,7 +3505,7 @@ fn persistent_http_server(
     listener.set_nonblocking(true).unwrap();
     let scheme = if tls.is_some() { "https" } else { "http" };
     let url = format!(
-        "{scheme}://localhost:{}",
+        "{scheme}://127.0.0.1:{}",
         listener.local_addr().unwrap().port()
     );
     let thread = std::thread::spawn(move || {
@@ -3576,7 +3571,7 @@ fn http_clients_reuse_connections_and_composed_views_share_the_pool() {
     let (url, server) = persistent_http_server(None, 2);
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local api = kui.http.client {{ base_url = "{url}" }}
   assert(api:get("/one").body == "ok")
   assert(api:get("two").body == "ok")
@@ -3621,7 +3616,7 @@ fn http_pool_keys_follow_ca_and_pin_file_contents() {
     let (url, server) = persistent_http_server(Some(identity.config.clone()), 3);
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local ca, leaf = kui.fs.read("ca.pem"), kui.fs.read("leaf.pem")
   local api = kui.http.client {{ base_url = "{url}", ca_file = "ca.pem", pin_file = "leaf.pem" }}
   assert(api:get("/first").body == "ok")
@@ -3677,7 +3672,7 @@ fn http_base_url_prefixes_paths_before_middleware_and_allows_absolute_urls() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   server:get("/v1/profile", function(req) return { id = req.query.id } end)
   server:get("/v2/profile", function() return { version = 2 } end)
@@ -3746,7 +3741,7 @@ fn http_close_drains_requests_and_destroy_interrupts_them() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   local started, finished, result = false, false, nil
   server:get("/slow", function()
@@ -3848,7 +3843,7 @@ fn http_destroy_rejects_a_close_delimited_body_as_success() {
     });
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local api = kui.http.client {{ timeout = 5000 }}
   local reading, completed, result = false, false, nil
   kui.spawn(function()
@@ -3931,7 +3926,7 @@ fn http_body_read_errors_and_timeouts_reach_middleware() {
         });
         let source = format!(
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local api = kui.http.client {{ timeout = 300 }}
   local observed = api:compose(function(next)
     return function(req)
@@ -3977,7 +3972,7 @@ fn http_progress_reports_upload_and_download_on_the_request_coroutine() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local owner = coroutine.running()
   local server = kui.http.serve { port = 0 }
   local body = string.rep("x", 512 * 1024)
@@ -4185,7 +4180,7 @@ fn http_progress_does_not_finish_a_truncated_download() {
     });
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local last, updates = 0, 0
   local ok, _, code = kui.http.try_get("{url}", {{ on_progress = function(p)
     assert(p.direction == "download" and p.total == 10 and not p.done)
