@@ -331,7 +331,30 @@
     try_spawn: function(cmd: string, args?: {string}, opts?: ProcessOpts): boolean, Process | string, string
   end
 
+  record HttpClientOpts
+    -- Absolute HTTP(S) prefix; /profile and profile both append to its path.
+    base_url: string
+    headers: {string:string}
+    -- Positive finite milliseconds; 30,000 when omitted.
+    timeout: number
+    pins: {string}
+    pin_file: string
+    ca_file: string
+  end
+  record HttpProgress
+    -- "upload" or "download"; loaded counts body bytes, excluding headers.
+    direction: string
+    loaded: integer
+    -- Nil for chunked, close-delimited, or decompressed download bodies.
+    total: integer
+    fraction: number
+    done: boolean
+  end
+  type HttpProgressHandler = function(progress: HttpProgress)
   record RequestOpts
+    -- Called on the initiating Lua state. Must not yield; errors fail the request after it drains.
+    on_progress: HttpProgressHandler
+    base_url: string
     url: string
     method: string
     headers: {string:string}
@@ -339,6 +362,12 @@
     body: string
     -- How long the whole request may take, in milliseconds; 30,000 (30 s) when left out.
     timeout: number
+    -- Accepted leaf public keys, sha256/<base64 SPKI digest>; nonempty, HTTPS only.
+    pins: {string}
+    -- Alternative to pins: PEM or DER certificate path, relative to the app folder or absolute.
+    pin_file: string
+    -- Additional trusted CAs in a PEM bundle; relative to the app folder or absolute. Pins still apply.
+    ca_file: string
   end
   record Response
     status: integer
@@ -346,6 +375,32 @@
     headers: {string:string}
     body: string
     json: any
+  end
+  type HttpDispatch = function(request: RequestOpts): boolean, Response | string, string
+  type HttpMiddleware = function(next: HttpDispatch): HttpDispatch
+  record HttpClient
+    -- Last middleware wraps earlier ones; composed views share configuration, pools and lifecycle.
+    compose: function(self: HttpClient, middleware: HttpMiddleware | {HttpMiddleware}, ...: HttpMiddleware): HttpClient
+    try_compose: function(self: HttpClient, middleware: HttpMiddleware | {HttpMiddleware}, ...: HttpMiddleware): boolean, HttpClient | string, string
+    close: function(self: HttpClient)
+    try_close: function(self: HttpClient): boolean, string, string
+    destroy: function(self: HttpClient)
+    configure: function(self: HttpClient, opts?: HttpClientOpts)
+    try_configure: function(self: HttpClient, opts?: HttpClientOpts): boolean, string, string
+    request: function(self: HttpClient, target: string | RequestOpts, opts?: RequestOpts): Response
+    try_request: function(self: HttpClient, target: string | RequestOpts, opts?: RequestOpts): boolean, Response | string, string
+    get: function(self: HttpClient, url: string, opts?: RequestOpts): Response
+    try_get: function(self: HttpClient, url: string, opts?: RequestOpts): boolean, Response | string, string
+    post: function(self: HttpClient, url: string, opts?: RequestOpts): Response
+    try_post: function(self: HttpClient, url: string, opts?: RequestOpts): boolean, Response | string, string
+    put: function(self: HttpClient, url: string, opts?: RequestOpts): Response
+    try_put: function(self: HttpClient, url: string, opts?: RequestOpts): boolean, Response | string, string
+    patch: function(self: HttpClient, url: string, opts?: RequestOpts): Response
+    try_patch: function(self: HttpClient, url: string, opts?: RequestOpts): boolean, Response | string, string
+    delete: function(self: HttpClient, url: string, opts?: RequestOpts): Response
+    try_delete: function(self: HttpClient, url: string, opts?: RequestOpts): boolean, Response | string, string
+    head: function(self: HttpClient, url: string, opts?: RequestOpts): Response
+    try_head: function(self: HttpClient, url: string, opts?: RequestOpts): boolean, Response | string, string
   end
   record Request
     method: string
@@ -373,6 +428,15 @@
     static: string
   end
   record http
+    -- Independent standard defaults; the environment CA bundle still applies.
+    client: function(opts?: HttpClientOpts): HttpClient
+    try_client: function(opts?: HttpClientOpts): boolean, HttpClient | string, string
+    compose: function(middleware: HttpMiddleware | {HttpMiddleware}, ...: HttpMiddleware): HttpClient
+    try_compose: function(middleware: HttpMiddleware | {HttpMiddleware}, ...: HttpMiddleware): boolean, HttpClient | string, string
+    -- Replace process-wide defaults for subsequent kui.http requests, including workers.
+    -- No options or an empty table resets them. Request options override these defaults.
+    configure: function(opts?: HttpClientOpts)
+    try_configure: function(opts?: HttpClientOpts): boolean, string, string
     -- Each waits.
     request: function(target: string | RequestOpts, opts?: RequestOpts): Response
     get: function(url: string, opts?: RequestOpts): Response

@@ -34,6 +34,7 @@ mod release;
 mod rename;
 mod shell_env;
 mod teal;
+mod tls;
 mod tooling;
 
 use std::path::PathBuf;
@@ -302,6 +303,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
 }
 
 fn main() -> ExitCode {
+    tls::init();
     #[cfg(feature = "mimalloc")]
     tune_allocator();
     // A runner with an app packed into it runs that app.

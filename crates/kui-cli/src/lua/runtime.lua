@@ -10,6 +10,7 @@ local waiting = {}
 -- The task being resumed right now, so a waiting call can tell a task's
 -- yield from a coroutine of the app's own.
 local current = nil
+local progress_callback_thread = nil
 
 -- The runner's convention for a call that can fail on its input or on the
 -- world: its `try_` form answers `true` and the value, or `false`, the
@@ -75,6 +76,7 @@ end
 -- a failure's code.
 function kui.__try_await(id)
   local co = coroutine.running()
+  if co == progress_callback_thread then error("http progress callbacks must not yield; use kui.dispatch or spawn a task", 2) end
   if current ~= nil and co == current then
     return coroutine.yield(id)
   end
@@ -90,6 +92,7 @@ end
 -- A waiting call's `try_` form: `start(...)`, a Rust `try_` form that
 -- answers an operation's id, then the operation's answer.
 local function waits(start, ...)
+  if coroutine.running() == progress_callback_thread then error("http progress callbacks must not yield; use kui.dispatch or spawn a task", 2) end
   local ok, id, code = start(...)
   if not ok then return false, id, code end
   return kui.__try_await(id)
@@ -343,16 +346,144 @@ end
 
 -- The waiting calls: each starts an operation and waits on it.
 
---- `kui.http.request{ url, method, headers, json | body, timeout (ms) }` or
---- `kui.http.request(url, opts)`: `{ status, ok, headers, body, json? }`.
-function kui.http.try_request(target, opts)
-  return waits(kui.http.__try_request, target, nil, opts)
-end
-for _, m in ipairs({ "get", "post", "put", "patch", "delete", "head" }) do
-  local method = m:upper()
-  kui.http["try_" .. m] = function(url, opts)
-    return waits(kui.http.__try_request, url, method, opts)
+local function merge_http_options(request, opts)
+  if type(opts) ~= "table" then return false, "http: expected an options table", "invalid" end
+  if opts.headers ~= nil then
+    if type(opts.headers) ~= "table" then return false, "http: expected a headers table", "invalid" end
+    local headers = {}
+    for key, value in pairs(request.headers or {}) do headers[key] = value end
+    for key, value in pairs(opts.headers) do
+      if type(key) ~= "string" then return false, "http: expected string header names", "invalid" end
+      for old in pairs(headers) do
+        if old:lower() == key:lower() then headers[old] = nil end
+      end
+      headers[key] = value
+    end
+    request.headers = headers
   end
+  if opts.pins ~= nil and opts.pin_file == nil then request.pin_file = nil end
+  if opts.pin_file ~= nil and opts.pins == nil then request.pins = nil end
+  for key, value in pairs(opts) do if key ~= "headers" then request[key] = value end end
+  return true
+end
+
+-- Normalize every layer to the runner's try-result convention, including
+-- exceptions, so an outer layer can recover without a separate pcall.
+local function checked_http_dispatch(dispatch)
+  return function(request)
+    local called, ok, value, code = pcall(dispatch, request)
+    if not called then return false, tostring(ok), kui.__code_of(ok) end
+    if type(ok) ~= "boolean" or (ok and type(value) ~= "table") or (not ok and type(value) ~= "string") then
+      return false, "http middleware: expected boolean, response-or-error, code", "invalid"
+    end
+    return ok, value, code
+  end
+end
+
+-- Progress events use the same operation id as the final answer. This keeps
+-- their order intact for tasks, workers, and calls that block outside a task.
+local function http_wait(native, request)
+  local callback = request.on_progress
+  if callback == nil then return waits(native.__try_request, request, nil, nil) end
+  if type(callback) ~= "function" then return false, "http: on_progress must be a function", "invalid" end
+  if coroutine.running() == progress_callback_thread then error("http progress callbacks must not yield; use kui.dispatch or spawn a task", 2) end
+  local ok, id, code = native.__try_request(request, nil, true)
+  if not ok then return false, id, code end
+  local callback_error, callback_code
+  while true do
+    local ok, value, code = kui.__try_await(id)
+    if ok and type(value) == "table" and value.__http_progress then
+      value.__http_progress = nil
+      if callback_error == nil then
+        local outer = progress_callback_thread
+        progress_callback_thread = coroutine.running()
+        local called, err, failure = native.__try_progress(callback, value)
+        progress_callback_thread = outer
+        if not called then callback_error, callback_code = err, failure end
+      end
+    else
+      if callback_error ~= nil then return false, callback_error, callback_code end
+      return ok, value, code
+    end
+  end
+end
+
+local function install_http_client(native, methods, dispatch)
+  local client = methods and {} or native
+  dispatch = dispatch or checked_http_dispatch(function(request)
+    local ok, url, code = native.__try_resolve(request.url, request.base_url)
+    if not ok then return false, url, code end
+    request.url = url
+    return http_wait(native, request)
+  end)
+  local function perform(target, method, extra)
+    local ok, request, code = native.__try_defaults()
+    if not ok then return false, request, code end
+    request.method = method or "GET"
+    local err
+    if type(target) == "string" then request.url = target
+    elseif type(target) == "table" then ok, err, code = merge_http_options(request, target)
+    else ok, err, code = false, "http: expected a URL or an options table", "invalid" end
+    if ok and extra ~= nil then ok, err, code = merge_http_options(request, extra) end
+    if not ok then return false, err, code end
+    local url
+    ok, url, code = native.__try_resolve(request.url, request.base_url)
+    if not ok then return false, url, code end
+    request.url = url
+    return dispatch(request)
+  end
+  local function compose(...)
+    local layers = table.pack(...)
+    if layers.n == 1 and type(layers[1]) == "table" then
+      local list = layers[1]
+      local count = 0
+      for key in pairs(list) do
+        if type(key) ~= "number" or math.type(key) ~= "integer" or key < 1 then
+          return false, "http.compose: expected an array of middleware", "invalid"
+        end
+        count = count + 1
+      end
+      layers = { n = count }
+      for i = 1, count do layers[i] = list[i] end
+    end
+    local next = dispatch
+    for i = 1, layers.n do
+      if type(layers[i]) ~= "function" then return false, "http.compose: expected middleware functions", "invalid" end
+      local ok, wrapped = pcall(layers[i], next)
+      if not ok then return false, tostring(wrapped), kui.__code_of(wrapped) end
+      if type(wrapped) ~= "function" then return false, "http.compose: middleware must return a dispatch function", "invalid" end
+      next = checked_http_dispatch(wrapped)
+    end
+    return true, install_http_client(native, true, next)
+  end
+  if methods then
+    function client:try_configure(opts) return native.try_configure(opts) end
+    function client:try_request(target, opts) return perform(target, nil, opts) end
+    function client:try_compose(...) return compose(...) end
+    function client:try_close() return waits(native.__try_close) end
+    function client:destroy() return native.__destroy() end
+    plain(client, { "close" })
+  else
+    function client.try_request(target, opts) return perform(target, nil, opts) end
+    function client.try_compose(...) return compose(...) end
+  end
+  for _, name in ipairs({ "get", "post", "put", "patch", "delete", "head" }) do
+    local method = name:upper()
+    if methods then
+      client["try_" .. name] = function(_self, target, opts) return perform(target, method, opts) end
+    else
+      client["try_" .. name] = function(target, opts) return perform(target, method, opts) end
+    end
+  end
+  plain(client, { "compose", "configure", "request", "get", "post", "put", "patch", "delete", "head" })
+  return client
+end
+
+install_http_client(kui.http, false)
+function kui.http.try_client(opts)
+  local ok, client, code = kui.http.__try_client(opts)
+  if not ok then return false, client, code end
+  return true, install_http_client(client, true)
 end
 
 --- The files under `dir` (waits): `{ skip = { ".git", "node_modules" },
@@ -508,6 +639,6 @@ plain(kui.toml, { "decode", "encode" })
 plain(kui.yaml, { "decode", "encode" })
 plain(kui.fs, { "read", "write", "append", "create", "list", "lines", "walk", "mkdir", "remove", "rename" })
 plain(kui.process, { "run", "spawn" })
-plain(kui.http, { "request", "get", "post", "put", "patch", "delete", "head", "serve" })
+plain(kui.http, { "client", "configure", "request", "get", "post", "put", "patch", "delete", "head", "serve" })
 plain(kui.sqlite, { "open" })
 plain(kui.trace, { "open", "read" })

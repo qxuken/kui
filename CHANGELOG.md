@@ -35,6 +35,25 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
+- `kui.http` requests accept `pins`, a nonempty list of SHA-256 SPKI
+  public-key pins, or `pin_file` with a PEM/DER certificate path. Normal TLS
+  verification still applies; pins are checked before sending HTTP data
+  and enforced across HTTPS redirects.
+- `KUI_EXTRA_CA_CERTS` adds trusted CAs from a PEM bundle to app HTTP and
+  runner downloads. `kui.http` also accepts `ca_file` for additional CAs on
+  one request. Built-in roots, hostname/expiry checks and explicit pins remain active.
+- `kui.http.configure` sets client defaults for CA bundles, pins, headers
+  and timeout across requests and workers. Per-request options override
+  them; `configure()` resets defaults without changing in-flight requests.
+- `kui.http.client` owns reusable connection pools. `base_url` joins request
+  paths as a prefix. `compose` wraps dispatch with middleware for transforms,
+  explicit retries, caching and error recovery. Composed views share a pool;
+  `close` drains it and `destroy` interrupts open connections. Pools isolate
+  CA contents and pins, including changes to certificate files.
+- HTTP requests accept `on_progress` for throttled upload/download byte
+  counts on the caller's Lua state. Unknown decoded sizes remain unknown;
+  failed downloads never report completion, and callback failures reach
+  the normal request error path.
 - Native presentations as Lua/Teal or TSX code: keyed slides, reveals,
   overview, private notes, presenter previews and timer, fullscreen/display
   choice, compatible watch reload, managed demo lifecycle and PNG/manifest
@@ -66,6 +85,9 @@ was the first bare bump to break an app in five releases).
   redundant timer status; Statusbar grows to fit a mode control's height.
 
 ### Fixed
+
+- HTTP response-body read failures now propagate to `try_` calls and
+  middleware instead of returning a successful response with an empty body.
 
 - **A terminal's cursor anchors the IME.** A `cells` grid under the
   focused key sink now supplies its cursor cell as the input-method

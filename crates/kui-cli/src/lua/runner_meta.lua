@@ -24,7 +24,7 @@
 ---| "refused" # Nothing answered: refused, reset, unreachable.
 ---| "tls" # The secure connection failed.
 ---| "in_use" # The address or port is taken.
----| "closed" # The process's stdin, the worker, the database has gone.
+---| "closed" # The process's stdin, the worker, the database or HTTP client has closed.
 ---| "busy" # The database is locked by another connection.
 ---| "constraint" # A database constraint was violated.
 ---| "sql" # The statement is wrong: syntax, a missing table or column.
@@ -40,13 +40,61 @@
 ---@field body string
 ---@field json any Decoded when the response says it is JSON.
 
+---@class kui.HttpClientOpts
+---@field base_url? string Absolute HTTP(S) prefix; both /profile and profile append to its path.
+---@field headers? table<string, string> Default headers; request headers override by case-insensitive name.
+---@field timeout? number Positive finite milliseconds (30,000 when omitted).
+---@field ca_file? string Additional CA bundle path, relative to the configuring app/worker folder or absolute.
+---@field pin_file? string PEM/DER certificate path. Alternative to pins.
+---@field pins? string[] Accepted leaf public keys as sha256/<base64 SPKI digest>.
+
+---@alias kui.HttpDispatch fun(request: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
+---@alias kui.HttpMiddleware fun(next: kui.HttpDispatch): kui.HttpDispatch
+
+---@class kui.HttpClient
+---@field compose fun(self: kui.HttpClient, middleware: kui.HttpMiddleware|kui.HttpMiddleware[], ...: kui.HttpMiddleware): kui.HttpClient
+---@field try_compose fun(self: kui.HttpClient, middleware: kui.HttpMiddleware|kui.HttpMiddleware[], ...: kui.HttpMiddleware): boolean, kui.HttpClient|string, kui.ErrorCode?
+---@field close fun(self: kui.HttpClient) Gracefully closes the shared pool after in-flight requests finish.
+---@field try_close fun(self: kui.HttpClient): boolean, string?, kui.ErrorCode?
+---@field destroy fun(self: kui.HttpClient) Immediately aborts the shared pool and rejects new requests.
+---@field configure fun(self: kui.HttpClient, opts?: kui.HttpClientOpts)
+---@field try_configure fun(self: kui.HttpClient, opts?: kui.HttpClientOpts): boolean, string?, kui.ErrorCode?
+---@field request fun(self: kui.HttpClient, target: string|kui.RequestOpts, opts?: kui.RequestOpts): kui.Response
+---@field try_request fun(self: kui.HttpClient, target: string|kui.RequestOpts, opts?: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
+---@field get fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): kui.Response
+---@field try_get fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
+---@field post fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): kui.Response
+---@field try_post fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
+---@field put fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): kui.Response
+---@field try_put fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
+---@field patch fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): kui.Response
+---@field try_patch fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
+---@field delete fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): kui.Response
+---@field try_delete fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
+---@field head fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): kui.Response
+---@field try_head fun(self: kui.HttpClient, url: string, opts?: kui.RequestOpts): boolean, kui.Response|string, kui.ErrorCode?
+
+---@class kui.HttpProgress
+---@field direction "upload"|"download"
+---@field loaded integer Body bytes transferred, excluding HTTP headers.
+---@field total? integer Nil when the decoded download size is unknown.
+---@field fraction? number loaded/total when total is known.
+---@field done boolean This direction completed successfully.
+
+---@alias kui.HttpProgressHandler fun(progress: kui.HttpProgress)
+
 ---@class kui.RequestOpts
+---@field on_progress? kui.HttpProgressHandler Runs on the caller's Lua state and must not yield. Callback errors fail the request after it drains.
+---@field base_url? string Overrides the client prefix for relative request URLs.
 ---@field url? string
 ---@field method? string
 ---@field headers? table<string, string>
 ---@field json? any A body sent as JSON.
 ---@field body? string
 ---@field timeout? number Milliseconds (30,000 by default).
+---@field ca_file? string PEM bundle of additional trusted CAs, relative to the app folder or absolute. Adds to built-in and KUI_EXTRA_CA_CERTS roots; pins still apply.
+---@field pin_file? string PEM or DER certificate path, relative to the app folder or absolute. Alternative to pins; normal TLS validation still applies.
+---@field pins? string[] Accepted leaf public keys as sha256/<base64 SPKI digest>. Nonempty; HTTPS only, including redirects. Normal TLS validation still applies.
 
 ---@class kui.Request
 ---@field method string
@@ -632,6 +680,34 @@ function kui.process.try_run(cmd, args, opts) end
 function kui.process.try_spawn(cmd, args, opts) end
 
 kui.http = {}
+---Creates a client with independent defaults and connection pools. Use colon methods on it.
+---@param opts? kui.HttpClientOpts
+---@return kui.HttpClient
+function kui.http.client(opts) end
+---@param opts? kui.HttpClientOpts
+---@return boolean ok
+---@return kui.HttpClient|string client_or_err
+---@return kui.ErrorCode? code
+function kui.http.try_client(opts) end
+---Creates a middleware view sharing the default client's pool. Last middleware runs first.
+---@param middleware kui.HttpMiddleware|kui.HttpMiddleware[]
+---@param ... kui.HttpMiddleware
+---@return kui.HttpClient
+function kui.http.compose(middleware, ...) end
+---@param middleware kui.HttpMiddleware|kui.HttpMiddleware[]
+---@param ... kui.HttpMiddleware
+---@return boolean ok
+---@return kui.HttpClient|string client_or_err
+---@return kui.ErrorCode? code
+function kui.http.try_compose(middleware, ...) end
+---Replaces process-wide request defaults, including workers. Request options override them. No options or {} resets defaults. In-flight requests keep their snapshot.
+---@param opts? kui.HttpClientOpts
+function kui.http.configure(opts) end
+---@param opts? kui.HttpClientOpts
+---@return boolean ok
+---@return string? err
+---@return kui.ErrorCode? code
+function kui.http.try_configure(opts) end
 ---Each waits.
 ---@param target string|kui.RequestOpts
 ---@param opts? kui.RequestOpts
