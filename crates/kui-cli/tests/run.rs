@@ -2906,6 +2906,21 @@ struct TlsTestServer {
     config: std::sync::Arc<rustls::ServerConfig>,
 }
 
+struct TlsTestServerTask {
+    stop: std::sync::mpsc::Sender<()>,
+    thread: std::thread::JoinHandle<usize>,
+}
+
+impl TlsTestServerTask {
+    fn join(self) -> std::thread::Result<usize> {
+        // The client has finished. Failed TLS handshakes need not open the
+        // same number of TCP connections on every platform; count only the
+        // HTTP requests that actually crossed the TLS boundary.
+        drop(self.stop);
+        self.thread.join()
+    }
+}
+
 impl TlsTestServer {
     fn new() -> Self {
         use rcgen::{BasicConstraints, CertificateParams, IsCa, Issuer, KeyPair};
@@ -2937,7 +2952,7 @@ impl TlsTestServer {
         }
     }
 
-    fn serve(&self, connections: usize, body: &str) -> (String, std::thread::JoinHandle<usize>) {
+    fn serve(&self, body: &str) -> (String, TlsTestServerTask) {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -2950,17 +2965,17 @@ impl TlsTestServer {
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
+        let (stop, stopped) = std::sync::mpsc::channel();
         let thread = std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(15);
             let mut requests = 0;
-            for _ in 0..connections {
+            loop {
                 let socket = loop {
+                    if stopped.try_recv() != Err(std::sync::mpsc::TryRecvError::Empty) {
+                        return requests;
+                    }
                     match listener.accept() {
                         Ok((socket, _)) => break socket,
-                        Err(e)
-                            if e.kind() == std::io::ErrorKind::WouldBlock
-                                && Instant::now() < deadline =>
-                        {
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                             std::thread::sleep(Duration::from_millis(5))
                         }
                         other => panic!("TLS server did not receive its connections: {other:?}"),
@@ -2991,9 +3006,8 @@ impl TlsTestServer {
                     }
                 }
             }
-            requests
         });
-        (url, thread)
+        (url, TlsTestServerTask { stop, thread })
     }
 }
 
@@ -3001,8 +3015,8 @@ impl TlsTestServer {
 fn http_extra_ca_bundle_extends_trust_and_preserves_pins() {
     let first = TlsTestServer::new();
     let second = TlsTestServer::new();
-    let (a, server_a) = first.serve(4, "trusted");
-    let (b, server_b) = second.serve(1, "trusted");
+    let (a, server_a) = first.serve("trusted");
+    let (b, server_b) = second.serve("trusted");
     let source = format!(
         r#"
 kui.spawn(function()
@@ -3055,7 +3069,7 @@ end)
 
     // The runner's release downloads use the same trust configuration.
     std::fs::write(dir.join("trust/bundle.pem"), bundle).unwrap();
-    let (mirror, server) = first.serve(2, "0.0.0\n");
+    let (mirror, server) = first.serve("0.0.0\n");
     let output = kui_env(
         &dir,
         &[
@@ -3080,7 +3094,7 @@ end)
 #[test]
 fn http_ca_file_trust_is_scoped_to_the_request() {
     let identity = TlsTestServer::new();
-    let (url, server) = identity.serve(3, "trusted");
+    let (url, server) = identity.serve("trusted");
     let source = format!(
         r#"
 kui.spawn(function()
@@ -3238,8 +3252,8 @@ end)
 fn http_configure_shares_tls_defaults_with_workers_and_allows_request_overrides() {
     let first = TlsTestServer::new();
     let second = TlsTestServer::new();
-    let (a, server_a) = first.serve(5, "trusted");
-    let (b, server_b) = second.serve(1, "trusted");
+    let (a, server_a) = first.serve("trusted");
+    let (b, server_b) = second.serve("trusted");
     let source = format!(
         r#"
 function update(message)
@@ -3306,8 +3320,8 @@ kui.dispatch {{ kind = "http done", body = response.body }}
 fn http_clients_isolate_tls_configuration_and_support_request_overrides() {
     let first = TlsTestServer::new();
     let second = TlsTestServer::new();
-    let (a, server_a) = first.serve(4, "trusted");
-    let (b, server_b) = second.serve(4, "trusted");
+    let (a, server_a) = first.serve("trusted");
+    let (b, server_b) = second.serve("trusted");
     let source = format!(
         r#"
 kui.spawn(function()
@@ -3741,6 +3755,12 @@ kui.spawn(function()
     finished = true
     return "finished"
   end)
+  local release = false
+  server:get("/held", function()
+    started = true
+    while not release do kui.sleep(1) end
+    return "finished"
+  end)
   local origin = "http://127.0.0.1:" .. server.port
   local api = kui.http.client { base_url = origin, timeout = 2000 }
   kui.spawn(function() result = api:get("/slow").body end)
@@ -3757,11 +3777,12 @@ kui.spawn(function()
   started, finished, result = false, false, nil
   local stopped = kui.http.client { base_url = origin, timeout = 2000 }
   kui.spawn(function()
-    local ok, _, code = stopped:try_get("/slow")
+    local ok, _, code = stopped:try_get("/held")
     result = { ok = ok, code = code }
   end)
   while not started do kui.sleep(1) end
   stopped:destroy()
+  release = true
   while result == nil do kui.sleep(1) end
   assert(not result.ok and result.code == "closed")
   stopped:close()

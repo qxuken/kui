@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.76 (2026-11-05)
 
 **What breaks.**
 
@@ -32,6 +32,10 @@ was the first bare bump to break an app in five releases).
   platform input method; `ime_off` still disables it explicitly.
 - Enlarged static text now uses higher-resolution glyph masks; screenshots
   of scaled subtrees can change as text becomes sharper.
+- `widgets::window_buttons` renders nothing in fullscreen. On macOS,
+  custom-chrome windows no longer reserve space for hidden traffic lights.
+- HTTP response-body read failures now reach `try_` calls and middleware
+  as errors instead of successful responses with an empty body.
 
 ### Added
 
@@ -86,6 +90,13 @@ was the first bare bump to break an app in five releases).
 
 ### Fixed
 
+- Custom-chrome toolbars receive clicks in macOS fullscreen: the native
+  toolbar hides while fullscreen is active, and the traffic-light keep-out
+  rectangle is measured again after returning to windowed mode.
+- Default wheel scrolling advances 48 logical pixels per notch and settles
+  sooner. The `relaxed` preset preserves the previous 32-pixel notch and glide.
+- Enlarged static text uses higher-resolution glyph masks, keeping text
+  sharp in scaled content and fixed-canvas presentations.
 - HTTP response-body read failures now propagate to `try_` calls and
   middleware instead of returning a successful response with an empty body.
 
@@ -114,6 +125,9 @@ was the first bare bump to break an app in five releases).
 
 ### What you can delete
 
+- Per-request connection setup kept only because HTTP requests could not
+  share a pool, and a separate middleware dispatcher around those requests:
+  `kui.http.client` and its composed views own both.
 - A synthetic text-line caret kept only to anchor a terminal's input
   method: declare the cell grid's cursor instead.
 
@@ -121,6 +135,39 @@ was the first bare bump to break an app in five releases).
   timers kept running merely because a demo's slide was visited earlier.
 - Copied slide-specific typography/palette tables: Settings presets accept
   per-project overrides and keep compact controls at their normal sizes.
+
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): every generator, including
+Odin, was current; strict Clippy passed for the workspace and all targets.
+`test.nu --node -j 4` on the versioned tree passed 3480 tests over 257 Rust
+suites and Node's (17 ignored, none failed), with GPU and conformance checks
+required. The two additional Node presentation suites passed all 23 tests.
+All 59 Rust and 12 Node windowed examples drew 120 frames on both theme bases
+and exited cleanly. The C round passed all 11 checks and its 67-scene
+conformance replay; Odin passed its package/example checks, all seven headless
+examples and all four cross-language host/plugin pairs. The Node examples
+typechecked, the book built, and the npm package dry run included the
+presentation module.
+
+`bench-check.nu` against alpha.75 passed all nine guarded rows. Their largest
+increase was +0.8% (`frame_10k_rects` and `frame_1k_curves`), and their worst
+run-to-run spread was 2.4%.
+
+The compiled macOS accessibility audit passed all 106 checks after granting
+Accessibility permission. GitHub CI and the dependency audit passed on
+`7901c595`; its macOS smoke job passed, while Windows found two HTTP test
+fixture failures. The destroy test now holds the response open until after
+destroying the client instead of racing a 50 ms response. TLS fixtures stop
+when their clients finish and still assert delivered HTTP request counts,
+without requiring a platform-dependent number of handshake connections.
+After those changes, all 73 runner integration tests and strict Clippy passed
+locally; the lifecycle reproduction passed 10/10 with coarse polling, against
+10/10 failures before the fixture change. A fresh platform smoke run must pass
+before tagging.
+
+No native Windows or Linux workstation pass, fuzz round or read-only review
+round was performed for this preparation.
 
 ## 0.1.0-alpha.75 (2026-11-02)
 

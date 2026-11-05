@@ -1,6 +1,6 @@
 {
   "name": "@qxuken/kui",
-  "version": "0.1.0-alpha.75",
+  "version": "0.1.0-alpha.76",
   "description": "kui for Node: JSX views lowered into the kui IR, Elm-style messages as data",
   "license": "MIT",
   "repository": {
