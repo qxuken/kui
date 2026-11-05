@@ -115,6 +115,36 @@ writes `--help` from it:
 kui run tasks -- --file /tmp/tasks.json
 ```
 
+For an app with command-line actions as well as a window, add `commands`
+to the spec. Each command is another spec with its own options and
+positional arguments:
+
+```lua
+local opts = kui.parse_args {
+  commands = {
+    export = {
+      about = "Export tasks",
+      args = { { name = "file", required = true } },
+    },
+  },
+}
+if opts.command == "export" then
+  -- Export to opts.command_args.file here.
+  kui.exit(0)
+  return
+end
+```
+
+`kui run tasks -- export tasks.json` selects the command;
+`kui run tasks -- export --help` prints its help before opening a window.
+With no command, parsing returns normally so the app can open its window.
+Set `command_required = true` to require a command. Commands can nest;
+each selection adds `command` and `command_args` to that scope's result.
+Parent options work before or after the command and stay in the parent's
+result; the nearest definition wins when flag spellings overlap. Fixed
+parent positionals precede the command; variadic positionals and `rest`
+belong in a spec without commands.
+
 ## The view, from Kit
 
 `require("kit.ui")` is Kit's components as functions. Each takes its
