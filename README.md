@@ -37,7 +37,7 @@ which writes the one line a project needs:
 
 ```toml
 [dependencies]
-kui-native = "0.1.0-alpha.75"
+kui-native = "0.1.0-alpha.76"
 ```
 
 Every release so far is an alpha. A requirement like `"0.1.0-alpha.34"`
@@ -98,6 +98,27 @@ ten short chapters, each the last plus one concept (layout, messages,
 controls, lists, keys, floats, motion, effects, a test), and each a
 program under [`examples/rust/tutorial`](examples/rust/tutorial). Read it
 first.
+
+## Developing
+
+The checkout pins Node in `.node-version`, Rust in `rust-toolchain.toml`
+and the fuzz nightly in `fuzz/rust-toolchain.toml`. mise reads those files;
+the remaining build and release tools are in `mise.toml`, with downloads
+and checksums for the four supported platforms in `mise.lock`.
+
+```sh
+mise install --locked
+mise run bindings-setup
+mise run test
+mise run release-prep
+```
+
+Use `mise exec -- <command>` without shell activation. The C compiler,
+platform SDK and system libraries still come from the machine; see
+[releasing](docs/releasing.md) for the native verification prerequisites.
+To change a tool, update its version file and run
+`mise lock --platform linux-x64,linux-arm64,macos-arm64,windows-x64`.
+CI uses the same files in locked mode.
 
 ## Documentation
 

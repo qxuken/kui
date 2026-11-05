@@ -563,7 +563,7 @@ fn fetch(
     let read_result = if let Some(progress) = progress {
         let mut reader = progress.reader(&mut reader, "download", total);
         let result = reader.read_to_string(&mut text);
-        if result.is_ok() {
+        if result.is_ok() && !request.pool.state.lock().unwrap().destroyed {
             reader.finish();
         }
         result
@@ -748,7 +748,10 @@ fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
                 });
                 ops::run(&s.ops, id, move || {
                     let result = fetch(r, &request, progress);
-                    if result.is_err() && request.pool.state.lock().unwrap().destroyed {
+                    // Shutdown can end a close-delimited body with a valid
+                    // EOF, so cancellation must also override a successful
+                    // transport result.
+                    if request.pool.state.lock().unwrap().destroyed {
                         Err(closed())
                     } else {
                         result

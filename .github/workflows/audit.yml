@@ -35,11 +35,19 @@ on:
       - Cargo.lock
       - .cargo/audit.toml
       - .github/workflows/audit.yml
+      - .github/actions/setup-tools/**
+      - mise.toml
+      - mise.lock
+      - rust-toolchain.toml
   pull_request:
     paths:
       - Cargo.lock
       - .cargo/audit.toml
       - .github/workflows/audit.yml
+      - .github/actions/setup-tools/**
+      - mise.toml
+      - mise.lock
+      - rust-toolchain.toml
   schedule:
     # Mondays, 06:00 UTC. The advisory database is the input that moves here,
     # not the repository.
@@ -51,10 +59,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # Pinned so the cache key below means something and so a run is reproducible
-  # from the commit it ran on. The advisory database is fetched fresh every
-  # run regardless, so pinning the tool does not pin what it knows about.
-  CARGO_AUDIT_VERSION: 0.22.2
 
 jobs:
   audit:
@@ -62,22 +66,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Just the one binary, keyed on the pinned version: a hit turns the
-      # install step below into a no-op, a miss costs one `cargo install`.
-      - name: Cache cargo-audit
-        uses: actions/cache@v6
+      # The executable is pinned; the advisory database stays fresh.
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
         with:
-          path: ~/.cargo/bin/cargo-audit
-          key: cargo-audit-${{ runner.os }}-${{ env.CARGO_AUDIT_VERSION }}
-
-      - name: Install cargo-audit
-        run: |
-          set -eu
-          if command -v cargo-audit >/dev/null; then
-            cargo audit --version
-            exit 0
-          fi
-          cargo install --locked "cargo-audit@${CARGO_AUDIT_VERSION}"
+          tools: rust cargo-audit
 
       - name: Audit
         run: cargo audit --deny warnings

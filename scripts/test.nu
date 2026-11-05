@@ -210,7 +210,14 @@ def main [
     ])
 
     print $"running ($ordered | length) jobs, ($jobs) at a time"
-    let results = ($ordered | par-each --threads $jobs {|job| run-job $job $loader })
+    # The doctest cargo invocation can relink kui_ffi.dll after the Node
+    # build changed its features. Windows refuses LoadLibrary while that
+    # file is being written (error 32), so finish it before plugin tests
+    # start loading the DLL. The other platforms can keep it in the pool.
+    let doc_first = ($ordered | where {|job| $nu.os-info.name == "windows" and $job.key == "doctests" })
+    let serial = ($doc_first | each {|job| run-job $job $loader })
+    let parallel = ($ordered | where {|job| $job.key not-in ($doc_first | get key) })
+    let results = ($parallel | par-each --threads $jobs {|job| run-job $job $loader } | append $serial)
 
     # This run's times over the last ones, so a `-p` or filtered run does
     # not forget the binaries it left out.

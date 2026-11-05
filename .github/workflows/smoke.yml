@@ -44,6 +44,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      http_only:
+        description: Run only the runner HTTP integration tests
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       blocking:
@@ -56,7 +61,8 @@ on:
 # `${{ github.workflow }}-${{ github.ref }}` too, so a shared group would
 # have one cancel the other.
 concurrency:
-  group: smoke-${{ github.workflow }}-${{ github.ref }}
+  # Focused diagnostics must not cancel a full platform round.
+  group: smoke-${{ github.workflow }}-${{ github.ref }}-${{ inputs.http_only || false }}
   cancel-in-progress: true
 
 permissions:
@@ -74,18 +80,16 @@ jobs:
       matrix:
         os: [macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
-    # `inputs` is empty on a push or a manual run: non-blocking there.
-    continue-on-error: ${{ !inputs.blocking }}
+    # The full round is non-blocking on pushes and manual runs. Releases
+    # and focused HTTP diagnostics fail when either platform fails.
+    continue-on-error: ${{ !inputs.blocking && !inputs.http_only }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install toolchain
-        shell: bash
-        run: |
-          set -eu
-          rustup update --no-self-update stable
-          rustup default stable
-          cargo --version
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: rust node
 
       - name: Cache the cargo registry
         uses: actions/cache@v6
@@ -94,12 +98,17 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: smoke-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          key: smoke-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: smoke-registry-${{ runner.os }}-
 
       # `--no-fail-fast`, as ci.yml's: one red suite would hide the rest.
       - name: Test
+        if: ${{ !inputs.http_only }}
         run: cargo test --workspace --no-fail-fast
+
+      - name: Runner HTTP integration tests
+        if: ${{ inputs.http_only }}
+        run: cargo test -p kui-cli --test run -- http_ a_try_ the_relay_sample_sends_real_requests_to_its_mock_api --nocapture
 
       # The dev profile, the one the test step just built the examples in,
       # so this is a fingerprint check and not a second compile of the GUI
@@ -113,7 +122,7 @@ jobs:
       # not pacing (`--frames 300` on a workstation is that). Bounded, so a
       # hang cannot hold the runner for the job's six hours.
       - name: Smoke the examples in a window
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.http_only }}
         timeout-minutes: 40
         run: cargo run -p kui-devtools --bin smoke -- --windowed ${{ runner.os == 'Windows' && '--frames 30 --jobs 2' || '--jobs 1' }}
 
@@ -123,5 +132,5 @@ jobs:
       # kui_ctx_add_extension, both Windows plugin shapes, and the
       # kui_ext_abi-less mutant that has to be refused for the right reason.
       - name: Build and run the C examples
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.http_only }}
         run: cargo run -p kui-devtools --bin cbuild -- --run

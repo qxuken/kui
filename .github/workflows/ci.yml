@@ -61,29 +61,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-  # Line tables keep panic backtraces readable at a fraction of full debug
-  # info's size; the target dir is what the disk and the cache both hold.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
-  # The Nushell the scripts are written against (scripts/*.nu), pinned like
-  # every other tool here.
-  NU_VERSION: "0.116.1"
-  # The Odin the binding (packages/odin) is generated and checked with: an
-  # odin-lang release tag, whose Linux build is one self-contained binary
-  # beside its core library. Moved with the compiler the binding is
-  # written on: dev-2026-09 to dev-2026-10 for alpha.60, after a local
-  # build newer than the pin took a spec literal the pin refused and only
-  # CI said so. release.yml verifies the release's Odin pack with the same
-  # one; move both together.
-  ODIN_VERSION: "dev-2026-10"
-  # The wgpu-native the reference hosts draw kui's frame with (backlog
-  # F234: examples/c/tools/wgpu_host.c, examples/odin/tools/wgpu_host.odin):
-  # the release the pinned Odin's vendor:wgpu is written against - its
-  # BINDINGS_VERSION, which CreateInstance checks at run time. Move it with
-  # ODIN_VERSION.
-  WGPU_NATIVE_VERSION: "v29.0.1.1"
-  # The mdBook the book (docs/book) is written with; book.yml publishes it
-  # with the same one.
-  MDBOOK_VERSION: v0.5.4
 
 jobs:
   check:
@@ -105,14 +83,11 @@ jobs:
 
       # The repository's scripts are Nushell, so one script runs on every
       # platform a workstation or runner has.
-      - name: Install nu
-        run: |
-          set -eu
-          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
-          curl -fL --retry 3 \
-            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
-          nu --version
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: rust node npm nu odin mdbook wgpu-native actionlint
+          bindings: 'true'
 
       # The book's Examples part lists every example; an example added,
       # renamed or removed without a rerun of the script would leave the
@@ -154,15 +129,7 @@ jobs:
             libasound2-dev mesa-vulkan-drivers libvulkan1 clang libglfw3-dev libx11-dev
           mkdir -p -m 700 /tmp/xdg
           echo "XDG_RUNTIME_DIR=/tmp/xdg" >> "$GITHUB_ENV"
-          rustup update --no-self-update stable
-          rustup default stable
-          rustup component add rustfmt clippy
           cargo --version
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          package-manager-cache: false
 
       # Restore and save are separate steps so that only a push to main
       # writes the cache (a pull request's entry would be scoped to its own
@@ -179,8 +146,11 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: check-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock') }}
+          key: check-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: check-${{ runner.os }}-v1-
+
+      - name: Workflow syntax
+        run: actionlint -shellcheck= -pyflakes=
 
       - name: Format
         run: cargo fmt --all --check
@@ -207,11 +177,7 @@ jobs:
       # build failure here rather than a chapter that quietly shows nothing.
       # The steps themselves compile under `cargo test` above.
       - name: Book
-        run: |
-          set -eu
-          curl -fsSL "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/mdbook-${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin mdbook
-          mdbook build docs/book -d "$RUNNER_TEMP/book"
+        run: mdbook build docs/book -d "$RUNNER_TEMP/book"
 
       # The conformance reference: quad digests over real glyph geometry,
       # so it holds only for this machine's fonts and is never checked in.
@@ -226,17 +192,6 @@ jobs:
       # kui's frame drawn on a wgpu device of the host's own (lavapipe here)
       # and its pixels checked. The Odin step below copies it to where
       # vendor:wgpu looks, since Odin ships no Linux build of it.
-      - name: Install wgpu-native
-        run: |
-          set -eu
-          dir="$RUNNER_TEMP/wgpu-native"
-          mkdir -p "$dir"
-          curl -fL --retry 3 -o "$RUNNER_TEMP/wgpu-native.zip" \
-            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_NATIVE_VERSION}/wgpu-linux-x86_64-release.zip"
-          unzip -q "$RUNNER_TEMP/wgpu-native.zip" -d "$dir"
-          cat "$dir/wgpu-native-meta/wgpu-native-git-tag"; echo
-          echo "WGPU_NATIVE_DIR=$dir" >> "$GITHUB_ENV"
-
       # cbuild (examples/devtools/src/bin/cbuild.rs) first compiles the
       # generated ABI asserts (crates/kui-ffi/src/abi_parity.rs) against
       # include/kui.h - the header is hand-written and otherwise unchecked
@@ -283,18 +238,6 @@ jobs:
       # and the Linux release carries none: the wgpu-native above goes
       # there, so wgpu_host.odin is checked and driven too (odin.nu skips
       # it, saying so, where the library is missing).
-      - name: Install Odin
-        run: |
-          set -eu
-          mkdir -p "$RUNNER_TEMP/odin"
-          curl -fL --retry 3 \
-            "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz" \
-            | tar -xz -C "$RUNNER_TEMP/odin" --strip-components=1
-          mkdir -p "$RUNNER_TEMP/odin/vendor/wgpu/lib"
-          cp -R "$WGPU_NATIVE_DIR" "$RUNNER_TEMP/odin/vendor/wgpu/lib/wgpu-linux-x86_64-release"
-          echo "$RUNNER_TEMP/odin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/odin/odin" version
-
       - name: Odin binding (generated, vetted, driven, and across languages)
         run: |
           nu scripts/odin.nu gen --check

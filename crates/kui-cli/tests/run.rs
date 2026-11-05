@@ -129,6 +129,43 @@ fn app(name: &str, files: &[(&str, &str)]) -> PathBuf {
     dir
 }
 
+/// Pick a refused TCP endpoint rather than relying on a well-known port
+/// that may have a service or be filtered by WSL's localhost bridge.
+fn refused_http() -> (Option<socket2::Socket>, String) {
+    let socket = socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::STREAM, None)
+        .expect("TCP socket");
+    socket
+        .bind(&std::net::SocketAddr::from(([127, 0, 0, 1], 0)).into())
+        .expect("reserve a refused port");
+    let addr = socket.local_addr().unwrap().as_socket().unwrap();
+    // Windows and Linux refuse a bound, non-listening socket, which also
+    // reserves the port. macOS instead drops the SYN until it times out:
+    // release its reservation before asking for a refusal there.
+    let socket = if cfg!(target_os = "macos") {
+        drop(socket);
+        None
+    } else {
+        Some(socket)
+    };
+    let error = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(5))
+        .expect_err("the fixture must not accept a connection");
+    assert_eq!(error.kind(), std::io::ErrorKind::ConnectionRefused);
+    (socket, format!("http://{addr}/"))
+}
+
+fn app_with_refused_http(name: &str, files: &[(&str, &str)]) -> (PathBuf, Option<socket2::Socket>) {
+    let (socket, url) = refused_http();
+    let sources: Vec<_> = files
+        .iter()
+        .map(|(path, source)| (*path, source.replace("http://127.0.0.1:9/", &url)))
+        .collect();
+    let files: Vec<_> = sources
+        .iter()
+        .map(|(path, source)| (*path, source.as_str()))
+        .collect();
+    (app(name, &files), socket)
+}
+
 /// Runs `kui <args>` in `dir`, killing it past `secs` (times
 /// `KUI_TEST_TIMEOUT_SCALE`, for a slow machine) and saying so.
 ///
@@ -138,15 +175,21 @@ fn app(name: &str, files: &[(&str, &str)]) -> PathBuf {
 /// output lost — three tests failed on the first Windows runner that way,
 /// reading as apps that said nothing.
 fn kui(dir: &Path, args: &[&str], secs: u64) -> Output {
+    let mut cmd = Command::new(KUI);
+    cmd.args(args).current_dir(dir);
+    run_kui(cmd, secs)
+}
+
+/// Both launch helpers drain pipes while running and report their deadline.
+fn run_kui(mut cmd: Command, secs: u64) -> Output {
     use std::io::Read;
     let scale: f64 = std::env::var("KUI_TEST_TIMEOUT_SCALE")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(1.0);
     let secs = (secs as f64 * scale).ceil() as u64;
-    let mut child = Command::new(KUI)
-        .args(args)
-        .current_dir(dir)
+    let description = format!("{cmd:?}");
+    let mut child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -167,11 +210,7 @@ fn kui(dir: &Path, args: &[&str], secs: u64) -> Output {
         }
         if start.elapsed() > Duration::from_secs(secs) {
             let _ = child.kill();
-            eprintln!(
-                "kui {} in {}: killed after {secs} s",
-                args.join(" "),
-                dir.display()
-            );
+            eprintln!("{description}: killed after {secs} s");
             break child.wait().unwrap();
         }
         std::thread::sleep(Duration::from_millis(20));
@@ -443,7 +482,7 @@ fn kui_play_opens_the_carried_gallery_from_any_folder() {
 
 #[test]
 fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
-    let dir = app(
+    let (dir, _refused) = app_with_refused_http(
         "try-twins",
         &[
             ("bad.json", "{ not json"),
@@ -521,7 +560,7 @@ fn a_try_twin_returns_false_and_the_message_where_its_call_raises() {
 
 #[test]
 fn a_try_twins_failure_says_its_code() {
-    let dir = app(
+    let (dir, _refused) = app_with_refused_http(
         "try-codes",
         &[
             ("bad.json", "{ not json"),
@@ -1704,7 +1743,12 @@ fn kit_sample(name: &str) {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../addons/kit/samples")
         .join(name);
-    let o = kui(&dir, &["run", "test", "--headless"], 60);
+    let (_refused, url) = refused_http();
+    let mut cmd = Command::new(KUI);
+    cmd.args(["run", "test", "--headless"])
+        .current_dir(&dir)
+        .env("KUI_TEST_REFUSED_URL", url.trim_end_matches('/'));
+    let o = run_kui(cmd, 60);
     let s = out(&o);
     assert!(
         o.status.success() && s.contains("PASS: 0 failure(s)"),
@@ -2181,16 +2225,7 @@ fn kui_env(dir: &Path, args: &[&str], env: &[(&str, &str)], cache: &Path, secs: 
     for (k, v) in env {
         cmd.env(k, v);
     }
-    let mut child = cmd.spawn().expect("run kui");
-    let start = Instant::now();
-    while child.try_wait().unwrap().is_none() {
-        if start.elapsed() > Duration::from_secs(secs) {
-            let _ = child.kill();
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    child.wait_with_output().unwrap()
+    run_kui(cmd, secs)
 }
 
 /// An app that says what it can see of itself when packed, then ends.
@@ -2822,6 +2857,9 @@ fn a_timer_that_dispatches_draws_one_frame_a_tick() {
     assert!(frames <= 26, "{frames} frames for 20 ticks:\n{s}");
 }
 
+// Async HTTP fixtures start on a timer so request deadlines begin only
+// after the host has initialized. Starting them while loading the script
+// races system-font discovery on a cold Windows runner.
 #[test]
 fn http_pins_type_check_and_report_invalid_options_without_disabling_http() {
     let dir = app(
@@ -2845,7 +2883,7 @@ local observed = client:compose(function(next: kui.HttpDispatch): kui.HttpDispat
     return next(request)
   end
 end)
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   server:get("/", function(_req: kui.Request): any
     return { body = "ordinary HTTP" }
@@ -2906,6 +2944,21 @@ struct TlsTestServer {
     config: std::sync::Arc<rustls::ServerConfig>,
 }
 
+struct TlsTestServerTask {
+    stop: std::sync::mpsc::Sender<()>,
+    thread: std::thread::JoinHandle<usize>,
+}
+
+impl TlsTestServerTask {
+    fn join(self) -> std::thread::Result<usize> {
+        // The client has finished. Failed TLS handshakes need not open the
+        // same number of TCP connections on every platform; count only the
+        // HTTP requests that actually crossed the TLS boundary.
+        drop(self.stop);
+        self.thread.join()
+    }
+}
+
 impl TlsTestServer {
     fn new() -> Self {
         use rcgen::{BasicConstraints, CertificateParams, IsCa, Issuer, KeyPair};
@@ -2915,7 +2968,7 @@ impl TlsTestServer {
         let ca = params.self_signed(&ca_key).unwrap().pem();
         let issuer = Issuer::new(params, ca_key);
         let key = KeyPair::generate().unwrap();
-        let cert = CertificateParams::new(vec!["localhost".into()])
+        let cert = CertificateParams::new(vec!["127.0.0.1".into()])
             .unwrap()
             .signed_by(&key, &issuer)
             .unwrap();
@@ -2937,30 +2990,29 @@ impl TlsTestServer {
         }
     }
 
-    fn serve(&self, connections: usize, body: &str) -> (String, std::thread::JoinHandle<usize>) {
+    fn serve(&self, body: &str) -> (String, TlsTestServerTask) {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
-        let url = format!(
-            "https://localhost:{}",
-            listener.local_addr().unwrap().port()
-        );
+        // Match the listener's address: localhost may try ::1 first, and
+        // Windows can spend a second refusing it for every TLS request.
+        let url = format!("https://{}", listener.local_addr().unwrap());
         let tls = self.config.clone();
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
+        let (stop, stopped) = std::sync::mpsc::channel();
         let thread = std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(15);
             let mut requests = 0;
-            for _ in 0..connections {
+            loop {
                 let socket = loop {
+                    if stopped.try_recv() != Err(std::sync::mpsc::TryRecvError::Empty) {
+                        return requests;
+                    }
                     match listener.accept() {
                         Ok((socket, _)) => break socket,
-                        Err(e)
-                            if e.kind() == std::io::ErrorKind::WouldBlock
-                                && Instant::now() < deadline =>
-                        {
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                             std::thread::sleep(Duration::from_millis(5))
                         }
                         other => panic!("TLS server did not receive its connections: {other:?}"),
@@ -2991,9 +3043,8 @@ impl TlsTestServer {
                     }
                 }
             }
-            requests
         });
-        (url, thread)
+        (url, TlsTestServerTask { stop, thread })
     }
 }
 
@@ -3001,11 +3052,11 @@ impl TlsTestServer {
 fn http_extra_ca_bundle_extends_trust_and_preserves_pins() {
     let first = TlsTestServer::new();
     let second = TlsTestServer::new();
-    let (a, server_a) = first.serve(4, "trusted");
-    let (b, server_b) = second.serve(1, "trusted");
+    let (a, server_a) = first.serve("trusted");
+    let (b, server_b) = second.serve("trusted");
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   assert(kui.http.get("{a}").body == "trusted")
   -- Trust is cached across requests and Lua states; changes require a restart.
   kui.fs.write("trust/bundle.pem", "no longer a certificate")
@@ -3055,7 +3106,7 @@ end)
 
     // The runner's release downloads use the same trust configuration.
     std::fs::write(dir.join("trust/bundle.pem"), bundle).unwrap();
-    let (mirror, server) = first.serve(2, "0.0.0\n");
+    let (mirror, server) = first.serve("0.0.0\n");
     let output = kui_env(
         &dir,
         &[
@@ -3080,10 +3131,10 @@ end)
 #[test]
 fn http_ca_file_trust_is_scoped_to_the_request() {
     let identity = TlsTestServer::new();
-    let (url, server) = identity.serve(3, "trusted");
+    let (url, server) = identity.serve("trusted");
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   assert(kui.http.get("{url}", {{ ca_file = "ca.pem" }}).status == 200)
   local ok = kui.http.try_get("{url}")
   assert(not ok, "request trust leaked")
@@ -3133,7 +3184,7 @@ fn http_invalid_extra_ca_bundles_report_tls_errors() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   for i = 1, 2 do
     local ok, err, code = kui.http.try_get("https://127.0.0.1:9/", { timeout = 100 })
     assert(not ok and code == "tls" and err:find("KUI_EXTRA_CA_CERTS"), tostring(err))
@@ -3178,7 +3229,7 @@ fn http_configure_merges_headers_replaces_defaults_and_resets() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   local function echo(req) return { value = req.headers["x-value"], kept = req.headers["x-keep"] } end
   server:get("/", echo)
@@ -3238,8 +3289,8 @@ end)
 fn http_configure_shares_tls_defaults_with_workers_and_allows_request_overrides() {
     let first = TlsTestServer::new();
     let second = TlsTestServer::new();
-    let (a, server_a) = first.serve(5, "trusted");
-    let (b, server_b) = second.serve(1, "trusted");
+    let (a, server_a) = first.serve("trusted");
+    let (b, server_b) = second.serve("trusted");
     let source = format!(
         r#"
 function update(message)
@@ -3253,7 +3304,7 @@ function update(message)
     end)
   end
 end
-kui.spawn(function()
+kui.timer.after(0, function()
   kui.http.configure {{ ca_file = "ca-a.pem", pin_file = "leaf-a.pem" }}
   assert(kui.http.get("{a}").body == "trusted")
   local valid, _, invalid = kui.http.try_configure {{ pins = {{}} }}
@@ -3306,11 +3357,11 @@ kui.dispatch {{ kind = "http done", body = response.body }}
 fn http_clients_isolate_tls_configuration_and_support_request_overrides() {
     let first = TlsTestServer::new();
     let second = TlsTestServer::new();
-    let (a, server_a) = first.serve(4, "trusted");
-    let (b, server_b) = second.serve(4, "trusted");
+    let (a, server_a) = first.serve("trusted");
+    let (b, server_b) = second.serve("trusted");
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   kui.http.configure {{ ca_file = "missing.pem", pins = {{ "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }} }}
   local a = kui.http.client {{ ca_file = "ca-a.pem", pin_file = "leaf-a.pem" }}
   local b = kui.http.client {{ ca_file = "ca-b.pem", pin_file = "leaf-b.pem" }}
@@ -3379,7 +3430,7 @@ fn http_compose_middleware_wraps_dispatch_and_keeps_views_independent() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   server:get("/", function(req) return { value = req.headers["x-value"] } end)
   server:post("/", function(req) return { value = req.json.value } end)
@@ -3496,7 +3547,7 @@ fn persistent_http_server(
     listener.set_nonblocking(true).unwrap();
     let scheme = if tls.is_some() { "https" } else { "http" };
     let url = format!(
-        "{scheme}://localhost:{}",
+        "{scheme}://127.0.0.1:{}",
         listener.local_addr().unwrap().port()
     );
     let thread = std::thread::spawn(move || {
@@ -3562,7 +3613,7 @@ fn http_clients_reuse_connections_and_composed_views_share_the_pool() {
     let (url, server) = persistent_http_server(None, 2);
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local api = kui.http.client {{ base_url = "{url}" }}
   assert(api:get("/one").body == "ok")
   assert(api:get("two").body == "ok")
@@ -3607,7 +3658,7 @@ fn http_pool_keys_follow_ca_and_pin_file_contents() {
     let (url, server) = persistent_http_server(Some(identity.config.clone()), 3);
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local ca, leaf = kui.fs.read("ca.pem"), kui.fs.read("leaf.pem")
   local api = kui.http.client {{ base_url = "{url}", ca_file = "ca.pem", pin_file = "leaf.pem" }}
   assert(api:get("/first").body == "ok")
@@ -3663,7 +3714,7 @@ fn http_base_url_prefixes_paths_before_middleware_and_allows_absolute_urls() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   server:get("/v1/profile", function(req) return { id = req.query.id } end)
   server:get("/v2/profile", function() return { version = 2 } end)
@@ -3732,13 +3783,19 @@ fn http_close_drains_requests_and_destroy_interrupts_them() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local server = kui.http.serve { port = 0 }
   local started, finished, result = false, false, nil
   server:get("/slow", function()
     started = true
     kui.sleep(50)
     finished = true
+    return "finished"
+  end)
+  local release = false
+  server:get("/held", function()
+    started = true
+    while not release do kui.sleep(1) end
     return "finished"
   end)
   local origin = "http://127.0.0.1:" .. server.port
@@ -3757,13 +3814,16 @@ kui.spawn(function()
   started, finished, result = false, false, nil
   local stopped = kui.http.client { base_url = origin, timeout = 2000 }
   kui.spawn(function()
-    local ok, _, code = stopped:try_get("/slow")
-    result = { ok = ok, code = code }
+    local ok, value, code = stopped:try_get("/held")
+    result = { ok = ok, value = value, code = code }
   end)
   while not started do kui.sleep(1) end
+  assert(result == nil, "held request completed before destroy: " .. tostring(result and result.code))
   stopped:destroy()
+  release = true
   while result == nil do kui.sleep(1) end
-  assert(not result.ok and result.code == "closed")
+  assert(not result.ok and result.code == "closed",
+    "destroy result: ok=" .. tostring(result.ok) .. ", code=" .. tostring(result.code) .. ", value=" .. tostring(result.value))
   stopped:close()
   print("client lifecycle OK")
   kui.exit(0)
@@ -3784,6 +3844,82 @@ end)
     );
     assert!(
         output.status.success() && out(&output).contains("client lifecycle OK"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
+fn http_destroy_rejects_a_close_delimited_body_as_success() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut header = Vec::new();
+        let mut byte = [0];
+        while !header.ends_with(b"\r\n\r\n") {
+            socket.read_exact(&mut byte).unwrap();
+            header.push(byte[0]);
+        }
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\npartial")
+            .unwrap();
+        // Only the client can finish this response, by shutting down its
+        // socket. EOF is valid framing, but cancellation is not success.
+        match socket.read(&mut byte) {
+            Ok(0) => {}
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionAborted
+                        | std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::NotConnected
+                ) => {}
+            other => panic!("destroy did not close the response socket: {other:?}"),
+        }
+    });
+    let source = format!(
+        r#"
+kui.timer.after(0, function()
+  local api = kui.http.client {{ timeout = 5000 }}
+  local reading, completed, result = false, false, nil
+  kui.spawn(function()
+    local ok, value, code = api:try_get("{url}", {{ on_progress = function(p)
+      if p.direction == "download" then reading = true; completed = p.done end
+    end }})
+    result = {{ ok = ok, value = value, code = code }}
+  end)
+  while not reading do kui.sleep(1) end
+  api:destroy()
+  while result == nil do kui.sleep(1) end
+  assert(not result.ok and result.code == "closed",
+    "destroyed body: ok=" .. tostring(result.ok) .. ", code=" .. tostring(result.code) .. ", value=" .. tostring(result.value))
+  assert(not completed, "destroyed download reported completion")
+  print("destroyed body rejected")
+  kui.exit(0)
+end)
+"#
+    );
+    let dir = app("http-destroy-body", &[("main.lua", &source)]);
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    server.join().unwrap();
+    assert!(
+        output.status.success() && out(&output).contains("destroyed body rejected"),
         "{}",
         out(&output)
     );
@@ -3832,7 +3968,7 @@ fn http_body_read_errors_and_timeouts_reach_middleware() {
         });
         let source = format!(
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local api = kui.http.client {{ timeout = 300 }}
   local observed = api:compose(function(next)
     return function(req)
@@ -3878,7 +4014,7 @@ fn http_progress_reports_upload_and_download_on_the_request_coroutine() {
         &[(
             "main.lua",
             r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local owner = coroutine.running()
   local server = kui.http.serve { port = 0 }
   local body = string.rep("x", 512 * 1024)
@@ -4086,7 +4222,7 @@ fn http_progress_does_not_finish_a_truncated_download() {
     });
     let source = format!(
         r#"
-kui.spawn(function()
+kui.timer.after(0, function()
   local last, updates = 0, 0
   local ok, _, code = kui.http.try_get("{url}", {{ on_progress = function(p)
     assert(p.direction == "download" and p.total == 10 and not p.done)

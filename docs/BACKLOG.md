@@ -4422,6 +4422,22 @@ overflow while the timeline placed it. `Span::end` saturates now, as do
 frame work and the equivalent present and Lua placement calculations. The
 94-byte input is `fuzz/regressions/trace/fz25-span-end-past-the-clock`.
 
+## From the alpha.76 pre-tag round (2026-11-05)
+
+### `!` FZ26 — The events harness checks a held value after composition ends
+
+**Found** 2026-11-05 by the pinned-nightly `events` target during alpha.76
+preparation. This was a harness assertion, not an editor defect. A controlled
+value is held while the input method composes. Frame completion can move
+focus and abandon that composition after the declaration already held its
+value; the next declaration applies it. The harness now records whether the
+declaration held a composition and compares against the value actually
+declared, rather than the model updated by events after frame completion.
+An extra final frame verifies that the next declaration applies the value
+even when the input ends immediately after the composition is abandoned.
+The 293-byte input is
+`fuzz/regressions/events/fz26-composition-ends-during-frame`.
+
 ## From the alpha.72 pre-tag round (2026-10-29)
 
 Two things the round on the Mac (M3 Pro) found and the release did not

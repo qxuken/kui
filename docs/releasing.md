@@ -21,7 +21,7 @@ nothing but the dependency:
 
 ```toml
 # Cargo.toml
-kui-native = "0.1.0-alpha.75"  # `use kui_native::…`; `cargo add kui-native` writes it
+kui-native = "0.1.0-alpha.76"  # `use kui_native::…`; `cargo add kui-native` writes it
 ```
 
 crates.io has had them since 0.1.0-alpha.33; every earlier version is on
@@ -209,7 +209,8 @@ No token is stored anywhere, and nobody approves. What that needs and how
 it fails:
 
 - npm 11.21 or newer (11.5.1 publishes; moving a dist-tag over OIDC came
-  later) and Node 22.14 or newer; release.yml pins both.
+  later) and Node 22.14 or newer; mise.toml pins npm and .node-version
+  pins Node. CI and development install the same locked tools.
 - `repository.url` in packages/kui/package.json must name the GitHub
   repository, `https://github.com/qxuken/kui`.
 - npmjs does not check the trusted publisher when it is saved. A wrong

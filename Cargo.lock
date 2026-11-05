@@ -2029,7 +2029,7 @@ dependencies = [
 
 [[package]]
 name = "kui-access"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -2043,14 +2043,14 @@ dependencies = [
 
 [[package]]
 name = "kui-addon-schema"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "mlua",
 ]
 
 [[package]]
 name = "kui-channel"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "kui-value",
  "mlua",
@@ -2059,7 +2059,7 @@ dependencies = [
 
 [[package]]
 name = "kui-cli"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "apple-native-keyring-store",
  "argon2",
@@ -2080,6 +2080,7 @@ dependencies = [
  "ring",
  "rusqlite",
  "rustls",
+ "socket2",
  "tiny_http",
  "toml",
  "ureq",
@@ -2091,7 +2092,7 @@ dependencies = [
 
 [[package]]
 name = "kui-core"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2118,7 +2119,7 @@ dependencies = [
 
 [[package]]
 name = "kui-derive"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "kui-core",
  "proc-macro2",
@@ -2128,7 +2129,7 @@ dependencies = [
 
 [[package]]
 name = "kui-devtools"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "cc",
  "kui-native",
@@ -2136,7 +2137,7 @@ dependencies = [
 
 [[package]]
 name = "kui-ffi"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "bytemuck",
  "divan",
@@ -2149,7 +2150,7 @@ dependencies = [
 
 [[package]]
 name = "kui-fuzz"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "arbitrary",
  "kui-core",
@@ -2160,14 +2161,14 @@ dependencies = [
 
 [[package]]
 name = "kui-kit"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "kui-core",
 ]
 
 [[package]]
 name = "kui-lua"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "divan",
  "kui-addon-schema",
@@ -2184,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "kui-native"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "accesskit_winit",
  "arboard",
@@ -2216,7 +2217,7 @@ dependencies = [
 
 [[package]]
 name = "kui-node"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "kui-core",
  "kui-ffi",
@@ -2229,7 +2230,7 @@ dependencies = [
 
 [[package]]
 name = "kui-trace"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "kui-channel",
  "kui-value",
@@ -2238,7 +2239,7 @@ dependencies = [
 
 [[package]]
 name = "kui-value"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "kui-derive",
  "mlua",
@@ -2246,7 +2247,7 @@ dependencies = [
 
 [[package]]
 name = "kui-wgpu"
-version = "0.1.0-alpha.75"
+version = "0.1.0-alpha.76"
 dependencies = [
  "bytemuck",
  "kui-core",
@@ -4103,6 +4104,16 @@ name = "smol_str"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4aaa7368fcf4852a4c2dd92df0cace6a71f2091ca0a23391ce7f3a31833f1523"
+
+[[package]]
+name = "socket2"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "spirv"

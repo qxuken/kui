@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.76 (2026-11-05)
 
 **What breaks.**
 
@@ -32,9 +32,18 @@ was the first bare bump to break an app in five releases).
   platform input method; `ime_off` still disables it explicitly.
 - Enlarged static text now uses higher-resolution glyph masks; screenshots
   of scaled subtrees can change as text becomes sharper.
+- `widgets::window_buttons` renders nothing in fullscreen. On macOS,
+  custom-chrome windows no longer reserve space for hidden traffic lights.
+- HTTP response-body read failures now reach `try_` calls and middleware
+  as errors instead of successful responses with an empty body.
 
 ### Added
 
+- Repository development and CI share locked tools through mise. Node and
+  Rust retain `.node-version` and `rust-toolchain.toml`; the fuzz nightly
+  has its own conventional file. Nushell, Odin, npm, mdBook, wgpu-native,
+  audit/fuzz/cross-build helpers and workflow checks use the same pins on
+  Windows, macOS and Linux.
 - `kui.http` requests accept `pins`, a nonempty list of SHA-256 SPKI
   public-key pins, or `pin_file` with a PEM/DER certificate path. Normal TLS
   verification still applies; pins are checked before sending HTTP data
@@ -86,8 +95,18 @@ was the first bare bump to break an app in five releases).
 
 ### Fixed
 
+- Custom-chrome toolbars receive clicks in macOS fullscreen: the native
+  toolbar hides while fullscreen is active, and the traffic-light keep-out
+  rectangle is measured again after returning to windowed mode.
+- Default wheel scrolling advances 48 logical pixels per notch and settles
+  sooner. The `relaxed` preset preserves the previous 32-pixel notch and glide.
+- Enlarged static text uses higher-resolution glyph masks, keeping text
+  sharp in scaled content and fixed-canvas presentations.
 - HTTP response-body read failures now propagate to `try_` calls and
   middleware instead of returning a successful response with an empty body.
+- Destroying an HTTP client rejects an interrupted close-delimited response
+  with `closed`, even when socket shutdown produces a valid EOF. Cancelled
+  downloads do not emit a successful progress-completion event.
 
 - **A terminal's cursor anchors the IME.** A `cells` grid under the
   focused key sink now supplies its cursor cell as the input-method
@@ -114,6 +133,9 @@ was the first bare bump to break an app in five releases).
 
 ### What you can delete
 
+- Per-request connection setup kept only because HTTP requests could not
+  share a pool, and a separate middleware dispatcher around those requests:
+  `kui.http.client` and its composed views own both.
 - A synthetic text-line caret kept only to anchor a terminal's input
   method: declare the cell grid's cursor instead.
 
@@ -121,6 +143,64 @@ was the first bare bump to break an app in five releases).
   timers kept running merely because a demo's slide was visited earlier.
 - Copied slide-specific typography/palette tables: Settings presets accept
   per-project overrides and keep compact controls at their normal sizes.
+
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): every generator, including
+Odin, was current; strict Clippy passed for the workspace and all targets.
+`test.nu --node -j 4` on the versioned tree passed 3480 tests over 257 Rust
+suites and Node's (17 ignored, none failed), with GPU and conformance checks
+required. The two additional Node presentation suites passed all 23 tests.
+All 59 Rust and 12 Node windowed examples drew 120 frames on both theme bases
+and exited cleanly. The C round passed all 11 checks and its 67-scene
+conformance replay; Odin passed its package/example checks, all seven headless
+examples and all four cross-language host/plugin pairs. The Node examples
+typechecked, the book built, and the npm package dry run included the
+presentation module.
+
+`bench-check.nu` against alpha.75 passed all nine guarded rows. Their largest
+increase was +0.8% (`frame_10k_rects` and `frame_1k_curves`), and their worst
+run-to-run spread was 2.4%.
+
+The compiled macOS accessibility audit passed all 106 checks after granting
+Accessibility permission. Windows smoke exposed HTTP fixture races: request
+deadlines now start after host initialization, TLS fixtures use their bound
+IPv4 address, and destroy tests hold responses open until cancellation.
+Connection-refusal tests use a probed local endpoint, avoiding filtered
+well-known ports under WSL. Windows and Linux retain a non-listening socket;
+macOS releases it because its bound socket drops connection attempts.
+Windows doctests finish before plugin tests load
+the shared DLL, preventing a concurrent relink. The 18 HTTP integration tests
+passed ten consecutive runs on two CPU cores with 16 test threads.
+
+Windows (RTX 5080), using the mise pins, passed 3462 tests over 257 Rust and
+Node suites (19 ignored), all generators, strict workspace Clippy, the 23
+additional presentation tests, Node typechecking, the book and npm pack dry
+run. All 59 Rust and 12 Node windowed examples drew 120 frames on both theme
+bases. C passed 11 checks including the real GPU host and all 67 conformance
+scenes; Odin passed all seven examples and four cross-language host/plugin
+pairs. All ten crates passed crates.io packaging and verification dry runs.
+
+Ubuntu 24.04 under WSL passed the pinned-tool suite: 3462 tests (17 ignored),
+the 23 presentation tests, generators, strict Clippy, dependency audit,
+typechecking, book, headless examples and the same C/Odin rounds using
+llvmpipe. All 59 Rust and 12 Node windowed examples passed 30 frames on both
+theme bases under Xvfb/X11. WSLg Wayland did not complete reliably; this is
+virtual X11 verification, not a native Wayland desktop pass.
+
+An initial AddressSanitizer pass over all 11 fuzz targets executed 9,403,087
+inputs. Repeating with the pinned dated nightly found FZ26, an events-harness
+assertion that checked a controlled value before its first declaration after
+IME composition ended; the minimized input is retained as a regression.
+That round executed another 6,747,721 inputs across all targets; the corrected
+events target then passed 17,320 more inputs over 90 seconds. Stable replay
+passed the retained cases on Windows and the grown corpus on Linux, including
+fresh-versus-reused session checks.
+The Node decoder passed 200,000 seeded streams. A separate seeded HTTP probe
+passed 1000 randomized response cases, 4096 invalid-option cases, 1024 malformed
+certificate-file cases and 64 close-delimited cancellation cases, then reused
+the pool successfully. HTTP was exercised through the runner, not a new
+libFuzzer target.
 
 ## 0.1.0-alpha.75 (2026-11-02)
 

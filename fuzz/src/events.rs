@@ -269,6 +269,9 @@ fn drive(data: &[u8], trace: Option<&mut Vec<String>>) {
             d.check_events(&events);
             d.frame();
         }
+        // A composition ended by the last frame must release its held
+        // value on the next declaration, even with no further input.
+        d.frame();
         kept.done(d.core, (), d.dirty);
     });
 }
@@ -307,6 +310,13 @@ impl Driver<'_> {
         let messages = self.messages.clone();
         let msg = |row: Row| messages[row as usize].clone();
         let (value, multiline, model) = (self.value, self.multiline, self.model.clone());
+        // A composition can end during finish (for example when layout
+        // moves focus). This declaration still held the value; only the
+        // next declaration can apply it after that composition ends.
+        let held = self
+            .keys
+            .first()
+            .is_some_and(|(_, field)| self.value && self.core.edit.preedit(*field).is_some());
         let mut ui = self.core.frame(self.size, 1.0);
         ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(6.0));
         let window = msg(Row::Window);
@@ -429,21 +439,21 @@ impl Driver<'_> {
         } else {
             let _ = self.core.access_tree();
         }
-        self.check_editor(field);
+        self.check_editor(field, &model, held);
     }
 
     /// The editor holds what the app declared, and its caret and selection
     /// are places in that text.
-    fn check_editor(&self, field: Key) {
+    fn check_editor(&self, field: Key, model: &str, held: bool) {
         let Some(text) = self.core.edit_text(field) else {
             panic!("the editor lost its text");
         };
         let composing = self.core.edit.preedit(field).is_some_and(|p| !p.is_empty());
-        if self.value && !composing {
+        if self.value && !held && !composing {
             let declared: String = if self.multiline {
-                self.model.replace("\r\n", "\n").replace('\r', "\n")
+                model.replace("\r\n", "\n").replace('\r', "\n")
             } else {
-                self.model.replace(['\r', '\n'], "")
+                model.replace(['\r', '\n'], "")
             };
             assert_eq!(text, declared, "the editor holds the declared value");
         }
