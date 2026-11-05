@@ -21,12 +21,18 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.77 (2026-11-05)
 
 **What breaks.**
 
 - A custom editor's blank caret line now supplies an IME anchor even
   when it draws no text node.
+
+### Added
+
+- `kui.parse_args` accepts nested `commands` specs, with scoped help, typo
+  suggestions and optional `command_required`. Results expose `command`
+  and `command_args`; parent flags work before or after the command.
 
 ### Fixed
 
@@ -37,6 +43,30 @@ was the first bare bump to break an app in five releases).
   native coordinates stayed at the last nonempty line, leaving macOS's
   source indicator behind as the editor moved. Padding, rotation and
   clipping still apply.
+
+### What you can delete
+
+- Hand-written subcommand dispatch, scoped argument parsing and help for
+  an app's CLI: declare nested `commands` specs instead.
+- Invisible placeholder text added only to keep a blank custom-editor
+  line's IME anchor at its caret.
+
+### Native verification
+
+A pre-tag pass on a Mac (M3 Pro, macOS 27.0.1): every generator, including
+Odin, was current; strict Clippy passed for the workspace and all targets.
+`test.nu --node -j 4` on the versioned tree passed 3489 tests over 257 Rust
+suites and Node's (17 ignored, none failed), with GPU checks required.
+The two additional Node presentation suites passed all 23 tests. The
+compiled macOS accessibility audit passed all 106 checks, and `modal_editor`
+drew 120 frames on both theme bases and exited cleanly. The book built,
+workflow syntax passed, and the version check agreed across every manifest.
+
+This mini release did not repeat the full local windowed or standalone
+C/Odin smoke rounds, a benchmark comparison or a new fuzz campaign; retained
+fuzz regressions ran with the workspace tests. Linux CI on main was green
+before tagging. The tag's Linux check and native macOS/Windows smoke rounds
+gate publication.
 
 ## 0.1.0-alpha.76 (2026-11-05)
 
@@ -56,9 +86,6 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
-- `kui.parse_args` accepts nested `commands` specs, with scoped help, typo
-  suggestions and optional `command_required`. Results expose `command`
-  and `command_args`; parent flags work before or after the command.
 - Repository development and CI share locked tools through mise. Node and
   Rust retain `.node-version` and `rust-toolchain.toml`; the fuzz nightly
   has its own conventional file. Nushell, Odin, npm, mdBook, wgpu-native,
