@@ -3777,14 +3777,16 @@ kui.spawn(function()
   started, finished, result = false, false, nil
   local stopped = kui.http.client { base_url = origin, timeout = 2000 }
   kui.spawn(function()
-    local ok, _, code = stopped:try_get("/held")
-    result = { ok = ok, code = code }
+    local ok, value, code = stopped:try_get("/held")
+    result = { ok = ok, value = value, code = code }
   end)
   while not started do kui.sleep(1) end
+  assert(result == nil, "held request completed before destroy: " .. tostring(result and result.code))
   stopped:destroy()
   release = true
   while result == nil do kui.sleep(1) end
-  assert(not result.ok and result.code == "closed")
+  assert(not result.ok and result.code == "closed",
+    "destroy result: ok=" .. tostring(result.ok) .. ", code=" .. tostring(result.code) .. ", value=" .. tostring(result.value))
   stopped:close()
   print("client lifecycle OK")
   kui.exit(0)
