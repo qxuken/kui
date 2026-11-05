@@ -128,6 +128,175 @@ fn the_ime_rect_follows_the_custom_caret() {
     assert_eq!(core.ime_rect(), None);
 }
 
+/// A textless line still has a caret. Losing its anchor left the native
+/// window at the previous nonempty line while the editor kept moving.
+#[test]
+fn the_ime_anchor_follows_moves_onto_blank_lines() {
+    let mut core = Core::new();
+    let draw = |core: &mut Core, current: usize| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill().pad(10.0));
+        let sink = ui.with_keyed("editor", NodeSpec::column().on_key("ed"), |ui| {
+            for (i, text) in ["before", "", "after"].iter().enumerate() {
+                let mut row = NodeSpec::row().width(300.0).height(LH).role(Role::Line);
+                if i == current {
+                    row = row.caret(0).caret_solid();
+                }
+                ui.with_indexed(i as u64, row, |ui| {
+                    if !text.is_empty() {
+                        ui.text(text, mono());
+                    }
+                });
+            }
+        });
+        ui.take_key_focus(sink);
+        ui.finish();
+    };
+    for current in [0, 1, 2, 1, 0] {
+        draw(&mut core, current);
+        let anchor = core
+            .ime_rect()
+            .expect("every line, including blank, anchors the IME");
+        assert_eq!(anchor.x, 10.0);
+        assert_eq!(anchor.y, 10.0 + current as f32 * LH);
+        assert_eq!(anchor.h, LH);
+        assert!(!core.has_caret(), "a solid caret still belongs to the app");
+    }
+}
+
+#[test]
+fn an_empty_line_anchors_inside_its_padding_and_ignores_decoration() {
+    for empty_text in [false, true] {
+        for scale in [1.0, 1.5, 2.0] {
+            let mut core = Core::new();
+            let mut ui = core.frame(Size::new(400.0, 300.0), scale);
+            ui.configure_root(NodeSpec::column().fill().pad(10.0));
+            let sink = ui.with_keyed("editor", NodeSpec::column().on_key("ed"), |ui| {
+                ui.with(
+                    NodeSpec::row()
+                        .width(300.0)
+                        .height(26.0)
+                        .pad_xy(8.0, 3.0)
+                        .role(Role::Line)
+                        .caret(0),
+                    |ui| {
+                        ui.text_in(
+                            NodeSpec::row()
+                                .role(Role::None)
+                                .float(kui_core::FloatConfig::parent()),
+                            "decoration",
+                            mono(),
+                        );
+                        if empty_text {
+                            ui.text("", mono());
+                        }
+                    },
+                );
+            });
+            ui.take_key_focus(sink);
+            ui.finish();
+            assert_eq!(
+                core.ime_rect(),
+                Some(kui_core::Rect::new(18.0, 13.0, 0.0, 20.0))
+            );
+        }
+    }
+}
+
+#[test]
+fn an_empty_run_marks_the_caret_column_after_a_gutter() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    let sink = ui.with_keyed("editor", NodeSpec::column().on_key("ed"), |ui| {
+        ui.with(
+            NodeSpec::row()
+                .width(300.0)
+                .height(LH)
+                .role(Role::Line)
+                .caret(0),
+            |ui| {
+                ui.text_in(
+                    NodeSpec::row().width(56.0).height(LH).role(Role::None),
+                    "73",
+                    mono(),
+                );
+                ui.text("", mono());
+            },
+        );
+    });
+    ui.take_key_focus(sink);
+    ui.finish();
+    assert_eq!(
+        core.ime_rect(),
+        Some(kui_core::Rect::new(66.0, 10.0, 0.0, LH))
+    );
+}
+
+#[test]
+fn a_clipped_line_does_not_get_an_empty_line_anchor() {
+    for text in ["", "outside"] {
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        let sink = ui.with_keyed(
+            "editor",
+            NodeSpec::column()
+                .width(300.0)
+                .height(20.0)
+                .clip()
+                .on_key("ed"),
+            |ui| {
+                ui.leaf(NodeSpec::column().height(40.0).min_height(40.0));
+                ui.with(
+                    NodeSpec::row()
+                        .width(300.0)
+                        .height(LH)
+                        .min_height(LH)
+                        .role(Role::Line)
+                        .caret(0),
+                    |ui| {
+                        if !text.is_empty() {
+                            ui.text(text, mono());
+                        }
+                    },
+                );
+            },
+        );
+        ui.take_key_focus(sink);
+        ui.finish();
+        assert_eq!(
+            core.ime_rect(),
+            None,
+            "{text:?}: the line is outside its clip"
+        );
+    }
+}
+
+#[test]
+fn an_empty_line_anchor_follows_its_turn() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.5);
+    ui.configure_root(NodeSpec::column().fill().pad(20.0));
+    let sink = ui.with_keyed(
+        "editor",
+        NodeSpec::column()
+            .size(200.0, 40.0)
+            .pad(8.0)
+            .rotate(0.5)
+            .on_key("ed"),
+        |ui| {
+            ui.leaf(NodeSpec::row().height(LH).role(Role::Line).caret(0));
+        },
+    );
+    ui.take_key_focus(sink);
+    ui.finish();
+    let anchor = core.ime_rect().unwrap();
+    // The upright caret at (28, 28) turns about the card's (120, 40).
+    assert!((anchor.x - 212.0).abs() < 0.001);
+    assert!((anchor.y - 32.0).abs() < 0.001);
+    assert!((anchor.h - LH).abs() < 0.001);
+}
+
 /// The stock editor still takes a composition itself: a commit there is a
 /// `change`, not a `text` event.
 #[test]
