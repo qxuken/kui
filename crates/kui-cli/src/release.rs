@@ -75,11 +75,11 @@ pub fn mirror(flag: Option<&str>) -> Option<String> {
 
 /// A whole response body, up to 512 MB.
 pub fn download(url: &str) -> Result<Vec<u8>, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
+    let config = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(600)))
         .user_agent(format!("kui/{}", crate::compat::VERSION))
-        .build()
-        .into();
+        .build();
+    let agent = crate::tls::agent(config, None, None)?;
     let mut res = agent
         .get(url)
         .call()

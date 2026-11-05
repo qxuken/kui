@@ -3,8 +3,8 @@
 //! in lua/runtime.lua) whose requests arrive in the state's inbox and run
 //! as tasks; a handler's answer goes back through `__respond`.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Condvar, LazyLock, Mutex};
 use std::time::Duration;
 
 use kui_core::Value;
@@ -14,39 +14,306 @@ use crate::ops::{self, Inbound};
 
 use super::{fail, shared, try_fn};
 
+mod pinning;
+
 /// One running server: what stops it and the requests waiting on a handler.
 pub struct Server {
     inner: Arc<tiny_http::Server>,
     pending: Arc<Mutex<HashMap<u64, tiny_http::Request>>>,
 }
 
+#[derive(Clone, Default)]
+struct ClientOptions {
+    headers: Vec<(String, String)>,
+    timeout: Option<f64>,
+    base_url: Option<String>,
+    pins: Option<pinning::Pins>,
+    pin_file: Option<std::path::PathBuf>,
+    ca_file: Option<std::path::PathBuf>,
+}
+
+static DEFAULT_CLIENT: LazyLock<Arc<Client>> =
+    LazyLock::new(|| Arc::new(Client::new(ClientOptions::default())));
+
+struct Client {
+    options: Mutex<ClientOptions>,
+    pool: Arc<Pool>,
+}
+
+impl Client {
+    fn new(options: ClientOptions) -> Self {
+        Self {
+            options: Mutex::new(options),
+            pool: Arc::new(Pool::default()),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct PoolKey {
+    timeout: Duration,
+    pins: Option<Vec<[u8; 32]>>,
+    ca_digest: Option<[u8; 32]>,
+}
+
+#[derive(Default)]
+struct PoolState {
+    closed: bool,
+    destroyed: bool,
+    next: u64,
+    running: HashMap<u64, Option<ureq::Agent>>,
+    agents: VecDeque<(PoolKey, ureq::Agent)>,
+}
+
+#[derive(Default)]
+struct Pool {
+    state: Mutex<PoolState>,
+    drained: Condvar,
+}
+
+struct RequestGuard {
+    pool: Arc<Pool>,
+    id: u64,
+}
+
+impl Drop for RequestGuard {
+    fn drop(&mut self) {
+        self.pool.state.lock().unwrap().running.remove(&self.id);
+        self.pool.drained.notify_all();
+    }
+}
+
+fn closed() -> String {
+    super::coded("closed", "http: client is closed")
+}
+
+impl Pool {
+    fn begin(self: &Arc<Self>) -> Result<RequestGuard, String> {
+        let mut state = self.state.lock().unwrap();
+        if state.closed {
+            return Err(closed());
+        }
+        state.next += 1;
+        let id = state.next;
+        state.running.insert(id, None);
+        Ok(RequestGuard {
+            pool: self.clone(),
+            id,
+        })
+    }
+
+    fn agent(
+        &self,
+        id: u64,
+        key: PoolKey,
+        build: impl FnOnce() -> Result<ureq::Agent, String>,
+    ) -> Result<ureq::Agent, String> {
+        let mut state = self.state.lock().unwrap();
+        if state.destroyed {
+            return Err(closed());
+        }
+        let agent = if let Some(index) = state.agents.iter().position(|(k, _)| k == &key) {
+            let entry = state.agents.remove(index).unwrap();
+            let agent = entry.1.clone();
+            state.agents.push_back(entry);
+            agent
+        } else {
+            let agent = build()?;
+            state.agents.push_back((key, agent.clone()));
+            if state.agents.len() > 16 {
+                state.agents.pop_front();
+            }
+            agent
+        };
+        *state.running.get_mut(&id).expect("registered HTTP request") = Some(agent.clone());
+        Ok(agent)
+    }
+
+    fn start_close(&self) {
+        self.state.lock().unwrap().closed = true;
+    }
+
+    fn close(&self) {
+        let mut state = self.state.lock().unwrap();
+        while !state.running.is_empty() {
+            state = self.drained.wait(state).unwrap();
+        }
+        let agents = state
+            .agents
+            .drain(..)
+            .map(|(_, agent)| agent)
+            .collect::<Vec<_>>();
+        drop(state);
+        for agent in agents {
+            agent.shutdown();
+        }
+    }
+
+    fn destroy(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.closed = true;
+        state.destroyed = true;
+        let agents = state
+            .agents
+            .iter()
+            .map(|(_, a)| a.clone())
+            .chain(state.running.values().filter_map(Clone::clone))
+            .collect::<Vec<_>>();
+        drop(state);
+        for agent in agents {
+            agent.shutdown();
+        }
+    }
+}
+
+impl Drop for Pool {
+    fn drop(&mut self) {
+        for (_, agent) in self.state.get_mut().unwrap().agents.drain(..) {
+            agent.shutdown();
+        }
+    }
+}
+
+impl ClientOptions {
+    fn parse(lua: &Lua, table: Option<Table>, context: &str) -> mlua::Result<Self> {
+        let mut options = Self::default();
+        if let Some(table) = table {
+            for pair in table.clone().pairs::<String, mlua::Value>() {
+                let (key, _) = pair?;
+                if !matches!(
+                    key.as_str(),
+                    "headers" | "timeout" | "pins" | "pin_file" | "ca_file" | "base_url"
+                ) {
+                    return Err(super::fail_as(
+                        "invalid",
+                        format!("{context}: unknown option {key}"),
+                    ));
+                }
+            }
+            options.read(&table)?;
+        }
+        options.resolve_paths(&shared(lua).dir);
+        Ok(options)
+    }
+
+    fn to_lua(&self, lua: &Lua) -> mlua::Result<Table> {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let table = lua.create_table()?;
+        let headers = lua.create_table()?;
+        for (key, value) in &self.headers {
+            headers.set(key.as_str(), value.as_str())?;
+        }
+        table.set("headers", headers)?;
+        table.set("timeout", self.timeout)?;
+        table.set("base_url", self.base_url.as_deref())?;
+        if let Some(pins) = &self.pins {
+            table.set(
+                "pins",
+                lua.create_sequence_from(
+                    pins.0
+                        .iter()
+                        .map(|pin| format!("sha256/{}", STANDARD.encode(pin))),
+                )?,
+            )?;
+        }
+        if let Some(path) = &self.pin_file {
+            table.set("pin_file", path.to_string_lossy().as_ref())?;
+        }
+        if let Some(path) = &self.ca_file {
+            table.set("ca_file", path.to_string_lossy().as_ref())?;
+        }
+        Ok(table)
+    }
+
+    fn header(&mut self, key: String, value: String) -> mlua::Result<()> {
+        use ureq::http::{HeaderName, HeaderValue};
+        HeaderName::from_bytes(key.as_bytes())
+            .map_err(|e| super::fail_as("invalid", format!("http header: {e}")))?;
+        HeaderValue::from_str(&value)
+            .map_err(|e| super::fail_as("invalid", format!("http header: {e}")))?;
+        self.headers.retain(|(k, _)| !k.eq_ignore_ascii_case(&key));
+        self.headers.push((key, value));
+        Ok(())
+    }
+
+    fn read(&mut self, table: &Table) -> mlua::Result<()> {
+        if let Some(base) = table.get::<Option<String>>("base_url")? {
+            validate_base_url(&base)?;
+            self.base_url = Some(base);
+        }
+        if let Some(headers) = table.get::<Option<Table>>("headers")? {
+            for pair in headers.pairs::<String, String>() {
+                let (key, value) = pair?;
+                self.header(key, value)?;
+            }
+        }
+        if let Some(ms) = table.get::<Option<f64>>("timeout")? {
+            if ms <= 0.0 || Duration::try_from_secs_f64(ms / 1000.0).is_err() {
+                return Err(super::fail_as(
+                    "invalid",
+                    "http: timeout must be finite positive milliseconds",
+                ));
+            }
+            self.timeout = Some(ms);
+        }
+        let pins = table.get::<Option<mlua::Value>>("pins")?;
+        let pin_file = table.get::<Option<String>>("pin_file")?;
+        if pins.is_some() && pin_file.is_some() {
+            return Err(super::fail_as(
+                "invalid",
+                "http: use either pins or pin_file",
+            ));
+        }
+        if let Some(pins) = pins {
+            self.pins = Some(pinning::Pins::from_lua(pins)?);
+            self.pin_file = None;
+        }
+        if let Some(path) = pin_file {
+            if path.is_empty() {
+                return Err(super::fail_as(
+                    "invalid",
+                    "http: pin_file must not be empty",
+                ));
+            }
+            self.pin_file = Some(path.into());
+            self.pins = None;
+        }
+        if let Some(path) = table.get::<Option<String>>("ca_file")? {
+            if path.is_empty() {
+                return Err(super::fail_as("invalid", "http: ca_file must not be empty"));
+            }
+            self.ca_file = Some(path.into());
+        }
+        Ok(())
+    }
+
+    fn resolve_paths(&mut self, dir: &std::path::Path) {
+        self.pin_file = self.pin_file.take().map(|path| dir.join(path));
+        self.ca_file = self.ca_file.take().map(|path| dir.join(path));
+    }
+}
+
 struct Req {
     method: String,
     url: String,
-    headers: Vec<(String, String)>,
     body: Option<Vec<u8>>,
-    timeout: Option<f64>,
+    client: ClientOptions,
 }
 
 fn request_opts(url_or_opts: mlua::Value, method: &str, extra: Option<Table>) -> mlua::Result<Req> {
     let mut r = Req {
         method: method.to_string(),
         url: String::new(),
-        headers: Vec::new(),
         body: None,
-        timeout: None,
+        client: ClientOptions::default(),
     };
     fn read(r: &mut Req, t: &Table) -> mlua::Result<()> {
+        r.client.read(t)?;
         if let Some(u) = t.get::<Option<String>>("url")? {
             r.url = u;
         }
         if let Some(m) = t.get::<Option<String>>("method")? {
             r.method = m.to_uppercase();
-        }
-        if let Some(h) = t.get::<Option<Table>>("headers")? {
-            for pair in h.pairs::<String, String>() {
-                r.headers.push(pair?);
-            }
         }
         if let Some(j) = t.get::<Option<mlua::Value>>("json")?
             && !j.is_nil()
@@ -54,13 +321,12 @@ fn request_opts(url_or_opts: mlua::Value, method: &str, extra: Option<Table>) ->
             let mut out = String::new();
             super::formats::write_json(&mut out, &kui_lua::lua_to_value(&j)?, false, 0);
             r.body = Some(out.into_bytes());
-            r.headers
-                .push(("content-type".into(), "application/json".into()));
+            r.client
+                .header("content-type".into(), "application/json".into())?;
         }
         if let Some(b) = t.get::<Option<mlua::LuaString>>("body")? {
             r.body = Some(b.as_bytes().to_vec());
         }
-        r.timeout = t.get::<Option<f64>>("timeout")?;
         Ok(())
     }
     match url_or_opts {
@@ -76,10 +342,85 @@ fn request_opts(url_or_opts: mlua::Value, method: &str, extra: Option<Table>) ->
     if let Some(t) = extra {
         read(&mut r, &t)?;
     }
+    if let Some(base) = &r.client.base_url {
+        r.url = resolve_url(Some(base), &r.url)?;
+    }
     if r.url.is_empty() {
         return Err(super::fail_as("invalid", "http: no url"));
     }
+    if r.client.pins.is_some() || r.client.pin_file.is_some() {
+        let uri = r
+            .url
+            .parse::<ureq::http::Uri>()
+            .map_err(|_| super::fail_as("invalid", "http: pinning requires a valid HTTPS URL"))?;
+        if uri.scheme_str() != Some("https") || uri.host().is_none() {
+            return Err(super::fail_as(
+                "invalid",
+                "http: pinning requires an HTTPS URL",
+            ));
+        }
+    }
     Ok(r)
+}
+
+fn validate_base_url(base: &str) -> mlua::Result<()> {
+    let uri = base
+        .parse::<ureq::http::Uri>()
+        .map_err(|_| super::fail_as("invalid", "http: base_url must be an absolute HTTP(S) URL"))?;
+    if !matches!(uri.scheme_str(), Some("http" | "https"))
+        || uri.host().is_none()
+        || uri.authority().is_some_and(|a| a.as_str().contains('@'))
+        || base.contains(['?', '#'])
+    {
+        return Err(super::fail_as(
+            "invalid",
+            "http: base_url requires HTTP(S), a host, and no user info, query or fragment",
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_url(base: Option<&str>, url: &str) -> mlua::Result<String> {
+    if let Ok(uri) = url.parse::<ureq::http::Uri>()
+        && uri.scheme().is_some()
+    {
+        validate_base_url_for_request(&uri)?;
+        return Ok(url.to_owned());
+    }
+    if url.starts_with("//")
+        || url
+            .split(['/', '?', '#'])
+            .next()
+            .is_some_and(|s| s.contains(':'))
+    {
+        return Err(super::fail_as(
+            "invalid",
+            "http: expected a relative path or absolute HTTP(S) URL",
+        ));
+    }
+    let base =
+        base.ok_or_else(|| super::fail_as("invalid", "http: relative URL requires base_url"))?;
+    validate_base_url(base)?;
+    let joined = format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        url.trim_start_matches('/')
+    );
+    let uri = joined
+        .parse::<ureq::http::Uri>()
+        .map_err(|_| super::fail_as("invalid", "http: invalid URL"))?;
+    validate_base_url_for_request(&uri)?;
+    Ok(joined)
+}
+
+fn validate_base_url_for_request(uri: &ureq::http::Uri) -> mlua::Result<()> {
+    if !matches!(uri.scheme_str(), Some("http" | "https")) || uri.host().is_none() {
+        return Err(super::fail_as(
+            "invalid",
+            "http: expected an absolute HTTP(S) URL",
+        ));
+    }
+    Ok(())
 }
 
 fn is_json(content_type: Option<&str>) -> bool {
@@ -107,18 +448,40 @@ fn http_code(e: &ureq::Error) -> &'static str {
     }
 }
 
-fn fetch(r: Req) -> Result<Value, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .timeout_global(Some(Duration::from_secs_f64(
-            r.timeout.unwrap_or(30_000.0) / 1000.0,
-        )))
-        .build()
-        .into();
+fn fetch(r: Req, request: &RequestGuard) -> Result<Value, String> {
+    let pins = match r.client.pin_file {
+        Some(path) => Some(pinning::Pins::from_file(&path)?),
+        None => r.client.pins,
+    };
+    let timeout = Duration::from_secs_f64(r.client.timeout.unwrap_or(30_000.0) / 1000.0);
+    let ca = r
+        .client
+        .ca_file
+        .as_deref()
+        .map(crate::tls::read_ca_file)
+        .transpose()?;
+    let key = PoolKey {
+        timeout,
+        pins: pins.as_ref().map(|pins| pins.0.clone()),
+        ca_digest: ca.as_ref().map(|bytes| {
+            ring::digest::digest(&ring::digest::SHA256, bytes)
+                .as_ref()
+                .try_into()
+                .unwrap()
+        }),
+    };
+    let agent = request.pool.agent(request.id, key, || {
+        let config = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .https_only(pins.is_some())
+            .timeout_global(Some(timeout))
+            .build();
+        crate::tls::agent_with_ca(config, pins, ca.as_deref())
+    })?;
     macro_rules! with_headers {
         ($b:expr) => {{
             let mut b = $b;
-            for (k, v) in &r.headers {
+            for (k, v) in &r.client.headers {
                 b = b.header(k, v);
             }
             b
@@ -154,7 +517,7 @@ fn fetch(r: Req) -> Result<Value, String> {
         .with_config()
         .limit(256 * 1024 * 1024)
         .read_to_string()
-        .unwrap_or_default();
+        .map_err(|e| super::coded(http_code(&e), format!("{} {} body: {e}", r.method, r.url)))?;
     let mut out = vec![
         ("status", Value::Int(status.into())),
         ("ok", Value::Bool((200..300).contains(&status))),
@@ -238,20 +601,105 @@ fn decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
+fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
     let http = lua.create_table()?;
+    let defaults = client.clone();
+    http.set(
+        "__try_defaults",
+        try_fn(lua, move |lua, ()| {
+            if defaults.pool.state.lock().unwrap().closed {
+                return Err(super::fail_as("closed", "http: client is closed"));
+            }
+            defaults.options.lock().unwrap().clone().to_lua(lua)
+        })?,
+    )?;
+    let config = client.clone();
+    http.set(
+        "try_configure",
+        try_fn(lua, move |lua, table: Option<Table>| {
+            let options = ClientOptions::parse(lua, table, "http.configure")?;
+            if config.pool.state.lock().unwrap().closed {
+                return Err(super::fail_as("closed", "http: client is closed"));
+            }
+            *config.options.lock().unwrap() = options;
+            Ok(())
+        })?,
+    )?;
+    let pool = client.pool.clone();
+    http.set(
+        "__try_close",
+        try_fn(lua, move |lua, ()| {
+            pool.start_close();
+            let s = shared(lua);
+            let id = s.ops.id();
+            let pool = pool.clone();
+            ops::run(&s.ops, id, move || {
+                pool.close();
+                Ok(Value::Null)
+            });
+            Ok(id)
+        })?,
+    )?;
+    let pool = client.pool.clone();
+    http.set(
+        "__destroy",
+        lua.create_function(move |_, ()| {
+            pool.destroy();
+            Ok(())
+        })?,
+    )?;
+    http.set(
+        "__try_resolve",
+        try_fn(lua, |_, (url, base): (mlua::Value, Option<mlua::Value>)| {
+            let mlua::Value::String(url) = url else {
+                return Err(super::fail_as("invalid", "http: expected a URL string"));
+            };
+            let base = match base {
+                None => None,
+                Some(mlua::Value::String(s)) => Some(s.to_str()?.to_owned()),
+                _ => {
+                    return Err(super::fail_as(
+                        "invalid",
+                        "http: expected a base_url string",
+                    ));
+                }
+            };
+            resolve_url(base.as_deref(), &url.to_str()?)
+        })?,
+    )?;
     http.set(
         "__try_request",
         try_fn(
             lua,
-            |lua, (target, method, extra): (mlua::Value, Option<String>, Option<Table>)| {
-                let r = request_opts(target, method.as_deref().unwrap_or("GET"), extra)?;
+            move |lua, (target, method, extra): (mlua::Value, Option<String>, Option<Table>)| {
+                let mut r = request_opts(target, method.as_deref().unwrap_or("GET"), extra)?;
                 let s = shared(lua);
+                r.client.resolve_paths(&s.dir);
+                let request = client.pool.begin().map_err(mlua::Error::RuntimeError)?;
                 let id = s.ops.id();
-                ops::run(&s.ops, id, move || fetch(r));
+                ops::run(&s.ops, id, move || {
+                    let result = fetch(r, &request);
+                    if result.is_err() && request.pool.state.lock().unwrap().destroyed {
+                        Err(closed())
+                    } else {
+                        result
+                    }
+                });
                 Ok(id)
             },
         )?,
+    )?;
+    Ok(http)
+}
+
+pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
+    let http = client_table(lua, DEFAULT_CLIENT.clone())?;
+    http.set(
+        "__try_client",
+        try_fn(lua, |lua, table: Option<Table>| {
+            let options = ClientOptions::parse(lua, table, "http.client")?;
+            client_table(lua, Arc::new(Client::new(options)))
+        })?,
     )?;
     kui.set("http", http)?;
 

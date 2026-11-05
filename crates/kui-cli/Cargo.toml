@@ -20,7 +20,10 @@ kui-trace = { workspace = true, features = ["lua"] }
 mlua.workspace = true
 toml = "0.9"
 yaml-rust2 = "0.10"
-ureq = "3"
+# Pin the minor: certificate pinning uses ureq's unversioned transport API.
+ureq = "~3.5.0"
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
 tiny_http = "0.12"
 rusqlite = { version = "0.37", features = ["bundled"] }
 ring = "0.17"
@@ -46,6 +49,9 @@ mimalloc = ["dep:mimalloc", "dep:libmimalloc-sys"]
 [build-dependencies]
 # Gzips the docs the runner carries (build.rs, ADR 0071).
 flate2 = "1.1"
+
+[dev-dependencies]
+rcgen = "0.14"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

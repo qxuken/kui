@@ -2821,3 +2821,1047 @@ fn a_timer_that_dispatches_draws_one_frame_a_tick() {
     // a frame is owed; two a tick was forty.
     assert!(frames <= 26, "{frames} frames for 20 ticks:\n{s}");
 }
+
+#[test]
+fn http_pins_type_check_and_report_invalid_options_without_disabling_http() {
+    let dir = app(
+        "http-pins",
+        &[(
+            "main.tl",
+            r#"
+local opts: kui.RequestOpts = {
+  pins = { "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" },
+}
+local defaults: kui.HttpClientOpts = { timeout = 1000, headers = { accept = "application/json" } }
+kui.http.configure(defaults)
+local configured = kui.http.try_configure { ca_file = "certs/missing.pem" }
+assert(configured)
+kui.http.configure()
+local client: kui.HttpClient = kui.http.client(defaults)
+client:configure { timeout = 1000 }
+local observed = client:compose(function(next: kui.HttpDispatch): kui.HttpDispatch
+  return function(request: kui.RequestOpts): boolean, kui.Response | string, string
+    request.headers["x-client"] = "typed"
+    return next(request)
+  end
+end)
+kui.spawn(function()
+  local server = kui.http.serve { port = 0 }
+  server:get("/", function(_req: kui.Request): any
+    return { body = "ordinary HTTP" }
+  end)
+  local url = "http://127.0.0.1:" .. server.port .. "/"
+  opts.url = url
+  local ok, _, code = kui.http.try_request(opts)
+  assert(not ok and code == "invalid")
+  local accepted, _, invalid = kui.http.try_get("https://example.test", { pins = {} })
+  assert(not accepted and invalid == "invalid")
+  local file_opts: kui.RequestOpts = { url = "https://example.test", pin_file = "certs/missing.pem" }
+  local read_ok, _, missing = kui.http.try_request(file_opts)
+  assert(not read_ok and missing == "not_found")
+  kui.fs.write("certs/invalid.pem", "not a certificate")
+  file_opts.pin_file = "certs/invalid.pem"
+  local valid, _, malformed = kui.http.try_request(file_opts)
+  assert(not valid and malformed == "invalid")
+  local ca_opts: kui.RequestOpts = { url = "https://example.test", ca_file = "certs/missing.pem" }
+  local trusted, _, missing_ca = kui.http.try_request(ca_opts)
+  assert(not trusted and missing_ca == "not_found")
+  local response = kui.http.get(url)
+  assert(response.status == 200 and response.body == "ordinary HTTP")
+  client:configure { base_url = url, timeout = 1000 }
+  assert(observed:get("").body == "ordinary HTTP")
+  assert(client:request { url = url }.status == 200)
+  client:close()
+  client:destroy()
+  local made = kui.http.try_client()
+  assert(made)
+  print("http pins OK")
+  kui.exit(0)
+end)
+"#,
+        )],
+    );
+    let checked = kui(&dir, &["check"], 60);
+    assert!(checked.status.success(), "{}", out(&checked));
+    let output = kui(
+        &std::env::temp_dir(),
+        &["run", "--headless", dir.to_str().unwrap()],
+        20,
+    );
+    let text = out(&output);
+    assert!(
+        output.status.success() && text.contains("http pins OK"),
+        "{text}"
+    );
+}
+
+struct TlsTestServer {
+    ca: String,
+    cert: String,
+    config: std::sync::Arc<rustls::ServerConfig>,
+}
+
+impl TlsTestServer {
+    fn new() -> Self {
+        use rcgen::{BasicConstraints, CertificateParams, IsCa, Issuer, KeyPair};
+        let mut params = CertificateParams::new(Vec::<String>::new()).unwrap();
+        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        let ca_key = KeyPair::generate().unwrap();
+        let ca = params.self_signed(&ca_key).unwrap().pem();
+        let issuer = Issuer::new(params, ca_key);
+        let key = KeyPair::generate().unwrap();
+        let cert = CertificateParams::new(vec!["localhost".into()])
+            .unwrap()
+            .signed_by(&key, &issuer)
+            .unwrap();
+        let config = rustls::ServerConfig::builder_with_provider(std::sync::Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![cert.der().clone()],
+            rustls::pki_types::PrivatePkcs8KeyDer::from(key.serialize_der()).into(),
+        )
+        .unwrap();
+        Self {
+            ca,
+            cert: cert.pem(),
+            config: config.into(),
+        }
+    }
+
+    fn serve(&self, connections: usize, body: &str) -> (String, std::thread::JoinHandle<usize>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!(
+            "https://localhost:{}",
+            listener.local_addr().unwrap().port()
+        );
+        let tls = self.config.clone();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let thread = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(15);
+            let mut requests = 0;
+            for _ in 0..connections {
+                let socket = loop {
+                    match listener.accept() {
+                        Ok((socket, _)) => break socket,
+                        Err(e)
+                            if e.kind() == std::io::ErrorKind::WouldBlock
+                                && Instant::now() < deadline =>
+                        {
+                            std::thread::sleep(Duration::from_millis(5))
+                        }
+                        other => panic!("TLS server did not receive its connections: {other:?}"),
+                    }
+                };
+                socket.set_nonblocking(false).unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                socket
+                    .set_write_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let mut stream = rustls::StreamOwned::new(
+                    rustls::ServerConnection::new(tls.clone()).unwrap(),
+                    socket,
+                );
+                let mut data = Vec::new();
+                let mut buf = [0; 1024];
+                while let Ok(n) = stream.read(&mut buf) {
+                    if n == 0 {
+                        break;
+                    }
+                    data.extend_from_slice(&buf[..n]);
+                    if data.windows(4).any(|w| w == b"\r\n\r\n") {
+                        requests += 1;
+                        let _ = stream.write_all(response.as_bytes());
+                        break;
+                    }
+                }
+            }
+            requests
+        });
+        (url, thread)
+    }
+}
+
+#[test]
+fn http_extra_ca_bundle_extends_trust_and_preserves_pins() {
+    let first = TlsTestServer::new();
+    let second = TlsTestServer::new();
+    let (a, server_a) = first.serve(4, "trusted");
+    let (b, server_b) = second.serve(1, "trusted");
+    let source = format!(
+        r#"
+kui.spawn(function()
+  assert(kui.http.get("{a}").body == "trusted")
+  -- Trust is cached across requests and Lua states; changes require a restart.
+  kui.fs.write("trust/bundle.pem", "no longer a certificate")
+  assert(kui.http.get("{b}").body == "trusted")
+  -- A per-request bundle keeps the environment-provided roots too.
+  assert(kui.http.get("{a}", {{ ca_file = "trust/second.pem" }}).status == 200)
+  local ok, _, code = kui.http.try_get("{a}", {{ ca_file = "trust/second.pem", pins = {{ "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }} }})
+  assert(not ok and code == "tls")
+  assert(kui.http.get("{a}", {{ pin_file = "leaf.pem" }}).status == 200)
+  print("extra CAs OK")
+  kui.exit(0)
+end)
+"#
+    );
+    let bundle = format!("{}{}", first.ca, second.ca);
+    let dir = app(
+        "extra-ca-env",
+        &[
+            ("main.lua", &source),
+            ("trust/bundle.pem", &bundle),
+            ("trust/second.pem", &second.ca),
+            ("leaf.pem", &first.cert),
+        ],
+    );
+    let relative = format!(
+        "{}/trust/bundle.pem",
+        dir.file_name().unwrap().to_str().unwrap()
+    );
+    let output = kui_env(
+        dir.parent().unwrap(),
+        &["run", "--headless", dir.to_str().unwrap()],
+        &[
+            ("KUI_EXTRA_CA_CERTS", &relative),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("extra CAs OK"),
+        "{}",
+        out(&output)
+    );
+    assert_eq!(server_a.join().unwrap(), 3);
+    assert_eq!(server_b.join().unwrap(), 1);
+
+    // The runner's release downloads use the same trust configuration.
+    std::fs::write(dir.join("trust/bundle.pem"), bundle).unwrap();
+    let (mirror, server) = first.serve(2, "0.0.0\n");
+    let output = kui_env(
+        &dir,
+        &[
+            "runners", "fetch", "latest", "--to", "mirror", "--mirror", &mirror,
+        ],
+        &[
+            ("KUI_EXTRA_CA_CERTS", "trust/bundle.pem"),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        !output.status.success() && out(&output).contains("SHA256SUMS lists no"),
+        "{}",
+        out(&output)
+    );
+    assert_eq!(server.join().unwrap(), 2);
+}
+
+#[test]
+fn http_ca_file_trust_is_scoped_to_the_request() {
+    let identity = TlsTestServer::new();
+    let (url, server) = identity.serve(3, "trusted");
+    let source = format!(
+        r#"
+kui.spawn(function()
+  assert(kui.http.get("{url}", {{ ca_file = "ca.pem" }}).status == 200)
+  local ok = kui.http.try_get("{url}")
+  assert(not ok, "request trust leaked")
+  local matched, _, code = kui.http.try_get("{url}", {{ ca_file = "ca.pem", pins = {{ "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }} }})
+  assert(not matched and code == "tls")
+  local read, _, missing = kui.http.try_get("{url}", {{ ca_file = "missing.pem" }})
+  assert(not read and missing == "not_found")
+  local valid, _, invalid = kui.http.try_get("{url}", {{ ca_file = "bad.pem" }})
+  assert(not valid and invalid == "invalid")
+  print("request CAs OK")
+  kui.exit(0)
+end)
+"#
+    );
+    let dir = app(
+        "request-ca-file",
+        &[
+            ("main.lua", &source),
+            ("ca.pem", &identity.ca),
+            ("bad.pem", "invalid"),
+        ],
+    );
+    let output = kui_env(
+        &std::env::temp_dir(),
+        &["run", "--headless", dir.to_str().unwrap()],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("request CAs OK"),
+        "{}",
+        out(&output)
+    );
+    assert_eq!(server.join().unwrap(), 1);
+}
+
+#[test]
+fn http_invalid_extra_ca_bundles_report_tls_errors() {
+    let identity = TlsTestServer::new();
+    let dir = app(
+        "invalid-extra-ca",
+        &[(
+            "main.lua",
+            r#"
+kui.spawn(function()
+  for i = 1, 2 do
+    local ok, err, code = kui.http.try_get("https://127.0.0.1:9/", { timeout = 100 })
+    assert(not ok and code == "tls" and err:find("KUI_EXTRA_CA_CERTS"), tostring(err))
+  end
+  kui.exit(0)
+end)
+"#,
+        )],
+    );
+    for (name, data) in [
+        ("empty.pem", String::new()),
+        (
+            "bad.pem",
+            "-----BEGIN CERTIFICATE-----\nnot-base64\n-----END CERTIFICATE-----\n".into(),
+        ),
+        (
+            "mixed.pem",
+            format!(
+                "{}-----BEGIN CERTIFICATE-----\nAA==\n-----END CERTIFICATE-----\n",
+                identity.ca
+            ),
+        ),
+    ] {
+        std::fs::write(dir.join(name), data).unwrap();
+    }
+    for file in ["missing.pem", "empty.pem", "bad.pem", "mixed.pem"] {
+        let output = kui_env(
+            &dir,
+            &["run", "--headless"],
+            &[("KUI_EXTRA_CA_CERTS", file)],
+            &dir.join("cache"),
+            20,
+        );
+        assert!(output.status.success(), "{file}: {}", out(&output));
+    }
+}
+
+#[test]
+fn http_configure_merges_headers_replaces_defaults_and_resets() {
+    let dir = app(
+        "http-configure",
+        &[(
+            "main.lua",
+            r#"
+kui.spawn(function()
+  local server = kui.http.serve { port = 0 }
+  local function echo(req) return { value = req.headers["x-value"], kept = req.headers["x-keep"] } end
+  server:get("/", echo)
+  server:get("/change", function(req)
+    kui.http.configure { headers = { ["x-value"] = "new defaults" } }
+    return echo(req)
+  end)
+  server:post("/", function(req) return { content_type = req.headers["content-type"], value = req.json.value } end)
+  local base = "http://127.0.0.1:" .. server.port
+  local config = { timeout = 1000, headers = { ["X-Value"] = "default", ["x-keep"] = "retained" } }
+  kui.http.configure(config)
+  config.headers["X-Value"] = "mutated"
+  assert(kui.http.get(base).json.value == "default")
+  local response = kui.http.get(base, { headers = { ["x-value"] = "override" } })
+  assert(response.json.value == "override" and response.json.kept == "retained")
+  local before = kui.http.get(base .. "/change")
+  assert(before.json.value == "default" and before.json.kept == "retained")
+  local after = kui.http.get(base)
+  assert(after.json.value == "new defaults" and after.json.kept == nil)
+  for _, invalid in ipairs({ { timeout = -1 }, { timeout = math.huge }, { timeout = 0/0 }, { url = base }, { pins = {} }, { headers = { ["bad header"] = "invalid" } } }) do
+    local ok, _, code = kui.http.try_configure(invalid)
+    assert(not ok and code == "invalid")
+    assert(kui.http.get(base).json.value == "new defaults")
+  end
+  local post = kui.http.post(base, { json = { value = 7 } })
+  assert(post.json.content_type == "application/json" and post.json.value == 7)
+  kui.http.configure()
+  assert(kui.http.get(base).json.value == nil)
+  kui.http.configure { headers = { ["x-value"] = "reset me" } }
+  kui.http.configure {}
+  assert(kui.http.get(base).json.value == nil)
+  print("http configure OK")
+  kui.exit(0)
+end)
+"#,
+        )],
+    );
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("http configure OK"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
+fn http_configure_shares_tls_defaults_with_workers_and_allows_request_overrides() {
+    let first = TlsTestServer::new();
+    let second = TlsTestServer::new();
+    let (a, server_a) = first.serve(5, "trusted");
+    let (b, server_b) = second.serve(1, "trusted");
+    let source = format!(
+        r#"
+function update(message)
+  if message.kind == "http done" then
+    assert(message.body == "trusted")
+    kui.spawn(function()
+      kui.http.configure()
+      assert(kui.http.get("{a}", {{ ca_file = "ca-a.pem" }}).body == "trusted")
+      print("shared TLS defaults OK")
+      kui.exit(0)
+    end)
+  end
+end
+kui.spawn(function()
+  kui.http.configure {{ ca_file = "ca-a.pem", pin_file = "leaf-a.pem" }}
+  assert(kui.http.get("{a}").body == "trusted")
+  local valid, _, invalid = kui.http.try_configure {{ pins = {{}} }}
+  assert(not valid and invalid == "invalid")
+  assert(kui.http.get("{a}").body == "trusted")
+  local ok, _, code = kui.http.try_get("{a}", {{ pins = {{ "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }} }})
+  assert(not ok and code == "tls")
+  assert(kui.http.get("{b}", {{ ca_file = "ca-b.pem", pin_file = "leaf-b.pem" }}).body == "trusted")
+  kui.worker("jobs/http.lua")
+end)
+"#
+    );
+    let worker = format!(
+        r#"local response = kui.http.get("{a}")
+kui.dispatch {{ kind = "http done", body = response.body }}
+"#
+    );
+    let dir = app(
+        "http-configure-tls",
+        &[
+            ("main.lua", &source),
+            ("jobs/http.lua", &worker),
+            ("ca-a.pem", &first.ca),
+            ("ca-b.pem", &second.ca),
+            ("leaf-a.pem", &first.cert),
+            ("leaf-b.pem", &second.cert),
+        ],
+    );
+    let output = kui_env(
+        &std::env::temp_dir(),
+        &["run", "--headless", dir.to_str().unwrap()],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("shared TLS defaults OK"),
+        "{}",
+        out(&output)
+    );
+    assert_eq!(server_a.join().unwrap(), 4);
+    assert_eq!(server_b.join().unwrap(), 1);
+}
+
+#[test]
+fn http_clients_isolate_tls_configuration_and_support_request_overrides() {
+    let first = TlsTestServer::new();
+    let second = TlsTestServer::new();
+    let (a, server_a) = first.serve(4, "trusted");
+    let (b, server_b) = second.serve(4, "trusted");
+    let source = format!(
+        r#"
+kui.spawn(function()
+  kui.http.configure {{ ca_file = "missing.pem", pins = {{ "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }} }}
+  local a = kui.http.client {{ ca_file = "ca-a.pem", pin_file = "leaf-a.pem" }}
+  local b = kui.http.client {{ ca_file = "ca-b.pem", pin_file = "leaf-b.pem" }}
+  assert(a:get("{a}").body == "trusted")
+  assert(b:get("{b}").body == "trusted")
+  local failures = 0
+  a = a:compose(function(next)
+    return function(request)
+      local ok, value, code = next(request)
+      if not ok then assert(code == "tls"); failures = failures + 1 end
+      return ok, value, code
+    end
+  end)
+  local ok, _, code = a:try_get("{b}")
+  assert(not ok and code == "tls" and failures == 1)
+  assert(a:get("{b}", {{ ca_file = "ca-b.pem", pin_file = "leaf-b.pem" }}).status == 200)
+  a:configure {{ ca_file = "ca-a.pem", pins = {{ "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }} }}
+  local matched, _, mismatch = a:try_get("{a}")
+  assert(not matched and mismatch == "tls")
+  assert(b:get("{b}").status == 200)
+  a:configure {{ ca_file = "ca-a.pem", pin_file = "leaf-a.pem" }}
+  assert(a:get("{a}").status == 200)
+  local ordinary = kui.http.client()
+  assert(not ordinary:try_get("{a}"))
+  local created, _, invalid = kui.http.try_client {{ timeout = 0 }}
+  assert(not created and invalid == "invalid")
+  print("isolated clients OK")
+  kui.exit(0)
+end)
+"#
+    );
+    let dir = app(
+        "http-clients-tls",
+        &[
+            ("main.lua", &source),
+            ("ca-a.pem", &first.ca),
+            ("ca-b.pem", &second.ca),
+            ("leaf-a.pem", &first.cert),
+            ("leaf-b.pem", &second.cert),
+        ],
+    );
+    let output = kui_env(
+        &std::env::temp_dir(),
+        &["run", "--headless", dir.to_str().unwrap()],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("isolated clients OK"),
+        "{}",
+        out(&output)
+    );
+    assert_eq!(server_a.join().unwrap(), 2);
+    assert_eq!(server_b.join().unwrap(), 3);
+}
+
+#[test]
+fn http_compose_middleware_wraps_dispatch_and_keeps_views_independent() {
+    let dir = app(
+        "http-compose",
+        &[(
+            "main.lua",
+            r#"
+kui.spawn(function()
+  local server = kui.http.serve { port = 0 }
+  server:get("/", function(req) return { value = req.headers["x-value"] } end)
+  server:post("/", function(req) return { value = req.json.value } end)
+  local base = "http://127.0.0.1:" .. server.port .. "/"
+  local api = kui.http.client { headers = { ["x-value"] = "original" } }
+  assert(api.interceptors == nil)
+  local order = {}
+  local function layer(name)
+    return function(next)
+      return function(request)
+        order[#order+1] = name .. " before"
+        kui.sleep(1)
+        local ok, value, code = next(request)
+        order[#order+1] = name .. " after"
+        return ok, value, code
+      end
+    end
+  end
+  local wrapped = api:compose(layer("inner"), layer("outer"))
+  assert(wrapped:get(base).json.value == "original")
+  assert(table.concat(order, ",") == "outer before,inner before,inner after,outer after")
+  order = {}
+  assert(api:get(base).status == 200 and #order == 0)
+  local transformed = wrapped:compose(function(next)
+    return function(request)
+      request.headers["x-value"] = "transformed"
+      if request.json then request.json.value = request.json.value + 1 end
+      local ok, response, code = next(request)
+      if ok then response.transformed = true end
+      return ok, response, code
+    end
+  end)
+  assert(transformed:post(base, { json = { value = 4 } }).json.value == 5)
+  assert(transformed:get(base).transformed)
+  assert(api:get(base).json.value == "original")
+  local cached = api:compose { function(_next)
+    return function(request)
+      assert(request.url == base .. "not-on-server")
+      return true, { status = 200, ok = true, headers = {}, body = "cached" }
+    end
+  end }
+  assert(cached:get(base .. "not-on-server").body == "cached")
+  local throwing = api:compose(function(_next)
+    return function() error("middleware failed") end
+  end)
+  local ok, err, code = throwing:try_get(base)
+  assert(not ok and err:find("middleware failed") and code == "failed")
+  local recovered = throwing:compose(function(next)
+    return function(request)
+      local ok, value, code = next(request)
+      if not ok then return true, { status = 299, body = "recovered" } end
+      return ok, value, code
+    end
+  end)
+  assert(recovered:get(base).body == "recovered")
+  local retries = 0
+  local retrying = api:compose(function(next)
+    return function(request)
+      for attempt = 1, 2 do
+        retries = retries + 1
+        local ok, response, code = next(request)
+        if not ok or attempt == 2 then return ok, response, code end
+      end
+    end
+  end)
+  assert(retrying:get(base).status == 200 and retries == 2)
+  local made, _, invalid = api:try_compose(function() return false end)
+  assert(not made and invalid == "invalid")
+  local sparse, _, sparse_code = api:try_compose { [2] = layer("sparse") }
+  assert(not sparse and sparse_code == "invalid")
+  local malformed = api:compose(function() return function() return "bad" end end)
+  local valid, _, invalid_result = malformed:try_get(base)
+  assert(not valid and invalid_result == "invalid")
+  api:configure { headers = { ["x-value"] = "configured" } }
+  assert(wrapped:get(base).json.value == "configured")
+  assert(wrapped:get(base .. "missing").status == 404)
+  api:close()
+  local open, _, closed = wrapped:try_get(base)
+  assert(not open and closed == "closed")
+  print("compose middleware OK")
+  kui.exit(0)
+end)
+"#,
+        )],
+    );
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("compose middleware OK"),
+        "{}",
+        out(&output)
+    );
+}
+
+trait HttpTestStream: std::io::Read + std::io::Write {}
+impl<T: std::io::Read + std::io::Write> HttpTestStream for T {}
+
+/// Keep connections open and count requests on each accepted socket.
+fn persistent_http_server(
+    tls: Option<std::sync::Arc<rustls::ServerConfig>>,
+    connections: usize,
+) -> (String, std::thread::JoinHandle<Vec<usize>>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let scheme = if tls.is_some() { "https" } else { "http" };
+    let url = format!(
+        "{scheme}://localhost:{}",
+        listener.local_addr().unwrap().port()
+    );
+    let thread = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut handlers = Vec::new();
+        for _ in 0..connections {
+            let socket = loop {
+                match listener.accept() {
+                    Ok((socket, _)) => break socket,
+                    Err(e)
+                        if e.kind() == std::io::ErrorKind::WouldBlock
+                            && Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(5))
+                    }
+                    other => panic!("missing pooled connection: {other:?}"),
+                }
+            };
+            socket.set_nonblocking(false).unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            socket
+                .set_write_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let tls = tls.clone();
+            handlers.push(std::thread::spawn(move || {
+                let mut stream: Box<dyn HttpTestStream> = match tls {
+                    Some(tls) => Box::new(rustls::StreamOwned::new(
+                        rustls::ServerConnection::new(tls).unwrap(),
+                        socket,
+                    )),
+                    None => Box::new(socket),
+                };
+                let mut requests = 0;
+                loop {
+                    let mut header = Vec::new();
+                    let mut byte = [0];
+                    while !header.ends_with(b"\r\n\r\n") {
+                        if stream.read_exact(&mut byte).is_err() {
+                            return requests;
+                        }
+                        header.push(byte[0]);
+                    }
+                    requests += 1;
+                    if stream
+                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                        .and_then(|()| stream.flush())
+                        .is_err()
+                    {
+                        return requests;
+                    }
+                }
+            }));
+        }
+        handlers.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    (url, thread)
+}
+
+#[test]
+fn http_clients_reuse_connections_and_composed_views_share_the_pool() {
+    let (url, server) = persistent_http_server(None, 2);
+    let source = format!(
+        r#"
+kui.spawn(function()
+  local api = kui.http.client {{ base_url = "{url}" }}
+  assert(api:get("/one").body == "ok")
+  assert(api:get("two").body == "ok")
+  local wrapped = api:compose(function(next) return function(req) return next(req) end end)
+  assert(wrapped:get("/three").body == "ok")
+  wrapped:close()
+  local open, _, code = api:try_get("/closed")
+  assert(not open and code == "closed")
+  local other = kui.http.client {{ base_url = "{url}" }}
+  assert(other:get("/four").body == "ok")
+  assert(other:get("/five").body == "ok")
+  other:close()
+  print("pooled sockets OK")
+  kui.exit(0)
+end)
+"#
+    );
+    let dir = app("http-pool-reuse", &[("main.lua", &source)]);
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("pooled sockets OK"),
+        "{}",
+        out(&output)
+    );
+    assert_eq!(server.join().unwrap(), vec![3, 2]);
+}
+
+#[test]
+fn http_pool_keys_follow_ca_and_pin_file_contents() {
+    let identity = TlsTestServer::new();
+    let other = TlsTestServer::new();
+    let (url, server) = persistent_http_server(Some(identity.config.clone()), 3);
+    let source = format!(
+        r#"
+kui.spawn(function()
+  local ca, leaf = kui.fs.read("ca.pem"), kui.fs.read("leaf.pem")
+  local api = kui.http.client {{ base_url = "{url}", ca_file = "ca.pem", pin_file = "leaf.pem" }}
+  assert(api:get("/first").body == "ok")
+  kui.fs.write("ca.pem", kui.fs.read("other-ca.pem"))
+  local trusted, _, trust_code = api:try_get("/wrong-ca")
+  assert(not trusted and trust_code == "tls")
+  kui.fs.write("ca.pem", ca)
+  assert(api:get("/restored-ca").body == "ok")
+  kui.fs.write("leaf.pem", kui.fs.read("other-leaf.pem"))
+  local pinned, _, pin_code = api:try_get("/wrong-pin")
+  assert(not pinned and pin_code == "tls")
+  kui.fs.write("leaf.pem", leaf)
+  assert(api:get("/restored-pin").body == "ok")
+  api:close()
+  print("pool TLS isolation OK")
+  kui.exit(0)
+end)
+"#
+    );
+    let dir = app(
+        "http-pool-tls",
+        &[
+            ("main.lua", &source),
+            ("ca.pem", &identity.ca),
+            ("leaf.pem", &identity.cert),
+            ("other-ca.pem", &other.ca),
+            ("other-leaf.pem", &other.cert),
+        ],
+    );
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("pool TLS isolation OK"),
+        "{}",
+        out(&output)
+    );
+    assert_eq!(server.join().unwrap(), vec![3, 0, 0]);
+}
+
+#[test]
+fn http_base_url_prefixes_paths_before_middleware_and_allows_absolute_urls() {
+    let dir = app(
+        "http-base-url",
+        &[(
+            "main.lua",
+            r#"
+kui.spawn(function()
+  local server = kui.http.serve { port = 0 }
+  server:get("/v1/profile", function(req) return { id = req.query.id } end)
+  server:get("/v2/profile", function() return { version = 2 } end)
+  server:get("/absolute", function() return "absolute" end)
+  local origin = "http://127.0.0.1:" .. server.port
+  local api = kui.http.client { base_url = origin .. "/v1///" }
+  local seen = {}
+  local logged = api:compose(function(next)
+    return function(req)
+      seen[#seen+1] = req.url
+      return next(req)
+    end
+  end)
+  assert(logged:get("/profile?id=7").json.id == "7")
+  assert(logged:get("profile?id=8").json.id == "8")
+  assert(seen[1] == origin .. "/v1/profile?id=7" and seen[2] == origin .. "/v1/profile?id=8")
+  assert(logged:get(origin .. "/absolute").body == "absolute")
+  assert(logged:request { url = "/profile", base_url = origin .. "/v2" }.json.version == 2)
+  local changed = api:compose(function(next)
+    return function(req) req.url = "/profile?id=9"; return next(req) end
+  end)
+  assert(changed:get("/ignored").json.id == "9")
+  api:configure { base_url = origin .. "/v2" }
+  assert(logged:get("/profile").json.version == 2)
+  for _, base in ipairs({ "", "/relative", "ftp://example.test", "https://example.test?q=1", "https://example.test/#fragment", "https://user@example.test", "https:/bad" }) do
+    local ok, _, code = api:try_configure { base_url = base }
+    assert(not ok and code == "invalid", base)
+  end
+  local missing, _, missing_code = kui.http.try_get("/profile")
+  assert(not missing and missing_code == "invalid")
+  local empty, _, empty_code = api:try_request {}
+  assert(not empty and empty_code == "invalid")
+  local network, _, network_code = api:try_get("//elsewhere.test/profile")
+  assert(not network and network_code == "invalid")
+  kui.http.configure { base_url = origin .. "/v1" }
+  assert(kui.http.get("/profile?id=10").json.id == "10")
+  api:close()
+  print("base URL OK")
+  kui.exit(0)
+end)
+"#,
+        )],
+    );
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("base URL OK"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
+fn http_close_drains_requests_and_destroy_interrupts_them() {
+    let dir = app(
+        "http-lifecycle",
+        &[(
+            "main.lua",
+            r#"
+kui.spawn(function()
+  local server = kui.http.serve { port = 0 }
+  local started, finished, result = false, false, nil
+  server:get("/slow", function()
+    started = true
+    kui.sleep(50)
+    finished = true
+    return "finished"
+  end)
+  local origin = "http://127.0.0.1:" .. server.port
+  local api = kui.http.client { base_url = origin, timeout = 2000 }
+  kui.spawn(function() result = api:get("/slow").body end)
+  while not started do kui.sleep(1) end
+  api:close()
+  assert(finished)
+  while result == nil do kui.sleep(1) end
+  assert(result == "finished")
+  local open, _, code = api:try_get("/slow")
+  assert(not open and code == "closed")
+  api:close() -- repeated graceful close is harmless
+  local configured, _, closed = api:try_configure {}
+  assert(not configured and closed == "closed")
+  started, finished, result = false, false, nil
+  local stopped = kui.http.client { base_url = origin, timeout = 2000 }
+  kui.spawn(function()
+    local ok, _, code = stopped:try_get("/slow")
+    result = { ok = ok, code = code }
+  end)
+  while not started do kui.sleep(1) end
+  stopped:destroy()
+  while result == nil do kui.sleep(1) end
+  assert(not result.ok and result.code == "closed")
+  stopped:close()
+  print("client lifecycle OK")
+  kui.exit(0)
+end)
+"#,
+        )],
+    );
+    let output = kui_env(
+        &dir,
+        &["run", "--headless"],
+        &[
+            ("KUI_EXTRA_CA_CERTS", ""),
+            ("NO_PROXY", "*"),
+            ("no_proxy", "*"),
+        ],
+        &dir.join("cache"),
+        20,
+    );
+    assert!(
+        output.status.success() && out(&output).contains("client lifecycle OK"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
+fn http_body_read_errors_and_timeouts_reach_middleware() {
+    use std::io::{Read, Write};
+    for (name, response, hold) in [
+        (
+            "truncated",
+            "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nshort",
+            0,
+        ),
+        (
+            "chunked",
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\nab",
+            0,
+        ),
+        (
+            "timeout",
+            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n",
+            1000,
+        ),
+    ] {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://127.0.0.1:{}/",
+            listener.local_addr().unwrap().port()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut header = Vec::new();
+            let mut byte = [0];
+            while !header.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).unwrap();
+                header.push(byte[0]);
+            }
+            socket.write_all(response.as_bytes()).unwrap();
+            if hold > 0 {
+                std::thread::sleep(Duration::from_millis(hold));
+            }
+        });
+        let source = format!(
+            r#"
+kui.spawn(function()
+  local api = kui.http.client {{ timeout = 300 }}
+  local observed = api:compose(function(next)
+    return function(req)
+      local ok, value, code = next(req)
+      assert(not ok and type(value) == "string" and code ~= nil, "body error was swallowed")
+      assert(value:find("body:"), value)
+      if "{name}" == "timeout" then assert(code == "timeout", code) end
+      return true, {{ status = 299, body = "body error observed" }}
+    end
+  end)
+  assert(observed:get("{url}").body == "body error observed")
+  api:close()
+  print("body failure OK")
+  kui.exit(0)
+end)
+"#
+        );
+        let dir = app(&format!("http-body-{name}"), &[("main.lua", &source)]);
+        let output = kui_env(
+            &dir,
+            &["run", "--headless"],
+            &[
+                ("KUI_EXTRA_CA_CERTS", ""),
+                ("NO_PROXY", "*"),
+                ("no_proxy", "*"),
+            ],
+            &dir.join("cache"),
+            20,
+        );
+        assert!(
+            output.status.success() && out(&output).contains("body failure OK"),
+            "{name}: {}",
+            out(&output)
+        );
+        server.join().unwrap();
+    }
+}
