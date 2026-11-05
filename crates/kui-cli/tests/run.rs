@@ -129,20 +129,31 @@ fn app(name: &str, files: &[(&str, &str)]) -> PathBuf {
     dir
 }
 
-/// Reserve a TCP port without listening: connects are refused, and no
-/// service can take it while the fixture lives. Port 9 may be a discard
-/// service or silently filtered (including through WSL's localhost bridge).
-fn refused_http() -> (socket2::Socket, String) {
+/// Pick a refused TCP endpoint rather than relying on a well-known port
+/// that may have a service or be filtered by WSL's localhost bridge.
+fn refused_http() -> (Option<socket2::Socket>, String) {
     let socket = socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::STREAM, None)
         .expect("TCP socket");
     socket
         .bind(&std::net::SocketAddr::from(([127, 0, 0, 1], 0)).into())
         .expect("reserve a refused port");
     let addr = socket.local_addr().unwrap().as_socket().unwrap();
+    // Windows and Linux refuse a bound, non-listening socket, which also
+    // reserves the port. macOS instead drops the SYN until it times out:
+    // release its reservation before asking for a refusal there.
+    let socket = if cfg!(target_os = "macos") {
+        drop(socket);
+        None
+    } else {
+        Some(socket)
+    };
+    let error = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(5))
+        .expect_err("the fixture must not accept a connection");
+    assert_eq!(error.kind(), std::io::ErrorKind::ConnectionRefused);
     (socket, format!("http://{addr}/"))
 }
 
-fn app_with_refused_http(name: &str, files: &[(&str, &str)]) -> (PathBuf, socket2::Socket) {
+fn app_with_refused_http(name: &str, files: &[(&str, &str)]) -> (PathBuf, Option<socket2::Socket>) {
     let (socket, url) = refused_http();
     let sources: Vec<_> = files
         .iter()

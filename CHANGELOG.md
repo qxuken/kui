@@ -166,8 +166,10 @@ The compiled macOS accessibility audit passed all 106 checks after granting
 Accessibility permission. Windows smoke exposed HTTP fixture races: request
 deadlines now start after host initialization, TLS fixtures use their bound
 IPv4 address, and destroy tests hold responses open until cancellation.
-Connection-refusal tests reserve an unlistened local socket, avoiding filtered
-well-known ports under WSL. Windows doctests finish before plugin tests load
+Connection-refusal tests use a probed local endpoint, avoiding filtered
+well-known ports under WSL. Windows and Linux retain a non-listening socket;
+macOS releases it because its bound socket drops connection attempts.
+Windows doctests finish before plugin tests load
 the shared DLL, preventing a concurrent relink. The 18 HTTP integration tests
 passed ten consecutive runs on two CPU cores with 16 test threads.
 

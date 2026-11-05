@@ -108,7 +108,7 @@ jobs:
 
       - name: Runner HTTP integration tests
         if: ${{ inputs.http_only }}
-        run: cargo test -p kui-cli --test run http_ -- --nocapture
+        run: cargo test -p kui-cli --test run -- http_ a_try_ the_relay_sample_sends_real_requests_to_its_mock_api --nocapture
 
       # The dev profile, the one the test step just built the examples in,
       # so this is a fingerprint check and not a second compile of the GUI
