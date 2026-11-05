@@ -409,6 +409,11 @@ jobs:
           files=(target/pack/release/*)
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${files[@]}" --clobber
+            # A failed attempt may have been withdrawn to a draft. Restore
+            # it only after its replacement assets are verified and uploaded.
+            if [ "$(gh release view "$tag" --json isDraft --jq '.isDraft')" = true ]; then
+              gh release edit "$tag" --draft=false --latest=false
+            fi
           else
             gh release create "$tag" "${files[@]}" --verify-tag --prerelease --latest=false --title "$tag" \
               --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The kui runner: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.sh | sh\` on macOS and Linux, \`irm https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.ps1 | iex\` on Windows, or the kui-${tag#v}-<platform> archives by hand (SHA256SUMS covers every asset). libkui_ffi for C and Odin is kui-ffi-${tag#v}-<platform>.tar.gz (with the runner, shared and static) and kui-ffi-core-${tag#v}-<platform>.tar.gz (without it, shared only), .zip for win32-x64, for linux-x64, linux-arm64, darwin-arm64 and win32-x64; each carries the C headers and the Odin package, and its README.md says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui, and the runner as @qxuken/kui-cli)."
@@ -501,6 +506,7 @@ jobs:
       id-token: write
     env:
       NPMJS_REGISTRY: https://registry.npmjs.org/
+      WGPU_BACKEND: vulkan
     steps:
       - uses: actions/checkout@v7
 
@@ -517,7 +523,10 @@ jobs:
       - name: Install publishing system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev \
+            fonts-dejavu-core mesa-vulkan-drivers libvulkan1
+          mkdir -p -m 700 "$RUNNER_TEMP/xdg"
+          echo "XDG_RUNTIME_DIR=$RUNNER_TEMP/xdg" >> "$GITHUB_ENV"
           node --version
           npm --version
 
