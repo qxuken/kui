@@ -269,6 +269,9 @@ fn drive(data: &[u8], trace: Option<&mut Vec<String>>) {
             d.check_events(&events);
             d.frame();
         }
+        // A composition ended by the last frame must release its held
+        // value on the next declaration, even with no further input.
+        d.frame();
         kept.done(d.core, (), d.dirty);
     });
 }
