@@ -10,7 +10,7 @@ lockfile = true
 # the project environment. The root is resolved after tools are installed.
 [env]
 ODIN = "odin"
-ODIN_ROOT = { value = "{{ tools.odin.path | default(value='') }}", tools = true }
+ODIN_ROOT = { value = "{{ tools?.odin?.path or '' }}", tools = true }
 
 [tool_alias]
 nu = "github:nushell/nushell"
