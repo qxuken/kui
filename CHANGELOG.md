@@ -163,21 +163,42 @@ increase was +0.8% (`frame_10k_rects` and `frame_1k_curves`), and their worst
 run-to-run spread was 2.4%.
 
 The compiled macOS accessibility audit passed all 106 checks after granting
-Accessibility permission. GitHub CI and the dependency audit passed on
-`7901c595`; its macOS smoke job passed, while Windows found two HTTP test
-fixture failures. The destroy test now holds the response open until after
-destroying the client instead of racing a 50 ms response. TLS fixtures stop
-when their clients finish and still assert delivered HTTP request counts,
-without requiring a platform-dependent number of handshake connections.
-The lifecycle reproduction passed 10/10 with coarse polling, against 10/10
-failures before the fixture change. A further regression test reproduced a
-destroyed close-delimited body being returned as success and reporting
-download completion; both cancellation paths now check the client's destroyed
-state. All 59 runner unit tests, 74 integration tests and strict Clippy passed
-locally. A fresh platform smoke run must pass before tagging.
+Accessibility permission. Windows smoke exposed HTTP fixture races: request
+deadlines now start after host initialization, TLS fixtures use their bound
+IPv4 address, and destroy tests hold responses open until cancellation.
+Connection-refusal tests reserve an unlistened local socket, avoiding filtered
+well-known ports under WSL. Windows doctests finish before plugin tests load
+the shared DLL, preventing a concurrent relink. The 18 HTTP integration tests
+passed ten consecutive runs on two CPU cores with 16 test threads.
 
-No native Windows or Linux workstation pass, fuzz round or read-only review
-round was performed for this preparation.
+Windows (RTX 5080), using the mise pins, passed 3462 tests over 257 Rust and
+Node suites (19 ignored), all generators, strict workspace Clippy, the 23
+additional presentation tests, Node typechecking, the book and npm pack dry
+run. All 59 Rust and 12 Node windowed examples drew 120 frames on both theme
+bases. C passed 11 checks including the real GPU host and all 67 conformance
+scenes; Odin passed all seven examples and four cross-language host/plugin
+pairs. All ten crates passed crates.io packaging and verification dry runs.
+
+Ubuntu 24.04 under WSL passed the pinned-tool suite: 3462 tests (17 ignored),
+the 23 presentation tests, generators, strict Clippy, dependency audit,
+typechecking, book, headless examples and the same C/Odin rounds using
+llvmpipe. All 59 Rust and 12 Node windowed examples passed 30 frames on both
+theme bases under Xvfb/X11. WSLg Wayland did not complete reliably; this is
+virtual X11 verification, not a native Wayland desktop pass.
+
+An initial AddressSanitizer pass over all 11 fuzz targets executed 9,403,087
+inputs. Repeating with the pinned dated nightly found FZ26, an events-harness
+assertion that checked a controlled value before its first declaration after
+IME composition ended; the minimized input is retained as a regression.
+That round executed another 6,747,721 inputs across all targets; the corrected
+events target then passed 17,320 more inputs over 90 seconds. Stable replay
+passed the retained cases on Windows and the grown corpus on Linux, including
+fresh-versus-reused session checks.
+The Node decoder passed 200,000 seeded streams. A separate seeded HTTP probe
+passed 1000 randomized response cases, 4096 invalid-option cases, 1024 malformed
+certificate-file cases and 64 close-delimited cancellation cases, then reused
+the pool successfully. HTTP was exercised through the runner, not a new
+libFuzzer target.
 
 ## 0.1.0-alpha.75 (2026-11-02)
 
