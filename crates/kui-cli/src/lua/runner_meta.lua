@@ -276,8 +276,11 @@ kui.name = ""
 ---@field options? table<string, kui.ArgOption>
 ---@field args? kui.ArgPositional[]
 ---@field rest? string|boolean Keep arguments past the positionals under this name (true: "rest").
+---@field commands? table<string, kui.ArgSpec> Named subcommands; fixed positionals precede the command, many/rest belong in a leaf.
+---@field command_required? boolean Require a command instead of returning the parent's options alone.
 
 ---The command line (`kui.args`, or `argv`) read against `spec`: each option under its key, `--help` printed from the spec, a mistake said with what to type instead (both end the app before its window).
+---A selected subcommand is `command`, its parsed table `command_args`. Parent options work before and after commands; the nearest flag wins.
 ---@param spec kui.ArgSpec
 ---@param argv? string[]
 ---@return table<string, any>

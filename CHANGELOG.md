@@ -39,6 +39,9 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
+- `kui.parse_args` accepts nested `commands` specs, with scoped help, typo
+  suggestions and optional `command_required`. Results expose `command`
+  and `command_args`; parent flags work before or after the command.
 - Repository development and CI share locked tools through mise. Node and
   Rust retain `.node-version` and `rust-toolchain.toml`; the fuzz nightly
   has its own conventional file. Nushell, Odin, npm, mdBook, wgpu-native,

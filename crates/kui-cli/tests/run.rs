@@ -2045,6 +2045,269 @@ fn parse_args_reads_the_line_and_says_what_went_wrong_before_any_window() {
 }
 
 #[test]
+fn parse_args_subcommands_keep_each_scopes_values_and_inherit_flags() {
+    let dir = app(
+        "parse-commands",
+        &[(
+            "main.lua",
+            r#"
+            local spec = {
+              options = {
+                verbose = { type = "boolean", short = "v" },
+                tag = { many = true },
+                host = { default = "localhost" },
+              },
+              commands = {
+                serve = {
+                  options = {
+                    port = { type = "integer", default = 3000, short = "p" },
+                    mode = { choices = { "fast", "slow" }, default = "fast" },
+                  },
+                  args = { { name = "files", many = true } },
+                },
+                remote = {
+                  command_required = true,
+                  options = { host = { default = "remote" } },
+                  commands = {
+                    add = {
+                      options = { force = { type = "boolean", short = "f" } },
+                      args = { { name = "url", required = true } },
+                      rest = "extra",
+                    },
+                  },
+                },
+              },
+            }
+            local o = kui.parse_args(spec, {})
+            assert(o.command == nil and o.command_args == nil and not o.verbose)
+            assert(o.host == "localhost" and #o.tag == 0)
+
+            o = kui.parse_args(spec, {
+              "--tag=before", "--verbose", "serve", "-p8080", "--tag", "after",
+              "--no-verbose", "--mode=slow", "--", "--help", "remote",
+            })
+            assert(o.command == "serve" and not o.verbose)
+            assert(table.concat(o.tag, ",") == "before,after")
+            local c = o.command_args
+            assert(c.port == 8080 and c.mode == "slow" and c.host == nil)
+            assert(table.concat(c.files, ",") == "--help,remote")
+
+            o = kui.parse_args(spec, {
+              "--host=parent", "remote", "add", "--host=child", "-v", "-f", "https://example.com",
+              "--tag=nested", "extra",
+            })
+            assert(o.command == "remote" and o.host == "parent" and o.verbose)
+            assert(o.tag[1] == "nested")
+            c = o.command_args
+            assert(c.host == "child" and c.command == "add")
+            assert(c.command_args.force and c.command_args.url == "https://example.com")
+            assert(c.command_args.extra[1] == "extra")
+
+            o = kui.parse_args({
+              args = { { name = "project", required = true } },
+              commands = { build = { args = { { name = "count", type = "integer" } } } },
+            }, { "my-project", "build", "7" })
+            assert(o.project == "my-project" and o.command == "build")
+            assert(o.command_args.count == 7)
+
+            o = kui.parse_args({
+              options = { token = { required = true }, enabled = { type = "boolean", default = true } },
+              commands = { test = {} },
+            }, { "test", "--token=secret", "--enabled=false" })
+            assert(o.token == "secret" and not o.enabled)
+
+            kui.env.PARSE_COMMAND_PORT = "9000"
+            local defaults = {
+              options = { parent = { short = "p", default = "root" } },
+              commands = {
+                serve = { options = { port = { type = "integer", short = "p", env = "PARSE_COMMAND_PORT" } } },
+              },
+            }
+            o = kui.parse_args(defaults, { "-p=before", "serve", "-p8080", "--parent=after" })
+            assert(o.parent == "after" and o.command_args.port == 8080)
+            o = kui.parse_args(defaults, { "serve" })
+            assert(o.parent == "root" and o.command_args.port == 9000)
+            kui.env.PARSE_COMMAND_PORT = nil
+            print("subcommands OK")
+            kui.exit(0)
+            "#,
+        )],
+    );
+    let o = kui(&dir, &["run"], 20);
+    assert!(
+        o.status.success() && out(&o).contains("subcommands OK"),
+        "{}",
+        out(&o)
+    );
+}
+
+#[test]
+fn parse_args_subcommands_print_scoped_help_and_errors_before_any_window() {
+    let dir = app(
+        "parse-command-help",
+        &[(
+            "main.lua",
+            r#"
+            kui.parse_args {
+              name = "tool",
+              about = "a command test",
+              command_required = true,
+              options = { verbose = { type = "boolean", short = "v", help = "all commands" } },
+              commands = {
+                serve = {
+                  about = "serve files",
+                  options = {
+                    port = { type = "integer", required = true, short = "p" },
+                    mode = { choices = { "fast", "slow" } },
+                  },
+                  args = { { name = "file", required = true } },
+                },
+                remote = {
+                  about = "manage remotes",
+                  command_required = true,
+                  options = { token = { required = true } },
+                  commands = {
+                    add = {
+                      about = "add a remote",
+                      options = { version = { short = "v" } },
+                      epilog = "A remote example",
+                    },
+                  },
+                },
+              },
+            }
+            error("parser returned")
+            "#,
+        )],
+    );
+    for (args, expected, absent) in [
+        (
+            vec!["--help"],
+            vec![
+                "usage: tool [options] <command>",
+                "commands:",
+                "serve files",
+                "manage remotes",
+            ],
+            "--port",
+        ),
+        (
+            vec!["serve", "--help"],
+            vec![
+                "tool serve — serve files",
+                "usage: tool serve [options] <file>",
+                "-p, --port",
+                "-v, --verbose",
+            ],
+            "manage remotes",
+        ),
+        (
+            vec!["remote", "add", "-h"],
+            vec![
+                "tool remote add — add a remote",
+                "--token",
+                "--verbose",
+                "-v, --version",
+                "A remote example",
+            ],
+            "--port",
+        ),
+    ] {
+        let mut argv = vec!["run", "--"];
+        argv.extend(args);
+        let o = kui(&dir, &argv, 20);
+        let s = out(&o);
+        assert!(o.status.success(), "{s}");
+        for text in expected {
+            assert!(s.contains(text), "missing {text}:\n{s}");
+        }
+        assert!(!s.contains(absent) && !s.contains("parser returned"), "{s}");
+        if argv.contains(&"add") {
+            assert!(
+                !s.contains("-v, --verbose"),
+                "a shadowed short flag is not advertised:\n{s}"
+            );
+        }
+        assert!(o.stderr.is_empty(), "{s}");
+    }
+    for (args, expected) in [
+        (vec![], "tool: a command is required"),
+        (
+            vec!["sevre"],
+            "unknown command \"sevre\" (did you mean serve?)",
+        ),
+        (vec!["nonsense"], "unknown command \"nonsense\""),
+        (
+            vec!["remote", "ad"],
+            "tool remote: unknown command \"ad\" (did you mean add?)",
+        ),
+        (
+            vec!["remote", "--token=x"],
+            "tool remote: a command is required",
+        ),
+        (
+            vec!["serve", "--prot=1"],
+            "tool serve: unknown option --prot (did you mean --port?)",
+        ),
+        (vec!["serve", "--port"], "tool serve: --port needs a value"),
+        (
+            vec!["serve", "--port=nope"],
+            "tool serve: --port: expected a whole number",
+        ),
+        (
+            vec!["serve", "--port=3", "x", "--mode=bad"],
+            "tool serve: --mode: expected one of fast, slow",
+        ),
+        (vec!["serve", "--port=3"], "tool serve: <file> is required"),
+        (vec!["serve", "x"], "tool serve: --port is required"),
+        (
+            vec!["serve", "--port=3", "x", "y"],
+            "tool serve: unexpected argument \"y\"",
+        ),
+        (vec!["--", "serve"], "tool: unexpected argument \"serve\""),
+    ] {
+        let mut argv = vec!["run", "--"];
+        argv.extend(args);
+        let o = kui(&dir, &argv, 20);
+        let s = out(&o);
+        assert_eq!(o.status.code(), Some(2), "{s}");
+        assert!(s.contains(expected), "missing {expected}:\n{s}");
+        assert!(
+            !s.contains("stack traceback") && !s.contains("parser returned"),
+            "{s}"
+        );
+        assert!(o.stdout.is_empty(), "{s}");
+    }
+}
+
+#[test]
+fn parse_args_subcommand_specs_type_check_in_teal() {
+    let dir = app(
+        "parse-command-teal",
+        &[(
+            "main.tl",
+            r#"
+            local o = kui.parse_args {
+              command_required = true,
+              options = { verbose = { type = "boolean" } },
+              commands = {
+                remote = {
+                  commands = {
+                    add = { args = { { name = "url", required = true } } },
+                  },
+                },
+              },
+            }
+            print(o.command)
+            kui.exit(0)
+            "#,
+        )],
+    );
+    let o = kui(&dir, &["check"], 20);
+    assert!(o.status.success(), "{}", out(&o));
+}
+
+#[test]
 fn hashes_arrays_walks_and_logs() {
     let dir = app(
         "batteries",

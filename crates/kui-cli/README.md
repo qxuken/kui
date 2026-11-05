@@ -82,6 +82,53 @@ end
 | `kui upgrade [version]` | Replaces this `kui` with the release's (the latest by default); one npm or Homebrew installed says the command to use instead. |
 | `kui runners fetch <version> --to <dir>` | Downloads every platform's runner with its checksums, laid out as the release is, for a mirror (`latest` also writes `latest.txt`). |
 
+## App subcommands
+
+`kui.parse_args` accepts a `commands` table whose keys are command names
+and whose values are specs of their own:
+
+```lua
+local opts = kui.parse_args {
+  about = "A notes app",
+  options = { verbose = { type = "boolean", short = "v" } },
+  commands = {
+    export = {
+      about = "Export notes to a file",
+      options = { format = { choices = { "json", "text" }, default = "json" } },
+      args = { { name = "file", required = true } },
+    },
+  },
+}
+if opts.command == "export" then
+  local export = opts.command_args
+  -- Write export.file in export.format; opts.verbose applies here too.
+  kui.exit(0)
+  return
+end
+-- With no command, continue to the app's window.
+```
+
+```sh
+kui run . -- export notes.json --format=json -v
+kui run . -- export --help
+```
+
+The result keeps parent options at the parent level, the selected name
+in `command`, and the child's parsed values in `command_args`. A child
+can declare `commands` too, with the same result shape at each level.
+Commands are optional; set `command_required = true` on any spec to
+require one there. Help lists commands and describes the selected command;
+unknown commands get typo suggestions. Help and argument errors end the
+app before a window opens, with exit codes 0 and 2 respectively.
+
+Parent options work before or after a command. For a repeated flag
+spelling, the nearest command's definition wins; its value stays in that
+command's result. Fixed positional arguments on a parent precede its
+command. Put variadic positionals (`many`) and `rest` in a spec without
+commands. `command` and `command_args` are reserved result names in specs
+with commands. `--` ends option and command recognition in the current
+scope, so a leaf can accept literal values such as `--help`.
+
 ## The standard library
 
 A call marked *waits* yields inside a task (`kui.spawn`) and blocks

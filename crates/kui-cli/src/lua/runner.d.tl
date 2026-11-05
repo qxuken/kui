@@ -69,10 +69,17 @@
     args: {ArgPositional}
     -- Keep arguments past the positionals under this name (true: "rest").
     rest: string | boolean
+    -- Named subcommands, each with its own spec (and optional commands).
+    -- Fixed positionals precede the command; many/rest belong in a leaf.
+    commands: {string:ArgSpec}
+    -- Without a command, fail rather than return the parent's options.
+    command_required: boolean
   end
   -- The command line (`kui.args`, or `argv`) read against `spec`: each
   -- option under its key, `--help` printed from the spec, and a mistake
   -- said with what to type instead (both end the app before its window).
+  -- A selected subcommand is `command`, its parsed table `command_args`.
+  -- Parent options work before and after commands; the nearest flag wins.
   parse_args: function(spec: ArgSpec, argv?: {string}): {string:any}
 
   -- `kui.log(...)`, `kui.log.warn(...)`: printed, and kept for the
