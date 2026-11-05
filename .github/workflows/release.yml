@@ -105,20 +105,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-  # Line tables keep panic locations readable at a fraction of full debug
-  # info's size; the test build of this workspace is large either way.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
-  # The Nushell the scripts are written against (scripts/*.nu), pinned like
-  # every other tool here and in ci.yml.
-  NU_VERSION: "0.116.1"
-  # The Odin the packs' Odin half is verified with: ci.yml's pin, moved
-  # with it.
-  ODIN_VERSION: "dev-2026-10"
-  CARGO_ZIGBUILD_VERSION: "0.23.3"
-  ZIGLANG_VERSION: "0.17.0"
-  # Trusted publishing wants npm 11.5.1 and Node 22.14; moving a dist-tag
-  # over it wants npm 11.21.0.
-  NPM_VERSION: "11.21.1"
 
 jobs:
   check:
@@ -156,27 +143,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install toolchain
-        shell: bash
-        run: |
-          set -eu
-          rustup update --no-self-update stable
-          rustup default stable
-          rustup target add "${{ matrix.target }}"
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: ${{ runner.os == 'Linux' && 'rust node nu odin zig cargo-zigbuild' || runner.os == 'macOS' && 'rust node nu odin' || 'rust node nu' }}
+
+      - name: Install the platform target
+        run: rustup target add "${{ matrix.target }}"
 
       # zig links the addon against glibc 2.28 (the `.2.28` suffix below)
-      # whatever the runner's own glibc is; cargo-zigbuild and zig both come
-      # as pip wheels for either Linux arch.
-      - name: Install cargo-zigbuild
+      # whatever the runner's own glibc is. Both tools come from mise.lock.
+      - name: Install Linux system dependencies
         if: runner.os == 'Linux'
+        shell: bash
         run: |
-          set -eu
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
-          python3 -m pip install --user --break-system-packages \
-            "cargo-zigbuild==${CARGO_ZIGBUILD_VERSION}" "ziglang==${ZIGLANG_VERSION}"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/cargo-zigbuild" --version
 
       # Not target/pack: its archives are each run's own to make. Cached,
       # alpha.68's and alpha.70's runner archives rode into alpha.71's
@@ -190,7 +172,7 @@ jobs:
             ~/.cargo/git/db
             target
             !target/pack
-          key: prebuild-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          key: prebuild-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: prebuild-${{ matrix.target }}-
 
       - name: Build kui-node (Linux, glibc 2.28 floor)
@@ -229,27 +211,6 @@ jobs:
       # scripts/pack-ffi.nu builds this platform natively (through
       # cargo-zigbuild at glibc 2.28 on Linux, as the addon is) and lays
       # it out in target/pack/kui-pack-<version>-<platform>/.
-      - name: Install nu
-        shell: bash
-        run: |
-          set -eu
-          case "$RUNNER_OS" in
-            Linux)   triple="$(uname -m)-unknown-linux-gnu"; ext=tar.gz ;;
-            macOS)   triple=aarch64-apple-darwin; ext=tar.gz ;;
-            Windows) triple=x86_64-pc-windows-msvc; ext=zip ;;
-          esac
-          dir="nu-${NU_VERSION}-${triple}"
-          mkdir -p "$RUNNER_TEMP/nu"
-          curl -fL --retry 3 -o "$RUNNER_TEMP/nu.$ext" \
-            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.${ext}"
-          if [ "$ext" = zip ]; then
-            unzip -q -j "$RUNNER_TEMP/nu.zip" '*nu.exe' -d "$RUNNER_TEMP/nu"
-          else
-            tar -xzf "$RUNNER_TEMP/nu.tar.gz" -C "$RUNNER_TEMP/nu" --strip-components=1 "${dir}/nu"
-          fi
-          echo "$RUNNER_TEMP/nu" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/nu/nu" --version
-
       # The runner (ADR 0068), from the same target dir as the addon, which
       # shares most of its tree: through cargo-zigbuild at glibc 2.28 on
       # Linux, as the addon is, so the one binary runs on the same
@@ -324,24 +285,6 @@ jobs:
       # writes this platform's two archives, as `packs` writes them for the
       # release.
       # Not on Windows, which has no cc (pack-ffi.nu's `verify` says so).
-      - name: Install Odin
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          set -eu
-          case "$RUNNER_OS-$(uname -m)" in
-            Linux-x86_64)  asset=odin-linux-amd64 ;;
-            Linux-aarch64) asset=odin-linux-arm64 ;;
-            macOS-arm64)   asset=odin-macos-arm64 ;;
-          esac
-          mkdir -p "$RUNNER_TEMP/odin"
-          curl -fL --retry 3 \
-            "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/${asset}-${ODIN_VERSION}.tar.gz" \
-            | tar -xz -C "$RUNNER_TEMP/odin" --strip-components=1
-          echo "ODIN=$RUNNER_TEMP/odin/odin" >> "$GITHUB_ENV"
-          echo "ODIN_ROOT=$RUNNER_TEMP/odin" >> "$GITHUB_ENV"
-          "$RUNNER_TEMP/odin/odin" version
-
       - name: Verify the pack
         if: runner.os != 'Windows'
         shell: bash
@@ -377,26 +320,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install nu
-        run: |
-          set -eu
-          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
-          curl -fL --retry 3 \
-            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
-          nu --version
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: node npm nu odin
 
-      - name: Install Odin and ALSA
+      - name: Install ALSA
         run: |
-          set -eu
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libasound2-dev
-          mkdir -p "$RUNNER_TEMP/odin"
-          curl -fL --retry 3 \
-            "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz" \
-            | tar -xz -C "$RUNNER_TEMP/odin" --strip-components=1
-          echo "ODIN=$RUNNER_TEMP/odin/odin" >> "$GITHUB_ENV"
-          echo "ODIN_ROOT=$RUNNER_TEMP/odin" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@v8
         with:
@@ -499,22 +431,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
         with:
-          node-version: '24'
-          package-manager-cache: false
+          tools: node npm nu
 
-      - name: Install nu and ALSA
+      - name: Install ALSA
         run: |
-          set -eu
           sudo apt-get update
-          # The addon and the runner link libasound.
           sudo apt-get install -y --no-install-recommends libasound2-dev
-          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
-          curl -fL --retry 3 \
-            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
-          nu --version
 
       - uses: actions/download-artifact@v8
         with:
@@ -579,35 +504,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Trusted publishing needs Node 22.14 or newer, which the image's own
-      # Node is not promised to be; setup-node's also installs into a
-      # prefix the runner owns, so `npm install -g` needs no sudo. No
-      # cache: nothing restored from one should reach a publish.
-      - uses: actions/setup-node@v6
+      # Node and npm use the same project pins as development. No tool
+      # cache is restored into the publishing job.
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
         with:
-          node-version: '24'
-          package-manager-cache: false
+          tools: rust node npm nu
+          cache: 'false'
 
       # The repository's scripts are Nushell; the release tarball runs on
       # the runner as it is.
-      - name: Install nu
+      - name: Install publishing system dependencies
         run: |
-          set -eu
-          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
-          curl -fL --retry 3 \
-            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
-            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
-          nu --version
-
-      - name: Install toolchain
-        run: |
-          set -eu
           sudo apt-get update
-          # The crates' verify builds compile kui-native, which links ALSA.
           sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
-          rustup update --no-self-update stable
-          rustup default stable
-          npm install -g "npm@${NPM_VERSION}"
           node --version
           npm --version
 
@@ -622,7 +532,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target/package
-          key: publish-${{ hashFiles('Cargo.lock') }}
+          key: publish-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: publish-
 
       - name: Tag matches the manifests
@@ -788,6 +698,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: node npm gh
+
       - name: Mark the release latest
         run: |
           set -eu

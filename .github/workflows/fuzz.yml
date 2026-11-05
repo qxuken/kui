@@ -52,15 +52,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-  NU_VERSION: "0.116.1"
-  # cargo-fuzz builds with flags only a nightly takes (`-Zsanitizer`).
-  # Pinned, like every other tool here, to the nightly the first round ran
-  # on: a run is reproducible from the commit that started it.
-  NIGHTLY: nightly-2026-10-09
-  CARGO_FUZZ_VERSION: 0.13.2
-
 jobs:
   fuzz:
     runs-on: ubuntu-24.04
@@ -71,45 +62,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install nu
-        run: |
-          set -eu
-          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
-          curl -fL --retry 3 \
-            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
-          nu --version
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: rust node nu cargo-fuzz
 
       # A font, because `scenes` shapes and draws real text. The image
       # already has the C++ compiler libfuzzer-sys builds libFuzzer with.
       # The ALSA headers are for the kui-node step alone: the addon builds
       # kui-native with its audio feature, which the fuzz crate leaves out.
-      - name: Install system deps and rust
+      - name: Install system dependencies
         run: |
-          set -eu
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config libasound2-dev
-          rustup update --no-self-update stable
-          rustup toolchain install "${NIGHTLY}" --profile minimal
-          cargo "+${NIGHTLY}" --version
-          # fuzz.nu builds with `cargo +$KUI_FUZZ_TOOLCHAIN`, `nightly`
-          # when unset: the pinned one here.
-          echo "KUI_FUZZ_TOOLCHAIN=${NIGHTLY}" >> "$GITHUB_ENV"
 
-      - name: Cache cargo-fuzz
-        uses: actions/cache@v6
-        with:
-          path: ~/.cargo/bin/cargo-fuzz
-          key: cargo-fuzz-${{ runner.os }}-${{ env.CARGO_FUZZ_VERSION }}
-
-      - name: Install cargo-fuzz
-        run: |
-          set -eu
-          if command -v cargo-fuzz >/dev/null; then
-            cargo fuzz --version
-            exit 0
-          fi
-          cargo install --locked "cargo-fuzz@${CARGO_FUZZ_VERSION}"
+      - name: Install the pinned fuzz nightly
+        run: nu scripts/toolchain.nu fuzz --github-env "$GITHUB_ENV"
 
       - name: Restore the corpus
         uses: actions/cache/restore@v6

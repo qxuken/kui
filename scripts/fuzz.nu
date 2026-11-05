@@ -57,9 +57,11 @@ def len-flags [target: string] {
 
 def fuzz-dir [] { $env.FILE_PWD | path dirname | path join fuzz }
 
-# The nightly cargo-fuzz builds with: `KUI_FUZZ_TOOLCHAIN` (the `fuzz`
-# workflow pins one), or whatever `nightly` is here.
-def toolchain [] { $env.KUI_FUZZ_TOOLCHAIN? | default "nightly" }
+# The nightly cargo-fuzz builds with: the conventional file in fuzz/,
+# with KUI_FUZZ_TOOLCHAIN available for an explicit local experiment.
+def toolchain [] {
+    $env.KUI_FUZZ_TOOLCHAIN? | default (open ((fuzz-dir) | path join rust-toolchain.toml) | get toolchain.channel)
+}
 
 def check-tools [] {
     if (which cargo-fuzz | is-empty) {

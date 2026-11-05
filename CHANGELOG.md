@@ -39,6 +39,11 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
+- Repository development and CI share locked tools through mise. Node and
+  Rust retain `.node-version` and `rust-toolchain.toml`; the fuzz nightly
+  has its own conventional file. Nushell, Odin, npm, mdBook, wgpu-native,
+  audit/fuzz/cross-build helpers and workflow checks use the same pins on
+  Windows, macOS and Linux.
 - `kui.http` requests accept `pins`, a nonempty list of SHA-256 SPKI
   public-key pins, or `pin_file` with a PEM/DER certificate path. Normal TLS
   verification still applies; pins are checked before sending HTTP data

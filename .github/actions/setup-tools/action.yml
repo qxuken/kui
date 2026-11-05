@@ -1,0 +1,30 @@
+name: Project tools
+description: Install the repository's conventional and mise pins in locked mode
+inputs:
+  tools:
+    description: Space-separated tools to install from the project pins
+    required: true
+  bindings:
+    description: Wire the pinned wgpu-native library into the C and Odin checks
+    default: 'false'
+  cache:
+    description: Cache installed tools (disabled for publishing)
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      run: |
+        set -eu
+        version=$(sed -n 's/^min_version = "\([^"]*\)"/\1/p' mise.toml)
+        test -n "$version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5
+      with:
+        version: ${{ steps.pin.outputs.version }}
+        install_args: --locked ${{ inputs.tools }}
+        cache: ${{ inputs.cache }}
+    - if: inputs.bindings == 'true'
+      shell: bash
+      run: nu scripts/toolchain.nu bindings --github-env "$GITHUB_ENV"

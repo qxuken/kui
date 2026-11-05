@@ -1,0 +1,65 @@
+# Node and Rust keep their conventional version files. The remaining
+# build/release tools live here; mise.lock records each platform's assets.
+min_version = "2026.11.2"
+
+[settings]
+idiomatic_version_file_enable_tools = ["node", "rust"]
+lockfile = true
+
+# An inherited compiler override must not select a different Odin inside
+# the project environment. The root is resolved after tools are installed.
+[env]
+ODIN = "odin"
+ODIN_ROOT = { value = "{{ tools.odin.path | default(value='') }}", tools = true }
+
+[tool_alias]
+nu = "github:nushell/nushell"
+odin = "github:odin-lang/Odin"
+mdbook = "github:rust-lang/mdBook"
+wgpu-native = "github:gfx-rs/wgpu-native"
+cargo-audit = "cargo:cargo-audit"
+cargo-fuzz = "cargo:cargo-fuzz"
+cargo-zigbuild = "cargo:cargo-zigbuild"
+npm = "npm:npm"
+gh = "github:cli/cli"
+actionlint = "github:rhysd/actionlint"
+
+[tools]
+nu = "0.116.1"
+mdbook = "0.5.4"
+npm = "11.21.1"
+cargo-audit = "0.22.2"
+cargo-fuzz = "0.13.2"
+cargo-zigbuild = "0.23.3"
+zig = "0.17.0"
+gh = "2.102.0"
+actionlint = "1.7.12"
+
+[tools.odin]
+version = "dev-2026-10"
+bin_path = "."
+strip_components = 1
+platforms.linux-x64.asset_pattern = "odin-linux-amd64-*.tar.gz"
+platforms.linux-arm64.asset_pattern = "odin-linux-arm64-*.tar.gz"
+platforms.macos-arm64.asset_pattern = "odin-macos-arm64-*.tar.gz"
+platforms.windows-x64.asset_pattern = "odin-windows-amd64-*.zip"
+
+[tools.wgpu-native]
+version = "29.0.1.1"
+bin_path = "lib"
+platforms.linux-x64.asset_pattern = "wgpu-linux-x86_64-release.zip"
+platforms.linux-arm64.asset_pattern = "wgpu-linux-aarch64-release.zip"
+platforms.macos-arm64.asset_pattern = "wgpu-macos-aarch64-release.zip"
+platforms.windows-x64.asset_pattern = "wgpu-windows-x86_64-msvc-release.zip"
+
+[tasks.bindings-setup]
+description = "Prepare the pinned wgpu-native library for C and Odin checks"
+run = "nu scripts/toolchain.nu bindings"
+
+[tasks.test]
+description = "Run the workspace and Node tests"
+run = "nu scripts/toolchain.nu test"
+
+[tasks.release-prep]
+description = "Check formatting and every generated file"
+run = "nu scripts/release-prep.nu"

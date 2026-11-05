@@ -25,10 +25,10 @@ fuzz target cannot link.
 Nightly Rust and cargo-fuzz, on Linux (WSL on Windows) or macOS:
 
 ```sh
-rustup toolchain install nightly --profile minimal
-cargo install cargo-fuzz --locked
-nu scripts/fuzz.nu run scenes --time 600   # one target, ten minutes
-nu scripts/fuzz.nu all --time 300          # every target, five minutes each
+mise install --locked
+mise exec -- nu scripts/toolchain.nu fuzz # install fuzz/rust-toolchain.toml's nightly
+mise exec -- nu scripts/fuzz.nu run scenes --time 600 # one target, ten minutes
+mise exec -- nu scripts/fuzz.nu all --time 300        # every target, five minutes each
 ```
 
 The `fuzz` workflow (`.github/workflows/fuzz.yml`) runs the same script

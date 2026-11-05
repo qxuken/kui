@@ -86,13 +86,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install toolchain
-        shell: bash
-        run: |
-          set -eu
-          rustup update --no-self-update stable
-          rustup default stable
-          cargo --version
+      - name: Install pinned project tools
+        uses: ./.github/actions/setup-tools
+        with:
+          tools: rust node
 
       - name: Cache the cargo registry
         uses: actions/cache@v6
@@ -101,7 +98,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: smoke-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          key: smoke-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: smoke-registry-${{ runner.os }}-
 
       # `--no-fail-fast`, as ci.yml's: one red suite would hide the rest.
