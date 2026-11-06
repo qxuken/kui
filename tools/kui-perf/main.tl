@@ -81,6 +81,14 @@ global function init(): Model
   local m: Model = { live = true, waiting = 0, prefs = load_prefs() }
   local path = kui.args[1]
   if path then open(m, path) end
+  if m.ins and #kui.args > 1 then
+    local ok, err = pcall(function(): boolean
+      if #kui.args ~= 3 then error("choose one focus selector and its value") end
+      inspector.focus(m.ins, kui.args[2], kui.args[3])
+      return true
+    end)
+    if not ok then m.error = tostring(err) else m.help = false end
+  end
   return m
 end
 
@@ -99,7 +107,7 @@ local function poll(m: Model)
   if how == "reset" then
     m.ins = inspector.new(st.rec, m.prefs)
     m.waiting = 0
-  elseif #st.rec.frames ~= before then
+  elseif how == "more" or #st.rec.frames ~= before then
     inspector.grew(st)
   end
 end

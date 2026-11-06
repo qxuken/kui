@@ -583,6 +583,9 @@
     counters: {string:integer}
   end
   record TraceSpan
+    id: integer
+    parent: integer
+    children: {integer}
     name: string
     origin: string
     start: number
@@ -593,6 +596,7 @@
     cut: boolean
     track: string
     depth: integer
+    -- Recorded frame number, not a channel row; resolve with frame_id.
     frame: integer
     -- A component's fill: the component (`name` too), whether it
     -- replayed or drew fresh and why, and the span it was recorded as
@@ -624,6 +628,14 @@
     frame: function(self: Recording, row: integer): TraceFrame
     -- A row of `spans`.
     span: function(self: Recording, row: integer): TraceSpan
+    -- Stable recording-local IDs, independent of channel filters and sorting.
+    frame_id: function(self: Recording, id: integer): TraceFrame
+    span_id: function(self: Recording, id: integer): TraceSpan
+    -- Shared native query results; times in ms, frame IDs inclusive.
+    query: function(self: Recording, operation: string, opts?: {string:any}): {string:any}
+    readings: function(self: Recording, from_ms: number, to_ms: number): {string:any}
+    scope_readings: function(self: Recording, selection: {string:any}): {string:any}
+    focus: function(self: Recording, flag: string, value: string): {string:any}
     -- The tables over frames `first..last` (the timeline's), or all.
     stats: function(self: Recording, first?: integer, last?: integer): {string:any}
     -- A counter's per-frame totals or a gauge's readings: `at`, `value`.

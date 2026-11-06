@@ -84,6 +84,26 @@ pub fn install_ui(lua: &Lua) -> mlua::Result<()> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn unavailable_numeric_cells_render_as_missing() {
+        let lua = mlua::Lua::new();
+        for (name, source) in super::MODULES {
+            super::preload(&lua, name, source).unwrap();
+        }
+        lua.load(
+            r#"
+            local cell_text = require("data").cell_text
+            assert(cell_text(0/0) == "—")
+            assert(cell_text(math.huge) == "—")
+            assert(cell_text(-math.huge) == "—")
+            assert(cell_text(0) == "0")
+            assert(cell_text(0.25) == "0.25")
+            "#,
+        )
+        .exec()
+        .unwrap();
+    }
+
+    #[test]
     fn every_kit_module_is_in_the_binary() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit/lua");
         let mut on_disk: Vec<String> = std::fs::read_dir(&dir)

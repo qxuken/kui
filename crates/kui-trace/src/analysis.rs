@@ -432,8 +432,22 @@ pub struct Gaps {
 }
 
 pub fn gaps(tl: &Timeline, names: &impl NameOf) -> Gaps {
+    gaps_in(tl, names, 1..tl.frames.len())
+}
+
+/// Gaps preceding selected original frame indices. A sliced population keeps
+/// the original preceding gap, rather than treating its first frame as frame 0.
+pub fn gaps_in(
+    tl: &Timeline,
+    names: &impl NameOf,
+    indices: impl IntoIterator<Item = usize>,
+) -> Gaps {
     let mut g = Gaps::default();
-    for f in tl.frames.iter().skip(1) {
+    for i in indices {
+        if i == 0 {
+            continue;
+        }
+        let f = &tl.frames[i];
         let (a, b) = (f.gap_from, f.begin);
         g.total += b.saturating_sub(a);
         g.handlers += tl

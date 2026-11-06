@@ -51,6 +51,9 @@ mod file;
 #[cfg(feature = "lua")]
 pub mod lua;
 mod model;
+pub mod query;
+#[cfg(feature = "value")]
+pub mod query_value;
 mod record;
 mod stream;
 pub mod synth;

@@ -45,6 +45,27 @@ key("/", { shift = true })
 check(m.help, "and opens it again")
 update({ kind = "help_close" })
 
+-- Stable focus and shared scopes, before the existing navigation checks.
+local inspector = require("inspector")
+local fid = st.rec.frames:get(0, "frame")
+local sid = st.rec.spans:get(0, "id")
+inspector.focus(st, "--frame", tostring(fid))
+inspector.restat(st)
+check(st.rec:frame(st.frame).frame == fid and st.stats.summary.frames == 1, "frame focus measures the recorded frame")
+check(#st.tables.frames == st.stats.summary.frames, "the frames table shares its statistics scope")
+inspector.focus(st, "--span", tostring(sid))
+check(st.rec.spans:get(st.span, "id") == sid, "span focus uses the stable ID")
+inspector.focus(st, "--frames", tostring(fid) .. ":" .. tostring(fid))
+inspector.restat(st)
+check(st.stats.summary.frames == 1, "frame-range startup retains the explicit selection")
+local before = st.stats.summary.work_avg
+update({kind="ins_name",change={text="no matching span"}})
+inspector.restat(st)
+check(#st.stats.spans == 0 and st.stats.summary.work_avg == before, "span filtering preserves frame measurements")
+model.ins = inspector.new(st.rec, {lanes={}})
+st = model.ins
+inspector.restat(st)
+
 -- The keys.
 key("l")
 check(st.frame == 0, "l selects the first frame")
@@ -130,9 +151,9 @@ update({ kind = "ins_tab", change = { value = "frames" } })
 update({ kind = "ins_sort", name = "frames", sort = { field = "work" } })
 local by = st.shown.frames and st.shown.frames.ch
 check(by and by:get(0, "work") >= by:get(1, "work"), "a number's header sorts the frames greatest first")
-local first = st.shown.frames.order[1]
+local first = st.shown.frames.ch:get(0, "frame")
 update({ kind = "ins_frame", select = { row = 0 } })
-check(st.frame == first, "a row picked in the sorted table is that frame")
+check(st.rec:frame(st.frame).frame == first, "a row picked in the sorted table is that frame")
 update({ kind = "ins_sort", name = "frames", sort = { field = "work" } })
 by = st.shown.frames.ch
 check(by:get(0, "work") <= by:get(1, "work"), "again, least first")
@@ -155,8 +176,8 @@ check(st.v0 > v0, "a sideways swipe over the overview pans")
 
 -- A double click on a frame's row: its time is the range.
 update({ kind = "ins_activate", name = "frames", activate = { row = 0 } })
-local fr = st.sorts.frames and st.shown.frames.order[1] or 0
-check(st.r0 == st.rec.frames:get(fr, "begin") and st.r1 == st.rec.frames:get(fr, "end"), "a double-clicked frame is the range")
+local displayed = st.sorts.frames and st.shown.frames.ch or st.tables.frames
+check(st.r0 == displayed:get(0, "begin") and st.r1 == displayed:get(0, "end"), "a double-clicked frame is the range")
 key("escape")
 
 -- The tables read once the window holds still.

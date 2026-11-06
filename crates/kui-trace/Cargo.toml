@@ -17,10 +17,11 @@ publish = ["crates-io"]
 [dependencies]
 mlua = { workspace = true, optional = true }
 kui-channel = { workspace = true, optional = true, features = ["lua"] }
-kui-value = { workspace = true, optional = true, features = ["lua"] }
+kui-value = { workspace = true, optional = true }
 
 [features]
-lua = ["dep:mlua", "dep:kui-channel", "dep:kui-value"]
+value = ["dep:kui-value"]
+lua = ["dep:mlua", "dep:kui-channel", "value", "kui-value/lua"]
 
 [[bin]]
 name = "kui-trace"

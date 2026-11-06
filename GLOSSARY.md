@@ -156,6 +156,27 @@ A named pairing of a content theme and a layout preset whose parts remain
 independently selectable.
 _Avoid_: theme (when the arrangement is also being selected)
 
+## Perf exploration
+
+**Measurement scope**:
+The part of a recording, or selected population of frames, whose costs
+and frame statistics are being measured.
+_Avoid_: window (which can also mean the app's native window)
+
+**Span filter**:
+A restriction on which spans contribute to an attribution result within
+a measurement scope. It does not change that scope's frame population.
+_Avoid_: scope, frame filter
+
+**Inclusive time**:
+A span's elapsed duration, including time inside its nested children.
+_Avoid_: self time, CPU time (which is a separate measurement)
+
+**Self time**:
+A span's elapsed duration excluding time inside its nested children,
+regardless of whether those children are visible under a span filter.
+_Avoid_: inclusive time, CPU time
+
 ## Presentations
 
 **Deck**:

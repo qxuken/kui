@@ -795,6 +795,12 @@ function kui.sqlite.try_open(path) end
 ---@field session fun(self: kui.Recording): table<string, any>
 ---@field frame fun(self: kui.Recording, row: integer): table<string, any>
 ---@field span fun(self: kui.Recording, row: integer): table<string, any>
+---@field frame_id fun(self: kui.Recording, id: integer): table<string, any> Stable recorded frame number.
+---@field span_id fun(self: kui.Recording, id: integer): table<string, any> Stable span ID, with parent/children IDs.
+---@field query fun(self: kui.Recording, operation: string, opts?: table<string, any>): table<string, any> Shared native query envelope, times in ms.
+---@field readings fun(self: kui.Recording, from_ms: number, to_ms: number): table<string, any> Complete tables over expanded frame scope, with active filters.
+---@field scope_readings fun(self: kui.Recording, selection: table<string, any>): table<string, any> Read an explicit whole/frames/time selection.
+---@field focus fun(self: kui.Recording, flag: string, value: string): table<string, any> Resolve a viewer focus using the shared selection semantics.
 ---@field stats fun(self: kui.Recording, first?: integer, last?: integer): table<string, any>
 ---@field series fun(self: kui.Recording, name: string): kui.Channel?
 ---@field series_names fun(self: kui.Recording): string[]
