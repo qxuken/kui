@@ -31,6 +31,7 @@
 ---| "full" # The disk or a quota is full.
 ---| "too_long" # Past a limit.
 ---| "unavailable" # The service is not there: no secret store, a database that will not open.
+---| "unexpected_call" # A test mock rejected an unmatched call.
 ---| "failed" # Anything else.
 
 ---@class kui.Response
@@ -579,6 +580,29 @@ function kui.yaml.try_decode(text) end
 function kui.yaml.try_encode(value) end
 
 kui.fs = {}
+---@class kui.TempOpts
+---@field prefix? string
+---@field suffix? string
+---@field dir? string
+---@field keep? boolean
+---Creates an owned directory; removed at app shutdown unless keep=true.
+---@param opts? kui.TempOpts
+---@return string absolute_path
+function kui.fs.temp_dir(opts) end
+---Creates a closed empty file, usable by SQLite and subprocesses too.
+---@param opts? kui.TempOpts
+---@return string absolute_path
+function kui.fs.temp_file(opts) end
+---@param opts? kui.TempOpts
+---@return boolean ok
+---@return string path_or_error
+---@return kui.ErrorCode? code
+function kui.fs.try_temp_dir(opts) end
+---@param opts? kui.TempOpts
+---@return boolean ok
+---@return string path_or_error
+---@return kui.ErrorCode? code
+function kui.fs.try_temp_file(opts) end
 ---@return string
 function kui.fs.read(path) end
 function kui.fs.write(path, data) end

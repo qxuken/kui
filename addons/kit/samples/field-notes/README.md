@@ -23,6 +23,6 @@ Kit here: `split` (nested), `list`, `search`, `segmented`, `text_field`
 ## Tests and pictures
 
 ```bash
-cd addons/kit/samples/field-notes && kui run test --headless    # a temp sqlite file, edited and read back
+cd addons/kit/samples/field-notes && kui test    # a temp sqlite file, edited and read back
 nu addons/kit/samples/shots.nu field-notes
 ```

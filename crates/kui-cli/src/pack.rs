@@ -200,7 +200,15 @@ fn collect(project: &Project) -> Result<Vec<File>, String> {
             return;
         };
         let name = rel.to_string_lossy().replace('\\', "/");
-        if name == "test" || name.starts_with("test/") || name.starts_with("dist/") {
+        if name == "test"
+            || name.starts_with("test/")
+            || name.starts_with("test-results/")
+            || name.ends_with("_test.lua")
+            || name.ends_with("_test.tl")
+            || name.contains("/__snapshots__/")
+            || name.starts_with("__snapshots__/")
+            || name.starts_with("dist/")
+        {
             return;
         }
         if project.pack.exclude.iter().any(|g| project::glob(g, &name)) {

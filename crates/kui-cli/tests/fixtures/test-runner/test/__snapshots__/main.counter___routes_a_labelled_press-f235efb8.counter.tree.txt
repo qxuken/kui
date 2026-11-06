@@ -1,0 +1,5 @@
+_ key=cbf29ce484222325 role=window label=None text=None rect=0,0,360,240
+  _ key=6a84d850c5c9ee75 role=_ label=None text=None rect=0,0,360,56
+    _ key=b44cc84c1ebd0487 role=button label=None text=None rect=0,0,85,26
+      _ key=de4aec81e6914f4a role=staticText label=None text=Some("INCREMENT") rect=10,6,65,15
+    _ key=80f1a417c3f1a095 role=staticText label=None text=Some("Count: 1") rect=0,34,63,22

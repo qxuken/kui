@@ -2143,13 +2143,16 @@ fn kit_sample(name: &str) {
         .join(name);
     let (_refused, url) = refused_http();
     let mut cmd = Command::new(KUI);
-    cmd.args(["run", "test", "--headless"])
+    let artifacts = tempfile::tempdir().unwrap();
+    cmd.arg("test")
+        .arg("--output")
+        .arg(artifacts.path())
         .current_dir(&dir)
         .env("KUI_TEST_REFUSED_URL", url.trim_end_matches('/'));
     let o = run_kui(cmd, 60);
     let s = out(&o);
     assert!(
-        o.status.success() && s.contains("PASS: 0 failure(s)"),
+        o.status.success() && s.contains("1 passed, 0 failed"),
         "{name}:\n{s}"
     );
     assert!(!s.contains("warning"), "{name}:\n{s}");
@@ -2160,10 +2163,15 @@ fn kit_sample(name: &str) {
 #[test]
 fn the_books_task_list_passes_its_own_test() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/lua/tutorial/tasks");
-    let o = kui(&dir, &["run", "test", "--headless"], 60);
+    let artifacts = tempfile::tempdir().unwrap();
+    let o = kui(
+        &dir,
+        &["test", "--output", artifacts.path().to_str().unwrap()],
+        60,
+    );
     let s = out(&o);
     assert!(
-        o.status.success() && s.contains("PASS: 0 failure(s)"),
+        o.status.success() && s.contains("2 passed, 0 failed"),
         "{s}"
     );
     assert!(!s.contains("warning"), "{s}");

@@ -2,6 +2,7 @@ return {
   name = "Watchtower",
   id = "dev.kui.samples.watchtower",
   version = "1.0.0",
+  pack = { exclude = { "fixtures/**" } },
   entry = "main.tl",
   size = { w = 1320, h = 880 },
   -- the headline cards wrap two a line and the charts stack as it narrows

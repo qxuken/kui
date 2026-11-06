@@ -1571,7 +1571,7 @@ impl cosmic_text::Fallback for AppFallback {
 /// from, so a later scan can say what came and went since.
 pub(crate) struct SystemFonts {
     locale: String,
-    db: cosmic_text::fontdb::Database,
+    pub(crate) db: cosmic_text::fontdb::Database,
     /// Each face the scan kept, by its file and its index in the file.
     pub(crate) faces: rustc_hash::FxHashSet<(std::path::PathBuf, u32)>,
     /// The scan found no face the shaper can read, so the database holds

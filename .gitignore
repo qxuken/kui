@@ -12,3 +12,8 @@
 /packages/kui/docs/
 # The npm packages scripts/npm-platform-packages.nu stages (ADR 0068).
 /dist
+
+# Runner test artifacts; test/__snapshots__ holds reviewed baselines.
+**/test-results/
+**/__snapshots__/*.actual.*
+**/__snapshots__/*.diff.*

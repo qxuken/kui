@@ -9,7 +9,7 @@
 //! condition variable.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use kui_core::Value;
@@ -39,11 +39,16 @@ struct Inbox {
 /// How the loop that owns the Lua state is told something arrived.
 pub type Wake = Box<dyn Fn() + Send + Sync>;
 
+type Observer = dyn Fn(&str, u64, Option<&Value>) + Send + Sync;
+
 struct Inner {
     next: AtomicU64,
+    closed: AtomicBool,
+    active: AtomicUsize,
     inbox: Mutex<Inbox>,
     ready: Condvar,
     wake: Mutex<Option<Wake>>,
+    observer: Mutex<Option<Box<Observer>>>,
     /// The owning loop is draining the inbox and the dispatch queue right
     /// now: a dispatch queued from Lua meanwhile is drained before the
     /// drain returns, so it rings nothing (`poke`).
@@ -58,9 +63,12 @@ impl Default for Ops {
     fn default() -> Self {
         Ops(Arc::new(Inner {
             next: AtomicU64::new(1),
+            closed: AtomicBool::new(false),
+            active: AtomicUsize::new(0),
             inbox: Mutex::new(Inbox::default()),
             ready: Condvar::new(),
             wake: Mutex::new(None),
+            observer: Mutex::new(None),
             draining: AtomicBool::new(false),
         }))
     }
@@ -69,9 +77,42 @@ impl Default for Ops {
 impl Ops {
     /// A fresh id for an operation about to start.
     pub fn id(&self) -> u64 {
-        self.0.next.fetch_add(1, Ordering::Relaxed)
+        let id = self.0.next.fetch_add(1, Ordering::Relaxed);
+        if let Some(f) = self.0.observer.lock().unwrap().as_ref() {
+            f("operation", id, None);
+        }
+        id
     }
 
+    pub fn wait_idle(&self, timeout: std::time::Duration) -> bool {
+        let start = std::time::Instant::now();
+        let mut inbox = self.0.inbox.lock().unwrap();
+        while self.0.active.load(Ordering::Acquire) > 0 {
+            let Some(left) = timeout.checked_sub(start.elapsed()) else {
+                return false;
+            };
+            inbox = self.0.ready.wait_timeout(inbox, left).unwrap().0;
+        }
+        true
+    }
+    pub fn close(&self) {
+        self.0.closed.store(true, Ordering::Relaxed);
+        self.ring();
+    }
+    pub fn closed(&self) -> bool {
+        self.0.closed.load(Ordering::Relaxed)
+    }
+    pub fn observe(&self, f: impl Fn(&str, u64, Option<&Value>) + Send + Sync + 'static) {
+        *self.0.observer.lock().unwrap() = Some(Box::new(f));
+    }
+    pub fn try_answer(&self, id: u64) -> Option<Answer> {
+        let mut inbox = self.0.inbox.lock().unwrap();
+        inbox
+            .answers
+            .iter()
+            .position(|(i, _)| *i == id)
+            .map(|i| inbox.answers.remove(i).1)
+    }
     /// What rings the owning loop: the window's waker, set once it exists.
     pub fn set_wake(&self, wake: Wake) {
         *self.0.wake.lock().unwrap() = Some(wake);
@@ -86,6 +127,12 @@ impl Ops {
 
     /// Answers operation `id`, from any thread.
     pub fn answer(&self, id: u64, answer: Answer) {
+        if let Some(f) = self.0.observer.lock().unwrap().as_ref() {
+            match &answer {
+                Ok(v) => f("answer", id, Some(v)),
+                Err(e) => f("error", id, Some(&Value::Str(e.clone()))),
+            }
+        }
         self.0.inbox.lock().unwrap().answers.push((id, answer));
         self.ring();
     }
@@ -128,6 +175,9 @@ impl Ops {
     pub fn block_on(&self, id: u64) -> Answer {
         let mut inbox = self.0.inbox.lock().unwrap();
         loop {
+            if self.closed() {
+                return Err("[closed] app run ended".into());
+            }
             if let Some(i) = inbox.answers.iter().position(|(a, _)| *a == id) {
                 return inbox.answers.remove(i).1;
             }
@@ -148,10 +198,22 @@ impl Ops {
 /// returns: the shape of every blocking call (a request, a process, a
 /// sleep) the modules make.
 pub fn run(ops: &Ops, id: u64, work: impl FnOnce() -> Answer + Send + 'static) {
+    let target = ops.clone();
+    background(ops, move || {
+        let answer = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work))
+            .unwrap_or_else(|_| Err("[failed] operation panicked".into()));
+        target.answer(id, answer);
+    });
+}
+
+/// Case teardown also waits for process stream readers and exit waiters.
+pub fn background(ops: &Ops, work: impl FnOnce() + Send + 'static) {
     let ops = ops.clone();
+    ops.0.active.fetch_add(1, Ordering::AcqRel);
     std::thread::spawn(move || {
-        let answer = work();
-        ops.answer(id, answer);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
+        ops.0.active.fetch_sub(1, Ordering::AcqRel);
+        ops.0.ready.notify_all();
     });
 }
 

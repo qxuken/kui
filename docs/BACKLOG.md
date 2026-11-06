@@ -3781,18 +3781,6 @@ building order, step 4: the inspector needs it.
 through its description ("done" / "not done"). **Do.** `checked` on a
 `listItem` (and a `cell`) mapped to AccessKit's toggled state.
 
-### `.` C122 — A runner app has no test runner
-
-**Found** by the user (2026-10-26): an app's tests run as `kui run test
---headless`, a convention with no discovery, report, snapshots or CI
-output. **Do.** [ADR 0072](adr/0072-a-test-runner-for-kui-apps.md):
-`kui test` (discovery, a fresh headless runner per file, a report, exit
-code), `kui.test` (`describe` / `it`, the driving API, `expect`), four
-snapshots (`expect_tree`, `expect_quads`, `expect_shot`, `expect_table`)
-with `--update`, a fixed environment with bundled fonts, `--filter`,
-`--watch`, `--reporter junit`; the samples and the task list moved onto
-it.
-
 ### `.` C124 — An under-way progress track floods the Events tab with `layout`
 
 **Found** by the user in the Kit gallery with the devtools open
@@ -3830,15 +3818,6 @@ A lead from Kit's round (2026-10-26): a live line chart's y gutter eases
 (`transition 160`) whenever the glided range changes its widest label,
 which moves the plot's width each tick and fires `line_chart.layout` — a
 stream of layout events from the chart, not the progress track.
-
-### `.` C128 — A test UI for `kui test`
-
-**Filed** as ADR 0072's later follow-up (2026-10-26): Playwright's trace
-viewer in kui's terms — a devtools tab or `kui test --ui` that lists the
-tests, runs one and steps through it with the frame before and after each
-driving call, the events and messages it produced, the I/O it asked for,
-tree and snapshot diffs, and an optional perf recording. **Do.** After
-ADR 0072 is built.
 
 ### `~` C133 — The runner carries no playground
 

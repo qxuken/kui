@@ -223,11 +223,15 @@ struct Headless<A: App + ?Sized> {
     clipboard: String,
     /// Origin of the frame clock.
     epoch: Instant,
+    /// Explicit frame time for externally driven tests.
+    virtual_time: Option<f64>,
+    drawn_time: Option<f64>,
     /// Why the next frame is owed, `NONE` when none is.
     owed: FrameCause,
     /// When the last frame was drawn, for an animation's pace.
     drawn_at: Option<Instant>,
     frames: u64,
+    warnings: Vec<kui_core::diag::Warning>,
     /// What the app's `view_state` said after the last frame built with
     /// its view (backlog C138).
     view_state: Option<u64>,
@@ -300,9 +304,12 @@ impl Launcher {
             pinned_system: self.system,
             clipboard: String::new(),
             epoch: Instant::now(),
+            virtual_time: None,
+            drawn_time: None,
             owed: FrameCause::FIRST,
             drawn_at: None,
             frames: 0,
+            warnings: Vec::new(),
             view_state: None,
             ended: false,
             torn_down: false,
@@ -338,6 +345,45 @@ impl<A: App> HeadlessRunner<A> {
         let s = self.dyn_mut();
         let inbox = s.signal.take();
         s.turn(inbox)
+    }
+
+    /// Drives one complete frame at an explicit, monotonic time in seconds.
+    /// Input, extension events and app wakes follow the ordinary runner path.
+    /// This never waits for a wall-clock deadline; the caller owns pacing.
+    pub fn frame_at(&mut self, seconds: f64) -> Result<bool, String> {
+        self.drive_at(seconds, true)
+    }
+
+    /// Advances the explicit clock and handles pending work. Idle time does
+    /// not rebuild the view; animations and requested deadlines still draw.
+    pub fn turn_at(&mut self, seconds: f64) -> Result<bool, String> {
+        self.drive_at(seconds, false)
+    }
+
+    fn drive_at(&mut self, seconds: f64, force: bool) -> Result<bool, String> {
+        if !seconds.is_finite()
+            || seconds < 0.0
+            || self.inner.virtual_time.is_some_and(|last| seconds < last)
+        {
+            return Err("frame time must be finite, nonnegative and monotonic".into());
+        }
+        let s = self.dyn_mut();
+        s.virtual_time = Some(seconds);
+        s.core.set_time(seconds);
+        if force {
+            s.owe(FrameCause::HOST);
+        }
+        if s.core.next_frame_at().is_some_and(|due| due <= seconds) {
+            s.owe(FrameCause::WAKE);
+        }
+        if s.core.animating()
+            && s.drawn_time
+                .is_none_or(|last| seconds >= last + 1.0 / ANIMATION_HZ as f64)
+        {
+            s.owe(FrameCause::OWED);
+        }
+        let inbox = s.signal.take();
+        Ok(s.turn(inbox))
     }
 
     /// [`turn`](Self::turn), once there is something to turn for — input,
@@ -397,6 +443,11 @@ impl<A: App> HeadlessRunner<A> {
         self.inner.frames
     }
 
+    /// Diagnostics collected while driving frames, in delivery order.
+    pub fn take_warnings(&mut self) -> Vec<kui_core::diag::Warning> {
+        std::mem::take(&mut self.inner.warnings)
+    }
+
     /// Whether the run has ended.
     pub fn ended(&self) -> bool {
         self.inner.ended
@@ -449,7 +500,8 @@ fn drop_unsized(inner: Box<DynHeadless<'_>>) {
 
 impl DynHeadless<'_> {
     fn now(&self) -> f64 {
-        self.epoch.elapsed().as_secs_f64()
+        self.virtual_time
+            .unwrap_or_else(|| self.epoch.elapsed().as_secs_f64())
     }
 
     fn owe(&mut self, why: FrameCause) {
@@ -528,14 +580,18 @@ impl DynHeadless<'_> {
         }
         let now = Instant::now();
         // A time the view asked for, on the frame clock.
-        if let Some(at) = self.view_wants_at()
+        if self.virtual_time.is_none()
+            && let Some(at) = self.view_wants_at()
             && at <= now
         {
             self.owe(FrameCause::WAKE);
         }
         // An animation, at a display's pace.
         let gap = Duration::from_secs_f32(1.0 / ANIMATION_HZ);
-        if self.core.animating() && self.drawn_at.is_none_or(|t| now >= t + gap) {
+        if self.virtual_time.is_none()
+            && self.core.animating()
+            && self.drawn_at.is_none_or(|t| now >= t + gap)
+        {
             self.owe(FrameCause::OWED);
         }
         if self.owed != FrameCause::NONE {
@@ -571,6 +627,9 @@ impl DynHeadless<'_> {
     /// One input to the core, its events to the app, and what they asked
     /// for done.
     fn dispatch(&mut self, ev: InputEvent) {
+        if self.app.on_input(&ev) {
+            return;
+        }
         let why = cause_of(&ev);
         let t0 = Instant::now();
         let now = self.now();
@@ -648,6 +707,10 @@ impl DynHeadless<'_> {
                 "kui: warning [{}] node {:016x}: {}",
                 w.code, w.key.0, w.message
             );
+            if self.warnings.len() == 512 {
+                self.warnings.remove(0);
+            }
+            self.warnings.push(w);
         }
         // Drawn: what a renderer would read is read, so the frame's atlas
         // changes are the last ones and a capture finds the frame finished.
@@ -663,6 +726,7 @@ impl DynHeadless<'_> {
         });
         self.frames += 1;
         self.drawn_at = Some(Instant::now());
+        self.drawn_time = Some(self.now());
     }
 
     /// What follows a frame: what it asked for done, and the events it made
@@ -779,5 +843,31 @@ fn cause_of(ev: &InputEvent) -> FrameCause {
         InputEvent::Files(_) | InputEvent::Open(_) => FrameCause::FILES,
         InputEvent::Access(_) => FrameCause::ACCESS,
         _ => FrameCause::KEY,
+    }
+}
+
+#[cfg(test)]
+mod controlled_clock_tests {
+    use super::*;
+    struct ClockApp(Vec<f64>);
+    impl App for ClockApp {
+        fn view(&mut self, ui: &mut crate::Ui<'_>) {
+            self.0.push(ui.now());
+            ui.text("clock", crate::TextStyle::new(12.0));
+        }
+    }
+    #[test]
+    fn explicit_frames_own_time_and_reject_backwards_advancement() {
+        let mut runner =
+            crate::app("controlled clock").open_headless(ClockApp(Vec::new()), 100.0, 80.0, 1.0);
+        assert!(runner.frame_at(0.0).unwrap());
+        runner.frame_at(0.5).unwrap();
+        runner.frame_at(0.5).unwrap();
+        assert_eq!(runner.app_mut().0, vec![0.0, 0.5, 0.5]);
+        assert!(runner.frame_at(0.49).is_err());
+        assert!(runner.frame_at(f64::NAN).is_err());
+        runner.input().send(InputEvent::Text("x".into()));
+        runner.turn();
+        assert_eq!(runner.core_mut().now(), 0.5);
     }
 }

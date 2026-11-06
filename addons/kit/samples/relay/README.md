@@ -25,6 +25,6 @@ Kit here: `split` (both ways), `tabs` with trailing groups, `list`,
 ## Tests and pictures
 
 ```bash
-cd addons/kit/samples/relay && kui run test --headless    # real requests through update(); exit code = failures
-nu addons/kit/samples/shots.nu relay                        # shots/*.png from test/shot.lua and test/shots.nuon
+cd addons/kit/samples/relay && kui test    # real requests through update(); exit code = failures
+nu addons/kit/samples/shots.nu relay                        # shots/*.png from fixtures/shot.lua and test/shots.nuon
 ```

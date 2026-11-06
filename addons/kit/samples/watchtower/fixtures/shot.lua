@@ -1,6 +1,6 @@
 -- A picture of Watchtower: the fleet mid-incident, staged.
 --
---   kui run test/shot.lua --shot shots/watchtower.png --after 1500 --size 1320x880 -- [skin] [state]
+--   kui run fixtures/shot.lua --shot shots/watchtower.png --after 1500 --size 1320x880 -- [skin] [state]
 --
 -- `skin` is ledger, neutral or phosphor; `state` one of overview,
 -- attention, restart, scale, errors, spread, empty, live (the timer left on).

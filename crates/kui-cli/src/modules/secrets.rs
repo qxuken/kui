@@ -20,11 +20,38 @@ use super::{fail, shared, try_fn};
 
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let t = lua.create_table()?;
-    t.set("store", store_name())?;
+    t.set(
+        "store",
+        if shared(lua).run.testing {
+            "memory"
+        } else {
+            store_name()
+        },
+    )?;
     t.set(
         "__try_get",
         try_fn(lua, |lua, (name, opts): (String, Option<Table>)| {
-            let service = service(&name, opts)?;
+            let service = service(lua, &name, opts)?;
+            crate::effects::check(
+                lua,
+                "secrets",
+                "get",
+                serde_json::json!({"service":service,"name":name}),
+            )?;
+            if shared(lua).run.testing {
+                let s = shared(lua);
+                let id = s.ops.id();
+                let v = s
+                    .run
+                    .secrets
+                    .lock()
+                    .unwrap()
+                    .get(&(service, name))
+                    .cloned()
+                    .map_or(Value::Null, Value::Str);
+                crate::effects::complete(&s, id, 0.0, Ok(v));
+                return Ok(id);
+            }
             Ok(off_frame(lua, move || {
                 match entry(&service, &name)?.get_password() {
                     Ok(v) => Ok(Value::Str(v)),
@@ -39,7 +66,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         try_fn(
             lua,
             |lua, (name, value, opts): (String, mlua::LuaString, Option<Table>)| {
-                let service = service(&name, opts)?;
+                let service = service(lua, &name, opts)?;
                 let value = value
                     .to_str()
                     .map_err(|_| {
@@ -49,6 +76,19 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                         )
                     })?
                     .to_string();
+                crate::effects::check(
+                    lua,
+                    "secrets",
+                    "set",
+                    serde_json::json!({"service":service,"name":name}),
+                )?;
+                if shared(lua).run.testing {
+                    let s = shared(lua);
+                    let id = s.ops.id();
+                    s.run.secrets.lock().unwrap().insert((service, name), value);
+                    crate::effects::complete(&s, id, 0.0, Ok(Value::Null));
+                    return Ok(id);
+                }
                 Ok(off_frame(lua, move || {
                     entry(&service, &name)?
                         .set_password(&value)
@@ -61,7 +101,26 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     t.set(
         "__try_delete",
         try_fn(lua, |lua, (name, opts): (String, Option<Table>)| {
-            let service = service(&name, opts)?;
+            let service = service(lua, &name, opts)?;
+            crate::effects::check(
+                lua,
+                "secrets",
+                "delete",
+                serde_json::json!({"service":service,"name":name}),
+            )?;
+            if shared(lua).run.testing {
+                let s = shared(lua);
+                let id = s.ops.id();
+                let removed = s
+                    .run
+                    .secrets
+                    .lock()
+                    .unwrap()
+                    .remove(&(service, name))
+                    .is_some();
+                crate::effects::complete(&s, id, 0.0, Ok(Value::Bool(removed)));
+                return Ok(id);
+            }
             Ok(off_frame(lua, move || {
                 match entry(&service, &name)?.delete_credential() {
                     Ok(()) => Ok(Value::Bool(true)),
@@ -76,7 +135,19 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     t.set(
         "__try_probe",
         try_fn(lua, |lua, opts: Option<Table>| {
-            let service = service("probe", opts)?;
+            let service = service(lua, "probe", opts)?;
+            crate::effects::check(
+                lua,
+                "secrets",
+                "probe",
+                serde_json::json!({"service":service}),
+            )?;
+            if shared(lua).run.testing {
+                let s = shared(lua);
+                let id = s.ops.id();
+                crate::effects::complete(&s, id, 0.0, Ok(Value::Bool(true)));
+                return Ok(id);
+            }
             Ok(off_frame(lua, move || {
                 let e = entry(&service, "kui.secrets.probe")?;
                 e.set_password("probe").map_err(message)?;
@@ -96,7 +167,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
 }
 
 /// The service a secret is filed under: `opts.service`, else the app's id.
-fn service(name: &str, opts: Option<Table>) -> mlua::Result<String> {
+fn service(lua: &Lua, name: &str, opts: Option<Table>) -> mlua::Result<String> {
     if name.is_empty() {
         return Err(fail("[invalid] secrets: a secret needs a name".into()));
     }
@@ -107,7 +178,10 @@ fn service(name: &str, opts: Option<Table>) -> mlua::Result<String> {
     {
         return Ok(s);
     }
-    Ok(super::app()
+    Ok(shared(lua)
+        .run
+        .app
+        .as_ref()
         .map(|a| a.id.clone())
         .filter(|id| !id.is_empty())
         .unwrap_or_else(|| "kui".into()))

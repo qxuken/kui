@@ -18,6 +18,7 @@ use super::{Shared, fail, shared, try_fn};
 pub struct Handle {
     ops: Ops,
     stop: Arc<AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
 }
 
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
@@ -42,26 +43,35 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 .parent()
                 .map(|d| d.to_path_buf())
                 .unwrap_or_else(|| app.dir.clone());
-            let inner = Shared::new(dir, Some((id, app.ops.clone())));
+            let inner = Shared::in_run(dir, Some((id, app.ops.clone())), app.run.clone());
             let stop = Arc::new(AtomicBool::new(false));
             app.workers.lock().unwrap().insert(
                 id,
                 Handle {
                     ops: inner.ops.clone(),
                     stop: stop.clone(),
+                    join: None,
                 },
             );
             let to_app = app.ops.clone();
-            std::thread::Builder::new()
+            let join = std::thread::Builder::new()
                 .name(format!(
                     "kui-worker-{}",
                     file.file_stem().unwrap_or_default().to_string_lossy()
                 ))
                 .spawn(move || {
-                    let error = run(&file, inner, &stop).err();
+                    let result = run(&file, inner, &stop);
+                    let error = if stop.load(Ordering::Relaxed) {
+                        None
+                    } else {
+                        result.err()
+                    };
                     to_app.send(Inbound::WorkerExit { id, error });
                 })
                 .map_err(|e| fail(format!("kui.worker: {e}")))?;
+            if let Some(handle) = app.workers.lock().unwrap().get_mut(&id) {
+                handle.join = Some(join);
+            }
             Ok(id)
         })?,
     )?;
@@ -81,7 +91,10 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         lua.create_function(|lua, id: u64| {
             if let Some(w) = shared(lua).workers.lock().unwrap().remove(&id) {
                 w.stop.store(true, Ordering::Relaxed);
-                w.ops.poke();
+                w.ops.close();
+                if let Some(join) = w.join {
+                    let _ = join.join();
+                }
             }
             Ok(())
         })?,
@@ -106,8 +119,30 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
 /// The worker's life: its state built, its module run, then its inbox
 /// drained until it is stopped, or has nothing left to do — no
 /// `on_message` to wait for and no task waiting.
-fn run(file: &std::path::Path, shared: Arc<Shared>, stop: &AtomicBool) -> Result<(), String> {
+fn run(file: &std::path::Path, shared: Arc<Shared>, stop: &Arc<AtomicBool>) -> Result<(), String> {
+    struct Descendants<'a>(&'a Shared);
+    impl Drop for Descendants<'_> {
+        fn drop(&mut self) {
+            stop_all(self.0);
+        }
+    }
+    let _descendants = Descendants(&shared);
     let lua = Lua::new();
+    let stop_hook = stop.clone();
+    lua.set_global_hook(
+        mlua::HookTriggers {
+            every_nth_instruction: Some(10000),
+            ..Default::default()
+        },
+        move |_, _| {
+            if stop_hook.load(Ordering::Relaxed) {
+                Err(mlua::Error::runtime("worker stopped"))
+            } else {
+                Ok(mlua::VmState::Continue)
+            }
+        },
+    )
+    .map_err(|e| e.to_string())?;
     let setup = || -> mlua::Result<()> {
         kui_lua::install_data(&lua)?;
         crate::project::add_path(&lua, &shared.dir)?;
@@ -122,6 +157,11 @@ fn run(file: &std::path::Path, shared: Arc<Shared>, stop: &AtomicBool) -> Result
             .exec()
     };
     setup().map_err(|e| e.to_string())?;
+    lua.globals()
+        .get::<Table>("kui")
+        .and_then(|k| k.get::<mlua::Function>("__instrument"))
+        .and_then(|f| f.call::<()>(()))
+        .map_err(|e| e.to_string())?;
     let listens = lua
         .globals()
         .get::<mlua::Value>("on_message")
@@ -143,5 +183,36 @@ fn run(file: &std::path::Path, shared: Arc<Shared>, stop: &AtomicBool) -> Result
             return Ok(());
         }
         shared.ops.wait_any(Duration::from_millis(250));
+    }
+}
+
+/// Stop and join owned workers before a case's resources disappear.
+pub fn stop_all(shared: &Shared) {
+    let workers = shared
+        .workers
+        .lock()
+        .unwrap()
+        .drain()
+        .map(|(_, w)| w)
+        .collect::<Vec<_>>();
+    for w in &workers {
+        w.stop.store(true, Ordering::Relaxed);
+        w.ops.close();
+    }
+    // Run shutdown cancels shared clients; a worker's normal exit must not
+    // close clients still used by its app and siblings.
+    if shared.run.closed.load(Ordering::Relaxed) {
+        super::http::shutdown(&shared.run.http);
+        for client in shared.run.clients.lock().unwrap().iter() {
+            super::http::shutdown(client);
+        }
+    }
+    for w in workers {
+        if let Some(join) = w.join {
+            let _ = join.join();
+        }
+        if shared.run.testing && !w.ops.wait_idle(Duration::from_secs(5)) {
+            shared.error("worker operations did not stop during teardown".into());
+        }
     }
 }
