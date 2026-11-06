@@ -35,6 +35,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "try_read",
         try_fn(lua, |lua, path: String| {
             let p = shared(lua).path(&path);
+            crate::effects::check(
+                lua,
+                "fs",
+                "read",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             let bytes = std::fs::read(&p).map_err(|e| io(&p, e))?;
             lua.create_string(bytes)
         })?,
@@ -43,6 +49,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "try_write",
         try_fn(lua, |lua, (path, data): (String, mlua::LuaString)| {
             let p = writable(lua, &path)?;
+            crate::effects::check(
+                lua,
+                "fs",
+                "write",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             if let Some(dir) = p.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
             }
@@ -56,6 +68,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         try_fn(lua, |lua, (path, data): (String, mlua::LuaString)| {
             use std::io::Write;
             let p = writable(lua, &path)?;
+            crate::effects::check(
+                lua,
+                "fs",
+                "create",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             if let Some(dir) = p.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
             }
@@ -78,6 +96,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         try_fn(lua, |lua, (path, data): (String, mlua::LuaString)| {
             use std::io::Write;
             let p = writable(lua, &path)?;
+            crate::effects::check(
+                lua,
+                "fs",
+                "append",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             let mut f = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -88,12 +112,27 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     )?;
     fs.set(
         "exists",
-        lua.create_function(|lua, path: String| Ok(shared(lua).path(&path).exists()))?,
+        lua.create_function(|lua, path: String| {
+            let p = shared(lua).path(&path);
+            crate::effects::check(
+                lua,
+                "fs",
+                "exists",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
+            Ok(p.exists())
+        })?,
     )?;
     fs.set(
         "try_list",
         try_fn(lua, |lua, path: Option<String>| {
             let p = shared(lua).path(path.as_deref().unwrap_or("."));
+            crate::effects::check(
+                lua,
+                "fs",
+                "list",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             let mut names: Vec<String> = std::fs::read_dir(&p)
                 .map_err(|e| io(&p, e))?
                 .filter_map(|e| e.ok())
@@ -107,6 +146,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "stat",
         lua.create_function(|lua, path: String| {
             let p = shared(lua).path(&path);
+            crate::effects::check(
+                lua,
+                "fs",
+                "stat",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             let Ok(m) = std::fs::metadata(&p) else {
                 return Ok(mlua::Value::Nil);
             };
@@ -126,6 +171,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "try_mkdir",
         try_fn(lua, |lua, path: String| {
             let p = writable(lua, &path)?;
+            crate::effects::check(
+                lua,
+                "fs",
+                "mkdir",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             std::fs::create_dir_all(&p).map_err(|e| io(&p, e))
         })?,
     )?;
@@ -133,6 +184,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "try_remove",
         try_fn(lua, |lua, path: String| {
             let p = writable(lua, &path)?;
+            crate::effects::check(
+                lua,
+                "fs",
+                "remove",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             if p.is_dir() {
                 std::fs::remove_dir_all(&p).map_err(|e| io(&p, e))
             } else {
@@ -144,6 +201,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "try_rename",
         try_fn(lua, |lua, (from, to): (String, String)| {
             let (a, b) = (writable(lua, &from)?, writable(lua, &to)?);
+            crate::effects::check(
+                lua,
+                "fs",
+                "rename",
+                serde_json::json!({"path":a.to_string_lossy(),"to":b.to_string_lossy()}),
+            )?;
             std::fs::rename(&a, &b).map_err(|e| io(&a, e))
         })?,
     )?;
@@ -151,6 +214,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "try_lines",
         try_fn(lua, |lua, path: String| {
             let p = shared(lua).path(&path);
+            crate::effects::check(
+                lua,
+                "fs",
+                "lines",
+                serde_json::json!({"path":p.to_string_lossy()}),
+            )?;
             let text = std::fs::read_to_string(&p).map_err(|e| io(&p, e))?;
             lua.create_sequence_from(text.lines().map(str::to_string).collect::<Vec<_>>())
         })?,
@@ -163,6 +232,12 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         try_fn(lua, |lua, (dir, opts): (Option<String>, Option<Table>)| {
             let s = shared(lua);
             let root = s.path(dir.as_deref().unwrap_or("."));
+            crate::effects::check(
+                lua,
+                "fs",
+                "walk",
+                serde_json::json!({"path":root.to_string_lossy()}),
+            )?;
             let mut skip: Vec<String> = vec![".git".into(), "node_modules".into()];
             let mut pattern: Option<String> = None;
             let mut dirs = false;
@@ -191,6 +266,14 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         lua.create_function(|lua, paths: Vec<String>| {
             let s = shared(lua);
             let full: Vec<std::path::PathBuf> = paths.iter().map(|p| s.path(p)).collect();
+            for p in &full {
+                crate::effects::check(
+                    lua,
+                    "fs",
+                    "read_all",
+                    serde_json::json!({"path":p.to_string_lossy()}),
+                )?;
+            }
             let id = s.ops.id();
             crate::ops::run(&s.ops, id, move || {
                 Ok(kui_core::Value::List(
@@ -205,6 +288,72 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             Ok(id)
         })?,
     )?;
+    for (name, directory) in [("temp_dir", true), ("temp_file", false)] {
+        fs.set(
+            format!("try_{name}"),
+            try_fn(lua, move |lua, opts: Option<Table>| {
+                let s = shared(lua);
+                let prefix = opts
+                    .as_ref()
+                    .map(|o| o.get::<Option<String>>("prefix"))
+                    .transpose()?
+                    .flatten()
+                    .unwrap_or_else(|| "kui-".into());
+                let suffix = opts
+                    .as_ref()
+                    .map(|o| o.get::<Option<String>>("suffix"))
+                    .transpose()?
+                    .flatten()
+                    .unwrap_or_default();
+                if prefix.contains(['/', '\\']) || suffix.contains(['/', '\\']) {
+                    return Err(fail_as(
+                        "invalid",
+                        "temporary prefix/suffix must not contain path separators",
+                    ));
+                }
+                let keep = opts
+                    .as_ref()
+                    .map(|o| o.get::<Option<bool>>("keep"))
+                    .transpose()?
+                    .flatten()
+                    .unwrap_or(false);
+                let explicit = opts
+                    .as_ref()
+                    .map(|o| o.get::<Option<String>>("dir"))
+                    .transpose()?
+                    .flatten();
+                let root = explicit
+                    .map(|p| s.path(&p))
+                    .or_else(|| {
+                        if keep {
+                            None
+                        } else {
+                            s.run.temporary_root.clone()
+                        }
+                    })
+                    .unwrap_or_else(std::env::temp_dir);
+                std::fs::create_dir_all(&root).map_err(|e| io(&root, e))?;
+                let mut builder = tempfile::Builder::new();
+                builder.prefix(&prefix).suffix(&suffix);
+                let path = if directory {
+                    builder.tempdir_in(&root).map_err(|e| io(&root, e))?.keep()
+                } else {
+                    builder
+                        .tempfile_in(&root)
+                        .map_err(|e| io(&root, e))?
+                        .into_temp_path()
+                        .keep()
+                        .map_err(|e| io(&root, e.error))?
+                };
+                if !keep {
+                    s.run.temporary.lock().unwrap().push(path.clone());
+                } else {
+                    s.run.retain(path.clone()).map_err(mlua::Error::runtime)?;
+                }
+                Ok(path.to_string_lossy().into_owned())
+            })?,
+        )?;
+    }
     kui.set("fs", fs)?;
     Ok(())
 }

@@ -6,22 +6,23 @@
 //! frame, in the order made. A windowed run has the user for this, and
 //! the calls say so.
 
-use std::sync::OnceLock;
-
 use kui_native::{HeadlessInput, InputEvent, KeyCode, KeyMods, KeyPress, Vec2};
 use mlua::{Lua, Table};
 
-static INPUT: OnceLock<HeadlessInput> = OnceLock::new();
-
 /// The headless runner's input, set once it is open.
-pub fn set(input: HeadlessInput) {
-    let _ = INPUT.set(input);
+pub fn set(shared: &super::Shared, input: HeadlessInput) {
+    *shared.input.lock().unwrap() = Some(input);
 }
 
-fn input() -> mlua::Result<&'static HeadlessInput> {
-    INPUT.get().ok_or_else(|| {
-        mlua::Error::runtime("kui.input drives a headless run only (kui run --headless)")
-    })
+fn input(lua: &Lua) -> mlua::Result<HeadlessInput> {
+    super::shared(lua)
+        .input
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| {
+            mlua::Error::runtime("kui.input drives a headless run only (kui run --headless)")
+        })
 }
 
 fn mods(t: Option<Table>) -> mlua::Result<KeyMods> {
@@ -45,8 +46,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     // modifier is held), the editor event it means, the release.
     t.set(
         "key",
-        lua.create_function(|_, (name, m): (String, Option<Table>)| {
-            let input = input()?;
+        lua.create_function(|lua, (name, m): (String, Option<Table>)| {
+            let input = input(lua)?;
             let code = KeyCode::from_name(&name).ok_or_else(|| {
                 mlua::Error::runtime(format!("kui.input.key: no key named {name:?}"))
             })?;
@@ -69,8 +70,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     // `move(x, y)`: the pointer to a point of the window, nothing pressed.
     t.set(
         "move",
-        lua.create_function(|_, (x, y): (f32, f32)| {
-            input()?.send(InputEvent::CursorMoved(Vec2::new(x, y)));
+        lua.create_function(|lua, (x, y): (f32, f32)| {
+            input(lua)?.send(InputEvent::CursorMoved(Vec2::new(x, y)));
             Ok(())
         })?,
     )?;
@@ -78,8 +79,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     // released.
     t.set(
         "click",
-        lua.create_function(|_, (x, y): (f32, f32)| {
-            let input = input()?;
+        lua.create_function(|lua, (x, y): (f32, f32)| {
+            let input = input(lua)?;
             input.send(InputEvent::CursorMoved(Vec2::new(x, y)));
             input.send(InputEvent::mouse_down(1));
             input.send(InputEvent::mouse_up());
@@ -89,8 +90,8 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     // `text(s)`: typed text, as the OS delivers it to the focused editor.
     t.set(
         "text",
-        lua.create_function(|_, s: String| {
-            input()?.send(InputEvent::Text(s));
+        lua.create_function(|lua, s: String| {
+            input(lua)?.send(InputEvent::Text(s));
             Ok(())
         })?,
     )?;

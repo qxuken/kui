@@ -102,8 +102,12 @@ pub(crate) struct SessionState {
 
 impl SessionState {
     fn new() -> Self {
-        let id = SessionId::next();
         let (fonts, system) = crate::text::new_font_system();
+        Self::with_fonts(fonts, system)
+    }
+
+    fn with_fonts(fonts: FontSystem, system: Arc<crate::text::SystemFonts>) -> Self {
+        let id = SessionId::next();
         Self {
             id,
             fonts,
@@ -494,6 +498,21 @@ pub struct Session(Rc<RefCell<SessionState>>);
 impl Session {
     pub fn new() -> Self {
         Self(Rc::new(RefCell::new(SessionState::new())))
+    }
+
+    /// A session using only the supplied font files, without scanning the OS.
+    /// Useful for reproducible rendering and applications with bundled fonts.
+    /// Generic family names are pinned after validating the supplied faces.
+    pub fn with_fonts(locale: &str, files: impl IntoIterator<Item = Vec<u8>>) -> Self {
+        let mut db = cosmic_text::fontdb::Database::new();
+        for bytes in files {
+            db.load_font_data(bytes);
+        }
+        let system = Arc::new(crate::text::SystemFonts::from_db(locale.into(), db));
+        let fonts = crate::text::font_system_over(locale.into(), system.db.clone(), &[]);
+        Self(Rc::new(RefCell::new(SessionState::with_fonts(
+            fonts, system,
+        ))))
     }
 
     /// The name the window `id` was declared under, while the session

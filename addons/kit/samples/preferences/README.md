@@ -24,6 +24,6 @@ Kit here: `switch`, `slider`, `select`, `radio_group`, `segmented`,
 ## Tests and pictures
 
 ```bash
-cd addons/kit/samples/preferences && kui run test --headless    # a temp TOML file, saved and read back
+cd addons/kit/samples/preferences && kui test    # a temp TOML file, saved and read back
 nu addons/kit/samples/shots.nu preferences
 ```

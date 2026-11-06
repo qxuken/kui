@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # Draws the samples' pictures into each sample's shots/ folder, from each
-# sample's test/shot.lua and the list in its test/shots.nuon:
+# sample's fixtures/shot.lua and the list in its test/shots.nuon:
 #
 #   nu addons/kit/samples/shots.nu              every sample
 #   nu addons/kit/samples/shots.nu relay        one
@@ -27,7 +27,7 @@ def main [
     for s in (open ($dir | path join "test" "shots.nuon")) {
       let png = $dest | path join $"($s.name).png"
       let appearance = ($s | get -o appearance | default "dark")
-      let r = (do { ^$bin run ($dir | path join "test" "shot.lua") --shot $png --after ($s.after | into string) --size $s.size --appearance $appearance -- ...$s.args } | complete)
+      let r = (do { ^$bin run ($dir | path join "fixtures" "shot.lua") --shot $png --after ($s.after | into string) --size $s.size --appearance $appearance -- ...$s.args } | complete)
       let said = ($r.stdout + $r.stderr) | lines | where { |l| not ($l | str starts-with "kui: wrote") }
       if $r.exit_code != 0 or ($said | is-not-empty) {
         print $"($name)/($s.name): exit ($r.exit_code)"

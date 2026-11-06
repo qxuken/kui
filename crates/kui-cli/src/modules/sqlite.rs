@@ -150,6 +150,12 @@ impl UserData for Db {
                 name,
                 move |lua, this, (sql, params): (String, Option<mlua::Value>)| {
                     let start = || {
+                        crate::effects::check(
+                            lua,
+                            "sqlite",
+                            if write { "exec" } else { "query" },
+                            serde_json::json!({"sql":sql}),
+                        )?;
                         let params = match params {
                             Some(p) => kui_lua::lua_to_value(&p)?,
                             None => Value::Null,
@@ -182,6 +188,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         try_fn(lua, |lua, path: Option<String>| {
             let s = shared(lua);
             let target = path.as_deref().unwrap_or(":memory:");
+            crate::effects::check(lua, "sqlite", "open", serde_json::json!({"path":target}))?;
             let conn = if target == ":memory:" {
                 rusqlite::Connection::open_in_memory()
             } else {
@@ -191,16 +198,32 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 fail(sql_err(e).replacen("] ", &format!("] sqlite.open {target}: "), 1))
             })?;
             let _ = conn.pragma_update(None, "journal_mode", "WAL");
+            s.run
+                .databases
+                .lock()
+                .unwrap()
+                .push(conn.get_interrupt_handle());
+            let run = std::sync::Arc::downgrade(&s.run);
             let (tx, rx) = mpsc::channel::<Job>();
-            std::thread::Builder::new()
+            let thread = std::thread::Builder::new()
                 .name("kui-sqlite".into())
                 .spawn(move || {
                     let mut conn = conn;
-                    for job in rx {
-                        job(&mut conn);
+                    while run
+                        .upgrade()
+                        .is_some_and(|r| !r.closed.load(std::sync::atomic::Ordering::Relaxed))
+                    {
+                        match rx.recv_timeout(std::time::Duration::from_millis(20)) {
+                            Ok(job) => job(&mut conn),
+                            Err(mpsc::RecvTimeoutError::Timeout) => {}
+                            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                        }
                     }
                 })
                 .map_err(|e| fail(format!("sqlite.open: {e}")))?;
+            if s.run.testing {
+                s.run.background.lock().unwrap().push(thread);
+            }
             Ok(Db {
                 jobs: tx,
                 ops: s.ops.clone(),

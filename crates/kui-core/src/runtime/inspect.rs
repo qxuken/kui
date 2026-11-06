@@ -46,7 +46,7 @@ impl NodeKind {
 }
 
 /// One node of the last finished frame.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NodeInfo {
     pub key: Key,
     pub parent: Option<Key>,
@@ -581,6 +581,65 @@ impl Core {
             }
         }
         out
+    }
+
+    /// Inspection with complete visible text, for assertions and stored history.
+    pub fn nodes_full(&self) -> Vec<NodeInfo> {
+        let mut nodes = self.nodes();
+        for node in &mut nodes {
+            if let Some(text) = self.text_of(node.key) {
+                node.text = Some(text);
+            }
+        }
+        nodes
+    }
+
+    /// Full visible text of a node from the finished frame. Concealed
+    /// editors return the text shown to the user, never their secret.
+    pub fn text_of(&self, key: Key) -> Option<String> {
+        let i = self.tree.keys.iter().position(|k| *k == key)?;
+        match self.tree.content[i] {
+            NodeContent::Text(id) => Some(self.text.content(id).to_string()),
+            NodeContent::Edit(_) => self.edit.shown_text(key),
+            _ => None,
+        }
+    }
+
+    /// Inspectable core state for a historical frame, without runtime handles.
+    pub fn inspection_state(&self) -> Value {
+        let editors = self
+            .snapshot()
+            .iter()
+            .filter_map(|node| {
+                let text = self.edit.shown_text(node.key)?;
+                let selection = self.edit.caret_and_selection(node.key);
+                Some(Value::map([
+                    ("key", Value::Str(format!("{:016x}", node.key.0))),
+                    ("text", Value::Str(text)),
+                    (
+                        "caret",
+                        selection.map_or(Value::Null, |v| Value::Int(v.0 as i64)),
+                    ),
+                    (
+                        "selection",
+                        selection.and_then(|v| v.1).map_or(Value::Null, |v| {
+                            Value::List(vec![Value::Int(v.0 as i64), Value::Int(v.1 as i64)])
+                        }),
+                    ),
+                ]))
+            })
+            .collect::<Vec<_>>();
+        Value::map([
+            (
+                "focus",
+                self.focus()
+                    .map_or(Value::Null, |k| Value::Str(format!("{:016x}", k.0))),
+            ),
+            ("focus_visible", Value::Bool(self.focus_visible())),
+            ("time", Value::Float(self.now())),
+            ("editors", Value::List(editors)),
+            ("animations", self.anim.inspection_state()),
+        ])
     }
 
     /// The snapshot as kept: rects in window px, which is what the

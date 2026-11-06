@@ -82,6 +82,9 @@ pub fn load_app(
 fn init(lua: &Lua) -> mlua::Result<()> {
     let g = lua.globals();
     g.get::<mlua::Table>("kui")?
+        .get::<mlua::Function>("__instrument")?
+        .call::<()>(())?;
+    g.get::<mlua::Table>("kui")?
         .get::<mlua::Function>("__wrap_view")?
         .call::<()>(())?;
     if g.get::<mlua::Value>("model")?.is_nil()
@@ -591,11 +594,12 @@ impl App for Runner {
         if let Ok(f) = self.lua.globals().get::<mlua::Function>("on_exit")
             && let Err(e) = f.call::<()>(())
         {
-            eprintln!("kui: on_exit: {e}");
+            if self.shared.run.testing {
+                self.shared.error(format!("on_exit: {e}"));
+            } else {
+                eprintln!("kui: on_exit: {e}");
+            }
         }
-        self.shared.children.kill_all();
-        for (_, s) in self.shared.servers.lock().unwrap().drain() {
-            drop(s);
-        }
+        self.shared.shutdown();
     }
 }

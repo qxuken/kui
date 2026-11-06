@@ -97,6 +97,9 @@ const RUNNER_META: &str = include_str!("lua/runner_meta.lua");
 /// reads one part written.
 pub fn write_types(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir.join("kit"))?;
+    std::fs::create_dir_all(dir.join("kui"))?;
+    write_whole(&dir.join("kui/test.d.tl"), include_str!("lua/test.d.tl"))?;
+    write_whole(&dir.join("kui/test.lua"), include_str!("lua/test_meta.lua"))?;
     write_whole(&dir.join("kui.d.tl"), &kui_decls())?;
     write_whole(&dir.join("kit").join("ui.d.tl"), KIT_DECLS)?;
     write_whole(&dir.join("kui.lua"), KUI_META)?;

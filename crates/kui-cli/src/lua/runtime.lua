@@ -48,6 +48,7 @@ end
 local function step(co, ...)
   local outer = current
   current = co
+  kui.__record('task_resume',{task=tostring(co),args=table.pack(...)})
   local ok, id = coroutine.resume(co, ...)
   current = outer
   if not ok then
@@ -57,6 +58,7 @@ local function step(co, ...)
   if coroutine.status(co) == "dead" then return end
   if math.type(id) == "integer" then
     waiting[id] = co
+    kui.__record('task_wait',{task=tostring(co),operation=id})
   else
     kui.__task_error("a task yielded something other than a kui call's wait; use coroutines of your own inside it, not around kui calls")
   end
@@ -637,7 +639,7 @@ plain(kui.secrets, { "get", "set", "delete" })
 plain(kui.json, { "decode", "encode" })
 plain(kui.toml, { "decode", "encode" })
 plain(kui.yaml, { "decode", "encode" })
-plain(kui.fs, { "read", "write", "append", "create", "list", "lines", "walk", "mkdir", "remove", "rename" })
+plain(kui.fs, { "read", "write", "append", "create", "temp_dir", "temp_file", "list", "lines", "walk", "mkdir", "remove", "rename" })
 plain(kui.process, { "run", "spawn" })
 plain(kui.http, { "client", "configure", "request", "get", "post", "put", "patch", "delete", "head", "serve" })
 plain(kui.sqlite, { "open" })

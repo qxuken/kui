@@ -602,6 +602,45 @@ pub struct AnimStore {
 }
 
 impl AnimStore {
+    /// Current tween values and trajectories for diagnostics and recorded history.
+    pub fn inspection_state(&self) -> crate::Value {
+        use crate::Value;
+        let mut rows = Vec::new();
+        let mut add = |key: Key, slot: String, t: &Tween| {
+            rows.push(Value::map([
+                ("key", Value::Str(format!("{:016x}", key.0))),
+                ("slot", Value::Str(slot)),
+                ("from", Value::floats(&t.from)),
+                ("to", Value::floats(&t.to)),
+                ("value", Value::floats(&t.value)),
+                ("velocity", Value::floats(&t.velocity)),
+                ("start", Value::Float(t.start)),
+                ("duration_ms", Value::float(t.duration_ms)),
+            ]))
+        };
+        for (&key, slots) in &self.tweens {
+            for (i, tween) in slots.iter().enumerate() {
+                if let Some(t) = tween {
+                    add(key, i.to_string(), t);
+                }
+            }
+        }
+        for (&key, tween) in &self.turns {
+            if let Some(t) = tween {
+                add(key, "turn".into(), t);
+            }
+        }
+        for (&key, tween) in &self.stretches {
+            if let Some(t) = tween {
+                add(key, "stretch".into(), t);
+            }
+        }
+        rows.sort_by(|a, b| {
+            (a.get_str("key"), a.get_str("slot")).cmp(&(b.get_str("key"), b.get_str("slot")))
+        });
+        Value::List(rows)
+    }
+
     /// Sets the frame clock (monotonic seconds, any origin). Drivers call it
     /// before each frame; never calling it means transitions snap.
     pub fn set_time(&mut self, now_secs: f64) {

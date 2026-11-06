@@ -2,6 +2,7 @@ return {
   name = "Field Notes",
   id = "dev.kui.samples.field-notes",
   version = "1.0.0",
+  pack = { exclude = { "fixtures/**" } },
   entry = "main.lua",
   size = { w = 1180, h = 760 },
   -- three panes: below this the editor's title row and checklist crowd

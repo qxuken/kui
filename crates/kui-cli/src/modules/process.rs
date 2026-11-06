@@ -20,6 +20,8 @@ use crate::ops::{self, Ops};
 
 use super::{fail, shared, tried, try_fn};
 
+mod mock;
+
 struct Opts {
     cwd: Option<std::path::PathBuf>,
     env: Vec<(String, String)>,
@@ -58,6 +60,9 @@ fn command(
         }
         o.group = t.get::<Option<bool>>("group")?.unwrap_or(false);
         o.detach = t.get::<Option<bool>>("detach")?.unwrap_or(false);
+    }
+    if s.run.testing {
+        o.group = true;
     }
     #[cfg(unix)]
     if o.group {
@@ -109,21 +114,33 @@ struct Proc {
 
 /// The processes that end with the app, by pid: each with whether it
 /// leads a group.
+#[derive(Default, Clone)]
+pub struct Children(Arc<Mutex<OwnedChildren>>);
 #[derive(Default)]
-pub struct Children(Mutex<HashMap<u32, bool>>);
+struct OwnedChildren {
+    closed: bool,
+    pids: HashMap<u32, bool>,
+}
 
 impl Children {
     fn add(&self, pid: u32, group: bool) {
-        self.0.lock().unwrap().insert(pid, group);
+        let mut state = self.0.lock().unwrap();
+        if state.closed {
+            let _ = signal(pid, "kill", group);
+        } else {
+            state.pids.insert(pid, group);
+        }
     }
 
     fn remove(&self, pid: u32) {
-        self.0.lock().unwrap().remove(&pid);
+        self.0.lock().unwrap().pids.remove(&pid);
     }
 
     /// Ends every one still running, groups whole.
     pub fn kill_all(&self) {
-        for (pid, group) in self.0.lock().unwrap().drain() {
+        let mut state = self.0.lock().unwrap();
+        state.closed = true;
+        for (pid, group) in state.pids.drain() {
             let _ = signal(pid, "kill", group);
         }
     }
@@ -256,7 +273,8 @@ fn answer_line(ops: &Ops, id: u64, line: Option<String>) {
 }
 
 fn reader(ops: Ops, state: Arc<Mutex<State>>, src: impl std::io::Read + Send + 'static, err: bool) {
-    std::thread::spawn(move || {
+    let tracked = ops.clone();
+    ops::background(&tracked, move || {
         let mut r = BufReader::new(src);
         let mut buf = Vec::new();
         loop {
@@ -363,6 +381,15 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 let (mut c, o) = command(lua, &cmd, args, opts)?;
                 let s = shared(lua);
                 let id = s.ops.id();
+                let call=serde_json::json!({"command":cmd,"args":c.get_args().map(|a|a.to_string_lossy().into_owned()).collect::<Vec<_>>()});
+                s.run.record("process",s.worker.as_ref().map(|w|w.0),serde_json::json!({"id":id,"request":call}));
+                if let Some(rule)=s.run.effects.intercept("process","run",&call).map_err(mlua::Error::runtime)? {
+                    let delay=rule.get("delay").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+                    crate::effects::complete(&s,id,delay,crate::effects::process_result(&rule));
+                    return Ok(id);
+                }
+                let children=s.children.clone();
+                let testing=s.run.testing;
                 ops::run(&s.ops, id, move || {
                     environment(&mut c, &o);
                     c.stdin(if o.stdin.is_some() {
@@ -373,14 +400,16 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                     c.stdout(Stdio::piped()).stderr(Stdio::piped());
                     let mut child = kui_native::spawn::spawn(&mut c)
                         .map_err(|e| super::coded(super::io_code(&e), format!("{cmd}: {e}")))?;
+                    let pid=child.id();
+                    if !o.detach||testing {children.add(pid,o.group);}
                     if let Some(input) = o.stdin
                         && let Some(mut w) = child.stdin.take()
                     {
                         let _ = w.write_all(&input);
                     }
-                    let out = child
-                        .wait_with_output()
-                        .map_err(|e| super::coded(super::io_code(&e), format!("{cmd}: {e}")))?;
+                    let out = child.wait_with_output();
+                    children.remove(pid);
+                    let out=out.map_err(|e| super::coded(super::io_code(&e), format!("{cmd}: {e}")))?;
                     Ok(Value::map([
                         (
                             "code",
@@ -409,6 +438,10 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             lua,
             |lua, (cmd, args, opts): (String, Option<Vec<String>>, Option<Table>)| {
                 let (mut c, o) = command(lua, &cmd, args, opts)?;
+                let state_shared=shared(lua);
+                let call=serde_json::json!({"command":cmd,"args":c.get_args().map(|a|a.to_string_lossy().into_owned()).collect::<Vec<_>>()});
+                state_shared.run.record("process.spawn",state_shared.worker.as_ref().map(|w|w.0),call.clone());
+                if let Some(rule)=state_shared.run.effects.intercept("process","spawn",&call).map_err(mlua::Error::runtime)? {return mock::MockProc::make(lua,rule);}
                 environment(&mut c, &o);
                 c.stdin(Stdio::piped())
                     .stdout(Stdio::piped())
@@ -431,14 +464,14 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 );
                 let stdin = Arc::new(Mutex::new(child.stdin.take()));
                 let pid = child.id();
-                if !o.detach {
+                if !o.detach || s.run.testing {
                     s.children.add(pid, o.group);
                 }
                 {
                     // The exit: a thread that owns the child and waits on it,
                     // so nothing polls; `kill` goes by pid.
                     let (state, ops, shared) = (state.clone(), s.ops.clone(), s.clone());
-                    std::thread::spawn(move || {
+                    ops::background(&s.ops,move || {
                         let code = child.wait().ok().and_then(|st| st.code());
                         shared.children.remove(pid);
                         let mut st = state.lock().unwrap();
@@ -448,7 +481,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                         }
                     });
                 }
-                Ok(Proc {
+                lua.create_userdata(Proc {
                     pid,
                     group: o.group,
                     state,
@@ -486,4 +519,44 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     )?;
     kui.set("process", process)?;
     Ok(())
+}
+
+/// Terminate a supervised test file and its native process tree.
+pub(crate) fn kill_tree(pid: u32) {
+    #[cfg(unix)]
+    {
+        if let Ok(output) = std::process::Command::new("ps")
+            .args(["-axo", "pid=,ppid="])
+            .output()
+        {
+            let pairs = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter_map(|l| {
+                    let mut words = l.split_whitespace();
+                    Some((
+                        words.next()?.parse::<u32>().ok()?,
+                        words.next()?.parse::<u32>().ok()?,
+                    ))
+                })
+                .collect::<Vec<_>>();
+            let mut owned = vec![pid];
+            let mut i = 0;
+            while i < owned.len() {
+                for &(child, parent) in &pairs {
+                    if parent == owned[i] && !owned.contains(&child) {
+                        owned.push(child);
+                    }
+                }
+                i += 1;
+            }
+            for child in owned.into_iter().rev() {
+                let _ = signal(child, "kill", false);
+            }
+        }
+        let _ = signal(pid, "kill", true);
+    }
+    #[cfg(windows)]
+    {
+        let _ = signal(pid, "kill", true);
+    }
 }

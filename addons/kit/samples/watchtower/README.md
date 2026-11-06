@@ -29,6 +29,6 @@ footer, `tabs`, `segmented` with counts and alerts, `search`, `switch`,
 ## Tests and pictures
 
 ```bash
-cd addons/kit/samples/watchtower && kui run test --headless
+cd addons/kit/samples/watchtower && kui test
 nu addons/kit/samples/shots.nu watchtower
 ```

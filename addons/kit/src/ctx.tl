@@ -171,4 +171,14 @@ function M.flag(v: any, default: boolean): boolean
   return v == true
 end
 
+-- A detached snapshot is made by the host; this provider only names
+-- the render state. Restoring is for an isolated historical renderer.
+function M.capture_state(): {integer:any}
+  return states
+end
+
+function M.restore_state(saved: {integer:any})
+  states = saved
+end
+
 return M

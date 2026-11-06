@@ -1,0 +1,25 @@
+{
+  "objects": [
+    {
+      "entries": [
+        {
+          "key": {
+            "base64": "Y291bnQ=",
+            "kind": "string"
+          },
+          "value": {
+            "kind": "integer",
+            "value": "1"
+          }
+        }
+      ],
+      "id": 1,
+      "kind": "table"
+    }
+  ],
+  "root": {
+    "id": 1,
+    "kind": "ref"
+  },
+  "version": 1
+}

@@ -1,6 +1,6 @@
 -- A picture of Relay at work: the history seeded, a response open.
 --
---   kui run test/shot.lua --shot shots/relay.png --after 1500 --size 1240x800 -- [skin] [state]
+--   kui run fixtures/shot.lua --shot shots/relay.png --after 1500 --size 1240x800 -- [skin] [state]
 --
 -- `skin` is ledger, neutral or phosphor; `state` a response tab (body,
 -- headers, timing) or one of post, badjson, sending, error, empty.

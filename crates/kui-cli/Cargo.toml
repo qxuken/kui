@@ -34,6 +34,10 @@ keyring-core = "1"
 flate2 = "1.1"
 crc32fast = "1.5"
 png = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+shlex = "2"
 mimalloc = { version = "=0.1.48", optional = true }
 # The C mimalloc (2.2.4) the crate above builds, pinned too: main.rs sets an
 # option by its number in this version's mimalloc.h.
