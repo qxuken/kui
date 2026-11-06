@@ -452,6 +452,404 @@ fn kui_perf_drives_and_checks() {
     assert!(out(&c).contains("ok: 3 file(s) checked"), "{}", out(&c));
 }
 
+/// The public CLI and Lua facade cross the same query seam, including
+/// expanded scope, filters, stable references and result completeness.
+#[test]
+fn perf_queries_match_lua_without_starting_a_window() {
+    let dir = app(
+        "perf-query-contract",
+        &[(
+            "main.lua",
+            r#"
+        local rec=kui.trace.open(kui.args[1],{watch=false})
+        rec:filter{hide_names={"devtools"},name="fill"}
+        local q=rec:query("spans",{first_frame=10,last_frame=20,all=true})
+        kui.fs.write("lua.json",kui.json.encode(q))
+        local first=rec.spans:get(0,"id")
+        local detail=rec:span_id(first)
+        rec:filter{name="no match"}
+        assert(rec:span_id(first).id==detail.id)
+        assert(rec:span_id(first).parent==detail.parent)
+        assert(rec:frame_id(40).frame==40)
+        package.path = kui.args[2] .. "/?.tl;" .. package.path
+        local inspector=require("inspector")
+        local raw=kui.trace.open("unframed.kuitrace",{watch=false})
+        local st=inspector.new(raw,{lanes={}})
+        inspector.restat(st)
+        assert(st.stats.summary.frames==0 and #st.stats.spans>0)
+        assert(st.tables.spans:get(0,"per_frame")=="—","unframed costs have no per-frame denominator")
+        kui.exit(0)
+    "#,
+        )],
+    );
+    let trace = kui_trace::synth::Synth {
+        frames: 40,
+        ..Default::default()
+    }
+    .trace();
+    std::fs::write(dir.join("run.kuitrace"), trace.to_bytes()).unwrap();
+    let mut unframed = trace.clone();
+    unframed
+        .records
+        .retain(|r| matches!(r, kui_trace::Record::Span(_)));
+    std::fs::write(dir.join("unframed.kuitrace"), unframed.to_bytes()).unwrap();
+    let output = kui(
+        &dir,
+        &[
+            "perf",
+            "spans",
+            "run.kuitrace",
+            "--frames",
+            "10:20",
+            "--name",
+            "fill",
+            "--all",
+            "--json",
+        ],
+        20,
+    );
+    assert!(output.status.success(), "{}", out(&output));
+    let native = kui_core::json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+    let tool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/kui-perf");
+    let output = kui(
+        &dir,
+        &[
+            "run",
+            "--headless",
+            "--",
+            "run.kuitrace",
+            tool.to_str().unwrap(),
+        ],
+        20,
+    );
+
+    assert!(output.status.success(), "{}", out(&output));
+    let lua =
+        kui_core::json::parse(&std::fs::read_to_string(dir.join("lua.json")).unwrap()).unwrap();
+    // Lua uses nil for unavailable optional fields, so encoding its table
+    // omits those keys; CLI JSON spells the same absence as null.
+    fn without_null_fields(v: kui_core::Value) -> kui_core::Value {
+        use kui_core::Value;
+        match v {
+            Value::Map(fs) => Value::Map(
+                fs.into_iter()
+                    .filter(|(_, v)| !matches!(v, Value::Null))
+                    .map(|(k, v)| (k, without_null_fields(v)))
+                    .collect(),
+            ),
+            Value::List(vs) => Value::List(vs.into_iter().map(without_null_fields).collect()),
+            v => v,
+        }
+    }
+    for key in [
+        "data",
+        "scope",
+        "filters",
+        "matched",
+        "returned",
+        "truncated",
+    ] {
+        assert_eq!(
+            native.get(key).cloned().map(without_null_fields),
+            lua.get(key).cloned().map(without_null_fields),
+            "{key}"
+        );
+    }
+    let scope = native.get("scope").unwrap();
+    assert_eq!(scope.get_int("frame_count"), Some(11));
+    let output = kui(
+        &dir,
+        &["perf", "frames", "run.kuitrace", "--limit", "2", "--json"],
+        20,
+    );
+    let rows = kui_core::json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+    assert_eq!(rows.get_int("matched"), Some(40));
+    assert_eq!(rows.get_int("returned"), Some(2));
+    assert_eq!(rows.get_int("omitted"), Some(38));
+    let output = kui(
+        &dir,
+        &[
+            "perf",
+            "summary",
+            "run.kuitrace",
+            "--frames",
+            "9999:10000",
+            "--json",
+        ],
+        20,
+    );
+    let empty = kui_core::json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+    assert_eq!(empty.get("data").unwrap().get_int("frames"), Some(0));
+    let output = kui(
+        &dir,
+        &[
+            "perf",
+            "summary",
+            "run.kuitrace",
+            "--time",
+            "100ms:100.1ms",
+            "--json",
+        ],
+        20,
+    );
+    assert!(output.status.success(), "{}", out(&output));
+    let timed = kui_core::json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+    assert!(timed.get("scope").unwrap().get_int("frame_count").unwrap() > 0);
+    let output = kui(
+        &dir,
+        &[
+            "perf",
+            "compare",
+            "run.kuitrace",
+            "run.kuitrace",
+            "--before-frames",
+            "1:10",
+            "--after-frames",
+            "11:30",
+            "--all",
+            "--json",
+        ],
+        20,
+    );
+    assert!(output.status.success(), "{}", out(&output));
+    let compared = kui_core::json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+    assert_eq!(
+        compared
+            .get("before")
+            .unwrap()
+            .get("scope")
+            .unwrap()
+            .get_int("frame_count"),
+        Some(10)
+    );
+    assert_eq!(
+        compared
+            .get("after")
+            .unwrap()
+            .get("scope")
+            .unwrap()
+            .get_int("frame_count"),
+        Some(20)
+    );
+    let text = kui(&dir, &["perf", "spans", "run.kuitrace", "--limit", "2"], 20);
+    assert!(text.status.success(), "{}", out(&text));
+    assert!(out(&text).contains("omitted"));
+    let bad = kui(
+        &dir,
+        &[
+            "perf",
+            "frames",
+            "run.kuitrace",
+            "--time",
+            "NaNs:1s",
+            "--json",
+        ],
+        20,
+    );
+    assert!(!bad.status.success());
+    assert!(bad.stdout.is_empty());
+}
+
+#[test]
+fn perf_stale_frame_table_rows_never_retarget_selection() {
+    use kui_trace::{Record, Session, Trace};
+    let dir = app(
+        "perf-stale-selection",
+        &[(
+            "main.lua",
+            r#"
+        package.path=kui.args[2].."/?.tl;"..package.path
+        local inspector=require("inspector")
+        local rec=kui.trace.open(kui.args[1],{watch=false})
+        for _, kind in ipairs({"ins_frame","ins_activate"}) do
+            local st=inspector.new(rec,{lanes={}})
+            inspector.restat(st)
+            assert(st.tables.frames:get(0,"frame")==10)
+            inspector.update(st,{kind="ins_frames",change={value="changed"}})
+            assert(st.stale and st.tables.frames:get(0,"frame")==10,
+                   "the test clicks the old snapshot before deferred restat")
+            assert(rec.frames:get(0,"frame")==20)
+            inspector.update(st,{kind=kind,name="frames",select={row=0},activate={row=0}})
+            assert(st.frame_ref==nil,kind.." must not select frame 20 through an insertion position")
+            assert(st.r0==nil,kind.." must not activate a different frame's range")
+            inspector.update(st,{kind=kind,name="frames",select={row=1},activate={row=1}})
+            assert(st.frame_ref==20,"a retained frame still resolves from its original displayed row")
+            inspector.restat(st)
+            assert(st.tables.frames:get(0,"frame")==20)
+        end
+        print("stale frame selections stay exact")
+        kui.exit(0)
+    "#,
+        )],
+    );
+    let mut trace = Trace::new();
+    trace.session = Some(Session {
+        budget_ms: 10.0,
+        ..Default::default()
+    });
+    for (frame, begin, end, unchanged) in [(10, 0, 1000, true), (20, 2000, 3000, false)] {
+        trace.records.extend([
+            Record::FrameBegin {
+                t: begin,
+                frame,
+                causes: vec![],
+            },
+            Record::FrameEnd {
+                t: end,
+                frame,
+                unchanged: Some(unchanged),
+                nodes: 0,
+            },
+            Record::Present {
+                t: end,
+                frame,
+                render: 0,
+                wait: 0,
+            },
+        ]);
+    }
+    std::fs::write(dir.join("frames.kuitrace"), trace.to_bytes()).unwrap();
+    let tool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/kui-perf");
+    let output = kui(
+        &dir,
+        &[
+            "run",
+            "--headless",
+            "--",
+            "frames.kuitrace",
+            tool.to_str().unwrap(),
+        ],
+        20,
+    );
+    assert!(output.status.success(), "{}", out(&output));
+    assert!(out(&output).contains("stale frame selections stay exact"));
+}
+
+#[test]
+fn perf_missing_present_does_not_report_a_work_regression() {
+    use kui_core::Value;
+    use kui_trace::{Record, Session, Trace};
+    let dir = app(
+        "perf-missing-present",
+        &[(
+            "main.lua",
+            r#"
+        local rec=kui.trace.open("mixed.kuitrace",{watch=false})
+        local work=rec.frames:get(0,"work")
+        local render=rec.frames:get(0,"render")
+        assert(work~=work and render~=render,"numeric channels mark missing work as NaN, never zero")
+        assert(rec.frames:get(0,"verdict")=="unavailable")
+        assert(rec:frame_id(10).work==nil and rec:frame_id(10).verdict==nil)
+        assert(rec:frame_id(10).finish==0.1,"known core timing survives")
+        assert(rec:stats().summary.complete_frames==1)
+        for _, descending in ipairs({false,true}) do
+            local rows=rec.frames:sort("work",descending)
+            assert(rec.frames:get(rows[1],"frame")==20,"known work sorts before missing work")
+            local q=rec:query("frames",{sort="work",descending=descending,all=true})
+            assert(q.data[1].frame==20 and q.data[2].work==nil)
+        end
+        rec:filter{verdicts={"fine"}}
+        assert(#rec.frames==1 and rec.frames:get(0,"frame")==20)
+        print("missing rendering stays unavailable")
+        kui.exit(0)
+    "#,
+        )],
+    );
+    let mut before = Trace::new();
+    before.session = Some(Session {
+        budget_ms: 1.0,
+        ..Default::default()
+    });
+    before.records.extend([
+        Record::FrameBegin {
+            t: 0,
+            frame: 10,
+            causes: vec![],
+        },
+        Record::FrameEnd {
+            t: 100,
+            frame: 10,
+            unchanged: Some(false),
+            nodes: 0,
+        },
+    ]);
+    let mut after = before.clone();
+    after.records.push(Record::Present {
+        t: 200,
+        frame: 10,
+        render: 100,
+        wait: 0,
+    });
+    let mut mixed = before.clone();
+    mixed.records.extend([
+        Record::FrameBegin {
+            t: 300,
+            frame: 20,
+            causes: vec![],
+        },
+        Record::FrameEnd {
+            t: 400,
+            frame: 20,
+            unchanged: Some(false),
+            nodes: 0,
+        },
+        Record::Present {
+            t: 500,
+            frame: 20,
+            render: 100,
+            wait: 0,
+        },
+    ]);
+    for (name, trace) in [("before", before), ("after", after), ("mixed", mixed)] {
+        std::fs::write(dir.join(format!("{name}.kuitrace")), trace.to_bytes()).unwrap();
+    }
+    let output = kui(
+        &dir,
+        &[
+            "perf",
+            "compare",
+            "before.kuitrace",
+            "after.kuitrace",
+            "--all",
+            "--json",
+        ],
+        20,
+    );
+    assert!(output.status.success(), "{}", out(&output));
+    let compared = kui_core::json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+    let work = compared
+        .get("data")
+        .unwrap()
+        .as_list()
+        .unwrap()
+        .iter()
+        .find(|v| v.get_str("metric") == Some("work.avg"))
+        .unwrap();
+    assert_eq!(work.get("before"), Some(&Value::Null));
+    assert_eq!(work.get_float("after"), Some(0.2));
+    assert_eq!(work.get("delta"), Some(&Value::Null));
+    assert_eq!(work.get("percent"), Some(&Value::Null));
+    let output = kui(
+        &dir,
+        &["perf", "frame", "before.kuitrace", "10", "--json"],
+        20,
+    );
+    assert!(output.status.success(), "{}", out(&output));
+    let detail = kui_core::json::parse(std::str::from_utf8(&output.stdout).unwrap()).unwrap();
+    assert_eq!(detail.get("data").unwrap().get("work"), Some(&Value::Null));
+    let output = kui(&dir, &["perf", "frames", "before.kuitrace"], 20);
+    assert!(output.status.success(), "{}", out(&output));
+    let text = String::from_utf8(output.stdout).unwrap();
+    let row = text
+        .lines()
+        .find(|s| s.split_whitespace().next() == Some("10"))
+        .unwrap();
+    assert_eq!(row.split_whitespace().nth(2), Some("—"));
+    let output = kui(&dir, &["run", "--headless"], 20);
+    assert!(output.status.success(), "{}", out(&output));
+    assert!(out(&output).contains("missing rendering stays unavailable"));
+}
+
 /// ADR 0073: the runner opens the gallery it carries from a folder with no
 /// app or repository beside it, and the run options apply to that app.
 #[test]

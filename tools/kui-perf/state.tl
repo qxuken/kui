@@ -26,6 +26,9 @@ local record state
     -- Rows of `rec.frames` and `rec.spans`; -1 for none.
     frame: integer
     span: integer
+    -- Stable details also work before an incomplete frame/span has a channel row.
+    frame_ref: integer
+    span_ref: integer
     -- The range selected on the waterfall's axis, ms; nil for none.
     r0: number
     r1: number
@@ -47,6 +50,8 @@ local record state
     -- The tables over the window, made again when it settles.
     stats: {string:any}
     stats_for: string
+    -- Explicit startup selection, retained until a pan or zoom changes it.
+    measurement: {string:any}
     stale: boolean
     restat_due: boolean
     -- How often the window has moved: a read waits for it to hold still.

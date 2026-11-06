@@ -26,6 +26,8 @@
 //!   `verdict`, `unchanged`, `burn`, `causes` and `nodes`; a frame is a row
 //!   once the next begins (its present comes after its end), the last once
 //!   the recording ends.
+//!   Unavailable numeric work/phase measurements are NaN; query/detail
+//!   tables use nil instead. A present is required for total work/verdicts.
 //! - `instants` — `at`, `label`, `kind` (`input`, `event`, `wake`,
 //!   `request`, `mark`, `note`, `fresh`), `node`: the waterfall's `marks`.
 //!
@@ -45,10 +47,10 @@ use kui_channel::lua::LuaChannel;
 use kui_channel::{Channel, Column, Strs};
 use mlua::{Lua, Table, UserData, UserDataFields, UserDataMethods, Value};
 
-use crate::analysis::{self, Verdict};
-use crate::{
-    FileTransport, NameId, Origin, Placement, Polled, Record, Span, Stream, Timeline, Trace, Watch,
-};
+use crate::analysis;
+use crate::query::{self, Explorer, Operation, Query, Selection};
+use crate::query::{origin_name as origin_of, placement_of, verdict_kind};
+use crate::{FileTransport, NameId, Origin, Polled, Record, Span, Stream, Trace, Watch};
 
 /// What a host hands [`register`] to be woken when a watched file moves:
 /// called on the watch's thread with the message the script gave `open`
@@ -112,18 +114,15 @@ struct Row {
 /// What the views keep (decision 8): nothing filtered is everything.
 #[derive(Clone, Debug, Default)]
 struct Filter {
-    origins: Option<Vec<String>>,
-    name: Option<String>,
-    /// Span names hidden whole: the devtools' own (`devtools`), off by
-    /// default in an inspector (ADR 0075, decision 8).
-    hide_names: Vec<String>,
-    min_us: u64,
-    verdicts: Option<Vec<String>>,
-    hide_unchanged: bool,
-    /// `where`: a script's own test of a span, called from Rust with one
-    /// table filled afresh for each (the query box's candidate, ADR 0075
-    /// decision 8).
+    native: query::Filter,
     predicate: Option<Predicate>,
+}
+
+impl std::ops::Deref for Filter {
+    type Target = query::Filter;
+    fn deref(&self) -> &Self::Target {
+        &self.native
+    }
 }
 
 /// A `where`: the script's function, the one table it is handed, and the
@@ -156,13 +155,7 @@ impl Predicate {
 
 impl Filter {
     fn is_empty(&self) -> bool {
-        self.predicate.is_none()
-            && self.hide_names.is_empty()
-            && self.origins.is_none()
-            && self.name.is_none()
-            && self.min_us == 0
-            && self.verdicts.is_none()
-            && !self.hide_unchanged
+        self.predicate.is_none() && self.native == query::Filter::default()
     }
 }
 
@@ -196,6 +189,7 @@ fn empty_like(ch: &Channel) -> Vec<(String, Column)> {
 /// A recording a script holds.
 pub struct Recording {
     stream: Stream,
+    query_index: std::sync::OnceLock<query::Index>,
     transport: Option<FileTransport>,
     _watch: Option<Watch>,
     moved: Arc<AtomicBool>,
@@ -233,6 +227,8 @@ fn span_columns() -> Vec<(String, Column)> {
         ("origin".into(), Column::Str(Strs::default())),
         ("self".into(), Column::F64(Vec::new())),
         ("frame".into(), Column::I64(Vec::new())),
+        ("id".into(), Column::I64(Vec::new())),
+        ("parent".into(), Column::I64(Vec::new())),
     ]
 }
 
@@ -288,26 +284,6 @@ fn group(groups: &mut Vec<NameId>, o: Origin) -> i64 {
     }
 }
 
-fn origin_of(trace: &Trace, o: Origin) -> &str {
-    match o {
-        Origin::Kui => "kui",
-        Origin::Host => "host",
-        Origin::Extension(ns) => trace.name(ns),
-    }
-}
-
-fn verdict_kind(v: &Verdict) -> &'static str {
-    match v {
-        Verdict::Late { .. } => "late",
-        Verdict::Blocked { .. } => "blocked",
-        Verdict::Slow { .. } => "slow",
-        Verdict::Waited { .. } => "waited",
-        Verdict::Wasted => "wasted",
-        Verdict::Burn { .. } => "burn",
-        Verdict::Fine { .. } => "fine",
-    }
-}
-
 fn hex(node: u64) -> String {
     if node == 0 {
         String::new()
@@ -353,11 +329,12 @@ impl Recording {
             spans_view: View::new(&spans),
             frames_view: View::new(&frames),
             stream: Stream::new(),
+            query_index: std::sync::OnceLock::new(),
             transport,
             _watch: watch,
             moved,
             ended: false,
-            budget: 8_333,
+            budget: 0,
             seen: 0,
             rows: Vec::new(),
             depth: HashMap::new(),
@@ -470,10 +447,6 @@ impl Recording {
         }
     }
 
-    fn origin_name(&self, o: Origin) -> &str {
-        origin_of(self.stream.trace(), o)
-    }
-
     /// Places `span` at `depth` and then the children that waited for it.
     fn place(&mut self, span: Span, depth: u32, out: &mut Vec<Row>) {
         let mut queue = vec![(span, depth)];
@@ -497,9 +470,12 @@ impl Recording {
     /// whose parents have come, the instants, the frames finished; and the
     /// channels and views grown with them.
     fn absorb(&mut self) {
-        if let Some(s) = &self.stream.trace().session {
-            self.budget = ((s.budget_ms as f64) * 1000.0).max(1.0) as u64;
+        let budget = query::budget_us(self.trace()).unwrap_or(0);
+        let changed = self.seen != self.trace().records.len() || self.budget != budget;
+        if changed {
+            self.query_index.take();
         }
+        self.budget = budget;
         let frames_seen = self.stream.timeline().frames.len();
         let mut new_spans: Vec<Span> = Vec::new();
         let mut instants: Vec<(u64, String, &'static str, u64)> = Vec::new();
@@ -581,7 +557,8 @@ impl Recording {
         let mut cols = Cols(span_columns());
         for row in &mut placed {
             let s = &row.span;
-            row.frame = tl.frames.partition_point(|f| f.end_or_begin() < s.start) as i64;
+            row.frame =
+                query::frame_for_time(tl, s.start).map_or(tl.frames.len() as i64, |i| i as i64);
         }
         for row in &mut placed {
             row.self_us = tl.self_us(&row.span);
@@ -607,6 +584,8 @@ impl Recording {
             cols.s(7, origin);
             cols.f(8, ms(self_us));
             cols.i(9, row.frame);
+            cols.i(10, s.id as i64);
+            cols.i(11, s.parent as i64);
         }
         let first_new_span = self.rows.len();
         self.rows.extend(placed);
@@ -630,11 +609,11 @@ impl Recording {
                 .append(inst.0, None)
                 .expect("the instants' columns");
         }
-        // Frames finished: every one before the last, and the last once
-        // the recording ended.
+        // Frames finished: every one before the last; a completed present
+        // seals the last too, including a saved file still being watched.
         let tl = self.stream.timeline();
         let trace = self.stream.trace();
-        let done = if self.ended {
+        let done = if self.ended || tl.frames.last().is_some_and(|f| f.present.is_some()) {
             tl.frames.len()
         } else {
             tl.frames.len().saturating_sub(1)
@@ -647,15 +626,20 @@ impl Recording {
             for i in first_new_frame..done {
                 let f = &tl.frames[i];
                 let p = analysis::phases(tl, i, trace);
-                let v = analysis::verdict(tl, i, self.budget, &burns, trace);
-                let kind = verdict_kind(&v);
+                let v = (self.budget > 0 && query::frame_work_us(f).is_some())
+                    .then(|| analysis::verdict(tl, i, self.budget, &burns, trace));
+                let kind = v.as_ref().map_or("unavailable", verdict_kind);
                 fc.i(0, f.frame as i64);
                 fc.i(1, i as i64);
                 fc.f(2, ms(f.begin));
                 fc.f(3, ms(f.end_or_begin()));
-                fc.f(4, ms(f.work_us()));
-                for (k, (_, us)) in p.named().iter().enumerate() {
-                    fc.f(5 + k, ms(*us));
+                // Numeric channels use NaN for missing measurements; plots
+                // leave gaps and channel sorting puts these cells last.
+                fc.f(4, query::frame_work_us(f).map_or(f64::NAN, ms));
+                for (k, (name, us)) in p.named().iter().enumerate() {
+                    let known = f.end.is_some()
+                        && (!matches!(*name, "render" | "vsync wait") || f.present.is_some());
+                    fc.f(5 + k, if known { ms(*us) } else { f64::NAN });
                 }
                 fc.s(12, kind);
                 fc.b(13, f.unchanged == Some(true));
@@ -681,20 +665,46 @@ impl Recording {
                 for i in b.first..(b.last + 1).min(first_new_frame) {
                     if !self.frame_burn[i] {
                         self.frame_burn[i] = true;
-                        let v = analysis::verdict(tl, i, self.budget, &burns, trace);
-                        self.frame_verdict[i] = verdict_kind(&v);
+                        self.frame_verdict[i] =
+                            if self.budget > 0 && query::frame_work_us(&tl.frames[i]).is_some() {
+                                verdict_kind(&analysis::verdict(tl, i, self.budget, &burns, trace))
+                            } else {
+                                "unavailable"
+                            };
                         regraded = true;
                     }
                 }
             }
             if regraded {
                 self.regrade_frames();
-                self.grow_views(first_new_span, self.frame_index.len());
-                self.refilter_frames();
+                if self.filter.verdicts.is_some()
+                    || self.filter.hide_unchanged
+                    || self.filter.predicate.is_some()
+                {
+                    if let Err(e) = self.set_filter(self.filter.clone()) {
+                        self.filter_error = Some(e.to_string());
+                    }
+                } else {
+                    self.grow_views(first_new_span, self.frame_index.len());
+                    self.refilter_frames();
+                }
                 return;
             }
         }
-        self.grow_views(first_new_span, first_new_frame);
+        // Gap work can precede its frame in the file. Frame-dependent filters
+        // must reconsider those existing spans when more recording data comes;
+        // simply appending newly read spans would leave the timeline stale.
+        if changed
+            && (self.filter.verdicts.is_some()
+                || self.filter.hide_unchanged
+                || self.filter.predicate.is_some())
+        {
+            if let Err(e) = self.set_filter(self.filter.clone()) {
+                self.filter_error = Some(e.to_string());
+            }
+        } else {
+            self.grow_views(first_new_span, first_new_frame);
+        }
     }
 
     /// The frames' next revision with every frame's verdict and burn as
@@ -737,26 +747,25 @@ impl Recording {
         let f = &self.filter;
         let row = &self.rows[i];
         let s = &row.span;
-        if s.dur < f.min_us {
+        if !query::matches_span(self.trace(), self.stream.timeline(), s, &f.native) {
             return Ok(false);
         }
-        if let Some(origins) = &f.origins
-            && !origins.iter().any(|o| o == self.origin_name(s.origin))
-        {
-            return Ok(false);
-        }
-        let trace = self.stream.trace();
-        if !f.hide_names.is_empty() && f.hide_names.iter().any(|n| n == trace.name(s.name)) {
-            return Ok(false);
-        }
-        if let Some(name) = &f.name {
-            // The component a fill drew, or the span's own name.
-            let want = name.to_lowercase();
-            let hit = |id: NameId| trace.name(id).to_lowercase().contains(&want);
-            if !hit(s.name) && !row.component.is_some_and(|c| hit(c[0])) {
+        if f.verdicts.is_some() || f.hide_unchanged {
+            let tl = self.stream.timeline();
+            let Some(i) = query::frame_for_time(tl, s.start) else {
+                return Ok(false);
+            };
+            let frame = tl.frames.get(i);
+            let verdict = self
+                .frame_verdict
+                .get(i)
+                .copied()
+                .filter(|v| *v != "unavailable");
+            if !query::matches_frame(frame.and_then(|f| f.unchanged), verdict, &f.native) {
                 return Ok(false);
             }
         }
+        let trace = self.trace();
         if let Some(p) = &f.predicate {
             let t = &p.span;
             let k = &p.keys;
@@ -776,21 +785,21 @@ impl Recording {
             t.raw_set(&k[4], ms(row.self_us))?;
             t.raw_set(&k[5], row.depth)?;
             t.raw_set(&k[6], s.track.0)?;
-            t.raw_set(&k[7], row.frame)?;
+            t.raw_set(
+                &k[7],
+                query::frame_for_time(self.stream.timeline(), s.start).map_or(-1, |i| i as i64),
+            )?;
             return p.test.call::<bool>(t);
         }
         Ok(true)
     }
 
     fn keeps_frame(&self, i: usize) -> bool {
-        let f = &self.filter;
-        if f.hide_unchanged && self.frame_unchanged[i] {
-            return false;
-        }
-        match &f.verdicts {
-            Some(v) => v.iter().any(|k| k == self.frame_verdict[i]),
-            None => true,
-        }
+        query::matches_frame(
+            Some(self.frame_unchanged[i]),
+            Some(self.frame_verdict[i]).filter(|v| *v != "unavailable"),
+            &self.filter.native,
+        )
     }
 
     /// The views after new rows came: the whole shown again, or the new
@@ -875,6 +884,27 @@ impl Recording {
         Ok(())
     }
 
+    fn explorer(&self) -> Explorer<'_> {
+        let index = self
+            .query_index
+            .get_or_init(|| Explorer::new(self.trace(), self.stream.timeline()).into_index());
+        Explorer::with_index(self.trace(), self.stream.timeline(), index)
+    }
+
+    fn query_filter(&self) -> mlua::Result<query::Filter> {
+        let mut f = self.filter.native.clone();
+        if self.filter.predicate.is_some() {
+            let mut ids = Vec::new();
+            for i in 0..self.rows.len() {
+                if self.keeps_span(i)? {
+                    ids.push(self.rows[i].span.id);
+                }
+            }
+            f.span_ids = Some(ids);
+        }
+        Ok(f)
+    }
+
     fn trace(&self) -> &Trace {
         self.stream.trace()
     }
@@ -888,12 +918,15 @@ fn filter_of(lua: &Lua, t: &Table) -> mlua::Result<Filter> {
         })
     };
     Ok(Filter {
-        origins: list("origins")?,
-        name: t.get::<Option<String>>("name")?.filter(|n| !n.is_empty()),
-        hide_names: list("hide_names")?.unwrap_or_default(),
-        min_us: t.get::<Option<f64>>("min_us")?.unwrap_or(0.0).max(0.0) as u64,
-        verdicts: list("verdicts")?,
-        hide_unchanged: t.get::<Option<bool>>("hide_unchanged")?.unwrap_or(false),
+        native: query::Filter {
+            origins: list("origins")?,
+            name: t.get::<Option<String>>("name")?.filter(|n| !n.is_empty()),
+            hide_names: list("hide_names")?.unwrap_or_default(),
+            min_us: t.get::<Option<f64>>("min_us")?.unwrap_or(0.0).max(0.0) as u64,
+            verdicts: list("verdicts")?,
+            hide_unchanged: t.get::<Option<bool>>("hide_unchanged")?.unwrap_or(false),
+            span_ids: None,
+        },
         predicate: match t.get::<Option<mlua::Function>>("where")? {
             Some(test) => Some(Predicate {
                 test,
@@ -916,268 +949,59 @@ fn filter_of(lua: &Lua, t: &Table) -> mlua::Result<Filter> {
     })
 }
 
-/// A frame's detail: what the Perf tab's opened frame shows.
+fn table_of(lua: &Lua, value: &kui_value::Value) -> mlua::Result<Table> {
+    match kui_value::lua::to_lua(lua, value)? {
+        Value::Table(t) => Ok(t),
+        _ => unreachable!("query presentation is a table"),
+    }
+}
+
 fn frame_detail(lua: &Lua, r: &Recording, i: usize) -> mlua::Result<Table> {
+    let ex = r.explorer();
+    table_of(
+        lua,
+        &crate::query_value::frame(r.trace(), &ex.frame_detail(i)),
+    )
+}
+
+fn span_detail(lua: &Lua, r: &Recording, id: u32) -> mlua::Result<Value> {
+    let ex = r.explorer();
+    match ex.span_detail(id) {
+        Some(d) => table_of(lua, &crate::query_value::span(r.trace(), &d)).map(Value::Table),
+        None => Ok(Value::Nil),
+    }
+}
+
+fn stats_empty(lua: &Lua, r: &Recording) -> mlua::Result<Table> {
+    let ex = r.explorer();
+    let filter = r.query_filter()?;
+    let scope = query::Scope {
+        requested: Selection::Whole,
+        indices: Vec::new(),
+        intervals: Vec::new(),
+    };
+    table_of(
+        lua,
+        &crate::query_value::readings(
+            r.trace(),
+            r.stream.timeline(),
+            &scope,
+            &filter,
+            &ex.readings(&scope, &filter),
+        ),
+    )
+}
+
+fn stats(lua: &Lua, r: &Recording, selection: Selection) -> mlua::Result<Table> {
     let tl = r.stream.timeline();
-    let trace = r.trace();
-    let f = &tl.frames[i];
-    let name = |id| trace.name(id);
-    let t = lua.create_table()?;
-    t.set("frame", f.frame)?;
-    t.set("index", i)?;
-    t.set("begin", ms(f.begin))?;
-    t.set("finish", f.end.map(ms))?;
-    t.set("gap", ms(f.begin.saturating_sub(f.gap_from)))?;
-    t.set("work", ms(f.work_us()))?;
-    t.set("nodes", f.nodes)?;
-    t.set("unchanged", f.unchanged)?;
-    let phases = lua.create_table()?;
-    for (k, us) in analysis::phases(tl, i, trace).named() {
-        phases.set(k, ms(us))?;
-    }
-    t.set("phases", phases)?;
-    let burns = analysis::burns(tl, trace);
-    let v = analysis::verdict(tl, i, r.budget, &burns, trace);
-    let vt = lua.create_table()?;
-    vt.set("kind", verdict_kind(&v))?;
-    match v {
-        Verdict::Late { wait, slept } => {
-            vt.set("wait", ms(wait))?;
-            vt.set("slept", slept)?;
-        }
-        Verdict::Blocked { busy } => vt.set("busy", ms(busy))?,
-        Verdict::Slow {
-            work,
-            phase,
-            phase_us,
-            span,
-        } => {
-            vt.set("work", ms(work))?;
-            vt.set("phase", phase)?;
-            vt.set("phase_ms", ms(phase_us))?;
-            if let Some((n, us)) = span {
-                vt.set("span", name(n))?;
-                vt.set("span_ms", ms(us))?;
-            }
-        }
-        Verdict::Waited { wall, cpu } => {
-            vt.set("wall", ms(wall))?;
-            vt.set("cpu", ms(cpu))?;
-        }
-        Verdict::Wasted => {}
-        Verdict::Burn { k, of } => {
-            vt.set("k", k)?;
-            vt.set("of", of)?;
-        }
-        Verdict::Fine { share } => vt.set("share", share)?,
-    }
-    t.set("verdict", vt)?;
-    t.set(
-        "causes",
-        lua.create_sequence_from(f.causes.iter().map(|c| name(*c)))?,
-    )?;
-    let holders = lua.create_table()?;
-    for h in &f.holders {
-        let x = lua.create_table()?;
-        x.set("what", name(h.what))?;
-        x.set("name", name(h.name))?;
-        x.set("node", hex(h.node))?;
-        holders.push(x)?;
-    }
-    t.set("holders", holders)?;
-    if let Some(p) = analysis::input_path(tl, i, trace) {
-        let x = lua.create_table()?;
-        x.set("input", name(p.input.kind))?;
-        x.set("total", ms(p.total()))?;
-        let legs = lua.create_table()?;
-        for (what, us) in p.legs() {
-            let l = lua.create_table()?;
-            l.set("what", what)?;
-            l.set("ms", ms(us))?;
-            legs.push(l)?;
-        }
-        x.set("legs", legs)?;
-        t.set("path", x)?;
-    }
-    let end = f.end_or_begin() + 1;
-    let fresh = lua.create_table()?;
-    for p in tl.placements_in(f.begin, end) {
-        if name(p.answer) == analysis::REPLAYED {
-            continue;
-        }
-        let x = lua.create_table()?;
-        x.set("component", name(p.component))?;
-        x.set("answer", name(p.answer))?;
-        x.set("why", name(p.why))?;
-        x.set("node", hex(p.node))?;
-        fresh.push(x)?;
-    }
-    t.set("fresh", fresh)?;
-    t.set(
-        "notes",
-        lua.create_sequence_from(tl.notes_in(f.gap_from, end).iter().map(|n| n.1.as_str()))?,
-    )?;
-    let counters = lua.create_table()?;
-    for (n, v) in &f.counters {
-        counters.set(name(*n), *v)?;
-    }
-    t.set("counters", counters)?;
-    Ok(t)
-}
-
-/// A recording's readings over frames `first..=last`: the Perf tab's
-/// tables.
-/// The placement a component's `fill …` span drew, if it is one: the
-/// placement is recorded as the fill ends, after every fill inside it, so
-/// a fill's is the first at or after its end, a few µs on — and one of its
-/// own origin's (`fill kit` draws a `kit/…` component; an app's view ends
-/// just after the last component placed in it, which is not its). The
-/// span's node is the one it filled under, not the instance's.
-fn placement_of<'t>(tl: &'t Timeline, trace: &Trace, s: &Span) -> Option<&'t Placement> {
-    const PLACED_WITHIN_US: u64 = 50;
-    let ns = trace.name(s.name).strip_prefix("fill ")?;
-    let end = s.end();
-    let at = tl.placements.partition_point(|p| p.t < end);
-    tl.placements
-        .get(at)
-        .filter(|p| p.t <= end.saturating_add(PLACED_WITHIN_US))
-        .filter(|p| {
-            trace
-                .name(p.component)
-                .strip_prefix(ns)
-                .is_some_and(|rest| rest.starts_with('/'))
-        })
-}
-
-fn stats(lua: &Lua, r: &Recording, first: usize, last: usize) -> mlua::Result<Table> {
-    let full = r.stream.timeline();
-    let sliced =
-        (first > 0 || last + 1 < full.frames.len()).then(|| r.trace().slice(full, first, last));
-    let trace = sliced.as_ref().unwrap_or(r.trace());
-    let owned;
-    let tl = if sliced.is_some() {
-        owned = trace.timeline();
-        &owned
-    } else {
-        full
-    };
-    let name = |id| trace.name(id);
-    let origin = |o: Origin| match o {
-        Origin::Kui => "kui",
-        Origin::Host => "host",
-        Origin::Extension(ns) => trace.name(ns),
-    };
-    let t = lua.create_table()?;
-    let works: Vec<u64> = tl.frames.iter().map(|f| f.work_us()).collect();
-    let (avg, p95, max) = analysis::spread(&works);
-    let summary = lua.create_table()?;
-    summary.set("frames", tl.frames.len())?;
-    summary.set("seconds", ms(tl.end.saturating_sub(tl.start)) / 1000.0)?;
-    summary.set("work_avg", avg / 1000.0)?;
-    summary.set("work_p95", ms(p95))?;
-    summary.set("work_max", ms(max))?;
-    summary.set(
-        "over_budget",
-        works.iter().filter(|&&w| w > r.budget).count(),
-    )?;
-    summary.set(
-        "unchanged",
-        tl.frames
-            .iter()
-            .filter(|f| f.unchanged == Some(true))
-            .count(),
-    )?;
-    summary.set("budget", ms(r.budget))?;
-    t.set("summary", summary)?;
-    let spans = lua.create_table()?;
-    // A component's fill under its component's name, as the waterfall
-    // has it: every one of them was `fill kit`.
-    let named: Vec<Span> = tl
-        .spans
-        .iter()
-        .map(|s| match placement_of(tl, trace, s) {
-            Some(p) => Span {
-                name: p.component,
-                ..s.clone()
-            },
-            None => s.clone(),
-        })
-        .collect();
-    for s in analysis::by_span(tl, &named).iter().take(40) {
-        let x = lua.create_table()?;
-        x.set("name", name(s.name))?;
-        x.set("origin", origin(s.origin))?;
-        x.set("calls", s.calls)?;
-        x.set("total", ms(s.total))?;
-        x.set("self", ms(s.self_total))?;
-        x.set("worst", ms(s.worst))?;
-        x.set("cpu", s.cpu.map(ms))?;
-        spans.push(x)?;
-    }
-    t.set("spans", spans)?;
-    let origins = lua.create_table()?;
-    for (o, us, n) in analysis::by_origin(tl, &tl.spans) {
-        let x = lua.create_table()?;
-        x.set("origin", origin(o))?;
-        x.set("self", ms(us))?;
-        x.set("spans", n)?;
-        origins.push(x)?;
-    }
-    t.set("origins", origins)?;
-    let components = lua.create_table()?;
-    for p in analysis::placements(tl, trace) {
-        let x = lua.create_table()?;
-        x.set("component", name(p.component))?;
-        x.set("placed", p.placed)?;
-        x.set("replayed", p.replayed)?;
-        let fresh = lua.create_table()?;
-        for (a, w, n) in &p.fresh {
-            let y = lua.create_table()?;
-            y.set("answer", name(*a))?;
-            y.set("why", name(*w))?;
-            y.set("count", *n)?;
-            fresh.push(y)?;
-        }
-        x.set("fresh", fresh)?;
-        components.push(x)?;
-    }
-    t.set("components", components)?;
-    let counters = lua.create_table()?;
-    for (n, avg, max) in analysis::counters(tl) {
-        let x = lua.create_table()?;
-        x.set("name", name(n))?;
-        x.set("avg", avg)?;
-        x.set("max", max)?;
-        counters.push(x)?;
-    }
-    t.set("counters", counters)?;
-    let gauges = lua.create_table()?;
-    for (n, last, lo, hi) in analysis::gauges(tl) {
-        let x = lua.create_table()?;
-        x.set("name", name(n))?;
-        x.set("last", last)?;
-        x.set("least", lo)?;
-        x.set("most", hi)?;
-        gauges.push(x)?;
-    }
-    t.set("gauges", gauges)?;
-    let burns = lua.create_table()?;
-    for b in analysis::burns(tl, trace) {
-        let x = lua.create_table()?;
-        x.set("first", b.first + first)?;
-        x.set("last", b.last + first)?;
-        x.set("frames", b.len())?;
-        burns.push(x)?;
-    }
-    t.set("burns", burns)?;
-    let g = analysis::gaps(tl, trace);
-    let gaps = lua.create_table()?;
-    gaps.set("total", ms(g.total))?;
-    gaps.set("handlers", ms(g.handlers))?;
-    gaps.set("asleep", ms(g.asleep))?;
-    gaps.set("busy", ms(g.busy))?;
-    t.set("gaps", gaps)?;
-    Ok(t)
+    let ex = r.explorer();
+    let filter = r.query_filter()?;
+    let scope = ex.resolve(&selection, &filter).map_err(bad)?;
+    let readings = ex.readings(&scope, &filter);
+    table_of(
+        lua,
+        &crate::query_value::readings(r.trace(), tl, &scope, &filter, &readings),
+    )
 }
 
 /// A counter's per-frame totals, or a gauge's readings, as a channel of
@@ -1240,7 +1064,7 @@ impl UserData for Recording {
         f.add_field_method_get("instants", |_, r| Ok(LuaChannel(r.instants.clone())));
         f.add_field_method_get("moved", |_, r| Ok(r.moved.load(Ordering::Relaxed)));
         f.add_field_method_get("ended", |_, r| Ok(r.ended));
-        f.add_field_method_get("budget", |_, r| Ok(ms(r.budget)));
+        f.add_field_method_get("budget", |_, r| Ok((r.budget > 0).then(|| ms(r.budget))));
         f.add_field_method_get("filtered", |_, r| Ok(!r.filter.is_empty()));
         // Why a `where` stopped keeping what came on a poll, if it threw.
         f.add_field_method_get("filter_error", |_, r| Ok(r.filter_error.clone()));
@@ -1267,6 +1091,12 @@ impl UserData for Recording {
             t.set("finish", ms(tl.end))?;
             t.set("frames", tl.frames.len())?;
             t.set("spans", r.rows.len())?;
+            let origins: std::collections::BTreeSet<_> = tl
+                .spans
+                .iter()
+                .map(|s| query::origin_name(r.trace(), s.origin))
+                .collect();
+            t.set("origins", lua.create_sequence_from(origins)?)?;
             Ok(t)
         });
         m.add_method("frame", |lua, r, row: usize| {
@@ -1280,51 +1110,171 @@ impl UserData for Recording {
             frame_detail(lua, r, i).map(Value::Table)
         });
         m.add_method("span", |lua, r, row: usize| {
-            let Some(i) = r.spans_view.source_row(row) else {
+            let Some(row) = r.spans_view.source_row(row).and_then(|i| r.rows.get(i)) else {
                 return Ok(Value::Nil);
             };
-            let Some(row) = r.rows.get(i) else {
-                return Ok(Value::Nil);
-            };
-            let s = &row.span;
-            let t = lua.create_table()?;
-            t.set(
-                "name",
-                r.trace().name(row.component.map_or(s.name, |c| c[0])),
-            )?;
-            if let Some([component, answer, why]) = row.component {
-                // What the fill was, and whether it replayed or drew fresh,
-                // and why.
-                t.set("component", r.trace().name(component))?;
-                t.set("span", r.trace().name(s.name))?;
-                t.set("answer", r.trace().name(answer))?;
-                let why = r.trace().name(why);
-                if !why.is_empty() {
-                    t.set("why", why)?;
-                }
-            }
-            t.set("origin", r.origin_name(s.origin))?;
-            t.set("start", ms(s.start))?;
-            t.set("len", ms(s.dur))?;
-            t.set("self", ms(r.stream.timeline().self_us(s)))?;
-            t.set("cpu", s.cpu.map(ms))?;
-            t.set("node", hex(s.node))?;
-            t.set("cut", s.cut)?;
-            t.set("track", r.trace().track_name(s.track))?;
-            t.set("depth", row.depth)?;
-            t.set("frame", row.frame)?;
-            Ok(Value::Table(t))
+            span_detail(lua, r, row.span.id)
         });
+        m.add_method("frame_id", |lua, r, id: u64| {
+            match r.explorer().frame_index(id) {
+                Some(i) => frame_detail(lua, r, i).map(Value::Table),
+                None => Ok(Value::Nil),
+            }
+        });
+        m.add_method("span_id", |lua, r, id: u32| span_detail(lua, r, id));
         m.add_method(
             "stats",
             |lua, r, (first, last): (Option<usize>, Option<usize>)| {
-                let n = r.stream.timeline().frames.len();
-                if n == 0 {
-                    return stats(lua, r, 0, 0);
+                let frames = &r.stream.timeline().frames;
+                let selection = if first.is_none() && last.is_none() {
+                    Selection::Whole
+                } else {
+                    let a = first.unwrap_or(0);
+                    let b = last.unwrap_or(frames.len().saturating_sub(1));
+                    match (frames.get(a), frames.get(b)) {
+                        (Some(f), Some(l)) if a <= b => Selection::Frames {
+                            first: f.frame,
+                            last: l.frame,
+                        },
+                        _ => return stats_empty(lua, r),
+                    }
+                };
+                stats(lua, r, selection)
+            },
+        );
+        m.add_method("readings", |lua, r, (from, to): (f64, f64)| {
+            stats(
+                lua,
+                r,
+                Selection::Time {
+                    from_us: query::milliseconds(from).map_err(bad)?,
+                    to_us: query::milliseconds(to).map_err(bad)?,
+                },
+            )
+        });
+        m.add_method("scope_readings", |lua, r, s: Table| {
+            let selection = match s.get::<String>("kind")?.as_str() {
+                "whole" => Selection::Whole,
+                "frames" => Selection::Frames {
+                    first: s.get("first")?,
+                    last: s.get("last")?,
+                },
+                "time" => Selection::Time {
+                    from_us: query::milliseconds(s.get("from")?).map_err(bad)?,
+                    to_us: query::milliseconds(s.get("to")?).map_err(bad)?,
+                },
+                _ => return Err(bad("unknown measurement scope")),
+            };
+            stats(lua, r, selection)
+        });
+        m.add_method("focus", |lua, r, (flag, value): (String, String)| {
+            let ex = r.explorer();
+            let mut frame = None;
+            let mut span = None;
+            let selection = match flag.as_str() {
+                "--frame" => {
+                    let id = value.parse::<u64>().map_err(bad)?;
+                    if ex.frame_index(id).is_none() {
+                        return Err(bad(format!("no frame {id} in this recording")));
+                    }
+                    frame = Some(id);
+                    Selection::Frames {
+                        first: id,
+                        last: id,
+                    }
                 }
-                let first = first.unwrap_or(0).min(n - 1);
-                let last = last.unwrap_or(n - 1).clamp(first, n - 1);
-                stats(lua, r, first, last)
+                "--span" => {
+                    let id = value.parse::<u32>().map_err(bad)?;
+                    let detail = ex
+                        .span_detail(id)
+                        .ok_or_else(|| bad(format!("no span {id} in this recording")))?;
+                    span = Some(id);
+                    detail
+                        .frame
+                        .map_or(Selection::Whole, |id| Selection::Frames {
+                            first: id,
+                            last: id,
+                        })
+                }
+                "--frames" => query::frame_range(&value).map_err(bad)?,
+                "--time" => query::time_range(&value).map_err(bad)?,
+                _ => return Err(bad("unknown focus selector")),
+            };
+            let scope = ex
+                .resolve(&selection, &query::Filter::default())
+                .map_err(bad)?;
+            if scope.intervals.is_empty() {
+                return Err(bad("focus selection contains no recorded frames"));
+            }
+            let t = table_of(lua, &crate::query_value::scope(r.stream.timeline(), &scope))?;
+            t.set("frame_id", frame)?;
+            t.set("span_id", span)?;
+            if let Some(id) = span
+                && let Some(d) = ex.span_detail(id)
+            {
+                t.set("span_start", ms(d.span.start))?;
+                t.set("span_finish", ms(d.span.end()))?;
+            }
+            Ok(t)
+        });
+        m.add_method(
+            "query",
+            |lua, r, (operation, opts): (String, Option<Table>)| {
+                let opts = opts.unwrap_or(lua.create_table()?);
+                let op = match operation.as_str() {
+                    "summary" => Operation::Summary,
+                    "frames" => Operation::Frames,
+                    "spans" => Operation::Spans,
+                    "counters" => Operation::Counters,
+                    "marks" => Operation::Marks,
+                    "frame" => Operation::Frame(opts.get("id")?),
+                    "span" => Operation::Span(opts.get("id")?),
+                    _ => return Err(bad("unknown perf operation")),
+                };
+                let mut q = Query::new(op);
+                q.filter = r.query_filter()?;
+                for (first, last) in [("first_frame", "last_frame"), ("from_ms", "to_ms")] {
+                    if opts.contains_key(first)? != opts.contains_key(last)? {
+                        return Err(bad(format!("{first} and {last} must be provided together")));
+                    }
+                }
+                if opts.get::<Option<bool>>("all")?.unwrap_or(false)
+                    && opts.contains_key("limit")?
+                {
+                    return Err(bad("choose limit or all"));
+                }
+                if let Some(first) = opts.get::<Option<u64>>("first_frame")? {
+                    q.selection = Selection::Frames {
+                        first,
+                        last: opts.get("last_frame")?,
+                    };
+                }
+                if let Some(from) = opts.get::<Option<f64>>("from_ms")? {
+                    if q.selection != Selection::Whole {
+                        return Err(bad("choose frames or time, not both"));
+                    }
+                    q.selection = Selection::Time {
+                        from_us: query::milliseconds(from).map_err(bad)?,
+                        to_us: query::milliseconds(opts.get("to_ms")?).map_err(bad)?,
+                    };
+                }
+                if let Some(sort) = opts.get::<Option<String>>("sort")? {
+                    q.set_sort(sort);
+                }
+                if let Some(desc) = opts.get::<Option<bool>>("descending")? {
+                    q.descending = desc;
+                }
+                if opts.get::<Option<bool>>("all")?.unwrap_or(false) {
+                    q.limit = None;
+                } else if let Some(limit) = opts.get::<Option<usize>>("limit")? {
+                    q.limit = Some(limit);
+                }
+                let ex = r.explorer();
+                let result = ex.execute(&q).map_err(bad)?;
+                table_of(
+                    lua,
+                    &crate::query_value::result(r.trace(), r.stream.timeline(), &result, ""),
+                )
             },
         );
         m.add_method("series", |_, r, name: String| {
@@ -1356,6 +1306,168 @@ mod tests {
             .set("trace", register(&lua, None).unwrap())
             .unwrap();
         lua
+    }
+
+    #[test]
+    fn frame_boundary_span_has_one_owner_in_channels_queries_and_details() {
+        let mut trace = Trace::new();
+        trace.session = Some(crate::Session {
+            budget_ms: 10.0,
+            ..Default::default()
+        });
+        let name = trace.names.get("boundary work").0;
+        for (frame, begin, end, unchanged) in [(10, 0, 1000, true), (20, 1000, 2000, false)] {
+            trace.records.extend([
+                Record::FrameBegin {
+                    t: begin,
+                    frame,
+                    causes: vec![],
+                },
+                Record::FrameEnd {
+                    t: end,
+                    frame,
+                    unchanged: Some(unchanged),
+                    nodes: 0,
+                },
+                Record::Present {
+                    t: end,
+                    frame,
+                    render: 0,
+                    wait: 0,
+                },
+            ]);
+        }
+        trace.records.push(Record::Span(Span {
+            track: crate::Track::MAIN,
+            id: 1,
+            parent: 0,
+            name,
+            origin: Origin::Host,
+            start: 1000,
+            dur: 100,
+            cpu: None,
+            node: 0,
+            cut: false,
+        }));
+        let lua = state();
+        lua.globals()
+            .set("bytes", lua.create_string(trace.to_bytes()).unwrap())
+            .unwrap();
+        lua.load(
+            r#"
+            local rec = trace.read(bytes)
+            assert(rec:span_id(1).frame == 20, "boundary span belongs to the following frame")
+            assert(rec.spans:get(0, "frame") == 1, "channel frame index identifies the same owner")
+            rec:filter { hide_unchanged = true }
+            assert(#rec.frames == 1 and rec.frames:get(0, "frame") == 20)
+            assert(#rec.spans == 1, "the changed frame's boundary span stays in the timeline")
+            local q = rec:query("spans", { all = true })
+            assert(q.matched == 1 and q.data[1].example_id == 1)
+            assert(rec:stats().spans[1].example_id == 1)
+            rec:filter { verdicts = { "wasted" } }
+            assert(#rec.frames == 1 and rec.frames:get(0, "frame") == 10)
+            assert(#rec.spans == 0 and rec:query("spans", { all = true }).matched == 0,
+                   "excluding the owner excludes the span in both interfaces")
+        "#,
+        )
+        .exec()
+        .unwrap();
+    }
+
+    #[test]
+    fn frame_filters_reconsider_gap_work_when_the_following_frame_arrives() {
+        use std::io::Write;
+        let path = std::env::temp_dir().join(format!(
+            "kui-trace-frame-membership-{}.kuitrace",
+            std::process::id()
+        ));
+        let mut before = Trace::new();
+        let name = before.names.get("background").0;
+        before.records.extend([
+            Record::FrameBegin {
+                t: 0,
+                frame: 10,
+                causes: vec![],
+            },
+            Record::FrameEnd {
+                t: 1000,
+                frame: 10,
+                unchanged: Some(true),
+                nodes: 0,
+            },
+            Record::Present {
+                t: 2000,
+                frame: 10,
+                render: 100,
+                wait: 900,
+            },
+            Record::Span(Span {
+                track: crate::Track(2),
+                id: 1,
+                parent: 0,
+                name,
+                origin: Origin::Host,
+                start: 1500,
+                dur: 100,
+                cpu: None,
+                node: 0,
+                cut: false,
+            }),
+        ]);
+        let mut after = before.clone();
+        after.records.extend([
+            Record::FrameBegin {
+                t: 3000,
+                frame: 20,
+                causes: vec![],
+            },
+            Record::FrameEnd {
+                t: 4000,
+                frame: 20,
+                unchanged: Some(false),
+                nodes: 0,
+            },
+            Record::Present {
+                t: 5000,
+                frame: 20,
+                render: 100,
+                wait: 900,
+            },
+        ]);
+        let prefix = before.to_bytes();
+        let complete = after.to_bytes();
+        assert_eq!(prefix, &complete[..prefix.len()]);
+        std::fs::write(&path, &prefix).unwrap();
+        let lua = state();
+        lua.globals().set("path", path.to_str().unwrap()).unwrap();
+        lua.load(
+            r#"
+            rec=trace.open(path)
+            rec:filter{hide_unchanged=true}
+            assert(#rec.spans==0 and rec:query("spans").matched==0)
+        "#,
+        )
+        .exec()
+        .unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(&complete[prefix.len()..])
+            .unwrap();
+        let result = lua
+            .load(
+                r#"
+            rec:poll()
+            assert(rec:span_id(1).frame==20)
+            assert(rec:query("spans").matched==1)
+            assert(#rec.spans==1,"the timeline must reconsider work read before its frame arrived")
+            assert(rec.spans:get(0,"id")==1)
+        "#,
+            )
+            .exec();
+        let _ = std::fs::remove_file(path);
+        result.unwrap();
     }
 
     /// A recording read whole: its channels in Kit's waterfall's shape, a
@@ -1407,7 +1519,8 @@ mod tests {
             verdict = f.verdict.kind
             has_phases = f.phases.build > 0
             local s = rec:stats()
-            top = s.spans[1].name
+            self_sorted = true
+            for i = 2, #s.spans do if s.spans[i].self > s.spans[i-1].self then self_sorted = false end end
             components = #s.components
             burns = #s.burns
             local sub = rec:stats(10, 19)
@@ -1453,7 +1566,10 @@ mod tests {
         assert!(g.get::<i64>("nested").unwrap() > 1000);
         assert_eq!(g.get::<i64>("build_depth").unwrap(), 0);
         assert!(g.get::<bool>("has_phases").unwrap());
-        assert_eq!(g.get::<String>("top").unwrap(), "build");
+        assert!(
+            g.get::<bool>("self_sorted").unwrap(),
+            "span groups rank by self cost"
+        );
         assert!(g.get::<i64>("components").unwrap() > 0);
         assert_eq!(g.get::<i64>("sub_frames").unwrap(), 10);
         assert!(g.get::<i64>("series").unwrap() > 300);
@@ -1490,6 +1606,7 @@ mod tests {
             r#"
             rec = trace.open(path)
             first = #rec.frames
+            cached_first = rec:query("summary").data.frames
             spans_id = rec.spans.id
             idle = rec:poll()
             "#,
@@ -1506,6 +1623,8 @@ mod tests {
             r#"
             more = rec:poll()
             second = #rec.frames
+            cached_second = rec:query("summary").data.frames
+            assert(rec:frame_id(200).frame == 200)
             same_id = rec.spans.id == spans_id
             "#,
         )
@@ -1523,6 +1642,8 @@ mod tests {
             r#"
             reset = rec:poll()
             third = #rec.frames
+            cached_third = rec:query("summary").data.frames
+            assert(rec:frame_id(200) == nil)
             kept_id = rec.spans.id == spans_id
             "#,
         )
@@ -1535,12 +1656,22 @@ mod tests {
         assert_eq!(g.get::<String>("more").unwrap(), "more");
         assert_eq!(
             g.get::<i64>("second").unwrap(),
-            199,
-            "the last frame waits for the next"
+            200,
+            "a completed present seals the last frame without waiting for a successor"
+        );
+        assert_eq!(
+            g.get::<i64>("cached_second").unwrap(),
+            200,
+            "appending invalidates the shared query index"
+        );
+        assert_eq!(
+            g.get::<i64>("cached_third").unwrap(),
+            20,
+            "rewriting invalidates old ID references"
         );
         assert!(g.get::<bool>("same_id").unwrap());
         assert_eq!(g.get::<String>("reset").unwrap(), "reset");
-        assert_eq!(g.get::<i64>("third").unwrap(), 19);
+        assert_eq!(g.get::<i64>("third").unwrap(), 20);
         assert!(g.get::<bool>("kept_id").unwrap());
         let _ = std::fs::remove_file(&path);
     }

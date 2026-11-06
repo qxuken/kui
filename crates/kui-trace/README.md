@@ -10,7 +10,8 @@ and the Firefox Profiler.
 
 `kui-core` writes it: the devtools' Perf tab records it, and
 `KUI_PERF_TRACE=path` streams a session to a file. This crate reads it
-without kui: it has no dependencies but behind its `lua` feature, which
+without kui: its default build has no dependencies. The optional `value`
+feature adds presentation values (`kui-value`); `lua` also
 hands a script a recording as channels (`kui-channel`, `kui-value`) —
 the runner's `kui.trace`. A recording is read whole or as it arrives
 (`Stream`, a `Transport` such as `FileTransport`, a `Watch` on the file).
@@ -47,4 +48,14 @@ when a counted row grew past N percent. Maxima, counts, shares and vsync's
 wait are shown but not counted, nor a time under 50 µs or a rate under one
 a frame before: those are noise, not regressions.
 
-The design is [ADR 0058](https://github.com/qxuken/kui/blob/main/docs/adr/0058-a-recording-is-a-timeline.md).
+`query` is the dependency-free Rust exploration module shared by the viewer
+and `kui perf` terminal queries ([ADR 0078](../../docs/adr/0078-perf-exploration-shares-one-query-model.md)).
+It resolves frame/time scopes, separates frame selection from span
+attribution, returns stable frame/span references, applies explicit sorting
+and limits, and compares independently selected populations. The optional
+`value` feature adds shared presentation values without Lua; `lua` adds
+the recording facade and channels. See the [inspector documentation](../../tools/kui-perf/README.md)
+for CLI and Lua exploration examples. Existing `kui-trace` commands retain
+their current behavior, including `diff --fail-over`.
+
+The recording format is [ADR 0058](https://github.com/qxuken/kui/blob/main/docs/adr/0058-a-recording-is-a-timeline.md).

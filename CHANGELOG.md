@@ -21,6 +21,59 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- `rec:stats` now applies active filters, ranks span groups by self time,
+  and returns all groups rather than silently stopping at 40. A frame
+  with a completed present appears without waiting for the next frame.
+- `rec:span(row).frame` now names the recorded frame number, as
+  `rec:span_id(id).frame` does; resolve it with `rec:frame_id`. A missing
+  frame budget produces an unavailable verdict rather than an assumed one.
+- The inspector's Frames table follows the measured scope, matching its
+  statistics; the overview and keyboard navigation still cover the recording.
+- Graph-lane wheel/pinch zoom uses the plot's geometry, correcting a layout
+  lookup previously shadowed by a lane toggle with the same key label.
+- Total frame work and verdicts require a present measurement as well as
+  the core end. Core-only recordings keep their known phase timings;
+  unavailable numeric frame-channel cells are NaN, displayed as `—`.
+
+### Added
+
+- Shared perf exploration in the viewer and terminal (ADR 0078):
+  `kui perf summary`, `frames`/`frame`, `spans`/`span`, `counters`, `marks`
+  and `compare`. Queries run without a window, with readable text or
+  `--json`, explicit scopes, sorting, limits and omission counts.
+- Recording-stable frame/span references, parent/child span IDs, and
+  focused viewer startup through `--frame`, `--span`, `--frames` or `--time`.
+  Lua's `rec:query`, `frame_id`, `span_id` and `readings` use the shared
+  Rust query module in `kui-trace`.
+- Comparison accepts independent scopes, reports absolute and normalized
+  costs, and preserves unavailable measurements without declaring a winner.
+
+### Fixed
+
+- Span filters retain self time from the original nesting and preserve
+  frame statistics and denominators. Time queries report their expansion
+  to complete frames; empty selections stay empty.
+- Frame-boundary spans have the same owner in timeline channels, queries
+  and details. Filtered attribution cannot include an excluded frame's
+  gap through an overlapping present interval.
+- Missing rendering stays unavailable in total work, comparisons and
+  verdicts. Missing work sorts last in both directions, preventing false
+  fastest-frame rankings and performance deltas from truncated recordings.
+- Clicking or activating a stale frame or burn row cannot select the
+  neighboring frame when a filter removed its original index.
+- Lane toggles use distinct key labels, so the plot's layout lookup is
+  unambiguous and graph-lane zoom centers correctly.
+
+### What you can delete
+
+- Scripts written only to obtain filtered perf summaries, hot span groups,
+  frame/span details or scoped comparisons without opening a window.
+- Parsing formatted perf tables for agent tool calls: use `--json`.
+
 ## 0.1.0-alpha.77 (2026-11-05)
 
 **What breaks.**

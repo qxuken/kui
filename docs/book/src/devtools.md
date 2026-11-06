@@ -81,6 +81,34 @@ and the film camera records it as a GIF, to the desktop (or
 trace — shows under the toolbar: click its name to copy the path, or
 *open folder* to see it in Finder or Explorer.
 
+For terminal exploration, `kui perf summary session.kuitrace` gives an
+overview; `kui perf frames session.kuitrace --sort work --limit 10 --json`
+ranks frames without opening a window. Inspect a recorded frame with
+`kui perf frame session.kuitrace 123`, then open the viewer on it with
+`kui perf session.kuitrace --frame 123`. `kui perf spans` ranks self costs,
+and `kui perf compare` compares independently selected recordings without
+declaring an overall winner. `kui perf --help` lists scopes, filters,
+units and result limits. These readings use the same analysis as the
+viewer; span filters preserve frame measurements and their denominators.
+
+Selections use recorded frame numbers (`--frames 120:180`, inclusive),
+or recording time (`--time 1s:2s`, half-open and expanded to whole frames
+with their preceding gaps). Lists show twenty results by default and
+report omissions; use `--limit N` or `--all`. `--name`, `--origin`,
+`--hide-name` and `--min-us` restrict span attribution; `--verdict` and
+`--hide-unchanged` change the frame population. Detail IDs stay valid
+across filtering and sorting within their recording.
+
+For comparison, choose each input with `--before-frames`/`--after-frames`
+or `--before-time`/`--after-time`; an unspecified side uses its whole
+recording. Results include counts, absolute costs and normalized costs.
+Frame work is core duration plus rendering, excluding vsync wait. A
+missing core end or present measurement leaves work and its verdict
+unavailable, shown as `null` in JSON or `—` in text; missing work sorts
+last. A missing or zero comparison baseline has no percentage change.
+The [perf exploration guide](https://github.com/qxuken/kui/blob/main/tools/kui-perf/README.md)
+covers every query, its options, JSON metadata and Lua examples.
+
 ## Warnings
 
 A mistake that fails silently in most UI libraries comes back as data

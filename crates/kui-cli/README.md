@@ -75,12 +75,16 @@ end
 | `--devtools` | Opens with the devtools panel; its Log tab has what the app printed and logged. |
 | `--no-rename` | Keeps the name "kui" in the Dock and ⌘Tab (macOS names an app by its binary, so a windowed run relaunches as a free clone named after the app). |
 | `kui perf [recording]` | Opens a `.kuitrace` in kui-perf, the trace inspector (ADR 0075), carried inside the runner; the run options apply. |
+| `kui perf <query> ...` | Windowless `summary`, `frames`/`frame`, `spans`/`span`, `counters`, `marks` and `compare`, with text or `--json`, scopes, filters and explicit result limits. `kui perf --help` lists the options; `kui perf RECORDING --frame ID`, `--span ID`, `--frames FIRST:LAST` or `--time FROM:TO` continues in the viewer (ADR 0078). |
 | `kui check [path]` | Type-checks the app's `.tl` files against kui's, Kit's and the runner's declarations. |
 | `kui new <dir>` | Starts an app, with its editor declarations. |
 | `kui types [path]` | Writes `.kui/types` (lua-language-server's and Teal's declarations), `.luarc.json` and `tlconfig.lua`. |
 | `kui pack [path]` | Builds the app for any platform from any machine (ADR 0068): `--target linux-x64,darwin-arm64,win32-x64,linux-arm64` (or `all`; default this machine's), `--format exe\|app\|bin\|npm\|kui` (default each target's own), `--out dist`. See [Shipping an app](#shipping-an-app). |
 | `kui upgrade [version]` | Replaces this `kui` with the release's (the latest by default); one npm or Homebrew installed says the command to use instead. |
 | `kui runners fetch <version> --to <dir>` | Downloads every platform's runner with its checksums, laid out as the release is, for a mirror (`latest` also writes `latest.txt`). |
+
+For an end-to-end perf workflow, option reference, JSON contract and Lua
+examples, see the [perf exploration guide](../../tools/kui-perf/README.md).
 
 ## App subcommands
 
@@ -212,6 +216,7 @@ A `try_transaction` whose function raised a database's error (a plain
 | `kui.http.serve{ port, static }` | `s:get("/api/items/:id", function(req) ... end)`; each request is a task. |
 | `kui.sqlite.open(path)` | `db:query`, `db:first`, `db:exec` *wait*; `db:transaction(fn)`. |
 | `kui.trace.open(path, { message })` | A recording (`.kuitrace`, ADR 0075) as channels: `rec.spans` (Kit's waterfall's `bars`), `rec.frames`, `rec.instants` (its `marks`); `rec:frame(row)`, `rec:span(row)`, `rec:stats(first, last)`, `rec:series(name)`; `rec:filter{ origins, name, hide_names, min_us, verdicts, hide_unchanged, where }` (`where`, a function handed each span). The file is watched: as it grows, `update` gets `message`, and `rec:poll()` appends what came. |
+| `rec:query(operation, opts)` | The shared Rust exploration results (ADR 0078). `first_frame`/`last_frame` select recorded numbers, `from_ms`/`to_ms` select time, `sort`/`descending` order lists, and `limit`/`all` control completeness. Active filters apply; `rec:frame_id(id)` and `rec:span_id(id)` resolve stable references independently. `rec:readings(from_ms, to_ms)` returns the viewer's complete tables over the expanded frame scope. [Examples](../../tools/kui-perf/README.md#explore-from-the-terminal). |
 | `kui.worker(path, handler)` | A module on a thread of its own: `w:dispatch(msg)` reaches its `on_message`; what it dispatches reaches `handler` (or `update`). A channel in a message crosses without a copy. |
 | `kui.next_frame(fn)` | Runs `fn(env)` before the next `view`: `env.set_clipboard`, `env.set_focus`, `env.measure_text` from `update`, a task or a timer. |
 | `kui.exit(code)` | Ends the app: the window closes, then `on_exit()` runs, then what it spawned is ended. Ctrl-C, `SIGTERM` and `SIGHUP` do the same. |

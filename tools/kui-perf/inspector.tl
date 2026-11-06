@@ -21,6 +21,7 @@ local record inspector
   filtering: function(st: Inspector): boolean
   grew: function(st: Inspector)
   restat: function(st: Inspector)
+  focus: function(st: Inspector, flag: string, value: string)
 end
 
 local LANE_H = 52
@@ -69,15 +70,13 @@ local function first_at(ch: kui.Channel, field: string, t: number): integer
   return lo
 end
 
--- The timeline's frames the window holds, first and last; nil for none.
-local function frames_in(st: Inspector): integer, integer
-  local f = st.rec.frames
-  if #f == 0 then return nil, nil end
-  local a = first_at(f, "begin", st.v0)
-  local b = first_at(f, "begin", st.v1) - 1
-  if a > #f - 1 then a = #f - 1 end
-  if b < a then b = a end
-  return f:get(a, "index") as integer, f:get(b, "index") as integer
+-- A visible row for an original timeline index. A filtered-out index has
+-- no row; its insertion position must never select the following frame.
+local function frame_row(ch: kui.Channel, index: integer): integer
+  if not index then return nil end
+  local at = first_at(ch, "index", index)
+  if at < #ch and ch:get(at, "index") == index then return at end
+  return nil
 end
 
 local function set_window(st: Inspector, v0: number, v1: number)
@@ -87,6 +86,7 @@ local function set_window(st: Inspector, v0: number, v1: number)
   if v0 < lo then v0 = lo end
   if v0 + len > hi then v0 = hi - len end
   st.v0, st.v1 = v0, v0 + len
+  st.measurement = nil
   st.stale = true
   st.moves = (st.moves or 0) + 1
 end
@@ -97,8 +97,7 @@ local function apply_filter(st: Inspector)
   for _, off in pairs(st.origins) do if off then hidden = hidden + 1 end end
   if hidden > 0 then
     shown = {}
-    for _, o in ipairs((st.stats and st.stats.origins or {}) as {{string:any}}) do
-      local name = o.origin as string
+    for _, name in ipairs((st.session.origins or {}) as {string}) do
       if not st.origins[name] then shown[#shown + 1] = name end
     end
   end
@@ -111,20 +110,21 @@ local function apply_filter(st: Inspector)
     hide_unchanged = st.frames == "changed" or nil,
   })
   st.frame, st.span = -1, -1
+  st.frame_ref, st.span_ref = nil, nil
   st.stale = true
+  st.stats_for = nil
 end
 
 -- The tables over the window: the readings `rec:stats` takes in Rust,
 -- made into channels for Kit's tables.
 local function tables_of(s: {string:any}): {string:kui.Channel}
   local function list(k: string): {{string:any}} return (s[k] or {}) as {{string:any}} end
-  local frames = math.max(1, ((s.summary as {string:any}).frames or 1) as number)
   local t: {string:kui.Channel} = {}
   do
     local name, origin, calls, per, total, self, worst: {any}, {any}, {any}, {any}, {any}, {any}, {any} = {}, {}, {}, {}, {}, {}, {}
     for i, r in ipairs(list("spans")) do
       name[i], origin[i], calls[i] = r.name, r.origin, r.calls
-      per[i], total[i], self[i], worst[i] = (r.total as number) / frames, r.total, r.self, r.worst
+      per[i], total[i], self[i], worst[i] = r.per_frame ~= nil and r.per_frame or "—", r.total, r.self, r.worst
     end
     t.spans = channel({ name = name, origin = origin, calls = calls, per_frame = per, total = total, self = self, worst = worst })
   end
@@ -172,12 +172,22 @@ function inspector.filtering(st: Inspector): boolean
 end
 
 function inspector.restat(st: Inspector)
-  local a, b = frames_in(st)
-  local key = ("%s-%s-%s"):format(tostring(a), tostring(b), tostring(#st.rec.frames))
+  local key = ("%s-%s-%s-%s"):format(tostring(st.v0), tostring(st.v1), tostring(#st.rec.frames), tostring(#st.rec.spans))
   if key == st.stats_for and st.stats then st.stale = false return end
-  st.stats = st.rec:stats(a, b)
+  local lo, hi = extent(st)
+  if st.measurement then st.stats = st.rec:scope_readings(st.measurement)
+  elseif st.v0 <= lo and st.v1 >= hi then st.stats = st.rec:stats()
+  else st.stats = st.rec:readings(st.v0, math.max(st.v1, st.v0 + 0.001)) end
   st.stats_for = key
   st.tables = tables_of(st.stats)
+  local wanted: {integer:boolean} = {}
+  for _, i in ipairs((st.stats.frame_indices or {}) as {integer}) do wanted[i] = true end
+  local rows: {integer} = {}
+  local frames = st.rec.frames
+  for i = 0, #frames - 1 do
+    if wanted[frames:get(i, "index") as integer] then rows[#rows + 1] = i end
+  end
+  st.tables.frames = frames:take(rows)
   st.stale = false
 end
 
@@ -211,6 +221,7 @@ end
 -- More came (Live): the window rides the end while it is followed.
 function inspector.grew(st: Inspector)
   st.session = st.rec:session()
+  st.stats_for = nil
   st.series = {}
   if st.follow then
     local lo, hi = extent(st)
@@ -237,6 +248,7 @@ local function select_frame(st: Inspector, row: integer)
   local f = st.rec.frames
   if row < 0 or row >= #f then return end
   st.frame, st.span = row, -1
+  st.frame_ref, st.span_ref = f:get(row, "frame") as integer, nil
   local b, e = f:get(row, "begin") as number, f:get(row, "end") as number
   if b < st.v0 or e > st.v1 then
     local len = st.v1 - st.v0
@@ -303,6 +315,7 @@ end
 local function select_span(st: Inspector, row: integer)
   if not row then return end
   st.span = row
+  st.span_ref = st.rec.spans:get(row, "id") as integer
   local s = span_at(st, row)
   local l = st.rec.spans:get(row, "len") as number
   if s + l < st.v0 or s > st.v1 then
@@ -312,19 +325,62 @@ local function select_span(st: Inspector, row: integer)
   end
 end
 
+local function frame_detail(st: Inspector): kui.TraceFrame
+  if st.frame_ref then return st.rec:frame_id(st.frame_ref) end
+  if st.frame < 0 or st.frame >= #st.rec.frames then return nil end
+  return st.rec:frame_id(st.rec.frames:get(st.frame, "frame") as integer)
+end
+
+local function span_detail(st: Inspector): kui.TraceSpan
+  if st.span_ref then return st.rec:span_id(st.span_ref) end
+  if st.span < 0 or st.span >= #st.rec.spans then return nil end
+  return st.rec:span_id(st.rec.spans:get(st.span, "id") as integer)
+end
+
+-- Startup focus uses the same selection resolver as terminal queries. A
+-- direct reference must remain visible even if saved preferences hide it.
+function inspector.focus(st: Inspector, flag: string, value: string)
+  local scope = st.rec:focus(flag, value)
+  st.origins, st.name, st.min_us, st.frames, st.devtools = {}, "", 0, "all", true
+  apply_filter(st)
+  if scope.from and scope.to then set_window(st, scope.from as number, scope.to as number) end
+  if scope.frame_id then
+    st.frame_ref = scope.frame_id as integer
+    local f = st.rec.frames
+    st.frame = #f -- an incomplete frame may not have a published row yet
+    for i = 0, #f - 1 do
+      if f:get(i, "frame") == scope.frame_id then st.frame = i; break end
+    end
+  elseif scope.span_id then
+    st.span_ref = scope.span_id as integer
+    local sp = st.rec.spans
+    for i = 0, #sp - 1 do
+      if sp:get(i, "id") == scope.span_id then st.span = i; break end
+    end
+    if scope.span_start and scope.span_finish then
+      local a, b = scope.span_start as number, scope.span_finish as number
+      local pad = math.max((b - a) * 0.1, 0.01)
+      set_window(st, a - pad, b + pad)
+    end
+  end
+  st.measurement = scope.requested as {string:any}
+  st.follow = false
+end
+
 local function fit(st: Inspector)
   if st.r0 then
     set_window(st, st.r0, st.r1)
     st.r0, st.r1 = nil, nil
-  elseif st.span >= 0 then
-    local s = st.rec:span(st.span)
+  elseif st.span >= 0 or st.span_ref then
+    local s = span_detail(st)
     if s then set_window(st, s.start - s.len * 0.1, s.start + s.len * 1.1) end
-  elseif st.frame >= 0 then
-    local f = st.rec.frames
-    local b, e = f:get(st.frame, "begin") as number, f:get(st.frame, "end") as number
-    local d = st.rec:frame(st.frame)
-    local from = b - (d and d.gap or 0)
-    set_window(st, from, e + (e - from) * 0.1)
+  elseif st.frame >= 0 or st.frame_ref then
+    local d = frame_detail(st)
+    if d then
+      local from = d.begin - d.gap
+      local finish = d.finish or d.begin
+      set_window(st, from, finish + math.max((finish - from) * 0.1, 0.01))
+    end
   end
   st.follow = false
 end
@@ -352,7 +408,7 @@ function inspector.key(st: Inspector, key: {string:any}): boolean
   elseif c == "0" then local lo, hi = extent(st); set_window(st, lo, hi)
   elseif c == "/" then st.search_focus = st.search_focus + 1
   elseif c == "escape" then
-    if st.r0 then st.r0, st.r1 = nil, nil else st.frame, st.span = -1, -1 end
+    if st.r0 then st.r0, st.r1 = nil, nil else st.frame, st.span, st.frame_ref, st.span_ref = -1, -1, nil, nil end
   else return false end
   return true
 end
@@ -377,7 +433,7 @@ end
 -- the rows it was taken from.
 local function shown(st: Inspector, tab: string, ch: kui.Channel): kui.Channel, {integer}
   local by = st.sorts[tab]
-  if not by or not ch then return ch, nil end
+  if not by or not ch then st.shown[tab] = nil; return ch, nil end
   local key = ("%s@%s/%s/%s"):format(tostring(ch.id), tostring(ch.rev), by.field, tostring(by.desc))
   local c = st.shown[tab]
   if not c or c.key ~= key then
@@ -421,9 +477,11 @@ function inspector.update(st: Inspector, msg: Msg): boolean
     if r.length > 0 then st.r0, st.r1 = r.start, r.start + r.length else st.r0, st.r1 = nil, nil end
   elseif k == "ins_span" then
     st.span = msg.select.row
+    st.span_ref = st.span >= 0 and st.rec.spans:get(st.span, "id") as integer or nil
   elseif k == "ins_frame" then
-    local _, order = shown(st, "frames", st.rec.frames)
-    select_frame(st, order and order[msg.select.row + 1] or msg.select.row)
+    local rows = shown(st, "frames", st.tables and st.tables.frames or st.rec.frames)
+    local source = frame_row(st.rec.frames, rows:get(msg.select.row, "index") as integer)
+    if source then select_frame(st, source) end
   elseif k == "ins_activate" then
     -- A double click (or Enter) on a frame or a burn: its time is the
     -- range, the window moved to show it.
@@ -431,15 +489,19 @@ function inspector.update(st: Inspector, msg: Msg): boolean
     local a, b: number, number
     local f = st.rec.frames
     if tab == "frames" then
-      local _, order = shown(st, "frames", f)
-      local row = order and order[msg.activate.row + 1] or msg.activate.row
-      a, b = f:get(row, "begin") as number, f:get(row, "end") as number
-      st.frame = row
+      local rows = shown(st, "frames", st.tables and st.tables.frames or f)
+      local source = frame_row(f, rows:get(msg.activate.row, "index") as integer)
+      if source then
+        a, b = f:get(source, "begin") as number, f:get(source, "end") as number
+        st.frame = source
+        st.frame_ref = f:get(source, "frame") as integer
+        st.span, st.span_ref = -1, nil
+      end
     elseif tab == "burns" then
       local burns = shown(st, "burns", st.tables.burns)
-      local first = first_at(f, "index", burns:get(msg.activate.row, "first") as integer)
-      local last = first_at(f, "index", burns:get(msg.activate.row, "last") as integer)
-      a, b = f:get(first, "begin") as number, f:get(math.min(last, #f - 1), "end") as number
+      local first = frame_row(f, burns:get(msg.activate.row, "first") as integer)
+      local last = frame_row(f, burns:get(msg.activate.row, "last") as integer)
+      if first and last then a, b = f:get(first, "begin") as number, f:get(last, "end") as number end
     end
     if a and b and b > a then
       st.r0, st.r1 = a, b
@@ -454,8 +516,8 @@ function inspector.update(st: Inspector, msg: Msg): boolean
     local first = burns:get(msg.select.row, "first") as integer
     -- A burn names the timeline's frame; the frames view's row for it.
     local f = st.rec.frames
-    local row = first_at(f, "index", first)
-    select_frame(st, row)
+    local source = frame_row(f, first)
+    if source then select_frame(st, source) end
   elseif k == "ins_sort" then
     -- A header: by it, the greatest first for a number; again, the
     -- other way; the frames by their number, as they came.
@@ -464,14 +526,14 @@ function inspector.update(st: Inspector, msg: Msg): boolean
     if by and by.field == field then
       by.desc = not by.desc
     else
-      local ch = tab == "frames" and st.rec.frames or (st.tables or {})[tab]
+      local ch = (st.tables or {})[tab] or (tab == "frames" and st.rec.frames or nil)
       local v = ch and #ch > 0 and ch:get(0, field) or nil
       st.sorts[tab] = { field = field, desc = v is number }
     end
     by = st.sorts[tab]
     if tab == "frames" and field == "frame" and not by.desc then st.sorts[tab] = nil end
     -- Taken now: the table and a pick in it read it next.
-    shown(st, tab, tab == "frames" and st.rec.frames or (st.tables or {})[tab])
+    shown(st, tab, (st.tables or {})[tab] or (tab == "frames" and st.rec.frames or nil))
   elseif k == "ins_wheel" then
     local r = msg.value as {string:number}
     if r and r.w and r.w > 0 then
@@ -595,7 +657,7 @@ local function lane_picker(st: Inspector): kui.Node
   local items: kui.Props = { key = "lane-picker", gap = 4, cross_align = "center", wrap_children = true,
     muted("Lanes") }
   for _, n in ipairs(st.rec:series_names()) do
-    items[#items + 1] = kit.button({ key = "lane-" .. n, label = n, pressed = shown[n] == true,
+    items[#items + 1] = kit.button({ key = "lane-toggle-" .. n, label = n, pressed = shown[n] == true,
       variant = "ghost", on_press = { kind = "ins_lane", name = n } })
   end
   return row(items)
@@ -606,8 +668,8 @@ local function entry(k: string, v: string, mono?: boolean): {string:any}
 end
 
 local function detail(st: Inspector): kui.Node
-  if st.span >= 0 then
-    local s = st.rec:span(st.span)
+  if st.span >= 0 or st.span_ref then
+    local s = span_detail(st)
     if s then
       -- A component's fill first says whether it replayed or drew fresh,
       -- and why (a prop it was given moved, it heard its own event, it
@@ -618,6 +680,7 @@ local function detail(st: Inspector): kui.Node
         entries[#entries + 1] = entry("recorded as", s.span) as kit.Entry
       end
       for _, e in ipairs({
+          entry("span ID", tostring(s.id), true), entry("parent ID", tostring(s.parent), true),
           entry("origin", s.origin), entry("start", ms(s.start), true), entry("length", ms(s.len), true),
           entry("self", ms(s.self), true), entry("cpu", s.cpu and ms(s.cpu) or "—", true),
           entry("track", s.track), entry("depth", tostring(s.depth), true),
@@ -629,13 +692,13 @@ local function detail(st: Inspector): kui.Node
       }
     end
   end
-  if st.frame < 0 then
+  if st.frame < 0 and not st.frame_ref then
     return kit.empty({ key = "no-frame", title = "Nothing selected",
       detail = "Pick a frame in the table (← → or h l walk them; [ ] the slow ones, { } the burns), or a span in the timeline." })
   end
-  local f = st.rec:frame(st.frame)
+  local f = frame_detail(st)
   if not f then return kit.empty({ key = "gone", title = "That frame is filtered out" }) end
-  local v = f.verdict
+  local v = f.verdict or { kind = "unavailable" } as kui.TraceVerdict
   local verdict = v.kind
   if v.kind == "slow" then verdict = ("slow — %s of work, most in %s%s"):format(ms(v.work), v.phase, v.span and (" (" .. v.span .. ")") or "")
   elseif v.kind == "late" then verdict = ("late — its input waited %s%s"):format(ms(v.wait), v.slept and ", the loop asleep" or "")
@@ -680,8 +743,16 @@ local function table_for(st: Inspector, tab: string): kui.Node
   local desc = by and by.desc or nil
   local on_sort = { kind = "ins_sort", name = tab }
   if tab == "frames" then
-    local rows = shown(st, "frames", st.rec.frames)
-    local sel = st.frame >= 0 and place_of(st, "frames", st.frame) or nil
+    local source = st.tables and st.tables.frames or st.rec.frames
+    local rows = shown(st, "frames", source)
+    local sel: integer = nil
+    if st.frame >= 0 then
+      local index = st.rec.frames:get(st.frame, "index") as integer
+      if index then
+        local at = first_at(source, "index", index)
+        if at < #source and source:get(at, "index") == index then sel = place_of(st, "frames", at) end
+      end
+    end
     return kit.table({ key = "t-frames", rows = rows, selected = sel, sort = sort or "frame", descending = desc,
       on_sort = on_sort, on_select = { kind = "ins_frame" }, on_activate = { kind = "ins_activate", name = "frames" },
       grow = true, columns = {
@@ -736,8 +807,7 @@ end
 
 local function filters(st: Inspector): kui.Node
   local origins: kui.Props = { key = "origins", gap = 2, cross_align = "center", muted("Origins") }
-  for _, o in ipairs((st.stats and st.stats.origins or {}) as {{string:any}}) do
-    local name = o.origin as string
+  for _, name in ipairs((st.session.origins or {}) as {string}) do
     origins[#origins + 1] = kit.button({ key = "origin-" .. name, label = name, pressed = not st.origins[name],
       variant = "ghost", on_press = { kind = "ins_origin", name = name } })
   end
@@ -775,6 +845,18 @@ local function timeline(st: Inspector, env: kui.Env): kui.Node
   }
 end
 
+local function scope_label(st: Inspector): kui.Node
+  if not st.stats then return muted("Measuring…") end
+  local scope = st.stats.scope as {string:any}
+  local summary = st.stats.summary as {string:any}
+  local range = scope and scope.from and scope.to and (" · %s–%s"):format(ms(scope.from as number), ms(scope.to as number)) or ""
+  local filtered = (inspector.filtering(st) or not st.devtools) and " · filtered" or ""
+  local incomplete = ((summary.frames or 0) as integer) - ((summary.complete_frames or 0) as integer)
+  if incomplete > 0 then filtered = filtered .. (" · %d incomplete"):format(incomplete) end
+  local frames, groups = (summary.frames or 0) as integer, (st.stats.matched or 0) as integer
+  return muted(("%d frame%s measured%s%s · %d span group%s, all shown"):format(frames, frames == 1 and "" or "s", range, filtered, groups, groups == 1 and "" or "s"))
+end
+
 function inspector.view(st: Inspector, env: kui.Env): kui.Node
   -- The tables over the window are read once it has been still a moment:
   -- a pan or a zoom draws its frames without reading them each step.
@@ -791,6 +873,7 @@ function inspector.view(st: Inspector, env: kui.Env): kui.Node
   return column { key = "inspector", width = "grow", height = "grow", gap = 8, pad = { x = 10, t = 8 },
     when = { { width = { below = 700, band = 24 }, hidden = { "lane-picker" } } },
     filters(st),
+    scope_label(st),
     overview(st, env),
     lane_picker(st),
     column { key = "bands", width = "grow", height = "grow", gap = 8,

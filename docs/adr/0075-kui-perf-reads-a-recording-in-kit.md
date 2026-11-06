@@ -242,6 +242,13 @@ date: 2026-10-27
 
 ## Follow-up, later
 
+The accepted [ADR 0078](0078-perf-exploration-shares-one-query-model.md)
+(accepted and implemented 2026-11-06) specifies the next exploration increment:
+one query model for the viewer and terminal, stable references, scoped
+comparison and focused viewer startup. It brings comparison into that
+increment; the side-by-side viewer layout and recording history below
+remain later work.
+
 - **Two recordings side by side** (`kui-perf a.kuitrace b.kuitrace`,
   `kui-trace diff` drawn) and **a folder of recordings over time** —
   each phase's p95 a run — together in v1.1, since both read several

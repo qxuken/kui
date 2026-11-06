@@ -29,6 +29,7 @@ mod packed;
 mod paths;
 mod pe;
 mod perf;
+mod perf_query;
 mod project;
 mod release;
 mod rename;
@@ -77,6 +78,7 @@ usage:
   kui new <dir>              start an app in dir
   kui types [path]           write editor declarations (LuaLS, Teal) into path/.kui/types
   kui perf [recording]       open a .kuitrace in kui-perf, the trace inspector (run options apply)
+  kui perf <query> ...       explore or compare recordings without a window (kui perf --help)
   kui docs [query]           search this kui's docs; alone, open the book (see kui docs --help)
   kui pack [path] [options]  build the app for any platform (see kui pack --help)
   kui upgrade [version]      replace this kui with the release's (default: the latest)
@@ -179,8 +181,13 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--" => {
-                a.rest = it.by_ref().collect();
+                a.rest.extend(it.by_ref());
                 break;
+            }
+            "--frame" | "--span" | "--frames" if a.cmd == "perf" => {
+                let value = it.next().ok_or_else(|| format!("{arg} needs a value"))?;
+                perf_query::validate_focus(&arg, &value)?;
+                a.rest.extend([arg, value]);
             }
             "--watch" => a.watch = true,
             "--devtools" => a.devtools = true,
@@ -220,6 +227,12 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
             }
             "--steps" => a.export_steps = true,
             "--time" => {
+                if a.cmd == "perf" {
+                    let value = it.next().ok_or("--time needs a range with units")?;
+                    perf_query::validate_focus(&arg, &value)?;
+                    a.rest.extend([arg, value]);
+                    continue;
+                }
                 a.export_time = it
                     .next()
                     .ok_or("--time needs milliseconds")?
@@ -276,6 +289,15 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
             }
         }
     }
+    if a.cmd == "perf"
+        && a.rest
+            .iter()
+            .filter(|s| matches!(s.as_str(), "--frame" | "--span" | "--frames" | "--time"))
+            .count()
+            > 1
+    {
+        return Err("choose one perf focus selector".into());
+    }
     if !a.export_time.is_finite()
         || a.export_time < 0.0
         || a.capture_time.is_some_and(|t| !t.is_finite() || t < 0.0)
@@ -316,6 +338,9 @@ fn main() -> ExitCode {
         Some("upgrade") => return exit(upgrade(&argv[1..])),
         Some("runners") => return exit(runners(&argv[1..])),
         Some("docs") => return exit(docs_cmd(&argv[1..])),
+        Some("perf") if perf_query::handles(&argv[1..]) => {
+            return exit(perf_query::run(&argv[1..]));
+        }
         _ => {}
     }
     let args = match parse(argv) {
