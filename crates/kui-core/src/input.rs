@@ -2707,6 +2707,17 @@ impl Interaction {
         &self.hits
     }
 
+    pub(crate) fn set_cursor(&mut self, key: Key, shape: Option<CursorShape>) -> bool {
+        let mut found = false;
+        for hit in &mut self.hits {
+            if hit.key == key {
+                hit.cursor = shape;
+                found = true;
+            }
+        }
+        found
+    }
+
     pub(crate) fn hit_at(&self, p: Vec2) -> Option<&HitRegion> {
         self.hits.iter().rev().find(|h| self.contains(h, p))
     }

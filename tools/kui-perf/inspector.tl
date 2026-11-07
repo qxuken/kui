@@ -709,6 +709,7 @@ local function detail(st: Inspector): kui.Node
   elseif v.kind == "fine" then verdict = ("fine — %d%% of the budget"):format(math.floor(v.share * 100 + 0.5)) end
   local entries: {kit.Entry} = {
     entry("verdict", verdict) as kit.Entry, entry("work", ms(f.work), true) as kit.Entry,
+    entry("timing", "Core/driver recording; GPU completion and display unavailable") as kit.Entry,
     entry("gap", ms(f.gap), true) as kit.Entry, entry("nodes", tostring(f.nodes), true) as kit.Entry,
     entry("why", #f.causes > 0 and table.concat(f.causes, ", ") or "nobody here asked") as kit.Entry,
   }
@@ -719,7 +720,8 @@ local function detail(st: Inspector): kui.Node
   if f.path then
     local legs: {string} = {}
     for _, l in ipairs(f.path.legs) do legs[#legs + 1] = ("%s %s"):format(l.what, ms(l.ms)) end
-    entries[#entries + 1] = entry("input to screen", ("%s %s: %s"):format(f.path.input, ms(f.path.total), table.concat(legs, " · "))) as kit.Entry
+    local endpoint = f.path.endpoint == "present_call" and "present call" or f.path.endpoint == "core_end" and "core end" or "frame begin"
+    entries[#entries + 1] = entry("input to " .. endpoint, ("%s %s: %s"):format(f.path.input, ms(f.path.total), table.concat(legs, " · "))) as kit.Entry
   end
   for _, h in ipairs(f.holders) do entries[#entries + 1] = entry("held by", h.what .. " " .. h.name) as kit.Entry end
   for _, p in ipairs(f.fresh) do
@@ -853,8 +855,11 @@ local function scope_label(st: Inspector): kui.Node
   local filtered = (inspector.filtering(st) or not st.devtools) and " · filtered" or ""
   local incomplete = ((summary.frames or 0) as integer) - ((summary.complete_frames or 0) as integer)
   if incomplete > 0 then filtered = filtered .. (" · %d incomplete"):format(incomplete) end
+  local work = (summary.work or {}) as {string:number}
+  local tails = work.p99 and (" · work p95 %s / p99 %s"):format(ms(work.p95), ms(work.p99)) or ""
+  if summary.over_budget_percent then tails = tails .. (" · %.1f%% over budget"):format(summary.over_budget_percent as number) end
   local frames, groups = (summary.frames or 0) as integer, (st.stats.matched or 0) as integer
-  return muted(("%d frame%s measured%s%s · %d span group%s, all shown"):format(frames, frames == 1 and "" or "s", range, filtered, groups, groups == 1 and "" or "s"))
+  return muted(("%d frame%s measured%s%s · %d span group%s, all shown"):format(frames, frames == 1 and "" or "s", range, filtered, groups, groups == 1 and "" or "s") .. tails)
 end
 
 function inspector.view(st: Inspector, env: kui.Env): kui.Node

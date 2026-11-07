@@ -4,6 +4,8 @@
 // before compiling — WGSL has no preprocessor and `enable` is all-or-nothing.
 //DUAL:enable dual_source_blending;
 
+override KUI_KIND: i32 = -1;
+
 // Must stay byte for byte what `kui_core::fragment::PRELUDE` declares as
 // `KuiGlobals`, because a fragment pipeline binds this same buffer at
 // group 0; `globals_layout_matches` in lib.rs is the test.
@@ -237,7 +239,17 @@ fn shade(in: VsOut) -> Shaded {
         inside *= 1.0 - smoothstep(-AA, AA, id);
     }
 
-    let kind = u32(in.params.z + 0.5);
+    var kind = u32(in.params.z + 0.5);
+    if KUI_KIND >= 0 { kind = u32(KUI_KIND); }
+
+    // Most background pixels are fully inside a plain rectangle. Preserve
+    // the existing SDF/AA at its edges; its interior needs no distance math.
+    if kind == 0u && in.params.y <= 0.0 && all(in.radii <= vec4<f32>(0.0)) {
+        let edge = min(in.local, in.size - in.local);
+        if min(edge.x, edge.y) >= AA {
+            return Shaded(in.color.rgb, vec3<f32>(in.color.a * inside));
+        }
+    }
 
     if kind == 1u {
         // Alpha-mask glyph tinted by color.

@@ -187,6 +187,10 @@ impl DynShell<'_> {
             // keyboard, so the release would never arrive. The synthetic
             // `up`s route out with the pending events.
             pane.core.set_focused(focused);
+            if pane.menu_pane.is_none() {
+                self.app.after_input(&mut pane.core);
+            }
+            pane.apply_cursor();
             pane.redraw_for(FrameCause::FOCUS);
         }
     }

@@ -1843,6 +1843,7 @@ fn sample_json(s: FrameSample) -> Json {
     o.insert("viewMs".into(), Json::from(s.view_ms as f64));
     o.insert("layoutMs".into(), Json::from(s.layout_ms as f64));
     o.insert("renderMs".into(), Json::from(s.render_ms as f64));
+    o.insert("maintenanceMs".into(), Json::from(s.maintenance_ms as f64));
     o.insert("waitMs".into(), Json::from(s.wait_ms as f64));
     o.insert("totalMs".into(), Json::from(s.total() as f64));
     o.insert("workMs".into(), Json::from(s.work() as f64));
@@ -5943,6 +5944,7 @@ mod frame_stats_tests {
             view_ms: 1.0,
             layout_ms: 2.0,
             render_ms: 3.0,
+            maintenance_ms: 0.0,
             wait_ms: 4.0,
         });
         st.push(FrameSample {

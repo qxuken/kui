@@ -600,8 +600,23 @@ impl Pane {
         self.window.request_redraw();
     }
 
+    pub(crate) fn went_dark(&mut self) {
+        self.cause.went_dark();
+        #[cfg(target_os = "macos")]
+        self.pacer.reset_acquire();
+    }
+
     /// Whether a redraw draws now or waits for the display (`mod pacer`).
-    pub(crate) fn admit_frame(&mut self) -> bool {
+    pub(crate) fn admit_frame(
+        &mut self,
+        _proxy: Option<&winit::event_loop::EventLoopProxy<crate::access_bridge::UserEvent>>,
+    ) -> bool {
+        self.pacer.refresh_rate(self.core.env.refresh_hz);
+        #[cfg(target_os = "macos")]
+        if self.can_draw() {
+            self.pacer
+                .attach_acquire(self.renderer.as_ref(), &self.window, _proxy);
+        }
         let px = self.window.inner_size();
         self.pacer
             .admit(std::time::Instant::now(), (px.width, px.height))

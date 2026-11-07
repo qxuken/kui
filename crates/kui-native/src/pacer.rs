@@ -45,6 +45,10 @@
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "macos")]
+#[path = "acquire.rs"]
+mod acquire;
+
 /// A frame asked for within this long of the last present is part of a
 /// run and waits for the display. Wider than a 60 Hz frame (16.7 ms), so a
 /// run at any common rate is paced, and far below a person's keystrokes.
@@ -55,6 +59,11 @@ const RUN_GAP: Duration = Duration::from_millis(20);
 /// A frame held for the display longer than this is drawn anyway: the link
 /// stopped firing (the window left every screen, the display slept).
 const HELD_MAX: Duration = Duration::from_millis(50);
+
+/// A resize can reconfigure the Metal layer while the worker is acquiring
+/// and reset its timeout. Keep the runner bounded independently of Metal.
+#[cfg(target_os = "macos")]
+const ACQUIRE_MAX: Duration = Duration::from_secs(2);
 
 /// Vsyncs the link keeps firing with nothing asked for before it pauses.
 // Read only where there is a link (macOS); the tests read it everywhere.
@@ -91,6 +100,13 @@ struct Beat {
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 impl Beat {
+    #[cfg(target_os = "macos")]
+    fn answered(&self) {
+        self.wanted.set(false);
+        self.fired.set(false);
+        self.missed.set(false);
+        self.idle.set(0);
+    }
     /// The display's vsync.
     fn tick(&self) -> Tick {
         if self.wanted.take() {
@@ -143,7 +159,8 @@ mod link {
     use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
     use objc2_app_kit::NSView;
     use objc2_foundation::{NSObjectProtocol, NSRunLoop, NSRunLoopCommonModes};
-    use objc2_quartz_core::CADisplayLink;
+    use objc2_quartz_core::{CADisplayLink, CAFrameRateRange};
+    use std::cell::Cell;
     use std::sync::Arc;
     use winit::window::Window;
 
@@ -178,6 +195,8 @@ mod link {
     pub(super) struct Link {
         pub(super) target: Retained<Target>,
         link: Retained<CADisplayLink>,
+        rate: Cell<Option<f32>>,
+        rate_override: Option<f32>,
     }
 
     impl Link {
@@ -208,10 +227,43 @@ mod link {
                     sel!(tick:),
                 )
             };
+            let rate_override = std::env::var("KUI_FRAME_PACING")
+                .ok()
+                .and_then(|value| value.parse::<f32>().ok())
+                .filter(|hz| hz.is_finite() && *hz > 1.0 && *hz <= 1000.0);
             link.setPaused(true);
             // Common modes, so it fires while a resize or a menu tracks.
             unsafe { link.addToRunLoop_forMode(&NSRunLoop::mainRunLoop(), NSRunLoopCommonModes) };
-            Some(Link { target, link })
+            let this = Link {
+                target,
+                link,
+                rate: Cell::new(None),
+                rate_override,
+            };
+            this.refresh_rate(
+                window
+                    .current_monitor()
+                    .and_then(|monitor| monitor.refresh_rate_millihertz())
+                    .map(|hz| hz as f32 / 1000.0),
+            );
+            Some(this)
+        }
+
+        pub(super) fn refresh_rate(&self, hz: Option<f32>) {
+            let rate = self
+                .rate_override
+                .or(hz)
+                .filter(|hz| hz.is_finite() && *hz > 1.0 && *hz <= 1000.0);
+            if self.rate.replace(rate) != rate {
+                let hz = rate.unwrap_or(0.0);
+                // Request the active display's cadence. The OS may still
+                // choose another rate; physical scanout must be measured.
+                self.link.setPreferredFrameRateRange(CAFrameRateRange {
+                    minimum: hz,
+                    maximum: hz,
+                    preferred: hz,
+                });
+            }
         }
 
         pub(super) fn state(&self) -> &State {
@@ -249,6 +301,10 @@ fn in_run(
 /// One window's frame pacing; see the module docs.
 pub(crate) struct Pacer {
     #[cfg(target_os = "macos")]
+    acquire: Option<acquire::Acquire>,
+    #[cfg(target_os = "macos")]
+    drawable_due: Option<Instant>,
+    #[cfg(target_os = "macos")]
     link: Option<link::Link>,
     last_present: Option<Instant>,
     /// The surface size the last present had, physical px.
@@ -274,6 +330,10 @@ impl Pacer {
         #[cfg(not(target_os = "macos"))]
         let _ = (window, wanted);
         Pacer {
+            #[cfg(target_os = "macos")]
+            acquire: None,
+            #[cfg(target_os = "macos")]
+            drawable_due: None,
             #[cfg(target_os = "macos")]
             link: if wanted {
                 link::Link::new(window)
@@ -302,14 +362,74 @@ impl Pacer {
             if running {
                 link.run();
             }
-            if !draws {
+            if !draws && self.drawable_due.is_none() {
                 self.held_since.get_or_insert(now);
                 return false;
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(acquire) = &self.acquire {
+            if !acquire.admit() {
+                let since = *self.drawable_due.get_or_insert(now);
+                if now < since + ACQUIRE_MAX {
+                    self.held_since.get_or_insert(now);
+                    return false;
+                }
+            }
+            if self.drawable_due.is_some()
+                && let Some(link) = &self.link
+            {
+                link.state().beat.answered();
             }
         }
         let _ = (now, size);
         self.held_since = None;
         true
+    }
+
+    pub(crate) fn refresh_rate(&self, hz: Option<f32>) {
+        #[cfg(target_os = "macos")]
+        if let Some(link) = &self.link {
+            link.refresh_rate(hz);
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = hz;
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn attach_acquire(
+        &mut self,
+        renderer: Option<&kui_wgpu::Renderer>,
+        window: &std::sync::Arc<winit::window::Window>,
+        proxy: Option<&winit::event_loop::EventLoopProxy<crate::access_bridge::UserEvent>>,
+    ) {
+        if self.acquire.is_none()
+            && self.link.is_some()
+            && self.last_present.is_some()
+            && std::env::var("KUI_ACQUIRE_THREAD").map_or(true, |value| value != "0")
+        {
+            self.acquire = renderer
+                .zip(proxy)
+                .and_then(|(r, p)| acquire::Acquire::new(r, window, p.clone()));
+        }
+    }
+    #[cfg(target_os = "macos")]
+    pub(crate) fn drawable(&mut self) -> (Option<Option<acquire::Drawable>>, Option<Instant>) {
+        (
+            self.acquire.as_ref().map(|a| a.take()),
+            self.drawable_due.take(),
+        )
+    }
+    #[cfg(target_os = "macos")]
+    pub(crate) fn drawable_ready(&self) -> bool {
+        self.drawable_due.is_some() && self.acquire.as_ref().is_some_and(|a| a.ready())
+    }
+    #[cfg(target_os = "macos")]
+    pub(crate) fn reset_acquire(&mut self) {
+        self.acquire = None;
+        if self.drawable_due.take().is_some() {
+            self.held_since = None;
+        }
     }
 
     /// Whether a frame is held for the display right now: the link has
@@ -324,6 +444,10 @@ impl Pacer {
 
     /// A frame reached the surface, at this size.
     pub(crate) fn presented(&mut self, now: Instant, size: (u32, u32)) {
+        #[cfg(target_os = "macos")]
+        if let Some(acquire) = &self.acquire {
+            acquire.request();
+        }
         self.last_present = Some(now);
         self.last_size = size;
     }
@@ -331,6 +455,13 @@ impl Pacer {
     /// When a held frame should be drawn whether or not the link fired —
     /// the deadline `about_to_wait` wakes for — and whether it is past.
     pub(crate) fn overdue(&mut self, now: Instant) -> Option<(Instant, bool)> {
+        // The worker normally wakes the runner. If Metal did not return,
+        // admit one skipped frame and let the surface retry policy run.
+        #[cfg(target_os = "macos")]
+        if let Some(since) = self.drawable_due {
+            let at = since + ACQUIRE_MAX;
+            return Some((at, now >= at));
+        }
         let since = self.held_since?;
         let at = since + HELD_MAX;
         if now >= at {
@@ -374,6 +505,10 @@ mod tests {
         let t0 = Instant::now();
         let mut p = Pacer {
             #[cfg(target_os = "macos")]
+            acquire: None,
+            #[cfg(target_os = "macos")]
+            drawable_due: None,
+            #[cfg(target_os = "macos")]
             link: None,
             last_present: Some(t0),
             last_size: (800, 600),
@@ -389,6 +524,17 @@ mod tests {
         let (_, due) = p.overdue(t0 + Duration::from_millis(60)).unwrap();
         assert!(due);
         assert!(!p.holding(), "let go once it is drawn anyway");
+
+        #[cfg(target_os = "macos")]
+        {
+            p.held_since = Some(t0);
+            p.drawable_due = Some(t0);
+            let limit = t0 + ACQUIRE_MAX;
+            assert_eq!(p.overdue(t0 + HELD_MAX), Some((limit, false)));
+            assert_eq!(p.overdue(limit), Some((limit, true)));
+            p.reset_acquire();
+            assert_eq!(p.overdue(limit), None, "occlusion clears the worker wait");
+        }
     }
 
     /// A frame of a run asked for before the vsync is held, and the tick
@@ -457,6 +603,10 @@ mod tests {
     #[test]
     fn without_a_link_every_redraw_draws() {
         let mut p = Pacer {
+            #[cfg(target_os = "macos")]
+            acquire: None,
+            #[cfg(target_os = "macos")]
+            drawable_due: None,
             #[cfg(target_os = "macos")]
             link: None,
             last_present: None,

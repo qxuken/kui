@@ -298,6 +298,13 @@ pub trait App {
     fn on_event_with(&mut self, ev: UiEvent, _core: &mut Core) {
         self.on_event(ev)
     }
+    /// Called after an input and its UI events, before applying the native
+    /// cursor, even if the input produced no UI event. Also called after
+    /// native window focus changes (which can release held modifiers).
+    /// Update input-dependent output such as [`Core::set_cursor`] here,
+    /// against the last finished layout, without waiting for a rendered
+    /// frame. The default does nothing.
+    fn after_input(&mut self, _core: &mut Core) {}
     /// Called once, before the window opens, with a [`Waker`] the app may
     /// clone into any thread. The loop parks between events, so a thread
     /// that changed what `view` will show (a PTY reader, a file watcher, a
@@ -310,6 +317,13 @@ pub trait App {
     /// request a server thread queued, handing a reply to a task. The
     /// frame still follows. The default does nothing.
     fn on_wake(&mut self) {}
+    /// Called immediately before a window's frame starts, with the previous
+    /// frame's event tree still intact. A host can drain queued input through
+    /// `Core::handle_input` here and deliver its events through `on_event_with`.
+    /// Do not dispatch input from `view`: starting that frame resets the tree.
+    /// Called by the native and headless runners, including while replaying a
+    /// cached view. Input and other preparation here are timed as input work.
+    fn before_frame(&mut self, _core: &mut Core) {}
     /// A revision of everything [`Self::view`] reads that the core does
     /// not see — the app's model, what its threads left it — moved
     /// whenever any of it may have (backlog C138). `Some` lets the runner
@@ -2655,6 +2669,9 @@ impl DynShell<'_> {
         self.pump_menu_popups(event_loop);
         let i = self.pane_of(here)?;
         let pane = &mut self.panes[i];
+        if pane.menu_pane.is_none() {
+            self.app.after_input(&mut pane.core);
+        }
         pane.apply_cursor();
         // Hover styling depends on input too, so any input redraws. A
         // damage pass can tighten this later.
@@ -2816,6 +2833,33 @@ impl DynShell<'_> {
         self.frame(i, seen);
     }
 
+    /// Draws an admitted redraw, then applies its window and app effects.
+    fn draw_admitted(&mut self, event_loop: &ActiveEventLoop, i: usize) {
+        self.panes[i].deferred_frame = false;
+        self.redraw(i);
+        // KUI_SMOKE_FRAMES: count what the main window actually
+        // landed and quit at the target. Counted only once a
+        // present succeeded, so a window that never draws never
+        // counts and the run fails on the caller's timeout rather
+        // than passing quietly. Asking for the next
+        // one keeps an app that paints only on input painting, so
+        // every example reaches the count at the same speed.
+        if let Some(n) = self.smoke_frames
+            && let Some(p) = self.panes.get(i)
+            && p.id == WindowId::MAIN
+            && p.retry.presented_once()
+        {
+            self.frames_drawn += 1;
+            if self.frames_drawn >= n {
+                self.exit_requested = true;
+            } else {
+                self.panes[i].redraw_for(FrameCause::SMOKE);
+            }
+        }
+        let here = self.panes[i].id;
+        self.after_frame(event_loop, here);
+    }
+
     /// Builds one window's frame and, `seen`, draws it. Unseen, it is the
     /// frame of a window that cannot draw (`mod unseen`): laid out at the
     /// size it last drew at, and everything the frame declared applied —
@@ -2850,7 +2894,9 @@ impl DynShell<'_> {
         }
         // What the driver knows and the view only reads, refreshed for
         // this frame (it was already filled in when the pane opened).
+        let environment = pane.core.span_begin("native environment");
         sync_env(pane, system, *pinned_system, audio.env());
+        pane.core.span_end(environment);
         let window = &pane.window;
         // The core turns a changed viewport into a `resize` event, routed
         // with the rest of the pending events after this frame. Unseen,
@@ -2867,8 +2913,14 @@ impl DynShell<'_> {
         // was owed for is answered.
         pane.unseen.answered();
         let size = window.inner_size();
-        let t_view = std::time::Instant::now();
         pane.core.set_time(epoch.elapsed().as_secs_f64());
+        pane.core.set_text_maintenance_after_render(true);
+        if pane.menu_pane.is_none() {
+            let start = std::time::Instant::now();
+            app.before_frame(&mut pane.core);
+            pane.core.stats.pending_input_ms += start.elapsed().as_secs_f32() * 1e3;
+        }
+        let t_view = std::time::Instant::now();
         // Why the runner asked, beside the input the core recorded: the
         // view reads both as `frame_cause` (backlog F111).
         pane.core.note_frame_cause(pane.cause.take());
@@ -3024,6 +3076,7 @@ impl DynShell<'_> {
         // backend — an atlas page, a texture dropped — rides on to the
         // next frame that is drawn (`Core::output`).
         if !seen {
+            pane.core.finish_text_maintenance();
             return;
         }
         let t_render = std::time::Instant::now();
@@ -3066,11 +3119,25 @@ impl DynShell<'_> {
                 a: ground.a as f64,
             }
         };
+        let frame_number = pane.core.stats.total + 1;
         let (dl, atlas) = pane.core.output();
         let mut wait_ms = 0.0;
         let mut reopen = false;
+        #[cfg(target_os = "macos")]
+        let (drawable, waited_since) = pane.pacer.drawable();
+        #[cfg(not(target_os = "macos"))]
+        let waited_since = None;
         let drawn = pane.renderer.as_mut().map(|r| {
+            r.label_frame(u64::from(pane.id.0), frame_number);
             r.clear_color = clear;
+            #[cfg(target_os = "macos")]
+            if let Some(attempt) = drawable.as_ref() {
+                let Some(drawable) = attempt else {
+                    return Err(kui_wgpu::RenderError::Skip);
+                };
+                // SAFETY: acquired from this renderer's own surface layer.
+                return unsafe { r.render_metal_drawable(dl, atlas, &drawable.0) };
+            }
             r.render(dl, atlas)
         });
         match drawn {
@@ -3133,7 +3200,7 @@ impl DynShell<'_> {
                     menu_popup::cloak(window, false);
                 }
                 let now = std::time::Instant::now();
-                pane.retry.skipped(now);
+                pane.retry.skipped(now, waited_since);
                 // A skipped frame paces the next as a presented one does:
                 // what asks while the surface skips (a waker, the host) is
                 // held for the display, or its fallback, instead of drawn
@@ -3166,8 +3233,14 @@ impl DynShell<'_> {
             view_ms,
             layout_ms,
             render_ms,
+            maintenance_ms: 0.0,
             wait_ms,
         });
+        let maintenance = std::time::Instant::now();
+        pane.core.finish_text_maintenance();
+        pane.core
+            .stats
+            .add_maintenance(maintenance.elapsed().as_secs_f32() * 1e3);
         if reopen {
             self.reopen_device();
         }
@@ -3286,6 +3359,8 @@ impl DynShell<'_> {
         // DXGI to allow the window a new one (leaked, the new surface's
         // configure fails with "invalid surface").
         for pane in &mut self.panes {
+            #[cfg(target_os = "macos")]
+            pane.pacer.reset_acquire();
             pane.renderer = None;
             pane.surface_tries = 0;
         }
@@ -3522,7 +3597,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     g.moved();
                 }
                 if pane.minimized() {
-                    pane.cause.went_dark();
+                    pane.went_dark();
                     pane.redraw_for(FrameCause::RESIZE);
                 } else if pane.cause.is_dark() && cfg!(target_os = "windows") {
                     pane.came_back(FrameCause::RESIZE);
@@ -3650,7 +3725,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     .retry
                     .occluded(covered, std::time::Instant::now());
                 if covered {
-                    self.panes[i].cause.went_dark();
+                    self.panes[i].went_dark();
                 } else {
                     self.panes[i].came_back(FrameCause::OCCLUSION);
                 }
@@ -3949,31 +4024,10 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             }
             // A frame asked for while frames run back to back waits for
             // the display, which asks again at the vsync (`mod pacer`).
-            WinitWindowEvent::RedrawRequested if !self.panes[i].admit_frame() => {}
+            WinitWindowEvent::RedrawRequested
+                if !self.panes[i].admit_frame(self.proxy.as_ref()) => {}
             WinitWindowEvent::RedrawRequested => {
-                self.panes[i].deferred_frame = false;
-                self.redraw(i);
-                // KUI_SMOKE_FRAMES: count what the main window actually
-                // landed and quit at the target. Counted only once a
-                // present succeeded, so a window that never draws never
-                // counts and the run fails on the caller's timeout rather
-                // than passing quietly. Asking for the next
-                // one keeps an app that paints only on input painting, so
-                // every example reaches the count at the same speed.
-                if let Some(n) = self.smoke_frames
-                    && let Some(p) = self.panes.get(i)
-                    && p.id == WindowId::MAIN
-                    && p.retry.presented_once()
-                {
-                    self.frames_drawn += 1;
-                    if self.frames_drawn >= n {
-                        self.exit_requested = true;
-                    } else {
-                        self.panes[i].redraw_for(FrameCause::SMOKE);
-                    }
-                }
-                let here = self.panes[i].id;
-                self.after_frame(event_loop, here);
+                self.draw_admitted(event_loop, i);
             }
             _ => {}
         }
@@ -4000,6 +4054,21 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         // it in `about_to_wait`.
         if let access_bridge::UserEvent::WakeAt(at) = event {
             self.wake_at = Some(self.wake_at.map_or(at, |w| w.min(at)));
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        if let access_bridge::UserEvent::DrawableReady(window) = event {
+            self.saw_event = true;
+            if let Some(i) = self.pane_index(window)
+                && self.panes[i].pacer.drawable_ready()
+                && !frame_waits_for_host(self.owed.get(), self.panes[i].deferred_frame)
+                && self.panes[i].admit_frame(self.proxy.as_ref())
+            {
+                self.draw_admitted(event_loop, i);
+                if self.exit_requested {
+                    self.exit_main(event_loop);
+                }
+            }
             return;
         }
         self.saw_event = true;

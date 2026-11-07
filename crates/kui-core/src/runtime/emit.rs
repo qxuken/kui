@@ -3190,13 +3190,37 @@ impl Core {
     // phase, and for a custom one, which reads it (backlog C35).
 
     /// Whether there is a caret to blink: a focused stock editor's, or the
-    /// `caret` a `line` under the focused custom editor declares — unless
+    /// visible `caret` a `line` under the focused custom editor declares — unless
     /// that line declares it `caret_solid`, which is a caret to anchor
     /// the IME and read to assistive technology but not one to blink. A
     /// driver arms its blink clock while this is true and leaves the
     /// caret solid otherwise.
     pub fn has_caret(&self) -> bool {
-        self.edit.focused().is_some() || (self.sink_caret.is_some() && !self.sink_caret_solid)
+        if self.edit.focused().is_some() {
+            return true;
+        }
+        if self.sink_caret_solid {
+            return false;
+        }
+        let Some((key, _)) = self.sink_caret else {
+            return false;
+        };
+        let Some(rect) = self.ime_rect else {
+            return false;
+        };
+        let Some(i) = self.tree.index_of(key) else {
+            return false;
+        };
+        // A caret can stay declared for editing/accessibility while its
+        // line is clipped. Only visible pixels need a blink clock.
+        let window = Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h);
+        let clip = self
+            .clips
+            .get(i)
+            .map_or(window, |clip| clip.visible().intersect(&window));
+        // Insertion anchors are zero wide; test a one-pixel bar instead.
+        let seen = Rect::new(rect.x, rect.y, rect.w.max(1.0), rect.h).intersect(&clip);
+        seen.w > 0.0 && seen.h > 0.0
     }
 
     /// Changes whenever the caret moved or focus changed — the stock

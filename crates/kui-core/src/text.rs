@@ -1390,6 +1390,8 @@ pub struct TextSystem {
     places: Kept<TextPlace>,
     scale: f32,
     frame_no: u64,
+    maintenance_after_render: bool,
+    maintenance_pending: bool,
     /// Emission broke a long line into rows other than the ones layout
     /// used: the frame laid out on them is owed. Taken by [`Self::take_owed`].
     owed: bool,
@@ -1820,6 +1822,8 @@ impl TextSystem {
             places: Kept::default(),
             scale: 1.0,
             frame_no: 0,
+            maintenance_after_render: false,
+            maintenance_pending: false,
             owed: false,
             shaped: 0,
         }
@@ -1946,6 +1950,8 @@ impl TextSystem {
         keep_prev: bool,
         frame_no: u64,
     ) {
+        // Bound retention even when a host skipped its after-render hook.
+        self.finish_maintenance(fs);
         self.joins.clear();
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
@@ -1959,6 +1965,20 @@ impl TextSystem {
         self.places.begin(true);
         // The core's counter, not one of this store's own (backlog AR45).
         self.frame_no = frame_no;
+        self.maintenance_pending = true;
+        if !self.maintenance_after_render {
+            self.finish_maintenance(fs);
+        }
+    }
+
+    pub(crate) fn maintenance_after_render(&mut self, enabled: bool) {
+        self.maintenance_after_render = enabled;
+    }
+
+    pub(crate) fn finish_maintenance(&mut self, fs: &mut FontSystem) {
+        if !std::mem::take(&mut self.maintenance_pending) {
+            return;
+        }
         if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {
             let mut freed = 0usize;
             self.entries.retain(|_, e| {

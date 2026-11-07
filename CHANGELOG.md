@@ -21,9 +21,20 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.78 (unreleased)
 
 **What breaks.**
+
+- `Core::has_caret` no longer reports a custom editor caret clipped outside
+  its viewport. Native runners stop its blink timer until it is visible again.
+
+- `FrameSample` gains `maintenance_ms` (Node: `maintenanceMs`) for CPU
+  housekeeping after submission. Exhaustive literals must supply it.
+
+- Perf input paths label their driver endpoint as `present_call`, with the
+  last leg named `to present call` instead of `to screen`; native present
+  records do not measure physical display. `query::Distribution` gains
+  `p50_us` and `p99_us` for exhaustive Rust literals.
 
 - `rec:stats` now applies active filters, ranks span groups by self time,
   and returns all groups rather than silently stopping at 40. A frame
@@ -41,6 +52,31 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
+- `App::after_input` runs before native cursor application, including inputs
+  that emit no UI event and window focus changes. `Core::set_cursor` updates
+  an existing hit region without waiting for a view rebuild or GPU frame.
+  Custom editors can delete redraw-dependent cursor updates for modifier
+  changes and subregions such as inline links.
+
+- macOS native-runloop windows acquire the next drawable on a bounded worker,
+  leaving input delivery unblocked while the surface waits. `KUI_ACQUIRE_THREAD=0`
+  selects the synchronous control; PumpRunner and other platforms keep their
+  existing acquisition. Idle prefetch does not request frames. The display link
+  requests the active monitor's reported cadence and updates when it changes.
+- Native text-cache maintenance runs after GPU submission. Custom hosts may use
+  `Core::set_text_maintenance_after_render` and `finish_text_maintenance`; a
+  skipped hook is drained at the next frame so retention remains bounded.
+  Frame stats include this CPU work, which can overlap GPU execution.
+- Trace preparation is split into geometry, tree, text and retained-store spans,
+  and post-submit text maintenance has its own span.
+
+- Shared perf distributions expose p50 and p99 alongside p95 and max;
+  comparisons include those tails and the percentage of complete frames
+  over budget. JSON/Lua report timing scope and unavailable GPU/display
+  measurements; the viewer and terminal distinguish driver timing from
+  physical presentation.
+
+
 - Shared perf exploration in the viewer and terminal (ADR 0078):
   `kui perf summary`, `frames`/`frame`, `spans`/`span`, `counters`, `marks`
   and `compare`. Queries run without a window, with readable text or
@@ -53,6 +89,27 @@ was the first bare bump to break an app in five releases).
   costs, and preserves unavailable measurements without declaring a winner.
 
 ### Fixed
+
+- A drawable timeout enters the bounded surface retry path. Covered windows
+  can build unseen frames without a drawable or an acquisition watchdog.
+- Clipped custom-editor carets stop scheduling native blink frames.
+
+- Recordings started before the first native frame settle display scale,
+  refresh and budget from that frame, including streamed captures. Later
+  monitor changes do not rewrite the session's historical snapshot.
+- The perf span index reuses parent-walk scratch storage across independent
+  spans instead of allocating a vector for every root/chain.
+- The renderer skips empty interiors of large hollow borders through
+  disjoint hardware scissors, restricted to matching owned targets, and
+  avoids rounded-box distance work inside plain rectangle fills. Edge
+  antialiasing, transformed groups and host texture views retain their
+  existing rendering paths.
+- Metal specializes contiguous solid and mask-glyph runs, so their fragment
+  shaders can discard unrelated shape/image branches without changing paint
+  order. `KUI_SPECIALIZE=0` keeps the combined pipeline for profiling controls;
+  other backends keep it by default. Native traces also expose environment
+  preparation before frame construction.
+
 
 - Span filters retain self time from the original nesting and preserve
   frame statistics and denominators. Time queries report their expansion
@@ -70,6 +127,7 @@ was the first bare bump to break an app in five releases).
 
 ### What you can delete
 
+- View rebuilds used only to refresh custom-editor cursors on modifier changes.
 - Scripts written only to obtain filtered perf summaries, hot span groups,
   frame/span details or scoped comparisons without opening a window.
 - Parsing formatted perf tables for agent tool calls: use `--json`.

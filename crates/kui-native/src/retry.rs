@@ -105,10 +105,11 @@ impl Retry {
     /// The surface skipped a frame: the next is owed a retry from now,
     /// unless one already is or the window is covered. Tries spent are
     /// given again to a skip that follows a [`REST`] with none.
-    pub(crate) fn skipped(&mut self, now: Instant) {
+    pub(crate) fn skipped(&mut self, now: Instant, waited_since: Option<Instant>) {
+        // Time spent waiting for a drawable is still part of this attempt.
         let rested = self
             .last_skip
-            .is_none_or(|last| now.saturating_duration_since(last) >= REST);
+            .is_none_or(|last| waited_since.unwrap_or(now).saturating_duration_since(last) >= REST);
         self.last_skip = Some(now);
         if self.hidden {
             return;
@@ -159,7 +160,7 @@ mod tests {
         let t = Instant::now();
         let mut r = Retry::new(t);
         assert!(asks(&mut r, t), "at once");
-        r.skipped(t);
+        r.skipped(t, None);
         assert!(!asks(&mut r, t + RETRY / 2), "not before the retry");
         assert!(asks(&mut r, t + RETRY), "a retry later");
         r.presented();
@@ -175,7 +176,7 @@ mod tests {
         let t = Instant::now();
         let mut r = Retry::new(t);
         r.presented();
-        r.skipped(t);
+        r.skipped(t, None);
         let (ask, wake) = r.poll(t);
         assert!(!ask);
         assert_eq!(wake, Some(t + RETRY), "the loop wakes for it");
@@ -191,7 +192,7 @@ mod tests {
         let t = Instant::now();
         let mut r = Retry::new(t);
         r.presented();
-        r.skipped(t);
+        r.skipped(t, None);
         let mut now = t;
         let mut n = 0;
         for _ in 0..RETRIES * 2 {
@@ -200,17 +201,29 @@ mod tests {
                 n += 1;
             }
             // The surface goes on refusing every frame asked of it.
-            r.skipped(now);
+            r.skipped(now, None);
         }
         assert_eq!(n, RETRIES);
-        r.skipped(now);
+        r.skipped(now, None);
         assert_eq!(r.poll(now + RETRY), (false, None), "spent");
         // Skipping on without a pause — an animation in a hidden window
         // — stays spent.
         for i in 1..100u32 {
-            r.skipped(now + RETRY * i);
+            r.skipped(now + RETRY * i, None);
         }
         assert_eq!(r.poll(now + RETRY * 100), (false, None), "still spent");
+    }
+
+    #[test]
+    fn waiting_for_the_drawable_does_not_reset_spent_retries() {
+        let t = Instant::now();
+        let mut r = Retry::new(t);
+        r.owed = Some((0, t));
+        r.last_skip = Some(t);
+        let start = t + RETRY;
+        let timeout = start + REST * 2;
+        r.skipped(timeout, Some(start));
+        assert_eq!(r.poll(timeout + RETRY), (false, None));
     }
 
     /// RG74: spent tries come back for a skip after a quiet spell. On a
@@ -222,18 +235,18 @@ mod tests {
         let t = Instant::now();
         let mut r = Retry::new(t);
         r.presented();
-        r.skipped(t);
+        r.skipped(t, None);
         let mut now = t;
         for _ in 0..RETRIES {
             now += RETRY;
             assert!(asks(&mut r, now));
-            r.skipped(now);
+            r.skipped(now, None);
         }
         assert_eq!(r.poll(now + RETRY), (false, None), "spent");
         // Seconds later the window comes back, and the frame its focus
         // asks for is skipped.
         let back = now + Duration::from_secs(10);
-        r.skipped(back);
+        r.skipped(back, None);
         assert!(!asks(&mut r, back + RETRY / 2));
         assert!(asks(&mut r, back + RETRY), "asked for again");
         r.presented();
@@ -263,7 +276,7 @@ mod tests {
                 // microseconds on.
                 None => {
                     asked += 1;
-                    r.skipped(now);
+                    r.skipped(now, None);
                     now += Duration::from_micros(50);
                 }
             }
@@ -282,12 +295,12 @@ mod tests {
         let mut r = Retry::new(t);
         r.presented();
         r.occluded(true, t);
-        r.skipped(t);
+        r.skipped(t, None);
         assert_eq!(r.poll(t + RETRY), (false, None), "hidden: no retry");
         let back = t + Duration::from_secs(5);
         r.occluded(false, back);
         assert!(asks(&mut r, back), "uncovered: at once");
-        r.skipped(back);
+        r.skipped(back, None);
         assert!(asks(&mut r, back + RETRY), "and again while it skips");
     }
 }

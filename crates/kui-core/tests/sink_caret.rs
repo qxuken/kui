@@ -271,3 +271,49 @@ fn the_caret_is_the_enclosing_sinks_wherever_focus_sits_inside_it() {
     assert!(!core.has_caret());
     assert_eq!(core.ime_rect(), None);
 }
+
+#[test]
+fn a_clipped_custom_editor_caret_does_not_arm_blink_frames() {
+    use kui_core::Vec2;
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(300.0, 120.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let sink = ui.with_keyed(
+            "editor",
+            NodeSpec::column()
+                .fill()
+                .scroll_y()
+                .key_sink()
+                .role(Role::MultilineTextInput),
+            |ui| {
+                ui.text_in_keyed(
+                    "caret-line",
+                    NodeSpec::row().height(20.0).role(Role::Line).caret(2),
+                    "first line",
+                    mono(),
+                );
+                ui.leaf(NodeSpec::column().height(600.0));
+            },
+        );
+        ui.take_key_focus(sink);
+        ui.finish();
+        sink
+    };
+    let mut core = Core::new();
+    let sink = frame(&mut core);
+    assert!(core.has_caret(), "the visible caret blinks");
+    core.set_scroll(sink, Vec2::new(0.0, 240.0));
+    frame(&mut core);
+    assert!(
+        !core.has_caret(),
+        "a caret above the scroller's clip must not keep the driver rendering"
+    );
+    assert_eq!(
+        core.focus(),
+        Some(sink),
+        "scrolling keeps the editor's keyboard focus"
+    );
+    core.set_scroll(sink, Vec2::ZERO);
+    frame(&mut core);
+    assert!(core.has_caret(), "the caret blinks again when brought back");
+}

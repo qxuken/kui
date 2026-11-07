@@ -441,3 +441,141 @@ fn a_new_glyph_is_uploaded_as_its_rect_and_draws_as_a_whole_upload_does() {
         "the partial upload drew what a whole one does"
     );
 }
+
+/// The reference has an imperceptible fill, which prevents hollow-outline
+/// optimization. It exercises the unchanged full-quad shader and blend.
+#[test]
+fn a_large_hollow_outline_matches_the_full_quad_through_clips_and_after_it() {
+    let Some(gpu) = gpu() else { return };
+    fn scene(core: &mut Core, alpha: f32, variant: u32, scale: f32) {
+        let mut ui = core.frame(Size::new(800.0, 640.0), scale);
+        ui.configure_root(
+            NodeSpec::column()
+                .fill()
+                .pad(20.25)
+                .bg(Color::hex(0x294057ff)),
+        );
+        ui.with(
+            NodeSpec::column().size(720.0, 560.0).clip().radius(19.0),
+            |ui| {
+                let spec = NodeSpec::column()
+                    .size(704.0, if variant == 1 { 10000.0 } else { 536.0 })
+                    .bg(Color {
+                        r: 0.6,
+                        g: 0.2,
+                        b: 0.8,
+                        a: alpha,
+                    })
+                    .border(2.25, Color::hex(0xe9c19ab0))
+                    .radius(27.5);
+                let spec = if variant == 2 {
+                    spec.rotate(0.03)
+                } else if variant == 3 {
+                    spec.opacity(0.5)
+                } else {
+                    spec
+                };
+                ui.leaf(spec);
+            },
+        );
+        // A following draw must see the restored scissor, not the last strip.
+        ui.leaf(
+            NodeSpec::column()
+                .size(720.0, 32.0)
+                .bg(Color::hex(0xc05080ff)),
+        );
+        ui.text(
+            "After the outline",
+            TextStyle::new(14.0).color(Color::WHITE),
+        );
+        ui.finish();
+    }
+    for scale in [1.0, 2.0] {
+        for variant in 0..4 {
+            let mut core = Core::new();
+            core.set_subpixel_text(gpu.dual_source());
+            let mut renderer = Renderer::windowless(&gpu, wgpu::TextureFormat::Rgba8Unorm).unwrap();
+            scene(&mut core, 0.0, variant, scale);
+            let (dl, atlas) = core.output();
+            assert!(
+                dl.quads.iter().any(|q| q.border_w > 0.0
+                    && q.color.a == 0.0
+                    && q.rect.w * q.rect.h > 300000.0)
+            );
+            let actual = renderer.capture(dl, atlas).unwrap();
+            scene(&mut core, 1e-6, variant, scale);
+            let (dl, atlas) = core.output();
+            assert!(
+                dl.quads
+                    .iter()
+                    .any(|q| q.border_w > 0.0 && q.color.a > 0.0 && q.color.a < 0.001)
+            );
+            let reference = renderer.capture(dl, atlas).unwrap();
+            let worst = actual
+                .rgba
+                .iter()
+                .zip(&reference.rgba)
+                .map(|(a, b)| a.abs_diff(*b))
+                .max()
+                .unwrap();
+            assert!(
+                worst <= 1,
+                "variant {variant}, scale {scale}: maximum channel difference {worst}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_large_outline_can_draw_into_a_hosts_smaller_mip_view() {
+    let Some(gpu) = gpu() else { return };
+    let device = gpu.device();
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(800.0, 640.0), 1.0);
+    ui.leaf(
+        NodeSpec::column()
+            .size(720.0, 560.0)
+            .border(2.0, Color::WHITE)
+            .radius(20.0),
+    );
+    ui.finish();
+    let format = wgpu::TextureFormat::Rgba8Unorm;
+    let mut renderer = Renderer::windowless(&gpu, format).unwrap();
+    renderer.resize(800, 640);
+    let target = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("host mip"),
+        size: wgpu::Extent3d {
+            width: 512,
+            height: 512,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 2,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let view = target.create_view(&wgpu::TextureViewDescriptor {
+        base_mip_level: 1,
+        mip_level_count: Some(1),
+        ..Default::default()
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    let (dl, atlas) = core.output();
+    renderer
+        .render_into(
+            dl,
+            atlas,
+            &mut encoder,
+            &view,
+            wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+        )
+        .unwrap();
+    renderer.submit(encoder.finish());
+    assert!(
+        pollster::block_on(scope.pop()).is_none(),
+        "scissors must fit the actual attachment, including a host mip"
+    );
+}

@@ -120,8 +120,8 @@ pub fn phases(tl: &Timeline, i: usize, names: &impl NameOf) -> Phases {
     p
 }
 
-/// The path from the first input frame `i` answers to the screen, µs on
-/// the timeline.
+/// The path from the first input frame `i` answers to the driver's
+/// present record, in timeline µs. This does not measure physical display.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InputPath {
     pub input: Input,
@@ -133,8 +133,18 @@ pub struct InputPath {
 }
 
 impl InputPath {
+    pub fn endpoint(&self) -> &'static str {
+        if self.present.is_some() {
+            "present_call"
+        } else if self.end.is_some() {
+            "core_end"
+        } else {
+            "frame_begin"
+        }
+    }
+
     /// Each leg: `(what, µs)` — waiting for a handler, in it, waiting for
-    /// the frame, the frame, waiting to be shown.
+    /// the frame, the frame, then the driver's present record.
     pub fn legs(&self) -> Vec<(&'static str, u64)> {
         let mut v = Vec::new();
         let mut at = self.input.t;
@@ -147,13 +157,13 @@ impl InputPath {
         if let Some(e) = self.end {
             v.push(("frame", e.saturating_sub(self.begin)));
             if let Some(p) = self.present {
-                v.push(("to screen", p.saturating_sub(e)));
+                v.push(("to present call", p.saturating_sub(e)));
             }
         }
         v
     }
 
-    /// From the input to the screen, or to as far as the record goes.
+    /// From input to the driver's present record, or the last known core endpoint.
     pub fn total(&self) -> u64 {
         self.present
             .or(self.end)

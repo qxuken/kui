@@ -523,3 +523,158 @@ fn selector_parsing_rejects_nonfinite_negative_and_unitless_times() {
     }
     assert!(frame_range("3:2").is_err());
 }
+
+#[cfg(feature = "value")]
+#[test]
+fn high_percentiles_expose_rare_slow_frames_and_keep_unknowns_unavailable() {
+    use kui_value::Value as V;
+    let mut trace = Trace::new();
+    trace.session = Some(Session {
+        budget_ms: 8.0,
+        refresh_hz: 120.0,
+        ..Default::default()
+    });
+    for frame in 1..=100 {
+        let begin = frame * 20_000;
+        let core = if frame <= 98 { 1_100 } else { 10_100 };
+        trace.records.extend([
+            Record::FrameBegin {
+                t: begin,
+                frame,
+                causes: vec![],
+            },
+            Record::FrameEnd {
+                t: begin + core,
+                frame,
+                unchanged: Some(false),
+                nodes: 1,
+            },
+            Record::Present {
+                t: begin + core + 2_100,
+                frame,
+                render: 100,
+                wait: 2_000,
+            },
+        ]);
+    }
+    let timeline = trace.timeline();
+    let explorer = Explorer::new(&trace, &timeline);
+    let result = explorer.execute(&Query::new(Operation::Summary)).unwrap();
+    let Data::Summary(summary) = &result.data else {
+        panic!()
+    };
+    let value = crate::query_value::summary(summary);
+    let work = value.get("work").unwrap();
+    assert_eq!(work.get("p95"), Some(&V::Float(1.2)));
+    assert_eq!(
+        work.get("p99"),
+        Some(&V::Float(10.2)),
+        "p95 alone hides the two slow frames"
+    );
+    assert_eq!(work.get("p50"), Some(&V::Float(1.2)));
+    assert_eq!(value.get("over_budget_percent"), Some(&V::Float(2.0)));
+    let mut fast = Query::new(Operation::Summary);
+    fast.selection = Selection::Frames { first: 1, last: 98 };
+    let mut slow = Query::new(Operation::Summary);
+    slow.selection = Selection::Frames {
+        first: 99,
+        last: 100,
+    };
+    let comparison = compare(&explorer, &fast, &explorer, &slow, None).unwrap();
+    let p99 = comparison
+        .rows
+        .iter()
+        .find(|r| r.metric == "work.p99")
+        .unwrap();
+    assert_eq!((p99.before, p99.after), (Some(1.2), Some(10.2)));
+    let share = comparison
+        .rows
+        .iter()
+        .find(|r| r.metric == "over_budget_percent")
+        .unwrap();
+    assert_eq!((share.before, share.after), (Some(0.0), Some(100.0)));
+    let mut empty = Query::new(Operation::Summary);
+    empty.selection = Selection::Frames {
+        first: 1000,
+        last: 1001,
+    };
+    let Data::Summary(summary) = explorer.execute(&empty).unwrap().data else {
+        panic!()
+    };
+    let value = crate::query_value::summary(&summary);
+    assert_eq!(value.get("work").unwrap().get("p99"), Some(&V::Null));
+    assert_eq!(value.get("over_budget_percent"), Some(&V::Null));
+}
+
+#[cfg(feature = "value")]
+#[test]
+fn query_timing_scope_does_not_certify_gpu_completion_or_physical_display() {
+    use kui_value::Value as V;
+    let trace = recording();
+    let timeline = trace.timeline();
+    let explorer = Explorer::new(&trace, &timeline);
+    let result = explorer.execute(&Query::new(Operation::Summary)).unwrap();
+    let value = crate::query_value::result(&trace, &timeline, &result, "test.kuitrace");
+    let timing = value
+        .get("timing_scope")
+        .expect("scope accompanies every query");
+    assert_eq!(timing.get_str("pacing"), Some("frame_begin_intervals"));
+    assert_eq!(timing.get_str("input"), Some("core_input_receipt"));
+    assert_eq!(timing.get("gpu_completion"), Some(&V::Null));
+    assert_eq!(timing.get("physical_display"), Some(&V::Null));
+}
+
+#[test]
+fn reused_parent_walk_scratch_keeps_independent_roots_and_chains_separate() {
+    let mut trace = Trace::new();
+    for (id, parent, start) in [
+        (1, 0, 0),
+        (2, 1, 1),
+        (3, 2, 2),
+        (4, 0, 100),
+        (5, 4, 101),
+        (6, 0, 200),
+    ] {
+        trace.records.push(Record::Span(Span {
+            track: Track::MAIN,
+            id,
+            parent,
+            name: 0,
+            origin: Origin::Host,
+            start,
+            dur: 50,
+            cpu: None,
+            node: 0,
+            cut: false,
+        }));
+    }
+    let timeline = trace.timeline();
+    let explorer = Explorer::new(&trace, &timeline);
+    for (id, depth) in [(1, 0), (2, 1), (3, 2), (4, 0), (5, 1), (6, 0)] {
+        assert_eq!(explorer.span_detail(id).unwrap().depth, depth);
+    }
+}
+
+#[test]
+fn input_path_names_the_last_recorded_endpoint_without_claiming_a_screen_time() {
+    let mut path = InputPath {
+        input: crate::Input {
+            t: 1,
+            kind: 0,
+            os_t: None,
+            count: 1,
+            until: 1,
+        },
+        handler: None,
+        begin: 10,
+        end: None,
+        present: None,
+    };
+    assert_eq!(path.endpoint(), "frame_begin");
+    assert_eq!(path.total(), 9);
+    path.end = Some(20);
+    assert_eq!(path.endpoint(), "core_end");
+    path.present = Some(30);
+    assert_eq!(path.endpoint(), "present_call");
+    assert_eq!(path.legs().last(), Some(&("to present call", 10)));
+}

@@ -548,6 +548,8 @@ fn perf_queries_match_lua_without_starting_a_window() {
         "matched",
         "returned",
         "truncated",
+        "timing_scope",
+        "limitations",
     ] {
         assert_eq!(
             native.get(key).cloned().map(without_null_fields),

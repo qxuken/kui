@@ -1032,7 +1032,19 @@ fn detail(ui: &mut Ui<'_>, t: &Theme, view: &Arc<PerfView>, i: usize, hovered: &
                 TextStyle::new(11.0).color(color).bold(),
             );
             if let Some(path) = analysis::input_path(tl, i, &view.trace) {
-                section(ui, t, "input to screen");
+                section(
+                    ui,
+                    t,
+                    if path.present.is_some() {
+                        "input to present call"
+                    } else {
+                        "input path (partial)"
+                    },
+                );
+                ui.text(
+                    "GPU completion and physical display are not recorded",
+                    TextStyle::new(11.0).color(t.muted),
+                );
                 chips(
                     ui,
                     t,

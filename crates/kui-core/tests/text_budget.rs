@@ -201,3 +201,44 @@ fn an_idle_cache_still_empties_on_the_clock() {
     assert_eq!(core.text_cache_len(), 0);
     assert_eq!(core.text_cache_bytes(), 0);
 }
+
+#[test]
+fn deferred_cleanup_waits_until_after_render_and_still_expires_unused_text() {
+    let _serial = serial();
+    let mut core = Core::new();
+    core.set_text_maintenance_after_render(true);
+    stream_frame(&mut core, 0, 10, 40);
+    core.finish_text_maintenance();
+    for frame in 2..=480 {
+        let mut ui = core.frame(Size::new(100.0, 100.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.finish();
+        if frame < 480 {
+            core.finish_text_maintenance();
+        }
+    }
+    assert_eq!(
+        core.text_cache_len(),
+        10,
+        "the sweep does not block submission"
+    );
+    core.finish_text_maintenance();
+    assert_eq!(core.text_cache_len(), 0);
+    assert_eq!(core.text_cache_bytes(), 0);
+    core.finish_text_maintenance(); // Idempotent for this frame.
+}
+
+#[test]
+fn a_host_that_misses_deferred_cleanup_is_bounded_by_the_next_frame() {
+    let _serial = serial();
+    let mut core = Core::new();
+    core.set_text_maintenance_after_render(true);
+    stream_frame(&mut core, 0, 10, 40);
+    for _ in 0..600 {
+        let mut ui = core.frame(Size::new(100.0, 100.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.finish();
+    }
+    assert_eq!(core.text_cache_len(), 0);
+    assert_eq!(core.text_cache_bytes(), 0);
+}

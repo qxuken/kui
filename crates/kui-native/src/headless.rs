@@ -636,6 +636,7 @@ impl DynHeadless<'_> {
         self.core.set_time(now);
         let events = self.core.handle_input(ev);
         self.route(events);
+        self.app.after_input(&mut self.core);
         self.apply_asks();
         self.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
         self.owe(why);
@@ -673,6 +674,9 @@ impl DynHeadless<'_> {
         core.env.window = self.window;
         core.set_time(now);
         core.note_frame_cause(why);
+        let t_input = Instant::now();
+        self.app.before_frame(core);
+        core.stats.pending_input_ms += t_input.elapsed().as_secs_f32() * 1e3;
         let t_view = Instant::now();
         // Built from the last tree when only an animation asks and nothing
         // the build read moved (backlog C138).
@@ -722,6 +726,7 @@ impl DynHeadless<'_> {
             view_ms,
             layout_ms,
             render_ms: t_render.elapsed().as_secs_f32() * 1e3,
+            maintenance_ms: 0.0,
             wait_ms: 0.0,
         });
         self.frames += 1;

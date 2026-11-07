@@ -17,6 +17,11 @@ wgpu.workspace = true
 bytemuck.workspace = true
 pollster.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-metal = { version = "0.3", default-features = false, features = ["std", "MTLCommandBuffer", "MTLTexture", "MTLResource", "MTLDevice", "MTLDrawable"] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "CAMetalLayer", "objc2-metal"] }
+
 # `Gpu::remove_device`: D3D12's own way to lose a device on purpose.
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
