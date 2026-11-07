@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.78 (unreleased)
+## 0.1.0-alpha.78 (2026-11-07)
 
 **What breaks.**
 
@@ -142,6 +142,22 @@ was the first bare bump to break an app in five releases).
 - Scripts written only to obtain filtered perf summaries, hot span groups,
   frame/span details or scoped comparisons without opening a window.
 - Parsing formatted perf tables for agent tool calls: use `--json`.
+
+### Native verification
+
+On an Apple M3 Pro running macOS 27.0.1, the versioned tree passed 3,562
+workspace and Node tests across 261 Rust suites and the Node suite, with
+17 ignored and GPU and conformance checks required. All 23 additional
+Node presentation tests passed. The 59 Rust and 12 Node windowed examples
+drew 120 frames on both theme bases, and the compiled accessibility
+audit passed all 106 checks.
+
+The C round passed 11 checks, including the native GPU host, and replayed
+all 67 conformance scenes. Odin passed its package and example checks,
+headless examples, and all four host/plugin pairs. Release prep found the
+generators current after refreshing the Kit package copies and ADR index.
+Strict workspace Clippy, Node example typechecking, the book build, and
+workflow syntax checks passed.
 
 ## 0.1.0-alpha.77 (2026-11-05)
 
