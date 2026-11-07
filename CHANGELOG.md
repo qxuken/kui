@@ -52,6 +52,13 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
+- `kui test` discovers Lua and Teal app tests and runs them through the
+  real input and layout paths with virtual time, isolated app data, and
+  mocks for effects. Tests can assert on app state, the UI tree, draw
+  commands, or screenshots. `--headed` shows execution, `--debug` pauses
+  in the Kit inspector, and `--ui` opens recorded runs. `report`, `output`,
+  and `events` read saved results without opening a window.
+
 - `App::after_input` runs before native cursor application, including inputs
   that emit no UI event and window focus changes. `Core::set_cursor` updates
   an existing hit region without waiting for a view rebuild or GPU frame.
@@ -90,6 +97,8 @@ was the first bare bump to break an app in five releases).
 
 ### Fixed
 
+- `kui test report --json` uses the same artifact paths as the original
+  run when the results directory is opened through a filesystem alias.
 - A drawable timeout enters the bounded surface retry path. Covered windows
   can build unseen frames without a drawable or an acquisition watchdog.
 - Clipped custom-editor carets stop scheduling native blink frames.
@@ -127,6 +136,8 @@ was the first bare bump to break an app in five releases).
 
 ### What you can delete
 
+- Custom test harness code for driving app input on a virtual clock,
+  storing snapshot baselines, and collecting structured failure reports.
 - View rebuilds used only to refresh custom-editor cursors on modifier changes.
 - Scripts written only to obtain filtered perf summaries, hot span groups,
   frame/span details or scoped comparisons without opening a window.

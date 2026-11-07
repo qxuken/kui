@@ -172,4 +172,14 @@ function M.flag(v, default)
    return v == true
 end
 
+
+
+function M.capture_state()
+   return states
+end
+
+function M.restore_state(saved)
+   states = saved
+end
+
 return M

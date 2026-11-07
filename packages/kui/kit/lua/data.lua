@@ -25,6 +25,7 @@ function M.cell_text(v)
    if v == nil then return "" end
    if math.type(v) == "integer" then return tostring(v) end
    if type(v) == "number" then
+      if v ~= v or v == math.huge or v == -math.huge then return "—" end
       if v == math.floor(v) and math.abs(v) < 1e15 then return string.format("%d", math.floor(v)) end
       return string.format("%.6g", v)
    end

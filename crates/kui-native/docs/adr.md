@@ -85,3 +85,4 @@ reference and the task index this crate carries (ADR 0071).
 - [0075 kui-perf reads a recording in Kit, over columns Rust keeps](https://github.com/qxuken/kui/blob/main/docs/adr/0075-kui-perf-reads-a-recording-in-kit.md)
 - [0076 An island is a window the host draws](https://github.com/qxuken/kui/blob/main/docs/adr/0076-an-island-is-a-window-the-host-draws.md)
 - [0077 Kit presentations are authored as code](https://github.com/qxuken/kui/blob/main/docs/adr/0077-kit-presentations-as-code.md)
+- [0078 Perf exploration shares one query model between the viewer and terminal](https://github.com/qxuken/kui/blob/main/docs/adr/0078-perf-exploration-shares-one-query-model.md)

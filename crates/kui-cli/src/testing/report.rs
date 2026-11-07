@@ -105,6 +105,8 @@ pub fn file_results(output: &Path, dir: &Path, index: usize) -> (J, J) {
     (collection, result)
 }
 pub fn read(output: &Path) -> Result<J, String> {
+    let root = crate::paths::canonical(output).map_err(|e| e.to_string())?;
+    let output = root.as_path();
     let run = json(&output.join("run.json"));
     if run["version"] != 1 {
         return Err("unsupported or missing test-run artifact".into());
@@ -182,8 +184,7 @@ pub fn command(args: &[String]) -> Result<i32, String> {
             _ => return Err("expected one artifact directory".into()),
         }
     }
-    let path = std::path::absolute(path.unwrap_or_else(|| PathBuf::from("test-results")))
-        .map_err(|e| e.to_string())?;
+    let path = path.unwrap_or_else(|| PathBuf::from("test-results"));
     let report = read(&path)?;
     if operation == "report" {
         if machine {

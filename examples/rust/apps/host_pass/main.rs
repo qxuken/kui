@@ -140,6 +140,7 @@ impl ApplicationHandler for App {
                     view_ms,
                     layout_ms,
                     render_ms: times.render_ms,
+                    maintenance_ms: 0.0,
                     wait_ms: times.wait_ms,
                 }),
                 Err(error) => {

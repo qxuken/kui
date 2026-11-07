@@ -571,6 +571,14 @@ t.it('fails clearly',function()t.expect('actual'):to_be('expected')end)
     assert!(!saved.status.success());
     let parsed: serde_json::Value = serde_json::from_slice(&saved.stdout).unwrap();
     assert_eq!(parsed, report);
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("test-results", root.path().join("alias-results")).unwrap();
+        let aliased = run(root.path(), &["report", "alias-results", "--json"]);
+        assert!(!aliased.status.success());
+        let parsed: serde_json::Value = serde_json::from_slice(&aliased.stdout).unwrap();
+        assert_eq!(parsed, report);
+    }
     let logs = query("output", &["--file", "file-0000"]);
     assert!(logs.status.success());
     let logs: serde_json::Value = serde_json::from_slice(&logs.stdout).unwrap();
@@ -746,14 +754,11 @@ function view()return column{width='grow',height='grow',not model.hidden and row
     assert!(!out.status.success(), "{}", text(&out));
     let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let diagnostic = &report["files"][0]["diagnostics"][0];
+    let source = Path::new(diagnostic["source"]["file"].as_str().unwrap());
+    assert!(source.is_absolute());
     assert_eq!(
-        diagnostic["source"]["file"],
-        root.path()
-            .join("test/main.lua")
-            .canonicalize()
-            .unwrap()
-            .to_string_lossy()
-            .as_ref()
+        source.canonicalize().unwrap(),
+        root.path().join("test/main.lua").canonicalize().unwrap()
     );
     assert_eq!(diagnostic["source"]["line"], 6, "{}", text(&out));
     let events = std::fs::read_to_string(report["files"][0]["events"].as_str().unwrap()).unwrap();
