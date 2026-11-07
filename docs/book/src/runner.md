@@ -189,19 +189,22 @@ and not `{}`.
 
 ## The test
 
-A test is another script that loads the app and drives `update`, run
-with no window. Its exit code is its failures:
+`kui test` discovers test files and runs their named cases. Start the app
+with arguments pointing at a temporary file, drive its actual controls,
+and inspect its model. Each case gets fresh app state:
 
 ```lua
 {{#include ../../../examples/lua/tutorial/tasks/test/main.lua:test}}
 ```
 
 ```bash
-cd tasks && kui run test --headless
+cd tasks && kui test
 ```
 
-A task that throws ends a headless run with 1, so a broken test fails
-rather than waits.
+`kui test --headed` shows the same execution. `--debug` opens the Kit
+inspector and pauses before actions; `--ui` browses recorded frames,
+state, messages and I/O. See [Testing without a window](testing.md) for
+snapshots, mocks and CI output.
 
 What `update` cannot show is what the keyboard and the pointer do on
 their way to it: which control Tab lands on, which key a focused control

@@ -94,7 +94,16 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         lua.create_function(|lua, ms: f64| {
             let s = shared(lua);
             let id = s.ops.id();
-            s.timers.after(id, ms);
+            if !ms.is_finite() || ms < 0.0 {
+                return Err(mlua::Error::runtime(
+                    "sleep needs finite nonnegative milliseconds",
+                ));
+            }
+            if s.run.clock.virtual_time().is_some() {
+                s.run.clock.schedule(&s.ops, id, ms, Ok(Value::Null));
+            } else {
+                s.timers.after(id, ms);
+            }
             Ok(id)
         })?,
     )?;

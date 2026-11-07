@@ -4,7 +4,7 @@
 //! as tasks; a handler's answer goes back through `__respond`.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Condvar, LazyLock, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use kui_core::Value;
@@ -33,10 +33,14 @@ struct ClientOptions {
     ca_file: Option<std::path::PathBuf>,
 }
 
-static DEFAULT_CLIENT: LazyLock<Arc<Client>> =
-    LazyLock::new(|| Arc::new(Client::new(ClientOptions::default())));
+pub(crate) fn new_default() -> Arc<Client> {
+    Arc::new(Client::new(ClientOptions::default()))
+}
+pub(crate) fn shutdown(client: &Client) {
+    client.pool.destroy();
+}
 
-struct Client {
+pub(crate) struct Client {
     options: Mutex<ClientOptions>,
     pool: Arc<Pool>,
 }
@@ -660,12 +664,15 @@ fn decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
+fn client_table(lua: &Lua, client: Option<Arc<Client>>) -> mlua::Result<Table> {
     let http = lua.create_table()?;
     let defaults = client.clone();
     http.set(
         "__try_defaults",
         try_fn(lua, move |lua, ()| {
+            let defaults = defaults
+                .clone()
+                .unwrap_or_else(|| shared(lua).run.http.clone());
             if defaults.pool.state.lock().unwrap().closed {
                 return Err(super::fail_as("closed", "http: client is closed"));
             }
@@ -676,6 +683,9 @@ fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
     http.set(
         "try_configure",
         try_fn(lua, move |lua, table: Option<Table>| {
+            let config = config
+                .clone()
+                .unwrap_or_else(|| shared(lua).run.http.clone());
             let options = ClientOptions::parse(lua, table, "http.configure")?;
             if config.pool.state.lock().unwrap().closed {
                 return Err(super::fail_as("closed", "http: client is closed"));
@@ -684,10 +694,15 @@ fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
             Ok(())
         })?,
     )?;
-    let pool = client.pool.clone();
+    let close = client.clone();
     http.set(
         "__try_close",
         try_fn(lua, move |lua, ()| {
+            let pool = close
+                .clone()
+                .unwrap_or_else(|| shared(lua).run.http.clone())
+                .pool
+                .clone();
             pool.start_close();
             let s = shared(lua);
             let id = s.ops.id();
@@ -699,11 +714,15 @@ fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
             Ok(id)
         })?,
     )?;
-    let pool = client.pool.clone();
+    let destroy = client.clone();
     http.set(
         "__destroy",
-        lua.create_function(move |_, ()| {
-            pool.destroy();
+        lua.create_function(move |lua, ()| {
+            destroy
+                .clone()
+                .unwrap_or_else(|| shared(lua).run.http.clone())
+                .pool
+                .destroy();
             Ok(())
         })?,
     )?;
@@ -740,12 +759,40 @@ fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
                 let mut r = request_opts(target, method.as_deref().unwrap_or("GET"), None)?;
                 let s = shared(lua);
                 r.client.resolve_paths(&s.dir);
+                let client=client.clone().unwrap_or_else(||s.run.http.clone());
                 let request = client.pool.begin().map_err(mlua::Error::RuntimeError)?;
                 let id = s.ops.id();
                 let progress = report.unwrap_or(false).then(|| progress::Target {
                     ops: s.ops.clone(),
                     id,
                 });
+                let args=serde_json::json!({"method":r.method,"url":r.url,"headers":r.client.headers,"body_base64":r.body.as_ref().map(|b|base64::Engine::encode(&base64::engine::general_purpose::STANDARD,b))});
+                s.run.record("http",s.worker.as_ref().map(|w|w.0),serde_json::json!({"id":id,"request":args}));
+                if let Some(rule)=s.run.effects.intercept("http","request",&args).map_err(mlua::Error::runtime)? {
+                    let delay=rule.get("delay").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+                    if !delay.is_finite()||delay<0.0 {return Err(fail("[invalid] mock delay must be finite and nonnegative".into()));}
+                    if let Some(progress)=progress
+                        && let Some(events)=rule.get("progress").and_then(serde_json::Value::as_array) {
+                            for event in events {
+                                let mut event=event.clone();event["__http_progress"]=serde_json::json!(true);
+                                let at=event.get("at").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+                                let value=kui_core::json::parse(&event.to_string()).map_err(|e|fail(e.to_string()))?;
+                                crate::effects::complete(&s,progress.id,at,Ok(value));
+                            }
+                        }
+                    let mut response=rule.get("response").cloned().unwrap_or_else(||serde_json::json!({}));
+                    if response.get("status").is_none() {response["status"]=serde_json::json!(200);}
+                    if response.get("headers").is_none() {response["headers"]=serde_json::json!({});}
+                    if response.get("body").is_none() {response["body"]=serde_json::json!(response.get("json").map(|v|v.to_string()).unwrap_or_default());}
+                    response["ok"]=serde_json::json!((200..300).contains(&response["status"].as_u64().unwrap_or(200)));
+                    if response.get("json").is_none() && response["headers"].as_object().is_some_and(|h|h.iter().any(|(k,v)|k.eq_ignore_ascii_case("content-type")&&is_json(v.as_str())))
+                        && let Ok(value)=serde_json::from_str::<serde_json::Value>(response["body"].as_str().unwrap_or("")) {response["json"]=value;}
+                    let answer=if let Some(error)=crate::effects::failure(&rule) {Err(error)}else{kui_core::json::parse(&response.to_string()).map_err(|e|e.to_string())};
+                    s.run.clock.schedule_with(&s.ops,id,delay,move || {
+                        if request.pool.state.lock().unwrap().destroyed {Err(closed())}else{answer}
+                    });
+                    return Ok(id);
+                }
                 ops::run(&s.ops, id, move || {
                     let result = fetch(r, &request, progress);
                     // Shutdown can end a close-delimited body with a valid
@@ -761,16 +808,23 @@ fn client_table(lua: &Lua, client: Arc<Client>) -> mlua::Result<Table> {
             },
         )?,
     )?;
+    if let Ok(kui) = lua.globals().get::<Table>("kui")
+        && let Ok(wrap) = kui.get::<mlua::Function>("__record_wrap")
+    {
+        wrap.call::<()>(("http", http.clone()))?;
+    }
     Ok(http)
 }
 
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
-    let http = client_table(lua, DEFAULT_CLIENT.clone())?;
+    let http = client_table(lua, None)?;
     http.set(
         "__try_client",
         try_fn(lua, |lua, table: Option<Table>| {
             let options = ClientOptions::parse(lua, table, "http.client")?;
-            client_table(lua, Arc::new(Client::new(options)))
+            let client = Arc::new(Client::new(options));
+            shared(lua).run.clients.lock().unwrap().push(client.clone());
+            client_table(lua, Some(client))
         })?,
     )?;
     kui.set("http", http)?;

@@ -26,6 +26,8 @@ pub mod worker;
 /// data, an `Arc` so the threads it starts can hold it.
 pub struct Shared {
     pub ops: Ops,
+    pub run: Arc<crate::context::RunContext>,
+    pub input: Mutex<Option<kui_native::HeadlessInput>>,
     /// The app's folder: what a relative path is read against.
     pub dir: PathBuf,
     /// The servers this state runs, by id.
@@ -48,9 +50,51 @@ pub struct Shared {
 }
 
 impl Shared {
+    /// Stop native owners before joining operations and deleting run files.
+    /// Tests own a Shared even when they never start an app view.
+    pub fn shutdown(&self) {
+        self.run
+            .closed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.ops.close();
+        self.children.kill_all();
+        worker::stop_all(self);
+        self.servers.lock().unwrap().clear();
+    }
+
     pub fn new(dir: PathBuf, worker: Option<(u64, Ops)>) -> Arc<Self> {
+        Self::in_run(dir, worker, crate::context::RunContext::new())
+    }
+
+    pub fn in_run(
+        dir: PathBuf,
+        worker: Option<(u64, Ops)>,
+        run: Arc<crate::context::RunContext>,
+    ) -> Arc<Self> {
         let ops = Ops::default();
+        if run.testing {
+            let weak = Arc::downgrade(&run);
+            let actor = worker.as_ref().map(|w| w.0);
+            let causes = Mutex::new(HashMap::new());
+            ops.observe(move |kind, id, value| {
+                if let Some(run) = weak.upgrade() {
+                    let mut causes = causes.lock().unwrap();
+                    let step = *causes
+                        .entry(id)
+                        .or_insert_with(|| run.step.load(std::sync::atomic::Ordering::Relaxed));
+                    run.record_at(
+                    kind,
+                    actor,
+                    step,
+                    serde_json::json!({"id":id,"value":value.map(crate::testing::artifact::value)}),
+                );
+                }
+            });
+        }
+        let children = run.children.clone();
         Arc::new(Shared {
+            run,
+            input: Mutex::default(),
             timers: timer::Timers::new(ops.clone()),
             ops,
             dir,
@@ -59,7 +103,7 @@ impl Shared {
             errors: Mutex::default(),
             exit: Mutex::default(),
             worker,
-            children: process::Children::default(),
+            children,
             devtools: Mutex::default(),
         })
     }
@@ -92,6 +136,13 @@ impl Shared {
 
 /// The app's own arguments, what followed `--` on the command line.
 static ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+pub fn arguments() -> Vec<String> {
+    ARGS.get().cloned().unwrap_or_default()
+}
+pub fn name() -> Option<String> {
+    NAME.get().cloned()
+}
 
 pub fn set_args(args: Vec<String>) {
     let _ = ARGS.set(args);
@@ -235,6 +286,7 @@ pub fn on_interrupt(shared: Arc<Shared>) {
         unsafe { libc::signal(sig, handler as *const () as libc::sighandler_t) };
     }
     let read = fds[0];
+    let shared = Arc::downgrade(&shared);
     let _ = std::thread::Builder::new()
         .name("kui-signals".into())
         .spawn(move || {
@@ -246,6 +298,9 @@ pub fn on_interrupt(shared: Arc<Shared>) {
                 if n <= 0 {
                     return;
                 }
+                let Some(shared) = shared.upgrade() else {
+                    return;
+                };
                 if seen {
                     shared.children.kill_all();
                     std::process::exit(128 + b as i32);
@@ -385,6 +440,43 @@ fn message(e: &mlua::Error) -> String {
     failure(e).0
 }
 
+/// Refresh case-owned metadata without replacing the controller's test DSL.
+pub fn install_context(lua: &Lua, kui: &Table, shared: &Shared) -> mlua::Result<()> {
+    kui.set("args", shared.run.args.lock().unwrap().clone())?;
+    kui.set("name", shared.run.name.clone())?;
+    kui.set(
+        "platform",
+        if shared.run.testing {
+            "linux"
+        } else {
+            PLATFORM
+        },
+    )?;
+    kui.set(
+        "cpus",
+        if shared.run.testing {
+            1
+        } else {
+            std::thread::available_parallelism().map_or(1, |n| n.get())
+        },
+    )?;
+    if let Some(app) = &shared.run.app {
+        kui.set("id", app.id.clone())?;
+        kui.set("app_version", app.version.clone())?;
+        kui.set("data_dir", app.data_dir.to_string_lossy().as_ref())?;
+        kui.set("cache_dir", app.cache_dir.to_string_lossy().as_ref())?;
+        kui.set("packed", mlua::Value::Nil)?;
+        if let Some((runner, bytecode, hash)) = &app.packed {
+            let t = lua.create_table()?;
+            t.set("runner", runner.as_str())?;
+            t.set("bytecode", *bytecode)?;
+            t.set("hash", hash.as_str())?;
+            kui.set("packed", t)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     lua.set_app_data(shared.clone());
     let kui = lua.create_table()?;
@@ -392,6 +484,25 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
         "__block",
         lua.create_function(|lua, id: u64| {
             let s = shared_of(lua);
+            if s.run.clock.virtual_time().is_some() {
+                loop {
+                    if s.ops.closed() {
+                        return Ok(answer_to_lua(lua, Err("[closed] app run ended".into())));
+                    }
+                    if let Some(answer) = s.ops.try_answer(id) {
+                        return Ok(answer_to_lua(lua, answer));
+                    }
+                    if let Some(at) = s.run.clock.next_due().filter(|_| s.worker.is_none()) {
+                        let now = s.run.clock.virtual_time().unwrap();
+                        s.run
+                            .clock
+                            .advance((at - now).max(0.0))
+                            .map_err(mlua::Error::runtime)?;
+                    } else {
+                        s.ops.wait_any(std::time::Duration::from_millis(1));
+                    }
+                }
+            }
             Ok(answer_to_lua(lua, s.ops.block_on(id)))
         })?,
     )?;
@@ -437,19 +548,11 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     )?;
     kui.set(
         "now",
-        lua.create_function(|_, ()| {
-            Ok(std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs_f64() * 1000.0)
-                .unwrap_or(0.0))
-        })?,
+        lua.create_function(|lua, ()| Ok(shared_of(lua).run.clock.now_ms()))?,
     )?;
     kui.set("dir", shared.dir.to_string_lossy().as_ref())?;
     kui.set("version", env!("CARGO_PKG_VERSION"))?;
-    kui.set("args", ARGS.get().cloned().unwrap_or_default())?;
-    if let Some(name) = NAME.get() {
-        kui.set("name", name.as_str())?;
-    }
+    install_context(lua, &kui, &shared)?;
     // Spelled as `dir` is (`paths::canonical`), so the two compare: on
     // Windows `current_dir` keeps a short name (`RUNNER~1`) the app's
     // folder has expanded.
@@ -457,26 +560,6 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
         let cwd = crate::paths::canonical(&cwd).unwrap_or(cwd);
         kui.set("cwd", cwd.to_string_lossy().as_ref())?;
     }
-    kui.set("platform", PLATFORM)?;
-    if let Some(app) = APP.get() {
-        kui.set("id", app.id.as_str())?;
-        if let Some(v) = &app.version {
-            kui.set("app_version", v.as_str())?;
-        }
-        kui.set("data_dir", app.data_dir.to_string_lossy().as_ref())?;
-        kui.set("cache_dir", app.cache_dir.to_string_lossy().as_ref())?;
-        if let Some((runner, bytecode, hash)) = &app.packed {
-            let t = lua.create_table()?;
-            t.set("runner", runner.as_str())?;
-            t.set("bytecode", *bytecode)?;
-            t.set("hash", hash.as_str())?;
-            kui.set("packed", t)?;
-        }
-    }
-    kui.set(
-        "cpus",
-        std::thread::available_parallelism().map_or(1, |n| n.get()),
-    )?;
     if shared.worker.is_some() {
         kui.set("__worker", true)?;
     }
@@ -500,12 +583,14 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     log::install(lua, &kui)?;
     formats::install(lua, &kui)?;
     crypto::install(lua, &kui)?;
+    crate::snapshot::install(lua, &kui)?;
     secrets::install(lua, &kui)?;
     fs::install(lua, &kui)?;
     timer::install(lua, &kui)?;
     process::install(lua, &kui)?;
     http::install(lua, &kui)?;
     input::install(lua, &kui)?;
+    crate::testing::ui::install(lua, &kui)?;
     sqlite::install(lua, &kui)?;
     worker::install(lua, &kui)?;
     // `kui.trace` (ADR 0075): a recording as channels; a watched file's
@@ -529,11 +614,31 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
         )?;
     }
     kui.set("trace", trace)?;
+    kui.set(
+        "__record_enabled",
+        lua.create_function(|lua, ()| Ok(shared_of(lua).run.journal.lock().unwrap().is_some()))?,
+    )?;
+    kui.set(
+        "__record_graph",
+        lua.create_function(|lua, (kind, text): (String, String)| {
+            let s = shared_of(lua);
+            let data: serde_json::Value =
+                serde_json::from_str(&text).map_err(mlua::Error::external)?;
+            s.run.record(&kind, s.worker.as_ref().map(|w| w.0), data);
+            Ok(())
+        })?,
+    )?;
     lua.globals().set("kui", kui.clone())?;
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("kui", kui)?;
+    lua.load(include_str!("../lua/record.lua"))
+        .set_name("@kui:record")
+        .call::<()>(include_str!("../lua/snapshot.lua"))?;
     lua.load(RUNTIME).set_name("@kui:runtime").exec()?;
-    lua.load(ARGS_LUA).set_name("@kui:args").exec()
+    lua.load(ARGS_LUA).set_name("@kui:args").exec()?;
+    lua.load(include_str!("../lua/test.lua"))
+        .set_name("@kui:test")
+        .exec()
 }
 
 fn shared_of(lua: &Lua) -> Arc<Shared> {

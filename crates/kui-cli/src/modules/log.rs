@@ -156,6 +156,11 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
                 "warn" | "error" => eprintln!("[{level}] {text}"),
                 _ => println!("{text}"),
             }
+            super::shared(lua).run.record(
+                "log",
+                super::shared(lua).worker.as_ref().map(|w| w.0),
+                serde_json::json!({"level":level,"text":text}),
+            );
             push(level, text);
             Ok(())
         })?,

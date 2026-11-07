@@ -83,6 +83,23 @@ impl PendingFrame {
 /// about half a millisecond, with nothing waited for.
 pub(crate) fn capture_begin(core: &Core) -> Result<PendingFrame, String> {
     let (dl, atlas) = core.drawn();
+    drawing_begin(dl, atlas, core.theme().bg)
+}
+
+/// Renders a complete recorded drawing without an app or a live core.
+pub fn capture_drawing(
+    dl: &kui_core::DisplayList,
+    atlas: &kui_core::atlas::GlyphAtlas,
+    background: kui_core::Color,
+) -> Result<Capture, String> {
+    drawing_begin(dl, atlas, background)?.wait()
+}
+
+fn drawing_begin(
+    dl: &kui_core::DisplayList,
+    atlas: &kui_core::atlas::GlyphAtlas,
+    bg: kui_core::Color,
+) -> Result<PendingFrame, String> {
     if dl.viewport.w < 1.0 || dl.viewport.h < 1.0 {
         return Err("no finished frame to capture".into());
     }
@@ -99,7 +116,6 @@ pub(crate) fn capture_begin(core: &Core) -> Result<PendingFrame, String> {
     }
     let r = slot.as_mut().expect("opened above");
     // What the runner clears an opaque window to (ADR 0019).
-    let bg = core.theme().bg;
     r.clear_color = wgpu::Color {
         r: bg.r as f64,
         g: bg.g as f64,

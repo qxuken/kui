@@ -17,7 +17,9 @@
 
 mod archive;
 mod compat;
+mod context;
 mod docs;
+mod effects;
 mod gallery;
 mod host;
 mod icons;
@@ -34,7 +36,9 @@ mod project;
 mod release;
 mod rename;
 mod shell_env;
+mod snapshot;
 mod teal;
+mod testing;
 mod tls;
 mod tooling;
 
@@ -74,6 +78,7 @@ kui — run a Lua or Teal app with Kit and a standard library
 usage:
   kui run [path] [options]   run the app at path (a .lua or .tl file, or a folder; default .)
   kui play [options]         open Kit's gallery, carried in this runner (run options apply)
+  kui test [path]            test apps; --ui opens the inspector, --debug pauses a visible run
   kui check [path]           type-check the app's .tl files
   kui new <dir>              start an app in dir
   kui types [path]           write editor declarations (LuaLS, Teal) into path/.kui/types
@@ -334,6 +339,8 @@ fn main() -> ExitCode {
     }
     let argv: Vec<String> = std::env::args().skip(1).collect();
     match argv.first().map(String::as_str) {
+        Some("test") => return exit(testing::command(&argv[1..])),
+        Some("__test-file") => return exit(testing::child(&argv[1..])),
         Some("pack") => return exit(pack_cmd(&argv[1..])),
         Some("upgrade") => return exit(upgrade(&argv[1..])),
         Some("runners") => return exit(runners(&argv[1..])),
@@ -536,6 +543,11 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
         .titlebar(project.titlebar)
         .extension_as("app", ext)
         .extension_as(kit::NAMESPACE, kit);
+    if let Some(media) = testing::ui::media() {
+        launcher = launcher
+            .extension_as("testmedia", media)
+            .setup_core(|core| core.set_inspect(true));
+    }
     if let Some(platform) = args.platform {
         launcher = launcher.platform(platform);
     }
@@ -580,7 +592,7 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     modules::on_interrupt(shared.clone());
     if args.headless {
         let headless = launcher.open_headless(runner, w as f32, h as f32, args.scale);
-        modules::input::set(headless.input());
+        modules::input::set(&shared, headless.input());
         headless.run();
     } else {
         launcher.size(w, h).run(runner).map_err(|e| e.to_string())?;

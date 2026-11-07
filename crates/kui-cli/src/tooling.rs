@@ -242,9 +242,9 @@ pub fn agent_block() -> String {
 
 This app runs on the kui {VERSION} runner: Lua 5.5 (or Teal) with Kit, no build step.
 
-- **Types**: `.kui/types` — LuaLS (`kui.lua`, `kui_runner.lua`, `kit/ui.lua`) and Teal (`kui.d.tl`, `kit/ui.d.tl`).
+- **Types**: `.kui/types` — LuaLS (`kui.lua`, `kui_runner.lua`, `kui/test.lua`, `kit/ui.lua`) and Teal (`kui.d.tl`, `kui/test.d.tl`, `kit/ui.d.tl`).
 - **Docs, at this version**: `.kui/docs` — `props.md` (every prop, element and event), `howto.md` (tasks), `kit.md` (Kit's components), `book/` and `adr/`. `kui docs <query>` searches them from a terminal.
-- **Commands**: `kui run --watch` runs the app and reloads it on save, keeping `model`; `kui check` type-checks the `.tl` files; `kui run test --headless` runs the test script in `test/` with no window.
+- **Commands**: `kui run --watch` runs the app and reloads it on save, keeping `model`; `kui check` type-checks the `.tl` files; `kui test` discovers and runs app tests; `kui test --ui` opens their inspector and `--debug` pauses visible execution. Use `kui test --json` for machine-readable results; `kui test report|output|events ARTIFACT --json` reads saved failures, full stdout/stderr, and structured events without a window.
 
 House rules:
 

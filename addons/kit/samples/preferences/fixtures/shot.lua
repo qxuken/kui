@@ -1,6 +1,6 @@
 -- A picture of the preferences window, a state staged.
 --
---   kui run test/shot.lua --shot shots/preferences.png --after 1000 --size 1040x760 -- [skin] [state]
+--   kui run fixtures/shot.lua --shot shots/preferences.png --after 1000 --size 1040x760 -- [skin] [state]
 --
 -- `skin` is ledger, neutral or phosphor; `state` one of general, sync,
 -- network, invalid, named, notifications, advanced, search, nothing,

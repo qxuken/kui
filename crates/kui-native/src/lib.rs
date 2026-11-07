@@ -156,7 +156,7 @@ mod axis_lock;
 /// What shows through the window: a blur, a tint, the desktop, or nothing.
 mod backdrop;
 mod capture;
-pub use capture::{Capture, Captures, capture};
+pub use capture::{Capture, Captures, capture, capture_drawing};
 mod clipboard;
 mod decode;
 pub use decode::{
@@ -274,6 +274,12 @@ use winit::window::{CursorIcon, ResizeDirection, Window, WindowId as WinitWindow
 /// Only [`view`](Self::view) is required. Hand a value of the type to
 /// [`Launcher::run`], or to [`testing::Drive`] in a test.
 pub trait App {
+    /// Observes a translated input before routing it. Returning true consumes
+    /// it. Presentation-only hosts use this to forward input to another core.
+    fn on_input(&mut self, _input: &InputEvent) -> bool {
+        false
+    }
+
     /// Builds one window's frame. Called once per open window per frame;
     /// `ui.window_name()` says which (`"main"` for the launcher's).
     fn view(&mut self, ui: &mut Ui<'_>);
@@ -2638,6 +2644,9 @@ impl DynShell<'_> {
         i: usize,
         ev: InputEvent,
     ) -> Option<usize> {
+        if self.app.on_input(&ev) {
+            return Some(i);
+        }
         let t0 = std::time::Instant::now();
         // Someone is using the app, so a sound may be moments away: keep
         // the device warm (`AUDIO_IDLE_CLOSE`).

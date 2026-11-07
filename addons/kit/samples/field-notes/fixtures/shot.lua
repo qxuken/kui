@@ -1,6 +1,6 @@
 -- A picture of Field Notes: a seeded book in memory, a state staged.
 --
---   kui run test/shot.lua --shot shots/field-notes.png --after 1200 --size 1180x760 -- [skin] [state]
+--   kui run fixtures/shot.lua --shot shots/field-notes.png --after 1200 --size 1180x760 -- [skin] [state]
 --
 -- `skin` is ledger, neutral or phosphor; `state` one of note, checklist,
 -- search, delete, empty, loading, error.

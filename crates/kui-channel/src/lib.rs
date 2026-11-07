@@ -451,6 +451,27 @@ impl Channel {
         Ok(Self::register(id, 1, Self::table_body(names, cols), len))
     }
 
+    /// Restores detached contents at a saved revision under a fresh identity.
+    /// Live channels and their readers cannot alias the restored history.
+    pub fn from_snapshot(data: Data, revision: u64) -> Result<Channel, ChannelError> {
+        let (body, len) = match data {
+            Data::Table { names, cols } => {
+                let len = table_len(&names, &cols)?;
+                (Self::table_body(names, cols), len)
+            }
+            Data::Bytes(bytes) => {
+                let len = bytes.len();
+                (Body::Bytes(Data::Bytes(bytes)), len)
+            }
+        };
+        Ok(Self::register(
+            NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            revision.max(1),
+            body,
+            len,
+        ))
+    }
+
     /// A run of bytes.
     pub fn bytes(bytes: Vec<u8>) -> Channel {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);

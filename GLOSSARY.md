@@ -176,6 +176,27 @@ _Avoid_: self time, CPU time (which is a separate measurement)
 A span's elapsed duration excluding time inside its nested children,
 regardless of whether those children are visible under a span filter.
 _Avoid_: inclusive time, CPU time
+## Testing
+
+**Test step**:
+A driving action or explicitly named interval of a test, with its
+before/after state and the events, messages and operations within it.
+_Avoid_: step (unqualified near presentation reveals), frame
+
+**Test-run artifact**:
+The durable history of a test execution: its results, test steps,
+captured state, drawings and effects, available after the app ends.
+_Avoid_: trace (without distinguishing a performance recording)
+
+**Drawing playback**:
+Rendering a captured frame from its recorded drawing and resources,
+independently of the app that produced it.
+_Avoid_: execution replay, checkpoint restore
+
+**State rendering**:
+Constructing a fresh view from captured app state through its explicit
+capture/render adapter.
+_Avoid_: execution replay, runtime restore
 
 ## Presentations
 

@@ -113,8 +113,8 @@ date: 2026-10-26
   `table`) ranks first, ten print (`--all` for every one), and the ADRs
   whose title holds the query's words are named after them. No match
   exits 1. `kui docs --adr` alone lists the records.
-- **There is no `kui test`.** The agent block names `kui run test
-  --headless`, the command the book's tests run with.
+- **Testing:** ADR 0072 now supplies `kui test`, `--ui` and `--debug`.
+  The generated agent block and the book name these commands.
 - **The stamp is `.kui/version`**, written with `.kui/types`. A refresh
   writes `.kui/types` where the app has them *or* its manifest opted into
   docs or agents — a fresh clone of an opted-in app has no `.kui/`, and

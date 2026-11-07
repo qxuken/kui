@@ -8,7 +8,7 @@
   -- (the runner's README lists them): "not_found", "exists", "denied",
   -- "not_empty", "invalid", "parse", "encoding", "integrity", "timeout",
   -- "dns", "refused", "tls", "in_use", "closed", "busy", "constraint",
-  -- "sql", "full", "too_long", "unavailable", "failed". The plain call
+  -- "sql", "full", "too_long", "unavailable", "unexpected_call", "failed". The plain call
   -- raises the message at its caller's line.
 
   -- Runs `fn` as a task: its waiting calls yield to the frame.
@@ -261,7 +261,18 @@
     file: boolean
     modified: number
   end
+  record TempOpts
+    prefix: string
+    suffix: string
+    dir: string
+    keep: boolean
+  end
   record fs
+    -- Absolute paths, removed when the app ends unless keep=true.
+    temp_dir: function(opts?: TempOpts): string
+    temp_file: function(opts?: TempOpts): string
+    try_temp_dir: function(opts?: TempOpts): boolean, string, string
+    try_temp_file: function(opts?: TempOpts): boolean, string, string
     read: function(path: string): string
     write: function(path: string, data: string)
     append: function(path: string, data: string)

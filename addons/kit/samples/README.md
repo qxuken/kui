@@ -19,7 +19,7 @@ says `appearance: "light"`.
 
 ```bash
 kui run addons/kit/samples/relay                       # any of the four
-cd addons/kit/samples/relay && kui run test --headless  # its test; the exit code is the failures
+cd addons/kit/samples/relay && kui test  # its test; a nonzero exit means a failure
 nu addons/kit/samples/shots.nu                          # every sample's shots/ again (or name some)
 cargo test -p kui-cli --test run sample                 # all four tests, and Watchtower's types
 ```
