@@ -32,6 +32,8 @@ mod imp {
         Wake,
         /// Draw at this time (`Waker::wake_at`, backlog F135).
         WakeAt(std::time::Instant),
+        #[cfg(target_os = "macos")]
+        DrawableReady(winit::window::WindowId),
         /// The system's installed fonts changed (`mod system_fonts`).
         /// Only macOS and Windows say so; elsewhere nothing sends it.
         #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
@@ -58,6 +60,8 @@ mod imp {
         match ev {
             UserEvent::Access(ev) => Some(ev.window_id),
             UserEvent::Files { window, .. } => Some(*window),
+            #[cfg(target_os = "macos")]
+            UserEvent::DrawableReady(window) => Some(*window),
             UserEvent::Wake | UserEvent::WakeAt(_) | UserEvent::FontsChanged => None,
         }
     }
@@ -145,6 +149,8 @@ mod imp {
         Wake,
         /// Draw at this time (`Waker::wake_at`, backlog F135).
         WakeAt(std::time::Instant),
+        #[cfg(target_os = "macos")]
+        DrawableReady(winit::window::WindowId),
         /// The system's installed fonts changed (`mod system_fonts`).
         /// Only macOS and Windows say so; elsewhere nothing sends it.
         #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
@@ -161,6 +167,8 @@ mod imp {
     pub fn window_of(ev: &UserEvent) -> Option<winit::window::WindowId> {
         match ev {
             UserEvent::Files { window, .. } => Some(*window),
+            #[cfg(target_os = "macos")]
+            UserEvent::DrawableReady(window) => Some(*window),
             UserEvent::Wake | UserEvent::WakeAt(_) | UserEvent::FontsChanged => None,
         }
     }

@@ -62,6 +62,9 @@ Time selectors accept us, ms or s; ranges and IDs must be nonnegative.
 Work is core duration plus rendering, excluding vsync wait. Without both a
 core end and present measurement, work and verdict stay unavailable (null in
 JSON, — in text); missing work sorts last in either direction.
+Distributions include p50, p95, p99 and max. Over-budget percentages count only
+complete frames. Pacing is frame-start spacing; present records do not measure
+GPU completion or physical display. Native render timings are CPU-side.
 Examples:
   kui perf frames run.kuitrace --sort work --limit 10 --json
   kui perf spans run.kuitrace --frames 120:180 --name layout --all
@@ -499,6 +502,9 @@ fn text(v: &V) -> String {
     fn context(v: &V, out: &mut String) {
         let get = |k: &str| v.get(k).and_then(scalar).unwrap_or_else(|| "—".into());
         out.push_str(&format!("Recording: {}\n", get("recording")));
+        if v.get("timing_scope").is_some() {
+            out.push_str("Timing: core/driver work; frame-start pacing; GPU completion and physical display unavailable.\n");
+        }
         if let Some(session) = v.get("session")
             && !matches!(session, V::Null)
         {

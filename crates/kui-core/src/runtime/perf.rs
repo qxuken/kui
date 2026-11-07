@@ -790,6 +790,22 @@ impl Core {
         if self.perf.why == 0 {
             return;
         }
+        // Environment capture can start before a native window reports its
+        // refresh rate or before begin_frame installs its actual scale. Settle
+        // that snapshot at the first measured frame, without changing its
+        // recording clock or retroactively relabelling later display changes.
+        if self.perf.last_frame == 0
+            && let Some(session) = &mut self.perf.session
+        {
+            session.refresh_hz = self.env.refresh_hz.unwrap_or(0.0);
+            session.budget_ms = self.env.frame_budget_ms();
+            session.scale = self.scale;
+            if let Some(Sink::Stream(writer)) = &mut self.perf.sink {
+                // Readers retain the newest Session record. The in-memory
+                // trace reads session directly, so it needs no extra record.
+                let _ = writer.write(&Record::Session(session.clone()));
+            }
+        }
         let frame = self.frame_no;
         let mut causes: Vec<NameId> = self
             .frame_cause()

@@ -105,7 +105,9 @@ pub fn distribution(d: &Distribution) -> V {
     V::map([
         ("samples", d.samples.into()),
         ("avg", opt(d.avg_us, |v| (v / 1000.0).into())),
+        ("p50", opt(d.p50_us, ms)),
         ("p95", opt(d.p95_us, ms)),
+        ("p99", opt(d.p99_us, ms)),
         ("max", opt(d.max_us, ms)),
     ])
 }
@@ -132,6 +134,7 @@ pub fn summary(s: &Summary) -> V {
             ),
         ),
         ("over_budget", opt(s.over_budget, V::from)),
+        ("over_budget_percent", opt(s.over_budget_percent(), V::from)),
         ("unchanged", s.unchanged.into()),
     ])
 }
@@ -213,6 +216,7 @@ pub fn frame(trace: &Trace, d: &FrameDetail) -> V {
             opt(d.path, |p| {
                 V::map([
                     ("input", V::str(trace.name(p.input.kind))),
+                    ("endpoint", V::str(p.endpoint())),
                     ("total", ms(p.total())),
                     (
                         "legs",
@@ -337,6 +341,18 @@ pub fn counters(trace: &Trace, cs: &[Counter], gs: &[Gauge]) -> V {
     ])
 }
 
+/// Recorded clocks describe core/driver work, not GPU completion or photons.
+pub fn timing_scope() -> V {
+    V::map([
+        ("work", V::str("core_frame_and_driver_render")),
+        ("pacing", V::str("frame_begin_intervals")),
+        ("present", V::str("driver_present_record")),
+        ("input", V::str("core_input_receipt")),
+        ("gpu_completion", V::Null),
+        ("physical_display", V::Null),
+    ])
+}
+
 pub fn result(trace: &Trace, timeline: &crate::Timeline, r: &ResultSet, recording: &str) -> V {
     let data = match &r.data {
         Data::Summary(s) => summary(s),
@@ -358,6 +374,7 @@ pub fn result(trace: &Trace, timeline: &crate::Timeline, r: &ResultSet, recordin
         ("operation", V::str(r.query.operation.name())),
         ("recording", V::str(recording)),
         ("time_unit", V::str("ms")),
+        ("timing_scope", timing_scope()),
         ("session", session(trace.session.as_ref())),
         ("scope", scope(timeline, &r.scope)),
         ("filters", filter(&r.query.filter)),
@@ -373,6 +390,9 @@ pub fn result(trace: &Trace, timeline: &crate::Timeline, r: &ResultSet, recordin
             V::List(vec![
                 V::str("The recording format does not report dropped-event counts."),
                 V::str("Incomplete frame timings and unavailable measurements are null."),
+                V::str(
+                    "Present records do not certify GPU completion or physical display; native render timings are CPU-side encoding/submission.",
+                ),
             ]),
         ),
         ("data", data),
@@ -392,6 +412,7 @@ pub fn readings(
     fields.extend([
         ("frame_indices".into(), list(&s.indices, |&i| i.into())),
         ("time_unit".into(), V::str("ms")),
+        ("timing_scope".into(), timing_scope()),
         ("scope".into(), scope(timeline, s)),
         ("filters".into(), filter(f)),
         ("summary".into(), summary(&r.summary)),

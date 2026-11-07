@@ -1,4 +1,4 @@
-//! wgpu renderer for kui: draws a [`kui_core::DisplayList`] with one instanced pipeline, a single draw call per frame.
+//! wgpu renderer for kui: batches a [`kui_core::DisplayList`] into instanced draws.
 //!
 //! kui splits a UI into a model that lays out and paints into a display
 //! list (`kui-core`), a renderer that puts that list on screen (this
@@ -10,8 +10,10 @@
 //! A [`Renderer`] owns the swapchain of one window — or none, drawing
 //! into textures a host hands it — and a GPU copy of the core's glyph
 //! atlas, kept in step with the atlas it is handed each frame. Rounded rectangles, borders, shadows, glyphs and images are all
-//! instances of the same quad, so an ordinary frame is one draw call;
-//! only a texture-backed image or a custom fragment shader splits it.
+//! instances of the same quad. Metal batches contiguous solids and mask glyphs
+//! through specialized pipelines; other backends keep the combined pipeline.
+//! Texture-backed images and custom fragments split runs. Large hollow outlines
+//! use disjoint scissors to avoid shading their transparent interiors.
 //! Several windows share one device through [`Gpu`].
 //!
 //! # Example
@@ -104,6 +106,9 @@ pub use wgpu;
 
 mod backdrop;
 mod groups;
+#[cfg(target_os = "macos")]
+mod metal;
+mod outline;
 
 use kui_core::atlas::GlyphAtlas;
 use kui_core::gpu::{Globals, Instance, instance_of, shader as preprocess_shader};
@@ -723,6 +728,7 @@ fn quad_pipeline(
     module: &wgpu::ShaderModule,
     format: wgpu::TextureFormat,
     blend: wgpu::BlendState,
+    kind: i32,
 ) -> wgpu::RenderPipeline {
     let instance_attrs = INSTANCE_ATTRS;
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -737,7 +743,10 @@ fn quad_pipeline(
         fragment: Some(wgpu::FragmentState {
             module,
             entry_point: Some("fs_main"),
-            compilation_options: Default::default(),
+            compilation_options: wgpu::PipelineCompilationOptions {
+                constants: &[("KUI_KIND", f64::from(kind))],
+                ..Default::default()
+            },
             targets: &[Some(wgpu::ColorTargetState {
                 format,
                 blend: Some(blend),
@@ -784,7 +793,11 @@ pub struct Renderer {
     /// The surface's configuration — or, windowless, the format the
     /// pipelines were built for and the size of the last target drawn.
     config: wgpu::SurfaceConfiguration,
+    frame_label: Option<(u64, u64)>,
     pipeline: wgpu::RenderPipeline,
+    /// Metal can discard unrelated shader branches for the two common kinds.
+    /// Keep paint order: only contiguous instances share a specialized draw.
+    specialized: Option<[wgpu::RenderPipeline; 2]>,
     /// What frames draw from: one slot written by `write_buffer`, or on a
     /// device with mapped frames a ring of them (backlog C53).
     slots: Vec<FrameSlot>,
@@ -1151,6 +1164,17 @@ impl Renderer {
         Self::with_surface(gpu.clone(), surface, width, height, transparent)
     }
 
+    /// Labels subsequent GPU command buffers with the host window and frame
+    /// sequence, so CPU input samples can be matched to physical presentations.
+    pub fn label_frame(&mut self, window: u64, frame: u64) {
+        self.frame_label = Some((window, frame));
+    }
+
+    fn frame_label(&self) -> Option<String> {
+        self.frame_label
+            .map(|(window, frame)| format!("kui.window.{window}.frame.{frame}"))
+    }
+
     /// The device this renderer draws with, to open another window on.
     pub fn gpu(&self) -> &Gpu {
         &self.gpu
@@ -1187,7 +1211,7 @@ impl Renderer {
             .formats
             .iter()
             .copied()
-            .find(|f| !f.is_srgb())
+            .find(|f| *f == f.remove_srgb_suffix())
             .unwrap_or(caps.formats[0]);
         let backend = gpu.adapter().get_info().backend;
         // Not on a device whose surfaces cannot show what is behind the
@@ -1343,7 +1367,17 @@ impl Renderer {
             immediate_size: 0,
         });
 
-        let pipeline = quad_pipeline(device, &pipeline_layout, &shader, format, blend);
+        let pipeline = quad_pipeline(device, &pipeline_layout, &shader, format, blend, -1);
+        let specialization = std::env::var("KUI_SPECIALIZE");
+        let specialize = specialization.as_deref() == Ok("1")
+            || (gpu.adapter().get_info().backend == wgpu::Backend::Metal
+                && specialization.as_deref() != Ok("0"));
+        let specialized = specialize.then(|| {
+            [
+                quad_pipeline(device, &pipeline_layout, &shader, format, blend, 0),
+                quad_pipeline(device, &pipeline_layout, &shader, format, blend, 1),
+            ]
+        });
 
         let atlas_size = kui_core::atlas::ATLAS_SIZE;
         let atlas_tex = create_atlas_texture(device, atlas_size);
@@ -1418,7 +1452,9 @@ impl Renderer {
             gpu,
             surface,
             config,
+            frame_label: None,
             pipeline,
+            specialized,
             slots: vec![slot],
             slot: 0,
             bind_layout,
@@ -1945,6 +1981,7 @@ impl Renderer {
                 &shader,
                 self.config.format,
                 wgpu::BlendState::ALPHA_BLENDING,
+                -1,
             ));
         }
     }
@@ -1984,14 +2021,7 @@ impl Renderer {
             if g.begin < range.start || g.end >= range.end {
                 continue;
             }
-            self.draw_quads(
-                pass,
-                dl,
-                at..g.begin,
-                pipeline,
-                &prep.fragment_pipelines,
-                &prep.texture_binds,
-            );
+            self.draw_primitives(pass, dl, at..g.begin, pipeline, parent, prep);
             if let Some(bind) = &pictures[g.tex()] {
                 let frame = &self.slots[self.slot];
                 pass.set_vertex_buffer(0, frame.buf.slice(frame.instances_at..));
@@ -2000,6 +2030,52 @@ impl Renderer {
                 pass.draw(0..6, g.end..g.end + 1);
             }
             at = g.end + 1;
+        }
+        self.draw_primitives(pass, dl, at..range.end, pipeline, parent, prep);
+    }
+
+    fn draw_primitives(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        dl: &DisplayList,
+        range: std::ops::Range<u32>,
+        pipeline: &wgpu::RenderPipeline,
+        parent: u32,
+        prep: &Prepared,
+    ) {
+        let mut at = range.start;
+        if parent == groups::FRAME {
+            for plan in prep.outlines.iter().filter(|p| range.contains(&p.quad)) {
+                self.draw_quads(
+                    pass,
+                    dl,
+                    at..plan.quad,
+                    pipeline,
+                    &prep.fragment_pipelines,
+                    &prep.texture_binds,
+                );
+                for &[x, y, w, h] in &plan.pieces {
+                    if w == 0 || h == 0 {
+                        continue;
+                    }
+                    pass.set_scissor_rect(x, y, w, h);
+                    self.draw_quads(
+                        pass,
+                        dl,
+                        plan.quad..plan.quad + 1,
+                        pipeline,
+                        &prep.fragment_pipelines,
+                        &prep.texture_binds,
+                    );
+                }
+                pass.set_scissor_rect(
+                    0,
+                    0,
+                    dl.viewport.w.round().max(1.0) as u32,
+                    dl.viewport.h.round().max(1.0) as u32,
+                );
+                at = plan.quad + 1;
+            }
         }
         self.draw_quads(
             pass,
@@ -2081,6 +2157,44 @@ impl Renderer {
     /// its own pipeline (a fragment) or its own group 0 (a texture), then
     /// on. Consecutive quads of the same handle still take one set each
     /// (about 0.6 us); runs of ordinary quads are unbroken.
+    fn draw_plain(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        dl: &DisplayList,
+        range: std::ops::Range<u32>,
+        pipeline: &wgpu::RenderPipeline,
+    ) {
+        let Some(specialized) = self
+            .specialized
+            .as_ref()
+            .filter(|_| std::ptr::eq(pipeline, &self.pipeline))
+        else {
+            pass.set_pipeline(pipeline);
+            pass.draw(0..6, range);
+            return;
+        };
+        let class = |i: u32| match dl.quads[i as usize].kind {
+            QuadKind::Solid => 0,
+            QuadKind::GlyphMask => 1,
+            _ => 2,
+        };
+        let mut at = range.start;
+        while at < range.end {
+            let kind = class(at);
+            let mut end = at + 1;
+            while end < range.end && class(end) == kind {
+                end += 1;
+            }
+            pass.set_pipeline(if kind < 2 {
+                &specialized[kind]
+            } else {
+                pipeline
+            });
+            pass.draw(0..6, at..end);
+            at = end;
+        }
+    }
+
     fn draw_quads(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
@@ -2096,11 +2210,9 @@ impl Renderer {
         let frame = &self.slots[self.slot];
         pass.set_vertex_buffer(0, frame.buf.slice(frame.instances_at..));
         if fragment_pipelines.is_empty() && texture_binds.is_empty() {
-            // The whole run in one instanced draw, as a frame has always
-            // been. Nothing below runs.
-            pass.set_pipeline(pipeline);
+            // Ordinary quads need no texture/fragment binding changes.
             pass.set_bind_group(0, &frame.bind, &[]);
-            pass.draw(0..6, range);
+            self.draw_plain(pass, dl, range, pipeline);
             return;
         }
         let mut run_start = range.start;
@@ -2112,11 +2224,10 @@ impl Renderer {
             }
             if i > run_start {
                 if !on_quads {
-                    pass.set_pipeline(pipeline);
                     pass.set_bind_group(0, &frame.bind, &[]);
                     on_quads = true;
                 }
-                pass.draw(0..6, run_start..i);
+                self.draw_plain(pass, dl, run_start..i, pipeline);
             }
             // `uv[0]` is the index into the side list, which is also this
             // fragment's parameter slot, or this texture's bind.
@@ -2157,10 +2268,9 @@ impl Renderer {
         }
         if range.end > run_start {
             if !on_quads {
-                pass.set_pipeline(pipeline);
                 pass.set_bind_group(0, &frame.bind, &[]);
             }
-            pass.draw(0..6, run_start..range.end);
+            self.draw_plain(pass, dl, run_start..range.end, pipeline);
         }
     }
 
@@ -2193,7 +2303,7 @@ impl Renderer {
         }
         self.sync_atlas(atlas, true);
         atlas.mark_uploaded();
-        let prep = self.prepare(dl);
+        let prep = self.prepare(dl, true);
 
         // Acquiring the swapchain image is where vsync backpressure blocks;
         // report it separately so latency graphs show pacing vs work.
@@ -2222,10 +2332,13 @@ impl Renderer {
         let surface_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .gpu
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
+        let label = self.frame_label();
+        let mut encoder =
+            self.gpu
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some(label.as_deref().unwrap_or("kui")),
+                });
         self.draw(&mut encoder, dl, &prep, &surface_view);
         self.submit(encoder.finish());
         self.gpu.queue().present(frame);
@@ -2313,7 +2426,7 @@ impl Renderer {
         }
         self.sync_atlas(atlas, true);
         atlas.mark_uploaded();
-        let prep = self.prepare(dl);
+        let prep = self.prepare(dl, false);
         self.draw_with_load(encoder, dl, &prep, target, load);
         Ok(())
     }
@@ -2407,7 +2520,7 @@ impl Renderer {
         self.config.width = w;
         self.config.height = h;
         self.sync_atlas(atlas, false);
-        let prep = self.prepare(dl);
+        let prep = self.prepare(dl, true);
         let view = target.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
@@ -2457,15 +2570,27 @@ impl Renderer {
     /// fragment parameters written where the draw reads them, the
     /// texture-backed images' bind groups and the fragments' pipelines.
     /// The atlas is the caller's to sync first.
-    fn prepare(&mut self, dl: &DisplayList) -> Prepared {
+    fn prepare(&mut self, dl: &DisplayList, owned_target: bool) -> Prepared {
         self.instances.clear();
         let mut any_backdrop = false;
         let mut any_group = false;
-        self.instances.extend(dl.quads.iter().map(|q| {
-            any_backdrop |= q.kind == QuadKind::Backdrop;
-            any_group |= q.kind == QuadKind::GroupBegin;
-            instance_of(q, &dl.clips, &dl.textures)
-        }));
+        let mut outlines = Vec::new();
+        // Host views may address a smaller mip. Hardware scissors use target
+        // pixels, so optimize only a known, matching surface/capture extent.
+        let outline_viewport = owned_target
+            && dl.viewport.w == self.config.width as f32
+            && dl.viewport.h == self.config.height as f32;
+        self.instances
+            .extend(dl.quads.iter().enumerate().map(|(i, q)| {
+                if outline_viewport
+                    && let Some(plan) = outline::plan(i as u32, q, &dl.clip_of(q), dl.viewport)
+                {
+                    outlines.push(plan);
+                }
+                any_backdrop |= q.kind == QuadKind::Backdrop;
+                any_group |= q.kind == QuadKind::GroupBegin;
+                instance_of(q, &dl.clips, &dl.textures)
+            }));
         self.plan_backdrops(dl, any_backdrop);
         self.plan_groups(dl, any_group);
         let globals = Globals {
@@ -2580,6 +2705,7 @@ impl Renderer {
             }
         }
         Prepared {
+            outlines,
             texture_binds,
             fragment_pipelines,
         }
@@ -2646,11 +2772,12 @@ impl Renderer {
         let end = self.instances.len() as u32;
         let mut start = 0u32;
         let mut next = 0usize;
+        let frame_label = self.frame_label();
         loop {
             let stop = self.blurs.get(next).map_or(end, |b| b.quad);
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("kui"),
+                    label: Some(frame_label.as_deref().unwrap_or("kui")),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: target,
                         depth_slice: None,
@@ -2845,6 +2972,7 @@ impl PendingCapture {
 /// image whose bind group it uses (`None` draws nothing), and per
 /// fragment draw, its pipeline.
 struct Prepared {
+    outlines: Vec<outline::Plan>,
     texture_binds: Vec<Option<u64>>,
     fragment_pipelines: Vec<wgpu::RenderPipeline>,
 }

@@ -13,6 +13,9 @@ pub struct FrameSample {
     pub layout_ms: f32,
     /// GPU encode + present (actual work).
     pub render_ms: f32,
+    /// CPU cache/resource housekeeping after GPU submission; it may overlap
+    /// GPU execution, but remains CPU work for the next frame's deadline.
+    pub maintenance_ms: f32,
     /// Blocked waiting for a swapchain image (vsync backpressure) — real
     /// latency, but pacing rather than work.
     pub wait_ms: f32,
@@ -20,12 +23,12 @@ pub struct FrameSample {
 
 impl FrameSample {
     pub fn total(&self) -> f32 {
-        self.input_ms + self.view_ms + self.layout_ms + self.render_ms + self.wait_ms
+        self.work() + self.wait_ms
     }
 
     /// Time the app is responsible for (everything except vsync pacing).
     pub fn work(&self) -> f32 {
-        self.input_ms + self.view_ms + self.layout_ms + self.render_ms
+        self.input_ms + self.view_ms + self.layout_ms + self.render_ms + self.maintenance_ms
     }
 }
 
@@ -46,6 +49,14 @@ pub struct FrameStats {
 }
 
 impl FrameStats {
+    /// Adds post-submit CPU housekeeping to the most recently pushed sample.
+    pub fn add_maintenance(&mut self, ms: f32) {
+        if self.samples.is_empty() {
+            return;
+        }
+        let index = (self.head + STATS_CAPACITY - 1) % STATS_CAPACITY;
+        self.samples[index].maintenance_ms += ms;
+    }
     pub fn push(&mut self, mut sample: FrameSample) {
         sample.input_ms += self.pending_input_ms;
         self.pending_input_ms = 0.0;
@@ -158,6 +169,22 @@ mod tests {
         assert_eq!(last.input_ms, 0.5);
         assert_eq!(s.pending_input_ms, 0.0);
         assert!((last.total() - 1.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn maintenance_updates_only_latest_sample_without_creating_a_frame() {
+        let mut stats = FrameStats::default();
+        stats.add_maintenance(9.0);
+        assert!(stats.is_empty());
+        for i in 0..STATS_CAPACITY + 2 {
+            stats.push(sample(i as f32));
+            stats.add_maintenance(0.25);
+            stats.add_maintenance(0.5);
+            assert_eq!(stats.total, (i + 1) as u64);
+            assert_eq!(stats.last().unwrap().maintenance_ms, 0.75);
+            assert_eq!(stats.last().unwrap().work(), i as f32 + 0.75);
+        }
+        assert!(stats.iter().all(|sample| sample.maintenance_ms == 0.75));
     }
 
     #[test]

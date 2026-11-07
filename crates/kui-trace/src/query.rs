@@ -124,7 +124,9 @@ impl Scope {
 pub struct Distribution {
     pub samples: usize,
     pub avg_us: Option<f64>,
+    pub p50_us: Option<u64>,
     pub p95_us: Option<u64>,
+    pub p99_us: Option<u64>,
     pub max_us: Option<u64>,
 }
 
@@ -135,12 +137,15 @@ impl Distribution {
         }
         let mut sorted = values.to_vec();
         sorted.sort_unstable();
-        let p95 = sorted[((sorted.len() - 1) as f64 * 0.95).round() as usize];
+        // Retain the estimator used by the existing p95 reading.
+        let percentile = |q: f64| sorted[((sorted.len() - 1) as f64 * q).round() as usize];
         let max = *sorted.last().unwrap();
         Self {
             samples: values.len(),
             avg_us: Some(values.iter().map(|&v| v as f64).sum::<f64>() / values.len() as f64),
-            p95_us: Some(p95),
+            p50_us: Some(percentile(0.50)),
+            p95_us: Some(percentile(0.95)),
+            p99_us: Some(percentile(0.99)),
             max_us: Some(max),
         }
     }
@@ -157,6 +162,15 @@ pub struct Summary {
     pub phases: Vec<(&'static str, Distribution)>,
     pub over_budget: Option<usize>,
     pub unchanged: usize,
+}
+
+impl Summary {
+    /// Only frames with complete work measurements enter the denominator.
+    pub fn over_budget_percent(&self) -> Option<f64> {
+        self.over_budget
+            .filter(|_| self.complete_frames > 0)
+            .map(|n| 100.0 * n as f64 / self.complete_frames as f64)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -285,6 +299,7 @@ pub fn compare(
                 Some(s.complete_frames as f64),
             ),
             ("unchanged".into(), "count", Some(s.unchanged as f64)),
+            ("over_budget_percent".into(), "%", s.over_budget_percent()),
             (
                 "over_budget".into(),
                 "count",
@@ -296,16 +311,18 @@ pub fn compare(
             .chain(s.phases.iter().map(|(n, d)| (*n, d)))
         {
             v.push((format!("{n}.avg"), "ms", d.avg_us.map(|t| t / 1000.0)));
-            v.push((
-                format!("{n}.p95"),
-                "ms",
-                d.p95_us.map(|t| t as f64 / 1000.0),
-            ));
-            v.push((
-                format!("{n}.max"),
-                "ms",
-                d.max_us.map(|t| t as f64 / 1000.0),
-            ));
+            for (field, value) in [
+                ("p50", d.p50_us),
+                ("p95", d.p95_us),
+                ("p99", d.p99_us),
+                ("max", d.max_us),
+            ] {
+                v.push((
+                    format!("{n}.{field}"),
+                    "ms",
+                    value.map(|t| t as f64 / 1000.0),
+                ));
+            }
         }
         let frames = s.frames as f64;
         let mut groups = ex.span_groups(&r.scope, &r.query.filter);
@@ -512,11 +529,12 @@ impl<'a> Explorer<'a> {
         // Resolve depth by parent ID with memoization; corrupt cycles terminate.
         let mut depths = vec![None; timeline.spans.len()];
         let mut visited = vec![0usize; timeline.spans.len()];
+        let mut path = Vec::new();
         for i in 0..timeline.spans.len() {
             if depths[i].is_some() {
                 continue;
             }
-            let mut path = Vec::new();
+            path.clear();
             let mut at = i;
             let depth = loop {
                 if let Some(d) = depths[at] {
@@ -534,7 +552,7 @@ impl<'a> Explorer<'a> {
                 }
             };
             let mut d = depth;
-            for p in path.into_iter().rev() {
+            for &p in path.iter().rev() {
                 depths[p] = Some(d);
                 d = d.saturating_add(1);
             }

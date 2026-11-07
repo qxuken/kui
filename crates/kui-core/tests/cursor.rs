@@ -87,6 +87,34 @@ fn shape_over(core: &mut Core, i: usize) -> CursorShape {
 }
 
 #[test]
+fn cursor_can_change_between_frames_without_changing_hit_priority() {
+    let mut core = Core::new();
+    frame(&mut core);
+    let button = core.key_of("button").unwrap();
+    let editor = core.key_of("doc").unwrap();
+    assert_eq!(shape_over(&mut core, 1), CursorShape::Pointer);
+    assert!(core.set_cursor(button, Some(CursorShape::Grabbing)));
+    assert_eq!(core.cursor_shape(), CursorShape::Grabbing);
+    assert_eq!(shape_over(&mut core, 0), CursorShape::Text);
+    assert!(core.set_cursor(editor, Some(CursorShape::Pointer)));
+    assert_eq!(core.cursor_shape(), CursorShape::Pointer);
+    assert!(core.set_cursor(editor, None));
+    assert_eq!(core.cursor_shape(), CursorShape::Text);
+    assert_eq!(shape_over(&mut core, 4), CursorShape::EwResize);
+    let plain = core.key_of("plain").unwrap();
+    assert!(
+        !core.set_cursor(plain, Some(CursorShape::Pointer)),
+        "a cursor update must not invent a hit region"
+    );
+    frame(&mut core);
+    assert_eq!(
+        shape_over(&mut core, 1),
+        CursorShape::Pointer,
+        "the new view replaces the input-time override"
+    );
+}
+
+#[test]
 fn editor_is_a_caret_a_declared_hand_a_hand_plain_box_an_arrow() {
     let mut core = Core::new();
     frame(&mut core);

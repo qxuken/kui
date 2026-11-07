@@ -548,6 +548,7 @@
   end
   record TracePath
     input: string
+    endpoint: string
     total: number
     legs: {TraceLeg}
   end

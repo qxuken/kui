@@ -299,6 +299,7 @@ impl<C: BorrowMut<Core>> Drive<C> {
         self.core().set_time(now);
         let out = self.core().handle_input(ev);
         self.deliver(app, out.clone());
+        app.after_input(self.core());
         out
     }
 

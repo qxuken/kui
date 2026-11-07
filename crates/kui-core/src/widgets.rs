@@ -186,7 +186,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                                         (INPUT, "input — events & edits"),
                                         (VIEW, "view — rebuilding the tree"),
                                         (LAYOUT, "layout — sizing & positions"),
-                                        (RENDER, "render — encode + submit"),
+                                        (RENDER, "render + post-submit maintenance"),
                                         (WAIT, "vsync wait (not work)"),
                                         (OVER, "cap: work over frame budget"),
                                     ] {
@@ -239,6 +239,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                                 for (ms, color) in [
                                     (s.wait_ms, WAIT),
                                     (s.render_ms, RENDER),
+                                    (s.maintenance_ms, RENDER),
                                     (s.layout_ms, LAYOUT),
                                     (s.view_ms, VIEW),
                                     (s.input_ms, INPUT),

@@ -60,6 +60,10 @@ IDs. The viewer opens with that item visible, overriding saved filters
 for the initial focus. An explicit startup scope stays the measured scope
 until a pan or zoom replaces it.
 
+Session refresh, budget and scale are snapshots of the first measured frame;
+starting capture before a native window opens does not leave startup defaults.
+Later monitor changes are not recorded as per-frame budget changes.
+
 The whole recording is the default scope. `--frames FIRST:LAST` is
 inclusive and uses recorded frame numbers. `--time FROM:TO` is half-open;
 both endpoints carry `us`, `ms` or `s`. Time selections expand to complete
@@ -109,11 +113,26 @@ rank by self cost by default and also expose inclusive cost. Comparison
 shows absolute measurements, deltas and normalized costs, with overview
 metrics first. It makes no overall winner or pass/fail judgment. Missing
 measurements and percentages without a nonzero baseline stay unavailable.
+Distributions expose median (`p50`), `p95`, `p99` and maximum, so rare slow
+frames remain visible when the average and p95 fit the budget. Percentiles
+retain the existing nearest-sample estimator: sorted index
+`round((samples - 1) * percentile)`. `over_budget_percent` uses only complete
+frames; it is unavailable when work or the budget is unknown.
+
 Total frame work requires both a core end and a present measurement.
 It is core duration plus rendering time; vsync wait is reported separately.
 `complete_frames` and work distributions count those measured frames;
 known core/phase timestamps remain available without a present, while
 total work, its verdict and unsupported comparison deltas stay unavailable.
+`timing_scope` accompanies CLI and Lua results: work is core-frame duration
+plus driver rendering; pacing is the interval between frame starts. Native
+rendering measures CPU-side encoding/submission, with surface/vsync wait
+reported separately. Input paths begin at core input receipt, excluding OS
+input delivery and device latency, and end at the driver present record (or the
+last known core endpoint), **not physical display**. GPU completion,
+compositor delay and physical refresh misses cannot be inferred from these
+records; use an external GPU/display measurement. Their availability stays
+`null`, never a measured zero.
 Missing work sorts after measured values in either direction.
 
 JSON envelopes carry `schema_version: 1`, `operation`, `recording`,

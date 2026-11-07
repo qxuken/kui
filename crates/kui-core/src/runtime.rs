@@ -2078,6 +2078,23 @@ impl Core {
         self.text.len()
     }
 
+    /// Lets a renderer move text-cache eviction past GPU submission, so a
+    /// large sweep does not delay the frame's input-to-GPU path. Off by
+    /// default. Call `finish_text_maintenance` after rendering; a missed call
+    /// is completed at the next frame's start to keep retention bounded.
+    pub fn set_text_maintenance_after_render(&mut self, enabled: bool) {
+        self.text.maintenance_after_render(enabled);
+    }
+
+    /// Completes the pending text-cache sweep/byte-budget eviction once for
+    /// the frame. Safe after submission: displayed text owns its shaped runs.
+    pub fn finish_text_maintenance(&mut self) {
+        let span = self.span_begin_as("text maintenance", kui_trace::Origin::Kui);
+        self.text
+            .finish_maintenance(&mut self.session.state().fonts);
+        self.span_end(span);
+    }
+
     /// How many long lines — no-wrap texts past `LONG_LINE_BYTES`, shaped
     /// in chunks — are held.
     pub fn long_lines(&self) -> usize {
@@ -2308,6 +2325,7 @@ impl Core {
         // (backlog F111).
         self.trace_begin_frame();
         self.perf_frame_start();
+        let prepare = self.span_begin_as("prepare frame", kui_trace::Origin::Kui);
         // Against the finished frame, before anything below clears it: a
         // held drag re-places its live end where the last layout moved
         // the text under the pointer, and steps its scroller when the
@@ -2378,10 +2396,12 @@ impl Core {
         self.lazy_hosted.clear();
         // The layout rects a node reported, swept on the one cadence
         // every by-last-use store sweeps on (`retain::sweep_cutoff`, AR45).
+        let geometry = self.span_begin_as("prepare geometry", kui_trace::Origin::Kui);
         if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {
             self.layouts.retain(|_, (_, seen)| *seen >= cutoff);
             self.ranges.retain(|_, (_, seen)| *seen >= cutoff);
         }
+        self.span_end(geometry);
         self.viewport = viewport;
         self.scale = scale;
         self.window_title = None;
@@ -2428,6 +2448,7 @@ impl Core {
             .and_then(|k| self.tree.index_of(k))
             .and_then(|i| self.tree.specs[i].interact.as_deref())
             .and_then(|i| i.hover_group);
+        let tree = self.span_begin_as("prepare tree", kui_trace::Origin::Kui);
         let keep_prev = self.tree.any_exit;
         if self.replay_events_pending {
             self.replay_events_pending = false;
@@ -2458,6 +2479,7 @@ impl Core {
             self.display.dropped_fragments = f;
         }
         self.output_read = false;
+        self.span_end(tree);
         // Removed handles the backend has not heard of, and this window's
         // atlas slots for removed images (AR8); kept on the session
         // because a removal can land between frames, after the list was
@@ -2482,12 +2504,15 @@ impl Core {
         self.sync_weights();
         // The text list goes with the tree: a kept frame's text nodes carry
         // that frame's `TextId`s, and nothing else can resolve them.
+        let text = self.span_begin_as("prepare text", kui_trace::Origin::Kui);
         self.text.begin_frame(
             &mut self.session.state().fonts,
             scale,
             keep_prev,
             self.frame_no,
         );
+        self.span_end(text);
+        let retained = self.span_begin_as("prepare retained", kui_trace::Origin::Kui);
         // And the strokes, for the same reason: a kept frame's `line`
         // nodes index that frame's list.
         self.lines.begin_frame(keep_prev);
@@ -2536,6 +2561,8 @@ impl Core {
         // forgets is not one the next frame was held by.
         self.trace_forget_requests();
         self.devtools_begin_frame();
+        self.span_end(retained);
+        self.span_end(prepare);
         // The frame begun, in the recording, and its `build` open: from
         // here to `Ui::finish` is the host's view (ADR 0058).
         self.perf_frame_begun();

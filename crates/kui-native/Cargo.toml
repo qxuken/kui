@@ -208,6 +208,9 @@ objc2-core-graphics = { version = "0.3", default-features = false, features = [
 objc2-quartz-core = { version = "0.3", default-features = false, features = [
     "std",
     "CADisplayLink",
+    "CAFrameRateRange",
+    "CAMetalLayer",
+    "objc2-metal",
     # The backdrop's layer kept under the one wgpu draws into.
     "CALayer",
     "objc2-core-foundation",

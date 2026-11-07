@@ -2373,6 +2373,24 @@ impl Core {
     pub fn cursor_shape(&self) -> crate::cursor::CursorShape {
         self.interaction.cursor_shape()
     }
+
+    /// Changes an existing hit region's cursor immediately, without layout
+    /// or rendering. Useful for a custom editor whose cursor depends on the
+    /// modifiers or the text under the pointer. The next view's `cursor`
+    /// declaration replaces this value; a cached reframe preserves it.
+    ///
+    /// Returns false when `key` has no hit region in the finished frame.
+    /// This does not create a hit region or request a frame. Other regions,
+    /// captured drags and scrollbars retain their usual hit-test priority.
+    pub fn set_cursor(&mut self, key: Key, shape: Option<crate::cursor::CursorShape>) -> bool {
+        if !self.interaction.set_cursor(key, shape) {
+            return false;
+        }
+        if let Some(i) = self.tree.index_of(key) {
+            self.tree.specs[i].cursor = shape;
+        }
+        true
+    }
 }
 
 /// The raw key an editing key came from, for the keys a focused control

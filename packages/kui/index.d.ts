@@ -1749,6 +1749,8 @@ export interface FrameSample {
   layoutMs: number;
   /** GPU encode and present. */
   renderMs: number;
+  /** CPU cache housekeeping after submission (may overlap GPU execution). */
+  maintenanceMs: number;
   /** Blocked on a swapchain image (vsync pacing, not work). */
   waitMs: number;
   totalMs: number;
