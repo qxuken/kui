@@ -3124,12 +3124,17 @@ impl DynShell<'_> {
         let mut wait_ms = 0.0;
         let mut reopen = false;
         #[cfg(target_os = "macos")]
-        let drawable = pane.pacer.drawable();
+        let (drawable, waited_since) = pane.pacer.drawable();
+        #[cfg(not(target_os = "macos"))]
+        let waited_since = None;
         let drawn = pane.renderer.as_mut().map(|r| {
             r.label_frame(u64::from(pane.id.0), frame_number);
             r.clear_color = clear;
             #[cfg(target_os = "macos")]
-            if let Some(drawable) = drawable.as_ref() {
+            if let Some(attempt) = drawable.as_ref() {
+                let Some(drawable) = attempt else {
+                    return Err(kui_wgpu::RenderError::Skip);
+                };
                 // SAFETY: acquired from this renderer's own surface layer.
                 return unsafe { r.render_metal_drawable(dl, atlas, &drawable.0) };
             }
@@ -3195,7 +3200,7 @@ impl DynShell<'_> {
                     menu_popup::cloak(window, false);
                 }
                 let now = std::time::Instant::now();
-                pane.retry.skipped(now);
+                pane.retry.skipped(now, waited_since);
                 // A skipped frame paces the next as a presented one does:
                 // what asks while the surface skips (a waker, the host) is
                 // held for the display, or its fallback, instead of drawn
@@ -3592,7 +3597,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     g.moved();
                 }
                 if pane.minimized() {
-                    pane.cause.went_dark();
+                    pane.went_dark();
                     pane.redraw_for(FrameCause::RESIZE);
                 } else if pane.cause.is_dark() && cfg!(target_os = "windows") {
                     pane.came_back(FrameCause::RESIZE);
@@ -3720,7 +3725,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     .retry
                     .occluded(covered, std::time::Instant::now());
                 if covered {
-                    self.panes[i].cause.went_dark();
+                    self.panes[i].went_dark();
                 } else {
                     self.panes[i].came_back(FrameCause::OCCLUSION);
                 }

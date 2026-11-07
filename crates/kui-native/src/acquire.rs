@@ -21,14 +21,15 @@ pub(crate) struct Acquire {
     layer: Retained<CAMetalLayer>,
 }
 struct Slot<T> {
-    drawable: Option<T>,
+    // A completed attempt can time out. Keep that outcome for the runner.
+    outcome: Option<Option<T>>,
     pending: bool,
     waiting: bool,
 }
 impl<T> Default for Slot<T> {
     fn default() -> Self {
         Self {
-            drawable: None,
+            outcome: None,
             pending: false,
             waiting: false,
         }
@@ -36,20 +37,23 @@ impl<T> Default for Slot<T> {
 }
 impl<T> Slot<T> {
     fn request(&mut self) -> bool {
-        if self.pending || self.drawable.is_some() {
+        if self.pending || self.ready() {
             return false;
         }
         self.pending = true;
         true
     }
     fn complete(&mut self, drawable: Option<T>) -> bool {
-        self.drawable = drawable;
+        self.outcome = Some(drawable);
         self.pending = false;
         self.waiting
     }
-    fn take(&mut self) -> Option<T> {
+    fn ready(&self) -> bool {
+        self.outcome.is_some()
+    }
+    fn take(&mut self) -> Option<Option<T>> {
         self.waiting = false;
-        self.drawable.take()
+        self.outcome.take()
     }
 }
 impl Acquire {
@@ -111,7 +115,7 @@ impl Acquire {
     }
     pub(crate) fn admit(&self) -> bool {
         let mut slot = self.ready.lock().unwrap();
-        if slot.drawable.is_some() {
+        if slot.ready() {
             return true;
         }
         slot.waiting = true;
@@ -120,9 +124,9 @@ impl Acquire {
         false
     }
     pub(crate) fn ready(&self) -> bool {
-        self.ready.lock().unwrap().drawable.is_some()
+        self.ready.lock().unwrap().ready()
     }
-    pub(crate) fn take(&self) -> Option<Drawable> {
+    pub(crate) fn take(&self) -> Option<Option<Drawable>> {
         self.ready.lock().unwrap().take()
     }
 }
@@ -130,6 +134,18 @@ impl Acquire {
 #[cfg(test)]
 mod tests {
     use super::Slot;
+
+    #[test]
+    fn a_timeout_is_an_admitted_attempt() {
+        let mut slot = Slot::<u8>::default();
+        assert!(slot.request());
+        slot.waiting = true;
+        assert!(slot.complete(None), "wake the frame waiting on the worker");
+        assert!(slot.ready(), "consume the timeout as a skipped frame");
+        assert_eq!(slot.take(), Some(None));
+        assert!(!slot.ready());
+        assert!(slot.request(), "the runner can schedule a new attempt");
+    }
 
     #[test]
     fn prefetch_is_bounded_and_does_not_wake_an_idle_window() {
@@ -141,7 +157,7 @@ mod tests {
             "idle prefetch never requests a frame"
         );
         assert!(!slot.request(), "one ready drawable is enough");
-        assert_eq!(slot.take(), Some(1));
+        assert_eq!(slot.take(), Some(Some(1)));
         assert!(slot.request());
     }
 
@@ -153,9 +169,11 @@ mod tests {
         };
         assert!(slot.request());
         assert!(slot.complete(None));
-        assert!(slot.request(), "timeout releases the pending request");
-        assert!(slot.complete(Some(2)));
-        assert_eq!(slot.take(), Some(2));
+        assert!(!slot.request(), "consume the result before another attempt");
+        assert_eq!(slot.take(), Some(None));
+        assert!(slot.request());
+        assert!(!slot.complete(Some(2)), "no frame waits for prefetch");
+        assert_eq!(slot.take(), Some(Some(2)));
         assert!(!slot.waiting);
         assert!(slot.request());
         assert!(

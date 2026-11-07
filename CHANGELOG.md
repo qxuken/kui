@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.78 (unreleased)
 
 **What breaks.**
 
@@ -90,6 +90,10 @@ was the first bare bump to break an app in five releases).
 
 ### Fixed
 
+- A drawable timeout enters the bounded surface retry path. Covered windows
+  can build unseen frames without a drawable or an acquisition watchdog.
+- Clipped custom-editor carets stop scheduling native blink frames.
+
 - Recordings started before the first native frame settle display scale,
   refresh and budget from that frame, including streamed captures. Later
   monitor changes do not rewrite the session's historical snapshot.
@@ -123,6 +127,7 @@ was the first bare bump to break an app in five releases).
 
 ### What you can delete
 
+- View rebuilds used only to refresh custom-editor cursors on modifier changes.
 - Scripts written only to obtain filtered perf summaries, hot span groups,
   frame/span details or scoped comparisons without opening a window.
 - Parsing formatted perf tables for agent tool calls: use `--json`.

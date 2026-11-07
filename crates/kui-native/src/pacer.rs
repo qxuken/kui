@@ -298,7 +298,7 @@ pub(crate) struct Pacer {
     #[cfg(target_os = "macos")]
     acquire: Option<acquire::Acquire>,
     #[cfg(target_os = "macos")]
-    drawable_due: bool,
+    drawable_due: Option<Instant>,
     #[cfg(target_os = "macos")]
     link: Option<link::Link>,
     last_present: Option<Instant>,
@@ -328,7 +328,7 @@ impl Pacer {
             #[cfg(target_os = "macos")]
             acquire: None,
             #[cfg(target_os = "macos")]
-            drawable_due: false,
+            drawable_due: None,
             #[cfg(target_os = "macos")]
             link: if wanted {
                 link::Link::new(window)
@@ -357,7 +357,7 @@ impl Pacer {
             if running {
                 link.run();
             }
-            if !draws && !self.drawable_due {
+            if !draws && self.drawable_due.is_none() {
                 self.held_since.get_or_insert(now);
                 return false;
             }
@@ -365,16 +365,14 @@ impl Pacer {
         #[cfg(target_os = "macos")]
         if let Some(acquire) = &self.acquire {
             if !acquire.admit() {
-                self.drawable_due = true;
-                acquire.request();
+                self.drawable_due.get_or_insert(now);
                 self.held_since.get_or_insert(now);
                 return false;
             }
-            if self.drawable_due {
-                if let Some(link) = &self.link {
-                    link.state().beat.answered();
-                }
-                self.drawable_due = false;
+            if self.drawable_due.is_some()
+                && let Some(link) = &self.link
+            {
+                link.state().beat.answered();
             }
         }
         let _ = (now, size);
@@ -409,17 +407,22 @@ impl Pacer {
         }
     }
     #[cfg(target_os = "macos")]
-    pub(crate) fn drawable(&self) -> Option<acquire::Drawable> {
-        self.acquire.as_ref().and_then(|a| a.take())
+    pub(crate) fn drawable(&mut self) -> (Option<Option<acquire::Drawable>>, Option<Instant>) {
+        (
+            self.acquire.as_ref().and_then(|a| a.take()),
+            self.drawable_due.take(),
+        )
     }
     #[cfg(target_os = "macos")]
     pub(crate) fn drawable_ready(&self) -> bool {
-        self.drawable_due && self.acquire.as_ref().is_some_and(|a| a.ready())
+        self.drawable_due.is_some() && self.acquire.as_ref().is_some_and(|a| a.ready())
     }
     #[cfg(target_os = "macos")]
     pub(crate) fn reset_acquire(&mut self) {
         self.acquire = None;
-        self.drawable_due = false;
+        if self.drawable_due.take().is_some() {
+            self.held_since = None;
+        }
     }
 
     /// Whether a frame is held for the display right now: the link has
@@ -445,6 +448,11 @@ impl Pacer {
     /// When a held frame should be drawn whether or not the link fired —
     /// the deadline `about_to_wait` wakes for — and whether it is past.
     pub(crate) fn overdue(&mut self, now: Instant) -> Option<(Instant, bool)> {
+        // A bounded worker attempt wakes the runner with its result.
+        #[cfg(target_os = "macos")]
+        if self.drawable_due.is_some() {
+            return None;
+        }
         let since = self.held_since?;
         let at = since + HELD_MAX;
         if now >= at {
@@ -490,7 +498,7 @@ mod tests {
             #[cfg(target_os = "macos")]
             acquire: None,
             #[cfg(target_os = "macos")]
-            drawable_due: false,
+            drawable_due: None,
             #[cfg(target_os = "macos")]
             link: None,
             last_present: Some(t0),
@@ -578,7 +586,7 @@ mod tests {
             #[cfg(target_os = "macos")]
             acquire: None,
             #[cfg(target_os = "macos")]
-            drawable_due: false,
+            drawable_due: None,
             #[cfg(target_os = "macos")]
             link: None,
             last_present: None,
