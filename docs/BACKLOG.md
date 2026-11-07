@@ -4748,6 +4748,34 @@ mutations and no order otherwise promised, cancelling, opt-in progress,
 function, the Kit runner's `kui.fs` rebuilt on it. **Waits on** C-sys, and
 Kit's channel (ADR 0065) on main.
 
+## From Kawoosh and Carnet moving between displays (2026-11-07)
+
+### `!` F287 — A Metal window's colours alternate after it changes displays
+
+**Found.** Drag Carnet at a fixed size between the MacBook's built-in
+display and a Samsung Odyssey G81SF, then move the caret to redraw. Its
+background alternated between `#221E1B` and `#26211D` on the MacBook,
+and between `#221E1B` and `#1F1C19` on the Samsung. Both alternate
+values match conversion from the other display's profile. The same
+Samsung-to-MacBook conversion maps Kawoosh's `#0A0D12` to the recorded
+`#080A11`. Kawoosh also flickered when disconnecting the Samsung moved
+its window to the MacBook. Resizing cleared an earlier occurrence.
+
+**Blocked on a wgpu release with the Metal sRGB fix.** wgpu 30.0.1 leaves
+the `CAMetalLayer` colour space unset for an ordinary 8-bit surface with
+`SurfaceColorSpace::Auto`. A standalone Metal probe reproduced the stale
+profile colours on the untagged layer in both directions. The layer tagged
+sRGB matched the expected colour on each display. The fix is merged on
+trunk and expected in v31. The v30 backport was open when this was filed.
+[wgpu #10286](https://github.com/gfx-rs/wgpu/pull/10286) ·
+[wgpu #10780](https://github.com/gfx-rs/wgpu/pull/10780)
+
+**Verify after upgrading.** Rebuild Carnet and Kawoosh with the patched
+dependency. Drag between the two displays without resizing and trigger
+several redraws on each. Repeat by disconnecting the external display.
+Sample a fixed background patch and check that it holds one colour per
+display across redraws.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
