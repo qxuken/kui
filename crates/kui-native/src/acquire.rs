@@ -126,8 +126,8 @@ impl Acquire {
     pub(crate) fn ready(&self) -> bool {
         self.ready.lock().unwrap().ready()
     }
-    pub(crate) fn take(&self) -> Option<Option<Drawable>> {
-        self.ready.lock().unwrap().take()
+    pub(crate) fn take(&self) -> Option<Drawable> {
+        self.ready.lock().unwrap().take().flatten()
     }
 }
 

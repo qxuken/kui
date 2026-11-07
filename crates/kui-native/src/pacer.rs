@@ -60,6 +60,11 @@ const RUN_GAP: Duration = Duration::from_millis(20);
 /// stopped firing (the window left every screen, the display slept).
 const HELD_MAX: Duration = Duration::from_millis(50);
 
+/// A resize can reconfigure the Metal layer while the worker is acquiring
+/// and reset its timeout. Keep the runner bounded independently of Metal.
+#[cfg(target_os = "macos")]
+const ACQUIRE_MAX: Duration = Duration::from_secs(2);
+
 /// Vsyncs the link keeps firing with nothing asked for before it pauses.
 // Read only where there is a link (macOS); the tests read it everywhere.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -365,9 +370,11 @@ impl Pacer {
         #[cfg(target_os = "macos")]
         if let Some(acquire) = &self.acquire {
             if !acquire.admit() {
-                self.drawable_due.get_or_insert(now);
-                self.held_since.get_or_insert(now);
-                return false;
+                let since = *self.drawable_due.get_or_insert(now);
+                if now < since + ACQUIRE_MAX {
+                    self.held_since.get_or_insert(now);
+                    return false;
+                }
             }
             if self.drawable_due.is_some()
                 && let Some(link) = &self.link
@@ -409,7 +416,7 @@ impl Pacer {
     #[cfg(target_os = "macos")]
     pub(crate) fn drawable(&mut self) -> (Option<Option<acquire::Drawable>>, Option<Instant>) {
         (
-            self.acquire.as_ref().and_then(|a| a.take()),
+            self.acquire.as_ref().map(|a| a.take()),
             self.drawable_due.take(),
         )
     }
@@ -448,10 +455,12 @@ impl Pacer {
     /// When a held frame should be drawn whether or not the link fired —
     /// the deadline `about_to_wait` wakes for — and whether it is past.
     pub(crate) fn overdue(&mut self, now: Instant) -> Option<(Instant, bool)> {
-        // A bounded worker attempt wakes the runner with its result.
+        // The worker normally wakes the runner. If Metal did not return,
+        // admit one skipped frame and let the surface retry policy run.
         #[cfg(target_os = "macos")]
-        if self.drawable_due.is_some() {
-            return None;
+        if let Some(since) = self.drawable_due {
+            let at = since + ACQUIRE_MAX;
+            return Some((at, now >= at));
         }
         let since = self.held_since?;
         let at = since + HELD_MAX;
@@ -515,6 +524,17 @@ mod tests {
         let (_, due) = p.overdue(t0 + Duration::from_millis(60)).unwrap();
         assert!(due);
         assert!(!p.holding(), "let go once it is drawn anyway");
+
+        #[cfg(target_os = "macos")]
+        {
+            p.held_since = Some(t0);
+            p.drawable_due = Some(t0);
+            let limit = t0 + ACQUIRE_MAX;
+            assert_eq!(p.overdue(t0 + HELD_MAX), Some((limit, false)));
+            assert_eq!(p.overdue(limit), Some((limit, true)));
+            p.reset_acquire();
+            assert_eq!(p.overdue(limit), None, "occlusion clears the worker wait");
+        }
     }
 
     /// A frame of a run asked for before the vsync is held, and the tick

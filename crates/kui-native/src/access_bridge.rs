@@ -141,8 +141,7 @@ mod imp {
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
 
-    /// Without the `accesskit` feature the only user event is the wake an
-    /// app's own thread sends through a [`crate::Waker`].
+    /// Window loop events available without the `accesskit` feature.
     #[derive(Debug)]
     pub enum UserEvent {
         /// Something the app owns changed off the loop's thread: draw.
@@ -204,6 +203,8 @@ mod imp {
                 | UserEvent::WakeAt(_)
                 | UserEvent::FontsChanged
                 | UserEvent::Files { .. } => None,
+                #[cfg(target_os = "macos")]
+                UserEvent::DrawableReady(_) => None,
             }
         }
 
