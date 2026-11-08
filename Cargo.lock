@@ -2293,6 +2293,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kui-web-lua"
+version = "0.1.0-alpha.78"
+dependencies = [
+ "kui-core",
+ "kui-lua",
+ "kui-web",
+ "mlua",
+ "serde_json",
+]
+
+[[package]]
 name = "kui-wgpu"
 version = "0.1.0-alpha.79"
 dependencies = [

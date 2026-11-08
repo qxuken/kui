@@ -8,6 +8,7 @@ members = [
     "crates/kui-trace",
     "crates/kui-wgpu",
     "crates/kui-web",
+    "crates/kui-web-lua",
     "crates/kui-native",
     # The platform accessibility bridge, shared by the runner and a host's
     # own window (backlog F269).

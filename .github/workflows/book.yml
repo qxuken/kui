@@ -50,6 +50,9 @@ jobs:
           tools: rust node npm nu mdbook
           wasi: 'true'
 
+      - name: Install ALSA for the CLI packer
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+
       - name: Build
         run: nu scripts/book-build.nu --install-tools --out-dir "$RUNNER_TEMP/book"
 

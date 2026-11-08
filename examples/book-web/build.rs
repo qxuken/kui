@@ -34,7 +34,6 @@ fn main() -> std::io::Result<()> {
         }
     }
     if lua {
-        arms.push_str("\"lua/tasks\" => lua_app::launch_tasks(),\n");
         arms.push_str("\"lua/presentations\" => lua_app::launch_presentation(),\n");
     }
     modules.push_str(&format!(

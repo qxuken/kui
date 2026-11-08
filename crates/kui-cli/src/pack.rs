@@ -10,6 +10,8 @@ use crate::archive::{ZipWriter, write_tar_gz};
 use crate::project::{self, Project};
 use crate::release;
 
+mod web;
+
 /// What `kui pack` was asked.
 pub struct Opts {
     pub path: PathBuf,
@@ -54,6 +56,9 @@ pub fn run(opts: &Opts) -> Result<i32, String> {
         .pin
         .clone()
         .unwrap_or_else(|| crate::compat::VERSION.to_string());
+    if opts.formats.iter().any(|format| format == "web") {
+        return web::pack(&project, opts, &runner_version, &version);
+    }
     if opts.bytecode && runner_version != crate::compat::VERSION {
         return Err(format!(
             "--bytecode compiles with this runner's Lua, and the app pins kui {runner_version}: pack with \
@@ -61,7 +66,7 @@ pub fn run(opts: &Opts) -> Result<i32, String> {
         ));
     }
     std::fs::create_dir_all(&opts.out).map_err(|e| format!("{}: {e}", opts.out.display()))?;
-    let files = collect(&project)?;
+    let files = collect(&project, None)?;
     let slug = slug(&project.name);
     let mut written: Vec<PathBuf> = Vec::new();
 
@@ -147,7 +152,7 @@ pub fn run(opts: &Opts) -> Result<i32, String> {
     }
     if written.is_empty() {
         return Err(format!(
-            "nothing to pack: --format takes exe, app, bin, npm or kui (got {})",
+            "nothing to pack: --format takes exe, app, bin, npm, kui or web (got {})",
             formats.join(", ")
         ));
     }
@@ -192,10 +197,15 @@ fn slug(name: &str) -> String {
 /// The app's files, as the archive takes them: everything under its folder
 /// but `.git`, `node_modules`, `target`, hidden files, a top-level `test/`,
 /// `.kui/` and what `pack.exclude` names.
-fn collect(project: &Project) -> Result<Vec<File>, String> {
+fn collect(project: &Project, output: Option<&Path>) -> Result<Vec<File>, String> {
     let mut out = Vec::new();
     let mut err = None;
-    project::walk(&project.dir, &mut |p| {
+    let mut include = |entry: &std::fs::DirEntry| {
+        output.is_none_or(|out| {
+            !entry.path().starts_with(out) && entry.file_type().is_ok_and(|ty| !ty.is_symlink())
+        })
+    };
+    project::walk_filtered(&project.dir, &mut include, &mut |p| {
         let Ok(rel) = p.strip_prefix(&project.dir) else {
             return;
         };

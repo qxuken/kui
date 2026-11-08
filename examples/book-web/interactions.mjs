@@ -161,16 +161,21 @@ try {
   await click(extensions.getByRole("button", { name: "Stamp (0)", exact: true }));
   await extensions.getByRole("button", { name: "Stamp (1)", exact: true }).waitFor();
 
+  await page.evaluate(() => localStorage.setItem("kui-book/tasks.json",
+    JSON.stringify([{ text: "Task from the old embed", done: true }])));
   const tasks = await chapter("runner.html");
+  await tasks.getByRole("checkbox", { name: "Task from the old embed", checked: true }).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem("kui-book/tasks.json")), null);
   await click(tasks.getByRole("button", { name: "Add", exact: true }));
   await tasks.getByText("Name the task first", { exact: true }).waitFor();
-  await click(tasks.getByRole("textbox"));
+  const taskField = await tasks.getByRole("textbox").boundingBox();
+  await page.mouse.click(taskField.x + 40, taskField.y + taskField.height / 2);
   await page.frames().at(-1).waitForFunction(() => document.activeElement?.tagName === "INPUT");
   await page.keyboard.type("Keep the source");
   await page.keyboard.press("Enter");
   const task = tasks.getByRole("checkbox", { name: "Keep the source", exact: true });
   await task.waitFor();
-  await page.waitForFunction(() => localStorage.getItem("kui-book/tasks.json")?.includes("Keep the source"));
+  await page.waitForFunction(packedTaskData, "Keep the source");
   await page.getByRole("button", { name: "Reload example" }).click();
   await page.getByText("Ready", { exact: true }).waitFor();
   await task.waitFor();
@@ -178,7 +183,7 @@ try {
   await tasks.getByRole("checkbox", { name: "Keep the source", checked: true }).waitFor();
   await click(tasks.getByRole("button", { name: "Clear done", exact: true }));
   await task.waitFor({ state: "detached" });
-  await page.waitForFunction(() => localStorage.getItem("kui-book/tasks.json") === "[]");
+  await page.waitForFunction(packedTaskData, "[]");
   console.log("Lua extension slots, task validation, keyboard submission and saved file");
 
   const deck = await chapter("presentations.html");
@@ -323,4 +328,22 @@ async function paintedPopupField(owner) {
   });
   assert.ok(point, "the Alloy field is visible in the owner canvas");
   return { x: bounds.x + point.x * bounds.width, y: bounds.y + point.y * bounds.height };
+}
+
+async function packedTaskData(expected) {
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open("kui-app:dev.kui.book.tasks");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    const bytes = await new Promise((resolve, reject) => {
+      const request = db.transaction("files").objectStore("files").get("tasks.json");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return bytes && new TextDecoder().decode(bytes).includes(expected);
+  } finally {
+    db.close();
+  }
 }

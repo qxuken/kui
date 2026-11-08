@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>kui app</title>
+  <style>
+    body { margin: 0; overflow: hidden; color: #eee; background: #14161e; font: 16px system-ui, sans-serif; }
+    main { position: relative; width: 100vw; height: 100dvh; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: pinch-zoom; }
+    #access { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+    #access :is(button,textarea,input) { position: absolute; margin: 0; padding: 0; border: 0; resize: none; }
+    #status { position: absolute; inset: auto 1rem 1rem; margin: 0; background: #14161e; }
+  </style>
+</head>
+<body>
+  <main>
+    <canvas aria-label="Application" tabindex="0"></canvas>
+    <div id="access" role="group" aria-label="Application"></div>
+    <p id="status" role="status">Loading application…</p>
+    <span id="renderer" hidden></span>
+  </main>
+  <script type="module" src="./kui/web-app.js"></script>
+</body>
+</html>
