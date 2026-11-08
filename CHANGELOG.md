@@ -57,6 +57,13 @@ audit passed 106/106 checks. The C, Odin and headless rounds passed.
 Release generators, strict workspace Clippy, Node typechecking, the book
 build, workflow syntax and the dependency security audit passed.
 
+All eleven ASan fuzz targets completed five minutes each, with the trace
+target rerun for ten minutes after fixing tied groups (690,281 inputs).
+The expanded corpus reuse check passed all 13,112 scene inputs. The events
+check reproduced the existing FZ14/FZ18 direction-cache issue in 608 of
+11,946 runs, with reversed positions for neutral text after RTL shaping.
+That known limitation remains open.
+
 ## 0.1.0-alpha.78 (2026-11-07)
 
 **What breaks.**
