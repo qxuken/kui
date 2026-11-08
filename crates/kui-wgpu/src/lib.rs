@@ -102,6 +102,9 @@
 //! The book: <https://kui-book.qxuken.dev>. Repository:
 //! <https://github.com/qxuken/kui>.
 
+// Checking wgpu's nested backend types for Send exceeds the default limit.
+#![recursion_limit = "256"]
+
 pub use wgpu;
 
 mod backdrop;

@@ -145,6 +145,9 @@
 //! The book: <https://kui-book.qxuken.dev>. Repository and design records
 //! (under `docs/adr`): <https://github.com/qxuken/kui>.
 
+// The shared capture renderer's Sync check traverses wgpu's backend types.
+#![recursion_limit = "256"]
+
 use std::sync::Arc;
 
 pub use kui_core::widgets;
