@@ -99,6 +99,13 @@ pub extern "C" fn next_frame_at() -> f64 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn frame_for_gpu(width: f32, height: f32, scale: f32, time: f64) -> u32 {
+    host::RUNNER.with_borrow_mut(|runner| {
+        runner.frame_for_gpu(kui_core::Size::new(width, height), scale, time)
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn run_tasks() -> u32 {
     TASKS.with(|tasks| {
         tasks.get().map_or(0, |run| match run.call::<bool>(()) {

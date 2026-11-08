@@ -515,13 +515,16 @@ python3 -m http.server --directory dist
 Open the local server or deploy the contents of `dist` to a static HTTPS
 host. The packer resolves the runner version from `kui.config.lua`,
 downloads and verifies the release's web runner, and caches it. A local
-build can create the runner zip with `nu scripts/web-runner.nu` and pass
-it with `--runner`. Use `web` on its own in a pack command. Teal modules
+build with the WASI SDK can create the runner zip with
+`nu scripts/web-runner.nu --install-tools` and pass it with `--runner`.
+Use `web` on its own in a pack command. Teal modules
 are translated to Lua source during packing.
 
-The browser runs Lua and Kit with the Canvas 2D renderer. Project files
-are mounted read-only at `kui.dir`. The packer skips symlinks and honors
-`pack.exclude`. Files in `kui.data_dir` persist in browser storage for
+The browser runs Lua and Kit with the shared `kui-wgpu` renderer when
+WebGPU is available. It uses Canvas 2D if the GPU renderer cannot start
+or loses its device. Add `?renderer=canvas` to test the fallback directly.
+Project files are mounted read-only at `kui.dir`. The packer skips symlinks
+and honors `pack.exclude`. Files in `kui.data_dir` persist in browser storage for
 the site's origin and the project's ID. `kui.cache_dir` lasts for the
 page session. Browser apps can use `require`, file reads and writes,
 JSON, and frame-serviced tasks. Desktop capabilities such as processes,
