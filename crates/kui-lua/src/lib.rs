@@ -2536,8 +2536,7 @@ fn load_font_file(
     }
     let mut ui = ui.borrow_mut()?;
     let core = ui.core();
-    let Some(family) = core
-        .load_font_file(&p)
+    let Some(family) = kui_native::system::load_font_file(core, &p)
         .and_then(|id| core.font_family(id).map(str::to_string))
     else {
         return Ok((
@@ -2553,7 +2552,7 @@ fn load_font_file(
 }
 
 fn load_tokens(lua: &Lua, (path, opts): (String, Option<Table>)) -> mlua::Result<Table> {
-    use kui_core::dtcg::{self, DtcgOptions, DtcgValue};
+    use kui_core::dtcg::{DtcgOptions, DtcgValue};
     let mut o = DtcgOptions::default();
     if let Some(t) = &opts {
         for pair in t.clone().pairs::<String, mlua::Value>() {
@@ -2580,8 +2579,8 @@ fn load_tokens(lua: &Lua, (path, opts): (String, Option<Table>)) -> mlua::Result
         }
     }
     let p = script_path(lua, &path);
-    let loaded =
-        dtcg::from_path(&p, &o).map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
+    let loaded = kui_native::system::load_dtcg(&p, &o)
+        .map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
     let (colors, lengths, families) = (
         lua.create_table()?,
         lua.create_table()?,
@@ -5422,6 +5421,10 @@ pub fn install_data(lua: &Lua) -> mlua::Result<()> {
 pub fn value_to_lua(lua: &Lua, v: &Value) -> mlua::Result<mlua::Value> {
     channel::to_lua(lua, v)
 }
+
+#[cfg(test)]
+#[path = "../../kui-core/tests/support/mod.rs"]
+mod font_fixture;
 
 #[cfg(test)]
 mod tests {
@@ -8707,7 +8710,7 @@ mod tests {
             "##,
         )
         .unwrap();
-        let mut core = Core::new();
+        let mut core = crate::font_fixture::fonts();
         frame(&mut core, &mut ext);
         let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
         assert_eq!(
@@ -10716,7 +10719,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        let mut core = Core::new();
+        let mut core = crate::font_fixture::fonts();
         core.add_font_data(kui_core::testing::font_face(
             "Fixture Mono",
             400,

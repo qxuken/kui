@@ -30,7 +30,7 @@ fn env_platform_and_the_platform_condition_agree() {
     let lua = ext.lua().clone();
     exts.push_as("s", Box::new(ext)).unwrap();
     let mut core = Core::new();
-    assert_eq!(core.platform(), Platform::current(), "the build's to start");
+    assert_eq!(core.platform(), Platform::Other);
     for p in Platform::ALL {
         core.set_platform(p);
         frame(&mut core, &mut exts, "s/card");

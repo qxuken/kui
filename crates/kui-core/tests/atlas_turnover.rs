@@ -6,6 +6,8 @@
 //! kawoosh's fonts pane, scrolling through six hundred families, showed
 //! a frame with nearly every glyph in the window gone now and then.
 
+mod support;
+
 use kui_core::atlas::GlyphAtlas;
 use kui_core::{Core, NodeSpec, Quad, QuadKind, Size, TextStyle};
 
@@ -127,7 +129,7 @@ fn a_frame_that_fills_the_page_presents_every_quad_on_what_it_was_emitted_for() 
 /// nothing moved.
 #[test]
 fn glyphs_refused_on_a_fresh_full_page_draw_once_the_view_shows_a_part_that_fits() {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     core.atlas = GlyphAtlas::with_size(kui_core::atlas::MAX_ATLAS_SIZE);
     // One "M" per line, each size its own glyph of about 900 × 800 texels:
     // a 4096 page holds a score of them.

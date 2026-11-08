@@ -90,52 +90,47 @@ impl Core {
     /// Shape with it via `TextStyle::font`.
     pub fn add_font_data(&mut self, data: Vec<u8>) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::Source;
-        let id = {
-            let sess = &mut *self.session.state();
-            let ids = sess
-                .fonts
-                .db_mut()
-                .load_font_source(Source::Binary(std::sync::Arc::new(data)));
-            sess.share_loaded_faces();
-            let db = sess.fonts.db_mut();
-            let ids = crate::text::keep_measurable(db, ids.to_vec());
-            let family = db.face(*ids.first()?)?.families.first()?.0.clone();
-            sess.fonts_rev += 1;
-            let touched = families_of(db, &ids);
-            let id = sess.resources.add_font(family, ids.to_vec());
-            if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
-                sess.weights_rev += 1;
-            }
-            sess.repin_mono();
-            id
-        };
-        self.sync_font_names();
-        Some(id)
+        self.register_font(|db| {
+            db.load_font_source(Source::Binary(std::sync::Arc::new(data)))
+                .to_vec()
+        })
     }
 
-    /// Registers a font file (TTF/OTF/TTC) by path, memory-mapped by the
-    /// font database; `None` when it cannot be read or holds no usable
-    /// face (see [`add_font_data`](Self::add_font_data)). Shape with it
-    /// via `TextStyle::font`.
+    /// Registers a font by path through the session's host font loader.
     pub fn load_font_file(
         &mut self,
         path: impl Into<std::path::PathBuf>,
     ) -> Option<crate::resources::FontId> {
-        use cosmic_text::fontdb::Source;
+        let loader = self.session.state().font_loader.clone()?;
+        self.add_prepared_font(loader.file(&path.into()))
+    }
+
+    /// Registers a host-prepared font. Every face must already carry its bytes.
+    pub fn add_prepared_font(
+        &mut self,
+        faces: Vec<cosmic_text::fontdb::FaceInfo>,
+    ) -> Option<crate::resources::FontId> {
+        self.register_font(|db| {
+            faces
+                .into_iter()
+                .map(|face| db.push_face_info(face))
+                .collect()
+        })
+    }
+
+    fn register_font(
+        &mut self,
+        load: impl FnOnce(&mut cosmic_text::fontdb::Database) -> Vec<cosmic_text::fontdb::ID>,
+    ) -> Option<crate::resources::FontId> {
         let id = {
             let sess = &mut *self.session.state();
-            let ids = sess
-                .fonts
-                .db_mut()
-                .load_font_source(Source::File(path.into()));
-            // Its own faces too, not only the ones before it (DX25).
-            sess.share_loaded_faces();
             let db = sess.fonts.db_mut();
-            let ids = crate::text::keep_measurable(db, ids.to_vec());
+            let added = load(db);
+            let ids = crate::text::keep_measurable(db, added);
             let family = db.face(*ids.first()?)?.families.first()?.0.clone();
             sess.fonts_rev += 1;
             let touched = families_of(db, &ids);
-            let id = sess.resources.add_font(family, ids.to_vec());
+            let id = sess.resources.add_font(family, ids);
             if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
                 sess.weights_rev += 1;
             }
@@ -146,25 +141,19 @@ impl Core {
         Some(id)
     }
 
-    /// Loads every font file under `dir` (recursively) into the font
-    /// database, so their families become available to `add_system_font`
-    /// by name; returns how many faces were added. A face whose glyphs
-    /// cannot be measured is left out and not counted. A
-    /// bundled `fonts/` folder next to the app is the usual case.
+    /// Registers the usable faces under a directory through the host font loader.
     pub fn load_fonts_dir(&mut self, dir: impl AsRef<std::path::Path>) -> usize {
+        let Some(loader) = self.session.state().font_loader.clone() else {
+            return 0;
+        };
+        let faces = loader.directory(dir.as_ref());
         let sess = &mut *self.session.state();
         let db = sess.fonts.db_mut();
-        let before: rustc_hash::FxHashSet<_> = db.faces().map(|face| face.id).collect();
-        db.load_fonts_dir(dir);
-        sess.share_loaded_faces();
-        let db = sess.fonts.db_mut();
-        let added = db
-            .faces()
-            .map(|face| face.id)
-            .filter(|id| !before.contains(id))
+        let added = faces
+            .into_iter()
+            .map(|face| db.push_face_info(face))
             .collect();
         let added = crate::text::keep_measurable(db, added);
-        // A registered family may have gained a bold (backlog F100).
         let touched = families_of(db, &added);
         if sess.resources.reweigh(sess.fonts.db(), &touched, None) {
             sess.weights_rev += 1;
@@ -173,36 +162,22 @@ impl Core {
         added.len()
     }
 
-    /// Scans the system's fonts again and brings this session's font
-    /// database up to it: a face installed since the last scan joins it,
-    /// one uninstalled leaves it. Returns how many faces came and went, 0
-    /// when nothing did.
-    ///
-    /// The system's fonts are scanned once a process, and every session
-    /// starts from that scan, so a font the user installs while the app
-    /// runs is not seen until something asks. The winit runner
-    /// (`kui-native`) asks itself when macOS or Windows says the installed
-    /// fonts changed; a host with its own windowing, or on Linux, where
-    /// fontconfig says nothing, calls this when it has reason to think the
-    /// set changed (a "fonts" pane opening, the window taking focus back).
-    /// It opens every font file on the system — tens of milliseconds on a
-    /// Mac's 1300 faces — so it is not a per-frame call. Sessions made after
-    /// it start from the new scan; another
-    /// session that already exists keeps what it has until it calls this
-    /// too.
-    ///
-    /// Faces still installed keep their handles and their place in every
-    /// cache; fonts the app loaded itself (`add_font_data`,
-    /// `load_font_file`, `load_fonts_dir`) are not touched. Every window
-    /// of the session shapes its text again on its next frame, since
-    /// fallback can land on a new face anywhere; every one of them owes
-    /// that frame (`animating`), and each window's next frame reports a `fonts` event to
-    /// the host, for an app that keeps the font list in its model. A face
-    /// whose file was replaced in place, under the same
-    /// path, is not read again.
+    /// Asks the host font loader for a fresh catalog and applies its changes.
     pub fn reload_system_fonts(&mut self) -> usize {
-        let fresh = crate::text::rescan_system_fonts();
-        let changed = self.session.state().apply_system_fonts(fresh);
+        let Some(loader) = self.session.state().font_loader.clone() else {
+            return 0;
+        };
+        self.apply_font_catalog(loader.reload())
+    }
+
+    /// Applies a file-keyed system catalog. Surviving faces keep their IDs
+    /// and app fonts are kept. Returns the number of faces added or removed.
+    /// For new bundled or fetched fonts use [`Self::add_font_data`].
+    pub fn apply_font_catalog(
+        &mut self,
+        catalog: std::sync::Arc<crate::text::FontCatalog>,
+    ) -> usize {
+        let changed = self.session.state().apply_system_fonts(catalog);
         if changed > 0 {
             self.sync_font_names();
             self.request_frame();
@@ -257,10 +232,12 @@ impl Core {
                 cosmic_text::FontSystem::new_with_locale_and_db(String::new(), Default::default()),
             );
             let (locale, db) = old.into_locale_and_db();
-            sess.fonts = crate::text::font_system_over(locale, db, &sess.resources.fallback);
-            if sess.faces_shared {
-                share_faces(sess.fonts.db_mut());
-            }
+            sess.fonts = crate::text::font_system_over(
+                locale,
+                db,
+                &sess.resources.fallback,
+                sess.system.fallback.clone(),
+            );
             sess.name_mono();
             sess.weights_rev += 1;
         }
@@ -681,7 +658,6 @@ impl crate::session::Session {
     pub(crate) fn register_family(&self, name: &str) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::{Family, Query};
         let sess = &mut *self.state();
-        sess.share_faces_once();
         let db = sess.fonts.db();
         let query = Query {
             families: &[Family::Name(name)],
@@ -709,28 +685,6 @@ impl crate::session::Session {
 }
 
 impl crate::session::SessionState {
-    /// [`share_faces`], the first time an app names a family, unless a
-    /// load has shared them already, and never again.
-    pub(crate) fn share_faces_once(&mut self) {
-        if !self.faces_shared {
-            self.share_loaded_faces();
-        }
-    }
-
-    /// [`share_faces`] after a load, so the faces it added are shared with
-    /// the rest. Sharing before the load, as DX24 first did,
-    /// left every face a file brought in reading its file again each time
-    /// a text shaped in a new family, weight or style: kawoosh loads 167
-    /// files it ships, and each new family cost a frame ~5 ms in opens.
-    /// The walk maps only what is unshared, so a load after the first
-    /// maps its own faces and nothing else. Not for `register_family`,
-    /// which runs every frame a view names a family: `db_mut` empties
-    /// cosmic-text's match cache.
-    pub(crate) fn share_loaded_faces(&mut self) {
-        self.faces_shared = true;
-        share_faces(self.fonts.db_mut());
-    }
-
     /// Names the family `Mono` shapes as while the app names fallbacks
     /// (`Resources::mono`, backlog RG118): the face the generic monospace
     /// family is pinned to, by name, so the app's list is asked straight
@@ -777,47 +731,41 @@ impl crate::session::SessionState {
     /// key glyphs by id. Returns how many faces came and went.
     pub(crate) fn apply_system_fonts(
         &mut self,
-        fresh: std::sync::Arc<crate::text::SystemFonts>,
+        fresh: std::sync::Arc<crate::text::FontCatalog>,
     ) -> usize {
-        use cosmic_text::fontdb::{ID, Source};
         let old = std::mem::replace(&mut self.system, fresh.clone());
-        let gone: rustc_hash::FxHashSet<_> = old.faces.difference(&fresh.faces).collect();
-        let came: Vec<_> = fresh.faces.difference(&old.faces).collect();
-        if gone.is_empty() && came.is_empty() {
+        if old.same_faces(&fresh) {
             return 0;
         }
         let db = self.fonts.db_mut();
-        let leaving: Vec<ID> = db
+        let leaving: Vec<_> = db
             .faces()
-            .filter(|face| crate::text::face_file(face).is_some_and(|key| gone.contains(&key)))
+            .filter(|face| self.system_face_ids.contains(&face.id) && !fresh.contains_face(face))
             .map(|face| face.id)
             .collect();
         let mut touched = families_of(db, &leaving);
         for &id in &leaving {
             db.remove_face(id);
+            self.system_face_ids.remove(&id);
         }
-        // What came, a file at a time: fontdb loads every face of a file,
-        // and only the ones the scan kept (measurable, and not already
-        // here through a sibling that stayed) are wanted.
-        let mut by_file = rustc_hash::FxHashMap::<&std::path::Path, Vec<u32>>::default();
-        for (path, index) in &came {
-            by_file.entry(path.as_path()).or_default().push(*index);
-        }
-        let mut arrived = Vec::new();
-        for (path, indices) in by_file {
-            for id in db.load_font_source(Source::File(path.to_path_buf())) {
-                let wanted = db
-                    .face(id)
-                    .is_some_and(|face| indices.contains(&face.index));
-                if wanted {
-                    arrived.push(id);
-                } else {
-                    db.remove_face(id);
-                }
-            }
-        }
+        let arrived: Vec<_> = fresh
+            .db
+            .faces()
+            .filter(|face| fresh.contains_face(face) && !old.contains_face(face))
+            .map(|face| db.push_face_info(face.clone()))
+            .collect();
+        self.system_face_ids.extend(arrived.iter().copied());
         touched.extend(families_of(db, &arrived));
-        crate::text::pin_default_families(db);
+        if fresh.last_resort
+            && !db.faces().any(|face| {
+                face.families
+                    .iter()
+                    .any(|(name, _)| name == crate::text::LAST_RESORT_FAMILY)
+            })
+        {
+            crate::text::insert_last_resort(db);
+        }
+        crate::text::pin_default_families(db, fresh.preferences);
         // cosmic-text works out its monospaced faces, and which scripts
         // each covers, when the font system is built; rebuilt over the
         // same database, the ids stay and the lists are new.
@@ -826,10 +774,12 @@ impl crate::session::SessionState {
             cosmic_text::FontSystem::new_with_locale_and_db(String::new(), Default::default()),
         );
         let (locale, db) = fonts.into_locale_and_db();
-        self.fonts = crate::text::font_system_over(locale, db, &self.resources.fallback);
-        if self.faces_shared {
-            share_faces(self.fonts.db_mut());
-        }
+        self.fonts = crate::text::font_system_over(
+            locale,
+            db,
+            &self.resources.fallback,
+            fresh.fallback.clone(),
+        );
         // The scan can pin `Mono` to another face.
         self.name_mono();
         self.resources.reweigh(self.fonts.db(), &touched, None);
@@ -840,48 +790,6 @@ impl crate::session::SessionState {
         self.system_fonts_rev += 1;
         leaving.len() + arrived.len()
     }
-}
-
-/// Maps every file-backed face in the database once and shares the
-/// mapping, as cosmic-text does for each face it loads.
-///
-/// The first time a text shapes in a family (a weight, a style) it has not
-/// shaped in, cosmic-text ranks every face in the database against it, and
-/// for each face of another weight it reads that face's `wght` axis — with
-/// the face unshared, opening and mapping its file for that one read. On a
-/// Mac's 1,311 faces that was 9.7 ms a new family, in release; kawoosh's
-/// fonts pane, drawing each of 613 families in itself, warmed them ahead of
-/// time to keep it off the frames. Shared, the read is a slice of a mapping
-/// already made: 0.42 ms a family, for 30 ms once. Done on the first font
-/// an app registers — a family by name, bytes, a file or a folder — where
-/// the per-family cost starts to add up, and after every load from then on
-/// so a loaded file's own faces are shared too; an app on the stock
-/// three pays what it always did.
-///
-/// The mapping is what fontdb's `make_shared_face_data` documents as
-/// unsafe: a font file another process rewrites while it is mapped can
-/// show the change, and may crash the read. cosmic-text already takes that
-/// risk for every face it shapes with; this takes it for every installed
-/// face, which on a desktop are the system's and the user's fonts.
-pub(crate) fn share_faces(db: &mut cosmic_text::fontdb::Database) -> usize {
-    use cosmic_text::fontdb::Source;
-    let ids: Vec<_> = db
-        .faces()
-        .filter(|f| matches!(f.source, Source::File(_)))
-        .map(|f| f.id)
-        .collect();
-    let mut shared = 0;
-    for id in ids {
-        // A face whose file was shared through a sibling face is skipped by
-        // fontdb itself: `make_shared_face_data` updates every face of the
-        // file at once and answers the existing mapping after that.
-        // SAFETY: see the function's doc — the mapping cosmic-text makes
-        // for every face it loads, made for the rest.
-        if unsafe { db.make_shared_face_data(id) }.is_some() {
-            shared += 1;
-        }
-    }
-    shared
 }
 
 #[cfg(test)]
@@ -919,39 +827,29 @@ mod tests {
     /// a second time changes nothing.
     #[test]
     fn a_rescan_brings_in_what_came_drops_what_went_and_keeps_the_rest() {
-        use crate::text::{SystemFonts, face_file};
-        let mut core = Core::new();
-        let held = core.session.state().system.clone();
-        let dir = std::env::temp_dir().join(format!("kui-rescan-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let installed = dir.join("rescan.ttf");
-        std::fs::write(
-            &installed,
-            crate::testing::font_face("Kui Rescan Face", 400, false, false),
-        )
-        .unwrap();
+        use crate::text::{FontCatalog, shared_face};
+        use cosmic_text::fontdb::{Database, Source};
+        use std::sync::Arc;
 
-        // A file's face is uninstalled whole: one index of a file can be
-        // several faces (Ubuntu's variable `Ubuntu[wdth,wght].ttf` is two
-        // at index 0), and a scan keys on the file, so removing one id
-        // would leave the file installed. The face that stays is another
-        // file's.
-        let mut db = held.db().clone();
-        let uninstalled = db.faces().find_map(face_file);
-        let leaving: Vec<_> = db
-            .faces()
-            .filter(|f| uninstalled.is_some() && face_file(f) == uninstalled)
-            .map(|f| f.id)
-            .collect();
+        let face = |db: &mut Database, path: &str, family: &str| {
+            let bytes = Arc::new(crate::testing::font_face(family, 400, false, false));
+            db.load_font_source(Source::SharedFile(path.into(), bytes))[0]
+        };
+        let mut db = Database::new();
+        let leaving = [face(&mut db, "gone", "Kui Gone")];
+        let staying = face(&mut db, "stays", "Kui Stays");
+        let face_file =
+            |face: &cosmic_text::fontdb::FaceInfo| shared_face(face).map(|(key, _)| key);
+        let uninstalled = db.face(leaving[0]).and_then(face_file);
         let stays = db
-            .faces()
-            .filter_map(|f| Some((f.id, face_file(f)?)))
-            .find(|(_, key)| Some(key) != uninstalled.as_ref());
-        for &id in &leaving {
-            db.remove_face(id);
-        }
-        db.load_font_file(&installed).unwrap();
-        let fresh = std::sync::Arc::new(SystemFonts::from_db(held.locale().into(), db));
+            .face(staying)
+            .and_then(face_file)
+            .map(|key| (staying, key));
+        let catalog = Arc::new(FontCatalog::from_db("en-US".into(), db.clone()));
+        let mut core = Core::new_in(&crate::Session::with_font_catalog(catalog));
+        db.remove_face(leaving[0]);
+        face(&mut db, "installed", "Kui Rescan Face");
+        let fresh = Arc::new(FontCatalog::from_db("en-US".into(), db));
 
         let framed = |core: &mut Core| {
             let mut ui = core.frame(crate::Size::new(100.0, 100.0), 1.0);
@@ -1013,7 +911,25 @@ mod tests {
             framed(&mut core).is_empty(),
             "a scan that found nothing new is no event"
         );
-        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rescan_replaces_changed_bytes_at_the_same_path() {
+        use cosmic_text::fontdb::{Database, Source};
+        use std::sync::Arc;
+
+        let catalog = |family| {
+            let mut db = Database::new();
+            let bytes = Arc::new(crate::testing::font_face(family, 400, false, false));
+            db.load_font_source(Source::SharedFile("same.ttf".into(), bytes));
+            Arc::new(crate::text::FontCatalog::from_db("en-US".into(), db))
+        };
+        let mut core = Core::new_in(&crate::Session::with_font_catalog(catalog("Old Font")));
+        let fresh = catalog("New Font");
+        assert_eq!(core.apply_font_catalog(fresh.clone()), 2);
+        assert!(core.add_system_font("Old Font").is_none());
+        assert!(core.add_system_font("New Font").is_some());
+        assert_eq!(core.apply_font_catalog(fresh), 0);
     }
 
     /// The real rescan: with nothing installed or removed since the
@@ -1045,74 +961,6 @@ mod tests {
             &after.session.state().system,
             &core.session.state().system
         ));
-    }
-
-    /// DX24: naming a family shares the database's file-backed faces, once;
-    /// before it, an app on the stock families has mapped nothing.
-    #[test]
-    fn the_first_named_family_shares_the_faces_once() {
-        use cosmic_text::fontdb::Source;
-        let mut core = Core::new();
-        let file_backed = |core: &Core| {
-            let sess = core.session.state();
-            sess.fonts
-                .db()
-                .faces()
-                .filter(|f| matches!(f.source, Source::File(_)))
-                .count()
-        };
-        let before = file_backed(&core);
-        assert!(!core.session.state().faces_shared);
-        let name = core.system_fonts().into_iter().map(|f| f.family).next();
-        let Some(name) = name else {
-            return; // a machine with no installed fonts has nothing to share
-        };
-        core.add_system_font(&name);
-        assert!(core.session.state().faces_shared);
-        assert_eq!(
-            file_backed(&core),
-            0,
-            "all {before} file-backed faces shared"
-        );
-        // A second name does not walk them again.
-        assert_eq!(share_faces(core.session.state().fonts.db_mut()), 0);
-    }
-
-    /// DX25: a file loaded by path or in a folder is shared with the rest,
-    /// its own faces too, whether it is the first font or a later one.
-    /// Sharing before the load left them reading their file each time a
-    /// text shaped in a new family.
-    #[test]
-    fn a_loaded_file_is_shared_too() {
-        use cosmic_text::fontdb::Source;
-        let file_backed = |core: &Core| {
-            let sess = core.session.state();
-            sess.fonts
-                .db()
-                .faces()
-                .filter(|f| matches!(f.source, Source::File(_)))
-                .count()
-        };
-        let dir = std::env::temp_dir().join(format!("kui-dx25-{}", std::process::id()));
-        let (one, two) = (dir.join("one"), dir.join("two"));
-        for d in [&one, &two] {
-            std::fs::create_dir_all(d).unwrap();
-            std::fs::write(d.join("face.ttf"), crate::testing::liga_font()).unwrap();
-        }
-
-        let mut core = Core::new();
-        core.load_font_file(one.join("face.ttf"))
-            .expect("the first font");
-        assert_eq!(file_backed(&core), 0, "the first file's faces shared");
-        core.load_font_file(two.join("face.ttf"))
-            .expect("a later font");
-        assert_eq!(file_backed(&core), 0, "a later file's faces shared");
-
-        let mut fresh = Core::new();
-        assert!(fresh.load_fonts_dir(&one) >= 1);
-        assert!(fresh.session.state().faces_shared);
-        assert_eq!(file_backed(&fresh), 0, "a folder's faces shared");
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// A session whose generic monospace family is pinned to `name`, as

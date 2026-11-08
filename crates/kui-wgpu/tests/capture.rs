@@ -3,6 +3,9 @@
 //! a texture a host owns. On the machine's GPU; skipped, saying so, where
 //! there is no adapter.
 
+#[path = "../../kui-core/tests/support/mod.rs"]
+mod font_fixture;
+
 use kui_core::{Color, Core, NodeSpec, Size, TextStyle};
 use kui_wgpu::{Gpu, RenderError, Renderer, wgpu};
 
@@ -409,7 +412,7 @@ fn a_new_glyph_is_uploaded_as_its_rect_and_draws_as_a_whole_upload_does() {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         ..target_desc(120, 40)
     });
-    let mut core = Core::new();
+    let mut core = font_fixture::fonts();
     let mut own = Renderer::windowless(&gpu, format).expect("a renderer");
     word(&mut core, "Hi");
     let (dl, atlas) = core.output();

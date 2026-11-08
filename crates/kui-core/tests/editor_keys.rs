@@ -4,6 +4,8 @@
 //! sink above it, a key that meets the edge of the text says so, and a
 //! field declared `keep_tab` hands its Tab to the app.
 
+mod support;
+
 use kui_core::{
     Core, EditKey, EditOptions, EventKind, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods,
     NodeSpec, Size, UiEvent, Value, Vec2,
@@ -51,7 +53,7 @@ fn frame(core: &mut Core, opts: &EditOptions, shell: bool) -> (Key, Key) {
 }
 
 fn rig(opts: EditOptions, shell: bool) -> (Core, Key, Key) {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     let (s, f) = frame(&mut core, &opts, shell);
     frame(&mut core, &opts, shell);
     assert_eq!(core.focus(), Some(f), "the field took focus");

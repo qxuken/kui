@@ -258,7 +258,9 @@ use kui_core::{
 /// the core cannot be created.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
-    guard(std::ptr::null_mut(), || ctx_around(Box::new(Core::new())))
+    guard(std::ptr::null_mut(), || {
+        ctx_around(Box::new(kui_native::system::new_core()))
+    })
 }
 
 /// Creates a context that joins `other`'s session (backlog F237): it
@@ -782,7 +784,7 @@ pub extern "C" fn kui_tokens_load_dtcg(
                 _ => opts.inputs.push((k.into(), v.into())),
             }
         }
-        match kui_core::dtcg::from_path(&*kstr(path), &opts) {
+        match kui_native::system::load_dtcg(&*kstr(path), &opts) {
             Ok(loaded) => {
                 c.core().add_dtcg(&loaded);
                 true

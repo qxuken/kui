@@ -4,6 +4,8 @@
 //! grows drawn at its laid-out size a frame later, a file that redraws
 //! when it changes, and the warnings for what cannot draw.
 
+#![allow(clippy::disallowed_methods)]
+
 use kui_core::svg::Svg;
 use kui_core::{Color, Core, NodeSpec, QuadKind, Role, Size, SvgFit, SvgMode, SvgOpts, SvgSource};
 
@@ -167,27 +169,42 @@ fn a_growing_box_draws_at_its_laid_out_size_the_next_frame() {
 
 #[test]
 fn a_file_redraws_when_it_changes_and_warns_while_it_cannot_be_read() {
-    let dir = std::env::temp_dir().join(format!("kui-svg-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("icon.svg");
-    let path_str = path.to_str().unwrap().to_string();
+    let path = "icon.svg";
     let mut core = Core::new();
     let view = |ui: &mut kui_core::Ui<'_>| {
         ui.svg(
-            SvgSource::File(&path_str),
+            SvgSource::File(path),
             SvgOpts::default(),
             NodeSpec::default().label("Icon"),
         );
     };
     frame(&mut core, view);
+    assert!(
+        codes(&mut core).is_empty(),
+        "a pending load is not a read error"
+    );
+    let request = core.take_svg_asset_requests().pop().unwrap();
+    assert_eq!(request.path(), path);
+    assert!(core.complete_svg_asset(request, Err("file is missing".into())));
+    frame(&mut core, view);
     assert!(codes(&mut core).contains(&"svg-unreadable"));
-    std::fs::write(&path, ICON).unwrap();
+
+    core.request_svg_asset(path);
+    let stale = core.take_svg_asset_requests().pop().unwrap();
+    core.request_svg_asset(path);
+    let latest = core.take_svg_asset_requests().pop().unwrap();
+    assert!(core.complete_svg_asset(latest, Ok(ICON.to_vec())));
+    assert!(!core.complete_svg_asset(stale, Err("late failure".into())));
     frame(&mut core, view);
     assert_eq!(image_node(&mut core, "Icon").rect.w, 24.0);
-    std::fs::write(&path, GRADIENT).unwrap();
+
+    core.set_svg_asset(path, Ok(GRADIENT.to_vec()));
     frame(&mut core, view);
     assert_eq!(image_node(&mut core, "Icon").rect.w, 40.0);
-    std::fs::remove_dir_all(&dir).ok();
+    core.remove_svg_asset(path);
+    frame(&mut core, view);
+    assert_eq!(image_node(&mut core, "Icon").rect.w, 0.0);
+    assert_eq!(core.take_svg_asset_requests().len(), 1);
 }
 
 #[test]
@@ -224,4 +241,18 @@ fn an_unlabelled_svg_is_an_unlabelled_image() {
         .filter(|c| *c == "image-without-label")
         .count();
     assert_eq!(image_warnings, 1);
+}
+
+#[test]
+fn an_external_image_in_svg_bytes_is_ignored() {
+    let path = std::env::temp_dir().join(format!("kui-external-svg-{}.svg", std::process::id()));
+    std::fs::write(&path, ICON).unwrap();
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24"><image xlink:href="{}" width="24" height="24"/></svg>"#,
+        path.display()
+    );
+    let parsed = Svg::parse(svg.as_bytes()).unwrap();
+    let (_, _, pixels) = parsed.raster(24.0, 24.0, 1.0, SvgFit::default(), Color::hex(0xff0000ff));
+    std::fs::remove_file(path).unwrap();
+    assert!(pixels.iter().all(|&pixel| pixel == 0));
 }

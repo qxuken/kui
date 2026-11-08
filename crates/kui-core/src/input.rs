@@ -1088,7 +1088,12 @@ impl KeyMods {
     /// The platform primary shortcut modifier held: Command on macOS,
     /// Control elsewhere — the one [`Self::primary`] reads.
     pub const fn with_primary(self) -> Self {
-        if cfg!(target_os = "macos") {
+        self.with_primary_on(crate::rules::Platform::current())
+    }
+
+    /// The primary shortcut modifier for an explicit host convention.
+    pub const fn with_primary_on(self, platform: crate::rules::Platform) -> Self {
+        if matches!(platform, crate::rules::Platform::MacOs) {
             self.with_super()
         } else {
             self.with_ctrl()
@@ -2764,11 +2769,28 @@ impl Interaction {
     /// handlers — topmost by paint order first: what a notch walks when
     /// the innermost scroller moves on one axis only.
     pub(crate) fn scroll_regions_at(&self) -> impl Iterator<Item = &ScrollRegion> {
-        let p = self.cursor;
+        self.scroll_regions_under(self.cursor)
+    }
+
+    fn scroll_regions_under(&self, point: Option<Vec2>) -> impl Iterator<Item = &ScrollRegion> {
         self.scroll_regions
             .iter()
             .rev()
-            .filter(move |r| p.is_some_and(|p| !r.inert && r.clip.contains(p) && r.under(p)))
+            .filter(move |r| point.is_some_and(|p| !r.inert && r.clip.contains(p) && r.under(p)))
+    }
+
+    /// Whether a host can pan content here with a scroll gesture. A
+    /// scrollbar or an explicit drag or slider gets the primary press.
+    pub fn prefers_scroll_at(&self, point: Vec2) -> bool {
+        if matches!(self.target_at(point), Some(Target::Bar(_)))
+            || self
+                .press_hit_at(point)
+                .is_some_and(|hit| hit.drag.is_some() || hit.slider.is_some())
+        {
+            return false;
+        }
+        self.scroll_regions_under(Some(point))
+            .any(|r| r.mods == 0 && (r.takes_x || r.takes_y))
     }
 
     /// The content origin the editor `key` was drawn at this frame — what

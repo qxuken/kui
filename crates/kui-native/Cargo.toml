@@ -13,13 +13,17 @@ publish = ["crates-io"]
 
 [dependencies]
 kui-core.workspace = true
-kui-wgpu.workspace = true
-winit.workspace = true
-pollster.workspace = true
+cosmic-text = { workspace = true, features = ["fontconfig"] }
+memmap2 = "0.9"
+tempfile = "3"
+tracing = { version = "0.1", optional = true, default-features = false, features = ["std"] }
+kui-wgpu = { workspace = true, optional = true }
+winit = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
 bytemuck = { workspace = true, optional = true }
 # 3.6: the version F84's `exclude_from_*` writes were built and tested
 # against — a bare "3" let a resolver pick one without them (RG35).
-arboard = "3.6"
+arboard = { version = "3.6", optional = true }
 # Platform accessibility (UIA / NSAccessibility / AT-SPI) behind AccessKit;
 # see docs/adr/0001-accessibility-as-data.md. The translation is
 # kui-access's, shared with a host's own window (backlog F269); the window
@@ -36,12 +40,12 @@ rfd = { version = "0.17", default-features = false, features = ["xdg-portal"], o
 # The wallpaper a `Tinted` backdrop draws where the OS has no material
 # (`mod ground`, backlog F126): decoded once, off the frame. The version
 # arboard already builds, with the formats wallpapers come in.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"], optional = true }
 # The encoder's animated halves (`mod encode`, ADR 0054): APNG and GIF a
 # frame at a time, each frame placed at an offset, which `image`'s own
 # encoders do not offer. The versions `image` already builds.
-png = "0.18"
-gif = "0.14"
+png = { version = "0.18", optional = true }
+gif = { version = "0.14", optional = true }
 
 # The examples' devtools (docs/adr/0021): the dock, the CLI and the
 # headless drive every example under examples/rust runs inside. A
@@ -51,10 +55,23 @@ gif = "0.14"
 kui-devtools.workspace = true
 
 [features]
-default = ["audio", "accesskit", "derive", "dialogs"]
+default = ["gui", "audio", "accesskit", "derive", "dialogs"]
+# The windowed runner and GPU-backed headless driver. Hosts that supply
+# their own loop and renderer can use `system` with default features off.
+gui = [
+    "dep:kui-wgpu", "dep:winit", "dep:pollster", "dep:arboard", "image-codecs",
+    "dep:windows-sys", "dep:x11rb", "dep:wayland-client", "dep:wayland-backend",
+    "dep:wayland-protocols", "dep:wayland-protocols-plasma", "dep:objc2",
+    "dep:block2", "dep:objc2-app-kit", "dep:objc2-core-graphics",
+    "dep:objc2-quartz-core", "dep:objc2-foundation",
+]
+image-codecs = ["dep:image", "dep:png", "dep:gif"]
+tracing = ["dep:tracing", "kui-core/tracing"]
+# Reference scenes for checking the other bindings against the native host.
+conformance = ["kui-core/conformance"]
 # Play sounds through kira/cpal. Off: audio commands are dropped, the UI
 # runs the same, and the crate links no audio libraries (ALSA on Linux).
-audio = ["dep:kira"]
+audio = ["gui", "dep:kira"]
 # `#[derive(Message)]`: a Rust app's own message enum to and from the
 # plain-data payload, so `on_click(Msg::Save)` and `ev.message::<Msg>()`
 # replace building and picking apart `Value`s by string (backlog C50). On by
@@ -63,18 +80,18 @@ derive = ["kui-core/derive"]
 # Show the file dialogs an app asks for (`request_files`, backlog C51) with
 # the platform's own panels through rfd. Off: an ask is answered at once
 # with no paths, as a cancelled dialog would be.
-dialogs = ["dep:rfd"]
+dialogs = ["gui", "dep:rfd"]
 # Expose the core's access tree to screen readers and other assistive
 # technology through AccessKit. On by default (an accessibility feature that
 # is off by default does not get tested); off for kiosk builds, where the
 # core still derives the tree for anyone who asks and nothing reaches the OS.
-accesskit = ["dep:kui-access", "dep:accesskit_winit"]
+accesskit = ["gui", "dep:kui-access", "dep:accesskit_winit"]
 # Honour `KUI_SMOKE_FRAMES` in a build with debug assertions off. The hook
 # is always live in a dev build, which is where it is used by hand; this is
 # for the smoke round's `--release` (examples/devtools/src/bin/smoke.rs),
 # the only reason to want a
 # shipping build that closes its own window. See `Launcher::smoke_frames`.
-smoke = []
+smoke = ["gui"]
 # The host-pass game example: direct wgpu rendering and host latency metrics.
 # Opt in so ordinary builds do not compile the example or its host bridge.
 host-pass = ["accesskit", "kui-access/platform", "dep:bytemuck"]
@@ -82,8 +99,11 @@ host-pass = ["accesskit", "kui-access/platform", "dep:bytemuck"]
 # Same version winit pins, so the tree compiles it once. Dwm and
 # Globalization are the accent colour and the locale (`mod system_env`);
 # Console is the parent's terminal, attached (`mod windows_console`).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "0.52", features = [
+windows-sys = { version = "0.52", optional = true, features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Dwm",
@@ -119,21 +139,21 @@ windows-sys = { version = "0.52", features = [
 # backlog RG104). The version and the `xkb` feature winit's X11 backend
 # already builds, so this adds no crate to the tree.
 [target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
-x11rb = { version = "0.13", features = ["xkb"] }
+x11rb = { version = "0.13", features = ["xkb"], optional = true }
 # A `Blur` backdrop asked of the Wayland compositor (`mod linux_blur`,
 # backlog F126): KWin's `org_kde_kwin_blur` and the staging
 # `ext-background-effect-v1`, on the display winit opened. The versions
 # winit already builds; `staging` is the one feature this adds.
-wayland-client = "0.31"
-wayland-backend = { version = "0.3", features = ["client_system"] }
-wayland-protocols = { version = "0.32", features = ["client", "staging"] }
-wayland-protocols-plasma = { version = "0.3", features = ["client"] }
+wayland-client = { version = "0.31", optional = true }
+wayland-backend = { version = "0.3", features = ["client_system"], optional = true }
+wayland-protocols = { version = "0.32", features = ["client", "staging"], optional = true }
+wayland-protocols-plasma = { version = "0.3", features = ["client"], optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
+objc2 = { version = "0.6", optional = true }
 # The first-press monitor's handler (`macos_first_click`, backlog RG168).
-block2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = [
+block2 = { version = "0.6", optional = true }
+objc2-app-kit = { version = "0.3", default-features = false, optional = true, features = [
     "block2",
     "std",
     "objc2-core-foundation",
@@ -200,12 +220,12 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
 # Where each of those drags is: `CGEventGetLocation`, which moves with the
 # event where `+[NSEvent mouseLocation]` lagged posted drags. The version
 # winit already builds.
-objc2-core-graphics = { version = "0.3", default-features = false, features = [
+objc2-core-graphics = { version = "0.3", default-features = false, optional = true, features = [
     "std",
     "CGEvent",
     "CGEventTypes",
 ] }
-objc2-quartz-core = { version = "0.3", default-features = false, features = [
+objc2-quartz-core = { version = "0.3", default-features = false, optional = true, features = [
     "std",
     "CADisplayLink",
     "CAFrameRateRange",
@@ -215,7 +235,7 @@ objc2-quartz-core = { version = "0.3", default-features = false, features = [
     "CALayer",
     "objc2-core-foundation",
 ] }
-objc2-foundation = { version = "0.3", default-features = false, features = [
+objc2-foundation = { version = "0.3", default-features = false, optional = true, features = [
     "std",
     "NSArray",
     "NSLocale",
@@ -302,6 +322,11 @@ headless = [
     "wheel_feel",
     "edge_scroll",
 ]
+
+[[example]]
+name = "conformance-dump"
+path = "../../examples/rust/tools/conformance-dump.rs"
+required-features = ["conformance"]
 
 [[example]]
 name = "counter"

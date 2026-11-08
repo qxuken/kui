@@ -116,6 +116,10 @@ mod outline;
 use kui_core::atlas::GlyphAtlas;
 use kui_core::gpu::{Globals, Instance, instance_of, shader as preprocess_shader};
 use kui_core::{DisplayList, Quad, QuadKind};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 /// One fragment's parameters as the shader takes them — the sixteen
 /// floats and the texel rect of its `image`, laid out as the epilogue's
@@ -826,6 +830,7 @@ pub struct Renderer {
     /// The texture the last capture drew into, kept for the next one of
     /// its size: a recording captures every frame, and the GPU orders the
     /// next frame's draw after the last one's copy out of it.
+    #[cfg(not(target_arch = "wasm32"))]
     capture_target: Option<wgpu::Texture>,
     instances: Vec<Instance>,
     /// What a fragment pipeline is built against: kui's vertex stage and
@@ -1119,7 +1124,18 @@ impl Renderer {
         options: GpuOptions,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let (gpu, surface) = Gpu::new_with(target, options).await?;
-        Self::with_surface(gpu, surface, width, height, options.transparent)
+        let config = Self::surface_config(&gpu, &surface, width, height, options.transparent)?;
+        if let Some(err) = Self::configure_surface(&gpu, &surface, &config).await {
+            return Err(format!("configuring the surface: {err}").into());
+        }
+        #[cfg(target_arch = "wasm32")]
+        let validation = gpu.device().push_error_scope(wgpu::ErrorFilter::Validation);
+        let renderer = Self::assemble(gpu, Some(surface), config);
+        #[cfg(target_arch = "wasm32")]
+        if let Some(err) = validation.pop().await {
+            return Err(format!("creating WebGPU renderer resources: {err}").into());
+        }
+        Ok(renderer)
     }
 
     /// Whether the surface is presented with alpha, so what is behind the
@@ -1138,6 +1154,7 @@ impl Renderer {
     /// A renderer for another window on an existing device, the one every
     /// window of the app shares. Get `gpu` from the first renderer's
     /// [`Renderer::gpu`].
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new_in(
         gpu: &Gpu,
         target: impl Into<wgpu::SurfaceTarget<'static>>,
@@ -1156,6 +1173,7 @@ impl Renderer {
     /// take alpha — a D3D12 device not opened with
     /// [`GpuOptions::transparent`], a Vulkan or GL surface that offers
     /// only opaque — it is opaque, and [`Renderer::transparent`] says so.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new_in_with(
         gpu: &Gpu,
         target: impl Into<wgpu::SurfaceTarget<'static>>,
@@ -1164,7 +1182,11 @@ impl Renderer {
         transparent: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let surface = gpu.create_surface(target)?;
-        Self::with_surface(gpu.clone(), surface, width, height, transparent)
+        let config = Self::surface_config(gpu, &surface, width, height, transparent)?;
+        if let Some(err) = pollster::block_on(Self::configure_surface(gpu, &surface, &config)) {
+            return Err(format!("configuring the surface: {err}").into());
+        }
+        Ok(Self::assemble(gpu.clone(), Some(surface), config))
     }
 
     /// Labels subsequent GPU command buffers with the host window and frame
@@ -1201,13 +1223,13 @@ impl Renderer {
         self.config.desired_maximum_frame_latency
     }
 
-    fn with_surface(
-        gpu: Gpu,
-        surface: wgpu::Surface<'static>,
+    fn surface_config(
+        gpu: &Gpu,
+        surface: &wgpu::Surface<'static>,
         width: u32,
         height: u32,
         transparent: bool,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<wgpu::SurfaceConfiguration, Box<dyn std::error::Error>> {
         let device = gpu.device();
         let caps = surface.get_capabilities(gpu.adapter());
         let format = caps
@@ -1215,7 +1237,8 @@ impl Renderer {
             .iter()
             .copied()
             .find(|f| *f == f.remove_srgb_suffix())
-            .unwrap_or(caps.formats[0]);
+            .or_else(|| caps.formats.first().copied())
+            .ok_or("no compatible surface format")?;
         let backend = gpu.adapter().get_info().backend;
         // Not on a device whose surfaces cannot show what is behind the
         // window (Windows, unless `see_through_by_visual`): there a mode
@@ -1224,7 +1247,7 @@ impl Renderer {
             .then(|| transparent_mode(&caps.alpha_modes, backend))
             .flatten()
             .unwrap_or_else(|| opaque_mode(&caps.alpha_modes));
-        let config = wgpu::SurfaceConfiguration {
+        Ok(wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
             width: width.clamp(1, device.limits().max_texture_dimension_2d),
@@ -1236,17 +1259,22 @@ impl Renderer {
             // See `DEFAULT_FRAME_LATENCY`; a runner that wants another
             // says so through `set_frame_latency`.
             desired_maximum_frame_latency: DEFAULT_FRAME_LATENCY,
-        };
+        })
+    }
+
+    fn configure_surface(
+        gpu: &Gpu,
+        surface: &wgpu::Surface<'static>,
+        config: &wgpu::SurfaceConfiguration,
+    ) -> impl Future<Output = Option<wgpu::Error>> {
         // A configure that fails only reports to the device's error
         // handler, and the first acquire on the unconfigured surface is a
         // panic inside wgpu; caught here, it is this constructor's error
         // — a window DXGI will not give a second swapchain, say.
+        let device = gpu.device();
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        surface.configure(device, &config);
-        if let Some(err) = pollster::block_on(scope.pop()) {
-            return Err(format!("configuring the surface: {err}").into());
-        }
-        Ok(Self::assemble(gpu, Some(surface), config))
+        surface.configure(device, config);
+        scope.pop()
     }
 
     /// A renderer with no window: it draws into textures it is handed
@@ -1468,6 +1496,7 @@ impl Renderer {
             atlas_epoch: u64::MAX,
             atlas_rev: 0,
             atlas_id: 0,
+            #[cfg(not(target_arch = "wasm32"))]
             capture_target: None,
             instances: Vec::new(),
             fragment_layouts,
@@ -2310,7 +2339,7 @@ impl Renderer {
 
         // Acquiring the swapchain image is where vsync backpressure blocks;
         // report it separately so latency graphs show pacing vs work.
-        let t_wait = std::time::Instant::now();
+        let t_wait = Instant::now();
         let surface = self.surface.as_ref().expect("checked above");
         let frame = match surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(f)
@@ -2455,6 +2484,7 @@ impl Renderer {
     /// than the device's largest texture, a format other than
     /// `Rgba8Unorm` or `Bgra8Unorm`, or a draw the device refused;
     /// [`RenderError::DeviceLost`] on a dead device.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn capture(
         &mut self,
         dl: &DisplayList,
@@ -2472,6 +2502,7 @@ impl Renderer {
     ///
     /// The same errors as [`Renderer::capture`], for what can be known at
     /// the submit.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn capture_begin(
         &mut self,
         dl: &DisplayList,
@@ -2885,18 +2916,23 @@ impl Renderer {
 }
 
 // Waited on from a recording's thread (kui-native's `Captures`).
+#[cfg(not(target_arch = "wasm32"))]
 const _: fn() = || {
     fn send<T: Send>() {}
     send::<PendingCapture>();
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 const MAP_PENDING: u8 = 0;
+#[cfg(not(target_arch = "wasm32"))]
 const MAP_DONE: u8 = 1;
+#[cfg(not(target_arch = "wasm32"))]
 const MAP_FAILED: u8 = 2;
 
 /// A frame [`Renderer::capture_begin`] drew and asked back, on its way:
 /// [`PendingCapture::wait`] has the pixels. `Send`, so the wait and the
 /// copy out may be another thread's.
+#[cfg(not(target_arch = "wasm32"))]
 pub struct PendingCapture {
     gpu: Gpu,
     buf: wgpu::Buffer,
@@ -2907,6 +2943,7 @@ pub struct PendingCapture {
     bgra: bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl PendingCapture {
     /// Waits for the GPU and copies the frame out, as [`Renderer::capture`]
     /// returns it. [`RenderError::DeviceLost`] when the device went before
@@ -2996,6 +3033,7 @@ pub struct Capture {
 /// 255, and only the swizzle costs anything: sixteen pixels at a time are
 /// swizzled and their alphas' least and most read in one pass, and only a
 /// block holding an alpha between is walked again to divide (backlog C57).
+#[cfg(not(target_arch = "wasm32"))]
 fn straighten(px: &mut [u8], bgra: bool) {
     let (blocks, rest) = px.as_chunks_mut::<64>();
     for b in blocks {
@@ -3032,13 +3070,14 @@ fn swizzle_block(b: &mut [u8; 64], bgra: bool) -> (u8, u8) {
     }
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32")))]
 use swizzle_words as swizzle_block;
 
 /// Sixteen pixels swizzled from BGRA when `bgra`, and their least and
 /// most alpha — as words, which the compiler vectorizes. The block step
 /// off aarch64, and what the NEON one is tested against on it.
 #[cfg_attr(all(target_arch = "aarch64", not(test)), allow(dead_code))]
+#[cfg(not(target_arch = "wasm32"))]
 fn swizzle_words(b: &mut [u8; 64], bgra: bool) -> (u8, u8) {
     let (mut least, mut most) = (255u8, 0u8);
     for p in b.as_chunks_mut::<4>().0 {
@@ -3055,6 +3094,7 @@ fn swizzle_words(b: &mut [u8; 64], bgra: bool) -> (u8, u8) {
 /// One straight pixel from a premultiplied one: each colour times 255
 /// over the alpha, rounded, where the alpha is neither 0 nor 255.
 #[inline(always)]
+#[cfg(not(target_arch = "wasm32"))]
 fn divide_by_alpha(p: &mut [u8; 4]) {
     let a = p[3];
     if a != 0 && a != 255 {
@@ -3068,6 +3108,7 @@ fn divide_by_alpha(p: &mut [u8; 4]) {
 /// `(c × 255 + a / 2) / a`, at most 255, for every alpha `a` and colour
 /// `c`: the division [`straighten`] makes three times a translucent
 /// pixel, looked up. 64 KB, built the first time a capture holds one.
+#[cfg(not(target_arch = "wasm32"))]
 fn unpremultiply() -> &'static [[u8; 256]; 256] {
     static TABLE: std::sync::OnceLock<Box<[[u8; 256]; 256]>> = std::sync::OnceLock::new();
     TABLE.get_or_init(|| {

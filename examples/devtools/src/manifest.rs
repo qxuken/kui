@@ -1,6 +1,6 @@
 //! The smoke rosters, read from what enrols an example rather than from
 //! a list somebody keeps (ADR 0021, decision 4): a windowed example is an
-//! `[[example]]` of `kui-native`, a headless one is named in its crate's
+//! `[[example]]` of `kui-native` outside `examples/rust/tools/`, a headless one is named in its crate's
 //! `[package.metadata.kui] headless = [...]`, and a Node example is in
 //! `examples/node/package.json`'s `kui.windowed` / `kui.headless`. The
 //! `smoke` binary runs what these answer and the pins in `lib.rs` check
@@ -23,21 +23,36 @@ pub const CRATES: &[&str] = &["kui-native", "kui-core", "kui-ffi", "kui-lua"];
 /// The `[[example]]` names and the `headless = [...]` list of one
 /// manifest.
 pub fn manifest(path: &Path) -> (Vec<String>, Vec<String>) {
+    read_manifest(path, true)
+}
+
+fn read_manifest(path: &Path, include_tools: bool) -> (Vec<String>, Vec<String>) {
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let mut examples = Vec::new();
     let mut headless = Vec::new();
+    let mut example = None;
+    let mut tool = false;
     let mut in_example = false;
     let mut in_metadata = false;
     let mut in_headless = false;
     for line in text.lines() {
         let line = line.trim();
         if line.starts_with('[') {
+            if let Some(name) = example.take()
+                && (include_tools || !tool)
+            {
+                examples.push(name);
+            }
+            tool = false;
             in_example = line == "[[example]]";
             in_metadata = line == "[package.metadata.kui]";
             continue;
         }
         if in_example && let Some(rest) = line.strip_prefix("name = \"") {
-            examples.push(rest.trim_end_matches('"').to_string());
+            example = Some(rest.trim_end_matches('"').to_string());
+        }
+        if in_example && line.starts_with("path = \"../../examples/rust/tools/") {
+            tool = true;
         }
         if in_metadata && line.starts_with("headless = [") {
             in_headless = !line.ends_with(']');
@@ -63,6 +78,11 @@ pub fn manifest(path: &Path) -> (Vec<String>, Vec<String>) {
             }
         }
     }
+    if let Some(name) = example
+        && (include_tools || !tool)
+    {
+        examples.push(name);
+    }
     (examples, headless)
 }
 
@@ -71,12 +91,9 @@ pub fn crate_manifest(krate: &str) -> (Vec<String>, Vec<String>) {
     manifest(&root().join("crates").join(krate).join("Cargo.toml"))
 }
 
-/// The windowed round: every `[[example]]` of `kui-native`, sorted. All of them
-/// open a window; the other crates' examples are the C and Lua panel
-/// hosts (their rounds are `cbuild`'s) and kui-core's corpus
-/// dump, which opens none.
+/// The native windowed examples, excluding command-line tools.
 pub fn windowed() -> Vec<String> {
-    let (mut examples, _) = crate_manifest("kui-native");
+    let (mut examples, _) = read_manifest(&root().join("crates/kui-native/Cargo.toml"), false);
     examples.sort();
     examples
 }

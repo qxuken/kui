@@ -4,6 +4,8 @@
 //! leaves, with the item named — while the container stays no Tab stop
 //! and the items keep their arrows, which a sink on either would take.
 
+mod support;
+
 use kui_core::testing::{key_down, key_up, tab, tags};
 use kui_core::{
     Core, EditKey, Event, EventKind, InputEvent, ItemKey, Key, KeyCode, KeyMods, Mods, NodeSpec,
@@ -289,7 +291,7 @@ fn primary() -> KeyMods {
 /// rows' (Kit's multiple selection). Any other chord still bubbles past.
 #[test]
 fn select_all_is_the_one_chord_an_item_key_hears() {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     let rows = frame(&mut core, true, true, false);
     core.set_focus(Some(rows[1]));
     let mut evs = key_down(&mut core, KeyCode::Char('a'), primary());

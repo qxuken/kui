@@ -249,8 +249,8 @@ impl DynShell<'_> {
         // A popup is a menu surface, and appears as one: at once, and not
         // before its first frame is there to show.
         let cloaked = config.kind == WindowKind::Popup && {
-            crate::menu_popup::appear_at_once(&window);
-            crate::menu_popup::cloak(&window, true)
+            crate::gui::menu_popup::appear_at_once(&window);
+            crate::gui::menu_popup::cloak(&window, true)
         };
         // The Window menu lists windows the user would switch to, and a
         // popup is not one (ADR 0030).
@@ -281,7 +281,7 @@ impl DynShell<'_> {
                 return;
             }
         };
-        let applied = crate::backdrop::apply(&window, &renderer, backdrop);
+        let applied = crate::gui::backdrop::apply(&window, &renderer, backdrop);
         // Before it is shown: AppKit makes a window key on ordering it
         // front and on every press, and asks `canBecomeKeyWindow` first —
         // so a non-activating window answers NO (`macos_key`), and its
@@ -424,7 +424,7 @@ impl DynShell<'_> {
         mut core: Core,
         window: Arc<Window>,
         renderer: kui_wgpu::Renderer,
-        applied: crate::backdrop::Applied,
+        applied: crate::gui::backdrop::Applied,
     ) {
         // macOS is the one platform whose own menu is worth the app's
         // appearance, because it is the one with rows that cannot be drawn
@@ -441,7 +441,7 @@ impl DynShell<'_> {
         // popup of its own, where the platform lets the runner place one
         // (`mod menu_popup`, backlog F210): the runner says where each
         // goes before the core draws it.
-        core.set_menu_popups(crate::menu_popup::places_popups(&window));
+        core.set_menu_popups(crate::gui::menu_popup::places_popups(&window));
         // And the menu *bar*, which is the platform's on macOS and drawn
         // by `widgets::menu_bar` everywhere else (ADR 0018, decision 4).
         #[cfg(target_os = "macos")]
@@ -517,7 +517,7 @@ impl DynShell<'_> {
         if let Some(r) = native_controls {
             core.set_platform_titlebar_h(Some(r.h));
         }
-        let pacer = crate::pacer::Pacer::new(&window, !self.pumped);
+        let pacer = crate::gui::pacer::Pacer::new(&window, !self.pumped);
         self.panes.push(Pane {
             id,
             kind: config.kind,
@@ -528,7 +528,7 @@ impl DynShell<'_> {
             // Read on a thread; the loop is woken when it lands.
             ground: applied.ground.map(|source| {
                 let proxy = self.proxy.clone();
-                crate::ground::Ground::new(crate::ground::spawn(source, move || {
+                crate::gui::ground::Ground::new(crate::gui::ground::spawn(source, move || {
                     if let Some(p) = proxy {
                         let _ = p.send_event(access_bridge::UserEvent::Wake);
                     }
@@ -573,10 +573,10 @@ impl DynShell<'_> {
             os_focused: false,
             appearance,
             handed_back: false,
-            retry: crate::retry::Retry::new(std::time::Instant::now()),
+            retry: crate::gui::retry::Retry::new(std::time::Instant::now()),
             captures: crate::Captures::new(),
             deferred_frame: false,
-            cause: crate::pane::Causes::new(FrameCause::FIRST),
+            cause: crate::gui::pane::Causes::new(FrameCause::FIRST),
             pacer,
             unseen: Default::default(),
             view_state: None,
@@ -614,7 +614,7 @@ impl DynShell<'_> {
             .with_inner_size(LogicalSize::new(w, h))
             .with_visible(false);
         attrs = self.icon.apply(attrs);
-        attrs = crate::backdrop::attrs(attrs, backdrop);
+        attrs = crate::gui::backdrop::attrs(attrs, backdrop);
         match chrome {
             Chrome::Native => {}
             Chrome::Custom => {

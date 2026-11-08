@@ -67,6 +67,7 @@ fn props() -> Json {
     Json::Array(rows.collect())
 }
 
+#[allow(clippy::disallowed_methods)]
 fn main() {
     let custom = schema::CUSTOM.iter().map(|c| {
         json!({

@@ -263,6 +263,7 @@ pub(crate) enum Read {
     Env(EnvFacts),
     /// Text was measured: the same while the fonts are.
     Measure(u64),
+    Svg(u64),
     /// The palette, read whole (`Core::theme`, and so `Ui::theme`, C's
     /// `kui_theme`, the bindings' theme tables) or a role by name through
     /// a token lookup: a colour drawn from it is baked into the spec the
@@ -635,6 +636,7 @@ impl Core {
             Read::EditText(k, _) => ("edit text", Some(*k)),
             Read::Env(_) => ("env", None),
             Read::Measure(_) => ("fonts", None),
+            Read::Svg(_) => ("SVG asset", None),
             Read::Theme(_) => ("theme", None),
             Read::Metrics(_) => ("metrics", None),
             Read::Tokens(_) => ("tokens", None),
@@ -679,6 +681,7 @@ impl Core {
             Read::EditText(k, s) => self.edit.text(*k) == *s,
             Read::Env(f) => env_same(f, &self.env_facts_raw()),
             Read::Measure(rev) => self.text_rev() == *rev,
+            Read::Svg(rev) => self.svgs.revision == *rev,
             Read::Theme(g) => *g == self.theme_gen,
             Read::Metrics(g) => *g == self.metrics_gen,
             Read::Tokens(rev) => *rev == self.tokens_rev,

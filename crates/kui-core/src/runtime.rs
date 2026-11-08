@@ -59,7 +59,7 @@ mod capture_api;
 pub use audit::{PaintAudit, PaintEscape};
 pub use builder::Content;
 pub use replay::FillAnswer;
-pub use svg_node::{SvgOpts, SvgSource};
+pub use svg_node::{SvgAssetRequest, SvgFileResolver, SvgFileUpdate, SvgOpts, SvgSource, SvgStamp};
 pub mod cause;
 mod composites;
 pub mod devtools;
@@ -1433,7 +1433,8 @@ impl Core {
             .unwrap_or(crate::metrics::caption_h(self.platform))
     }
 
-    /// A core with a session of its own — one window, nothing shared.
+    /// A core with a portable session and its own fallback font. A native
+    /// host can use `kui_native::system::new_core` for installed fonts.
     pub fn new() -> Self {
         Self::new_in(&Session::new())
     }
@@ -1445,9 +1446,13 @@ impl Core {
     /// atlas, which `output` hands out beside the list it was drawn for
     /// (ADR 0004 step 1) — is this window's alone.
     pub fn new_in(session: &Session) -> Self {
+        let (platform, perf_host) = {
+            let state = session.state();
+            (state.platform, state.perf_host.clone())
+        };
         let mut core = Self {
             session: session.clone(),
-            text: TextSystem::new(),
+            text: TextSystem::new(crate::text::hints_at(1.0, platform)),
             cells: crate::cells::CellStore::new(),
             atlas: GlyphAtlas::new(),
             resources: SharedResources::new(session),
@@ -1470,11 +1475,14 @@ impl Core {
             tokens: Default::default(),
             exported_tokens: Vec::new(),
             tokens_rev: 0,
-            metrics: crate::metrics::Metrics::default(),
+            metrics: crate::metrics::Metrics {
+                titlebar_h: crate::metrics::caption_h(platform),
+                ..Default::default()
+            },
             metrics_gen: 0,
             platform_titlebar_h: None,
             window_title: None,
-            perf: perf::Recorder::default(),
+            perf: perf::Recorder::with_host(perf_host),
             window_events: None,
             window_events_seen: None,
             window_events_origin: OriginId::HOST,
@@ -1623,7 +1631,7 @@ impl Core {
             press_opened: None,
             rooms: Vec::new(),
             rules_appearance: Vec::new(),
-            platform: crate::rules::Platform::current(),
+            platform,
             composite_rows: FxHashMap::default(),
             items_scratch: Vec::new(),
             ghost_opacity: Vec::new(),

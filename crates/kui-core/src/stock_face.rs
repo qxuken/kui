@@ -2,7 +2,7 @@
 //! the names a font database lists. The test fixtures (`testing`'s
 //! `*_face` functions) are made from it, and so is the last-resort face a
 //! session falls back to on a machine with no font the shaper can read
-//! (`text::SystemFonts::from_db`): text measures and draws as boxes there,
+//! (`text::FontCatalog`): text measures and draws as boxes there,
 //! where cosmic-text found no default font and panicked.
 //! Built here rather than checked in as bytes, so the tables are readable
 //! and the face cannot rot into a blob nobody can regenerate; ~1.5 KB,

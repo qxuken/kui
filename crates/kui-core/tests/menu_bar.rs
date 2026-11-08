@@ -3,6 +3,8 @@
 //! declares, what the drawn bar does with it, and what an app hears from
 //! either path.
 
+mod support;
+
 use kui_core::testing::click;
 use kui_core::{
     BarMenu, Core, EditOptions, InputEvent, Key, MenuBar, MenuItem, MenuRole, NodeSpec, Role, Size,
@@ -97,7 +99,7 @@ fn a_declaration_is_sticky_and_diffed() {
 
 #[test]
 fn an_accelerator_is_normalized_into_the_platforms_spelling() {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     frame(&mut core);
     let accel = core.menu_bar().unwrap().item(0, 0).unwrap().accel.clone();
     let expected = if cfg!(target_os = "macos") {
@@ -498,7 +500,7 @@ fn an_open_bar_over_the_app_is_no_modal_behind_content() {
 /// C98): ⌘N with File open chooses New, posts its payload and closes.
 #[test]
 fn an_accelerator_chooses_its_row_while_the_bars_menu_is_open() {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     frame(&mut core);
     let file = center(&mut core, Role::MenuItem, "File");
     click(&mut core, file);

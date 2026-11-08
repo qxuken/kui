@@ -4,6 +4,8 @@
 //! caret, the hit test and the measurement read the same glyphs and byte
 //! positions stay exact across the change.
 
+mod support;
+
 use kui_core::text::Span;
 use kui_core::{Core, FontFamily, Key, NodeSpec, Size, TextStyle, Vec2};
 
@@ -22,7 +24,7 @@ fn draw(core: &mut Core, spans: &[Span<'_>]) -> Key {
 
 #[test]
 fn a_mono_span_is_measured_in_the_monospace_face() {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     let text = "iiiiii";
     let as_sans = core.measure_rich_text(&[Span::new(text)], &sans(), None);
     let as_mono = core.measure_rich_text(&[Span::new(text).mono()], &sans(), None);

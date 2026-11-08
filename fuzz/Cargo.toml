@@ -20,11 +20,8 @@ cargo-fuzz = true
 # C++ or links a binary without a `main`.
 [dependencies]
 kui-core = { workspace = true, features = ["conformance"] }
-# The image decoder and encoder (`kui_native::decode_image`,
-# `encode_image`); the rest of the runner is
-# compiled but never called. No audio, dialogs or AccessKit: nothing here
-# opens a device.
-kui-native = { workspace = true, default-features = false }
+# The image decoder and encoder (`kui_native::decode_image`, `encode_image`).
+kui-native = { workspace = true, features = ["image-codecs"] }
 # The recording's reader, its analyses and adapters (the `trace` target).
 kui-trace.workspace = true
 arbitrary = { version = "1", features = ["derive"] }

@@ -2,6 +2,8 @@
 //! decision 5): what the core draws when one is open, what choosing a row
 //! does, and what an app hears about either.
 
+mod support;
+
 use kui_core::testing::click;
 use kui_core::{
     Core, InputEvent, Key, Menu, MenuAction, MenuItem, MenuRole, MouseButton, NodeSpec, Size,
@@ -338,7 +340,7 @@ fn a_portable_accelerator_reads_as_the_platform_writes_it() {
 
     // And what a host showing the menu itself reads back is the same
     // string, so the drawn menu and an `NSMenu` agree.
-    let mut core = Core::new();
+    let mut core = support::desktop();
     let scope = frame(&mut core);
     core.open_menu(Menu::new(
         scope,
@@ -991,7 +993,8 @@ fn glyphs_on(core: &mut Core, row: kui_core::Rect) -> Vec<kui_core::Rect> {
 /// (backlog RG154).
 #[test]
 fn a_menu_narrower_than_its_accelerator_keeps_some_label() {
-    let mut core = Core::new();
+    let mut core = support::fonts();
+    core.set_platform(kui_core::Platform::current());
     let size = Size::new(240.0, 300.0);
     let scope = frame_in(&mut core, size);
     let label = "Move the note to the trash";
@@ -1114,7 +1117,7 @@ fn mod_key(c: char) -> kui_core::KeyPress {
 /// Actions menu ignored ⌘C on its Copy link row and stayed open.
 #[test]
 fn a_rows_accelerator_chooses_it_while_the_menu_is_open() {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     let scope = frame(&mut core);
     let rows = vec![
         MenuItem::new("Copy link")
@@ -1162,7 +1165,7 @@ fn a_rows_accelerator_chooses_it_while_the_menu_is_open() {
 /// copies, as its Copy row would.
 #[test]
 fn a_standard_rows_own_accelerator_performs_its_role() {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     let scope = frame(&mut core);
     core.select_all_in(scope);
     core.open_menu(Menu::new(scope, Vec2::new(40.0, 30.0), items()));

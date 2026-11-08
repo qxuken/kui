@@ -401,7 +401,7 @@ impl Pacer {
         &mut self,
         renderer: Option<&kui_wgpu::Renderer>,
         window: &std::sync::Arc<winit::window::Window>,
-        proxy: Option<&winit::event_loop::EventLoopProxy<crate::access_bridge::UserEvent>>,
+        proxy: Option<&winit::event_loop::EventLoopProxy<crate::gui::access_bridge::UserEvent>>,
     ) {
         if self.acquire.is_none()
             && self.link.is_some()

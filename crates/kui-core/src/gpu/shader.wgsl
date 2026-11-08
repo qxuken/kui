@@ -251,19 +251,21 @@ fn shade(in: VsOut) -> Shaded {
         }
     }
 
+    // Atlas and image textures have one mip level. Sample it explicitly
+    // because the quad-kind branches need not have uniform control flow.
     if kind == 1u {
         // Alpha-mask glyph tinted by color.
-        let a = textureSample(atlas_tex, atlas_smp, in.uv).a;
+        let a = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0).a;
         return Shaded(in.color.rgb, vec3<f32>(in.color.a * a * inside));
     }
     if kind == 2u {
         // Color bitmap glyph (emoji).
-        let t = textureSample(atlas_tex, atlas_smp, in.uv);
+        let t = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0);
         return Shaded(t.rgb, vec3<f32>(t.a * in.color.a * inside));
     }
     if kind == 4u {
         // LCD subpixel glyph: the atlas holds one coverage per channel.
-        let t = textureSample(atlas_tex, atlas_smp, in.uv);
+        let t = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0);
         return Shaded(in.color.rgb, t.rgb * in.color.a * inside);
     }
 
@@ -325,11 +327,9 @@ fn shade(in: VsOut) -> Shaded {
     let coverage = box_coverage(in.local, in.size, in.radii, d);
 
     if kind == 3u {
-        // Registered image tinted by color (white = as-is). Both samplers
-        // are read so sampling stays in uniform control flow; the flag
-        // picks one.
-        let lin = textureSample(atlas_tex, atlas_smp, in.uv);
-        let near = textureSample(atlas_tex, nearest_smp, in.uv);
+        // Registered image tinted by color (white = as-is).
+        let lin = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0);
+        let near = textureSampleLevel(atlas_tex, nearest_smp, in.uv, 0.0);
         let t = select(lin, near, in.params.y > 0.5);
         return Shaded(t.rgb * in.color.rgb, vec3<f32>(t.a * in.color.a * coverage * inside));
     }

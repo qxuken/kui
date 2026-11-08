@@ -97,7 +97,7 @@ pub struct Drive<C: BorrowMut<Core> = Core> {
     drawn: u64,
     /// The size frames were last drawn at, which a hidden one lays out
     /// at, as the runner's does (`mod unseen`).
-    unseen: crate::unseen::Unseen,
+    unseen: crate::gui::unseen::Unseen,
 }
 
 impl<C: BorrowMut<Core>> Drive<C> {

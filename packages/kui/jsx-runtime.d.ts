@@ -273,7 +273,7 @@ export interface WhenConditions {
   light?: boolean;
   reducedMotion?: boolean;
   contrast?: 'more' | 'normal';
-  platform?: 'macos' | 'windows' | 'linux' | ('macos' | 'windows' | 'linux')[];
+  platform?: 'macos' | 'windows' | 'linux' | 'other' | ('macos' | 'windows' | 'linux' | 'other')[];
   scale?: RangeProp;
   hovered?: boolean;
   pressed?: boolean;

@@ -4,6 +4,8 @@
 //! is the layout a click was made against, so a custom editor needs neither
 //! prefix measurement nor a cell-width assumption.
 
+mod support;
+
 use kui_core::{Color, Core, Key, NodeSpec, Size, Sizing, Span, TextHit, TextStyle, Vec2};
 
 const LH: f32 = 20.0;
@@ -161,7 +163,7 @@ fn only_drawn_text_nodes_answer() {
 /// the runs in order, the way the access tree reads the line.
 #[test]
 fn a_line_of_runs_answers_by_the_row_key() {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let line = ui.with_keyed("line", NodeSpec::row(), |ui| {

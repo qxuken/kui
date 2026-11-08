@@ -1,5 +1,5 @@
 //! The runner's image encoder (ADR 0054, decision 7): straight RGBA — a
-//! [`crate::capture`], a decoded image — out as a file's bytes, through
+//! `capture`, a decoded image — out as a file's bytes, through
 //! the crates the decoder already links, so a test or a probe keeps what
 //! it saw with no encoder of its own.
 //!
@@ -43,7 +43,7 @@ pub enum AnimationEncoding {
 }
 
 /// Encodes straight RGBA — `width` by `height` pixels, four bytes each,
-/// row by row from the top left, what [`crate::capture`] and
+/// row by row from the top left, what `capture` and
 /// [`crate::decode_image`] hand out — as `format`. Fails, saying why, for
 /// a degenerate size, pixels that are not that size, or a GIF past 65535
 /// pixels a side.
@@ -111,7 +111,7 @@ pub fn encode_image(
 /// back to clear only on a cleared canvas (backlog FZ12). A recording of
 /// an opaque window never pays it.
 ///
-/// A headless recording is exact: frame, [`crate::capture`], `add` it for
+/// A headless recording is exact: frame, `capture`, `add` it for
 /// the step, move the clock by the step, again.
 pub struct AnimationEncoder {
     format: AnimationEncoding,

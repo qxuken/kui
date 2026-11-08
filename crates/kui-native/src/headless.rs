@@ -183,8 +183,8 @@ impl HeadlessInput {
     /// What the OS would say of the window (`env.window`): maximized, in
     /// fullscreen, above every other window, the controls it draws over
     /// the content. Kept until told again; the id stays the main
-    /// window's. The runner starts from the one its launcher makes (see
-    /// the [module docs](self)), so a host that changes one field reads
+    /// window's. The runner starts from the one its launcher makes, so a
+    /// host that changes one field reads
     /// [`HeadlessRunner::window`] and sends it back changed.
     pub fn window(&self, env: WindowEnv) {
         self.0.ask(Ask::Window(env));
@@ -243,8 +243,7 @@ struct Headless<A: App + ?Sized> {
 
 type DynHeadless<'a> = Headless<dyn App + 'a>;
 
-/// An app running with no window; see the [module docs](self). Made by
-/// [`Launcher::open_headless`].
+/// An app running with no window, opened by [`Launcher::open_headless`].
 ///
 /// A host either hands it the thread ([`run`](Self::run), until the main
 /// window's close or [`HeadlessInput::close`]) or turns it itself
@@ -278,7 +277,7 @@ impl Launcher {
     /// and its pinned platform ([`Launcher::platform`]) as it would to no
     /// window; its title, icon, size bounds and backdrop have nothing to
     /// apply to, and `KUI_DEVTOOLS` does not open the panel.
-    /// [`App::setup`] runs now, with a [`Waker`] for this runner.
+    /// [`App::setup`] runs now, with a [`Waker`](crate::Waker) for this runner.
     pub fn open_headless<A: App>(
         mut self,
         app: A,
@@ -416,7 +415,7 @@ impl<A: App> HeadlessRunner<A> {
         HeadlessInput(self.inner.signal.clone())
     }
 
-    /// A [`Waker`] for this runner, as [`App::setup`] was given.
+    /// A [`Waker`](crate::Waker) for this runner, as [`App::setup`] was given.
     pub fn waker(&self) -> crate::Waker {
         crate::Waker::headless(self.inner.signal.clone())
     }
@@ -530,13 +529,14 @@ impl DynHeadless<'_> {
                 .map(|d| d.saturating_duration_since(Instant::now()).as_secs_f64() * 1e3);
             self.core.note_loop(kui_core::LoopNote::Sleep { for_ms });
         }
+        let _ = self.core.perf_drain();
         alive
     }
 
     fn turn_inner(&mut self, inbox: Inbox) -> bool {
         if inbox.woken {
             // A named waker's wake reads by its name (ADR 0058, decision 8).
-            for name in crate::take_wake_names() {
+            for name in crate::gui::take_wake_names() {
                 self.core.note_wake(&name);
             }
             self.app.on_wake();

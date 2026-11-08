@@ -6,6 +6,8 @@
 //! do (C98). An editor inside the float keeps its chords, and a modal that
 //! is not a menu stays.
 
+mod support;
+
 use kui_core::{
     Core, EditOptions, EventKind, Key, KeyCode, KeyMods, NodeSpec, Role, Size, UiEvent, Value,
     testing,
@@ -69,7 +71,7 @@ fn dismissed(out: &[UiEvent]) -> Option<String> {
 
 /// The field focused, then the float opened over it, focus inside.
 fn opened(role: Role, filter: bool) -> Core {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     frame(&mut core, false, role, filter);
     core.set_focus(Some(field()));
     frame(&mut core, false, role, filter);

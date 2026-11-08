@@ -2,6 +2,8 @@
 //! stale handles falling back to sans, shaping through `TextStyle::font`,
 //! and what the font database says each family is.
 
+#![allow(clippy::disallowed_methods)]
+
 use kui_core::{Core, NodeSpec, Size, TextStyle};
 
 fn glyph_quads(core: &mut Core, style: TextStyle) -> usize {
@@ -13,6 +15,45 @@ fn glyph_quads(core: &mut Core, style: TextStyle) -> usize {
         .iter()
         .filter(|q| q.kind != kui_core::QuadKind::Solid)
         .count()
+}
+
+fn with_path_loader() -> Core {
+    use cosmic_text::fontdb::{Database, FaceInfo};
+    use kui_core::text::{FontCatalog, FontLoader};
+    use std::{path::Path, rc::Rc, sync::Arc};
+
+    struct Loader;
+    impl FontLoader for Loader {
+        fn file(&self, path: &Path) -> Vec<FaceInfo> {
+            let mut db = Database::new();
+            if let Ok(data) = std::fs::read(path) {
+                db.load_font_data(data);
+            }
+            db.faces().cloned().collect()
+        }
+
+        fn directory(&self, path: &Path) -> Vec<FaceInfo> {
+            std::fs::read_dir(path)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .flat_map(|entry| self.file(&entry.path()))
+                .collect()
+        }
+
+        fn reload(&self) -> Arc<FontCatalog> {
+            Arc::new(FontCatalog::from_database(
+                "en-US".into(),
+                Database::new(),
+                [&[]; 3],
+                None,
+            ))
+        }
+    }
+
+    let core = Core::new();
+    core.session().set_font_loader(Rc::new(Loader));
+    core
 }
 
 #[test]
@@ -63,7 +104,7 @@ fn font_file_bytes_register_and_garbage_is_rejected() {
 
 #[test]
 fn font_folders_and_files_load_by_path_and_names_resolve_idempotently() {
-    let mut core = Core::new();
+    let mut core = with_path_loader();
     assert!(core.load_font_file("/no/such/font.ttf").is_none());
     assert_eq!(core.load_fonts_dir("/no/such/dir"), 0);
     // A private folder with one font in it, the "bundled fonts/ dir" case:
@@ -78,7 +119,7 @@ fn font_folders_and_files_load_by_path_and_names_resolve_idempotently() {
     let family = core.font_family(by_file).unwrap().to_string();
     assert!(glyph_quads(&mut core, TextStyle::new(20.0).font(by_file)) > 0);
 
-    let mut fresh = Core::new();
+    let mut fresh = with_path_loader();
     assert!(fresh.load_fonts_dir(&dir) >= 1);
     let a = fresh
         .add_system_font(&family)
@@ -174,7 +215,7 @@ fn system_fonts_say_what_each_family_is() {
 #[test]
 fn a_face_whose_advances_cannot_be_measured_is_refused() {
     use kui_core::testing::{han_face, unmeasurable_face};
-    let mut core = Core::new();
+    let mut core = with_path_loader();
     assert!(
         core.add_font_data(unmeasurable_face("Kui F98 Bitmap"))
             .is_none(),

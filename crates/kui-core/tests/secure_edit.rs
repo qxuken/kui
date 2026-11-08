@@ -7,6 +7,8 @@
 //! editor's, and a "show password" toggle is the same editor declared
 //! without `secure`.
 
+mod support;
+
 use kui_core::{
     ClipboardMarks, Core, EditKey, EditOptions, EventKind, InputEvent, Key, Mods, NodeSpec,
     QuadKind, Role, SECURE_BULLET, Size, Value,
@@ -75,7 +77,7 @@ const SECRET: &str = "pa\u{301}ss w0rd";
 
 #[test]
 fn the_text_is_drawn_as_a_bullet_per_grapheme_and_read_back_whole() {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     let key = frame(&mut core, SECRET, true);
     frame(&mut core, SECRET, true);
     assert_eq!(core.edit_text(key).as_deref(), Some(SECRET));
@@ -90,7 +92,7 @@ fn the_text_is_drawn_as_a_bullet_per_grapheme_and_read_back_whole() {
     assert_eq!(runs, bullets(9));
     assert!(!format!("{node:?}").contains("w0rd"), "{node:?}");
     // Measured as the bullets: as wide as a plain field holding them.
-    let mut plain = Core::new();
+    let mut plain = support::fonts();
     let other = frame(&mut plain, &bullets(9), false);
     frame(&mut plain, &bullets(9), false);
     assert_eq!(

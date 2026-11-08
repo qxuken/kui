@@ -63,7 +63,7 @@ pub(crate) struct SessionState {
     /// The scan of the system's fonts `fonts` holds the faces of, so a
     /// newer scan can be applied as what came and went since
     /// (`Core::reload_system_fonts`).
-    pub(crate) system: std::sync::Arc<crate::text::SystemFonts>,
+    pub(crate) system: std::sync::Arc<crate::text::FontCatalog>,
     /// Bumped by every rescan of the system's fonts that changed this
     /// session's (`apply_system_fonts`) — not by a font the app loads —
     /// so each window can report it as one `fonts` event.
@@ -77,11 +77,11 @@ pub(crate) struct SessionState {
     /// under it — a face of it loaded or removed — so each `Core`
     /// drops the text it shaped at the old ones.
     pub(crate) weights_rev: u64,
-    /// Whether the database's file-backed faces have been mapped once and
-    /// shared (`share_faces`): done on the first family an
-    /// app names, so an app that only ever shapes the stock families never
-    /// pays for it.
-    pub(crate) faces_shared: bool,
+    pub(crate) platform: crate::rules::Platform,
+    pub(crate) perf_host: crate::perf::PerfHost,
+    pub(crate) svg_resolver: Option<crate::SvgFileResolver>,
+    pub(crate) font_loader: Option<Rc<dyn crate::text::FontLoader>>,
+    pub(crate) system_face_ids: rustc_hash::FxHashSet<cosmic_text::fontdb::ID>,
     /// Bumped by every image removal, so a `Core` can tell whether its
     /// atlas still holds a slot for an image the registry no longer has.
     /// The atlas is per window, so every core re-checks its own.
@@ -101,12 +101,13 @@ pub(crate) struct SessionState {
 }
 
 impl SessionState {
-    fn new() -> Self {
-        let (fonts, system) = crate::text::new_font_system();
-        Self::with_fonts(fonts, system)
-    }
-
-    fn with_fonts(fonts: FontSystem, system: Arc<crate::text::SystemFonts>) -> Self {
+    fn with_fonts(fonts: FontSystem, system: Arc<crate::text::FontCatalog>) -> Self {
+        let system_face_ids = system
+            .db
+            .faces()
+            .filter(|face| matches!(face.source, cosmic_text::fontdb::Source::SharedFile(..)))
+            .map(|face| face.id)
+            .collect();
         let id = SessionId::next();
         Self {
             id,
@@ -117,7 +118,11 @@ impl SessionState {
             audio: AudioStore::default(),
             fonts_rev: 0,
             weights_rev: 0,
-            faces_shared: false,
+            font_loader: None,
+            svg_resolver: None,
+            perf_host: Default::default(),
+            platform: crate::rules::Platform::Other,
+            system_face_ids,
             images_rev: 0,
             dropped: Dropped::default(),
             windows: WindowRegistry::new(),
@@ -496,8 +501,9 @@ struct UnionEntry {
 pub struct Session(Rc<RefCell<SessionState>>);
 
 impl Session {
+    /// Starts a portable session with a fallback face and no host adapters.
     pub fn new() -> Self {
-        Self(Rc::new(RefCell::new(SessionState::new())))
+        Self::with_font_catalog(crate::text::FontCatalog::portable())
     }
 
     /// A session using only the supplied font files, without scanning the OS.
@@ -508,11 +514,48 @@ impl Session {
         for bytes in files {
             db.load_font_data(bytes);
         }
-        let system = Arc::new(crate::text::SystemFonts::from_db(locale.into(), db));
-        let fonts = crate::text::font_system_over(locale.into(), system.db.clone(), &[]);
+        Self::with_font_catalog(Arc::new(crate::text::FontCatalog::from_db(
+            locale.into(),
+            db,
+        )))
+    }
+
+    /// Creates a session from a host's prepared font catalog.
+    pub fn with_font_catalog(catalog: Arc<crate::text::FontCatalog>) -> Self {
+        let fonts = crate::text::font_system_over(
+            catalog.locale.clone(),
+            catalog.db.clone(),
+            &[],
+            catalog.fallback.clone(),
+        );
         Self(Rc::new(RefCell::new(SessionState::with_fonts(
-            fonts, system,
+            fonts, catalog,
         ))))
+    }
+
+    /// Sets the interaction and visual conventions of subsequently created cores.
+    pub fn set_platform(&self, platform: crate::rules::Platform) {
+        self.state().platform = platform;
+    }
+
+    /// Supplies recording capabilities to subsequently created cores.
+    pub fn set_perf_host(&self, host: crate::perf::PerfHost) {
+        self.state().perf_host = host;
+    }
+
+    /// Installs the native compatibility resolver for SVG paths.
+    pub fn set_svg_file_resolver(&self, resolver: crate::SvgFileResolver) {
+        self.state().svg_resolver = Some(resolver);
+    }
+
+    /// Provides a native default while keeping a resolver the host already set.
+    pub fn supply_svg_file_resolver(&self, resolver: crate::SvgFileResolver) {
+        self.state().svg_resolver.get_or_insert(resolver);
+    }
+
+    /// Installs compatibility for the synchronous font path methods.
+    pub fn set_font_loader(&self, loader: Rc<dyn crate::text::FontLoader>) {
+        self.state().font_loader = Some(loader);
     }
 
     /// The name the window `id` was declared under, while the session

@@ -7,6 +7,7 @@ members = [
     "crates/kui-derive",
     "crates/kui-trace",
     "crates/kui-wgpu",
+    "crates/kui-web",
     "crates/kui-native",
     # The platform accessibility bridge, shared by the runner and a host's
     # own window (backlog F269).
@@ -29,7 +30,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.78"
 edition = "2024"
 license = "MIT"
 # `homepage` is the book (docs/book), which is what a reader arriving from
@@ -47,9 +48,10 @@ kui-value = { path = "crates/kui-value", version = "0.1.0-alpha.79" }
 kui-channel = { path = "crates/kui-channel", version = "0.1.0-alpha.79" }
 kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.79" }
 kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.79" }
-kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.79" }
+kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.79", default-features = false }
 kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.79" }
-kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.79" }
+# Each host chooses between the system adapter and the full runner.
+kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.79", default-features = false }
 # `default-features = false` so the runner takes the translation alone and
 # nothing it brings its own of (`accesskit_winit`); kui-ffi asks for the
 # host's bridge with the `platform` feature.
@@ -66,7 +68,7 @@ kui-addon-schema = { path = "crates/kui-addon-schema" }
 
 slotmap = "1.1.1"
 rustc-hash = "2"
-cosmic-text = { version = "0.19", features = ["shape-run-cache"] }
+cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash", "shape-run-cache"] }
 # Same major cosmic-text builds on: `Font::as_swash()` hands us its FontRef.
 swash = "0.2"
 wgpu = "30"

@@ -342,12 +342,11 @@ pub(crate) struct Facts {
 /// written out.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum CaptureAsk {
-    Still(String),
-    Record(String),
+    Still,
+    Record,
     Stop,
-    /// The recording, as a `.kuitrace` at this path; then opened in
-    /// kui-perf when asked (`true`).
-    Trace(String, bool),
+    /// The recording, optionally opened by the host after saving.
+    Trace(bool),
     /// What has been kept dropped: clear.
     Clear,
 }
@@ -669,9 +668,7 @@ impl Default for State {
             facts: Facts::default(),
             nodes: Vec::new(),
             frames: 0,
-            smoke_frames: std::env::var("KUI_SMOKE_FRAMES")
-                .ok()
-                .and_then(|s| s.parse().ok()),
+            smoke_frames: None,
             warnings_seen: 0,
             legend: Vec::new(),
             inspect_key: DEFAULT_INSPECT_KEY,
@@ -945,28 +942,14 @@ impl State {
                 self.perf.asks.push(CaptureAsk::Clear);
             }
             "perf-range-clear" => self.perf.range = None,
-            "perf-save" => {
-                let path = capture_path("kuitrace");
-                self.perf.asks.push(CaptureAsk::Trace(path, false));
-            }
-            "perf-inspect" => {
-                let path = capture_path("kuitrace");
-                self.perf.asks.push(CaptureAsk::Trace(path, true));
-            }
-            "screenshot" => {
-                let path = capture_path("png");
-                self.note(format!("screenshot: saving {path}"));
-                self.perf.saved = Saved::asked(&path, "screenshot");
-                self.perf.asks.push(CaptureAsk::Still(path));
-            }
+            "perf-save" => self.perf.asks.push(CaptureAsk::Trace(false)),
+            "perf-inspect" => self.perf.asks.push(CaptureAsk::Trace(true)),
+            "screenshot" => self.perf.asks.push(CaptureAsk::Still),
             "screen-record" => {
                 if self.perf.screen_recording {
                     self.perf.asks.push(CaptureAsk::Stop);
                 } else {
-                    let path = capture_path("gif");
-                    self.note(format!("screen recording: {path}, until it is stopped"));
-                    self.perf.saved = Saved::asked(&path, "screen recording");
-                    self.perf.asks.push(CaptureAsk::Record(path));
+                    self.perf.asks.push(CaptureAsk::Record);
                 }
                 self.perf.screen_recording = !self.perf.screen_recording;
             }
@@ -1120,60 +1103,6 @@ impl State {
             self.custom = Some(t.name.clone());
         }
     }
-}
-
-#[cfg(test)]
-thread_local! {
-    // Where a test's captures go: never the desktop of whoever runs it.
-    pub(crate) static TEST_CAPTURE_DIR: std::cell::RefCell<Option<std::path::PathBuf>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-/// Where a capture the panel asks for is written: `KUI_CAPTURE_DIR`, else
-/// the desktop when there is one, else the system's temporary directory —
-/// named for the moment, `kui-2026-10-24-221530.png`.
-fn capture_path(ext: &str) -> String {
-    #[cfg(test)]
-    let test_dir = TEST_CAPTURE_DIR.with_borrow(Clone::clone);
-    #[cfg(not(test))]
-    let test_dir: Option<std::path::PathBuf> = None;
-    let dir = test_dir
-        .or_else(|| std::env::var_os("KUI_CAPTURE_DIR").map(std::path::PathBuf::from))
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .or_else(|| std::env::var_os("USERPROFILE"))
-                .map(|h| std::path::PathBuf::from(h).join("Desktop"))
-                .filter(|d| d.is_dir())
-        })
-        .unwrap_or_else(std::env::temp_dir);
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    dir.join(format!("kui-{}.{ext}", utc_stamp(secs)))
-        .to_string_lossy()
-        .into_owned()
-}
-
-/// `secs` since the epoch as `YYYY-MM-DD-HHMMSS`, UTC (Howard Hinnant's
-/// civil-from-days).
-fn utc_stamp(secs: u64) -> String {
-    let days = (secs / 86_400) as i64;
-    let rem = secs % 86_400;
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    format!(
-        "{y:04}-{m:02}-{d:02}-{:02}{:02}{:02}",
-        rem / 3600,
-        rem / 60 % 60,
-        rem % 60
-    )
 }
 
 fn parse_key(hex: &str) -> Option<Key> {
@@ -1457,13 +1386,18 @@ impl Core {
     /// for a program that was never told about the panel — and what a
     /// headless core never reads, so a variable left exported cannot put
     /// a dock into a test's tree.
-    pub fn devtools_from_env(&mut self) -> bool {
-        let asked = State::from_var(std::env::var("KUI_DEVTOOLS").ok().as_deref());
+    pub fn devtools_from_setting(&mut self, setting: Option<&str>) -> bool {
+        let asked = State::from_var(setting);
         if asked.on {
             self.set_devtools(true);
             self.set_devtools_dock(asked.dock);
         }
         asked.on
+    }
+
+    /// Sets the progress target shown by the devtools in a native smoke run.
+    pub fn set_devtools_smoke_frames(&mut self, frames: Option<u64>) {
+        self.session.state().devtools.smoke_frames = frames;
     }
 
     /// Whether the panel is on.
@@ -2129,6 +2063,52 @@ impl Core {
         if d.on { d.selected } else { None }
     }
 
+    /// Tells the devtools where the host will write its capture and
+    /// returns the message the driver passes to `captured`.
+    pub fn devtools_capture_started(&mut self, path: &str, recording: bool) -> Value {
+        let mut s = self.session.state();
+        let what = if recording {
+            "screen recording"
+        } else {
+            "screenshot"
+        };
+        s.devtools.note(format!("{what}: saving {path}"));
+        s.devtools.perf.saved = Saved::asked(path, what);
+        s.devtools.perf.awaiting += 1;
+        action("captured")
+    }
+
+    /// Applies the outcome of a trace export. The inspector opens only
+    /// after the host confirms that the trace was written.
+    pub fn devtools_trace_exported(
+        &mut self,
+        path: String,
+        inspect: bool,
+        result: Result<(), String>,
+    ) {
+        let note = match &result {
+            Ok(()) if inspect => {
+                self.menu_actions
+                    .push(crate::menu::MenuAction::OpenRecording { path: path.clone() });
+                format!("trace saved, opening in kui-perf: {path}")
+            }
+            Ok(()) => format!("trace saved: {path}"),
+            Err(e) => format!("trace not saved: {path}: {e}"),
+        };
+        {
+            let mut s = self.session.state();
+            s.devtools.note(note);
+            s.devtools.perf.saved = Some(Saved {
+                what: "trace",
+                pending: false,
+                error: result.err(),
+                path,
+            });
+        }
+        self.request_frame();
+        self.devtools_redraw_others();
+    }
+
     /// Whether a `capture` answer with `message` is one the panel asked
     /// for: its marker, while one of its captures is unanswered. An app's
     /// message that happens to spell the same map is the app's whenever
@@ -2176,49 +2156,28 @@ impl Core {
             self.set_perf_recording(on);
         }
         for ask in asks {
-            let marker = Some(action("captured"));
-            match ask {
-                CaptureAsk::Still(path) => {
-                    self.session.state().devtools.perf.awaiting += 1;
-                    self.capture_to(path, marker);
+            use crate::{CaptureCommand, DevtoolsCapture};
+            let command = match ask {
+                CaptureAsk::Still => DevtoolsCapture::Screenshot,
+                CaptureAsk::Record => DevtoolsCapture::Recording,
+                CaptureAsk::Stop => {
+                    self.stop_recording();
+                    continue;
                 }
-                CaptureAsk::Record(path) => {
-                    self.session.state().devtools.perf.awaiting += 1;
-                    self.record_to(path, marker);
+                CaptureAsk::Clear => {
+                    self.perf_clear_kept();
+                    continue;
                 }
-                CaptureAsk::Stop => self.stop_recording(),
-                CaptureAsk::Clear => self.perf_clear_kept(),
-                CaptureAsk::Trace(path, inspect) => {
-                    // The recording the tab shows, not what has been kept
-                    // since.
+                CaptureAsk::Trace(inspect) => {
                     let bytes = match &view {
                         Some(v) => v.trace.to_bytes(),
                         None => self.perf_trace(),
                     };
-                    let written = std::fs::write(&path, bytes);
-                    let note = match &written {
-                        Ok(()) if inspect => {
-                            // The core starts no process: the runner opens
-                            // it (backlog F253).
-                            self.menu_actions
-                                .push(crate::menu::MenuAction::OpenRecording {
-                                    path: path.clone(),
-                                });
-                            format!("trace saved, opening in kui-perf: {path}")
-                        }
-                        Ok(()) => format!("trace saved: {path}"),
-                        Err(e) => format!("trace not saved: {path}: {e}"),
-                    };
-                    let mut s = self.session.state();
-                    s.devtools.note(note);
-                    s.devtools.perf.saved = Some(Saved {
-                        what: "trace",
-                        pending: false,
-                        error: written.err().map(|e| e.to_string()),
-                        path,
-                    });
+                    DevtoolsCapture::Trace { bytes, inspect }
                 }
-            }
+            };
+            self.capture_commands
+                .push(CaptureCommand::Devtools(command));
         }
         let now = self.perf_recording();
         // The recent frames, kept while the tab shows its live view in
@@ -2549,6 +2508,7 @@ impl Core {
                     Some("own-window") => {
                         closed |= data.and_then(|d| d.get_str("phase")) == Some("closed");
                     }
+                    #[cfg(feature = "devtools")]
                     Some("perf-drag") => {
                         // A drag across the timeline's bars: the build
                         // turns it into a range of frames.

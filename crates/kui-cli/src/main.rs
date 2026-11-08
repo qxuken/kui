@@ -106,7 +106,7 @@ run options:
   --time MS      with --export, pin the snapshot clock (default 0)
   --appearance light|dark
                  pin the light or dark appearance over the OS's (headless has none of its own)
-  --platform macos|windows|linux
+  --platform macos|windows|linux|other
                  with --headless or --shot, draw as that platform does: its shortcut labels
                  and keys, and under custom chrome its titlebar (a Mac's traffic lights)
   -- ARGS        what follows is the app's, in kui.args
@@ -264,7 +264,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
                     it.next()
                         .as_deref()
                         .and_then(kui_native::Platform::parse)
-                        .ok_or("--platform needs macos, windows or linux")?,
+                        .ok_or("--platform needs macos, windows, linux or other")?,
                 );
             }
             "--scale" => {

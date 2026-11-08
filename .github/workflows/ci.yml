@@ -158,6 +158,16 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Native system adapter without the runner
+        run: cargo check --locked -p kui-native --no-default-features --lib
+
+      - name: Portable core
+        run: |
+          CLIPPY_CONF_DIR="$PWD/crates/kui-core" cargo clippy --locked -p kui-core --lib -- -D clippy::disallowed_methods
+          rustup target add wasm32-unknown-unknown
+          cargo check --locked -p kui-core --no-default-features --target wasm32-unknown-unknown --lib
+          nu scripts/portable-core-smoke.nu
+
       # Covers the Rust and Lua adapters over the scene corpus
       # (crates/kui-core/src/conformance.rs): kui-core asserts the scenes
       # against their checked-in expectations and that they still cover
@@ -184,7 +194,7 @@ jobs:
       # The C, Odin and Node adapters below diff their own scenes against it.
       - name: Conformance reference report
         run: |
-          cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+          cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt
           echo "KUI_CONFORMANCE=$(pwd)/target/conformance.txt" >> "$GITHUB_ENV"
 
       # A wgpu-native release, unpacked where cbuild looks first

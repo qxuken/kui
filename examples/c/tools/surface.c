@@ -2171,7 +2171,7 @@ static int surface(void) {
  * report, and rebuilt here through the C API alone. The two reports have
  * to be the same bytes.
  *
- *     cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+ *     cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt
  *     ./target/debug/counter --conformance target/conformance.txt
  *
  * The report format is documented on `conformance::report`; it carries no

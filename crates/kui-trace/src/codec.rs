@@ -325,6 +325,11 @@ impl<W: Write> Writer<W> {
         self.out.flush()
     }
 
+    /// Access the output adapter without flushing the encoder.
+    pub fn output_mut(&mut self) -> &mut W {
+        &mut self.out
+    }
+
     pub fn into_inner(self) -> W {
         self.out
     }

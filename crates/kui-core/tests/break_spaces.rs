@@ -6,6 +6,8 @@
 //! the dot, then on the next row, as cosmic-text's `Word` hung the first
 //! space and dropped the next two.
 
+mod support;
+
 use kui_core::{
     Align, Color, Core, Key, NodeSpec, QuadKind, Rect, Role, Size, Sizing, Span, TextHit,
     TextStyle, TextWrap, Ui, Vec2,
@@ -255,7 +257,7 @@ fn a_word_at_a_chunk_edge_starts_its_row() {
     // Ten cells a row, and "aaaaaaaaa " fills one exactly: 4.5 KB is five
     // chunks (a line under 4 KB is one since RG75), each after the first
     // starting its first word after a row the chunk before filled.
-    let mut core = Core::new();
+    let mut core = support::fonts();
     let w = cell(&mut core);
     let text = "aaaaaaaaa ".repeat(450);
     for _ in 0..2 {

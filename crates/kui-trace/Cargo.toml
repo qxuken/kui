@@ -20,9 +20,12 @@ kui-channel = { workspace = true, optional = true, features = ["lua"] }
 kui-value = { workspace = true, optional = true }
 
 [features]
+default = ["file"]
+file = []
 value = ["dep:kui-value"]
-lua = ["dep:mlua", "dep:kui-channel", "value", "kui-value/lua"]
+lua = ["file", "dep:mlua", "dep:kui-channel", "value", "kui-value/lua"]
 
 [[bin]]
 name = "kui-trace"
 path = "src/bin/kui-trace.rs"
+required-features = ["file"]

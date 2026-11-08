@@ -57,7 +57,7 @@ pub(crate) struct Applied {
     /// the thread finds, read on that thread once the pane exists; `got`
     /// is corrected to `Opaque` on the frame the thread finds none, or
     /// one that will not decode.
-    pub ground: Option<crate::ground::Source>,
+    pub ground: Option<crate::gui::ground::Source>,
     /// What must live as long as the window for the effect to stay (a
     /// Linux compositor's blur objects).
     pub keep: Option<Box<dyn Any>>,
@@ -81,8 +81,8 @@ impl Applied {
     /// thread answers, and `Opaque` from the frame it says there is none,
     /// the path a wallpaper that will not decode takes everywhere.
     fn emulated() -> Self {
-        use crate::ground::Source;
-        let source = match crate::ground::known_path() {
+        use crate::gui::ground::Source;
+        let source = match crate::gui::ground::known_path() {
             Some(None) => return Applied::just(Backdrop::Opaque),
             Some(Some(path)) => Source::Load(path),
             None => Source::Find,
@@ -146,7 +146,7 @@ pub(crate) fn apply(
 fn see_through(window: &Window, renderer: &kui_wgpu::Renderer) -> bool {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        renderer.transparent() && crate::linux_blur::composited(window)
+        renderer.transparent() && crate::gui::linux_blur::composited(window)
     }
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -185,7 +185,7 @@ fn effect(window: &Window, renderer: &kui_wgpu::Renderer, backdrop: Backdrop) ->
 fn effect(window: &Window, renderer: &kui_wgpu::Renderer, backdrop: Backdrop) -> Applied {
     if backdrop == Backdrop::Blur
         && see_through(window, renderer)
-        && let Some(keep) = crate::linux_blur::request(window)
+        && let Some(keep) = crate::gui::linux_blur::request(window)
     {
         return Applied {
             got: Backdrop::Blur,
@@ -409,10 +409,10 @@ mod tests {
     /// (backlog RG154).
     #[test]
     fn the_fallback_reports_what_it_draws() {
-        use crate::ground::Source;
+        use crate::gui::ground::Source;
         let got = Applied::emulated();
         assert_eq!(got.got == Backdrop::Tinted, got.ground.is_some());
-        match crate::ground::known_path() {
+        match crate::gui::ground::known_path() {
             Some(None) => assert_eq!(got.got, Backdrop::Opaque),
             Some(Some(path)) => assert_eq!(got.ground, Some(Source::Load(path))),
             None => assert_eq!(got.ground, Some(Source::Find)),
@@ -422,7 +422,7 @@ mod tests {
         }
         if cfg!(target_os = "windows") {
             assert!(
-                crate::ground::known_path().is_some(),
+                crate::gui::ground::known_path().is_some(),
                 "Windows answers on the loop"
             );
         }

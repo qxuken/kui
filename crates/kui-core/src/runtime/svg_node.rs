@@ -5,7 +5,6 @@
 //! node kind for a backend to learn.
 
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use rustc_hash::FxHashMap;
 
@@ -21,6 +20,33 @@ pub enum SvgSource<'a> {
     /// A file, read once and again whenever its size or modification
     /// time moves — so a picture an editor saves redraws.
     File(&'a str),
+}
+
+/// A host's file revision. Its fields are opaque to the core.
+pub type SvgStamp = (u128, u64);
+
+/// The result of an optional synchronous path adapter.
+pub enum SvgFileUpdate {
+    Unchanged,
+    Changed {
+        stamp: Option<SvgStamp>,
+        data: Result<Vec<u8>, String>,
+    },
+}
+
+pub type SvgFileResolver = fn(&str, Option<SvgStamp>) -> SvgFileUpdate;
+
+/// A portable host's request for one revision of a path-based SVG.
+#[derive(Clone, Debug)]
+pub struct SvgAssetRequest {
+    path: String,
+    revision: Arc<()>,
+}
+
+impl SvgAssetRequest {
+    pub fn path(&self) -> &str {
+        &self.path
+    }
 }
 
 /// The element's rows beyond its spec: how it draws, how the picture sits
@@ -41,7 +67,10 @@ pub struct SvgOpts {
 #[derive(Default)]
 pub(crate) struct SvgCache {
     docs: FxHashMap<u64, Doc>,
+    pub(crate) revision: u64,
     files: FxHashMap<String, FileSeen>,
+    requests: Vec<SvgAssetRequest>,
+    pending: FxHashMap<String, Arc<()>>,
     rasters: FxHashMap<u64, Raster>,
     /// The size each box drawn from layout came out at, and in which
     /// frame: what the next frame draws it at.
@@ -58,7 +87,8 @@ struct Doc {
 }
 
 struct FileSeen {
-    stamp: Option<(SystemTime, u64)>,
+    stamp: Option<SvgStamp>,
+    pinned: bool,
     /// The content's hash; `None` while the file cannot be read.
     hash: Result<u64, String>,
     checked: u64,
@@ -77,6 +107,12 @@ const RASTERS_SOFT_CAP: usize = 64;
 const RASTER_GRACE: u64 = 30;
 
 impl SvgCache {
+    fn is_pending(&self, request: &SvgAssetRequest) -> bool {
+        self.pending
+            .get(&request.path)
+            .is_some_and(|revision| Arc::ptr_eq(revision, &request.revision))
+    }
+
     /// The stores swept on the core's by-last-use cadence, and the rasters
     /// past their soft cap on any frame; what goes is handed back for the
     /// registry to drop.
@@ -87,8 +123,15 @@ impl SvgCache {
     ) {
         self.laid.clear();
         if let Some(cutoff) = crate::retain::sweep_cutoff(frame_no) {
-            self.docs.retain(|_, d| d.seen >= cutoff);
-            self.files.retain(|_, f| f.checked >= cutoff);
+            let pinned: rustc_hash::FxHashSet<_> = self
+                .files
+                .values()
+                .filter(|file| file.pinned)
+                .filter_map(|file| file.hash.as_ref().ok().copied())
+                .collect();
+            self.docs
+                .retain(|hash, d| d.seen >= cutoff || pinned.contains(hash));
+            self.files.retain(|_, f| f.pinned || f.checked >= cutoff);
             self.sizes.retain(|_, (_, seen)| *seen >= cutoff);
             self.rasters.retain(|_, r| {
                 let keep = r.seen >= cutoff;
@@ -317,15 +360,10 @@ impl Core {
     fn svg_doc(&mut self, key: Key, src: SvgSource<'_>) -> Option<(u64, Arc<Svg>)> {
         let now = self.frame_no;
         let hash = match src {
-            SvgSource::Data(bytes) => {
-                let hash = crate::key::hash_bulk(bytes);
-                if !self.svgs.docs.contains_key(&hash) {
-                    self.svg_parse(hash, bytes);
-                }
-                hash
-            }
+            SvgSource::Data(bytes) => self.svg_bytes(bytes),
             SvgSource::File(path) => match self.svg_file(path) {
-                Ok(hash) => hash,
+                Ok(Some(hash)) => hash,
+                Ok(None) => return None,
                 Err(why) => {
                     self.warn(crate::diag::svg_unreadable(key, path, &why));
                     return None;
@@ -355,55 +393,133 @@ impl Core {
         );
     }
 
-    /// A file's content hash, its document parsed: the stamp read once a
-    /// frame, the file read again only when it moved.
-    fn svg_file(&mut self, path: &str) -> Result<u64, String> {
-        let now = self.frame_no;
-        if let Some(f) = self.svgs.files.get(path)
-            && f.checked == now
-        {
-            return f.hash.clone();
+    /// Takes newly discovered paths and explicit reload requests. The host
+    /// can load them outside a frame, then call [`Self::complete_svg_asset`].
+    pub fn take_svg_asset_requests(&mut self) -> Vec<SvgAssetRequest> {
+        let mut requests = std::mem::take(&mut self.svgs.requests);
+        requests.retain(|r| self.svgs.is_pending(r));
+        requests
+    }
+
+    /// Requests fresh bytes and supersedes any earlier load for this path.
+    /// An existing asset remains visible until the new load completes.
+    pub fn request_svg_asset(&mut self, path: impl Into<String>) {
+        let path = path.into();
+        let revision = Arc::new(());
+        self.svgs.pending.insert(path.clone(), revision.clone());
+        self.svgs.requests.push(SvgAssetRequest { path, revision });
+    }
+
+    /// Publishes a completed load if it is still the latest request.
+    pub fn complete_svg_asset(
+        &mut self,
+        request: SvgAssetRequest,
+        data: Result<Vec<u8>, String>,
+    ) -> bool {
+        if !self.svgs.is_pending(&request) {
+            return false;
         }
-        let stamp = std::fs::metadata(path)
-            .ok()
-            .map(|m| (m.modified().unwrap_or(SystemTime::UNIX_EPOCH), m.len()));
-        let unchanged = self
+        self.set_svg_asset(request.path, data);
+        true
+    }
+
+    /// Publishes a host-loaded SVG or a read error. This source can be
+    /// drawn by path without a resolver until the host removes it.
+    pub fn set_svg_asset(&mut self, path: impl Into<String>, data: Result<Vec<u8>, String>) {
+        let path = path.into();
+        self.svgs.pending.remove(&path);
+        let hash = data.map(|bytes| self.svg_bytes(&bytes));
+        if self
             .svgs
             .files
-            .get(path)
-            .is_some_and(|f| f.stamp.is_some() && f.stamp == stamp);
-        let hash = if unchanged {
-            self.svgs.files[path].hash.clone()
-        } else {
-            match std::fs::read(path) {
-                Ok(bytes) => {
-                    let hash = crate::key::hash_bulk(&bytes);
-                    if !self.svgs.docs.contains_key(&hash) {
-                        self.svg_parse(hash, &bytes);
-                    }
-                    Ok(hash)
-                }
-                Err(e) => Err(e.to_string()),
-            }
-        };
-        match self.svgs.files.get_mut(path) {
-            Some(f) => {
-                f.stamp = stamp;
-                f.hash = hash.clone();
-                f.checked = now;
-            }
-            None => {
-                self.svgs.files.insert(
-                    path.to_owned(),
-                    FileSeen {
-                        stamp,
-                        hash: hash.clone(),
-                        checked: now,
-                    },
-                );
-            }
+            .get(&path)
+            .is_some_and(|file| file.pinned && file.hash == hash)
+        {
+            return;
+        }
+        self.svgs.files.insert(
+            path,
+            FileSeen {
+                stamp: None,
+                pinned: true,
+                hash,
+                checked: self.frame_no,
+            },
+        );
+        self.svgs.revision += 1;
+        self.request_frame();
+    }
+
+    /// Removes a published SVG asset and invalidates fills that drew it.
+    pub fn remove_svg_asset(&mut self, path: &str) {
+        self.svgs.pending.remove(path);
+        if self.svgs.files.get(path).is_some_and(|file| file.pinned) {
+            self.svgs.files.remove(path);
+            self.svgs.revision += 1;
+            self.request_frame();
+        }
+    }
+
+    fn svg_bytes(&mut self, bytes: &[u8]) -> u64 {
+        let hash = crate::key::hash_bulk(bytes);
+        if !self.svgs.docs.contains_key(&hash) {
+            self.svg_parse(hash, bytes);
         }
         hash
+    }
+
+    /// A file's content hash. The optional native adapter checks the
+    /// source at most once per path per frame.
+    fn svg_file(&mut self, path: &str) -> Result<Option<u64>, String> {
+        if let Some(file) = self.svgs.files.get(path)
+            && file.pinned
+        {
+            self.note_read(|| replay::Read::Svg(self.svgs.revision));
+            return file.hash.clone().map(Some);
+        }
+        let Some(resolve) = self.session.state().svg_resolver else {
+            self.note_read(|| replay::Read::Svg(self.svgs.revision));
+            if !self.svgs.pending.contains_key(path) {
+                self.request_svg_asset(path);
+            }
+            return Ok(None);
+        };
+        self.taint_kept("it read an SVG file");
+        let now = self.frame_no;
+        if let Some(file) = self.svgs.files.get(path)
+            && file.checked == now
+        {
+            return file.hash.clone().map(Some);
+        }
+        let previous = self.svgs.files.get(path).and_then(|file| file.stamp);
+        match resolve(path, previous) {
+            SvgFileUpdate::Unchanged => {
+                let file = self.svgs.files.get_mut(path).ok_or_else(|| {
+                    "SVG resolver returned unchanged without a source".to_string()
+                })?;
+                file.checked = now;
+                file.hash.clone().map(Some)
+            }
+            SvgFileUpdate::Changed { stamp, data } => {
+                let hash = data.map(|bytes| self.svg_bytes(&bytes));
+                if let Some(file) = self.svgs.files.get_mut(path) {
+                    file.stamp = stamp;
+                    file.hash = hash.clone();
+                    file.checked = now;
+                } else {
+                    self.svgs.files.insert(
+                        path.to_owned(),
+                        FileSeen {
+                            stamp,
+                            hash: hash.clone(),
+                            checked: now,
+                            pinned: false,
+                        },
+                    );
+                }
+                hash.map(Some)
+            }
+        }
     }
 
     /// The image the picture rasterizes to at this size, scale, fit and
