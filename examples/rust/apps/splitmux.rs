@@ -44,14 +44,12 @@ const TABBAR_H: f32 = 30.0;
 /// How long a split takes to ease into a new ratio.
 const SPLIT_MS: f32 = 180.0;
 
-#[cfg(target_os = "macos")]
-const ALT: &str = "⌥";
-#[cfg(not(target_os = "macos"))]
-const ALT: &str = "Alt-";
-#[cfg(target_os = "macos")]
-const PRIMARY: &str = "⌘";
-#[cfg(not(target_os = "macos"))]
-const PRIMARY: &str = "Ctrl-";
+fn shortcut_labels(ui: &Ui<'_>) -> (&'static str, &'static str) {
+    match ui.platform() {
+        kui_native::Platform::MacOs => ("⌥", "⌘"),
+        _ => ("Alt-", "Ctrl-"),
+    }
+}
 
 // ---------------------------------------------------------------- palette
 
@@ -400,8 +398,8 @@ impl Splitmux {
     /// Whether the panes wear their drop-zone overlays: while the primary
     /// modifier is held, and for the whole of a pane drag (the modifier may
     /// be released mid-drag).
-    fn overlays_on(&self) -> bool {
-        self.mods.primary() || self.pane_drag.is_some()
+    fn overlays_on(&self, platform: kui_native::Platform) -> bool {
+        self.mods.primary_on(platform) || self.pane_drag.is_some()
     }
 
     /// Lands `src` on `dst`: an edge zone splits `dst` on that side, the
@@ -516,6 +514,7 @@ impl Splitmux {
     // ------------------------------------------------------------ view
 
     fn tab_bar(&mut self, ui: &mut Ui<'_>) {
+        let (alt, primary) = shortcut_labels(ui);
         let pal = self.pal;
         ui.with(
             NodeSpec::row()
@@ -616,12 +615,12 @@ impl Splitmux {
                         .radius(6.0)
                         .on_click(Msg::TabNew), "+", TextStyle::new(12.0).color(pal.faint));
                 ui.leaf(NodeSpec::row().grow_width());
-                ui.text(
-                    &format!(
-                        "{ALT}v/{ALT}s split · {ALT}o hop · {ALT}w close · {ALT}t tab · {PRIMARY}drag moves a pane"
-                    ),
-                    TextStyle::new(11.0).color(pal.faint),
-                );
+                let hint = if ui.viewport().w < 560.0 {
+                    format!("{alt}v/{alt}s split · {alt}t tab")
+                } else {
+                    format!("{alt}v/{alt}s split · {alt}o hop · {alt}w close · {alt}t tab · {primary}drag moves a pane")
+                };
+                ui.text(&hint, TextStyle::new(11.0).color(pal.faint));
             },
         );
     }
@@ -703,9 +702,10 @@ impl Splitmux {
     /// A pane is just its number — swap this fn for an editor, a terminal,
     /// whatever; the tree around it doesn't change.
     fn render_pane(&mut self, ui: &mut Ui<'_>, id: u64) {
+        let (alt, _) = shortcut_labels(ui);
         let pal = self.pal;
         let focused = self.focused == id;
-        let overlays = self.overlays_on();
+        let overlays = self.overlays_on(ui.platform());
         let drag = self.pane_drag;
         let border = if focused {
             pal.border_focus
@@ -736,7 +736,7 @@ impl Splitmux {
                     TextStyle::new(12.0).color(if focused { pal.fg } else { pal.dim }),
                 );
                 ui.text(
-                    &format!("{ALT}v splits me · {ALT}w closes me"),
+                    &format!("{alt}v splits me · {alt}w closes me"),
                     TextStyle::new(11.0).color(pal.faint),
                 );
                 if !overlays {
@@ -964,7 +964,8 @@ impl Example for Splitmux {
 
     fn window(&self) -> kui_devtools::Window {
         kui_devtools::Window::default()
-            .size(1100.0, 720.0)
+            .size(900.0, 560.0)
+            .min_size(360.0, 360.0)
             .custom_titlebar()
     }
 

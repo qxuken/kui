@@ -39,6 +39,7 @@ include!(concat!(env!("OUT_DIR"), "/examples.rs"));
 
 thread_local! {
     static SELECTED: RefCell<Option<(BookApp, Option<Extensions>)>> = const { RefCell::new(None) };
+    static DEMO_MIN_WIDTH: StateCell<f64> = const { StateCell::new(960.0) };
     static DEMO_SIZE: StateCell<(f64, f64)> = const { StateCell::new((960.0, 640.0)) };
 }
 
@@ -55,6 +56,9 @@ fn make_runner() -> kui_web::Runner<AppModel> {
     }
     runner.core_mut().set_native_menus(false);
     runner.core_mut().set_native_menu_bar(false);
+    runner
+        .core_mut()
+        .set_devtools_dock_choices(&[Dock::Bottom, Dock::Off]);
     runner
 }
 
@@ -78,4 +82,19 @@ pub extern "C" fn demo_width() -> f64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn demo_height() -> f64 {
     DEMO_SIZE.get().1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn demo_min_width() -> f64 {
+    DEMO_MIN_WIDTH.get()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn demo_set_devtools(on: u32) {
+    host::RUNNER.with_borrow_mut(|runner| runner.core_mut().set_devtools(on != 0));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn demo_devtools_height() -> f32 {
+    host::RUNNER.with_borrow_mut(|runner| runner.core_mut().devtools_inset().h)
 }

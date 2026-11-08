@@ -279,7 +279,7 @@ fn more_menu(ui: &mut Ui<'_>, st: &State, t: &Theme, overflows: bool) {
                             .role(crate::access::Role::RadioGroup)
                             .label("Dock side"),
                         |ui| {
-                            for dock in Dock::ALL {
+                            for &dock in st.dock_choices {
                                 let (glyph, what) = match dock {
                                     Dock::Left => (Icon::DockLeft, "dock on the left"),
                                     Dock::Right => (Icon::DockRight, "dock on the right"),

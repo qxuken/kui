@@ -1,4 +1,4 @@
-use crate::{Backdrop, Core, DEMO_SIZE, Dock, SELECTED, Ui, UiEvent};
+use crate::{Backdrop, Core, DEMO_MIN_WIDTH, DEMO_SIZE, Dock, SELECTED, Ui, UiEvent};
 
 type LaunchResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -154,6 +154,7 @@ impl Window {
     }
     pub fn run(self, app: impl App + 'static) -> LaunchResult {
         DEMO_SIZE.set(self.size);
+        DEMO_MIN_WIDTH.set(self.min_size.map_or(self.size.0, |size| size.0));
         SELECTED.with_borrow_mut(|slot| *slot = Some((BookApp(Box::new(app)), self.extensions)));
         Ok(())
     }

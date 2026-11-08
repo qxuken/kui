@@ -150,11 +150,21 @@ impl App for Loaders {
         // on the card in either appearance.
         let track = track_color(&t);
 
+        let row = NodeSpec::row()
+            .grow_width()
+            .wrap()
+            .gap(12.0)
+            .cross_gap(12.0);
         ui.with(
-            NodeSpec::column().fill().bg(t.bg).pad(24.0).gap(16.0),
+            NodeSpec::column()
+                .fill()
+                .bg(t.bg)
+                .pad(24.0)
+                .gap(16.0)
+                .scroll_y(),
             |ui| {
                 // The job: its one button, a reset, the speed, what it says.
-                ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
+                ui.with(row.clone().cross_align(Align::Center), |ui| {
                     // The job's button is one node whatever it says — a label
                     // that changes would re-key it and drop the keyboard — and
                     // it has the focus from the first frame, so Space starts
@@ -173,14 +183,26 @@ impl App for Loaders {
                         ui.focus(job);
                     }
                     widgets::button(ui, "reset", Msg::Reset);
-                    ui.leaf(NodeSpec::row().width(12.0));
-                    ui.text("speed", muted);
-                    widgets::slider(ui, "speed", self.speed, 0.25, 3.0, 0.25, Msg::Speed);
-                    ui.text(
-                        &format!("{:.2}×", self.speed),
-                        TextStyle::new(13.0).color(t.fg),
-                    );
-                    ui.leaf(NodeSpec::row().width(12.0));
+                    let width = m.menu_width.min((ui.viewport().w - 144.0).max(100.0));
+                    ui.with(NodeSpec::row().gap(8.0).cross_align(Align::Center), |ui| {
+                        ui.text("speed", muted);
+                        widgets::slider_with(
+                            ui,
+                            "speed",
+                            widgets::slider_spec(&m)
+                                .width(width)
+                                .value_now(self.speed)
+                                .value_min(0.25)
+                                .value_max(3.0)
+                                .value_step(0.25)
+                                .on_change(Msg::Speed),
+                            None,
+                        );
+                        ui.text(
+                            &format!("{:.2}×", self.speed),
+                            TextStyle::new(13.0).color(t.fg),
+                        );
+                    });
                     let status = match self.state {
                         State::Idle => "idle".to_string(),
                         State::Running => format!("running · {:.0}%", p * 100.0),
@@ -193,7 +215,7 @@ impl App for Loaders {
                 });
 
                 ui.text("determinate: the job's progress", muted);
-                ui.with(NodeSpec::row().gap(12.0), |ui| {
+                ui.with(row.clone(), |ui| {
                     // The pie: a disc for the track, and over it a sector from
                     // twelve o'clock whose sweep is the progress. A full turn
                     // is `sector`'s two half arcs, so 100% is a whole disc.
@@ -265,7 +287,7 @@ impl App for Loaders {
                     },
                     muted,
                 );
-                ui.with(NodeSpec::row().gap(12.0), |ui| {
+                ui.with(row, |ui| {
                     // The arc: an open path, stroked and not filled, turning
                     // once a second — by `rotate`, about the circle's centre,
                     // so it is one shape and one mask at every angle and the
@@ -507,7 +529,9 @@ impl Example for Loaders {
     ];
 
     fn window(&self) -> kui_devtools::Window {
-        kui_devtools::Window::default().size(1160.0, 470.0)
+        kui_devtools::Window::default()
+            .size(820.0, 620.0)
+            .min_size(300.0, 380.0)
     }
 
     /// The job by hand: idle asks for no frame; running, the progress is
