@@ -24,7 +24,7 @@ impl Track {
 }
 
 /// Who a span or a measurement is for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Origin {
     /// kui's own: `build`, `layout`, `emit`, the devtools, a fill.
     Kui,

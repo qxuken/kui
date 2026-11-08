@@ -919,6 +919,8 @@ impl<'a> Explorer<'a> {
                 .then_with(|| {
                     origin_name(self.trace, a.origin).cmp(origin_name(self.trace, b.origin))
                 })
+                .then(a.name.cmp(&b.name))
+                .then(a.origin.cmp(&b.origin))
         });
         let mut selected = Timeline::default();
         selected.placements = self
@@ -1051,6 +1053,8 @@ impl<'a> Explorer<'a> {
                     .then_with(|| {
                         origin_name(self.trace, a.origin).cmp(origin_name(self.trace, b.origin))
                     })
+                    .then(a.name.cmp(&b.name))
+                    .then(a.origin.cmp(&b.origin))
                 });
                 let matched = groups.len();
                 groups.truncate(limit);

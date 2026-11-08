@@ -23,6 +23,20 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.79 (unreleased)
 
+**What breaks.**
+
+- Perf span groups with equal costs and identical displayed names now have
+  a stable order by their recorded name and origin IDs. Limited queries
+  consistently select the same groups.
+
+### Fixed
+
+- Fuzzing found that tied span groups could change order between queries,
+  including changing which group a one-row limit returned. Both CLI queries
+  and viewer readings now resolve those ties consistently.
+- The renderer crates allow deeper compiler trait checks for wgpu backend
+  types, resolving the pinned fuzz nightly's recursion-limit warnings.
+
 ### Testing
 
 - The trace fuzzer now runs the perf queries shared by the CLI and viewer
