@@ -1,5 +1,29 @@
+#mdbook-content {
+  container-type: inline-size;
+}
+
+/* Full-width demos and fixed chapter arrows would share the same space. */
+#mdbook-page-wrapper:has(a[data-kui-example]) > .nav-wide-wrapper {
+  display: none;
+}
+
+#mdbook-page-wrapper:has(a[data-kui-example]) .nav-wrapper {
+  display: block;
+}
+
+@container (max-width: 750px) {
+  main > p:has(> a[data-kui-example], > .kui-example) ~ pre > code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
 .kui-example {
+  --kui-panel-width: min(var(--kui-example-width, 100%), 100cqw);
+  box-sizing: border-box;
+  width: var(--kui-panel-width);
   margin-block: 1.5rem;
+  margin-inline: calc((100% - var(--kui-panel-width)) / 2);
   border: 1px solid var(--table-border-color);
   border-radius: 0.5rem;
   overflow: hidden;
@@ -23,6 +47,15 @@
   cursor: pointer;
 }
 
+.kui-example-toolbar button[aria-pressed="true"] {
+  background: var(--table-border-color);
+}
+
+.kui-example-toolbar button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .kui-example:has([aria-busy="true"]) .kui-example-status::before {
   content: "";
   display: inline-block;
@@ -44,7 +77,14 @@
   to { transform: rotate(1turn); }
 }
 
+.kui-example-viewport {
+  position: relative;
+  width: 100%;
+}
+
 .kui-example iframe {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;

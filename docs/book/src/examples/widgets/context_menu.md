@@ -2,9 +2,7 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
-<img src="../../img/examples/widgets/context_menu.png" width="700" alt="widgets/context_menu: its settled frame, drawn headlessly by --shot">
-
-*The example as it draws: its settled frame, drawn headlessly by `--shot`.*
+<a data-kui-example="480" href="../../live/gallery.html?example=widgets/context_menu">Live context_menu example</a>
 
 ```rust,noplayground
 {{#include ../../../../../examples/rust/widgets/context_menu.rs}}

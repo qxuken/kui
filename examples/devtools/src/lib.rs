@@ -20,8 +20,7 @@
 //! runs under.
 //!
 //! `--shot` and `--record` draw the example headlessly and keep it as a
-//! PNG, or an animated GIF or PNG ([`picture`]): the pictures in the book's
-//! Examples part.
+//! PNG, or an animated GIF or PNG ([`picture`]).
 //!
 //! One `main` per example: `kui_devtools::main!(Counter::default())`.
 

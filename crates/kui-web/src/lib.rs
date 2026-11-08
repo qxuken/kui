@@ -6,6 +6,10 @@
 mod access;
 #[cfg(not(feature = "rust-wgpu"))]
 mod canvas;
+#[cfg(not(feature = "rust-wgpu"))]
+mod popup;
+#[cfg(not(feature = "rust-wgpu"))]
+pub use popup::CanvasPopup;
 #[cfg(feature = "rust-wgpu")]
 mod wgpu_painter;
 
@@ -23,13 +27,18 @@ use kui_core::{
 
 pub trait App {
     fn view(&mut self, ui: &mut Ui<'_>);
-    fn on_event(&mut self, event: UiEvent);
+    fn on_event(&mut self, _event: UiEvent) {}
+    fn on_event_with(&mut self, event: UiEvent, _core: &mut Core) {
+        self.on_event(event);
+    }
+    fn before_frame(&mut self, _core: &mut Core) {}
 }
 
 pub struct Runner<A> {
     app: A,
     core: Core,
     access: access::Mirror,
+    extensions: Option<kui_core::Extensions>,
     #[cfg(not(feature = "rust-wgpu"))]
     painter: canvas::Painter,
     #[cfg(feature = "rust-wgpu")]
@@ -43,11 +52,21 @@ impl<A: App> Runner<A> {
             app,
             core: Core::new_in(session),
             access: access::Mirror::default(),
+            extensions: None,
             #[cfg(not(feature = "rust-wgpu"))]
             painter: canvas::Painter::default(),
             #[cfg(feature = "rust-wgpu")]
             painter: None,
         }
+    }
+
+    /// Supplies the app's slots and components.
+    pub fn set_extensions(&mut self, extensions: kui_core::Extensions) {
+        self.extensions = Some(extensions);
+    }
+
+    pub fn core_mut(&mut self) -> &mut Core {
+        &mut self.core
     }
 
     /// Routes input through the last frame's hit tree, using browser time in seconds.
@@ -60,6 +79,14 @@ impl<A: App> Runner<A> {
         self.route(events);
     }
 
+    /// Returns whether the wheel moved or was claimed by a kui region.
+    pub fn scroll(&mut self, delta: kui_core::Vec2, begins: bool, time: f64) -> bool {
+        self.core.set_time(time);
+        let (events, consumed) = self.core.handle_scroll(delta, begins);
+        self.route(events);
+        consumed
+    }
+
     /// A complete keystroke, including its semantic action in the core.
     pub fn keystroke(&mut self, key: KeyPress, time: f64) {
         self.core.set_time(time);
@@ -69,9 +96,32 @@ impl<A: App> Runner<A> {
         self.route(events);
     }
 
+    /// Delivers a browser key transition without synthesizing its release.
+    pub fn key_event(&mut self, key: KeyPress, time: f64, down: bool) {
+        self.core.set_time(time);
+        let events = if down {
+            self.core.press(key)
+        } else {
+            self.core.release(key)
+        };
+        self.route(events);
+    }
+
     fn route(&mut self, events: Vec<UiEvent>) {
-        for event in events {
-            self.app.on_event(event);
+        Self::route_to(&mut self.app, &mut self.extensions, &mut self.core, events);
+    }
+
+    fn route_to(
+        app: &mut A,
+        extensions: &mut Option<kui_core::Extensions>,
+        core: &mut Core,
+        events: Vec<UiEvent>,
+    ) {
+        let mut to_app = |event| app.on_event_with(event, core);
+        if let Some(extensions) = extensions {
+            extensions.route(events, to_app);
+        } else {
+            events.into_iter().for_each(&mut to_app);
         }
     }
 
@@ -80,8 +130,13 @@ impl<A: App> Runner<A> {
     }
 
     /// Whether a touch moved from this point should feed the scroll path.
-    pub fn prefers_scroll_at(&self, point: kui_core::Vec2) -> bool {
-        self.core.interaction.prefers_scroll_at(point)
+    pub fn prefers_scroll_at(&self, point: kui_core::Vec2, parent_can_pan: bool) -> bool {
+        let input = &self.core.interaction;
+        if parent_can_pan {
+            !input.prefers_drag_at(point)
+        } else {
+            input.prefers_scroll_at(point)
+        }
     }
 
     pub fn set_platform(&mut self, platform: Platform) {
@@ -203,14 +258,41 @@ impl<A: App> Runner<A> {
         Ok(painter.paint(&mut self.core, backing_size)? || next)
     }
 
+    pub fn next_frame_at(&self) -> Option<f64> {
+        self.core.next_frame_at()
+    }
+
     fn build_frame(&mut self, viewport: Size, scale: f32, time: f64) -> bool {
-        self.core.set_time(time);
-        let mut ui = self.core.frame(viewport, scale);
-        self.app.view(&mut ui);
+        Self::build_frame_for(
+            &mut self.app,
+            &mut self.extensions,
+            &mut self.core,
+            viewport,
+            scale,
+            time,
+        )
+    }
+
+    fn build_frame_for(
+        app: &mut A,
+        extensions: &mut Option<kui_core::Extensions>,
+        core: &mut Core,
+        viewport: Size,
+        scale: f32,
+        time: f64,
+    ) -> bool {
+        core.set_time(time);
+        app.before_frame(core);
+        let mut ui = if let Some(extensions) = extensions {
+            core.frame_with(viewport, scale, extensions)
+        } else {
+            core.frame(viewport, scale)
+        };
+        app.view(&mut ui);
         ui.finish();
-        let events = self.core.take_pending_events();
+        let events = core.take_pending_events();
         let app_received_events = !events.is_empty();
-        self.route(events);
-        app_received_events || self.core.animating()
+        Self::route_to(app, extensions, core, events);
+        app_received_events || core.animating()
     }
 }

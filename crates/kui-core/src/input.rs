@@ -2779,18 +2779,24 @@ impl Interaction {
             .filter(move |r| point.is_some_and(|p| !r.inert && r.clip.contains(p) && r.under(p)))
     }
 
-    /// Whether a host can pan content here with a scroll gesture. A
-    /// scrollbar or an explicit drag or slider gets the primary press.
+    /// Whether a host can pan content here with a scroll gesture.
     pub fn prefers_scroll_at(&self, point: Vec2) -> bool {
-        if matches!(self.target_at(point), Some(Target::Bar(_)))
-            || self
-                .press_hit_at(point)
-                .is_some_and(|hit| hit.drag.is_some() || hit.slider.is_some())
-        {
-            return false;
-        }
-        self.scroll_regions_under(Some(point))
-            .any(|r| r.mods == 0 && (r.takes_x || r.takes_y))
+        !self.prefers_drag_at(point)
+            && self
+                .scroll_regions_under(Some(point))
+                .any(|r| r.mods == 0 && (r.takes_x || r.takes_y))
+    }
+
+    /// A scrollbar, text selection, slider or explicit drag owns its pointer
+    /// gesture even when a host could pan the surrounding page.
+    pub fn prefers_drag_at(&self, point: Vec2) -> bool {
+        matches!(self.target_at(point), Some(Target::Bar(_)))
+            || self.press_hit_at(point).is_some_and(|hit| {
+                hit.drag.is_some()
+                    || hit.slider.is_some()
+                    || hit.edit_origin.is_some()
+                    || (hit.select_scope.is_some() && hit.payload.is_none())
+            })
     }
 
     /// The content origin the editor `key` was drawn at this frame — what

@@ -9,7 +9,8 @@
 //! size and frames in it, never the pixels. The recording stops itself:
 //! the handler asks for a frame five seconds on, and the view that runs
 //! then says stop. The files go to the system's temporary directory, and
-//! the status line names them.
+//! the status line names them. The book host downloads screenshots and
+//! uses the browser's MP4 or WebM recorder.
 //!
 //! Run: cargo run -p kui-native --example capture [-- --headless]
 
@@ -190,7 +191,10 @@ impl Example for Keeper {
 }
 
 kui_devtools::main!(Keeper {
+    #[cfg(not(target_arch = "wasm32"))]
     dir: std::env::temp_dir(),
+    #[cfg(target_arch = "wasm32")]
+    dir: Default::default(),
     shots: 0,
     until: None,
     status: "nothing kept yet".into(),

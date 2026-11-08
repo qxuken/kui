@@ -1,5 +1,7 @@
 # Floats and modals
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/07_floats">Live chapter example</a>
+
 At the end of this chapter, hovering a badge shows a tooltip, and a
 Delete button opens a dialog that Escape closes.
 

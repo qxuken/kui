@@ -12,8 +12,8 @@ const inputEdits = {
 };
 const textMode = { insert: 0, preedit: 1, commit: 2, paste: 3, replace: 4 };
 const editor = (el) => el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement;
-const tags = { button: "button", textInput: "input", multilineTextInput: "textarea" };
-const roles = { list: "list", listItem: "listitem", heading: "heading", group: "group" };
+const tags = { button: "button", checkbox: "button", textInput: "input", multilineTextInput: "textarea" };
+const roles = { checkbox: "checkbox", list: "list", listItem: "listitem", heading: "heading", group: "group" };
 
 export function editorBridge(root, canvas, wasm, schedule, seconds, clipboard) {
   const elements = new Map();
@@ -80,6 +80,9 @@ export function editorBridge(root, canvas, wasm, schedule, seconds, clipboard) {
         attribute(el, "role", roles[node.role]);
         attribute(el, "aria-level", node.role === "heading" ? "2" : null);
         attribute(el, "aria-description", node.description);
+        if (node.role === "checkbox") {
+          attribute(el, "aria-checked", node.mixed ? "mixed" : String(node.checked ?? false));
+        }
         attribute(el, "aria-current", node.selected ? "true" : null);
         attribute(el, "aria-live", node.live === "off" ? null : node.live);
         if (el instanceof HTMLButtonElement || editor(el)) {

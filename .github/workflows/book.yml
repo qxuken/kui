@@ -47,7 +47,8 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: rust nu mdbook
+          tools: rust node npm nu mdbook
+          wasi: 'true'
 
       - name: Build
         run: nu scripts/book-build.nu --install-tools --out-dir "$RUNNER_TEMP/book"

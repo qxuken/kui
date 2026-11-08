@@ -3,7 +3,10 @@
 At the end of this chapter, a task list runs from one Lua file, with no
 Rust of your own, drawn by Kit — and a test checks it without a window.
 
-![The task list: a field and an Add button, Clear done at the far side, "2 of 4" done, and four tasks with checkboxes](img/runner/tasks.png)
+<a data-kui-example="440" href="live/gallery.html?example=lua/tasks">Live Lua task list</a>
+
+The browser example runs the Lua files below with Kit. Its data file
+is stored in this browser.
 
 ## The host you do not write
 
