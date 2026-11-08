@@ -21,6 +21,8 @@
 #   kui-<version>-<platform>.tar.gz (kui-<version>-win32-x64.zip)
 #       the runner, one file `kui` (`kui.exe`) per platform
 #       (scripts/pack-runner.nu, ADR 0068)
+#   kui-<version>-web.zip
+#       the prebuilt browser runner for `kui pack --format web`
 #   install.sh, install.ps1
 #       scripts/install/: pick the platform's runner, check it against
 #       SHA256SUMS, put it in ~/.kui/bin
@@ -323,7 +325,8 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: node npm nu odin gh
+          tools: rust node npm nu odin gh
+          wasi: 'true'
 
       - name: Install ALSA
         run: |
@@ -363,6 +366,12 @@ jobs:
           pattern: kui-runner-*
           path: target/pack/release
           merge-multiple: true
+
+      - name: Build the browser runner
+        run: |
+          rustup target add wasm32-wasip1
+          ver=$(nu -c 'open Cargo.toml | get workspace.package.version')
+          nu scripts/web-runner.nu --out "target/pack/release/kui-$ver-web.zip"
 
       # SHA256SUMS over every asset (pack-ffi.nu's own covered the C and
       # Odin archives only), then the linux-x64 runner installed the way a user

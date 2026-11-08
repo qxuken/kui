@@ -8,7 +8,7 @@ inputs:
     description: Wire the pinned wgpu-native library into the C and Odin checks
     default: 'false'
   wasi:
-    description: Install the WASI SDK for the book's Lua examples
+    description: Install the WASI SDK for the browser's Lua runners
     default: 'false'
   cache:
     description: Cache installed tools (disabled for publishing)

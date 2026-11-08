@@ -991,13 +991,13 @@ kui pack — build the app for any platform (ADR 0068)
 usage: kui pack [path] [options]
 
   --target T,...       linux-x64, linux-arm64, darwin-arm64, win32-x64, or all (default: this machine)
-  --format F,...       exe (Windows), app (macOS), bin (Linux), npm, kui (the archive alone);
+  --format F,...       exe (Windows), app (macOS), bin (Linux), npm, kui (the archive alone), or web;
                        default: each target's own
   --out DIR            where the builds go (default: dist)
   --bytecode           compile the app's Lua to bytecode (sources by default)
   --strip              with --bytecode, drop the debug information
   --installer URL      also write install.sh and install.ps1 fetching the builds from URL
-  --runner FILE        use this runner binary rather than the release's
+  --runner FILE        use a local runner binary or web runner zip
   --runner-mirror URL  fetch runners from a mirror with the release's layout (also KUI_RUNNER_MIRROR)
 
 The app needs an id in kui.config.lua. It packs the runner it pins (kui = \"<version>\"),

@@ -42,6 +42,14 @@ try {
       }
     }
   }));
-  console.log("total",ids.size,"failed",bad.length);
+  const packed = await browser.newPage({ viewport: { width: 800, height: 540 } });
+  try {
+    await packed.goto(base + "/live/tasks/index.html");
+    await packed.getByRole("textbox", { name: "New task" }).waitFor();
+    console.log("OK packed tasks");
+  } finally {
+    await packed.close();
+  }
+  console.log("total",ids.size + 1,"failed",bad.length);
   assert.deepEqual(bad, []);
 } finally {await browser.close();}

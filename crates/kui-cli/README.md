@@ -81,7 +81,7 @@ end
 | `kui check [path]` | Type-checks the app's `.tl` files against kui's, Kit's and the runner's declarations. |
 | `kui new <dir>` | Starts an app, with its editor declarations. |
 | `kui types [path]` | Writes `.kui/types` (lua-language-server's and Teal's declarations), `.luarc.json` and `tlconfig.lua`. |
-| `kui pack [path]` | Builds the app for any platform from any machine (ADR 0068): `--target linux-x64,darwin-arm64,win32-x64,linux-arm64` (or `all`; default this machine's), `--format exe\|app\|bin\|npm\|kui` (default each target's own), `--out dist`. See [Shipping an app](#shipping-an-app). |
+| `kui pack [path]` | Builds the app for desktop or the web. Use `--format web` for a static site, or `--target linux-x64,darwin-arm64,win32-x64,linux-arm64` (or `all`) for desktop. See [Shipping an app](#shipping-an-app). |
 | `kui upgrade [version]` | Replaces this `kui` with the release's (the latest by default); one npm or Homebrew installed says the command to use instead. |
 | `kui runners fetch <version> --to <dir>` | Downloads every platform's runner with its checksums, laid out as the release is, for a mirror (`latest` also writes `latest.txt`). |
 
@@ -487,6 +487,7 @@ one machine builds for every platform, with nothing to compile:
 | `bin` | Linux: one file, the archive appended, and its icon, in a `.tar.gz`. |
 | `npm` | A package of the app's sources with a `bin` and an exact dependency on `@qxuken/kui-cli`, for a registry of your own (`npm publish` it). |
 | `kui` | The archive alone, which `kui run app.kui` runs. |
+| `web` | A static site with a versioned Lua and Kit Wasm runner and the app's files. |
 
 - Sources by default; `--bytecode` compiles them (`--strip` drops their
   debug information), tied to the runner it packs.
@@ -503,6 +504,28 @@ one machine builds for every platform, with nothing to compile:
   names another file, or `-` for none. Its own files are read-only.
 - Signing is yours: `rcodesign` signs and notarizes a `.app` from Linux,
   `osslsigncode` an `.exe`.
+
+### Shipping to a browser
+
+```bash
+kui pack ./my-app --format web --out dist
+python3 -m http.server --directory dist
+```
+
+Open the local server or deploy the contents of `dist` to a static HTTPS
+host. The packer resolves the runner version from `kui.config.lua`,
+downloads and verifies the release's web runner, and caches it. A local
+build can create the runner zip with `nu scripts/web-runner.nu` and pass
+it with `--runner`. Use `web` on its own in a pack command. Teal modules
+are translated to Lua source during packing.
+
+The browser runs Lua and Kit with the Canvas 2D renderer. Project files
+are mounted read-only at `kui.dir`. The packer skips symlinks and honors
+`pack.exclude`. Files in `kui.data_dir` persist in browser storage for
+the site's origin and the project's ID. `kui.cache_dir` lasts for the
+page session. Browser apps can use `require`, file reads and writes,
+JSON, and frame-serviced tasks. Desktop capabilities such as processes,
+native libraries, SQLite, and workers are unavailable.
 
 Kit is built in: `require("kit.ui")`. Its palette is readable from the app
 too — `bg = "$kitPanel"` follows the skin.

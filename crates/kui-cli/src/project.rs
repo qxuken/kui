@@ -421,6 +421,14 @@ pub fn teal_files(dir: &Path) -> Vec<PathBuf> {
 
 /// Calls `f` for every file under `dir`.
 pub fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
+    walk_filtered(dir, &mut |_| true, f);
+}
+
+pub(crate) fn walk_filtered(
+    dir: &Path,
+    include: &mut dyn FnMut(&std::fs::DirEntry) -> bool,
+    f: &mut dyn FnMut(&Path),
+) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
     };
@@ -428,11 +436,11 @@ pub fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
         let p = e.path();
         let name = e.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with('.') || name == "node_modules" || name == "target" {
+        if name.starts_with('.') || name == "node_modules" || name == "target" || !include(&e) {
             continue;
         }
         if p.is_dir() {
-            walk(&p, f);
+            walk_filtered(&p, include, f);
         } else {
             f(&p);
         }

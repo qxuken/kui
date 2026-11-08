@@ -3,10 +3,18 @@
 At the end of this chapter, a task list runs from one Lua file, with no
 Rust of your own, drawn by Kit — and a test checks it without a window.
 
-<a data-kui-example="440" href="live/gallery.html?example=lua/tasks">Live Lua task list</a>
+<a data-kui-example="440" href="live/tasks/index.html">Live Lua task list</a>
 
-The browser example runs the Lua files below with Kit. Its data file
-is stored in this browser.
+The browser example was built by `kui pack --format web` from the Lua
+project below. Its data file is stored in this browser.
+
+```bash
+kui pack tasks --format web --out dist
+```
+
+Serve `dist` over HTTP during development or deploy its contents to a
+static HTTPS host. Apps on the same site store data separately by
+their project ID.
 
 ## The host you do not write
 

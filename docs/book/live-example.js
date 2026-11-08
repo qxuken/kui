@@ -40,7 +40,14 @@ for (const link of document.querySelectorAll("a[data-kui-example]")) {
     viewport.setAttribute("aria-busy", "true");
     frame = document.createElement("iframe");
     frame.title = link.textContent;
-    frame.src = url.href;
+    if (url.origin === location.origin && url.pathname.endsWith("/live/tasks/index.html")) {
+      const next = frame;
+      migrateTaskData(url).finally(() => {
+        if (frame === next) next.src = url.href;
+      });
+    } else {
+      frame.src = url.href;
+    }
     viewport.replaceChildren(frame);
     timeout = setTimeout(() => {
       status.textContent = "The example is still loading. You can reload it.";
@@ -75,4 +82,17 @@ for (const link of document.querySelectorAll("a[data-kui-example]")) {
   });
   reload.addEventListener("click", load);
   load();
+}
+
+async function migrateTaskData(url) {
+  const key = "kui-book/tasks.json";
+  try {
+    const legacy = localStorage.getItem(key);
+    if (legacy === null) return;
+    const { seedAppFile } = await import(new URL("./kui/filesystem.js", url));
+    await seedAppFile("dev.kui.book.tasks", "tasks.json", new TextEncoder().encode(legacy));
+    localStorage.removeItem(key);
+  } catch (error) {
+    console.warn("Could not migrate saved book tasks", error);
+  }
 }
