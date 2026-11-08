@@ -17,6 +17,6 @@ def main [--out-dir: path = "target/book", --install-tools] {
 
     ^mdbook build docs/book -d $out
     with-env {PATH: ($env.PATH | prepend ($tools | path join "bin"))} {
-        ^nu scripts/web-counter.nu --build-only --out-dir ($out | path join "live")
+        ^nu scripts/web-counter.nu --build-only --book --out-dir ($out | path join "live")
     }
 }

@@ -2,9 +2,7 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
-<img src="../../img/examples/features/clipboard.png" width="640" alt="features/clipboard: its settled frame, drawn headlessly by --shot">
-
-*The example as it draws: its settled frame, drawn headlessly by `--shot`.*
+<a data-kui-example="480" href="../../live/gallery.html?example=features/clipboard">Live clipboard example</a>
 
 ```rust,noplayground
 {{#include ../../../../../examples/rust/features/clipboard.rs}}

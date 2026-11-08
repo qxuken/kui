@@ -35,7 +35,6 @@
 //! Run: cargo run -p kui-native --example loaders [-- --headless]
 
 use std::f32::consts::TAU;
-use std::time::Instant;
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
@@ -80,7 +79,7 @@ struct Loaders {
     speed: f32,
     /// The wall clock's last reading, for a window; `None` under a drive,
     /// which calls `step` itself.
-    last: Option<Instant>,
+    last: Option<f64>,
     manual: bool,
     /// Whether the first frame has given the job's button the keyboard.
     focused: bool,
@@ -127,10 +126,8 @@ impl App for Loaders {
     fn view(&mut self, ui: &mut Ui<'_>) {
         // A window's clock: the time since the last frame, while running.
         if !self.manual {
-            let now = Instant::now();
-            let dt = self
-                .last
-                .map_or(0.0, |l| now.duration_since(l).as_secs_f32());
+            let now = ui.now();
+            let dt = self.last.map_or(0.0, |l| (now - l).max(0.0) as f32);
             self.last = (self.state == State::Running).then_some(now);
             // A frame after a long sleep is not a long step.
             self.step(dt.min(0.1));

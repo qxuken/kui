@@ -110,7 +110,7 @@ impl App for Todo {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Testing")
         .size(360.0, 300.0)
         .run(Todo::default())

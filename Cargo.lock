@@ -2049,6 +2049,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kui-book-web"
+version = "0.1.0-alpha.78"
+dependencies = [
+ "image",
+ "js-sys",
+ "kui-core",
+ "kui-web",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "kui-channel"
 version = "0.1.0-alpha.79"
 dependencies = [

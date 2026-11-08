@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>kui book example</title>
+  <style>
+    body { margin: 0; background: #0e1015; color: #e8e8ea; font: 16px system-ui, sans-serif; }
+    main { position: relative; }
+    canvas { display: block; width: 100%; height: 100dvh; touch-action: pinch-zoom; }
+    #access { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+    #access :is(button,textarea,input) { position: absolute; font: 16px system-ui, sans-serif; margin: 0; padding: 0; border: 0; resize: none; }
+    #status { position: absolute; top: 1rem; left: 1rem; }
+    [data-embed] #status { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <canvas aria-label="kui book example" tabindex="0"></canvas>
+    <div id="access" role="group" aria-label="kui book example"></div>
+    <p id="status" role="status">Loading example…</p>
+    <span id="renderer" hidden></span>
+  </main>
+  <script type="module">
+    import { mountDemo } from "./mount.js";
+    import { effects } from "./gallery-effects.js";
+    const example = new URLSearchParams(location.search).get("example") ?? "";
+    const bytes = new TextEncoder().encode(example);
+    const requiresGpu = ["widgets/fragment", "widgets/line", "features/backdrop", "features/backdrop_blur"].includes(example);
+    await mountDemo("./gallery.wasm", {
+      renderer: requiresGpu ? "wgpu" : "auto",
+      initialize(wasm) {
+        const ptr = wasm.text_buffer(bytes.length);
+        new Uint8Array(wasm.memory.buffer, ptr, bytes.length).set(bytes);
+        if (!wasm.select_example()) throw new Error("Unknown book example.");
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: "kui-example", state: "size",
+            width: wasm.demo_width(), height: wasm.demo_height(),
+          }, location.origin);
+        }
+      },
+      afterFrame: effects(),
+    });
+  </script>
+</body>
+</html>
