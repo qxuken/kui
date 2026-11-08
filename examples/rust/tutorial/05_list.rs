@@ -158,7 +158,7 @@ impl App for Todo {
     // ANCHOR_END: on_event
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Todo")
         .size(420.0, 360.0)
         .run(Todo::default())

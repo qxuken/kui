@@ -93,7 +93,7 @@ impl App for Notes {
 }
 
 // ANCHOR: main
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     let notes = LuaExtension::from_source("notes.lua", include_str!("11_extensions/notes.lua"))?;
     let stamp = LuaExtension::from_source("stamp.lua", include_str!("11_extensions/stamp.lua"))?;
     kui_native::app("Notes")

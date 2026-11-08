@@ -222,7 +222,7 @@ function painter(canvas, restoreCanvas) {
 }
 
 /** Mount one Wasm app for the lifetime of its canvas. */
-export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" } = {}) {
+export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame, contentScale = () => 1, panOutside, overlayCanvas, instantiate = WebAssembly.instantiate } = {}) {
   let wasm;
   let snapshot;
   let clipboardText;
@@ -238,6 +238,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
   };
   let selectedRenderer = "canvas";
   let frame;
+  let drawOverlay;
   let firstFrame;
   const seconds = () => performance.now() / 1000;
   if (renderer === "wgpu" || (renderer === "auto" && navigator.gpu)) {
@@ -247,6 +248,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
       moduleUrl.pathname = moduleUrl.pathname.replace(/\.wasm$/, "-wgpu.js");
       const module = await import(moduleUrl.href);
       wasm = await module.default();
+      initialize?.(wasm);
       reconnect = () => module.attach_wgpu(canvas, browserCallbacks.access_tree, browserCallbacks.clipboard_text);
       await reconnect();
       setPlatform();
@@ -270,11 +272,31 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
     }
   }
   if (!frame) {
-    const paint = painter(canvas, restoreCanvas);
-    const imports = { canvas: { ...paint(() => wasm.memory), ...browserCallbacks } };
+    const memory = () => wasm.memory;
+    const paint = painter(canvas, restoreCanvas)(memory);
+    if (overlayCanvas) {
+      const overlay = painter(overlayCanvas, restoreCanvas)(memory);
+      let drawingOverlay = false;
+      for (const name of Object.keys(paint)) {
+        const owner = paint[name];
+        paint[name] = (...args) => (drawingOverlay ? overlay[name] : owner)(...args);
+      }
+      drawOverlay = (draw) => {
+        drawingOverlay = true;
+        snapshot = undefined;
+        try {
+          const next = draw();
+          return { next, snapshot };
+        } finally {
+          drawingOverlay = false;
+        }
+      };
+    }
+    const imports = { canvas: { ...paint, ...browserCallbacks } };
     const response = await fetch(wasmUrl);
     if (!response.ok) throw new Error(`Wasm fetch failed (${response.status})`);
-    ({ instance: { exports: wasm } } = await WebAssembly.instantiate(await response.arrayBuffer(), imports));
+    ({ instance: { exports: wasm } } = await instantiate(await response.arrayBuffer(), imports));
+    initialize?.(wasm);
     setPlatform();
     frame = (width, height, scale, redraw) => wasm.frame(width, height, scale, seconds(), redraw);
     firstFrame = paintFrame();
@@ -321,14 +343,16 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
   function paintFrame() {
     const { width, height } = canvas.getBoundingClientRect();
     if (width === 0 || height === 0) return;
-    const scale = window.devicePixelRatio || 1;
-    const w = Math.max(1, Math.round(width * scale));
-    const h = Math.max(1, Math.round(height * scale));
+    const zoom = contentScale();
+    const dpr = window.devicePixelRatio || 1;
+    // The measured rectangle already includes content zoom.
+    const w = Math.max(1, Math.round(width * dpr));
+    const h = Math.max(1, Math.round(height * dpr));
     const redraw = needsRedraw || (!reconnect && (canvas.width !== w || canvas.height !== h));
     if (canvas.width !== w) canvas.width = w;
     if (canvas.height !== h) canvas.height = h;
     needsRedraw = false;
-    return frame(width, height, scale, Number(redraw), w, h);
+    return frame(width / zoom, height / zoom, dpr * zoom, Number(redraw), w, h);
   }
 
   let recoveryDelay = 0;
@@ -345,6 +369,14 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
         recoverDevice();
       }
     }, recoveryDelay);
+  }
+
+  let wakeTimer;
+  function scheduleWake() {
+    if (!wasm.next_frame_at) return;
+    clearTimeout(wakeTimer);
+    const at = wasm.next_frame_at();
+    if (at > 0) wakeTimer = setTimeout(schedule, Math.max(0, (at - seconds()) * 1000));
   }
 
   function draw() {
@@ -365,12 +397,14 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
     if (next === undefined) return;
     recoveryDelay = 0;
     if (next) schedule();
+    afterFrame?.(wasm, canvas, schedule, drawOverlay);
+    scheduleWake();
     syncAccess();
   }
 
   const move = (event, time) => {
     const rect = canvas.getBoundingClientRect();
-    const pointer = wasm.pointer_move(event.clientX - rect.left, event.clientY - rect.top, time);
+    const pointer = wasm.pointer_move((event.clientX - rect.left) / contentScale(), (event.clientY - rect.top) / contentScale(), time);
     canvas.style.cursor = pointer ? "pointer" : "default";
   };
   const leave = (time) => {
@@ -396,13 +430,17 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
   let otherPointer = null;
   function moveTouch(event, time) {
     if (touch?.start.pointerId !== event.pointerId) return;
-    const dx = event.clientX - touch.last.clientX;
-    const dy = event.clientY - touch.last.clientY;
+    const dx = event.screenX - touch.last.screenX;
+    const dy = event.screenY - touch.last.screenY;
     const begins = !touch.moving;
     if ((!dx && !dy) || (begins && Math.hypot(dx, dy) <= TOUCH_SLOP)) return;
     if (touch.pan) {
       if (begins) move(touch.start, time);
-      wasm.scroll_gesture(dx, dy, Number(begins), time);
+      if (!touch.page) {
+        const claimed = wasm.scroll_gesture(dx / contentScale(), dy / contentScale(), Number(begins), time);
+        if (begins && !claimed && panOutside) touch.page = true;
+      }
+      if (touch.page) panOutside(-dy);
     } else {
       if (begins) press(touch.start, 1, time);
       move(event, time);
@@ -442,7 +480,11 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
       event.preventDefault();
       canvas.setPointerCapture(event.pointerId);
       const rect = canvas.getBoundingClientRect();
-      const pan = !!wasm.prefers_scroll(event.clientX - rect.left, event.clientY - rect.top);
+      const pan = !!wasm.prefers_scroll(
+        (event.clientX - rect.left) / contentScale(),
+        (event.clientY - rect.top) / contentScale(),
+        Number(!!panOutside),
+      );
       touch = { start: event, last: event, pan, moving: false };
       return;
     }
@@ -503,11 +545,10 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
   canvas.addEventListener("lostpointercapture", cancelPointer);
   if (bridge) canvas.addEventListener("wheel", (event) => {
     if (event.ctrlKey) return; // Browser zoom remains available.
-    event.preventDefault();
     const time = seconds();
     move(event, time);
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
-    wasm.scroll(-event.deltaX * unit, -event.deltaY * unit, time);
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1 / contentScale();
+    if (wasm.scroll(-event.deltaX * unit, -event.deltaY * unit, time)) event.preventDefault();
     schedule();
   }, { passive: false });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -521,6 +562,10 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
   window.addEventListener("resize", schedule);
   canvas.addEventListener("contextrestored", restoreCanvas);
   if (firstFrame) schedule();
-  if (firstFrame !== undefined) syncAccess();
+  if (firstFrame !== undefined) {
+    afterFrame?.(wasm, canvas, schedule, drawOverlay);
+    scheduleWake();
+    syncAccess();
+  }
   return selectedRenderer;
 }

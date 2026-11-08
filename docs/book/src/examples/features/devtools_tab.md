@@ -2,9 +2,7 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
-<img src="../../img/examples/features/devtools_tab.png" width="760" alt="features/devtools_tab: its settled frame, drawn headlessly by --shot">
-
-*The example as it draws: its settled frame, drawn headlessly by `--shot`.*
+<a data-kui-example="480" href="../../live/gallery.html?example=features/devtools_tab">Live devtools_tab example</a>
 
 ```rust,noplayground
 {{#include ../../../../../examples/rust/features/devtools_tab.rs}}

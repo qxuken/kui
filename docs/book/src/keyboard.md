@@ -1,5 +1,7 @@
 # Keyboard and focus
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/06_keyboard">Live chapter example</a>
+
 At the end of this chapter, the arrow keys move a cursor over a grid,
 space lights a cell, Tab walks the cells and the button, and the screen
 says where focus is.

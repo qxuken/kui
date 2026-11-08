@@ -151,7 +151,7 @@ impl App for Settings {
     // ANCHOR_END: on_event
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Settings")
         .size(480.0, 420.0)
         .run(Settings::default())

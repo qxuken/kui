@@ -19,7 +19,7 @@ impl App for Hello {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Hello").size(360.0, 200.0).run(Hello)
 }
 // ANCHOR_END: all

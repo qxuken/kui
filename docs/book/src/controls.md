@@ -1,5 +1,7 @@
 # Controls
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/04_controls">Live chapter example</a>
+
 At the end of this chapter, a settings card has a switch, a checkbox, a
 slider, a text field and a select, and each one reports through the
 model.

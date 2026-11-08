@@ -2,9 +2,7 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
-<img src="../../img/examples/widgets/fragment.png" width="960" alt="widgets/fragment: its settled frame, drawn headlessly by --shot">
-
-*The example as it draws: its settled frame, drawn headlessly by `--shot`.*
+<a data-kui-example="480" href="../../live/gallery.html?example=widgets/fragment">Live fragment example</a>
 
 ```rust,noplayground
 {{#include ../../../../../examples/rust/widgets/fragment.rs}}
