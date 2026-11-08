@@ -40,6 +40,13 @@ def text [lines: list<string>] { ($lines | str join "\n") + "\n" }
 def live-example [kind: string, name: string] {
     let id = $"($kind)/($name)"
     if $kind == "tools" { return [] }
+    if $id in (open --raw examples/book-web/desktop-only.txt | lines) {
+        return [
+            "This example uses a separate, non-activating desktop window."
+            "For an in-frame menu, try the [live select example](../widgets/select.md)."
+            ""
+        ]
+    }
     [
         $'<a data-kui-example="480" href="../../live/gallery.html?example=($id)">Live ($name) example</a>'
         ""

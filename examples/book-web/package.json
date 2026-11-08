@@ -1,0 +1,7 @@
+{
+  "name": "kui-book-web",
+  "private": true,
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2"
+  }
+}

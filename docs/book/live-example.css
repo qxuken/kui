@@ -1,5 +1,13 @@
+#mdbook-content {
+  container-type: inline-size;
+}
+
 .kui-example {
+  --kui-panel-width: min(var(--kui-example-width, 100%), 100cqw);
+  box-sizing: border-box;
+  width: var(--kui-panel-width);
   margin-block: 1.5rem;
+  margin-inline: calc((100% - var(--kui-panel-width)) / 2);
   border: 1px solid var(--table-border-color);
   border-radius: 0.5rem;
   overflow: hidden;
@@ -45,10 +53,12 @@
 }
 
 .kui-example-viewport {
-  overflow-x: auto;
+  position: relative;
 }
 
 .kui-example iframe {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;

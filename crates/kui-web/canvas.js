@@ -222,7 +222,7 @@ function painter(canvas, restoreCanvas) {
 }
 
 /** Mount one Wasm app for the lifetime of its canvas. */
-export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame } = {}) {
+export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame, contentScale = () => 1, panOutside, instantiate = WebAssembly.instantiate } = {}) {
   let wasm;
   let snapshot;
   let clipboardText;
@@ -275,7 +275,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     const imports = { canvas: { ...paint(() => wasm.memory), ...browserCallbacks } };
     const response = await fetch(wasmUrl);
     if (!response.ok) throw new Error(`Wasm fetch failed (${response.status})`);
-    ({ instance: { exports: wasm } } = await WebAssembly.instantiate(await response.arrayBuffer(), imports));
+    ({ instance: { exports: wasm } } = await instantiate(await response.arrayBuffer(), imports));
     initialize?.(wasm);
     setPlatform();
     frame = (width, height, scale, redraw) => wasm.frame(width, height, scale, seconds(), redraw);
@@ -323,14 +323,15 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   function paintFrame() {
     const { width, height } = canvas.getBoundingClientRect();
     if (width === 0 || height === 0) return;
-    const scale = window.devicePixelRatio || 1;
+    const zoom = contentScale();
+    const scale = (window.devicePixelRatio || 1) * zoom;
     const w = Math.max(1, Math.round(width * scale));
     const h = Math.max(1, Math.round(height * scale));
     const redraw = needsRedraw || (!reconnect && (canvas.width !== w || canvas.height !== h));
     if (canvas.width !== w) canvas.width = w;
     if (canvas.height !== h) canvas.height = h;
     needsRedraw = false;
-    return frame(width, height, scale, Number(redraw), w, h);
+    return frame(width / zoom, height / zoom, scale, Number(redraw), w, h);
   }
 
   let recoveryDelay = 0;
@@ -382,7 +383,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
 
   const move = (event, time) => {
     const rect = canvas.getBoundingClientRect();
-    const pointer = wasm.pointer_move(event.clientX - rect.left, event.clientY - rect.top, time);
+    const pointer = wasm.pointer_move((event.clientX - rect.left) / contentScale(), (event.clientY - rect.top) / contentScale(), time);
     canvas.style.cursor = pointer ? "pointer" : "default";
   };
   const leave = (time) => {
@@ -408,13 +409,17 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   let otherPointer = null;
   function moveTouch(event, time) {
     if (touch?.start.pointerId !== event.pointerId) return;
-    const dx = event.clientX - touch.last.clientX;
-    const dy = event.clientY - touch.last.clientY;
+    const dx = event.screenX - touch.last.screenX;
+    const dy = event.screenY - touch.last.screenY;
     const begins = !touch.moving;
     if ((!dx && !dy) || (begins && Math.hypot(dx, dy) <= TOUCH_SLOP)) return;
     if (touch.pan) {
       if (begins) move(touch.start, time);
-      wasm.scroll_gesture(dx, dy, Number(begins), time);
+      if (!touch.page) {
+        const claimed = wasm.scroll_gesture(dx / contentScale(), dy / contentScale(), Number(begins), time);
+        if (begins && !claimed && panOutside) touch.page = true;
+      }
+      if (touch.page) panOutside(-dy);
     } else {
       if (begins) press(touch.start, 1, time);
       move(event, time);
@@ -454,7 +459,11 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
       event.preventDefault();
       canvas.setPointerCapture(event.pointerId);
       const rect = canvas.getBoundingClientRect();
-      const pan = !!wasm.prefers_scroll(event.clientX - rect.left, event.clientY - rect.top);
+      const pan = !!wasm.prefers_scroll(
+        (event.clientX - rect.left) / contentScale(),
+        (event.clientY - rect.top) / contentScale(),
+        Number(!!panOutside),
+      );
       touch = { start: event, last: event, pan, moving: false };
       return;
     }
@@ -515,11 +524,10 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   canvas.addEventListener("lostpointercapture", cancelPointer);
   if (bridge) canvas.addEventListener("wheel", (event) => {
     if (event.ctrlKey) return; // Browser zoom remains available.
-    event.preventDefault();
     const time = seconds();
     move(event, time);
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
-    wasm.scroll(-event.deltaX * unit, -event.deltaY * unit, time);
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1 / contentScale();
+    if (wasm.scroll(-event.deltaX * unit, -event.deltaY * unit, time)) event.preventDefault();
     schedule();
   }, { passive: false });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());

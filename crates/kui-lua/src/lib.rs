@@ -2536,9 +2536,13 @@ fn load_font_file(
     }
     let mut ui = ui.borrow_mut()?;
     let core = ui.core();
-    let Some(family) = kui_native::system::load_font_file(core, &p)
-        .and_then(|id| core.font_family(id).map(str::to_string))
-    else {
+    #[cfg(not(target_os = "wasi"))]
+    let font = kui_native::system::load_font_file(core, &p);
+    #[cfg(target_os = "wasi")]
+    let font = std::fs::read(&p)
+        .ok()
+        .and_then(|bytes| core.add_font_data(bytes));
+    let Some(family) = font.and_then(|id| core.font_family(id).map(str::to_string)) else {
         return Ok((
             None,
             Some(format!(
@@ -2579,8 +2583,18 @@ fn load_tokens(lua: &Lua, (path, opts): (String, Option<Table>)) -> mlua::Result
         }
     }
     let p = script_path(lua, &path);
-    let loaded = kui_native::system::load_dtcg(&p, &o)
-        .map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
+    #[cfg(not(target_os = "wasi"))]
+    let loaded = kui_native::system::load_dtcg(&p, &o);
+    #[cfg(target_os = "wasi")]
+    let loaded = {
+        let read =
+            |path: &std::path::Path| std::fs::read_to_string(path).map_err(|e| e.to_string());
+        let source = read(&p).map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
+        kui_core::dtcg::from_str_with(&source, p.parent(), &p.display().to_string(), &o, &mut {
+            read
+        })
+    };
+    let loaded = loaded.map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
     let (colors, lengths, families) = (
         lua.create_table()?,
         lua.create_table()?,

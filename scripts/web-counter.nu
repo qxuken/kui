@@ -18,6 +18,7 @@ def main [--port: int = 8080, --build-only, --out-dir: path, --book, --svg, --de
     if $book {
         cp examples/book-web/gallery.html $out
         cp examples/book-web/gallery-effects.js $out
+        cp examples/book-web/gallery-audio.js $out
     } else {
         cp examples/web/index.html $out
         cp examples/web/notes.html $out
