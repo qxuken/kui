@@ -199,6 +199,22 @@ function painter(canvas, restoreCanvas) {
         ctx.restore();
       }
     },
+    segment(x0, y0, x1, y1, width, r, g, b, a) {
+      if (!(width > 0 && a > 0)) return;
+      ctx.beginPath();
+      if (x0 === x1 && y0 === y1) {
+        ctx.arc(x0, y0, width / 2, 0, 2 * Math.PI);
+        ctx.fillStyle = rgba(r, g, b, a);
+        ctx.fill();
+      } else {
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.lineCap = "round";
+        ctx.lineWidth = width;
+        ctx.strokeStyle = rgba(r, g, b, a);
+        ctx.stroke();
+      }
+    },
     glyph(x, y, w, h, sx, sy, sw, sh, r, g, b, a, colored) {
       if (!sw || !sh || a <= 0) return;
       const source = colored ? atlas : tintedAtlas(r, g, b);

@@ -31,5 +31,9 @@ def main [--out-dir: path = "target/book", --install-tools] {
 
     let runner = ($target | path join "web-tools" "book-runner.zip" | path expand)
     ^nu scripts/web-runner.nu --out $runner --shim $shim
-    ^cargo run --locked --quiet -p kui-cli --bin kui -- pack examples/lua/tutorial/tasks --format web --runner $runner --out ($live | path join "tasks")
+    let tasks = ($live | path join "tasks")
+    ^cargo run --locked --quiet -p kui-cli --bin kui -- pack examples/lua/tutorial/tasks --format web --runner $runner --out $tasks
+    cp docs/book/book-tasks.js ($tasks | path join "kui")
+    let index = ($tasks | path join "index.html")
+    open --raw $index | str replace "./kui/web-app.js" "./kui/book-tasks.js" | save --force --raw $index
 }

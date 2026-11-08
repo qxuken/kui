@@ -393,6 +393,21 @@ jobs:
           echo "$ver" > "$mirror/latest.txt"
           KUI_MIRROR="file://$mirror" KUI_INSTALL_DIR="$RUNNER_TEMP/kui-bin" sh scripts/install/install.sh
           test "$("$RUNNER_TEMP/kui-bin/kui" -V)" = "kui $ver"
+
+          # Exercise the installed packer with an empty cache and the same
+          # versioned, checksummed assets the release will publish.
+          port=8765
+          python3 -m http.server "$port" --bind 127.0.0.1 --directory "$mirror" &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          url="http://127.0.0.1:$port"
+          curl --fail --silent --retry 10 --retry-connrefused --retry-delay 1 "$url/v$ver/SHA256SUMS" >/dev/null
+          web="$RUNNER_TEMP/web-pack-smoke"
+          KUI_RUNNER_MIRROR="$url" KUI_CACHE_DIR="$RUNNER_TEMP/web-runner-cache" \
+            "$RUNNER_TEMP/kui-bin/kui" pack examples/lua/tutorial/tasks --format web --out "$web"
+          test -s "$web/app.kuiweb"
+          test -s "$web/kui/runner.wasm"
+          test -s "$web/kui/runner-gpu_bg.wasm"
           ls -l target/pack/release
 
       - uses: actions/upload-artifact@v7

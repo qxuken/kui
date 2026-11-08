@@ -370,6 +370,7 @@ struct Meta {
     /// The local header's absolute position in the source.
     local: u64,
     mode: u32,
+    unix_kind: u32,
     dir: bool,
 }
 
@@ -510,6 +511,7 @@ impl ZipReader {
                 size,
                 local: local + shift,
                 mode,
+                unix_kind: unix & S_IFMT,
                 dir,
             });
             p = end;
@@ -556,8 +558,8 @@ impl ZipReader {
     }
 }
 
-impl Entry<'_> {
-    pub fn name(&self) -> &str {
+impl<'a> Entry<'a> {
+    pub fn name(&self) -> &'a str {
         &self.meta.name
     }
 
@@ -568,6 +570,11 @@ impl Entry<'_> {
 
     pub fn is_dir(&self) -> bool {
         self.meta.dir
+    }
+
+    /// Whether the archive marks the entry as a symlink or other special file.
+    pub fn is_special(&self) -> bool {
+        !matches!(self.meta.unix_kind, 0 | S_IFREG | S_IFDIR)
     }
 
     /// The member's bytes, inflated and checked against its CRC.

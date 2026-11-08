@@ -52,6 +52,7 @@ unsafe extern "C" {
         rb: f32,
         ra: f32,
     );
+    fn segment(x0: f32, y0: f32, x1: f32, y1: f32, width: f32, r: f32, g: f32, b: f32, a: f32);
     fn glyph(
         x: f32,
         y: f32,
@@ -186,6 +187,10 @@ impl Painter {
                             b.b,
                             b.a,
                         );
+                    }
+                    QuadKind::Segment => {
+                        let [x0, y0, x1, y1] = quad.segment_ends();
+                        segment(x0, y0, x1, y1, quad.border_w, c.r, c.g, c.b, c.a);
                     }
                     QuadKind::GlyphMask | QuadKind::GlyphColor | QuadKind::GlyphSubpixel => {
                         let [sx, sy, sw, sh] = quad.uv;

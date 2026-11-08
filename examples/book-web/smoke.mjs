@@ -47,6 +47,12 @@ try {
     await packed.goto(base + "/live/tasks/index.html");
     await packed.getByRole("textbox", { name: "New task" }).waitFor();
     console.log("OK packed tasks");
+    await packed.goto(base + "/live/gallery.html?example=lua/tasks&renderer=canvas&embed#saved");
+    await packed.waitForURL(url => url.pathname.endsWith("/live/tasks/index.html") &&
+      url.searchParams.get("renderer") === "canvas" && url.searchParams.has("embed") &&
+      url.hash === "#saved");
+    await packed.getByRole("textbox", { name: "New task" }).waitFor();
+    console.log("OK legacy tasks link");
   } finally {
     await packed.close();
   }

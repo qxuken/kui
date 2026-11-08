@@ -514,9 +514,10 @@ python3 -m http.server --directory dist
 
 Open the local server or deploy the contents of `dist` to a static HTTPS
 host. The packer resolves the runner version from `kui.config.lua`,
-downloads and verifies the release's web runner, and caches it. A local
-build with the WASI SDK can create the runner zip with
-`nu scripts/web-runner.nu --install-tools` and pass it with `--runner`.
+downloads and verifies the release's web runner, and caches it. If the
+pinned version has no published web runner, build the matching source
+checkout with the WASI SDK and `nu scripts/web-runner.nu --install-tools`,
+then pass the resulting ZIP with `--runner`.
 Use `web` on its own in a pack command. Teal modules
 are translated to Lua source during packing.
 

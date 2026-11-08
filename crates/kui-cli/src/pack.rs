@@ -224,6 +224,12 @@ fn collect(project: &Project, output: Option<&Path>) -> Result<Vec<File>, String
         if project.pack.exclude.iter().any(|g| project::glob(g, &name)) {
             return;
         }
+        if output.is_some()
+            && let Err(error) = web::bundle_path(rel)
+        {
+            err = Some(error);
+            return;
+        }
         match std::fs::read(p) {
             Ok(data) => out.push(File {
                 name,

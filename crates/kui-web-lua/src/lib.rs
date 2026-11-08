@@ -32,10 +32,14 @@ fn make_runner() -> Runner<AppModel> {
     let session = Session::with_fonts("en-US", fonts);
     session.set_svg_file_resolver(|path, previous| {
         // A packed asset has one revision for the lifetime of this instance.
-        if !Path::new(path).starts_with("/app") {
+        let path = Path::new(app::APP_DIR).join(path);
+        if !path.starts_with(app::APP_DIR) {
             return SvgFileUpdate::Changed {
                 stamp: None,
-                data: Err(format!("{path}: SVG files must be part of the packed app")),
+                data: Err(format!(
+                    "{}: SVG files must be part of the packed app",
+                    path.display()
+                )),
             };
         }
         let stamp = Some((0, 0));
@@ -44,7 +48,7 @@ fn make_runner() -> Runner<AppModel> {
         } else {
             SvgFileUpdate::Changed {
                 stamp,
-                data: std::fs::read(path).map_err(|e| format!("{path}: {e}")),
+                data: std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display())),
             }
         }
     });
@@ -77,7 +81,12 @@ fn load() -> Result<(), Box<dyn std::error::Error>> {
     let version = manifest["version"]
         .as_str()
         .ok_or("web bundle has no version")?;
-    let app = LuaExtension::from_file_with(Path::new("/app").join(entry), |lua| {
+    let root = Path::new(app::APP_DIR);
+    let entry = root.join(entry);
+    let source =
+        std::fs::read_to_string(&entry).map_err(|e| format!("{}: {e}", entry.display()))?;
+    let app = LuaExtension::from_source_with(format!("@{}", entry.display()), &source, |lua| {
+        kui_lua::set_script_dir(lua, root)?;
         app::install(lua, name, id, version)
     })?;
     let drain = app::initialize(&app)?;
