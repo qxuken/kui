@@ -117,7 +117,7 @@ To repeat the probe, build `kui-ffi` in release with `--no-default-features` and
 
 Native desktop callers that construct a core directly use `kui_native::system::new_core()` for installed fonts, native shortcuts, and the path-based asset adapters. The runner and native bindings select those adapters at their entry points. The native SVG compatibility resolver still checks file metadata once per path per frame when a file-backed element reaches it. A published SVG snapshot uses an in-memory revision check. SVG parsing accepts embedded data URLs and refuses external image references. [Native integration](../crates/kui-native/README.md)
 
-### Final release comparison
+### Release comparison before review
 
 The final run alternated the Phase 1 and extracted binaries across 21 pairs on the same M3 Pro, using the same 686-family catalog and CPU-only display-list and trace probe. Frame percentiles are medians of per-process percentiles.
 
@@ -138,6 +138,25 @@ The final run alternated the Phase 1 and extracted binaries across 21 pairs on t
 | Runner-less FFI dylib | 12,505,232 B | 12,625,424 B |
 
 Preparing the catalog moves work ahead of the first frame and removes lazy font-file access from shaping and family registration. The first implementation peaked at 36.50 MiB RSS. Validating through a temporary mapping, keeping pages in the published mapping cold until use, and reusing unchanged mappings reduced that to 26.92 MiB in a separate paired run. Initializing hinting from the session’s platform eliminated a needless first-frame atlas clear and brought the final peak to 23.14 MiB, 1.06 MiB above Phase 1. Explicit trace flush now waits for the writer to acknowledge the queued bytes. The runner-less library kept the same 400 exported `kui_*` symbols. The measurements above cover macOS on one machine and local storage.
+
+### Immutable font snapshot comparison
+
+The review reproduced a process crash when an app truncated a registered
+font file in place. Native now keeps immutable font bytes, and a rescan
+uses a new backing when a file at the same path changes. Small mutable
+fonts share a private snapshot file to reduce the number of filesystem
+operations during a cold scan.
+
+Eleven interleaved release runs on the same machine and catalog compared
+the reviewed build with the extracted build above.
+
+| Workload | Before review | With immutable snapshots |
+| --- | ---: | ---: |
+| Startup through first text, median | 26.95 ms | 47.13 ms |
+| Unchanged rescan, median | 18.66 ms | 26.50 ms |
+| Warm frame p95 | 8.79 µs | 8.67 µs |
+| Streaming frame p95 | 31.33 µs | 31.37 µs |
+| Peak process RSS | 23.16 MiB | 23.58 MiB |
 
 ### Larger frame and editing workloads
 
