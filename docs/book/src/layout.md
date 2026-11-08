@@ -1,5 +1,7 @@
 # Layout
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/02_layout">Live chapter example</a>
+
 At the end of this chapter, the window has a header, a sidebar beside a
 content area, and a footer — and resizing the window keeps them in
 place.

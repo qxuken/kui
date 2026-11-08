@@ -9,18 +9,20 @@ use kui_core::{
     Platform, Session, Size, Vec2,
 };
 
+pub(crate) fn bundled_fonts() -> [Vec<u8>; 2] {
+    [
+        include_bytes!("../../crates/kui-cli/assets/fonts/NotoSans-Regular.ttf").to_vec(),
+        include_bytes!("fonts/NotoSansSymbols2-Keyboard.ttf").to_vec(),
+    ]
+}
+
+#[allow(dead_code)]
 pub fn session() -> Session {
-    Session::with_fonts(
-        "en-US",
-        [
-            include_bytes!("../../crates/kui-cli/assets/fonts/NotoSans-Regular.ttf").to_vec(),
-            include_bytes!("fonts/NotoSansSymbols2-Keyboard.ttf").to_vec(),
-        ],
-    )
+    Session::with_fonts("en-US", bundled_fonts())
 }
 
 thread_local! {
-    static RUNNER: RefCell<kui_web::Runner<crate::AppModel>> = RefCell::new(crate::make_runner());
+    pub(crate) static RUNNER: RefCell<kui_web::Runner<crate::AppModel>> = RefCell::new(crate::make_runner());
     static TEXT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -188,7 +190,14 @@ pub extern "C" fn text_buffer(len: usize) -> *mut u8 {
     })
 }
 
-fn browser_text() -> String {
+#[allow(dead_code)]
+pub(crate) fn publish_browser_bytes(bytes: Vec<u8>) -> usize {
+    let len = bytes.len();
+    TEXT.with_borrow_mut(|buffer| *buffer = bytes);
+    len
+}
+
+pub(crate) fn browser_text() -> String {
     TEXT.with_borrow(|bytes| String::from_utf8_lossy(bytes).into_owned())
 }
 

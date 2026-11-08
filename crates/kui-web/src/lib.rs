@@ -23,7 +23,11 @@ use kui_core::{
 
 pub trait App {
     fn view(&mut self, ui: &mut Ui<'_>);
-    fn on_event(&mut self, event: UiEvent);
+    fn on_event(&mut self, _event: UiEvent) {}
+    fn on_event_with(&mut self, event: UiEvent, _core: &mut Core) {
+        self.on_event(event);
+    }
+    fn before_frame(&mut self, _core: &mut Core) {}
 }
 
 pub struct Runner<A> {
@@ -50,6 +54,10 @@ impl<A: App> Runner<A> {
         }
     }
 
+    pub fn core_mut(&mut self) -> &mut Core {
+        &mut self.core
+    }
+
     /// Routes input through the last frame's hit tree, using browser time in seconds.
     pub fn input(&mut self, event: InputEvent, time: f64) {
         self.core.set_time(time);
@@ -69,9 +77,20 @@ impl<A: App> Runner<A> {
         self.route(events);
     }
 
+    /// Delivers a browser key transition without synthesizing its release.
+    pub fn key_event(&mut self, key: KeyPress, time: f64, down: bool) {
+        self.core.set_time(time);
+        let events = if down {
+            self.core.press(key)
+        } else {
+            self.core.release(key)
+        };
+        self.route(events);
+    }
+
     fn route(&mut self, events: Vec<UiEvent>) {
         for event in events {
-            self.app.on_event(event);
+            self.app.on_event_with(event, &mut self.core);
         }
     }
 
@@ -203,8 +222,13 @@ impl<A: App> Runner<A> {
         Ok(painter.paint(&mut self.core, backing_size)? || next)
     }
 
+    pub fn next_frame_at(&self) -> Option<f64> {
+        self.core.next_frame_at()
+    }
+
     fn build_frame(&mut self, viewport: Size, scale: f32, time: f64) -> bool {
         self.core.set_time(time);
+        self.app.before_frame(&mut self.core);
         let mut ui = self.core.frame(viewport, scale);
         self.app.view(&mut ui);
         ui.finish();

@@ -16,6 +16,7 @@ for (const link of document.querySelectorAll("a[data-kui-example]")) {
   toolbar.append(link, reload, status);
 
   const viewport = document.createElement("div");
+  viewport.className = "kui-example-viewport";
   viewport.style.height = `${link.dataset.kuiExample}px`;
   example.append(toolbar, viewport);
 
@@ -38,10 +39,17 @@ for (const link of document.querySelectorAll("a[data-kui-example]")) {
   window.addEventListener("message", event => {
     if (event.origin !== url.origin || event.source !== frame?.contentWindow ||
         event.data?.type !== "kui-example") return;
+    if (event.data.state === "size") {
+      const { width, height } = event.data;
+      if (Number.isFinite(width) && width >= 1 && width <= 2000) frame.style.width = `${width}px`;
+      if (Number.isFinite(height) && height >= 1 && height <= 1500) viewport.style.height = `${height}px`;
+    }
     if (event.data.state === "ready" || event.data.state === "error") {
       clearTimeout(timeout);
       viewport.removeAttribute("aria-busy");
-      status.textContent = event.data.state === "ready" ? "Ready" : "The example could not load.";
+      status.textContent = event.data.state === "ready" ? "Ready"
+        : event.data.message ? `Could not load the example. ${event.data.message}`
+        : "The example could not load.";
     }
   });
   reload.addEventListener("click", load);

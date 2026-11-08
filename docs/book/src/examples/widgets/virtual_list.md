@@ -2,9 +2,7 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
-<img src="../../img/examples/widgets/virtual_list.png" width="560" alt="widgets/virtual_list: its settled frame, drawn headlessly by --shot">
-
-*The example as it draws: its settled frame, drawn headlessly by `--shot`.*
+<a data-kui-example="480" href="../../live/gallery.html?example=widgets/virtual_list">Live virtual_list example</a>
 
 ```rust,noplayground
 {{#include ../../../../../examples/rust/widgets/virtual_list.rs}}

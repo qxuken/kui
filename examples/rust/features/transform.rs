@@ -340,6 +340,7 @@ impl Example for Turn {
     }
 }
 
-fn main() {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_devtools::run("transform", Turn::default());
+    Ok(())
 }

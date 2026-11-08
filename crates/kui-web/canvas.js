@@ -222,7 +222,7 @@ function painter(canvas, restoreCanvas) {
 }
 
 /** Mount one Wasm app for the lifetime of its canvas. */
-export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" } = {}) {
+export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame } = {}) {
   let wasm;
   let snapshot;
   let clipboardText;
@@ -247,6 +247,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
       moduleUrl.pathname = moduleUrl.pathname.replace(/\.wasm$/, "-wgpu.js");
       const module = await import(moduleUrl.href);
       wasm = await module.default();
+      initialize?.(wasm);
       reconnect = () => module.attach_wgpu(canvas, browserCallbacks.access_tree, browserCallbacks.clipboard_text);
       await reconnect();
       setPlatform();
@@ -275,6 +276,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
     const response = await fetch(wasmUrl);
     if (!response.ok) throw new Error(`Wasm fetch failed (${response.status})`);
     ({ instance: { exports: wasm } } = await WebAssembly.instantiate(await response.arrayBuffer(), imports));
+    initialize?.(wasm);
     setPlatform();
     frame = (width, height, scale, redraw) => wasm.frame(width, height, scale, seconds(), redraw);
     firstFrame = paintFrame();
@@ -347,6 +349,14 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
     }, recoveryDelay);
   }
 
+  let wakeTimer;
+  function scheduleWake() {
+    if (!wasm.next_frame_at) return;
+    clearTimeout(wakeTimer);
+    const at = wasm.next_frame_at();
+    if (at > 0) wakeTimer = setTimeout(schedule, Math.max(0, (at - seconds()) * 1000));
+  }
+
   function draw() {
     scheduled = false;
     let next;
@@ -365,6 +375,8 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
     if (next === undefined) return;
     recoveryDelay = 0;
     if (next) schedule();
+    afterFrame?.(wasm, canvas, schedule);
+    scheduleWake();
     syncAccess();
   }
 
@@ -521,6 +533,10 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto" }
   window.addEventListener("resize", schedule);
   canvas.addEventListener("contextrestored", restoreCanvas);
   if (firstFrame) schedule();
-  if (firstFrame !== undefined) syncAccess();
+  if (firstFrame !== undefined) {
+    afterFrame?.(wasm, canvas, schedule);
+    scheduleWake();
+    syncAccess();
+  }
   return selectedRenderer;
 }

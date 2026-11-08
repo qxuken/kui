@@ -60,7 +60,7 @@ impl App for Counter {
     // ANCHOR_END: on_event
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Counter")
         .size(360.0, 240.0)
         .run(Counter::default())

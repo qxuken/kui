@@ -74,7 +74,7 @@ struct Map {
     /// How far the lit dashed links have marched, in px, and when the
     /// last frame that moved them was drawn.
     march: f32,
-    last: Option<std::time::Instant>,
+    last: Option<f64>,
 }
 
 /// Px a second a lit dashed link's marks move.
@@ -139,9 +139,9 @@ impl App for Map {
                 self.cards[i].planned
                     && (hovered[i] || self.cards[i].parent.is_some_and(|p| hovered[p]))
             });
-            let now = std::time::Instant::now();
+            let now = ui.now();
             if let (true, Some(last)) = (marching, self.last) {
-                self.march += now.duration_since(last).as_secs_f32() * MARCH;
+                self.march += (now - last).max(0.0) as f32 * MARCH;
             }
             self.last = marching.then_some(now);
             if marching {

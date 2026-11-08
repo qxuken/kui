@@ -44,6 +44,10 @@
   to { transform: rotate(1turn); }
 }
 
+.kui-example-viewport {
+  overflow-x: auto;
+}
+
 .kui-example iframe {
   display: block;
   width: 100%;
