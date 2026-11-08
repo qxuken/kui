@@ -52,6 +52,7 @@ unsafe extern "C" {
         rb: f32,
         ra: f32,
     );
+    fn segment(x0: f32, y0: f32, x1: f32, y1: f32, width: f32, r: f32, g: f32, b: f32, a: f32);
     fn glyph(
         x: f32,
         y: f32,
@@ -76,6 +77,7 @@ pub(crate) struct Painter {
     clips: Vec<Clip>,
     textures: Vec<TextureDraw>,
     uploaded: HashMap<ImageId, u32>,
+    atlas_uploaded: bool,
 }
 
 impl Painter {
@@ -88,7 +90,11 @@ impl Painter {
         let bg = core.theme().bg;
         let (list, atlas) = core.output();
         let surface = (list.viewport, bg);
-        let atlas_dirty = atlas.dirty_rect();
+        let atlas_dirty = if self.atlas_uploaded {
+            atlas.dirty_rect()
+        } else {
+            Some([0, 0, atlas.size, atlas.size])
+        };
         let mut textures_changed = self.textures != list.textures;
         // SAFETY: the imports consume the borrowed pixels synchronously.
         unsafe {
@@ -138,6 +144,7 @@ impl Painter {
             if let Some([x, y, w, h]) = atlas_dirty {
                 upload_atlas(atlas.pixels.as_ptr(), atlas.size, x, y, w, h);
                 atlas.mark_uploaded();
+                self.atlas_uploaded = true;
             }
             for quad in &list.quads {
                 if let Some(damage) = damage {
@@ -180,6 +187,10 @@ impl Painter {
                             b.b,
                             b.a,
                         );
+                    }
+                    QuadKind::Segment => {
+                        let [x0, y0, x1, y1] = quad.segment_ends();
+                        segment(x0, y0, x1, y1, quad.border_w, c.r, c.g, c.b, c.a);
                     }
                     QuadKind::GlyphMask | QuadKind::GlyphColor | QuadKind::GlyphSubpixel => {
                         let [sx, sy, sw, sh] = quad.uv;

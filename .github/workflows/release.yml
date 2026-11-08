@@ -21,6 +21,8 @@
 #   kui-<version>-<platform>.tar.gz (kui-<version>-win32-x64.zip)
 #       the runner, one file `kui` (`kui.exe`) per platform
 #       (scripts/pack-runner.nu, ADR 0068)
+#   kui-<version>-web.zip
+#       the prebuilt browser runner for `kui pack --format web`
 #   install.sh, install.ps1
 #       scripts/install/: pick the platform's runner, check it against
 #       SHA256SUMS, put it in ~/.kui/bin
@@ -323,7 +325,8 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: node npm nu odin gh
+          tools: rust node npm nu odin gh
+          wasi: 'true'
 
       - name: Install ALSA
         run: |
@@ -364,6 +367,11 @@ jobs:
           path: target/pack/release
           merge-multiple: true
 
+      - name: Build the browser runner
+        run: |
+          ver=$(nu -c 'open Cargo.toml | get workspace.package.version')
+          nu scripts/web-runner.nu --install-tools --out "target/pack/release/kui-$ver-web.zip"
+
       # SHA256SUMS over every asset (pack-ffi.nu's own covered the C and
       # Odin archives only), then the linux-x64 runner installed the way a user
       # installs it: install.sh against these files laid out as a mirror
@@ -385,6 +393,21 @@ jobs:
           echo "$ver" > "$mirror/latest.txt"
           KUI_MIRROR="file://$mirror" KUI_INSTALL_DIR="$RUNNER_TEMP/kui-bin" sh scripts/install/install.sh
           test "$("$RUNNER_TEMP/kui-bin/kui" -V)" = "kui $ver"
+
+          # Exercise the installed packer with an empty cache and the same
+          # versioned, checksummed assets the release will publish.
+          port=8765
+          python3 -m http.server "$port" --bind 127.0.0.1 --directory "$mirror" &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          url="http://127.0.0.1:$port"
+          curl --fail --silent --retry 10 --retry-connrefused --retry-delay 1 "$url/v$ver/SHA256SUMS" >/dev/null
+          web="$RUNNER_TEMP/web-pack-smoke"
+          KUI_RUNNER_MIRROR="$url" KUI_CACHE_DIR="$RUNNER_TEMP/web-runner-cache" \
+            "$RUNNER_TEMP/kui-bin/kui" pack examples/lua/tutorial/tasks --format web --out "$web"
+          test -s "$web/app.kuiweb"
+          test -s "$web/kui/runner.wasm"
+          test -s "$web/kui/runner-gpu_bg.wasm"
           ls -l target/pack/release
 
       - uses: actions/upload-artifact@v7

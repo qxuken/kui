@@ -225,6 +225,56 @@ fn cache_path(version: &str, platform: &str) -> PathBuf {
         .join(binary_name(platform))
 }
 
+fn web_asset(version: &str) -> String {
+    format!("kui-{version}-web.zip")
+}
+
+pub fn web_runner(
+    version: &str,
+    mirror: Option<&str>,
+    local: Option<&Path>,
+) -> Result<Vec<u8>, String> {
+    if let Some(file) = local {
+        return std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()));
+    }
+    if version.is_empty()
+        || !version
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b".-+".contains(&b))
+        || version == "."
+        || version == ".."
+    {
+        return Err(format!("invalid web runner version: {version}"));
+    }
+    let asset = web_asset(version);
+    let dir = crate::paths::kui_cache()
+        .join("runners")
+        .join(version)
+        .join("web");
+    if let Ok(bytes) = std::fs::read(dir.join(&asset)) {
+        return Ok(bytes);
+    }
+    let base = base_url(mirror, version);
+    let sums = sums(&base)?;
+    if !sums.contains_key(&asset) {
+        return Err(format!(
+            "{base}/SHA256SUMS lists no browser runner for kui {version} ({asset}). \
+             To pack with this pin, build the runner from the matching source checkout \
+             with scripts/web-runner.nu and pass its ZIP to --runner."
+        ));
+    }
+    let bytes = fetch_verified(&base, &asset, &sums)?;
+    if std::fs::create_dir_all(&dir).is_ok() {
+        use std::io::Write;
+        if let Ok(mut tmp) = tempfile::NamedTempFile::new_in(&dir)
+            && tmp.write_all(&bytes).is_ok()
+        {
+            let _ = tmp.persist(dir.join(asset));
+        }
+    }
+    Ok(bytes)
+}
+
 /// `kui runners fetch <version> --to <dir>`: every platform's asset with
 /// the sums, in the release's layout, for a company's mirror; `latest.txt`
 /// written when the version asked was `latest`.
@@ -240,6 +290,12 @@ pub fn fetch_all(version: &str, to: &Path, mirror: Option<&str>) -> Result<(), S
         let bytes = fetch_verified(&base, &asset, &sums)?;
         std::fs::write(dir.join(&asset), &bytes).map_err(|e| format!("{asset}: {e}"))?;
         println!("{}  {asset}", sha256_hex(&bytes));
+    }
+    let web = web_asset(&resolved);
+    if sums.contains_key(&web) {
+        let bytes = fetch_verified(&base, &web, &sums)?;
+        std::fs::write(dir.join(&web), &bytes).map_err(|e| format!("{web}: {e}"))?;
+        println!("{}  {web}", sha256_hex(&bytes));
     }
     for extra in ["install.sh", "install.ps1"] {
         if let Ok(bytes) = download(&format!("{base}/{extra}")) {

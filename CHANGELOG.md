@@ -54,6 +54,10 @@ was the first bare bump to break an app in five releases).
 - The browser runner uses the shared `kui-wgpu` renderer and falls back
   to Canvas 2D. The counter and notes workspace demonstrate pointer input,
   touch scrolling, text editing, and the accessibility mirror.
+- `kui pack --format web` packages Lua and Teal apps with a prebuilt
+  browser runner and Kit. Serve the output as a static site. Files in
+  `kui.data_dir` persist in the browser for each app. Packed apps use
+  `kui-wgpu` when WebGPU is available and fall back to Canvas 2D.
 
 ### Fixed
 

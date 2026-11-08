@@ -161,16 +161,50 @@ try {
   await click(extensions.getByRole("button", { name: "Stamp (0)", exact: true }));
   await extensions.getByRole("button", { name: "Stamp (1)", exact: true }).waitFor();
 
+  const legacyTasks = JSON.stringify([{ text: "Task from the old embed", done: true }]);
+  await page.evaluate(async legacy => {
+    localStorage.setItem("kui-book/tasks.json", legacy);
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("kui-app:dev.kui.book.tasks", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("files");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction("files", "readwrite");
+        tx.oncomplete = resolve;
+        tx.onabort = () => reject(tx.error);
+        tx.objectStore("files").put(new TextEncoder().encode(JSON.stringify([
+          { text: "Task from the packed app", done: true },
+        ])), "tasks.json");
+      });
+    } finally {
+      db.close();
+    }
+  }, legacyTasks);
+  await page.goto(new URL("live/tasks/index.html", base).href);
+  await page.getByRole("checkbox", { name: "Task from the old embed", checked: true }).waitFor();
+  await page.getByRole("checkbox", { name: "Task from the packed app", checked: true }).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem("kui-book/tasks.json")), null);
+  // Retry an already committed migration, as if the first tab closed before
+  // clearing the legacy key.
+  await page.evaluate(legacy => localStorage.setItem("kui-book/tasks.json", legacy), legacyTasks);
   const tasks = await chapter("runner.html");
+  await tasks.getByRole("checkbox", { name: "Task from the old embed", checked: true }).waitFor();
+  assert.equal(await tasks.getByRole("checkbox", { name: "Task from the old embed" }).count(), 1);
+  await tasks.getByRole("checkbox", { name: "Task from the packed app", checked: true }).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem("kui-book/tasks.json")), null);
   await click(tasks.getByRole("button", { name: "Add", exact: true }));
   await tasks.getByText("Name the task first", { exact: true }).waitFor();
-  await click(tasks.getByRole("textbox"));
+  const taskField = await tasks.getByRole("textbox").boundingBox();
+  await page.mouse.click(taskField.x + 40, taskField.y + taskField.height / 2);
   await page.frames().at(-1).waitForFunction(() => document.activeElement?.tagName === "INPUT");
   await page.keyboard.type("Keep the source");
   await page.keyboard.press("Enter");
   const task = tasks.getByRole("checkbox", { name: "Keep the source", exact: true });
   await task.waitFor();
-  await page.waitForFunction(() => localStorage.getItem("kui-book/tasks.json")?.includes("Keep the source"));
+  await page.waitForFunction(packedTaskData, "Keep the source");
   await page.getByRole("button", { name: "Reload example" }).click();
   await page.getByText("Ready", { exact: true }).waitFor();
   await task.waitFor();
@@ -178,8 +212,48 @@ try {
   await tasks.getByRole("checkbox", { name: "Keep the source", checked: true }).waitFor();
   await click(tasks.getByRole("button", { name: "Clear done", exact: true }));
   await task.waitFor({ state: "detached" });
-  await page.waitForFunction(() => localStorage.getItem("kui-book/tasks.json") === "[]");
+  await page.waitForFunction(packedTaskData, "[]");
   console.log("Lua extension slots, task validation, keyboard submission and saved file");
+
+  const packed = await browser.newPage({ viewport: { width: 720, height: 500 } });
+  try {
+    await packed.addInitScript(() => {
+      if (typeof GPUAdapter === "undefined") return;
+      const request = GPUAdapter.prototype.requestDevice;
+      GPUAdapter.prototype.requestDevice = async function(...args) {
+        return (window.packedDevice = await request.apply(this, args));
+      };
+    });
+    const url = new URL("live/tasks/index.html", base);
+    await packed.goto(url.href);
+    await packed.locator("#status").waitFor({ state: "hidden" });
+    const renderer = packed.locator("#renderer");
+    if (await renderer.textContent() === "kui-wgpu") {
+      await packed.getByRole("textbox").focus();
+      await packed.keyboard.insertText("Keep the draft");
+      await packed.waitForFunction(() => document.activeElement?.value === "Keep the draft");
+      await packed.evaluate(() => window.packedDevice.destroy());
+      await packed.waitForFunction(() => document.querySelector("#renderer").textContent === "Canvas 2D");
+      await packed.keyboard.insertText(" after device loss");
+      await packed.waitForFunction(() => document.activeElement?.value === "Keep the draft after device loss");
+      assert.equal(await packed.locator("main > canvas").count(), 1);
+      console.log("Packed WebGPU device loss preserves the focused draft on Canvas 2D");
+    }
+    const gpuRequests = [];
+    packed.on("request", request => {
+      if (request.url().includes("/runner-gpu")) gpuRequests.push(request.url());
+    });
+    url.searchParams.set("renderer", "canvas");
+    await packed.goto(url.href);
+    await packed.locator("#status").waitFor({ state: "hidden" });
+    assert.equal(await renderer.textContent(), "Canvas 2D");
+    assert.deepEqual(gpuRequests, []);
+    console.log("Packed Canvas 2D starts without downloading WebGPU");
+  } finally {
+    await packed.close();
+  }
+
+  await checkPackedStorage(browser, base);
 
   const deck = await chapter("presentations.html");
   const next = deck.getByRole("button", { name: "Next", exact: true });
@@ -323,4 +397,154 @@ async function paintedPopupField(owner) {
   });
   assert.ok(point, "the Alloy field is visible in the owner canvas");
   return { x: bounds.x + point.x * bounds.width, y: bounds.y + point.y * bounds.height };
+}
+
+async function packedTaskData(expected) {
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open("kui-app:dev.kui.book.tasks");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    const bytes = await new Promise((resolve, reject) => {
+      const request = db.transaction("files").objectStore("files").get("tasks.json");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return bytes && new TextDecoder().decode(bytes).includes(expected);
+  } finally {
+    db.close();
+  }
+}
+
+async function checkPackedStorage(browser, base) {
+  const context = await browser.newContext();
+  try {
+    const database = "kui-app:dev.kui.book.storage-test";
+    const entry = Buffer.from(String.raw`
+      local kit = require("kit.ui")
+      local data = kui.data_dir .. "/"
+      function update(msg)
+        if msg.kind == "Make folder" then
+          kui.fs.mkdir(data .. "state")
+        elseif msg.kind == "Replace folder" then
+          assert(os.remove(data .. "state"))
+          kui.fs.write(data .. "state", "scalar")
+        elseif msg.kind == "Write child" then
+          kui.fs.write(data .. "state/child", "child")
+          kui.fs.write(data .. "same-save", "discard")
+        elseif msg.kind == "Write separate file" then
+          kui.fs.write(data .. [[a\b]], "backslash")
+        end
+      end
+      function view()
+        local rows = {
+          line { from = {30, 45}, to = {210, 45}, width = 10, color = "#ff00ff" },
+        }
+        for _, label in ipairs({"Make folder", "Replace folder", "Write child", "Write separate file"}) do
+          rows[#rows + 1] = kit.button({label = label, on_press = {kind = label}})
+        end
+        return column(rows)
+      end
+    `);
+    await context.route("**/live/tasks/app.kuiweb", async route => {
+      const original = await (await route.fetch()).body();
+      const manifest = JSON.parse(original.subarray(4, 4 + original.readUInt32LE()));
+      manifest.id = database.slice("kui-app:".length);
+      manifest.entry = "main.lua";
+      manifest.files = [[manifest.entry, entry.length]];
+      const header = Buffer.from(JSON.stringify(manifest));
+      const length = Buffer.alloc(4);
+      length.writeUInt32LE(header.length);
+      await route.fulfill({ body: Buffer.concat([length, header, entry]), contentType: "application/octet-stream" });
+    });
+    const url = new URL("live/tasks/index.html?renderer=canvas", base);
+    const open = async () => {
+      const page = await context.newPage();
+      page.setDefaultTimeout(8000);
+      await page.goto(url.href);
+      await page.locator("#status").waitFor({ state: "hidden" });
+      return page;
+    };
+    const press = (page, name) => page.getByRole("button", { name, exact: true }).evaluate(button => button.click());
+    const first = await open();
+    assert.ok(await first.locator("main > canvas").evaluate(canvas => {
+      const { data } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+      return data.some((red, index) =>
+        index % 4 === 0 && red > 200 && data[index + 1] < 70 && data[index + 2] > 200);
+    }), "Canvas 2D paints the packed Lua line");
+
+    // A write can start saving even when the browser never draws its next frame.
+    await first.evaluate(() => { window.requestAnimationFrame = () => 0; });
+    await press(first, "Make folder");
+    await first.waitForFunction(storedFilesMatch, { database, expected: { state: null } }, { polling: 50 });
+    await first.reload();
+    await first.locator("#status").waitFor({ state: "hidden" });
+    const stale = await open();
+    await press(first, "Replace folder");
+    await first.waitForFunction(storedFilesMatch, { database, expected: { state: "scalar" } });
+    await press(stale, "Write child");
+    await stale.getByText(/Another tab changed state\. This save was skipped/).waitFor();
+    await press(stale, "Write separate file");
+    await stale.waitForFunction(storedFilesMatch, {
+      database, expected: { state: "scalar", "state/child": false, "same-save": false, "a\\b": "backslash" },
+    });
+    await open();
+
+    // Recreate the invalid store from an older runner and check that all
+    // contents survive the repair, including a preexisting recovery name.
+    await first.evaluate(async database => {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open(database, 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction("files", "readwrite");
+          tx.oncomplete = resolve;
+          tx.onabort = () => reject(tx.error);
+          const store = tx.objectStore("files");
+          const encoder = new TextEncoder();
+          store.put(encoder.encode("child"), "state/child");
+          store.put(encoder.encode("preexisting"), "state.kui-recovered");
+        });
+      } finally {
+        db.close();
+      }
+    }, database);
+    const reopened = await open();
+    await reopened.waitForFunction(storedFilesMatch, {
+      database, expected: {
+        state: null, "state/child": "child", "state.kui-recovered": "preexisting",
+        "state.kui-recovered-2": "scalar", "a\\b": "backslash",
+      },
+    });
+    console.log("Packed Canvas 2D draws lines and storage saves without a frame, isolates conflicts and recovers old files");
+  } finally {
+    await context.close();
+  }
+}
+
+async function storedFilesMatch({ database, expected }) {
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open(database, 1);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    const store = db.transaction("files").objectStore("files");
+    const decoder = new TextDecoder();
+    const matches = await Promise.all(Object.entries(expected).map(([key, value]) => new Promise((resolve, reject) => {
+      const request = store.get(key);
+      request.onsuccess = () => {
+        const data = request.result;
+        resolve(value === false ? data === undefined : data instanceof Uint8Array ? decoder.decode(data) === value : data === value);
+      };
+      request.onerror = () => reject(request.error);
+    })));
+    return matches.every(Boolean);
+  } finally {
+    db.close();
+  }
 }

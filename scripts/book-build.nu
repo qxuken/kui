@@ -1,6 +1,8 @@
 #!/usr/bin/env nu
 # Build the book and stage its live examples in the same static site.
 
+use wasi-build.nu
+
 const ROOT = (path self | path dirname | path dirname)
 
 def main [--out-dir: path = "target/book", --install-tools] {
@@ -20,35 +22,18 @@ def main [--out-dir: path = "target/book", --install-tools] {
         ^nu scripts/web-counter.nu --build-only --book --out-dir ($out | path join "live")
     }
 
-    let lua_tools = ($tools | path join "book-lua")
-    mkdir $lua_tools
-    cp examples/book-web/package.json examples/book-web/package-lock.json $lua_tools
-    ^npm ci --ignore-scripts --no-audit --prefix $lua_tools
-    let wasi = ($lua_tools | path join "node_modules" "@bjorn3" "browser_wasi_shim")
     let live = ($out | path join "live")
     let shim = ($live | path join "wasi")
-    mkdir $shim
-    for module in (glob $"($wasi)/dist/*.js") {
-        cp $module $shim
-    }
-    cp ($wasi | path join "LICENSE-APACHE") ($wasi | path join "LICENSE-MIT") ($live | path join "wasi")
+    wasi-build stage-shim $shim
     cp examples/book-web/gallery-lua.js $live
-
-    # wasi-sdk supplies the C headers and setjmp implementation Lua uses.
-    if ($env.WASI_SDK_PATH? | is-not-empty) {
-        let sdk = ($env.WASI_SDK_PATH | path expand)
-        let sysroot = ($sdk | path join "share" "wasi-sysroot")
-        let libraries = ($sysroot | path join "lib" "wasm32-wasip1")
-        with-env {
-            CC_wasm32_wasip1: ($sdk | path join "bin" "clang")
-            AR_wasm32_wasip1: ($sdk | path join "bin" "llvm-ar")
-            CFLAGS_wasm32_wasip1: $"--sysroot=($sysroot)"
-            CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS: $"-Lnative=($libraries)"
-        } {
-            ^cargo build --locked --release -p kui-book-web --lib --target wasm32-wasip1
-        }
-    } else {
-        ^cargo build --locked --release -p kui-book-web --lib --target wasm32-wasip1
-    }
+    wasi-build build kui-book-web
     cp ($target | path join "wasm32-wasip1" "release" "kui_book_web.wasm") ($live | path join "gallery-lua.wasm")
+
+    let runner = ($target | path join "web-tools" "book-runner.zip" | path expand)
+    ^nu scripts/web-runner.nu --out $runner --shim $shim
+    let tasks = ($live | path join "tasks")
+    ^cargo run --locked --quiet -p kui-cli --bin kui -- pack examples/lua/tutorial/tasks --format web --runner $runner --out $tasks
+    cp docs/book/book-tasks.js ($tasks | path join "kui")
+    let index = ($tasks | path join "index.html")
+    open --raw $index | str replace "./kui/web-app.js" "./kui/book-tasks.js" | save --force --raw $index
 }

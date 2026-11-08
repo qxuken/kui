@@ -42,6 +42,20 @@ try {
       }
     }
   }));
-  console.log("total",ids.size,"failed",bad.length);
+  const packed = await browser.newPage({ viewport: { width: 800, height: 540 } });
+  try {
+    await packed.goto(base + "/live/tasks/index.html");
+    await packed.getByRole("textbox", { name: "New task" }).waitFor();
+    console.log("OK packed tasks");
+    await packed.goto(base + "/live/gallery.html?example=lua/tasks&renderer=canvas&embed#saved");
+    await packed.waitForURL(url => url.pathname.endsWith("/live/tasks/index.html") &&
+      url.searchParams.get("renderer") === "canvas" && url.searchParams.has("embed") &&
+      url.hash === "#saved");
+    await packed.getByRole("textbox", { name: "New task" }).waitFor();
+    console.log("OK legacy tasks link");
+  } finally {
+    await packed.close();
+  }
+  console.log("total",ids.size + 1,"failed",bad.length);
   assert.deepEqual(bad, []);
 } finally {await browser.close();}
