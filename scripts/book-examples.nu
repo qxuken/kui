@@ -76,6 +76,20 @@ def picture [src: string, kind: string, name: string] {
 # Lines joined with "\n" and ended by one, the way `echo` wrote them.
 def text [lines: list<string>] { ($lines | str join "\n") + "\n" }
 
+def live-example [example: string] {
+    match $example {
+        "apps/counter" => [
+            '<a data-kui-example="400" href="../../live/index.html">Live counter</a>'
+            ""
+        ]
+        "widgets/edit" => [
+            '<a data-kui-example="460" href="../../live/notes.html">Live notes workspace</a>'
+            ""
+        ]
+        _ => []
+    }
+}
+
 def generate [src: string] {
     let out = ($src | path join examples)
     rm -rf --permanent $out
@@ -119,7 +133,7 @@ def generate [src: string] {
                 ""
                 "<!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->"
                 ""
-            ] | append (picture $src $k.kind $n) | append $source)
+            ] | append (live-example $"($k.kind)/($n)") | append (picture $src $k.kind $n) | append $source)
             | save -f --raw ($out | path join $k.kind $"($n).md")
         }
     }

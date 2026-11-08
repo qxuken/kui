@@ -12,6 +12,9 @@
     p { margin: 0 0 20px; color: #4b5668; }
     canvas { display: block; width: 100%; height: 400px; border-radius: 12px; touch-action: manipulation; box-shadow: 0 0 0 1px #cdd4e0, 0 8px 24px #17203112; }
     #status { margin-top: 16px; }
+    [data-embed] main { max-width: none; margin: 0; padding: 0; }
+    [data-embed] main > :not(canvas):not(.workbench) { display: none; }
+    [data-embed] canvas { height: 100dvh; border-radius: 0; box-shadow: none; }
   </style>
 </head>
 <body>
@@ -23,17 +26,8 @@
     <p style="margin-top: 16px"><a href="./notes.html">Try the notes workspace</a></p>
   </main>
   <script type="module">
-    import { startCanvas } from "./canvas.js";
-    const status = document.querySelector("#status");
-    const renderer = new URLSearchParams(location.search).get("renderer") ?? "auto";
-    try {
-      const selected = await startCanvas(document.querySelector("canvas"), "./counter.wasm", { renderer });
-      document.querySelector("#renderer").textContent = selected === "wgpu" ? "kui-wgpu" : "Canvas 2D";
-      status.hidden = true;
-    } catch (error) {
-      status.textContent = error.message;
-      throw error;
-    }
+    import { mountDemo } from "./mount.js";
+    await mountDemo("./counter.wasm");
   </script>
 </body>
 </html>
