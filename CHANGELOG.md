@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.79 (unreleased)
+## 0.1.0-alpha.79 (2026-11-09)
 
 **What breaks.**
 
@@ -44,6 +44,18 @@ was the first bare bump to break an app in five releases).
   scopes, filters, span ordering and result limits, and checks that the
   two reads produce the same result. A four-frame recording seeds the
   fuzzer and replays under the workspace tests.
+
+### Native verification
+
+On Apple M3 Pro / macOS 27.0.1, the versioned workspace and Node round
+passed 3,562 tests across 261 Rust suites and Node, with 17 ignored,
+GPU and conformance checks required. The 23 additional Node presentation
+tests and 200,000 Node decoder fuzz cases passed. All 59 Rust and 12 Node
+windowed examples drew 120 frames on both theme bases. The accessibility
+audit passed 106/106 checks. The C, Odin and headless rounds passed.
+
+Release generators, strict workspace Clippy, Node typechecking, the book
+build, workflow syntax and the dependency security audit passed.
 
 ## 0.1.0-alpha.78 (2026-11-07)
 
