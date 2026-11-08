@@ -33,8 +33,8 @@
 //! ```
 //!
 //! A recording still being written is read as it grows: a [`Stream`]
-//! decodes what its [`Transport`] hands over — a [`FileTransport`], with a
-//! [`Watch`] that says when the file moved — and keeps the record cut
+//! decodes what its [`Transport`] hands over. The `file` feature provides
+//! `FileTransport` and `Watch`. The stream keeps the record cut
 //! between reads for the next (ADR 0075, decision 5).
 //!
 //! [`analysis`] reads a timeline the way the Perf tab does — phases, an
@@ -47,6 +47,7 @@ pub mod analysis;
 mod codec;
 pub mod diff;
 pub mod dump;
+#[cfg(feature = "file")]
 mod file;
 #[cfg(feature = "lua")]
 pub mod lua;
@@ -59,6 +60,7 @@ mod stream;
 pub mod synth;
 
 pub use codec::{Encoder, Error, MAGIC, Reader, VERSION, Writer, header};
+#[cfg(feature = "file")]
 pub use file::{FileTransport, Watch};
 pub use model::{
     Event, Frame, Gauge, Holder, Input, Mark, Names, Placement, Present, Request, Timeline, Trace,

@@ -1,3 +1,5 @@
+//! System integration for hosts, with or without the kui runner.
+//!
 //! The system's file manager and default apps (backlog F203): a file
 //! shown in its folder, and a file, a folder or a URL opened with what
 //! the system opens it with. The core asks for the first with
@@ -18,8 +20,46 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::OnceLock;
 
+mod assets;
+mod fonts;
+mod perf;
+#[cfg(feature = "gui")]
+pub(crate) use assets::capture_path;
+pub use assets::load_dtcg;
+pub use perf::configure_recording;
+
 /// The runner's own binary, when this process is the kui runner.
 static RUNNER: OnceLock<PathBuf> = OnceLock::new();
+
+/// Creates a session with the host's installed fonts. Join it with
+/// [`kui_core::Core::new_in`] to share resources across windows.
+pub fn new_session() -> kui_core::Session {
+    let session = kui_core::Session::with_font_catalog(fonts::catalog());
+    session.set_font_loader(std::rc::Rc::new(fonts::Loader));
+    session.set_svg_file_resolver(assets::svg_file);
+    session.set_perf_host(perf::host());
+    session.set_platform(kui_core::rules::Platform::current());
+    session
+}
+
+/// Creates a standalone core for a native host using its installed fonts.
+pub fn new_core() -> kui_core::Core {
+    kui_core::Core::new_in(&new_session())
+}
+
+/// Reads a font into an existing core without changing its font catalog.
+pub fn load_font_file(
+    core: &mut kui_core::Core,
+    path: impl AsRef<Path>,
+) -> Option<kui_core::FontId> {
+    use kui_core::text::FontLoader;
+    core.add_prepared_font(fonts::Loader.file(path.as_ref()))
+}
+
+#[cfg(feature = "gui")]
+pub(crate) fn configure_assets(session: &kui_core::Session) {
+    session.supply_svg_file_resolver(assets::svg_file);
+}
 
 /// Says this process is the kui runner, at `exe`, so
 /// [`open_recording`] starts `exe perf` before the `kui` on `PATH`. The

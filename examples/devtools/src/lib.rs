@@ -336,7 +336,7 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
         return pictures(name, &mut example, &cli);
     }
     if cli.headless {
-        let mut core = Core::new();
+        let mut core = kui_native::system::new_core();
         core.set_diagnostics(true);
         return match example.headless(&mut core) {
             Ok(()) => {
@@ -755,6 +755,19 @@ mod tests {
 #[cfg(test)]
 mod pins {
     use crate::manifest::{CRATES, crate_manifest, node_roster, root};
+
+    #[test]
+    fn conformance_tool_is_outside_the_windowed_round() {
+        assert!(
+            crate_manifest("kui-native")
+                .0
+                .iter()
+                .any(|name| name == "conformance-dump")
+        );
+        let windowed = crate::manifest::windowed();
+        assert!(windowed.iter().any(|name| name == "counter"));
+        assert!(!windowed.iter().any(|name| name == "conformance-dump"));
+    }
 
     /// Every name in a `headless = [...]` list is an `[[example]]` of the
     /// same crate: `smoke --headless` runs what the list says.

@@ -4,7 +4,7 @@
  * lowering. A tool, not an example; it is here because it is the one
  * corpus adapter written in C.
  *
- *   cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+ *   cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt
  *   ./target/debug/conformance [target/conformance.txt]
  *
  * The reference is generated, never checked in: the quad digests cover
@@ -3307,7 +3307,7 @@ static int conformance(const char *path) {
     if (!text) {
         fprintf(stderr,
                 "conformance: cannot read %s\n"
-                "  generate it with: cargo run -p kui-core --features conformance --example conformance-dump -- %s\n",
+                "  generate it with: cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- %s\n",
                 path, path);
         return 1;
     }

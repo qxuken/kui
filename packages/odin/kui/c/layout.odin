@@ -999,6 +999,7 @@ package kui_c
 #assert(PLATFORM_MACOS == 1)
 #assert(PLATFORM_WINDOWS == 2)
 #assert(PLATFORM_LINUX == 3)
+#assert(PLATFORM_OTHER == 4)
 #assert(PATH_MOVE == 0)
 #assert(PATH_LINE == 1)
 #assert(PATH_QUAD == 2)

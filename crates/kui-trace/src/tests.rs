@@ -409,6 +409,7 @@ fn a_stream_pushed_in_pieces_reads_as_the_whole() {
     assert!(s.push(b"nope, not a trace").is_err());
 }
 
+#[cfg(feature = "file")]
 fn temp(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("kui-trace-{}-{name}", std::process::id()));
     let _ = std::fs::remove_file(&dir);
@@ -419,6 +420,7 @@ fn temp(name: &str) -> std::path::PathBuf {
 /// grew, then a reset with the new recording whole; the file's end idle
 /// while followed and ended when not.
 #[test]
+#[cfg(feature = "file")]
 fn a_file_read_as_it_grows_and_again_when_rewritten() {
     use std::io::Write;
     let path = temp("grow.kuitrace");
@@ -452,6 +454,7 @@ fn a_file_read_as_it_grows_and_again_when_rewritten() {
 
 /// A watch calls back when the file moves, and not while it stands still.
 #[test]
+#[cfg(feature = "file")]
 fn a_watch_says_when_the_file_moved() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let path = temp("watch.kuitrace");

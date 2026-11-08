@@ -179,9 +179,17 @@ pub struct Captures {
     worker: Option<Worker>,
     /// Stopped recordings whose threads are still writing.
     finishing: Vec<Worker>,
+    trace_save: Option<TraceSave>,
     /// What asks for a frame once a thread has written a recording:
     /// `Some` puts recordings on threads.
     wake: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+}
+
+struct TraceSave {
+    path: String,
+    inspect: bool,
+    result: std::sync::mpsc::Receiver<Result<(), String>>,
+    thread: std::thread::JoinHandle<()>,
 }
 
 struct Recording {
@@ -282,7 +290,26 @@ impl Captures {
         }
         hold |= self.worker.is_some();
         for cmd in cmds {
+            use kui_core::{CaptureCommand, DevtoolsCapture};
+            let cmd = match cmd {
+                CaptureCommand::Devtools(DevtoolsCapture::Screenshot) => {
+                    let path = crate::system::capture_path("png");
+                    let message = Some(core.devtools_capture_started(&path, false));
+                    CaptureCommand::Still { path, message }
+                }
+                CaptureCommand::Devtools(DevtoolsCapture::Recording) => {
+                    let path = crate::system::capture_path("gif");
+                    let message = Some(core.devtools_capture_started(&path, true));
+                    CaptureCommand::Record { path, message }
+                }
+                CaptureCommand::Devtools(DevtoolsCapture::Trace { bytes, inspect }) => {
+                    self.export_trace(core, bytes, inspect);
+                    continue;
+                }
+                other => other,
+            };
             match cmd {
+                kui_core::CaptureCommand::Devtools(_) => unreachable!("resolved below"),
                 kui_core::CaptureCommand::Still { path, message } => {
                     let done = match kui_core::CaptureFormat::of_still(&path) {
                         Err(why) => Err(why),
@@ -378,6 +405,19 @@ impl Captures {
     /// The answers of recordings whose threads have finished: written, or
     /// stopped by a failure while still running.
     fn collect(&mut self, core: &mut Core) {
+        if let Some(save) = &self.trace_save {
+            use std::sync::mpsc::TryRecvError;
+            let result = match save.result.try_recv() {
+                Ok(result) => Some(result),
+                Err(TryRecvError::Disconnected) => Some(Err("trace export stopped".into())),
+                Err(TryRecvError::Empty) => None,
+            };
+            if let Some(result) = result {
+                let save = self.trace_save.take().expect("pending export");
+                let _ = save.thread.join();
+                core.devtools_trace_exported(save.path, save.inspect, result);
+            }
+        }
         let mut i = 0;
         while i < self.finishing.len() {
             match self.finishing[i].done.try_recv() {
@@ -395,6 +435,42 @@ impl Captures {
             w.answer(core, Some(got));
         }
     }
+
+    fn export_trace(&mut self, core: &mut Core, bytes: Vec<u8>, inspect: bool) {
+        let path = crate::system::capture_path("kuitrace");
+        let Some(wake) = self.wake.clone() else {
+            let result = std::fs::write(&path, bytes).map_err(|e| e.to_string());
+            core.devtools_trace_exported(path, inspect, result);
+            return;
+        };
+        if self.trace_save.is_some() {
+            core.devtools_trace_exported(
+                path,
+                inspect,
+                Err("a trace export is already running".into()),
+            );
+            return;
+        }
+        let destination = path.clone();
+        let (done, result) = std::sync::mpsc::sync_channel(1);
+        let thread = std::thread::Builder::new()
+            .name("kui-trace-export".into())
+            .spawn(move || {
+                let _ = done.send(std::fs::write(&destination, bytes).map_err(|e| e.to_string()));
+                wake();
+            });
+        match thread {
+            Ok(thread) => {
+                self.trace_save = Some(TraceSave {
+                    path,
+                    inspect,
+                    result,
+                    thread,
+                })
+            }
+            Err(error) => core.devtools_trace_exported(path, inspect, Err(error.to_string())),
+        }
+    }
 }
 
 impl Drop for Captures {
@@ -403,6 +479,9 @@ impl Drop for Captures {
     /// with the window, so nothing hears it. A thread still writing one
     /// is waited for, so the file is whole when the process ends.
     fn drop(&mut self) {
+        if let Some(save) = self.trace_save.take() {
+            let _ = save.thread.join();
+        }
         if let Some(r) = self.recording.take()
             && let Err(e) = r.write_dropped()
         {

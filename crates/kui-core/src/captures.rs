@@ -26,7 +26,18 @@ pub enum CaptureCommand {
     Stop,
     /// The next frame drawn, put on the clipboard as a picture: a
     /// [`crate::menu::MenuAction::SetClipboardImage`] the driver applies.
-    Clipboard { message: Option<Value> },
+    Clipboard {
+        message: Option<Value>,
+    },
+    Devtools(DevtoolsCapture),
+}
+
+/// A capture whose destination the host chooses for the devtools.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DevtoolsCapture {
+    Screenshot,
+    Recording,
+    Trace { bytes: Vec<u8>, inspect: bool },
 }
 
 /// What a path's extension says a capture is written as: the one rule

@@ -85,6 +85,12 @@ fixed clock origin. `--system-fonts` uses the machine's fonts instead.
 Original captured pixels remain available when drawing playback on another
 GPU/backend differs slightly.
 
+Rust tests can pass a portable `kui_core::Core::new()` to
+`kui_native::testing::Drive`. For assertions that depend on font metrics,
+construct the core with `Session::with_fonts` and fixed font bytes. Use
+`kui_native::system::new_core()` when the test exercises installed fonts,
+native shortcuts, or path-based font and SVG loading.
+
 ## Temporary resources and mocks
 
 Temporary paths also work in ordinary apps:

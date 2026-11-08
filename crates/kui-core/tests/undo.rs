@@ -1,6 +1,8 @@
 //! Undo/redo of the edit widget's own history: coalesced typing bursts,
 //! delete runs, selection replaces, caret restore, and history limits.
 
+mod support;
+
 use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Value};
 
 const SHIFT: Mods = Mods {
@@ -17,7 +19,7 @@ struct Rig {
 
 impl Rig {
     fn new(initial: &str, multiline: bool) -> Rig {
-        let mut core = Core::new();
+        let mut core = support::desktop();
         let key = frame(&mut core, initial, multiline);
         Rig { core, key }
     }

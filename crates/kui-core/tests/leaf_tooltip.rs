@@ -5,6 +5,8 @@
 //! leaf is hovered, hit by its shape, out of every clip and out of the
 //! layout its siblings see.
 
+mod support;
+
 use kui_core::cells::{Cell, CellGrid};
 use kui_core::schema::PropsOut;
 use kui_core::testing::hover;
@@ -168,7 +170,7 @@ fn a_lines_tooltip_floats_and_its_siblings_keep_their_keys() {
 /// in flow — floats its hint below it too.
 #[test]
 fn a_cells_grids_tooltip_floats_below_it() {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     let cells = vec![Cell::default(); 8 * 2];
     let frame = |core: &mut Core| {
         let mut ui = core.frame(VIEW, 1.0);

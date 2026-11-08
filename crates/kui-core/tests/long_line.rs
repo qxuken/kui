@@ -3,6 +3,8 @@
 //! line; scrolling shapes what scrolls in; a keystroke reshapes the chunk
 //! it lands in; and the two text queries answer through the chunks.
 
+mod support;
+
 use kui_core::{
     Color, Core, EditOptions, Key, LONG_LINE_BYTES, NodeSpec, QuadKind, Size, Span, TextStyle,
     TextWrap, Vec2,
@@ -659,7 +661,7 @@ fn a_wrapped_rich_line_draws_a_background_on_every_row_it_covers() {
 /// and panicked on — for any long line, plain or rich, since alpha.9.
 #[test]
 fn a_multibyte_character_on_a_chunk_edge_is_not_a_panic() {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     // U+FFFD is what a lossy decode of a binary is made of; 1024 % 3 = 1,
     // so the first window's end is one byte into a character.
     let text: String = std::iter::repeat_n('\u{FFFD}', 4000).collect();

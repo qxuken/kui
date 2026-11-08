@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 kui-core.workspace = true
-kui-native.workspace = true
+kui-native = { workspace = true, features = ["default"] }
 kui-lua.workspace = true
 kui-trace = { workspace = true, features = ["lua"] }
 mlua.workspace = true

@@ -1,5 +1,7 @@
 //! The cell grid (backlog C20): one node, a table walk to draw.
 
+mod support;
+
 use kui_core::cells::{Cell, CellGrid, flags};
 use kui_core::{CellCursor, Color, Core, NodeSpec, QuadKind, Size, TextStyle, Vec2};
 
@@ -545,7 +547,7 @@ mod boxdraw {
     /// cell's size, and a space draws nothing.
     #[test]
     fn the_rest_is_still_shaped() {
-        let mut core = Core::new();
+        let mut core = support::fonts();
         let d = draw(&mut core, "aé│", 1, 3, 1.0, 20.0);
         assert_eq!(d.quads.len(), 3);
         assert_ne!(

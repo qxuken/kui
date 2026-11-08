@@ -3,12 +3,14 @@
 //! a pixel above `н` in one word — two letters whose flat tops sit on the
 //! same x-height in the outline.
 
+mod support;
+
 use kui_core::geom::Size;
-use kui_core::{Core, NodeSpec, QuadKind, TextStyle};
+use kui_core::{NodeSpec, QuadKind, TextStyle};
 
 /// The top of every glyph's bitmap in `text`, `size` px at `scale`.
 fn tops(text: &str, size: f32, scale: f32) -> Vec<f32> {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     let mut ui = core.frame(Size::new(400.0, 100.0), scale);
     ui.configure_root(NodeSpec::column().fill());
     ui.text(text, TextStyle::new(size));
@@ -38,7 +40,7 @@ fn letters_of_one_x_height_share_a_top_at_2x() {
 /// Every glyph's bitmap rect in `text` at 1×, drawn by a core told it runs
 /// on `platform` (backlog F220).
 fn rects_on(platform: kui_core::Platform, text: &str) -> Vec<(f32, f32, f32, f32)> {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     core.set_platform(platform);
     let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());

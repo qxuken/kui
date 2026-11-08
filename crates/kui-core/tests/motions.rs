@@ -4,12 +4,14 @@
 //! paragraphs, Ctrl+Home and Ctrl+End to the text's ends. Each case puts a
 //! `|` where the caret went.
 
+mod support;
+
 use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, UiEvent, Value};
 
 const MAC: bool = cfg!(target_os = "macos");
 
 fn rig(initial: &str, multiline: bool) -> (Core, Key) {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let key = ui.text_edit(

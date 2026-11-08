@@ -26,10 +26,12 @@ def edit-lines [path: string, edit: closure] {
 def main [version: string] {
     cd ($env.FILE_PWD | path dirname)
     let ver = $version
-    edit-lines Cargo.toml {|l|
-        $l
-        | str replace -r '^version = "[^"]+"' $'version = "($ver)"'
-        | str replace -r '^(kui(-[a-z]+)? = \{ path = "[^"]+", version = )"[^"]+"' $'${1}"($ver)"'
+    for manifest in [Cargo.toml crates/kui-wgpu/Cargo.toml crates/kui-web/Cargo.toml] {
+        edit-lines $manifest {|l|
+            $l
+            | str replace -r '^version = "[^"]+"' $'version = "($ver)"'
+            | str replace -r '^(kui(-[a-z]+)? = \{ path = "[^"]+", version = )"[^"]+"' $'${1}"($ver)"'
+        }
     }
     # The changelog's top heading is the fourth place the version is spelled
     # out and the only one a human writes, so it is the one that ships

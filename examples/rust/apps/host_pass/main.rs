@@ -36,7 +36,7 @@ struct App {
 
 impl App {
     fn new(max_frames: Option<u64>) -> Self {
-        let mut core = Core::new();
+        let mut core = kui_native::system::new_core();
         core.arm_host_hit();
         core.set_focused(true);
         Self {

@@ -26,10 +26,8 @@
 # binary still runs its own tests on threads, in one process, as under
 # `cargo test`.
 #
-# Why not nextest: it runs every test in a process of its own, and a kui
-# test's first `Core::new` scans the system's fonts (once a process, see
-# `text::new_font_system`), so ~1600 processes pay a scan each - slower
-# here than this, measured, for the same parallelism.
+# Keeping one process per test binary shares fixtures and the native font
+# catalog among the tests that use them.
 #
 # A binary runs where `cargo test` would run it - its package's directory,
 # with CARGO_MANIFEST_DIR set and the toolchain's libraries on the loader's
@@ -183,7 +181,7 @@ def main [
         # again from this checkout's core: one left from before a pull
         # failed the scene the pull changed, as if Node had drifted.
         try {
-            ^cargo run -q -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+            ^cargo run -q -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt
         } catch { print -e "the conformance report failed to build"; exit 2 }
         let npx = if $nu.os-info.name == "windows" { "node.exe" } else { "node" }
         $records = ($records | append {key: "node", cwd: ($root | path join packages kui), argv: [$npx "--test" "test.mjs"]})

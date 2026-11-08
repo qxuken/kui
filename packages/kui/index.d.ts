@@ -1885,7 +1885,7 @@ export interface Env {
   /** The platform the app runs on (every other Unix reads as Linux): what
    *  a `when` entry's `platform` condition reads, so code following a
    *  platform's convention and a rule following it agree. */
-  platform: 'macos' | 'windows' | 'linux';
+  platform: 'macos' | 'windows' | 'linux' | 'other';
 }
 
 /** One node of the last finished frame, as `nodes()` reads it back (after

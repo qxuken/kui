@@ -60,7 +60,7 @@ impl AppSession {
             None,
         );
         let core = if system_fonts {
-            Core::new()
+            kui_native::system::new_core()
         } else {
             let session = kui_core::Session::with_fonts(
                 "en-US",

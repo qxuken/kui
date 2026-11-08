@@ -98,18 +98,26 @@ pub enum Platform {
     MacOs,
     Windows,
     Linux,
+    /// Portable defaults for a host with no desktop convention selected.
+    Other,
 }
 
 impl Platform {
     /// Every platform, in the spelling's order.
-    pub const ALL: [Platform; 3] = [Platform::MacOs, Platform::Windows, Platform::Linux];
+    pub const ALL: [Platform; 4] = [
+        Platform::MacOs,
+        Platform::Windows,
+        Platform::Linux,
+        Platform::Other,
+    ];
 
-    /// `"macos"`, `"windows"`, `"linux"`.
+    /// The spelling used in platform conditions and environment values.
     pub fn name(self) -> &'static str {
         match self {
             Platform::MacOs => "macos",
             Platform::Windows => "windows",
             Platform::Linux => "linux",
+            Platform::Other => "other",
         }
     }
 
@@ -121,14 +129,16 @@ impl Platform {
         1 << (self as u8)
     }
 
-    /// The platform this build runs on; Linux for every other Unix.
-    pub fn current() -> Platform {
+    /// A build-target convenience for desktop hosts. Core sessions do not use it.
+    pub const fn current() -> Platform {
         if cfg!(target_os = "macos") {
             Platform::MacOs
         } else if cfg!(target_os = "windows") {
             Platform::Windows
-        } else {
+        } else if cfg!(target_os = "linux") {
             Platform::Linux
+        } else {
+            Platform::Other
         }
     }
 }

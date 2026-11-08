@@ -9,3 +9,7 @@
 ```rust,noplayground
 {{#include ../../../../../examples/rust/apps/counter.rs}}
 ```
+
+```rust,noplayground
+{{#include ../../../../../examples/rust/apps/counter/app.rs}}
+```

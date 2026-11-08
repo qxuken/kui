@@ -248,7 +248,7 @@ def "main test" [--release] {
     cd $ROOT
     if ($env.KUI_CONFORMANCE? | is-empty) {
         let reference = $ROOT | path join target conformance.txt
-        cargo run -q -p kui-core --features conformance --example conformance-dump -- $reference
+        cargo run -q -p kui-native --no-default-features --features conformance --example conformance-dump -- $reference
         $env.KUI_CONFORMANCE = $reference
     }
     let results = examples | where {|src| not (is-plugin $src) } | each {|src|

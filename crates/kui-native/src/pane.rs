@@ -199,7 +199,7 @@ pub(crate) fn ime_off_change(want: bool, applied: &mut bool) -> Option<bool> {
 pub(crate) fn apply_ime_off(window: &Window, off: bool) {
     #[cfg(target_os = "macos")]
     if off {
-        crate::macos_text_input::discard_marked_text(window);
+        crate::gui::macos_text_input::discard_marked_text(window);
     }
     window.set_ime_allowed(!off);
 }
@@ -295,7 +295,7 @@ pub(crate) struct Pane {
     pub(crate) backdrop: Backdrop,
     /// The wallpaper kui draws as the window's ground, where the backdrop
     /// is kui's own (`mod ground`); `None` everywhere else.
-    pub(crate) ground: Option<crate::ground::Ground>,
+    pub(crate) ground: Option<crate::gui::ground::Ground>,
     /// What keeps the OS's effect alive for as long as the window (a
     /// Linux compositor's blur objects).
     pub(crate) _backdrop_keep: Option<Box<dyn std::any::Any>>,
@@ -390,7 +390,7 @@ pub(crate) struct Pane {
     /// The modifier keys down in this window, by side — what a modifier
     /// key's release reads its own bit from while its twin is still held
     /// (`Pane::modifier_key`).
-    pub(crate) modifier_keys_down: Vec<crate::keys::HeldModifier>,
+    pub(crate) modifier_keys_down: Vec<crate::gui::keys::HeldModifier>,
     /// Which Option keys are down, left and right, from winit's
     /// `ModifiersChanged` — the device-dependent flags of the event on
     /// macOS, which winit rewrites a press under Option-as-Alt by, and
@@ -412,10 +412,10 @@ pub(crate) struct Pane {
     pub(crate) pressure_stage: i64,
     /// The trackpad swipe under way and the axis it keeps to (`mod
     /// axis_lock`).
-    pub(crate) axis_lock: crate::axis_lock::AxisLock,
+    pub(crate) axis_lock: crate::gui::axis_lock::AxisLock,
     /// Where the scroll gesture under way began, for the core's latch
     /// (`mod scroll_gesture`).
-    pub(crate) scroll_gesture: crate::scroll_gesture::Gesture,
+    pub(crate) scroll_gesture: crate::gui::scroll_gesture::Gesture,
     /// The paths winit's per-file drag events built this batch, and
     /// whether the batch was a drop (`Some(true)`), a hover
     /// (`Some(false)`) or nothing (`None`) — dispatched at the batch's
@@ -437,7 +437,7 @@ pub(crate) struct Pane {
     /// A frame the surface skipped, owed until one lands (`mod retry`):
     /// the window's first, and any after it that an occluded or timed-out
     /// acquire dropped. See the `Skip` arm of [`Shell::redraw`].
-    pub(crate) retry: crate::retry::Retry,
+    pub(crate) retry: crate::gui::retry::Retry,
     /// The stills and the recording the app asked of this window (ADR
     /// 0055), served after every frame it draws; a recording running when
     /// the window goes is written as it drops.
@@ -453,10 +453,10 @@ pub(crate) struct Pane {
     /// most of the places that ask hold the pane shared.
     pub(crate) cause: Causes,
     /// Whether a redraw draws now or waits for the display (`mod pacer`).
-    pub(crate) pacer: crate::pacer::Pacer,
+    pub(crate) pacer: crate::gui::pacer::Pacer,
     /// The frames built for this window while it cannot draw, and not
     /// drawn (`mod unseen`).
-    pub(crate) unseen: crate::unseen::Unseen,
+    pub(crate) unseen: crate::gui::unseen::Unseen,
     /// What the app's [`crate::App::view_state`] said after the last
     /// frame built with its view (backlog C138).
     pub(crate) view_state: Option<u64>,
@@ -464,7 +464,7 @@ pub(crate) struct Pane {
     /// (`mod menu_popup`, backlog F210): its frame is the menu and no
     /// view, and what its core says goes back to the window the menu is
     /// in. `None` for every window the app declared.
-    pub(crate) menu_pane: Option<crate::menu_popup::MenuPane>,
+    pub(crate) menu_pane: Option<crate::gui::menu_popup::MenuPane>,
     /// A popup kept off the screen until its first frame is presented
     /// (`menu_popup::cloak`), so it never shows the OS's empty surface.
     pub(crate) cloaked: bool,
@@ -565,7 +565,7 @@ impl Pane {
     /// `unseen::GAP`.
     pub(crate) fn run_for(&mut self, why: FrameCause) {
         debug_assert!(
-            crate::unseen::ASKS.contains(why),
+            crate::gui::unseen::ASKS.contains(why),
             "not an unseen frame's reason"
         );
         if self.can_draw() {
@@ -587,7 +587,7 @@ impl Pane {
         if self.minimized() {
             std::time::Duration::ZERO
         } else {
-            crate::unseen::GAP
+            crate::gui::unseen::GAP
         }
     }
 
@@ -609,7 +609,7 @@ impl Pane {
     /// Whether a redraw draws now or waits for the display (`mod pacer`).
     pub(crate) fn admit_frame(
         &mut self,
-        _proxy: Option<&winit::event_loop::EventLoopProxy<crate::access_bridge::UserEvent>>,
+        _proxy: Option<&winit::event_loop::EventLoopProxy<crate::gui::access_bridge::UserEvent>>,
     ) -> bool {
         self.pacer.refresh_rate(self.core.env.refresh_hz);
         #[cfg(target_os = "macos")]
@@ -755,7 +755,7 @@ impl Pane {
         pressed: bool,
         mods: KeyMods,
     ) -> KeyMods {
-        crate::keys::modifier_after(
+        crate::gui::keys::modifier_after(
             &mut self.modifier_keys_down,
             code,
             at,

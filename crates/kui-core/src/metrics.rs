@@ -112,11 +112,7 @@ impl Metrics {
             menu_pad_y: 5.0,
             menu_width: 200.0,
             menu_bar_h: 26.0,
-            titlebar_h: if cfg!(target_os = "windows") {
-                TITLEBAR_H_WINDOWS
-            } else {
-                TITLEBAR_H_ELSEWHERE
-            },
+            titlebar_h: TITLEBAR_H_ELSEWHERE,
         }
     }
 

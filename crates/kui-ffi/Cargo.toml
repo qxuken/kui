@@ -27,11 +27,10 @@ name = "kui_ffi"
 # which leaves `target/release/libkui_ffi.a` where it always was.
 crate-type = ["cdylib", "rlib"]
 
-# The windowed runner is the only thing in this crate that needs `kui-native`, and
-# `kui-native` is the whole GUI runtime: winit, wgpu, kira, accesskit, arboard. Two
-# of the 135 exported functions use it (`kui_run`, `kui_run_with`) and they
-# cost more than everything else together — the release cdylib is 12.3 MB
-# with them and 5.1 MB without, measured on x86_64-pc-windows-msvc.
+# The standalone contexts use `kui-native`'s system adapter. The `runner`
+# feature adds the GUI runtime for `kui_run`, `kui_run_with`, and the
+# capture and codec helpers. The original x86_64-pc-windows-msvc release
+# measurement was 12.3 MB with the runner and 5.1 MB without it.
 #
 # So it is a feature, on by default because `kui_run` is the batteries-
 # included path every C example takes. A host that drives its own loop and
@@ -57,14 +56,14 @@ crate-type = ["cdylib", "rlib"]
 # imports, and panel.dll is 147 KB), so there is no ext-only build to make.
 [features]
 default = ["runner", "access"]
-runner = ["dep:kui-native"]
+runner = ["kui-native/default"]
 access = ["dep:kui-access", "kui-access/platform"]
 
 [dependencies]
 # The renderer's instances as bytes (`kui_pack_instances`, backlog F234).
 bytemuck.workspace = true
 kui-core.workspace = true
-kui-native = { workspace = true, optional = true }
+kui-native.workspace = true
 # The host's accessibility bridge (feature `access`, backlog F269).
 kui-access = { workspace = true, optional = true }
 # Every host loads a `.lua` extension through `open_extension` (ADR 0059):

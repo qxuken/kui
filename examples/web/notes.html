@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>kui notes · WebAssembly</title>
+  <style>
+    :root { color-scheme: light; font: 16px system-ui, sans-serif; background: #eef1f6; color: #172031; }
+    body { margin: 0; }
+    main { max-width: 800px; margin: clamp(18px, 7vh, 68px) auto; padding: 0 16px; }
+    h1 { margin: 0 0 6px; font-size: 1.65rem; }
+    p { margin: 0 0 16px; color: #4b5668; }
+    .workbench { position: relative; margin: 20px 0 14px; }
+    canvas { display: block; width: 100%; height: clamp(390px, 65vh, 530px); border-radius: 12px; touch-action: pinch-zoom; box-shadow: 0 0 0 1px #cdd4e0, 0 8px 24px #17203112; }
+    #access { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+    #access button, #access textarea, #access input { position: absolute; font: 16px system-ui, sans-serif; margin: 0; padding: 0; border: 0; resize: none; }
+    .keys { font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>kui notes</h1>
+    <p>A Rust editor and scrollable list running on <span id="renderer">WebAssembly</span>.</p>
+    <div class="workbench">
+      <canvas aria-label="Notes workspace" tabindex="0"></canvas>
+      <div id="access" role="group" aria-label="Notes workspace"></div>
+    </div>
+    <p id="status" role="status">Loading the notes workspace…</p>
+    <p class="keys">Tab to move between controls. In the notes list, use ↑ and ↓ to move and Enter to open a note.</p>
+    <a href="./">Counter demo</a>
+  </main>
+  <script type="module">
+    import { startCanvas } from "./canvas.js";
+    const status = document.querySelector("#status");
+    const renderer = new URLSearchParams(location.search).get("renderer") ?? "auto";
+    try {
+      const selected = await startCanvas(document.querySelector("canvas"), "./notes.wasm", { access: document.querySelector("#access"), renderer });
+      document.querySelector("#renderer").textContent = selected === "wgpu" ? "kui-wgpu" : "Canvas 2D";
+      status.hidden = true;
+    } catch (error) {
+      status.textContent = error.message;
+      throw error;
+    }
+  </script>
+</body>
+</html>

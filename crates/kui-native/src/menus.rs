@@ -243,7 +243,7 @@ impl DynShell<'_> {
                     set_clipboard(self.clipboard.as_mut(), text, html);
                 }
                 MenuAction::SetClipboardSecret { text } => {
-                    crate::clipboard::set_secret(self.clipboard.as_mut(), text);
+                    crate::gui::clipboard::set_secret(self.clipboard.as_mut(), text);
                 }
                 MenuAction::SetClipboardImage {
                     width,
@@ -267,7 +267,7 @@ impl DynShell<'_> {
                         .as_mut()
                         .and_then(|cb| cb.get_text().ok())
                         .unwrap_or_default();
-                    let marks = crate::clipboard::marks();
+                    let marks = crate::gui::clipboard::marks();
                     self.dispatch(event_loop, i, InputEvent::Paste { text, marks });
                 }
                 MenuAction::ShowInFolder { path } => {

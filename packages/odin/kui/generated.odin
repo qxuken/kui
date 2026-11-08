@@ -410,6 +410,7 @@ Platform :: enum u32 {
 	Macos = 1, // KUI_PLATFORM_MACOS
 	Windows = 2, // KUI_PLATFORM_WINDOWS
 	Linux = 3, // KUI_PLATFORM_LINUX
+	Other = 4, // KUI_PLATFORM_OTHER
 }
 
 Audio_Cmd :: enum u32 {
@@ -3127,10 +3128,11 @@ set_rules_appearance :: proc(ui: ^Ui, appearance: Appearance) {
 	c.set_rules_appearance(ui, u32(appearance))
 }
 
-// The platform the app runs on (backlog C116): macOS, Windows or Linux
-// (`"macos"` / `"windows"` / `"linux"` in Lua and Node, a `KUI_PLATFORM_*` in
-// C), the fact a `when` entry's `platform` condition reads, so a script
-// following a platform's convention and a rule following it agree.
+// The platform the app runs on (backlog C116): macOS, Windows, Linux or Other
+// (`"macos"` / `"windows"` / `"linux"` / `"other"` in Lua and Node, a
+// `KUI_PLATFORM_*` in C), the fact a `when` entry's `platform` condition
+// reads, so a script following a platform's convention and a rule following
+// it agree.
 // Rust: Ui::platform.
 platform :: proc(ui: ^Ui) -> Platform {
 	return Platform(c.platform(ui))

@@ -1032,6 +1032,8 @@ impl Core {
         // the data: before everything built, after it, or at the boundary
         // it falls on. That is what lets the built middle paint while a
         // virtual list scrolls under a selection (ADR 0017, tier 3).
+        // The wire sentinel is also usize::MAX on 32-bit hosts.
+        #[cfg_attr(target_pointer_width = "32", allow(clippy::absurd_extreme_comparisons))]
         let place = |end: &crate::select::Endpoint| -> Option<(u32, usize)> {
             let row = end.row?;
             let (start, last) = (built.first()?, built.last()?);

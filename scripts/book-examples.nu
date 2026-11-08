@@ -105,16 +105,22 @@ def generate [src: string] {
         text ([$"# `($k.kind)/`" "" $k.blurb ""] | append ($names | each {|n| $"- [`($n)`]\(($k.kind)/($n).md\)" }))
         | save -f --raw ($out | path join $"($k.kind).md")
         for n in $names {
+            let stem = $"examples/rust/($k.kind)/($n)"
+            let modules = if ($stem | path type) == "dir" {
+                glob $"($stem)/*.rs" | sort | each {|f| $"($stem)/($f | path basename)" }
+            } else {
+                []
+            }
+            let source = ([$"($stem).rs"] | append $modules | each {|file|
+                ["```rust,noplayground" $"{{#include ../../../../../($file)}}" "```" ""]
+            } | flatten | drop 1)
             text ([
                 $"# `($k.kind)/($n).rs`"
                 ""
                 "<!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->"
                 ""
-            ] | append (picture $src $k.kind $n) | append [
-                "```rust,noplayground"
-                $"{{#include ../../../../../examples/rust/($k.kind)/($n).rs}}"
-                "```"
-            ]) | save -f --raw ($out | path join $k.kind $"($n).md")
+            ] | append (picture $src $k.kind $n) | append $source)
+            | save -f --raw ($out | path join $k.kind $"($n).md")
         }
     }
     # Everything above the part stays, its trailing blank lines dropped so

@@ -11,6 +11,9 @@ use kui_core::{
 use kui_kit as kit;
 use kui_lua::LuaExtension;
 
+#[path = "../../kui-core/tests/support/mod.rs"]
+mod font_fixture;
+
 const KIT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../addons/kit/lua/kit.lua");
 const SCHEMA: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../addons/kit/schema.lua");
 const VIEW: Size = Size {
@@ -4257,11 +4260,8 @@ fn a_select_opens_on_the_press_with_its_option_over_the_field_and_a_drag_picks()
     let mode: String = r.app.globals().get("mode").unwrap();
     assert_eq!(mode, "three", "and nothing picked");
     // C109: an accelerator closes it and goes on to the window.
-    let e = kui_core::testing::key_down(
-        &mut r.core,
-        kui_core::KeyCode::Char('c'),
-        kui_core::KeyMods::NONE.with_primary(),
-    );
+    let mods = kui_core::KeyMods::NONE.with_primary_on(r.core.platform());
+    let e = kui_core::testing::key_down(&mut r.core, kui_core::KeyCode::Char('c'), mods);
     r.route(e);
     r.frames(2);
     assert!(r.text("One").is_none(), "⌘C closed the menu");
@@ -5894,6 +5894,8 @@ fn a_kit_buttons_hint_shown_by_tab_keeps_a_key_of_its_own() {
 #[test]
 fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
     let mut r = rig();
+    r.core = font_fixture::fonts();
+    r.core.set_inspect(true);
     let danger = std::cell::Cell::new(None);
     let on_danger = std::cell::Cell::new(None);
     let faint = std::cell::Cell::new(None);
@@ -5905,9 +5907,9 @@ fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
                 .place(ui);
             ui.with_keyed("opener", NodeSpec::row().size(120.0, 24.0), |ui| {
                 kit::Menu::new(vec![
-                    kit::Item::new("open", "Open file").shortcut("⌘O"),
+                    kit::Item::new("open", "Open file").shortcut("Ctrl+O"),
                     kit::Item::new("rm", "Delete forever")
-                        .shortcut("⌘⌫")
+                        .shortcut("Ctrl+Backspace")
                         .danger(true),
                 ])
                 .place(ui);
@@ -5920,7 +5922,7 @@ fn a_danger_menu_rows_label_is_one_text_recoloured_by_the_row() {
     view(&mut r);
     view(&mut r);
     let texts = r.texts();
-    for t in ["Delete forever", "⌘⌫", "Open file", "⌘O"] {
+    for t in ["Delete forever", "Ctrl+Backspace", "Open file", "Ctrl+O"] {
         assert_eq!(
             texts.iter().filter(|s| *s == t).count(),
             1,
@@ -6562,17 +6564,6 @@ fn key_with(r: &mut LuaRig, code: kui_core::KeyCode, mods: kui_core::KeyMods, te
     r.frames(2);
 }
 
-/// The primary modifier: ⌘ on a Mac, Ctrl elsewhere.
-fn primary() -> kui_core::KeyMods {
-    let mut m = kui_core::KeyMods::default();
-    if cfg!(target_os = "macos") {
-        m.super_key = true;
-    } else {
-        m.ctrl = true;
-    }
-    m
-}
-
 /// A click on row `name` with `mods` held, `clicks` the press's count.
 fn click_row(r: &mut LuaRig, name: &str, mods: kui_core::KeyMods, clicks: u8) {
     use kui_core::{InputEvent, Vec2};
@@ -6688,7 +6679,8 @@ fn a_multiple_selection_toggles_extends_and_ranges() {
             ["cur 1", "sel 1 1-1 1 1"],
             "{component}: a click, the row alone"
         );
-        click_row(&mut r, "row 3", primary(), 1);
+        let primary = KeyMods::NONE.with_primary_on(r.core.platform());
+        click_row(&mut r, "row 3", primary, 1);
         assert_eq!(
             heard(&mut r),
             ["cur 3", "sel 3 1-1,3-3 2 2"],
@@ -6700,7 +6692,7 @@ fn a_multiple_selection_toggles_extends_and_ranges() {
             ["cur 6", "sel 6 3-6 4 4"],
             "{component}: Shift-click, the range from the anchor"
         );
-        click_row(&mut r, "row 4", primary(), 1);
+        click_row(&mut r, "row 4", primary, 1);
         assert_eq!(
             heard(&mut r),
             ["cur 4", "sel 4 3-3,5-6 3 3"],
@@ -6760,7 +6752,8 @@ fn select_all_on_a_windowed_list_is_one_range() {
     r.frames(2);
     tab_in(&mut r);
     heard(&mut r);
-    key_with(&mut r, KeyCode::Char('a'), primary(), None);
+    let primary = kui_core::KeyMods::NONE.with_primary_on(r.core.platform());
+    key_with(&mut r, KeyCode::Char('a'), primary, None);
     assert_eq!(heard(&mut r), ["sel 0 0-99999 100000 -"]);
     let built = r
         .core
@@ -6978,6 +6971,8 @@ fn a_fields_error_is_laid_out_whole_at_any_width() {
                     end
                     "#
                 ));
+                r.core = font_fixture::fonts();
+                r.core.set_inspect(true);
                 r.frames(4);
                 let at = format!("{skin}, {kind}, {w} px");
                 let col = r.node(|n| n.label.as_deref() == Some("col")).unwrap().rect;

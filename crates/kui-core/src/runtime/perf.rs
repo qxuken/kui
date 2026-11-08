@@ -26,9 +26,10 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::io;
 use std::panic::Location;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::time::Instant;
 
 use kui_trace::{LoopEvent, NameId, Names, Origin as TOrigin, Record, Session, Track};
 use rustc_hash::FxHashMap;
@@ -102,16 +103,80 @@ struct Open {
     cpu0: Option<u64>,
     node: u64,
     #[cfg(feature = "tracing")]
-    traced: Option<tracing::Span>,
+    _observed: Option<Box<dyn std::any::Any>>,
 }
 
-enum Sink {
-    Stream(kui_trace::Writer<std::io::BufWriter<std::fs::File>>),
-    Convert {
-        path: String,
-        format: kui_trace::adapters::Format,
-        trace: Box<kui_trace::Trace>,
-    },
+/// Measurements supplied by the host. Monotonic timestamps share one
+/// epoch on a thread. CPU time is optional.
+pub trait PerfClock {
+    fn now_us(&self) -> u64;
+    fn cpu_us(&self) -> Option<u64> {
+        None
+    }
+    fn wall_ms(&self) -> u64 {
+        0
+    }
+}
+
+/// Receives ordered recording records. The adapter owns its output,
+/// including buffering and closing it when dropped.
+pub trait TraceOutput {
+    fn record(&mut self, record: &Record) -> io::Result<()>;
+    /// Hands a partial batch to a live writer without waiting for disk.
+    fn drain(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn flush(&mut self) -> io::Result<()>;
+}
+
+pub type OpenTrace = fn(&str) -> io::Result<Box<dyn TraceOutput>>;
+
+#[cfg(feature = "tracing")]
+pub trait PerfObserver {
+    fn enabled(&self) -> bool;
+    /// The returned guard exits the span when it is dropped.
+    fn enter(&self, name: &str, node: u64) -> Box<dyn std::any::Any>;
+}
+
+/// Optional recording capabilities. Bare cores can record the same data
+/// with zero-duration spans and no output adapter.
+#[derive(Clone, Default)]
+pub struct PerfHost {
+    pub clock: Option<Rc<dyn PerfClock>>,
+    pub open_trace: Option<OpenTrace>,
+    #[cfg(feature = "tracing")]
+    pub observer: Option<Rc<dyn PerfObserver>>,
+}
+
+impl PerfHost {
+    pub fn new(clock: Option<Rc<dyn PerfClock>>, open_trace: Option<OpenTrace>) -> Self {
+        Self {
+            clock,
+            open_trace,
+            #[cfg(feature = "tracing")]
+            observer: None,
+        }
+    }
+
+    #[cfg(feature = "tracing")]
+    pub fn with_observer(mut self, observer: Rc<dyn PerfObserver>) -> Self {
+        self.observer = Some(observer);
+        self
+    }
+
+    pub(crate) fn supply(&mut self, defaults: Self) {
+        if self.clock.is_none() {
+            self.clock = defaults.clock;
+        }
+        if self.open_trace.is_none() {
+            self.open_trace = defaults.open_trace;
+        }
+        #[cfg(feature = "tracing")]
+        if self.observer.is_none() {
+            self.observer = defaults.observer;
+        }
+    }
 }
 
 /// The recording's state on a core.
@@ -119,7 +184,8 @@ enum Sink {
 pub(crate) struct Recorder {
     /// Why measuring is on ([`why`]); `0` is off.
     pub(crate) why: u8,
-    epoch: Option<Instant>,
+    epoch: Option<u64>,
+    pub(crate) host: PerfHost,
     names: Names,
     session: Option<Session>,
     tracks: Vec<(Track, NameId)>,
@@ -156,7 +222,7 @@ pub(crate) struct Recorder {
     /// The frame trace as the app had it, while measuring holds it on.
     trace_was: Option<bool>,
     ext_names: FxHashMap<OriginId, NameId>,
-    sink: Option<Sink>,
+    sink: Option<Box<dyn TraceOutput>>,
     /// `request_frame_for`'s names, interned as `&'static str` so a
     /// [`crate::FrameRequest`] stays `Copy` (ADR 0058, decision 8).
     interned: Vec<&'static str>,
@@ -166,35 +232,26 @@ pub(crate) struct Recorder {
 /// At most this many distinct `request_frame_for` names a session.
 const MAX_REQUEST_NAMES: usize = 256;
 
-#[cfg(unix)]
-fn cpu_us() -> Option<u64> {
-    let mut ts = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // SAFETY: `clock_gettime` fills the timespec it is handed.
-    let r = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
-    (r == 0).then(|| ts.tv_sec as u64 * 1_000_000 + ts.tv_nsec as u64 / 1_000)
-}
-
-/// Windows' thread times tick every 15.6 ms: no reading worth a span's.
-#[cfg(not(unix))]
-fn cpu_us() -> Option<u64> {
-    None
-}
-
 impl Recorder {
+    pub(crate) fn with_host(host: PerfHost) -> Self {
+        let mut recorder = Self::default();
+        recorder.host = host;
+        recorder
+    }
+
     fn now(&mut self) -> u64 {
-        self.epoch
-            .get_or_insert_with(Instant::now)
-            .elapsed()
-            .as_micros() as u64
+        let now = clock_now(&self.host.clock);
+        now.saturating_sub(*self.epoch.get_or_insert(now))
+    }
+
+    fn cpu_us(&self) -> Option<u64> {
+        self.host.clock.as_ref().and_then(|clock| clock.cpu_us())
     }
 
     fn name(&mut self, s: &str) -> NameId {
         let (id, new) = self.names.get(s);
-        if new && let Some(Sink::Stream(w)) = &mut self.sink {
-            let _ = w.write(&Record::Name {
+        if new && let Some(w) = &mut self.sink {
+            let _ = w.record(&Record::Name {
                 id,
                 text: s.to_string(),
             });
@@ -228,12 +285,8 @@ impl Recorder {
     }
 
     fn keep(&mut self, r: Record) {
-        match &mut self.sink {
-            Some(Sink::Stream(w)) => {
-                let _ = w.write(&r);
-            }
-            Some(Sink::Convert { trace, .. }) => trace.records.push(r.clone()),
-            None => {}
+        if let Some(output) = &mut self.sink {
+            let _ = output.record(&r);
         }
         if matches!(r, Record::FrameBegin { .. }) {
             self.ring_frames += 1;
@@ -268,8 +321,8 @@ impl Recorder {
         }
         let t = Track(2 + self.tracks.len() as u32);
         self.tracks.push((t, n));
-        if let Some(Sink::Stream(w)) = &mut self.sink {
-            let _ = w.write(&Record::Track { id: t, name: n });
+        if let Some(w) = &mut self.sink {
+            let _ = w.record(&Record::Track { id: t, name: n });
         }
         t
     }
@@ -331,27 +384,30 @@ impl Core {
             self.set_frame_trace(true);
             if self.perf.session.is_none() {
                 self.perf.epoch = None;
-                let wall_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| d.as_millis() as u64);
+                let wall_ms = self
+                    .perf
+                    .host
+                    .clock
+                    .as_ref()
+                    .map_or(0, |clock| clock.wall_ms());
                 self.perf.session = Some(Session {
                     kui: env!("CARGO_PKG_VERSION").to_string(),
                     app: self.window_title_for_perf(),
-                    platform: std::env::consts::OS.to_string(),
+                    platform: self.platform().name().to_string(),
                     refresh_hz: self.env.refresh_hz.unwrap_or(0.0),
                     budget_ms: self.env.frame_budget_ms(),
                     scale: self.scale,
                     wall_ms,
                 });
                 let s = self.perf.session.clone().unwrap();
-                if let Some(Sink::Stream(w)) = &mut self.perf.sink {
-                    let _ = w.write(&Record::Session(s));
+                if let Some(w) = &mut self.perf.sink {
+                    let _ = w.record(&Record::Session(s));
                 }
             }
         } else if was != 0 && self.perf.why == 0 {
             // Measuring ends: the trace as the app had it; what is open
             // closes.
-            self.perf.stack.clear();
+            while self.perf.stack.pop().is_some() {}
             self.here_sync();
             self.perf.run = None;
             if let Some(was) = self.perf.trace_was.take() {
@@ -410,23 +466,23 @@ impl Core {
             .unwrap_or(0);
         let start = self.perf.now();
         #[cfg(feature = "tracing")]
-        let traced = (self.perf.why & why::TRACING != 0).then(|| {
-            let s = tracing::trace_span!(target: "kui", "kui", name = name, node = node);
-            if let Some(id) = s.id() {
-                tracing::dispatcher::get_default(|d| d.enter(&id));
-            }
-            s
-        });
+        let observed = self
+            .perf
+            .host
+            .observer
+            .as_ref()
+            .filter(|_| self.perf.why & why::TRACING != 0)
+            .map(|observer| observer.enter(name, node));
         self.perf.stack.push(Open {
             id,
             parent,
             name: name_id,
             origin,
             start,
-            cpu0: cpu_us(),
+            cpu0: self.perf.cpu_us(),
             node,
             #[cfg(feature = "tracing")]
-            traced,
+            _observed: observed,
         });
         self.here_sync();
         SpanId(id)
@@ -441,7 +497,7 @@ impl Core {
             return;
         };
         let end = self.perf.now();
-        let cpu = cpu_us();
+        let cpu = self.perf.cpu_us();
         while self.perf.stack.len() > pos {
             let o = self.perf.stack.pop().unwrap();
             self.perf_close(o, end, cpu, false);
@@ -450,12 +506,6 @@ impl Core {
     }
 
     fn perf_close(&mut self, o: Open, end: u64, cpu: Option<u64>, cut: bool) {
-        #[cfg(feature = "tracing")]
-        if let Some(s) = &o.traced
-            && let Some(id) = s.id()
-        {
-            tracing::dispatcher::get_default(|d| d.exit(&id));
-        }
         if self.perf.frame.is_some() {
             self.perf.spans_in_frame += 1;
             if self.perf.spans_in_frame > MAX_SPANS {
@@ -695,84 +745,73 @@ impl Core {
         self.perf.trace()
     }
 
-    /// Records from now on and writes to `path` as it goes: `.kuitrace`
-    /// streamed, a format an adapter writes (`.json` Chrome's, `.pftrace`
-    /// Perfetto's, `.speedscope.json`, `.firefox.json`) kept and written
-    /// by [`Self::perf_flush`] or when the core is dropped.
-    pub fn perf_trace_to(&mut self, path: &str) -> std::io::Result<()> {
-        use kui_trace::adapters::Format;
-        let format = Format::from_path(path);
-        self.perf.sink = Some(match format {
-            Format::Kuitrace => {
-                let f = std::fs::File::create(path)?;
-                let mut w = kui_trace::Writer::new(std::io::BufWriter::new(f))?;
-                if let Some(s) = &self.perf.session {
-                    w.write(&Record::Session(s.clone()))?;
-                }
-                for (id, text) in self.perf.names.all().iter().enumerate().skip(1) {
-                    w.write(&Record::Name {
-                        id: id as NameId,
-                        text: text.clone(),
-                    })?;
-                }
-                Sink::Stream(w)
-            }
-            format => {
-                std::fs::write(path, b"")?;
-                Sink::Convert {
-                    path: path.to_string(),
-                    format,
-                    trace: Box::default(),
-                }
-            }
-        });
+    /// Supplies host recording capabilities where the core has none.
+    pub fn supply_perf_host(&mut self, host: PerfHost) {
+        self.session.state().perf_host.supply(host.clone());
+        self.perf.host.supply(host);
+    }
+
+    /// Starts recording to the host's output for `path`.
+    pub fn perf_trace_to(&mut self, path: &str) -> io::Result<()> {
+        let open = self.perf.host.open_trace.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Unsupported,
+                "no trace output supplied by the host",
+            )
+        })?;
+        self.perf_flush()?;
+        let mut output = open(path)?;
+        if let Some(session) = &self.perf.session {
+            output.record(&Record::Session(session.clone()))?;
+        }
+        for (id, text) in self.perf.names.all().iter().enumerate().skip(1) {
+            output.record(&Record::Name {
+                id: id as NameId,
+                text: text.clone(),
+            })?;
+        }
+        for &(id, name) in &self.perf.tracks {
+            output.record(&Record::Track { id, name })?;
+        }
+        self.perf.sink = Some(output);
         self.perf_set(why::FILE, true);
-        Ok(())
+        self.perf_drain()
     }
 
-    /// `KUI_PERF_TRACE=path`: records to `path` from the first frame,
-    /// what the runners read at launch. Whether it named one that opened.
-    pub fn perf_from_env(&mut self) -> bool {
-        let Some(path) = std::env::var_os("KUI_PERF_TRACE") else {
-            return false;
-        };
-        let path = path.to_string_lossy().into_owned();
-        match self.perf_trace_to(&path) {
-            Ok(()) => true,
-            Err(e) => {
-                self.diag
-                    .raise(crate::diag::perf_trace_failed(&path, &e.to_string()));
-                false
-            }
+    /// Publishes pending live records at the end of a host driver turn.
+    pub fn perf_drain(&mut self) -> io::Result<()> {
+        if self.perf.sink.is_none() {
+            return Ok(());
         }
+        self.perf.flush_run();
+        self.perf.sink.as_mut().unwrap().drain()
     }
 
-    /// Writes out what a file being recorded to holds so far.
-    pub fn perf_flush(&mut self) -> std::io::Result<()> {
-        let names = self.perf.names.clone();
-        let session = self.perf.session.clone();
-        let tracks = self.perf.tracks.clone();
-        match &mut self.perf.sink {
-            Some(Sink::Stream(w)) => w.flush(),
-            Some(Sink::Convert {
-                path,
-                format,
-                trace,
-            }) => {
-                trace.names = names;
-                trace.session = session;
-                trace.tracks = tracks;
-                std::fs::write(&*path, kui_trace::adapters::write(trace, *format))
-            }
-            None => Ok(()),
-        }
+    /// Asks the output adapter to publish the recording it has received.
+    pub fn perf_flush(&mut self) -> io::Result<()> {
+        self.perf.flush_run();
+        self.perf
+            .sink
+            .as_mut()
+            .map_or(Ok(()), |output| output.flush())
+    }
+
+    /// Records a host trace setup error in the core's diagnostics.
+    pub fn report_perf_trace_error(&mut self, path: &str, error: &io::Error) {
+        self.diag
+            .raise(crate::diag::perf_trace_failed(path, &error.to_string()));
     }
 
     /// The start of `begin_frame`: the frame's time.
     pub(crate) fn perf_frame_start(&mut self) {
         #[cfg(feature = "tracing")]
         {
-            let listening = tracing::enabled!(target: "kui", tracing::Level::TRACE);
+            let listening = self
+                .perf
+                .host
+                .observer
+                .as_ref()
+                .is_some_and(|observer| observer.enabled());
             if listening != (self.perf.why & why::TRACING != 0) {
                 self.perf_set(why::TRACING, listening);
             }
@@ -800,10 +839,10 @@ impl Core {
             session.refresh_hz = self.env.refresh_hz.unwrap_or(0.0);
             session.budget_ms = self.env.frame_budget_ms();
             session.scale = self.scale;
-            if let Some(Sink::Stream(writer)) = &mut self.perf.sink {
+            if let Some(writer) = &mut self.perf.sink {
                 // Readers retain the newest Session record. The in-memory
                 // trace reads session directly, so it needs no extra record.
-                let _ = writer.write(&Record::Session(session.clone()));
+                let _ = writer.record(&Record::Session(session.clone()));
             }
         }
         let frame = self.frame_no;
@@ -880,7 +919,7 @@ impl Core {
             return;
         }
         let end = self.perf.now();
-        let cpu = cpu_us();
+        let cpu = self.perf.cpu_us();
         while let Some(o) = self.perf.stack.pop() {
             self.perf_close(o, end, cpu, true);
         }
@@ -1003,22 +1042,7 @@ impl Drop for Recorder {
         if self.here_on {
             let _ = here_take(self.here_id);
         }
-        match &mut self.sink {
-            Some(Sink::Stream(w)) => {
-                let _ = w.flush();
-            }
-            Some(Sink::Convert {
-                path,
-                format,
-                trace,
-            }) => {
-                trace.names = self.names.clone();
-                trace.session = self.session.clone();
-                trace.tracks = self.tracks.clone();
-                let _ = std::fs::write(&*path, kui_trace::adapters::write(trace, *format));
-            }
-            None => {}
-        }
+        while self.stack.pop().is_some() {}
     }
 }
 
@@ -1038,7 +1062,8 @@ pub(crate) fn short_path(path: &str) -> &str {
 /// timed on and the span it nests under.
 struct Here {
     owner: u64,
-    epoch: Instant,
+    epoch: u64,
+    clock: Option<Rc<dyn PerfClock>>,
     /// The core's innermost open span, and its origin and node.
     parent: u32,
     origin: TOrigin,
@@ -1096,8 +1121,18 @@ fn here_take(owner: u64) -> Option<Here> {
     h
 }
 
-fn here_now(epoch: Instant) -> u64 {
-    epoch.elapsed().as_micros() as u64
+fn clock_now(clock: &Option<Rc<dyn PerfClock>>) -> u64 {
+    clock.as_ref().map_or(0, |clock| clock.now_us())
+}
+
+impl Here {
+    fn now(&self) -> u64 {
+        clock_now(&self.clock).saturating_sub(self.epoch)
+    }
+
+    fn cpu_us(&self) -> Option<u64> {
+        self.clock.as_ref().and_then(|clock| clock.cpu_us())
+    }
 }
 
 /// Whether a span begun here with [`span_begin`] would be recorded: a
@@ -1131,8 +1166,8 @@ pub fn span_begin(name: &str) -> SpanId {
             name: name.to_owned(),
             origin: h.origin,
             node: h.node,
-            start: here_now(h.epoch),
-            cpu0: cpu_us(),
+            start: h.now(),
+            cpu0: h.cpu_us(),
         });
         SpanId(id)
     })
@@ -1151,8 +1186,8 @@ pub fn span_end(id: SpanId) {
             let Some(pos) = h.open.iter().rposition(|o| o.id == id.0) else {
                 continue;
             };
-            let end = here_now(h.epoch);
-            let cpu = cpu_us();
+            let end = h.now();
+            let cpu = h.cpu_us();
             while h.open.len() > pos {
                 let open = h.open.pop().unwrap();
                 if h.done.len() >= MAX_SPANS {
@@ -1225,7 +1260,8 @@ impl Core {
                 self.perf.now();
                 let here = Here {
                     owner: self.perf.here_id,
-                    epoch: self.perf.epoch.unwrap_or_else(Instant::now),
+                    epoch: self.perf.epoch.unwrap_or_default(),
+                    clock: self.perf.host.clock.clone(),
                     parent,
                     origin,
                     node,
@@ -1259,8 +1295,8 @@ impl Core {
                 self.perf.here_on = false;
                 match here_take(self.perf.here_id) {
                     Some(mut h) => {
-                        let end = here_now(h.epoch);
-                        let cpu = cpu_us();
+                        let end = h.now();
+                        let cpu = h.cpu_us();
                         while let Some(open) = h.open.pop() {
                             h.done.push(HereDone {
                                 open,

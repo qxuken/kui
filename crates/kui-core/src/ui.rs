@@ -1333,6 +1333,7 @@ impl<'a> Ui<'a> {
 
     /// `open` under a key the caller chose — the panel's own nodes, whose
     /// keys another node anchors to by name before they exist.
+    #[cfg(feature = "devtools")]
     #[inline]
     pub(crate) fn open_with_key(&mut self, key: Key, label: &str, spec: NodeSpec) {
         self.core.open_with_key_named(key, label, spec)

@@ -26,6 +26,13 @@ corpus and the headless test driver (test infrastructure only).
 
 A frame built and clicked with no window at all:
 
+`Core::new()` uses portable defaults and a small fallback font. Supply
+font bytes with `Session::with_fonts`, a frame clock with `Core::set_time`,
+and platform conventions with `Session::set_platform`. A host can supply
+an independent `perf::PerfClock` for timing within a frame. For installed
+fonts and native path handling, construct the core with
+`kui_native::system::new_core`.
+
 ```rust
 use kui_core::{Core, InputEvent, NodeSpec, Size, TextStyle, widgets};
 

@@ -16,6 +16,7 @@ exclude = ["tests/tl"]
 
 [dependencies]
 kui-core.workspace = true
+kui-native.workspace = true
 kui-value = { workspace = true, features = ["lua"] }
 kui-channel = { workspace = true, features = ["lua"] }
 mlua.workspace = true
@@ -32,7 +33,7 @@ mlua.workspace = true
 # first publish stopped there, before uploading anything.
 kui-ffi = { path = "../kui-ffi", default-features = false }
 divan.workspace = true
-kui-native.workspace = true
+kui-native = { workspace = true, features = ["default"] }
 # The examples' devtools (docs/adr/0021), for the Rust host of the panel.
 kui-devtools.workspace = true
 # Kit (addons/kit) placed through its generated wrappers, and its schema

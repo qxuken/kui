@@ -109,6 +109,7 @@ fn keystroke_apply_100k_lines(bencher: divan::Bencher) {
 /// cosmic-text alone, for scale: an insert and the reshape it needs in a
 /// 500-line buffer, with none of kui around it.
 #[divan::bench]
+#[allow(clippy::disallowed_methods)]
 fn cosmic_insert_and_shape_500_lines(bencher: divan::Bencher) {
     use cosmic_text::{Attrs, Buffer, Edit as _, Editor, FontSystem, Metrics, Motion, Shaping};
     let mut fs = FontSystem::new();

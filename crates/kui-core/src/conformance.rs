@@ -10,8 +10,8 @@
 //! The crate's own tests assert the font-independent part (access rows,
 //! events, warnings, quad counts); the Lua, C, Odin and Node suites rebuild the
 //! scenes through their public APIs and compare their reports against a
-//! dump made on the same machine (`cargo run -p kui-core --features
-//! conformance --example conformance-dump`). A prop or element visible to
+//! dump made on the same machine (`cargo run -p kui-native --no-default-features
+//! --features conformance --example conformance-dump`). A prop or element visible to
 //! a binding has to appear in a scene here, or the build fails. Nothing in
 //! a shipped app needs this module.
 
@@ -7498,7 +7498,11 @@ pub fn drive_with(
 
 /// Runs a corpus scene through its own reference builder.
 pub fn run(scene: &Scene) -> Output {
-    let mut core = Core::new();
+    run_with_core(scene, Core::new())
+}
+
+/// Runs the reference builder using the same host configuration as an adapter.
+pub fn run_with_core(scene: &Scene, mut core: Core) -> Output {
     let f = fixtures(&mut core);
     let mut exts = wants_extension(scene).then(|| {
         let mut exts = crate::slot::Extensions::new();
@@ -7831,9 +7835,14 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
 /// The whole corpus as one report — the reference the other three bindings
 /// are diffed against.
 pub fn reference_report() -> String {
+    reference_report_with(Core::new)
+}
+
+/// Generates the report using a fresh host-configured core for each scene.
+pub fn reference_report_with(new_core: impl Fn() -> Core) -> String {
     SCENES
         .iter()
-        .map(|s| report(s.name, s.env, s.steps, &run(s)))
+        .map(|s| report(s.name, s.env, s.steps, &run_with_core(s, new_core())))
         .collect()
 }
 
