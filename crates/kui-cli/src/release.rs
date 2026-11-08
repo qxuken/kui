@@ -256,6 +256,13 @@ pub fn web_runner(
     }
     let base = base_url(mirror, version);
     let sums = sums(&base)?;
+    if !sums.contains_key(&asset) {
+        return Err(format!(
+            "{base}/SHA256SUMS lists no browser runner for kui {version} ({asset}). \
+             To pack with this pin, build the runner from the matching source checkout \
+             with scripts/web-runner.nu and pass its ZIP to --runner."
+        ));
+    }
     let bytes = fetch_verified(&base, &asset, &sums)?;
     if std::fs::create_dir_all(&dir).is_ok() {
         use std::io::Write;
