@@ -31,10 +31,24 @@
     let lua;
     const runEffects = effects({ audioEnabled: example === "features/audio", contentScale: () => scale });
     const main = document.querySelector("main");
-    let designWidth = 0;
+    let minWidth = 1;
+    let dockHeight;
+    let wired = false;
+    const embedded = window.parent !== window;
+    const reportSize = (wasm) => {
+      if (!embedded) return;
+      const height = wasm.demo_devtools_height();
+      if (height === dockHeight) return;
+      dockHeight = height;
+      window.parent.postMessage({
+        type: "kui-example", state: "size",
+        width: wasm.demo_width(), minWidth, height: wasm.demo_height() + dockHeight,
+        devtools: dockHeight > 0,
+      }, location.origin);
+    };
     let scale = 1;
     function fit() {
-      scale = Math.min(1, Math.max(innerWidth, 1) / (designWidth || 1));
+      scale = Math.min(1, Math.max(innerWidth, 1) / minWidth);
       main.style.zoom = scale;
       main.style.width = `${innerWidth / scale}px`;
       main.style.height = `${innerHeight / scale}px`;
@@ -59,18 +73,23 @@
           const message = new Uint8Array(wasm.memory.buffer, wasm.text_buffer(error), error);
           throw new Error(new TextDecoder().decode(message));
         }
-        designWidth = wasm.demo_width();
+        minWidth = wasm.demo_min_width();
         fit();
-        if (window.parent !== window) {
-          window.parent.postMessage({
-            type: "kui-example", state: "size",
-            width: wasm.demo_width(), height: wasm.demo_height(),
-          }, location.origin);
-        }
       },
-      afterFrame(...args) {
-        runEffects(...args);
-        lua?.afterFrame(...args);
+      afterFrame(wasm, canvas, schedule) {
+        if (embedded && !wired) {
+          wired = true;
+          window.addEventListener("message", event => {
+            if (event.origin !== location.origin || event.source !== window.parent ||
+                event.data?.type !== "kui-example" || event.data.state !== "devtools") return;
+            wasm.demo_set_devtools(Number(event.data.on === true));
+            reportSize(wasm);
+            schedule();
+          });
+        }
+        reportSize(wasm);
+        runEffects(wasm, canvas, schedule);
+        lua?.afterFrame(wasm, canvas, schedule);
       },
     });
   </script>

@@ -4,6 +4,9 @@ At the end of this chapter, you can see what your app is doing.
 
 ## Turn it on
 
+In the book's live examples, **Devtools** beside **Reload example**
+opens the dock below the app.
+
 ```rust,noplayground
 kui_native::app("Todo").devtools(true).run(Todo::default())
 ```

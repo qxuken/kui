@@ -148,8 +148,13 @@ pub extern "C" fn demo_audio_ended(id: u32, refused: u32) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn demo_key(modifiers: u32, down: u32, time: f64) -> u32 {
-    let Some(code) = KeyCode::from_name(&browser_text()) else {
-        return 0;
+    let input = browser_text();
+    let (layout, physical) = input.split_once('\0').unwrap_or((&input, ""));
+    let physical = KeyCode::from_name(physical);
+    let layout = match KeyCode::from_name(layout) {
+        Some(code) => code,
+        None if physical.is_some() => KeyCode::Unknown,
+        None => return 0,
     };
     let mods = KeyMods {
         shift: modifiers & KeyMods::SHIFT != 0,
@@ -157,7 +162,16 @@ pub extern "C" fn demo_key(modifiers: u32, down: u32, time: f64) -> u32 {
         alt: modifiers & KeyMods::ALT != 0,
         super_key: modifiers & KeyMods::SUPER != 0,
     };
-    RUNNER.with_borrow_mut(|runner| runner.key_event(KeyPress::new(code, mods), time, down != 0));
+    let key = match physical {
+        Some(code) => KeyPress::from_layout(layout, code, mods),
+        None => KeyPress::new(layout, mods),
+    };
+    RUNNER.with_borrow_mut(|runner| {
+        if runner.core_mut().interaction.modifiers() != mods {
+            runner.input(InputEvent::Modifiers(mods), time);
+        }
+        runner.key_event(key, time, down != 0);
+    });
     1
 }
 

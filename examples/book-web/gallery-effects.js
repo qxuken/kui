@@ -20,20 +20,36 @@ function download(blob, name) {
 
 const filename = path => path.split(/[\\/]/).pop();
 
+const keyNames = { Control: "ctrl", Meta: "super", " ": "space" };
+const punctuation = {
+  Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]",
+  Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/",
+};
+
+function physicalKey(code) {
+  if (/^Key[A-Z]$/.test(code)) return code.at(-1).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.at(-1);
+  return punctuation[code] ?? "";
+}
+
 function wireInput(wasm, canvas, schedule, contentScale) {
   const active = new Set();
-  const keys = { Control: "ctrl", Meta: "super", " ": "space" };
   for (const type of ["keydown", "keyup"]) {
     document.addEventListener(type, event => {
-      if (event.defaultPrevented || event.isComposing || event.target.closest?.("textarea,input")) return;
-      if (event.key === "Tab" || (event.target.closest?.("button") && [" ", "Enter"].includes(event.key))) return;
       const down = type === "keydown";
-      if (!down && !active.delete(event.code)) return;
-      const key = keys[event.key] ?? (event.key.length === 1 ? event.key : event.key.replace(/^Arrow/, "").toLowerCase());
+      const id = event.code || event.key;
+      if (down) {
+        if (event.defaultPrevented || event.isComposing || event.target.closest?.("textarea,input")) return;
+        if (event.key === "Tab" || (event.target.closest?.("button") && [" ", "Enter"].includes(event.key))) return;
+      } else if (!active.delete(id)) {
+        return;
+      }
+      const key = keyNames[event.key] ?? (event.key.length === 1
+        ? event.key : event.key.replace(/^Arrow/, "").toLowerCase());
       const mods = Number(event.shiftKey) | (Number(event.ctrlKey) << 1) | (Number(event.altKey) << 2) | (Number(event.metaKey) << 3);
-      send(wasm, key);
+      send(wasm, `${key}\0${physicalKey(event.code)}`);
       if (!wasm.demo_key(mods, Number(down), performance.now() / 1000)) return;
-      if (down) active.add(event.code);
+      if (down) active.add(id);
       event.preventDefault();
       schedule();
     });

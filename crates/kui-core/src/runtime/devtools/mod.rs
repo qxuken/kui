@@ -166,9 +166,9 @@ impl Dock {
         Self::ALL.into_iter().find(|d| d.name() == s)
     }
 
-    fn next(self) -> Dock {
-        let i = Self::ALL.iter().position(|d| *d == self).unwrap_or(0);
-        Self::ALL[(i + 1) % Self::ALL.len()]
+    fn next(self, choices: &[Dock]) -> Dock {
+        let next = choices.iter().position(|d| *d == self).map_or(0, |i| i + 1);
+        choices[next % choices.len()]
     }
 
     /// Whether the panel is drawn inside the main window.
@@ -502,6 +502,7 @@ impl Saved {
 pub(crate) struct State {
     pub(crate) on: bool,
     pub(crate) dock: Dock,
+    dock_choices: &'static [Dock],
     /// Where the panel was when it was last hidden ([`Self::place`]):
     /// where [`Self::unhide`] brings it back.
     shown: Dock,
@@ -627,6 +628,7 @@ impl Default for State {
         State {
             on: false,
             dock: Dock::default(),
+            dock_choices: &Dock::ALL,
             shown: Dock::default(),
             side_w: DOCK_SIDE_W,
             bottom_h: DOCK_BOTTOM_H,
@@ -706,6 +708,9 @@ impl State {
 
     /// Puts the panel at `dock`; hiding it (`Off`) remembers where it was.
     fn place(&mut self, dock: Dock) {
+        if dock != Dock::Off && !self.dock_choices.contains(&dock) {
+            return;
+        }
         if dock == Dock::Off && self.dock != Dock::Off {
             self.shown = self.dock;
         }
@@ -872,7 +877,7 @@ impl State {
                 self.note(format!("menus: {}", self.menus_name()));
             }
             "dock" => {
-                self.place(self.dock.next());
+                self.place(self.dock.next(self.dock_choices));
                 self.pick = false;
                 self.note(format!("dock: {}", self.dock.name()));
             }
@@ -1002,7 +1007,7 @@ impl State {
                     if dock != self.dock {
                         self.place(dock);
                         self.pick = false;
-                        self.note(format!("dock: {}", dock.name()));
+                        self.note(format!("dock: {}", self.dock.name()));
                     }
                 } else if let Some(key) = other.strip_prefix("node:").and_then(parse_key) {
                     // A tree row: select it, or unselect the selected one;
@@ -1408,6 +1413,24 @@ impl Core {
     /// Where the panel sits; `Ctrl+Shift+D` moves it from there.
     pub fn set_devtools_dock(&mut self, dock: Dock) {
         self.session.state().devtools.place(dock);
+    }
+
+    /// Limits where the panel can dock. Hosts can omit placements they
+    /// cannot display. Include `Off` to let the placement chord hide it.
+    /// An empty list or a list with only `Off` leaves the current choices.
+    pub fn set_devtools_dock_choices(&mut self, choices: &'static [Dock]) {
+        let Some(&first) = choices.iter().find(|dock| **dock != Dock::Off) else {
+            return;
+        };
+        let mut session = self.session.state();
+        let state = &mut session.devtools;
+        state.dock_choices = choices;
+        if !choices.contains(&state.shown) {
+            state.shown = first;
+        }
+        if state.dock != Dock::Off && !choices.contains(&state.dock) {
+            state.place(first);
+        }
     }
 
     pub fn devtools_dock(&self) -> Dock {

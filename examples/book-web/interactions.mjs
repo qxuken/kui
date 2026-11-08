@@ -26,6 +26,44 @@ try {
     await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
   }
 
+  const mux = await chapter("examples/apps/splitmux.html");
+  const muxCanvas = mux.locator("canvas");
+  await muxCanvas.click({ position: { x: 200, y: 200 } });
+  const option = async (key, code) => {
+    const event = { key, code, altKey: true, bubbles: true, cancelable: true };
+    await muxCanvas.dispatchEvent("keydown", event);
+    await muxCanvas.dispatchEvent("keyup", event);
+  };
+  await option("√", "KeyV");
+  await mux.locator('[aria-label="1  4 pane(s)"]').waitFor({ state: "attached" });
+  await option("†", "KeyT");
+  await mux.locator('[aria-label="2  1 pane(s)"]').waitFor({ state: "attached" });
+  await option("¡", "Digit1");
+  await mux.locator('[aria-label^="1 focused"]').waitFor({ state: "attached" });
+  console.log("Option chords use the key position when macOS supplies a symbol");
+
+  const devtools = page.getByRole("button", { name: "Devtools", exact: true });
+  const iframe = page.locator("iframe");
+  const originalHeight = (await iframe.boundingBox()).height;
+  await devtools.click();
+  await page.getByRole("button", { name: "Devtools", pressed: true }).waitFor();
+  await mux.locator('[aria-label="Facts"]').waitFor({ state: "attached" });
+  assert.ok((await iframe.boundingBox()).height > originalHeight);
+  await mux.locator('[aria-label="1  4 pane(s)"]').waitFor({ state: "attached" });
+  await devtools.click();
+  await page.getByRole("button", { name: "Devtools", pressed: false }).waitFor();
+  await mux.locator('[aria-label="Facts"]').waitFor({ state: "detached" });
+  assert.equal((await iframe.boundingBox()).height, originalHeight);
+  console.log("Devtools extends the existing demo and preserves its state");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const loaders = await chapter("examples/apps/loaders.html");
+  const startButton = await loaders.getByRole("button", { name: "start", exact: true }).boundingBox();
+  assert.ok(startButton.height >= 30, JSON.stringify(startButton));
+  assert.equal(await loaders.locator("main").evaluate(el => el.style.zoom), "1");
+  await page.setViewportSize({ width: 1180, height: 850 });
+  console.log("Loader controls remain full-size in a narrow embed");
+
   const extensions = await chapter("extensions.html");
   await click(extensions.getByRole("button", { name: "Buy milk", exact: true }));
   await extensions.getByText("picked Buy milk", { exact: false }).waitFor();
