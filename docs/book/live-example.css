@@ -2,6 +2,22 @@
   container-type: inline-size;
 }
 
+/* Full-width demos and fixed chapter arrows would share the same space. */
+#mdbook-page-wrapper:has(a[data-kui-example]) > .nav-wide-wrapper {
+  display: none;
+}
+
+#mdbook-page-wrapper:has(a[data-kui-example]) .nav-wrapper {
+  display: block;
+}
+
+@container (max-width: 750px) {
+  main > p:has(> a[data-kui-example], > .kui-example) ~ pre > code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
 .kui-example {
   --kui-panel-width: min(var(--kui-example-width, 100%), 100cqw);
   box-sizing: border-box;

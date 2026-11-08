@@ -61,8 +61,26 @@ try {
   const startButton = await loaders.getByRole("button", { name: "start", exact: true }).boundingBox();
   assert.ok(startButton.height >= 30, JSON.stringify(startButton));
   assert.equal(await loaders.locator("main").evaluate(el => el.style.zoom), "1");
-  await page.setViewportSize({ width: 1180, height: 850 });
   console.log("Loader controls remain full-size in a narrow embed");
+
+  const source = page.locator("main > pre > code").first();
+  assert.ok(await source.evaluate(code => code.scrollWidth <= code.clientWidth),
+    "the source listing wraps to the narrow chapter");
+  await page.setViewportSize({ width: 1120, height: 950 });
+  await page.evaluate(() => localStorage.setItem("mdbook-sidebar", "hidden"));
+  await chapter("examples/features/align.html");
+  assert.ok(await page.locator(".kui-example").evaluate(panel => {
+    const box = panel.getBoundingClientRect();
+    return [...document.querySelectorAll(".nav-wide-wrapper .nav-chapters")].every(link => {
+      const rail = link.getBoundingClientRect();
+      return rail.width === 0 || rail.right <= box.left || rail.left >= box.right;
+    });
+  }), "the fixed chapter arrows clear the wide demo");
+  const footer = page.locator(".nav-wrapper");
+  await footer.getByRole("link", { name: "Previous chapter" }).waitFor();
+  await footer.getByRole("link", { name: "Next chapter" }).waitFor();
+  await page.setViewportSize({ width: 1180, height: 850 });
+  console.log("Wide demos clear chapter navigation and narrow source listings wrap");
 
   const extensions = await chapter("extensions.html");
   await click(extensions.getByRole("button", { name: "Buy milk", exact: true }));
