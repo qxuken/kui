@@ -3,28 +3,44 @@
 
 const ROOT = (path self | path dirname | path dirname)
 
-def main [--port: int = 8080, --build-only, --svg, --devtools] {
+def main [--port: int = 8080, --build-only, --out-dir: path, --book, --svg, --devtools] {
     cd $ROOT
     let extras = [
         (if $svg { "svg" } else { null })
         (if $devtools { "devtools" } else { null })
     ] | compact
-    ^cargo build --locked --release -p kui-web --examples --target wasm32-unknown-unknown --features ($extras | str join ",")
     let target_dir = ($env.CARGO_TARGET_DIR? | default "target")
-    let out = ($target_dir | path join "web-counter")
+    let out = ($out_dir | default ($target_dir | path join "web-counter"))
     mkdir $out
-    cp examples/web/index.html $out
-    cp examples/web/notes.html $out
+    let package = if $book { "kui-book-web" } else { "kui-web" }
+    let selection = if $book { "--lib" } else { "--examples" }
+    let app_names = if $book { [gallery] } else { [counter notes] }
+    if $book {
+        cp examples/book-web/gallery.html $out
+        cp examples/book-web/gallery-effects.js $out
+        cp examples/book-web/gallery-audio.js $out
+        cp examples/book-web/gallery-popup.js $out
+        cp examples/book-web/OFL-KUIBookEmoji.txt $out
+    } else {
+        cp examples/web/index.html $out
+        cp examples/web/notes.html $out
+    }
+    cp examples/web/mount.js $out
     cp crates/kui-web/editor.js $out
     cp crates/kui-web/canvas.js $out
     cp crates/kui-cli/assets/fonts/LICENSE ($out | path join "OFL-NotoSans.txt")
     cp examples/web/fonts/OFL-NotoSansSymbols2.txt $out
-    let examples = ($target_dir | path join "wasm32-unknown-unknown" "release" "examples")
-    cp ($examples | path join "counter.wasm") $out
-    cp ($examples | path join "notes.wasm") $out
-    ^cargo build --locked --release -p kui-web --examples --target wasm32-unknown-unknown --features ($extras | append rust-wgpu | str join ",")
-    for app in [counter notes] {
-        ^wasm-bindgen --target web --no-typescript --out-dir $out --out-name $"($app)-wgpu" ($examples | path join $"($app).wasm")
+    let release = ($target_dir | path join "wasm32-unknown-unknown" "release")
+    let artifact_dir = if $book { $release } else { $release | path join "examples" }
+    ^cargo build --locked --release -p $package $selection --target wasm32-unknown-unknown --features ($extras | str join ",")
+    for app in $app_names {
+        let artifact = if $book { "kui_book_web.wasm" } else { $"($app).wasm" }
+        cp ($artifact_dir | path join $artifact) ($out | path join $"($app).wasm")
+    }
+    ^cargo build --locked --release -p $package $selection --target wasm32-unknown-unknown --features ($extras | append rust-wgpu | str join ",")
+    for app in $app_names {
+        let artifact = if $book { "kui_book_web.wasm" } else { $"($app).wasm" }
+        ^wasm-bindgen --target web --no-typescript --out-dir $out --out-name $"($app)-wgpu" ($artifact_dir | path join $artifact)
     }
     if $build_only {
         print $"Built ($out)"

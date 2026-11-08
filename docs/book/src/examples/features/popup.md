@@ -2,9 +2,7 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
-<img src="../../img/examples/features/popup.png" width="360" alt="features/popup: its settled frame, drawn headlessly by --shot">
-
-*The example as it draws: its settled frame, drawn headlessly by `--shot`.*
+<a data-kui-example="480" href="../../live/gallery.html?example=features/popup">Live popup example</a>
 
 ```rust,noplayground
 {{#include ../../../../../examples/rust/features/popup.rs}}

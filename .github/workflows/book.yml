@@ -5,8 +5,8 @@
 # programs are written against the published crates, so the copy people read
 # should describe the version they can install. `workflow_dispatch` is there
 # for a republish without cutting a release. Kept out of release.yml because
-# it needs none of it - no toolchain, no target dir - and a book that fails
-# to deploy should not hold up a release. ci.yml builds the book on every
+# the book has its own Wasm demo build, and a book that fails to deploy
+# should not hold up a release. ci.yml builds the book on every
 # push, so a tag's build is not where a broken anchor is found.
 #
 # Until alpha.68 the book was a git-pages server behind a Cloudflare tunnel,
@@ -47,10 +47,11 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: mdbook
+          tools: rust node npm nu mdbook
+          wasi: 'true'
 
       - name: Build
-        run: mdbook build docs/book -d "$RUNNER_TEMP/book"
+        run: nu scripts/book-build.nu --install-tools --out-dir "$RUNNER_TEMP/book"
 
       - uses: actions/upload-pages-artifact@v5
         with:

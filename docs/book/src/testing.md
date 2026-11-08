@@ -1,5 +1,7 @@
 # Testing without a window
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/10_testing">Live chapter example</a>
+
 `kui test` runs Lua and Teal app tests with no window. Input still passes
 through the real core and Kit: routing, focus, editing and layout are the
 same paths the app normally uses.

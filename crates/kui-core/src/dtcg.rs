@@ -150,6 +150,17 @@ pub fn from_str(src: &str, base: Option<&Path>, opts: &DtcgOptions) -> Result<Dt
     })
 }
 
+/// Loads a DTCG document and its relative references through a host resolver.
+pub fn from_path_with(
+    path: &Path,
+    opts: &DtcgOptions,
+    read: &mut dyn FnMut(&Path) -> Result<String, String>,
+) -> Result<Dtcg, DtcgError> {
+    let name = path.display().to_string();
+    let src = read(path).map_err(|e| fail(format!("{name}: {e}")))?;
+    from_str_with(&src, path.parent(), &name, opts, read)
+}
+
 /// Loads a DTCG document and asks the caller for each referenced document.
 /// Paths are joined to `base` and each document is parsed once per load.
 pub fn from_str_with(
@@ -940,15 +951,21 @@ mod tests {
     use super::*;
 
     fn from_path(path: PathBuf, opts: &DtcgOptions) -> Result<Dtcg, DtcgError> {
-        let read = |path: &Path| std::fs::read_to_string(path).map_err(|e| e.to_string());
-        let src = read(&path).map_err(fail)?;
-        from_str_with(
-            &src,
-            path.parent(),
-            &path.display().to_string(),
-            opts,
-            &mut { read },
+        from_path_with(&path, opts, &mut |path| {
+            std::fs::read_to_string(path).map_err(|e| e.to_string())
+        })
+    }
+
+    #[test]
+    fn a_root_read_error_names_the_document() {
+        let error = from_path_with(
+            Path::new("theme.json"),
+            &DtcgOptions::default(),
+            &mut |_| Err("permission denied".into()),
         )
+        .err()
+        .unwrap();
+        assert_eq!(error.message, "theme.json: permission denied");
     }
 
     fn temp(tag: &str) -> PathBuf {

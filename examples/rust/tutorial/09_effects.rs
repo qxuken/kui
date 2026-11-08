@@ -6,12 +6,13 @@
 //! Run: cargo run -p kui-native --example tutorial_09_effects
 
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
+#[cfg(not(target_arch = "wasm32"))]
+use kui_native::Waker;
 use kui_native::widgets;
-use kui_native::{
-    Align, App, Core, Message, NodeSpec, TextStyle, Ui, UiEvent, Waker, WindowCommand,
-};
+use kui_native::{Align, App, Core, Message, NodeSpec, TextStyle, Ui, UiEvent, WindowCommand};
 
 // ANCHOR: message
 #[derive(Message, Clone, Debug, PartialEq)]
@@ -28,6 +29,8 @@ enum Msg {
 struct Effects {
     /// Seconds since launch, written by a thread.
     ticks: Arc<Mutex<u64>>,
+    #[cfg(target_arch = "wasm32")]
+    started: Option<f64>,
     pasted: String,
     quit: bool,
 }
@@ -36,6 +39,7 @@ impl App for Effects {
     // ANCHOR: setup
     /// Once, before the window opens. The loop sleeps between events, so
     /// a thread with news calls `wake()` and the loop draws a frame.
+    #[cfg(not(target_arch = "wasm32"))]
     fn setup(&mut self, waker: Waker) {
         let ticks = Arc::clone(&self.ticks);
         std::thread::spawn(move || {
@@ -49,6 +53,14 @@ impl App for Effects {
     // ANCHOR_END: setup
 
     fn view(&mut self, ui: &mut Ui<'_>) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let now = ui.now();
+            let start = *self.started.get_or_insert(now);
+            let seconds = (now - start) as u64;
+            *self.ticks.lock().unwrap() = seconds;
+            ui.request_frame_at(start + seconds as f64 + 1.0);
+        }
         let t = ui.theme();
         let ticks = *self.ticks.lock().unwrap();
 
@@ -122,9 +134,11 @@ impl App for Effects {
     // ANCHOR_END: on_event_with
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Effects").size(420.0, 220.0).run(Effects {
         ticks: Arc::new(Mutex::new(0)),
+        #[cfg(target_arch = "wasm32")]
+        started: None,
         pasted: String::new(),
         quit: false,
     })
