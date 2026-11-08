@@ -1734,23 +1734,7 @@ impl Renderer {
     /// does not and must leave the flag alone, a capture's. Leaves `dirty`
     /// to the caller.
     fn sync_atlas(&mut self, atlas: &GlyphAtlas, owns: bool) {
-        if atlas.size != self.atlas_size {
-            self.atlas_size = atlas.size;
-            self.atlas_tex = create_atlas_texture(self.gpu.device(), atlas.size);
-            let view = self
-                .atlas_tex
-                .create_view(&wgpu::TextureViewDescriptor::default());
-            for slot in &mut self.slots {
-                slot.bind = create_bind_group(
-                    self.gpu.device(),
-                    &self.bind_layout,
-                    &globals_binding(&slot.buf),
-                    &view,
-                    &self.samplers,
-                );
-            }
-            self.atlas_epoch = u64::MAX;
-        }
+        self.ensure_atlas_size(atlas.size);
         let changed = if owns {
             atlas.dirty
         } else {
@@ -1766,29 +1750,86 @@ impl Renderer {
                 Some(rect) if owns && same_page => rect,
                 _ => [0, 0, atlas.size, atlas.size],
             };
-            self.gpu.queue().write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &self.atlas_tex,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d { x, y, z: 0 },
-                    aspect: wgpu::TextureAspect::All,
-                },
+            self.write_atlas_rect(
+                [x, y, w, h],
                 &atlas.pixels,
-                wgpu::TexelCopyBufferLayout {
-                    offset: (u64::from(y) * u64::from(atlas.size) + u64::from(x)) * 4,
-                    bytes_per_row: Some(atlas.size * 4),
-                    rows_per_image: Some(h),
-                },
-                wgpu::Extent3d {
-                    width: w,
-                    height: h,
-                    depth_or_array_layers: 1,
-                },
+                (u64::from(y) * u64::from(atlas.size) + u64::from(x)) * 4,
+                atlas.size * 4,
             );
             self.atlas_epoch = atlas.epoch;
             self.atlas_rev = atlas.rev;
             self.atlas_id = atlas.id();
         }
+    }
+
+    fn ensure_atlas_size(&mut self, size: u32) {
+        if size == self.atlas_size {
+            return;
+        }
+        self.atlas_size = size;
+        self.atlas_tex = create_atlas_texture(self.gpu.device(), size);
+        let view = self
+            .atlas_tex
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        for slot in &mut self.slots {
+            slot.bind = create_bind_group(
+                self.gpu.device(),
+                &self.bind_layout,
+                &globals_binding(&slot.buf),
+                &view,
+                &self.samplers,
+            );
+        }
+        self.atlas_epoch = u64::MAX;
+    }
+
+    fn write_atlas_rect(&self, [x, y, w, h]: [u32; 4], rgba: &[u8], offset: u64, stride: u32) {
+        self.gpu.queue().write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.atlas_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x, y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset,
+                bytes_per_row: Some(stride),
+                rows_per_image: Some(h),
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    /// Mirrors a tightly packed atlas update from a separate Wasm instance.
+    #[cfg(target_arch = "wasm32")]
+    pub fn upload_atlas_region(
+        &mut self,
+        size: u32,
+        rect @ [x, y, w, h]: [u32; 4],
+        rgba: &[u8],
+    ) -> Result<(), RenderError> {
+        if self.gpu.lost() {
+            return Err(RenderError::DeviceLost);
+        }
+        if w == 0
+            || h == 0
+            || size > self.gpu.device().limits().max_texture_dimension_2d
+            || w > size
+            || h > size
+            || x > size - w
+            || y > size - h
+            || rgba.len() as u64 != u64::from(w) * u64::from(h) * 4
+        {
+            return Err(RenderError::Validation);
+        }
+        self.ensure_atlas_size(size);
+        self.write_atlas_rect(rect, rgba, 0, w * 4);
+        Ok(())
     }
 
     /// Puts the frame's instances, fragment parameters (`fragment_bytes`)
@@ -2322,16 +2363,33 @@ impl Renderer {
         dl: &DisplayList,
         atlas: &mut GlyphAtlas,
     ) -> Result<RenderReport, RenderError> {
-        // A dead device takes no work: everything below would only add
-        // errors to the one that lost it.
+        self.surface_ready()?;
+        self.sync_atlas(atlas, true);
+        atlas.mark_uploaded();
+        self.present_display_list(dl)
+    }
+
+    /// Presents a display list after its atlas updates were supplied separately.
+    #[cfg(target_arch = "wasm32")]
+    pub fn render_with_uploaded_atlas(
+        &mut self,
+        dl: &DisplayList,
+    ) -> Result<RenderReport, RenderError> {
+        self.surface_ready()?;
+        self.present_display_list(dl)
+    }
+
+    fn surface_ready(&self) -> Result<(), RenderError> {
         if self.gpu.lost() {
             return Err(RenderError::DeviceLost);
         }
         if self.surface.is_none() {
             return Err(RenderError::Skip);
         }
-        self.sync_atlas(atlas, true);
-        atlas.mark_uploaded();
+        Ok(())
+    }
+
+    fn present_display_list(&mut self, dl: &DisplayList) -> Result<RenderReport, RenderError> {
         let prep = self.prepare(dl, true);
 
         // Acquiring the swapchain image is where vsync backpressure blocks;

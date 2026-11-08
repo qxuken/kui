@@ -186,6 +186,44 @@ try {
   await page.waitForFunction(packedTaskData, "[]");
   console.log("Lua extension slots, task validation, keyboard submission and saved file");
 
+  const packed = await browser.newPage({ viewport: { width: 720, height: 500 } });
+  try {
+    await packed.addInitScript(() => {
+      if (typeof GPUAdapter === "undefined") return;
+      const request = GPUAdapter.prototype.requestDevice;
+      GPUAdapter.prototype.requestDevice = async function(...args) {
+        return (window.packedDevice = await request.apply(this, args));
+      };
+    });
+    const url = new URL("live/tasks/index.html", base);
+    await packed.goto(url.href);
+    await packed.locator("#status").waitFor({ state: "hidden" });
+    const renderer = packed.locator("#renderer");
+    if (await renderer.textContent() === "kui-wgpu") {
+      await packed.getByRole("textbox").focus();
+      await packed.keyboard.insertText("Keep the draft");
+      await packed.waitForFunction(() => document.activeElement?.value === "Keep the draft");
+      await packed.evaluate(() => window.packedDevice.destroy());
+      await packed.waitForFunction(() => document.querySelector("#renderer").textContent === "Canvas 2D");
+      await packed.keyboard.insertText(" after device loss");
+      await packed.waitForFunction(() => document.activeElement?.value === "Keep the draft after device loss");
+      assert.equal(await packed.locator("main > canvas").count(), 1);
+      console.log("Packed WebGPU device loss preserves the focused draft on Canvas 2D");
+    }
+    const gpuRequests = [];
+    packed.on("request", request => {
+      if (request.url().includes("/runner-gpu")) gpuRequests.push(request.url());
+    });
+    url.searchParams.set("renderer", "canvas");
+    await packed.goto(url.href);
+    await packed.locator("#status").waitFor({ state: "hidden" });
+    assert.equal(await renderer.textContent(), "Canvas 2D");
+    assert.deepEqual(gpuRequests, []);
+    console.log("Packed Canvas 2D starts without downloading WebGPU");
+  } finally {
+    await packed.close();
+  }
+
   const deck = await chapter("presentations.html");
   const next = deck.getByRole("button", { name: "Next", exact: true });
   const previous = deck.getByRole("button", { name: "Previous", exact: true });

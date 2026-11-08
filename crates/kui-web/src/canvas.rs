@@ -76,6 +76,7 @@ pub(crate) struct Painter {
     clips: Vec<Clip>,
     textures: Vec<TextureDraw>,
     uploaded: HashMap<ImageId, u32>,
+    atlas_uploaded: bool,
 }
 
 impl Painter {
@@ -88,7 +89,11 @@ impl Painter {
         let bg = core.theme().bg;
         let (list, atlas) = core.output();
         let surface = (list.viewport, bg);
-        let atlas_dirty = atlas.dirty_rect();
+        let atlas_dirty = if self.atlas_uploaded {
+            atlas.dirty_rect()
+        } else {
+            Some([0, 0, atlas.size, atlas.size])
+        };
         let mut textures_changed = self.textures != list.textures;
         // SAFETY: the imports consume the borrowed pixels synchronously.
         unsafe {
@@ -138,6 +143,7 @@ impl Painter {
             if let Some([x, y, w, h]) = atlas_dirty {
                 upload_atlas(atlas.pixels.as_ptr(), atlas.size, x, y, w, h);
                 atlas.mark_uploaded();
+                self.atlas_uploaded = true;
             }
             for quad in &list.quads {
                 if let Some(damage) = damage {

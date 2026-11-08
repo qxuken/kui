@@ -56,7 +56,8 @@ was the first bare bump to break an app in five releases).
   touch scrolling, text editing, and the accessibility mirror.
 - `kui pack --format web` packages Lua and Teal apps with a prebuilt
   browser runner and Kit. Serve the output as a static site. Files in
-  `kui.data_dir` persist in the browser for each app.
+  `kui.data_dir` persist in the browser for each app. Packed apps use
+  `kui-wgpu` when WebGPU is available and fall back to Canvas 2D.
 
 ### Fixed
 

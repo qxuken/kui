@@ -1,5 +1,6 @@
 import { mountDemo } from "./mount.js";
 import { appFilesystem } from "./filesystem.js";
+import { packedGpu } from "./packed-gpu.js";
 
 const status = document.querySelector("#status");
 const main = document.querySelector("main");
@@ -59,9 +60,14 @@ try {
   let wired = false;
   const runtime = new URL("./runner.wasm", import.meta.url);
   runtime.searchParams.set("v", app.runner);
+  const gpu = packedGpu(main.querySelector("canvas"), runtime);
   await mountDemo(runtime, {
     contentScale: () => scale,
-    instantiate: filesystem.instantiate,
+    instantiate: async (bytes, imports) => {
+      await gpu.ready;
+      return filesystem.instantiate(bytes, { ...imports, kui_gpu: gpu.imports });
+    },
+    present: gpu.present,
     panOutside: dy => notify("pan", { dy }),
     initialize(wasm) {
       const ptr = wasm.text_buffer(metadata.length);
@@ -88,6 +94,7 @@ try {
       reportSize(wasm.app_devtools_height());
     },
   });
+  if (gpu.active()) document.querySelector("#renderer").textContent = "kui-wgpu";
 } catch (error) {
   status.textContent = `Could not load application. ${error.message}`;
   status.hidden = false;

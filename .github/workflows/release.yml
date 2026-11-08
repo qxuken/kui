@@ -369,9 +369,8 @@ jobs:
 
       - name: Build the browser runner
         run: |
-          rustup target add wasm32-wasip1
           ver=$(nu -c 'open Cargo.toml | get workspace.package.version')
-          nu scripts/web-runner.nu --out "target/pack/release/kui-$ver-web.zip"
+          nu scripts/web-runner.nu --install-tools --out "target/pack/release/kui-$ver-web.zip"
 
       # SHA256SUMS over every asset (pack-ffi.nu's own covered the C and
       # Odin archives only), then the linux-x64 runner installed the way a user

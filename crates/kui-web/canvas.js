@@ -222,7 +222,7 @@ function painter(canvas, restoreCanvas) {
 }
 
 /** Mount one Wasm app for the lifetime of its canvas. */
-export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame, contentScale = () => 1, panOutside, overlayCanvas, instantiate = WebAssembly.instantiate } = {}) {
+export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame, contentScale = () => 1, panOutside, overlayCanvas, instantiate = WebAssembly.instantiate, present } = {}) {
   let wasm;
   let snapshot;
   let clipboardText;
@@ -298,7 +298,9 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     ({ instance: { exports: wasm } } = await instantiate(await response.arrayBuffer(), imports));
     initialize?.(wasm);
     setPlatform();
-    frame = (width, height, scale, redraw) => wasm.frame(width, height, scale, seconds(), redraw);
+    frame = present
+      ? (width, height, scale, redraw, w, h) => present(wasm, width, height, scale, seconds(), redraw, w, h, schedule)
+      : (width, height, scale, redraw) => wasm.frame(width, height, scale, seconds(), redraw);
     firstFrame = paintFrame();
   }
 

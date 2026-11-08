@@ -6,6 +6,8 @@
 mod access;
 #[cfg(not(feature = "rust-wgpu"))]
 mod canvas;
+#[cfg(all(feature = "packed-gpu", any(feature = "rust-wgpu", target_os = "wasi")))]
+pub mod packed_gpu;
 #[cfg(not(feature = "rust-wgpu"))]
 mod popup;
 #[cfg(not(feature = "rust-wgpu"))]
@@ -43,6 +45,8 @@ pub struct Runner<A> {
     painter: canvas::Painter,
     #[cfg(feature = "rust-wgpu")]
     painter: Option<WgpuPainter>,
+    #[cfg(all(feature = "packed-gpu", target_os = "wasi", not(feature = "rust-wgpu")))]
+    gpu_sender: packed_gpu::Sender,
 }
 
 impl<A: App> Runner<A> {
@@ -57,6 +61,8 @@ impl<A: App> Runner<A> {
             painter: canvas::Painter::default(),
             #[cfg(feature = "rust-wgpu")]
             painter: None,
+            #[cfg(all(feature = "packed-gpu", target_os = "wasi", not(feature = "rust-wgpu")))]
+            gpu_sender: packed_gpu::Sender::default(),
         }
     }
 
@@ -233,6 +239,18 @@ impl<A: App> Runner<A> {
         let next = self.build_frame(viewport, scale, time);
         self.painter.paint(&mut self.core);
         next
+    }
+
+    /// Builds a frame in the WASI app and paints it through the browser's GPU module.
+    #[cfg(all(feature = "packed-gpu", target_os = "wasi", not(feature = "rust-wgpu")))]
+    pub fn frame_for_gpu(&mut self, viewport: Size, scale: f32, time: f64) -> u32 {
+        let next = self.build_frame(viewport, scale, time);
+        let painted = self.gpu_sender.present(&mut self.core);
+        if painted == 0 {
+            u32::from(next)
+        } else {
+            painted
+        }
     }
 
     /// Attaches a new renderer, including after browser GPU device loss.
