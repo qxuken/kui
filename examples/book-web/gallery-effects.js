@@ -1,3 +1,5 @@
+import { audioEffects } from "./gallery-audio.js";
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -18,7 +20,7 @@ function download(blob, name) {
 
 const filename = path => path.split(/[\\/]/).pop();
 
-function wireInput(wasm, canvas, schedule) {
+function wireInput(wasm, canvas, schedule, contentScale) {
   const active = new Set();
   const keys = { Control: "ctrl", Meta: "super", " ": "space" };
   for (const type of ["keydown", "keyup"]) {
@@ -44,21 +46,24 @@ function wireInput(wasm, canvas, schedule) {
       const rect = canvas.getBoundingClientRect();
       const names = Array.from(event.dataTransfer.files, file => file.name);
       send(wasm, JSON.stringify(names.length ? names : ["Files"]));
-      wasm.demo_files(kind, event.clientX - rect.x, event.clientY - rect.y, performance.now() / 1000);
+      wasm.demo_files(kind, (event.clientX - rect.x) / contentScale(), (event.clientY - rect.y) / contentScale(), performance.now() / 1000);
       schedule();
     });
   }
 }
 
-export function effects() {
-  const sounds = new Map();
-  const playing = new Map();
-  let master = 1;
+export function effects({ audioEnabled, contentScale }) {
+  const audio = audioEffects();
   let recording;
   let wired = false;
   return (wasm, canvas, schedule) => {
     if (!wired) {
-      wireInput(wasm, canvas, schedule);
+      wireInput(wasm, canvas, schedule, contentScale);
+      if (audioEnabled) {
+        for (const type of ["pointerdown", "pointerup", "keydown"]) {
+          document.addEventListener(type, audio.unlock, { capture: true });
+        }
+      }
       wired = true;
     }
     const len = wasm.take_demo_effects();
@@ -71,12 +76,6 @@ export function effects() {
       schedule();
     };
     for (const req of requests) {
-      const current = playing.get(req.id);
-      const ended = refused => {
-        if (!playing.delete(req.id) && !refused) return;
-        wasm.demo_audio_ended(req.id, Number(refused));
-        schedule();
-      };
       switch (req.kind) {
         case "copy":
           navigator.clipboard?.writeText(req.text).catch(() => {});
@@ -148,47 +147,11 @@ export function effects() {
         case "stop-recording":
           recording?.stop();
           break;
-        case "play": {
-          if (!req.bytes) { ended(true); break; }
-          let url = sounds.get(req.sound);
-          if (!url) {
-            url = URL.createObjectURL(new Blob([Uint8Array.from(req.bytes)], { type: "audio/wav" }));
-            sounds.set(req.sound, url);
-          }
-          const audio = new Audio(url);
-          audio.loop = req.loop;
-          audio.volume = Math.min(1, req.volume * master);
-          playing.set(req.id, { audio, volume: req.volume });
-          audio.addEventListener("ended", () => ended(false), { once: true });
-          audio.play().catch(() => { if (playing.has(req.id)) ended(true); });
-          break;
-        }
-        case "stop":
-          current?.audio.pause();
-          playing.delete(req.id);
-          break;
-        case "pause":
-          current?.audio.pause();
-          break;
-        case "resume":
-          current?.audio.play().catch(() => ended(true));
-          break;
-        case "volume":
-          if (current) {
-            current.volume = req.volume;
-            current.audio.volume = Math.min(1, current.volume * master);
-          }
-          break;
-        case "master":
-          master = req.volume;
-          for (const { audio, volume } of playing.values()) audio.volume = Math.min(1, volume * master);
-          break;
-        case "unload": {
-          const url = sounds.get(req.sound);
-          if (url) URL.revokeObjectURL(url);
-          sounds.delete(req.sound);
-          break;
-        }
+        default:
+          audio.handle(req, refused => {
+            wasm.demo_audio_ended(req.id, Number(refused));
+            schedule();
+          });
       }
     }
   };

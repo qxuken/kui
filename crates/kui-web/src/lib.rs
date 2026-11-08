@@ -34,6 +34,7 @@ pub struct Runner<A> {
     app: A,
     core: Core,
     access: access::Mirror,
+    extensions: Option<kui_core::Extensions>,
     #[cfg(not(feature = "rust-wgpu"))]
     painter: canvas::Painter,
     #[cfg(feature = "rust-wgpu")]
@@ -47,11 +48,17 @@ impl<A: App> Runner<A> {
             app,
             core: Core::new_in(session),
             access: access::Mirror::default(),
+            extensions: None,
             #[cfg(not(feature = "rust-wgpu"))]
             painter: canvas::Painter::default(),
             #[cfg(feature = "rust-wgpu")]
             painter: None,
         }
+    }
+
+    /// Supplies the app's slots and components.
+    pub fn set_extensions(&mut self, extensions: kui_core::Extensions) {
+        self.extensions = Some(extensions);
     }
 
     pub fn core_mut(&mut self) -> &mut Core {
@@ -66,6 +73,14 @@ impl<A: App> Runner<A> {
         }
         let events = self.core.handle_input(event);
         self.route(events);
+    }
+
+    /// Returns whether the wheel moved or was claimed by a kui region.
+    pub fn scroll(&mut self, delta: kui_core::Vec2, begins: bool, time: f64) -> bool {
+        self.core.set_time(time);
+        let (events, consumed) = self.core.handle_scroll(delta, begins);
+        self.route(events);
+        consumed
     }
 
     /// A complete keystroke, including its semantic action in the core.
@@ -89,8 +104,11 @@ impl<A: App> Runner<A> {
     }
 
     fn route(&mut self, events: Vec<UiEvent>) {
-        for event in events {
-            self.app.on_event_with(event, &mut self.core);
+        let mut to_app = |event| self.app.on_event_with(event, &mut self.core);
+        if let Some(extensions) = &mut self.extensions {
+            extensions.route(events, to_app);
+        } else {
+            events.into_iter().for_each(&mut to_app);
         }
     }
 
@@ -99,8 +117,13 @@ impl<A: App> Runner<A> {
     }
 
     /// Whether a touch moved from this point should feed the scroll path.
-    pub fn prefers_scroll_at(&self, point: kui_core::Vec2) -> bool {
-        self.core.interaction.prefers_scroll_at(point)
+    pub fn prefers_scroll_at(&self, point: kui_core::Vec2, parent_can_pan: bool) -> bool {
+        let input = &self.core.interaction;
+        if parent_can_pan {
+            !input.prefers_drag_at(point)
+        } else {
+            input.prefers_scroll_at(point)
+        }
     }
 
     pub fn set_platform(&mut self, platform: Platform) {
@@ -229,7 +252,11 @@ impl<A: App> Runner<A> {
     fn build_frame(&mut self, viewport: Size, scale: f32, time: f64) -> bool {
         self.core.set_time(time);
         self.app.before_frame(&mut self.core);
-        let mut ui = self.core.frame(viewport, scale);
+        let mut ui = if let Some(extensions) = &mut self.extensions {
+            self.core.frame_with(viewport, scale, extensions)
+        } else {
+            self.core.frame(viewport, scale)
+        };
         self.app.view(&mut ui);
         ui.finish();
         let events = self.core.take_pending_events();

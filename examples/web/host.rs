@@ -12,7 +12,7 @@ use kui_core::{
 pub(crate) fn bundled_fonts() -> [Vec<u8>; 2] {
     [
         include_bytes!("../../crates/kui-cli/assets/fonts/NotoSans-Regular.ttf").to_vec(),
-        include_bytes!("fonts/NotoSansSymbols2-Keyboard.ttf").to_vec(),
+        include_bytes!("fonts/NotoSansSymbols2-Web.ttf").to_vec(),
     ]
 }
 
@@ -109,26 +109,20 @@ pub extern "C" fn pointer_button(secondary: u32, down: u32, time: f64, clicks: u
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn scroll(x: f32, y: f32, time: f64) {
-    RUNNER.with_borrow_mut(|runner| runner.input(InputEvent::Scroll(Vec2::new(x, y)), time));
+pub extern "C" fn scroll(x: f32, y: f32, time: f64) -> u32 {
+    RUNNER.with_borrow_mut(|runner| u32::from(runner.scroll(Vec2::new(x, y), true, time)))
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn prefers_scroll(x: f32, y: f32) -> u32 {
-    RUNNER.with_borrow(|runner| u32::from(runner.prefers_scroll_at(Vec2::new(x, y))))
+pub extern "C" fn prefers_scroll(x: f32, y: f32, parent_can_pan: u32) -> u32 {
+    RUNNER.with_borrow(|runner| {
+        u32::from(runner.prefers_scroll_at(Vec2::new(x, y), parent_can_pan != 0))
+    })
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn scroll_gesture(x: f32, y: f32, begins: u32, time: f64) {
-    RUNNER.with_borrow_mut(|runner| {
-        runner.input(
-            InputEvent::ScrollGesture {
-                delta: Vec2::new(x, y),
-                begins: begins != 0,
-            },
-            time,
-        );
-    });
+pub extern "C" fn scroll_gesture(x: f32, y: f32, begins: u32, time: f64) -> u32 {
+    RUNNER.with_borrow_mut(|runner| u32::from(runner.scroll(Vec2::new(x, y), begins != 0, time)))
 }
 
 #[unsafe(no_mangle)]

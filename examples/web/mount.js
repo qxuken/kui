@@ -1,6 +1,6 @@
 import { startCanvas } from "./canvas.js";
 
-export async function mountDemo(wasmUrl, { initialize, afterFrame, renderer = "auto" } = {}) {
+export async function mountDemo(wasmUrl, { initialize, afterFrame, contentScale, instantiate, panOutside, renderer = "auto" } = {}) {
   const params = new URLSearchParams(location.search);
   const embed = params.has("embed");
   if (embed) document.documentElement.dataset.embed = "";
@@ -16,7 +16,10 @@ export async function mountDemo(wasmUrl, { initialize, afterFrame, renderer = "a
       access: document.querySelector("#access"),
       initialize,
       afterFrame,
-      renderer: params.get("renderer") ?? renderer,
+      contentScale,
+      instantiate,
+      panOutside: embed ? panOutside : undefined,
+      renderer: instantiate ? "canvas" : params.get("renderer") ?? renderer,
     });
     document.querySelector("#renderer").textContent = selected === "wgpu" ? "kui-wgpu" : "Canvas 2D";
     status.hidden = true;

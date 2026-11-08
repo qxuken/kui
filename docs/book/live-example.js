@@ -39,10 +39,18 @@ for (const link of document.querySelectorAll("a[data-kui-example]")) {
   window.addEventListener("message", event => {
     if (event.origin !== url.origin || event.source !== frame?.contentWindow ||
         event.data?.type !== "kui-example") return;
+    if (event.data.state === "pan" && Number.isFinite(event.data.dy)) {
+      window.scrollBy(0, event.data.dy);
+    }
     if (event.data.state === "size") {
       const { width, height } = event.data;
-      if (Number.isFinite(width) && width >= 1 && width <= 2000) frame.style.width = `${width}px`;
-      if (Number.isFinite(height) && height >= 1 && height <= 1500) viewport.style.height = `${height}px`;
+      if (Number.isFinite(width) && width >= 1 && width <= 2000 &&
+          Number.isFinite(height) && height >= 1 && height <= 1500) {
+        example.style.setProperty("--kui-example-width", `${width + 2}px`);
+        viewport.style.aspectRatio = `${width} / ${height}`;
+        viewport.style.height = "auto";
+        viewport.style.maxHeight = `${height}px`;
+      }
     }
     if (event.data.state === "ready" || event.data.state === "error") {
       clearTimeout(timeout);

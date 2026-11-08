@@ -20,3 +20,7 @@ js-sys = { version = "0.3.106", optional = true }
 wasm-bindgen = { version = "0.2.129", optional = true }
 wasm-bindgen-futures = { version = "0.4.79", optional = true }
 web-sys = { version = "0.3.106", optional = true, features = ["HtmlCanvasElement"] }
+
+[target.'cfg(target_os = "wasi")'.dependencies]
+kui-lua.workspace = true
+mlua = { workspace = true, features = ["serde"] }

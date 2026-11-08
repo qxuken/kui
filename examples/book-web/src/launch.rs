@@ -88,7 +88,6 @@ impl Titlebar {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
 pub struct Window {
     pub size: (f64, f64),
     pub min_size: Option<(f64, f64)>,
@@ -96,6 +95,7 @@ pub struct Window {
     pub chrome: Chrome,
     pub backdrop: Backdrop,
     pub titlebar: Titlebar,
+    extensions: Option<kui_core::Extensions>,
 }
 
 impl Default for Window {
@@ -107,6 +107,7 @@ impl Default for Window {
             chrome: Chrome::Native,
             backdrop: Backdrop::Opaque,
             titlebar: Titlebar::Standard,
+            extensions: None,
         }
     }
 }
@@ -139,9 +140,21 @@ impl Window {
         self.titlebar = titlebar;
         self
     }
+    #[cfg(target_os = "wasi")]
+    pub fn extension_as(
+        mut self,
+        namespace: &str,
+        extension: impl kui_core::Extension + 'static,
+    ) -> Self {
+        self.extensions
+            .get_or_insert_with(kui_core::Extensions::new)
+            .push_as(namespace, Box::new(extension))
+            .expect("valid example extension namespace");
+        self
+    }
     pub fn run(self, app: impl App + 'static) -> LaunchResult {
         DEMO_SIZE.set(self.size);
-        SELECTED.with_borrow_mut(|slot| *slot = Some(BookApp(Box::new(app))));
+        SELECTED.with_borrow_mut(|slot| *slot = Some((BookApp(Box::new(app)), self.extensions)));
         Ok(())
     }
 }

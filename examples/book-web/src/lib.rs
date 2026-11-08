@@ -29,31 +29,40 @@ pub use kui_core::DevtoolsDock as Dock;
 #[path = "../../web/host.rs"]
 mod host;
 
+#[cfg(target_os = "wasi")]
+mod lua_tasks;
+
 mod launch;
 pub use launch::*;
 
 include!(concat!(env!("OUT_DIR"), "/examples.rs"));
 
 thread_local! {
-    static SELECTED: RefCell<Option<BookApp>> = const { RefCell::new(None) };
+    static SELECTED: RefCell<Option<(BookApp, Option<Extensions>)>> = const { RefCell::new(None) };
     static DEMO_SIZE: StateCell<(f64, f64)> = const { StateCell::new((960.0, 640.0)) };
 }
 
 type AppModel = BookApp;
 
 fn make_runner() -> kui_web::Runner<AppModel> {
-    let app = SELECTED.with_borrow_mut(|slot| slot.take().expect("a book example was selected"));
+    let (app, extensions) =
+        SELECTED.with_borrow_mut(|slot| slot.take().expect("a book example was selected"));
     let mono = include_bytes!("../../../crates/kui-cli/assets/fonts/NotoSansMono-Regular.ttf");
     let fonts = host::bundled_fonts().into_iter().chain([mono.to_vec()]);
     let mut runner = kui_web::Runner::new(app, &Session::with_fonts("en-US", fonts));
+    if let Some(extensions) = extensions {
+        runner.set_extensions(extensions);
+    }
     runner.core_mut().set_native_menus(false);
     runner.core_mut().set_native_menu_bar(false);
     runner
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn select_example() -> u32 {
-    u32::from(launch(&host::browser_text()))
+pub extern "C" fn select_example() -> usize {
+    launch(&host::browser_text()).err().map_or(0, |error| {
+        host::publish_browser_bytes(error.to_string().into_bytes())
+    })
 }
 
 #[unsafe(no_mangle)]

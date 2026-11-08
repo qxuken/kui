@@ -66,6 +66,8 @@ impl Mirror {
                     "focusable": node.supports(AccessAction::Focus),
                     "disabled": node.disabled,
                     "selected": node.selected,
+                    "checked": node.checked,
+                    "mixed": node.mixed,
                     "live": node.live.name(),
                 })
             })
