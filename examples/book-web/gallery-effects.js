@@ -32,7 +32,7 @@ function physicalKey(code) {
   return punctuation[code] ?? "";
 }
 
-function wireInput(wasm, canvas, schedule, contentScale) {
+function wireInput(wasm, canvas, schedule, contentScale, popupOpen) {
   const active = new Set();
   for (const type of ["keydown", "keyup"]) {
     document.addEventListener(type, event => {
@@ -40,7 +40,7 @@ function wireInput(wasm, canvas, schedule, contentScale) {
       const id = event.code || event.key;
       if (down) {
         if (event.defaultPrevented || event.isComposing || event.target.closest?.("textarea,input")) return;
-        if (event.key === "Tab" || (event.target.closest?.("button") && [" ", "Enter"].includes(event.key))) return;
+        if (event.key === "Tab" || (!popupOpen() && event.target.closest?.("button") && [" ", "Enter"].includes(event.key))) return;
       } else if (!active.delete(id)) {
         return;
       }
@@ -68,13 +68,13 @@ function wireInput(wasm, canvas, schedule, contentScale) {
   }
 }
 
-export function effects({ audioEnabled, contentScale }) {
+export function effects({ audioEnabled, contentScale, popupOpen = () => false }) {
   const audio = audioEffects();
   let recording;
   let wired = false;
   return (wasm, canvas, schedule) => {
     if (!wired) {
-      wireInput(wasm, canvas, schedule, contentScale);
+      wireInput(wasm, canvas, schedule, contentScale, popupOpen);
       if (audioEnabled) {
         for (const type of ["pointerdown", "pointerup", "keydown"]) {
           document.addEventListener(type, audio.unlock, { capture: true });

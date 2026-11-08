@@ -222,7 +222,7 @@ function painter(canvas, restoreCanvas) {
 }
 
 /** Mount one Wasm app for the lifetime of its canvas. */
-export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame, contentScale = () => 1, panOutside, instantiate = WebAssembly.instantiate } = {}) {
+export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame, contentScale = () => 1, panOutside, overlayCanvas, instantiate = WebAssembly.instantiate } = {}) {
   let wasm;
   let snapshot;
   let clipboardText;
@@ -238,6 +238,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   };
   let selectedRenderer = "canvas";
   let frame;
+  let drawOverlay;
   let firstFrame;
   const seconds = () => performance.now() / 1000;
   if (renderer === "wgpu" || (renderer === "auto" && navigator.gpu)) {
@@ -271,8 +272,27 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     }
   }
   if (!frame) {
-    const paint = painter(canvas, restoreCanvas);
-    const imports = { canvas: { ...paint(() => wasm.memory), ...browserCallbacks } };
+    const memory = () => wasm.memory;
+    const paint = painter(canvas, restoreCanvas)(memory);
+    if (overlayCanvas) {
+      const overlay = painter(overlayCanvas, restoreCanvas)(memory);
+      let drawingOverlay = false;
+      for (const name of Object.keys(paint)) {
+        const owner = paint[name];
+        paint[name] = (...args) => (drawingOverlay ? overlay[name] : owner)(...args);
+      }
+      drawOverlay = (draw) => {
+        drawingOverlay = true;
+        snapshot = undefined;
+        try {
+          const next = draw();
+          return { next, snapshot };
+        } finally {
+          drawingOverlay = false;
+        }
+      };
+    }
+    const imports = { canvas: { ...paint, ...browserCallbacks } };
     const response = await fetch(wasmUrl);
     if (!response.ok) throw new Error(`Wasm fetch failed (${response.status})`);
     ({ instance: { exports: wasm } } = await instantiate(await response.arrayBuffer(), imports));
@@ -376,7 +396,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     if (next === undefined) return;
     recoveryDelay = 0;
     if (next) schedule();
-    afterFrame?.(wasm, canvas, schedule);
+    afterFrame?.(wasm, canvas, schedule, drawOverlay);
     scheduleWake();
     syncAccess();
   }
@@ -542,7 +562,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   canvas.addEventListener("contextrestored", restoreCanvas);
   if (firstFrame) schedule();
   if (firstFrame !== undefined) {
-    afterFrame?.(wasm, canvas, schedule);
+    afterFrame?.(wasm, canvas, schedule, drawOverlay);
     scheduleWake();
     syncAccess();
   }

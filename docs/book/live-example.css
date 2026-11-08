@@ -79,6 +79,7 @@
 
 .kui-example-viewport {
   position: relative;
+  width: 100%;
 }
 
 .kui-example iframe {
