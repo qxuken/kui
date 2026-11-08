@@ -4311,20 +4311,29 @@ mod tests {
             );
             let camel = snake_to_camel(row.name);
             assert_eq!(row.node, camel, "{}'s Node spelling", row.name);
-            // A platform row's pair is what the struct reads on this
-            // platform, in both sets: the generator prints the pair for
-            // both columns on the strength of this.
+            // A bare metrics set has portable defaults. The host supplies
+            // the Windows caption height explicitly.
             if let Some(p) = row.platform {
                 assert_eq!(
                     (row.get)(&Metrics::default()),
-                    p.here(),
-                    "{}'s stock value",
+                    p.elsewhere,
+                    "{}'s portable stock value",
                     row.name
                 );
                 assert_eq!(
                     (row.get)(&m),
-                    p.here(),
+                    p.elsewhere,
                     "{}: compact leaves a platform row alone",
+                    row.name
+                );
+                let windows = Metrics {
+                    titlebar_h: crate::metrics::caption_h(crate::rules::Platform::Windows),
+                    ..Metrics::default()
+                };
+                assert_eq!(
+                    (row.get)(&windows),
+                    p.windows,
+                    "{}'s Windows value",
                     row.name
                 );
             }
