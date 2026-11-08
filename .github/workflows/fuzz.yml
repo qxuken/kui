@@ -40,7 +40,7 @@ on:
         description: Seconds per target
         default: "600"
       targets:
-        description: Targets, space-separated (parsers values path scenes decode events encode); empty for all
+        description: Targets, space-separated (see nu scripts/fuzz.nu list); empty for all
         default: ""
       jobs:
         description: libFuzzer workers per target (each a process of up to ~1 GB)
@@ -55,9 +55,8 @@ permissions:
 jobs:
   fuzz:
     runs-on: ubuntu-24.04
-    # Five targets at the default ten minutes is under an hour with the
-    # build; the cap (a hosted runner's own) is for the inputs someone
-    # raises.
+    # Eleven targets take about two hours at the default ten minutes each,
+    # plus build time. The cap also allows for longer manual runs.
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v7

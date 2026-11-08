@@ -21,6 +21,16 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.79 (unreleased)
+
+### Testing
+
+- The trace fuzzer now runs the perf queries shared by the CLI and viewer
+  on both whole and streamed recordings. It varies the frame and time
+  scopes, filters, span ordering and result limits, and checks that the
+  two reads produce the same result. A four-frame recording seeds the
+  fuzzer and replays under the workspace tests.
+
 ## 0.1.0-alpha.78 (2026-11-07)
 
 **What breaks.**
