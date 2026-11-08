@@ -354,7 +354,7 @@ impl Example for VirtualList {
     }
 }
 
-fn main() {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = if std::env::args().any(|a| a == "--variable") {
         Mode::Variable
     } else if std::env::args().any(|a| a == "--by-hand") {
@@ -363,7 +363,7 @@ fn main() {
         Mode::Widget
     };
     kui_devtools::run(
-        env!("CARGO_BIN_NAME"),
+        "virtual_list",
         VirtualList {
             selected: 0,
             mode,
@@ -373,4 +373,5 @@ fn main() {
             heights: widgets::RowHeights::new(ROWS, ROW_H),
         },
     );
+    Ok(())
 }

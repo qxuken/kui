@@ -113,7 +113,7 @@ impl App for Floats {
     // ANCHOR_END: on_event
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Floats")
         .size(420.0, 280.0)
         .run(Floats::default())

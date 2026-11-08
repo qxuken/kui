@@ -91,6 +91,6 @@ impl App for Layout {
     // ANCHOR_END: view
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Layout").size(560.0, 360.0).run(Layout)
 }

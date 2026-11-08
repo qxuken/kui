@@ -4,6 +4,8 @@ At the end of this chapter, two Lua scripts draw inside a Rust window:
 one a list the host placed, both a button in a toolbar the host
 declared without knowing who would fill it.
 
+<a data-kui-example="340" href="live/gallery.html?example=tutorial/11_extensions">Live Lua extensions</a>
+
 ## A guest in your frame
 
 An **extension** is code a host loads to draw in its frame: a Lua

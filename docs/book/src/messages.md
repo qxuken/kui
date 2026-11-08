@@ -1,5 +1,7 @@
 # State and messages
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/03_counter">Live chapter example</a>
+
 At the end of this chapter, three buttons change a number.
 
 ## The shape of an app

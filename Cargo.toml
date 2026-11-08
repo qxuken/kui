@@ -24,6 +24,7 @@ members = [
     # The examples' devtools (docs/adr/0021): a dev-dependency of the crates
     # whose examples run inside it, never published.
     "examples/devtools",
+    "examples/book-web",
     # The fuzz targets (cargo-fuzz) and the stable replay of what they
     # found; see fuzz/Cargo.toml and scripts/fuzz.nu. Never published.
     "fuzz",
@@ -50,6 +51,7 @@ kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.79" }
 kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.79" }
 kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.79", default-features = false }
 kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.79" }
+kui-web = { path = "crates/kui-web", version = "0.1.0-alpha.79" }
 # Each host chooses between the system adapter and the full runner.
 kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.79", default-features = false }
 # `default-features = false` so the runner takes the translation alone and

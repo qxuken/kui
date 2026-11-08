@@ -1,5 +1,7 @@
 # Introduction
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/01_hello">Live chapter example</a>
+
 kui is a UI library for Rust. You describe what is on screen as a tree
 of boxes and text. kui lays it out, draws it, and turns what the user
 does into plain data.

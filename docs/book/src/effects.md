@@ -1,5 +1,7 @@
 # Effects, the clock and the world
 
+<a data-kui-example="280" href="live/gallery.html?example=tutorial/09_effects">Live chapter example</a>
+
 At the end of this chapter, the window's title counts seconds, a button
 copies to the clipboard, another pastes, and a third closes the window.
 

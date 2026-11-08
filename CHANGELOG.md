@@ -46,12 +46,21 @@ was the first bare bump to break an app in five releases).
 - Exhaustive Rust matches on `Platform` and `CaptureCommand` must handle
   `Other` and `Devtools`, respectively. The desktop platform codes keep
   their existing values.
+- A `Transition` using `Easing::Spring` starts from its current value on the
+  first frame after a settled spring receives a new target.
 
 ### Added
 
 - The browser runner uses the shared `kui-wgpu` renderer and falls back
   to Canvas 2D. The counter and notes workspace demonstrate pointer input,
   touch scrolling, text editing, and the accessibility mirror.
+
+### Fixed
+
+- A spring that receives a new target after settling starts integrating
+  from the frame that declared the target. Time spent at rest no longer
+  advances the new animation. Springs already in motion retain their
+  velocity on retargeting.
 
 ## 0.1.0-alpha.79 (2026-11-09)
 

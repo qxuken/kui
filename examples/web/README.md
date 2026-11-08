@@ -54,12 +54,12 @@ demo. The web examples bundle Noto Sans and a six-glyph Noto Sans
 Symbols 2 subset for keyboard shortcut labels. The font licenses are
 included in the staged site.
 
-The keyboard subset uses [Noto Sans Symbols 2 from Google Fonts](https://github.com/google/fonts/blob/7b6724ac7ececc713e9ba93af309f7520c9a80a3/ofl/notosanssymbols2/NotoSansSymbols2-Regular.ttf).
+The web symbols subset uses [Noto Sans Symbols 2 from Google Fonts](https://github.com/google/fonts/blob/7b6724ac7ececc713e9ba93af309f7520c9a80a3/ofl/notosanssymbols2/NotoSansSymbols2-Regular.ttf).
 To regenerate it with FontTools 4.68.0, run:
 
 ```sh
-pyftsubset NotoSansSymbols2-Regular.ttf --unicodes=U+21E7,U+2318,U+2325,U+2326,U+232B,U+2423 \
-  --output-file=examples/web/fonts/NotoSansSymbols2-Keyboard.ttf
+pyftsubset NotoSansSymbols2-Regular.ttf --unicodes=U+21E7,U+2318,U+2325,U+2326,U+232B,U+2423,U+2605,U+2713,U+2726 \
+  --output-file=examples/web/fonts/NotoSansSymbols2-Web.ttf
 ```
 
 ### Browser smoke test
