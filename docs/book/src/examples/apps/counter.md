@@ -2,6 +2,8 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
+<a data-kui-example="400" href="../../live/index.html">Live counter</a>
+
 <img src="../../img/examples/apps/counter.png" width="560" alt="apps/counter: its settled frame, drawn headlessly by --shot">
 
 *The example as it draws: its settled frame, drawn headlessly by `--shot`.*

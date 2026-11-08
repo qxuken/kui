@@ -3,7 +3,7 @@
 
 const ROOT = (path self | path dirname | path dirname)
 
-def main [--port: int = 8080, --build-only, --svg, --devtools] {
+def main [--port: int = 8080, --build-only, --out-dir: path, --svg, --devtools] {
     cd $ROOT
     let extras = [
         (if $svg { "svg" } else { null })
@@ -11,10 +11,11 @@ def main [--port: int = 8080, --build-only, --svg, --devtools] {
     ] | compact
     ^cargo build --locked --release -p kui-web --examples --target wasm32-unknown-unknown --features ($extras | str join ",")
     let target_dir = ($env.CARGO_TARGET_DIR? | default "target")
-    let out = ($target_dir | path join "web-counter")
+    let out = ($out_dir | default ($target_dir | path join "web-counter"))
     mkdir $out
     cp examples/web/index.html $out
     cp examples/web/notes.html $out
+    cp examples/web/mount.js $out
     cp crates/kui-web/editor.js $out
     cp crates/kui-web/canvas.js $out
     cp crates/kui-cli/assets/fonts/LICENSE ($out | path join "OFL-NotoSans.txt")

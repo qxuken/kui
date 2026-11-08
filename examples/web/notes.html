@@ -15,6 +15,10 @@
     #access { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; }
     #access button, #access textarea, #access input { position: absolute; font: 16px system-ui, sans-serif; margin: 0; padding: 0; border: 0; resize: none; }
     .keys { font-size: 0.875rem; }
+    [data-embed] main { max-width: none; margin: 0; padding: 0; }
+    [data-embed] main > :not(canvas):not(.workbench) { display: none; }
+    [data-embed] canvas { height: 100dvh; border-radius: 0; box-shadow: none; }
+    [data-embed] .workbench { margin: 0; }
   </style>
 </head>
 <body>
@@ -30,17 +34,8 @@
     <a href="./">Counter demo</a>
   </main>
   <script type="module">
-    import { startCanvas } from "./canvas.js";
-    const status = document.querySelector("#status");
-    const renderer = new URLSearchParams(location.search).get("renderer") ?? "auto";
-    try {
-      const selected = await startCanvas(document.querySelector("canvas"), "./notes.wasm", { access: document.querySelector("#access"), renderer });
-      document.querySelector("#renderer").textContent = selected === "wgpu" ? "kui-wgpu" : "Canvas 2D";
-      status.hidden = true;
-    } catch (error) {
-      status.textContent = error.message;
-      throw error;
-    }
+    import { mountDemo } from "./mount.js";
+    await mountDemo("./notes.wasm");
   </script>
 </body>
 </html>
