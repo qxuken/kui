@@ -20,6 +20,7 @@ def main [--port: int = 8080, --build-only, --out-dir: path, --book, --svg, --de
         cp examples/book-web/gallery-effects.js $out
         cp examples/book-web/gallery-audio.js $out
         cp examples/book-web/gallery-popup.js $out
+        cp examples/book-web/OFL-KUIBookEmoji.txt $out
     } else {
         cp examples/web/index.html $out
         cp examples/web/notes.html $out

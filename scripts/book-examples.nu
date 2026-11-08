@@ -72,7 +72,7 @@ def generate [src: string] {
         "Use Reload example to start a fresh instance. The command-line"
         "tools below write text and have no canvas. The browser hands the"
         "example file names instead of desktop paths, and downloads recordings"
-        "as MP4 or WebM. The fragment, line and backdrop examples need WebGPU."
+        "as MP4 or WebM. Fragment, line and backdrop blur need WebGPU."
         ""
     ] | append ($KINDS | transpose kind blurb | each {|k| $"- [`($k.kind)/`]\(($k.kind).md\): ($k.blurb)" }))
     | save -f --raw ($out | path join index.md)

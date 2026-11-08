@@ -2586,14 +2586,9 @@ fn load_tokens(lua: &Lua, (path, opts): (String, Option<Table>)) -> mlua::Result
     #[cfg(not(target_os = "wasi"))]
     let loaded = kui_native::system::load_dtcg(&p, &o);
     #[cfg(target_os = "wasi")]
-    let loaded = {
-        let read =
-            |path: &std::path::Path| std::fs::read_to_string(path).map_err(|e| e.to_string());
-        let source = read(&p).map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
-        kui_core::dtcg::from_str_with(&source, p.parent(), &p.display().to_string(), &o, &mut {
-            read
-        })
-    };
+    let loaded = kui_core::dtcg::from_path_with(&p, &o, &mut |path| {
+        std::fs::read_to_string(path).map_err(|e| e.to_string())
+    });
     let loaded = loaded.map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
     let (colors, lengths, families) = (
         lua.create_table()?,

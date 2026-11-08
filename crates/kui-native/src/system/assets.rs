@@ -6,18 +6,9 @@ pub fn load_dtcg(
     path: impl AsRef<Path>,
     opts: &dtcg::DtcgOptions,
 ) -> Result<dtcg::Dtcg, dtcg::DtcgError> {
-    let path = path.as_ref();
-    let read = |path: &Path| std::fs::read_to_string(path).map_err(|e| e.to_string());
-    let src = read(path).map_err(|e| dtcg::DtcgError {
-        message: format!("{}: {e}", path.display()),
-    })?;
-    dtcg::from_str_with(
-        &src,
-        path.parent(),
-        &path.display().to_string(),
-        opts,
-        &mut { read },
-    )
+    dtcg::from_path_with(path.as_ref(), opts, &mut |path| {
+        std::fs::read_to_string(path).map_err(|e| e.to_string())
+    })
 }
 
 pub(super) fn svg_file(path: &str, previous: Option<SvgStamp>) -> SvgFileUpdate {

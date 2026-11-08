@@ -28,8 +28,8 @@
     import { effects } from "./gallery-effects.js";
     const example = new URLSearchParams(location.search).get("example") ?? "";
     const bytes = new TextEncoder().encode(example);
-    const requiresGpu = ["widgets/fragment", "widgets/line", "features/backdrop", "features/backdrop_blur"].includes(example);
-    const hasLua = example === "tutorial/11_extensions" || example === "lua/tasks";
+    const requiresGpu = ["widgets/fragment", "widgets/line", "features/backdrop_blur"].includes(example);
+    const hasLua = example === "tutorial/11_extensions" || example.startsWith("lua/");
     let lua;
     const main = document.querySelector("main");
     const owner = main.querySelector("canvas");

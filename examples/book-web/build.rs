@@ -34,7 +34,8 @@ fn main() -> std::io::Result<()> {
         }
     }
     if lua {
-        arms.push_str("\"lua/tasks\" => lua_tasks::launch(),\n");
+        arms.push_str("\"lua/tasks\" => lua_app::launch_tasks(),\n");
+        arms.push_str("\"lua/presentations\" => lua_app::launch_presentation(),\n");
     }
     modules.push_str(&format!(
         "fn launch(id: &str) -> Result<(), Box<dyn std::error::Error>> {{ match id {{ {arms} _ => Err(format!(\"Unknown book example: {{id}}\").into()), }} }}",
