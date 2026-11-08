@@ -32,7 +32,7 @@ pub use kui_core::DevtoolsDock as Dock;
 mod host;
 
 #[cfg(target_os = "wasi")]
-mod lua_tasks;
+mod lua_app;
 
 mod launch;
 pub use launch::*;
@@ -51,7 +51,10 @@ fn make_runner() -> kui_web::Runner<AppModel> {
     let (app, extensions) =
         SELECTED.with_borrow_mut(|slot| slot.take().expect("a book example was selected"));
     let mono = include_bytes!("../../../crates/kui-cli/assets/fonts/NotoSansMono-Regular.ttf");
-    let fonts = host::bundled_fonts().into_iter().chain([mono.to_vec()]);
+    let emoji = include_bytes!("../KUIBookEmoji.ttf");
+    let fonts = host::bundled_fonts()
+        .into_iter()
+        .chain([mono.to_vec(), emoji.to_vec()]);
     let mut runner = kui_web::Runner::new(app, &Session::with_fonts("en-US", fonts));
     if let Some(extensions) = extensions {
         runner.set_extensions(extensions);

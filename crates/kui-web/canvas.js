@@ -344,14 +344,15 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     const { width, height } = canvas.getBoundingClientRect();
     if (width === 0 || height === 0) return;
     const zoom = contentScale();
-    const scale = (window.devicePixelRatio || 1) * zoom;
-    const w = Math.max(1, Math.round(width * scale));
-    const h = Math.max(1, Math.round(height * scale));
+    const dpr = window.devicePixelRatio || 1;
+    // The measured rectangle already includes content zoom.
+    const w = Math.max(1, Math.round(width * dpr));
+    const h = Math.max(1, Math.round(height * dpr));
     const redraw = needsRedraw || (!reconnect && (canvas.width !== w || canvas.height !== h));
     if (canvas.width !== w) canvas.width = w;
     if (canvas.height !== h) canvas.height = h;
     needsRedraw = false;
-    return frame(width / zoom, height / zoom, scale, Number(redraw), w, h);
+    return frame(width / zoom, height / zoom, dpr * zoom, Number(redraw), w, h);
   }
 
   let recoveryDelay = 0;

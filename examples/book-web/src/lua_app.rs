@@ -1,20 +1,48 @@
-//! Browser host for the runner chapter's Lua application.
+//! Browser host for the book's standalone Lua applications.
 use crate::{App, Ui, Window};
 use mlua::{Function, Lua, LuaSerdeExt, Table, Value};
 
 #[path = "../../../crates/kui-cli/src/kit.rs"]
 mod kit;
 
-const SOURCE: &str = include_str!("../../lua/tutorial/tasks/main.lua");
-const CONFIG: &str = include_str!("../../lua/tutorial/tasks/kui.config.lua");
 const ARGS: &str = include_str!("../../../crates/kui-cli/src/lua/args.lua");
 
 thread_local! {
     static TASKS: std::cell::OnceCell<Function> = const { std::cell::OnceCell::new() };
 }
 
-pub fn launch() -> Result<(), Box<dyn std::error::Error>> {
-    let app = kui_lua::LuaExtension::from_source_with("@tasks/main.lua", SOURCE, install)?;
+pub fn launch_tasks() -> Result<(), Box<dyn std::error::Error>> {
+    let app = kui_lua::LuaExtension::from_source_with(
+        "@tasks/main.lua",
+        include_str!("../../lua/tutorial/tasks/main.lua"),
+        install,
+    )?;
+    let size: Table = app
+        .lua()
+        .load(include_str!("../../lua/tutorial/tasks/kui.config.lua"))
+        .set_name("@tasks/kui.config.lua")
+        .eval::<Table>()?
+        .get("size")?;
+    run(app, Window::default().size(size.get("w")?, size.get("h")?))
+}
+
+pub fn launch_presentation() -> Result<(), Box<dyn std::error::Error>> {
+    let app = kui_lua::LuaExtension::from_source_with(
+        "@presentations/main.lua",
+        include_str!("../../lua/tutorial/presentations/main.lua"),
+        install,
+    )?;
+    app.lua()
+        .globals()
+        .get::<Function>("__book_presentation_controls")?
+        .call::<()>(())?;
+    run(
+        app,
+        Window::default().size(640.0, 420.0).min_size(320.0, 420.0),
+    )
+}
+
+fn run(app: kui_lua::LuaExtension, window: Window) -> Result<(), Box<dyn std::error::Error>> {
     let lua = app.lua();
     let globals = lua.globals();
     globals.set("model", globals.get::<Function>("init")?.call::<Value>(())?)?;
@@ -22,23 +50,17 @@ pub fn launch() -> Result<(), Box<dyn std::error::Error>> {
         let drain = globals.get::<Function>("__book_run_tasks")?;
         tasks
             .set(drain)
-            .map_err(|_| mlua::Error::runtime("tasks already launched"))
+            .map_err(|_| mlua::Error::runtime("a Lua app is already running"))
     })?;
-    let size: Table = lua
-        .load(CONFIG)
-        .set_name("@tasks/kui.config.lua")
-        .eval::<Table>()?
-        .get("size")?;
-    Window::default()
-        .size(size.get("w")?, size.get("h")?)
+    window
         .extension_as(kit::NAMESPACE, kit::extension()?)
         .extension_as("app", app)
-        .run(Tasks)
+        .run(LuaApp)
 }
 
-struct Tasks;
+struct LuaApp;
 
-impl App for Tasks {
+impl App for LuaApp {
     fn view(&mut self, _ui: &mut Ui<'_>) {
         // The extension fills the root, as it does in the CLI runner.
     }
@@ -87,12 +109,17 @@ fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
     kui.set("args", lua.create_table()?)?;
+    let started = std::time::Instant::now();
+    kui.set(
+        "now",
+        lua.create_function(move |_, ()| Ok(started.elapsed().as_secs_f64() * 1000.0))?,
+    )?;
     kui.set("data_dir", "/data")?;
     kui.set("fs", fs)?;
     kui.set("json", json)?;
     lua.globals().set("kui", kui)?;
     lua.load(ARGS).set_name("@kui:args").exec()?;
-    lua.load(include_str!("lua_tasks.lua"))
+    lua.load(include_str!("lua_app.lua"))
         .set_name("@kui:book")
         .exec()
 }
