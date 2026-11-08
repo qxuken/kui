@@ -82,6 +82,74 @@ try {
   await page.setViewportSize({ width: 1180, height: 850 });
   console.log("Wide demos clear chapter navigation and narrow source listings wrap");
 
+  const popup = await chapter("examples/features/popup.html");
+  const owner = popup.locator("main > canvas");
+  const field = popup.getByRole("button", { name: "Alloy", exact: true });
+  const overlay = popup.locator(".popup-overlay");
+  const row = name => overlay.getByRole("button", { name, exact: true });
+  const rowColor = locator => locator.evaluate(el => {
+    const canvas = el.closest(".popup-overlay").querySelector("canvas");
+    const bounds = canvas.getBoundingClientRect();
+    const row = el.getBoundingClientRect();
+    const x = (row.left - bounds.left + 6) * canvas.width / bounds.width;
+    const y = (row.top + row.height / 2 - bounds.top) * canvas.height / bounds.height;
+    return Array.from(canvas.getContext("2d").getImageData(Math.floor(x), Math.floor(y), 1, 1).data);
+  });
+  await click(field);
+  await row("Aluminium").waitFor({ state: "attached" });
+  const selectedColor = await rowColor(row("Aluminium"));
+  assert.notDeepEqual(await rowColor(row("Beryllium")), selectedColor);
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await overlay.waitFor({ state: "hidden" });
+  await click(field);
+  await row("Beryllium").waitFor({ state: "attached" });
+  assert.deepEqual(await rowColor(row("Beryllium")), selectedColor);
+  await page.keyboard.press("Escape");
+  await overlay.waitFor({ state: "hidden" });
+
+  const anchor = await field.boundingBox();
+  await page.mouse.move(anchor.x + anchor.width / 2, anchor.y + anchor.height / 2);
+  await page.mouse.down();
+  await row("Osmium").waitFor({ state: "attached" });
+  const choice = await row("Osmium").boundingBox();
+  const ownerBounds = await owner.boundingBox();
+  assert.ok(choice.y > ownerBounds.y + ownerBounds.height, "the menu reaches below the owner");
+  await page.mouse.move(choice.x + choice.width / 2, choice.y + choice.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await overlay.waitFor({ state: "hidden" });
+  await click(field);
+  await row("Osmium").waitFor({ state: "attached" });
+  assert.deepEqual(await rowColor(row("Osmium")), selectedColor);
+  await click(field);
+  await overlay.waitFor({ state: "hidden" });
+  await click(field);
+  await overlay.waitFor();
+  await page.getByRole("heading", { name: "features/popup.rs" }).click();
+  await overlay.waitFor({ state: "hidden" });
+  console.log("The anchored popup selects by key and drag-release, then dismisses outside");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const reflow = await chapter("examples/apps/loaders.html");
+  await click(reflow.getByRole("button", { name: "start", exact: true }));
+  const running = reflow.getByRole("button", { name: /^(pause|again|resume)$/ });
+  await running.waitFor();
+  const narrowWidth = (await page.locator(".kui-example iframe").boundingBox()).width;
+  for (const width of [1120, 390]) {
+    await page.setViewportSize({ width, height: 950 });
+    await page.waitForFunction(({ wide, narrowWidth }) => {
+      const iframe = document.querySelector(".kui-example iframe");
+      const width = iframe.getBoundingClientRect().width;
+      const canvas = iframe.contentDocument.querySelector("canvas");
+      return (wide ? width > narrowWidth + 200 : Math.abs(width - narrowWidth) < 1) &&
+        Math.abs(iframe.closest(".kui-example").clientWidth - width) < 1 &&
+        Math.abs(canvas.getBoundingClientRect().width - width) < 1;
+    }, { wide: width === 1120, narrowWidth });
+  }
+  await running.waitFor();
+  await page.setViewportSize({ width: 1180, height: 850 });
+  console.log("The live canvas expands and shrinks with its container without a reload");
+
   const extensions = await chapter("extensions.html");
   await click(extensions.getByRole("button", { name: "Buy milk", exact: true }));
   await extensions.getByText("picked Buy milk", { exact: false }).waitFor();

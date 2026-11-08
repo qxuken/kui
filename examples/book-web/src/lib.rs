@@ -13,6 +13,8 @@ pub mod audio;
 #[path = "../../../crates/kui-native/src/decode.rs"]
 mod decode;
 mod effects;
+#[cfg(not(feature = "rust-wgpu"))]
+mod popup;
 pub use decode::{Animation, AnimationFrame, Pixels, decode_animation, decode_image};
 
 #[allow(dead_code)]

@@ -166,6 +166,10 @@ pub extern "C" fn demo_key(modifiers: u32, down: u32, time: f64) -> u32 {
         Some(code) => KeyPress::from_layout(layout, code, mods),
         None => KeyPress::new(layout, mods),
     };
+    #[cfg(not(feature = "rust-wgpu"))]
+    if crate::popup::key_event(&key, time, down != 0) {
+        return 1;
+    }
     RUNNER.with_borrow_mut(|runner| {
         if runner.core_mut().interaction.modifiers() != mods {
             runner.input(InputEvent::Modifiers(mods), time);
