@@ -16,6 +16,7 @@ fn every_kept_input_runs_clean() {
     let mut ran = 0;
     let mut failed = Vec::new();
     for (name, run) in kui_fuzz::TARGETS {
+        let before = ran;
         for kind in ["seeds", "regressions"] {
             let dir = root.join(kind).join(name);
             let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -39,6 +40,7 @@ fn every_kept_input_runs_clean() {
                 }
             }
         }
+        assert!(ran > before, "no seeds or regressions found for {name}");
     }
     assert!(
         ran > 0,
@@ -50,4 +52,13 @@ fn every_kept_input_runs_clean() {
         "{} of {ran} kept inputs fail: {failed:#?}",
         failed.len()
     );
+}
+
+#[test]
+fn trace_seed_exercises_every_query_control() {
+    let mut data = include_bytes!("../seeds/trace/four-frames").to_vec();
+    for control in 0..=u8::MAX {
+        data[0] = control;
+        kui_fuzz::trace::run(&data);
+    }
 }
