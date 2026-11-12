@@ -416,8 +416,8 @@ fn a_recording_opens_as_channels_and_its_growth_reaches_update() {
 }
 
 /// kui-perf (ADR 0075): its own headless test over a made-up recording —
-/// the keys, the filters, the lanes, Live — passes, and the app type-checks
-/// as `kui check` reads it.
+/// the keys, the filters, the lanes, Live and the drawn menus — passes,
+/// and the app type-checks as `kui check` reads it.
 #[test]
 fn kui_perf_drives_and_checks() {
     let bytes = kui_trace::synth::Synth {
@@ -448,6 +448,14 @@ fn kui_perf_drives_and_checks() {
     );
     let s = out(&o);
     assert!(s.contains("all passed"), "{s}");
+    let mut menus = Command::new(KUI);
+    menus
+        .current_dir(&tool)
+        .args(["test", "test/fixtures/menus.lua", "--output"])
+        .arg(dir.join("menu-results"))
+        .env("KUI_PERF_TEST_RECORDING", &a);
+    let o = run_kui(menus, 60);
+    assert!(o.status.success(), "{}", out(&o));
     let c = kui(&tool, &["check"], 60);
     assert!(out(&c).contains("ok: 3 file(s) checked"), "{}", out(&c));
 }

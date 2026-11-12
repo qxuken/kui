@@ -147,10 +147,10 @@ global function update(msg: Msg)
     if p then open(m, p) end
   elseif k == "recent" then open(m, msg.name)
   elseif k == "menu" then
-    local item = (msg.menu.item or {}) as {string:any}
-    local id = item.id as string
+    local id = msg.menu and msg.menu.item
+    if not (id is string) then return end
     if id == "open" then ask_open()
-    elseif id and id:find("^recent:") then open(m, id:sub(8))
+    elseif id:find("^recent:") then open(m, id:sub(8))
     elseif id == "fit" and m.ins then inspector.update(m.ins, { kind = "ins_fit" })
     elseif id == "latest" and m.ins then inspector.update(m.ins, { kind = "ins_latest" })
     elseif id == "live" then m.live = not m.live
