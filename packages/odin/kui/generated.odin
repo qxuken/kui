@@ -4145,8 +4145,20 @@ smooth_wheel :: proc(ui: ^Ui) -> bool {
 	return c.smooth_wheel(ui)
 }
 
-// How a wheel's notch scrolls (`WheelFeel`): how far a line goes (48 px by
-// default), the glide's response (0.27 s) and its kick (0.6).
+// Whether rapid wheel notches travel farther on scroll containers.
+// Rust: Core::set_wheel_acceleration.
+set_wheel_acceleration :: proc(ui: ^Ui, on: bool) {
+	c.set_wheel_acceleration(ui, on)
+}
+
+// That switch, read back.
+// Rust: Core::wheel_acceleration.
+wheel_acceleration :: proc(ui: ^Ui) -> bool {
+	return c.wheel_acceleration(ui)
+}
+
+// How a wheel's notch scrolls (`WheelFeel`): the base travel per line (48 px
+// by default), the glide's response (0.27 s) and its kick (0.6).
 // Rust: Core::set_wheel_feel.
 set_wheel_feel :: proc(ui: ^Ui, line_px: f32, response: f32, kick: f32) {
 	c.set_wheel_feel(ui, line_px, response, kick)

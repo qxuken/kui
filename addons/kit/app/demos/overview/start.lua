@@ -7,7 +7,7 @@ local kit = require("kit.ui")
 local demo = {
   title = "Start an app",
   note = "kui new, then kui run --watch",
-  call = 'kui new hello\nkui run --watch hello\n\n-- main.lua\nlocal kit = require("kit.ui")\nfunction init() return { n = 0 } end\nfunction update(msg) if msg.kind == "add" then model.n = model.n + 1 end end\nfunction view(env)\n  return column { kit.button({ label = "Add", on_press = { kind = "add" } }),\n    text("n = " .. model.n) }\nend',
+  call = '-- kui new hello\n-- kui run --watch hello\n\n-- main.lua\nlocal kit = require("kit.ui")\nfunction init() return { n = 0 } end\nfunction update(msg) if msg.kind == "add" then model.n = model.n + 1 end end\nfunction view(env)\n  return column { kit.button({ label = "Add", on_press = { kind = "add" } }),\n    text("n = " .. model.n) }\nend',
 }
 
 function demo.view()

@@ -93,6 +93,58 @@ fn a_notch_glides_to_its_target() {
     assert!(frames <= 20, "about 300 ms, not {frames} frames: {seen:?}");
 }
 
+#[test]
+fn rapid_wheel_turns_accelerate_only_when_enabled() {
+    for enabled in [false, true] {
+        let (mut core, key) = setup();
+        assert!(!core.wheel_acceleration());
+        core.set_wheel_acceleration(enabled);
+        wheel(&mut core, 0.0, -1.0, true);
+        assert_eq!(core.scroll_offset(key).y, 40.0);
+
+        for i in 1..=6 {
+            core.set_time(f64::from(i) * 0.05);
+            let before = core.scroll_offset(key).y;
+            wheel(&mut core, 0.0, -1.0, false);
+            let multiplier = if enabled {
+                (1.0_f32 + i as f32 * 0.25).min(2.0)
+            } else {
+                1.0
+            };
+            assert_eq!(core.scroll_offset(key).y - before, 40.0 * multiplier);
+        }
+    }
+}
+
+#[test]
+fn a_wheel_burst_resets_after_a_pause_reversal_or_other_scroll_input() {
+    let (mut core, key) = setup();
+    core.set_wheel_acceleration(true);
+    core.set_smooth_wheel(false);
+    let notch = |core: &mut Core, time, lines, begins, expected| {
+        core.set_time(time);
+        let before = core.scroll_offset(key).y;
+        wheel(core, 0.0, lines, begins);
+        assert_eq!(core.scroll_offset(key).y - before, expected);
+    };
+    notch(&mut core, 0.00, -1.0, true, 40.0);
+    notch(&mut core, 0.05, -1.0, false, 50.0);
+    notch(&mut core, 0.20, -1.0, false, 40.0);
+    notch(&mut core, 0.25, 1.0, false, -40.0);
+    notch(&mut core, 0.30, 1.0, true, -40.0);
+    notch(&mut core, 0.35, -1.0, false, 40.0);
+    notch(&mut core, 0.40, -0.5, false, 20.0);
+    notch(&mut core, 0.45, -1.0, false, 40.0);
+    notch(&mut core, 0.50, -1.0, false, 50.0);
+    let before = core.scroll_offset(key).y;
+    core.handle_input(InputEvent::ScrollGesture {
+        delta: Vec2::new(0.0, -3.0),
+        begins: false,
+    });
+    assert_eq!(core.scroll_offset(key).y - before, 3.0);
+    notch(&mut core, 0.55, -1.0, false, 40.0);
+}
+
 /// Two notches a slow hand turns 150 ms apart: the first is still moving
 /// when the second comes, so the content does not stop and lurch off.
 #[test]
@@ -310,7 +362,7 @@ fn a_glide_headed_for_the_end_hands_the_next_gesture_on() {
 fn a_handler_hears_the_pixels() {
     let mut core = Core::new();
     core.set_wheel_feel(WheelFeel::RELAXED);
-    core.set_time(0.0);
+    core.set_wheel_acceleration(true);
     let term = |core: &mut Core| {
         let mut ui = core.frame(VIEW, 1.0);
         ui.with_keyed(
@@ -323,13 +375,16 @@ fn a_handler_hears_the_pixels() {
     term(&mut core);
     term(&mut core);
     core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 100.0)));
-    let out = wheel(&mut core, 0.0, -1.0, true);
-    let dy = out
-        .iter()
-        .find(|e| e.event.name() == "scroll")
-        .and_then(|e| e.data()?.get_float("dy"))
-        .unwrap();
-    assert_eq!(dy, -40.0);
+    for (time, begins) in [(0.0, true), (0.05, false), (0.1, false)] {
+        core.set_time(time);
+        let out = wheel(&mut core, 0.0, -1.0, begins);
+        let dy = out
+            .iter()
+            .find(|e| e.event.name() == "scroll")
+            .and_then(|e| e.data()?.get_float("dy"))
+            .unwrap();
+        assert_eq!(dy, -40.0);
+    }
 }
 
 /// The presets go by name, any case, slow to fast; the standard one is

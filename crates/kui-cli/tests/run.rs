@@ -416,8 +416,8 @@ fn a_recording_opens_as_channels_and_its_growth_reaches_update() {
 }
 
 /// kui-perf (ADR 0075): its own headless test over a made-up recording —
-/// the keys, the filters, the lanes, Live — passes, and the app type-checks
-/// as `kui check` reads it.
+/// the keys, the filters, the lanes, Live and the drawn menus — passes,
+/// and the app type-checks as `kui check` reads it.
 #[test]
 fn kui_perf_drives_and_checks() {
     let bytes = kui_trace::synth::Synth {
@@ -448,6 +448,16 @@ fn kui_perf_drives_and_checks() {
     );
     let s = out(&o);
     assert!(s.contains("all passed"), "{s}");
+    std::fs::write(&a, &bytes[..half]).unwrap();
+    let mut menus = Command::new(KUI);
+    menus
+        .current_dir(&tool)
+        .args(["test", "test/fixtures/menus.lua", "--output"])
+        .arg(dir.join("menu-results"))
+        .env("KUI_PERF_TEST_RECORDING", &a)
+        .env("KUI_PERF_TEST_REST", &rest);
+    let o = run_kui(menus, 60);
+    assert!(o.status.success(), "{}", out(&o));
     let c = kui(&tool, &["check"], 60);
     assert!(out(&c).contains("ok: 3 file(s) checked"), "{}", out(&c));
 }
@@ -1264,6 +1274,55 @@ fn kit_app(name: &str, entry: &str) -> PathBuf {
         .map(|(a, b)| (a.as_str(), b.as_str()))
         .collect();
     app(name, &refs)
+}
+
+#[test]
+fn the_kit_app_highlights_its_code_and_animates_the_content_shader() {
+    let dir = kit_app(
+        "kit-app-content",
+        r#"
+        local kit = require("kit.ui")
+        local code, shader = kit.code, kit.shader
+        local languages, animated = {}, false
+        kit.code = function(p)
+          local name = p.label or "card call"
+          languages[name] = p.language
+          if not p.language then print("plain code", name) end
+          return code(p)
+        end
+        kit.shader = function(p)
+          if model.page == "content" and p.preset == "noise" then animated = p.animate == true end
+          return shader(p)
+        end
+        require("main")
+        model = init()
+        model.page = "content"
+        local steps = { { kind = "source", name = "content/reading" }, { kind = "theme_open" } }
+        local i = 0
+        kui.timer.every(120, function()
+          i = i + 1
+          if steps[i] then kui.dispatch(steps[i]); return end
+          for _, name in ipairs({ "card call", "demos/content/reading.lua", "project.lua", "Your theme" }) do
+            print("code language", name, languages[name])
+          end
+          print("content shader animated", animated)
+          kui.exit(0)
+        end)
+        "#,
+    );
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 20);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(s.contains("content shader animated\ttrue"), "{s}");
+    assert!(!s.contains("plain code\t"), "{s}");
+    for name in [
+        "card call",
+        "demos/content/reading.lua",
+        "project.lua",
+        "Your theme",
+    ] {
+        assert!(s.contains(&format!("code language\t{name}\tlua")), "{s}");
+    }
 }
 
 #[test]

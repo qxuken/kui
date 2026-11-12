@@ -371,11 +371,13 @@ local function range_of(ys: {number}, from: integer, to: integer): number, numbe
   return lo, hi
 end
 
--- A chart's state between frames: a line chart's value range on its way to
--- a new one (where it set off from, where it is going, when it left), and
--- the readout — whether the pointer is over the plot, the row under it,
--- the row the keyboard put it on, and a Tab to hand on to the ring.
-local record Glide
+-- A chart's scale and readout between frames.
+local record ChartState
+  -- A sparkline's held range, tied to one channel column.
+  spark_channel: integer
+  spark_field: string
+  spark_lo: number
+  spark_hi: number
   -- The y glide (C149): the map from a value to y in the plot the lines
   -- are drawn through, `y = ga·v + gb`; the one on screen when the glide
   -- began; when it began; and the glide's count, which keys its box.
@@ -400,11 +402,28 @@ end
 
 function M.sparkline(c: Ctx, p: P): kui.Node
   local w, h = (p.width or 80) as number, (p.height or 18) as number
-  local ys = col(p.data as kui.Channel, p.field as string)
+  local ch, field = p.data as kui.Channel, p.field as string
+  local ys = col(ch, field)
   local n = #ys
   local box: kui.Props = { width = w, height = h, label = str(p.field), role = "image" }
   if n >= 2 then
+    local st = ctx.state(c, function(): ChartState return {} end)
     local lo, hi = range_of(ys, 1, n)
+    local span = hi - lo
+    local held_lo, held_hi = st.spark_lo, st.spark_hi
+    -- Leave room for new samples so a small change in the extremes does
+    -- not move all the other points. Refit when values no longer fit or
+    -- when they use less than half the range.
+    if st.spark_channel == ch.id and st.spark_field == field and held_lo and held_hi
+      and lo >= held_lo and hi <= held_hi and span >= (held_hi - held_lo) / 2 then
+      lo, hi = held_lo, held_hi
+    else
+      local pad = span * 0.1
+      local padded_lo, padded_hi = lo - pad, hi + pad
+      if padded_hi - padded_lo < math.huge then lo, hi = padded_lo, padded_hi end
+      st.spark_channel, st.spark_field = ch.id, field
+      st.spark_lo, st.spark_hi = lo, hi
+    end
     local idx: {number} = {}
     for i = 1, n do idx[i] = i end
     local color = (p.color as kui.Color) or ref(c, "accent")
@@ -417,7 +436,6 @@ function M.sparkline(c: Ctx, p: P): kui.Node
     -- is off; bands two px wide once it is on, each a sample's value as
     -- its hint, and a dot on the sample under the pointer.
     if p.readout ~= false then
-      local st = ctx.state(c, function(): Glide return {} end)
       local layer: kui.Props = { key = "over", width = w, height = h, hoverable = true,
         float = { anchor = "parent" }, on_hover = act(c, "sparkline.over") }
       if st.over then
@@ -584,7 +602,7 @@ local GLIDE_MS = 240
 -- how far down an area reaches so that its foot stays under the plot's
 -- while the box is drawn shorter than the plot.
 local function glide(c: Ctx, lo: number, hi: number, h: number): string, {string:number}, number
-  local st = ctx.state(c, function(): Glide return {} end)
+  local st = ctx.state(c, function(): ChartState return {} end)
   local now = c.env.now or 0
   local a, b = -h / (hi - lo), h + lo * h / (hi - lo)
   st.ygen = st.ygen or 0
@@ -679,7 +697,7 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     to = math.min(n, lower_row(ch, xf, from, n, x1) + 1)
   end
   if x1 <= x0 then x1 = x0 + 1 end
-  local st = ctx.state(c, function(): Glide return {} end)
+  local st = ctx.state(c, function(): ChartState return {} end)
   -- The glide (a live window's): drawn one sample behind and slid left
   -- between samples, so it scrolls rather than steps. A sample landing
   -- starts a slide of the plot's content from one sample's width right
@@ -1258,7 +1276,7 @@ function M.histogram(c: Ctx, p: P): kui.Node
 end
 
 function M.event(m: P, kit: string): any
-  local st = ctx.peek(m.inst as integer) as Glide
+  local st = ctx.peek(m.inst as integer) as ChartState
   if kit == "line_chart.over" or kit == "sparkline.over" then
     local hv = m.hover as P
     if st and hv then

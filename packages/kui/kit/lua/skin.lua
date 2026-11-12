@@ -146,6 +146,10 @@ function M.ctl_h(s)
    return s.density == "compact" and 22 or 26
 end
 
+function M.rule_w(s)
+   return s.rule_w or s.skin.rule_w
+end
+
 
 
 
@@ -568,7 +572,7 @@ function M.tokens(s)
          kitRow = M.row_h(s),
          kitCtl = M.ctl_h(s),
          kitRadius = s.radius or skin.radius,
-         kitRuleW = s.rule_w or skin.rule_w,
+         kitRuleW = M.rule_w(s),
          kitHair = s.hair or skin.hair,
          kitShadow = shadow,
          kitShadowBlur = s.shadows and skin.shadow_blur or 0,

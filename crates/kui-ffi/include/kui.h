@@ -4885,10 +4885,14 @@ void kui_set_diagnostics(KuiCtx *ctx, bool on);
  * motion jumps either way. */
 void kui_set_smooth_wheel(KuiCtx *ctx, bool on);
 bool kui_smooth_wheel(KuiCtx *ctx);
-/* How a wheel's notch scrolls: how far a line goes (logical px, 48 by
+/* Enables acceleration for rapid wheel notches on scroll containers.
+ * Off by default. Pixel scrolling and scroll handlers are unaffected. */
+void kui_set_wheel_acceleration(KuiCtx *ctx, bool on);
+bool kui_wheel_acceleration(KuiCtx *ctx);
+/* How a wheel's notch scrolls: base travel per line (logical px, 48 by
  * default), the glide's response (seconds, 0.27) and its kick (0..1, 0.6).
  * Clamped into what the glide can use; a number that is not finite takes
- * the standard one. Off, a notch still jumps its line_px. */
+ * the standard one. */
 void kui_set_wheel_feel(KuiCtx *ctx, float line_px, float response, float kick);
 /* Sets it to a preset by name, slow to fast: "gentle", "relaxed", "standard" (the
  * default), "brisk" (an alias of standard), "swift"; any case. False, and nothing

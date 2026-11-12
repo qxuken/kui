@@ -364,6 +364,10 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // The app's input feel (ADR 0050): the window copies it to every window
   // it opens after the main.
   if (opts.smoothWheel !== undefined) surface.setSmoothWheel(opts.smoothWheel);
+  // A window created by runWindowed already took this from windowOptions.
+  if (opts.wheelAcceleration != null && (opts.surface != null || !(surface instanceof KuiWindow))) {
+    surface.setWheelAcceleration(opts.wheelAcceleration);
+  }
   // A window took its feel when it opened (`windowOptions`), where
   // `KUI_WHEEL` in the environment overrides it; set here it would win.
   if (opts.wheelFeel !== undefined && !(surface instanceof KuiWindow)) surface.setWheelFeel(opts.wheelFeel);
@@ -1145,8 +1149,8 @@ runWindowed[PACE] = pacer;
  * is opened as a user who asked for less motion would see it.
  */
 export function windowOptions(opts = {}) {
-  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel, edgeScrollFeel, extensions } = opts;
-  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel, edgeScrollFeel, extensions };
+  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelAcceleration, wheelFeel, edgeScrollFeel, extensions } = opts;
+  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelAcceleration, wheelFeel, edgeScrollFeel, extensions };
 }
 
 /**

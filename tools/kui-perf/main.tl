@@ -112,6 +112,11 @@ local function poll(m: Model)
   end
 end
 
+local function set_live(m: Model, live: boolean)
+  m.live = live
+  if live then m.waiting = 0; poll(m) end
+end
+
 local function first_path(t: {string:any}): string
   local paths = t and t.paths as {string}
   return paths and paths[1] or nil
@@ -132,8 +137,7 @@ global function update(msg: Msg)
     m.waiting = 0
     poll(m)
   elseif k == "live" then
-    m.live = msg.toggle.on as boolean
-    if m.live then m.waiting = 0; poll(m) end
+    set_live(m, msg.toggle.on as boolean)
   elseif k == "open" then ask_open()
   elseif k == "picked" then
     local p = first_path(msg.files)
@@ -147,13 +151,13 @@ global function update(msg: Msg)
     if p then open(m, p) end
   elseif k == "recent" then open(m, msg.name)
   elseif k == "menu" then
-    local item = (msg.menu.item or {}) as {string:any}
-    local id = item.id as string
+    local id = msg.menu and msg.menu.item
+    if not (id is string) then return end
     if id == "open" then ask_open()
-    elseif id and id:find("^recent:") then open(m, id:sub(8))
+    elseif id:find("^recent:") then open(m, id:sub(8))
     elseif id == "fit" and m.ins then inspector.update(m.ins, { kind = "ins_fit" })
     elseif id == "latest" and m.ins then inspector.update(m.ins, { kind = "ins_latest" })
-    elseif id == "live" then m.live = not m.live
+    elseif id == "live" then set_live(m, not m.live)
     elseif id == "help" then m.help = true
     end
   elseif k == "keys" then

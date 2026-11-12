@@ -686,6 +686,9 @@ pub struct Core {
     pinch_latch: gesture::PinchLatch,
     /// Whether a wheel's notch glides on a scroll container (ADR 0050).
     smooth_wheel: bool,
+    wheel_acceleration: bool,
+    /// The current burst of wheel notches on each input axis.
+    wheel_turns: [Option<gesture::WheelTurn>; 2],
     /// How a held drag scrolls a container at its edge (ADR 0029,
     /// amended 2026-10-25), clamped.
     edge_feel: crate::edge_scroll::EdgeScrollFeel,
@@ -1607,6 +1610,8 @@ impl Core {
             scroll_latch: Default::default(),
             pinch_latch: Default::default(),
             smooth_wheel: true,
+            wheel_acceleration: false,
+            wheel_turns: [None; 2],
             edge_feel: crate::edge_scroll::EdgeScrollFeel::STANDARD,
             edge_ramps: Vec::new(),
             sel_ords: Vec::new(),
@@ -1950,8 +1955,8 @@ impl Core {
     }
 
     /// Wheel line-deltas (e.g. winit's LineDelta) to logical px, at the
-    /// standard feel's 40 px a line. A core's own feel may differ:
-    /// [`Core::wheel_feel`]'s `line_px` is what its notches go.
+    /// legacy conversion of 40 px a line. [`Core::wheel_feel`]'s
+    /// `line_px` sets the base distance for actual wheel input.
     pub fn lines_to_px(lines: f32) -> f32 {
         lines * SCROLL_LINE_PX
     }
@@ -1962,8 +1967,8 @@ impl Core {
     /// into what the glide can use ([`WheelFeel::clamped`]). The app's
     /// input feel rather than a view's, so the native launcher's
     /// `wheel_feel` sets it on every window. Whether a notch glides at
-    /// all is [`Core::set_smooth_wheel`]'s; off, a notch still jumps its
-    /// `line_px`.
+    /// all is [`Core::set_smooth_wheel`]'s. [`Core::set_wheel_acceleration`]
+    /// can multiply the base travel for rapid notches.
     pub fn set_wheel_feel(&mut self, feel: WheelFeel) {
         self.scroll.set_wheel_feel(feel);
     }
@@ -1999,7 +2004,7 @@ impl Core {
 
     /// Whether a wheel's notch glides on a scroll container
     /// ([`InputEvent::Wheel`], ADR 0050): on by default; off, a notch
-    /// jumps its 40 px on the next frame, as pixels do. The app's input
+    /// jumps to its target on the next frame, as pixels do. The app's input
     /// feel rather than a view's, so the native launcher's `smooth_wheel`
     /// sets it on every window. The system's reduced motion jumps
     /// whatever this says.
@@ -2011,6 +2016,20 @@ impl Core {
     /// system's reduced motion overrides it.
     pub fn smooth_wheel(&self) -> bool {
         self.smooth_wheel
+    }
+
+    /// Opts in to more travel for rapid, same-direction wheel notches on
+    /// a scroll container. Pixel scrolling and scroll handlers are unaffected.
+    pub fn set_wheel_acceleration(&mut self, on: bool) {
+        if self.wheel_acceleration != on {
+            self.wheel_turns = [None; 2];
+        }
+        self.wheel_acceleration = on;
+    }
+
+    /// Whether wheel acceleration is enabled. Off by default.
+    pub fn wheel_acceleration(&self) -> bool {
+        self.wheel_acceleration
     }
 
     /// Whether a notch glides now: the switch, and no reduced motion —

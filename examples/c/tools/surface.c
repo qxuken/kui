@@ -1384,6 +1384,10 @@ static int surface(void) {
         check(kui_smooth_wheel(ui), "kui_smooth_wheel: on by default");
         kui_set_smooth_wheel(ui, false);
         check(!kui_smooth_wheel(ui), "kui_set_smooth_wheel turns it off");
+        check(!kui_wheel_acceleration(ui), "wheel acceleration is off by default");
+        kui_set_wheel_acceleration(ui, true);
+        check(kui_wheel_acceleration(ui), "kui_set_wheel_acceleration opts in");
+        kui_set_wheel_acceleration(ui, false);
         float want = sy - 48 * way;
         want = want < 0 ? 0 : want > geo.max_offset_y ? geo.max_offset_y : want;
         kui_input_wheel(ui, 0, way, true);

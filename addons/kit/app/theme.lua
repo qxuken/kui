@@ -438,7 +438,7 @@ function M.view(m, env)
         { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" }) }),
     kit.section({ title = "Colours, " .. half, collapsed = not m.theme_colors, on_toggle = { kind = "theme_colors" } },
       { column { width = "grow", gap = 6, table.unpack(colors) } }),
-    kit.code({ label = "Your theme", text = M.lua(t), copy = true }),
+    kit.code({ label = "Your theme", language = "lua", text = M.lua(t), copy = true }),
   }
 end
 

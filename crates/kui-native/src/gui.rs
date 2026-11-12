@@ -550,6 +550,12 @@ impl Launcher {
         self.setup_core(move |core| core.set_smooth_wheel(on))
     }
 
+    /// Enables acceleration for rapid wheel notches on scroll containers,
+    /// in every window the app opens. Off by default.
+    pub fn wheel_acceleration(self, on: bool) -> Self {
+        self.setup_core(move |core| core.set_wheel_acceleration(on))
+    }
+
     /// How a mouse wheel's notch scrolls: how far a line goes and how its
     /// glide eases there ([`kui_core::WheelFeel`], `WheelFeel::BRISK` and
     /// the other presets), in every window the app opens. `KUI_WHEEL` in

@@ -399,13 +399,32 @@ end
 
 
 
+
+
 function M.sparkline(c, p)
    local w, h = (p.width or 80), (p.height or 18)
-   local ys = col(p.data, p.field)
+   local ch, field = p.data, p.field
+   local ys = col(ch, field)
    local n = #ys
    local box = { width = w, height = h, label = str(p.field), role = "image" }
    if n >= 2 then
+      local st = ctx.state(c, function() return {} end)
       local lo, hi = range_of(ys, 1, n)
+      local span = hi - lo
+      local held_lo, held_hi = st.spark_lo, st.spark_hi
+
+
+
+      if st.spark_channel == ch.id and st.spark_field == field and held_lo and held_hi and
+         lo >= held_lo and hi <= held_hi and span >= (held_hi - held_lo) / 2 then
+         lo, hi = held_lo, held_hi
+      else
+         local pad = span * 0.1
+         local padded_lo, padded_hi = lo - pad, hi + pad
+         if padded_hi - padded_lo < math.huge then lo, hi = padded_lo, padded_hi end
+         st.spark_channel, st.spark_field = ch.id, field
+         st.spark_lo, st.spark_hi = lo, hi
+      end
       local idx = {}
       for i = 1, n do idx[i] = i end
       local color = (p.color) or ref(c, "accent")
@@ -418,7 +437,6 @@ function M.sparkline(c, p)
 
 
       if p.readout ~= false then
-         local st = ctx.state(c, function() return {} end)
          local layer = { key = "over", width = w, height = h, hoverable = true,
 float = { anchor = "parent" }, on_hover = act(c, "sparkline.over"), }
          if st.over then

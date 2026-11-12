@@ -4,6 +4,7 @@
 
 local ctx = require("ctx")
 local icons = require("icons")
+local skin = require("skin")
 
 local type Ctx = ctx.Ctx
 local type P = {string:any}
@@ -36,7 +37,6 @@ function M.panel(c: Ctx, p: P): kui.Node
     -- A control's height and 4 px either side: a search or a segmented
     -- control in the actions sat flush against the frame and the rule
     -- under the header, the same height as the header itself.
-    local skin = require("skin")
     local head: kui.Props = {
       width = "grow", height = skin.ctl_h(c.s) + 8, pad = { x = 10 }, gap = 8, cross_align = "center",
       ctx.caption(c, p.title as string, { size = "$kitSizeLabel", bold = true }),
@@ -147,6 +147,10 @@ end
 function M.tabs(c: Ctx, p: P): kui.Node
   local tabs = (p.tabs or {}) as {P}
   local strip: kui.Props = { role = "tabList", width = "grow", height = "$kitCtl", gap = 2, cross_align = "end" }
+  -- A fractional rule can fall between device pixels. The selected tab's
+  -- mark must cover a pixel wherever the strip lands, unless turned off.
+  local rule = skin.rule_w(c.s)
+  local underline = rule > 0 and math.max(rule, 1 / (c.env.scale or 1)) or rule
   for i, tb in ipairs(tabs) do
     local here = tb.value == p.value
     local t: kui.Props = {
@@ -170,7 +174,7 @@ function M.tabs(c: Ctx, p: P): kui.Node
       key = "tab" .. i,
       height = "grow",
       row(t),
-      column { width = "grow", height = "$kitRuleW", bg = here and ref(c, "accent") or nil },
+      column { width = "grow", height = underline, bg = here and ref(c, "accent") or nil },
     }
   end
   -- What acts on the chosen tab — close it, run it — at the strip's far side,

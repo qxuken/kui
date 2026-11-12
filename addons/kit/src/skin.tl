@@ -145,6 +145,10 @@ function M.ctl_h(s: Settings): number
   return s.density == "compact" and 22 or 26
 end
 
+function M.rule_w(s: Settings): number
+  return s.rule_w or s.skin.rule_w
+end
+
 -- The name a role paints under: the brand's token where it named one,
 -- `"$kitSelFg"` otherwise. A shade of a fill the brand named a token for
 -- is that token: Kit cannot shade a colour it does not know.
@@ -567,7 +571,7 @@ function M.tokens(s: Settings): Decl
       kitRow = M.row_h(s),
       kitCtl = M.ctl_h(s),
       kitRadius = s.radius or skin.radius,
-      kitRuleW = s.rule_w or skin.rule_w,
+      kitRuleW = M.rule_w(s),
       kitHair = s.hair or skin.hair,
       kitShadow = shadow,
       kitShadowBlur = s.shadows and skin.shadow_blur or 0,

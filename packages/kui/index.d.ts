@@ -2530,6 +2530,8 @@ export interface WindowOptions {
    *  Default on; the system's reduced motion jumps either way. A trackpad
    *  is unaffected. */
   smoothWheel?: boolean;
+  /** Accelerate rapid wheel notches on scroll containers. Off by default. */
+  wheelAcceleration?: boolean;
   /** How a mouse wheel's notch scrolls, in every window of the app: a
    *  preset's name (`'brisk'` is a touch faster than the default) or the
    *  numbers to change from the standard feel. Taken as the window opens,
@@ -3907,14 +3909,18 @@ export declare class Ctx {
   setSmoothWheel(on: boolean): void
   /** That switch, read back. */
   smoothWheel(): boolean
+  /** Enables acceleration for rapid wheel notches on scroll containers. */
+  setWheelAcceleration(on: boolean): void
+  /** Whether wheel acceleration is enabled. Off by default. */
+  wheelAcceleration(): boolean
   /**
    * How a wheel's notch scrolls: a preset's name, slow to
    * fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
    * alias of standard), `'swift'`; or `{ linePx, response, kick }`,
-   * any left out kept as they are — how far a line goes in
+   * any left out kept as they are — the base travel per line in
    * logical px (48), the glide's response in seconds (0.27)
    * and its kick, 0 to 1 (0.6). Clamped into what the glide
-   * can use. Off, a notch still jumps its `linePx`.
+   * can use.
    * `runWindowed` takes it for the whole app as `wheelFeel`.
    */
   setWheelFeel(feel: WheelPreset | Partial<WheelFeel>): void
@@ -5670,14 +5676,18 @@ export declare class KuiWindow {
   setSmoothWheel(on: boolean): void
   /** That switch, read back. */
   smoothWheel(): boolean
+  /** Enables acceleration for rapid wheel notches on scroll containers. */
+  setWheelAcceleration(on: boolean): void
+  /** Whether wheel acceleration is enabled. Off by default. */
+  wheelAcceleration(): boolean
   /**
    * How a wheel's notch scrolls: a preset's name, slow to
    * fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
    * alias of standard), `'swift'`; or `{ linePx, response, kick }`,
-   * any left out kept as they are — how far a line goes in
+   * any left out kept as they are — the base travel per line in
    * logical px (48), the glide's response in seconds (0.27)
    * and its kick, 0 to 1 (0.6). Clamped into what the glide
-   * can use. Off, a notch still jumps its `linePx`.
+   * can use.
    * `runWindowed` takes it for the whole app as `wheelFeel`.
    */
   setWheelFeel(feel: WheelPreset | Partial<WheelFeel>): void
@@ -7198,6 +7208,8 @@ export declare function createApp<M, A = AppMsg, E = never>(
     /** `false`: a wheel's notch (`app.ctx.wheel`) jumps rather than glides
      *  (ADR 0050). Default on. */
     smoothWheel?: boolean;
+    /** Accelerate rapid wheel notches on scroll containers. Off by default. */
+    wheelAcceleration?: boolean;
     /** How a wheel's notch scrolls: a preset's name or the numbers to
      *  change (`app.ctx.setWheelFeel`). Default `'standard'`. */
     wheelFeel?: WheelPreset | Partial<WheelFeel>;

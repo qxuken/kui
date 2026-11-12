@@ -2503,6 +2503,11 @@ impl KuiWindow {
                 )));
             }
         };
+        match o.get("wheelAcceleration") {
+            None | Some(Json::Null) => {}
+            Some(Json::Bool(on)) => launcher = launcher.wheel_acceleration(*on),
+            Some(_) => return Err(err("window options: wheelAcceleration must be a boolean")),
+        }
         // The wheel feel, the launcher's `wheel_feel`, so `KUI_WHEEL` in
         // the environment still wins: a user's override over the app's.
         if let Some(v) = o.get("wheelFeel").filter(|v| !v.is_null()) {
@@ -3812,13 +3817,25 @@ macro_rules! core_methods {
                 self.$core().smooth_wheel()
             }
 
+            /// Enables acceleration for rapid wheel notches on scroll containers.
+            #[napi]
+            pub fn set_wheel_acceleration(&mut self, on: bool) {
+                self.$core().set_wheel_acceleration(on);
+            }
+
+            /// Whether wheel acceleration is enabled. Off by default.
+            #[napi]
+            pub fn wheel_acceleration(&mut self) -> bool {
+                self.$core().wheel_acceleration()
+            }
+
             /// How a wheel's notch scrolls: a preset's name, slow to
             /// fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
             /// alias of standard), `'swift'`; or `{ linePx, response, kick }`,
-            /// any left out kept as they are — how far a line goes in
+            /// any left out kept as they are — the base travel per line in
             /// logical px (48), the glide's response in seconds (0.27)
             /// and its kick, 0 to 1 (0.6). Clamped into what the glide
-            /// can use. Off, a notch still jumps its `linePx`.
+            /// can use.
             /// `runWindowed` takes it for the whole app as `wheelFeel`.
             #[napi(ts_args_type = "feel: WheelPreset | Partial<WheelFeel>")]
             pub fn set_wheel_feel(&mut self, feel: Json) -> Result<()> {
