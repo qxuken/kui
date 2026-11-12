@@ -48,6 +48,9 @@ was the first bare bump to break an app in five releases).
   their existing values.
 - A `Transition` using `Easing::Spring` starts from its current value on the
   first frame after a settled spring receives a new target.
+- Kit gives positive selected-tab underlines a one-device-pixel minimum.
+  Channel-backed sparklines retain their vertical scale across small changes
+  in the visible range.
 
 ### Added
 
@@ -58,6 +61,9 @@ was the first bare bump to break an app in five releases).
   browser runner and Kit. Serve the output as a static site. Files in
   `kui.data_dir` persist in the browser for each app. Packed apps use
   `kui-wgpu` when WebGPU is available and fall back to Canvas 2D.
+- Desktop apps can enable wheel acceleration to scroll farther during
+  rapid turns in the same direction. See `Launcher::wheel_acceleration`,
+  `wheelAcceleration` in Node, or `wheel_acceleration` in `kui.config.lua`.
 
 ### Fixed
 
@@ -65,6 +71,11 @@ was the first bare bump to break an app in five releases).
   from the frame that declared the target. Time spent at rest no longer
   advances the new animation. Springs already in motion retain their
   velocity on retargeting.
+- Kit keeps the selected-tab underline visible with subpixel rule widths
+  and avoids rescaling live sparklines on every small change in the data.
+- The Kit gallery animates its Content shader and highlights Lua in its
+  example calls, source panes, and theme export.
+- Kui Perf handles the File and View menu items on Windows.
 
 ## 0.1.0-alpha.79 (2026-11-09)
 

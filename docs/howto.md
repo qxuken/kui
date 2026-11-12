@@ -1549,7 +1549,7 @@ can have it, and only the app's own settings screen, changing it while
 it runs, comes after. The `wheel_feel` example tunes one by hand and
 spells its line to copy.
 
-Apps can opt in to wheel acceleration with
+Desktop apps can opt in to wheel acceleration with
 `Launcher::wheel_acceleration(true)`, `wheelAcceleration: true` in
 `runWindowed`, `wheel_acceleration = true` in `kui.config.lua`, or
 `kui_set_wheel_acceleration(ctx, true)` in a C host. Rapid wheel notches
