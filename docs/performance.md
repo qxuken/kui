@@ -393,8 +393,8 @@ repeated within 8% across runs:
 | `cosmic_insert_and_shape_500_lines` | cosmic-text alone, an insert and its reshape in 500 lines, for scale | ~170 µs |
 
 Current runs of the direct shaper row use the unpublished
-`kui-cosmic-text-tests` harness, which compiles the same embedded source
-as kui-core.
+`kui-cosmic-text-tests` harness in `crates/kui-cosmic-text-tests`. It compiles
+the same embedded source as kui-core.
 
 The rows time the whole keystroke because one short call timed alone
 reads bimodal on this machine (the 500-line edit alone 86 to 266 µs),

@@ -21,9 +21,10 @@ and FZ18, where neutral text shaped right to left could be reused in a
 left-to-right paragraph, including another window sharing the session.
 
 The source is a private module of kui-core and ships inside its package.
-The unpublished `kui-cosmic-text-tests` workspace package compiles the same
-source for upstream tests and direct shaper benchmarks. Its fonts and
-test images stay in that test package.
+The unpublished `kui-cosmic-text-tests` workspace package in
+`crates/kui-cosmic-text-tests` compiles the same source for upstream tests and
+direct shaper benchmarks. Its fonts and test images stay in that test
+package.
 
 Module integration qualifies upstream `crate::` paths through
 `crate::cosmic_text::` and fixes the former feature predicates to kui's

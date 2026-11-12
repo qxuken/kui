@@ -7,8 +7,8 @@ fn session() -> Session {
     Session::with_fonts(
         "en-US",
         [
-            include_bytes!("../../kui-cosmic-text/fonts/NotoSans-Regular.ttf").to_vec(),
-            include_bytes!("../../kui-cosmic-text/fonts/NotoSansHebrew.ttf").to_vec(),
+            include_bytes!("../../kui-cosmic-text-tests/fonts/NotoSans-Regular.ttf").to_vec(),
+            include_bytes!("../../kui-cosmic-text-tests/fonts/NotoSansHebrew.ttf").to_vec(),
         ],
     )
 }

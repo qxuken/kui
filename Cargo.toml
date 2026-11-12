@@ -3,7 +3,6 @@ resolver = "3"
 members = [
     "crates/kui-value",
     "crates/kui-channel",
-    "crates/kui-cosmic-text",
     "crates/kui-core",
     "crates/kui-derive",
     "crates/kui-trace",
@@ -30,6 +29,8 @@ members = [
     # The fuzz targets (cargo-fuzz) and the stable replay of what they
     # found; see fuzz/Cargo.toml and scripts/fuzz.nu. Never published.
     "fuzz",
+    # Private upstream tests for the shaper embedded in kui-core.
+    "crates/kui-cosmic-text-tests",
 ]
 
 [workspace.package]
@@ -72,7 +73,7 @@ kui-addon-schema = { path = "crates/kui-addon-schema" }
 
 slotmap = "1.1.1"
 rustc-hash = "2"
-cosmic-text-tests = { path = "crates/kui-cosmic-text", package = "kui-cosmic-text-tests" }
+cosmic-text-tests = { path = "crates/kui-cosmic-text-tests", package = "kui-cosmic-text-tests" }
 # Dependencies shared by the embedded shaper and its private test harness.
 bitflags = "2.10"
 fontdb = { version = "0.23", default-features = false, features = ["std", "memmap"] }
