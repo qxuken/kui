@@ -110,11 +110,7 @@ fn sql_err(e: rusqlite::Error) -> String {
 fn query(conn: &mut rusqlite::Connection, sql: &str, params: &Value) -> Result<Value, String> {
     let mut stmt = conn.prepare_cached(sql).map_err(sql_err)?;
     bind(&mut stmt, params).map_err(sql_err)?;
-    let names: Vec<String> = stmt
-        .column_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let names: Vec<String> = stmt.column_names().map(str::to_string).collect();
     let mut rows = stmt.raw_query();
     let mut out = Vec::new();
     while let Some(row) = rows.next().map_err(sql_err)? {
