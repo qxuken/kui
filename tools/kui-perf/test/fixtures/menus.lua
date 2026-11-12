@@ -17,11 +17,24 @@ test.it("File opens the recording picker", function()
   test.expect(test.eval("return picker_answered")):to_be(true)
 end)
 
-test.it("View toggles Live", function()
-  test.start()
+test.it("View toggles Live and reads pending frames when resumed", function()
+  local path = assert(os.getenv("KUI_PERF_TEST_RECORDING"))
+  test.start { args = { path } }
+  test.click("Got it")
   test.click("View")
   test.click("Live")
   test.expect(test.model().live):to_be(false)
+  test.expect(test.eval([[
+    local rest = assert(os.getenv("KUI_PERF_TEST_REST"))
+    frames_before = #model.ins.rec.frames
+    kui.fs.append(model.path, kui.fs.read(rest))
+    update({ kind = "moved" })
+    return model.waiting > 0 and #model.ins.rec.frames == frames_before
+  ]])):to_be(true)
+  test.click("View")
+  test.click("Live")
+  test.expect(test.model().live):to_be(true)
+  test.expect(test.eval("return model.waiting == 0 and #model.ins.rec.frames > frames_before")):to_be(true)
 end)
 
 test.it("Help opens the keys card", function()

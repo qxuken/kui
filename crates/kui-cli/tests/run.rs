@@ -448,12 +448,14 @@ fn kui_perf_drives_and_checks() {
     );
     let s = out(&o);
     assert!(s.contains("all passed"), "{s}");
+    std::fs::write(&a, &bytes[..half]).unwrap();
     let mut menus = Command::new(KUI);
     menus
         .current_dir(&tool)
         .args(["test", "test/fixtures/menus.lua", "--output"])
         .arg(dir.join("menu-results"))
-        .env("KUI_PERF_TEST_RECORDING", &a);
+        .env("KUI_PERF_TEST_RECORDING", &a)
+        .env("KUI_PERF_TEST_REST", &rest);
     let o = run_kui(menus, 60);
     assert!(o.status.success(), "{}", out(&o));
     let c = kui(&tool, &["check"], 60);
