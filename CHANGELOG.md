@@ -21,6 +21,75 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.81 (2026-11-13)
+
+**What breaks.**
+
+- Neutral text runs now use their current paragraph's writing direction.
+  Text previously affected by a cached right-to-left run can draw differently,
+  including in another window sharing the session.
+- Custom Rust font catalogs pass `text::FontFallback` to
+  `FontCatalog::from_database` and `from_validated_database`, replacing
+  the upstream cosmic-text fallback trait. Use
+  `FontCatalog::from_platform_database` for the platform's fallback lists.
+- `GlyphAtlas::get_or_insert` and the shaper-taking `EditStore` methods
+  (`set_text`, `replace_all`, `replace_selection`, and `delete_selection`)
+  are internal. Apps use Core's text and editor methods.
+
+### Fixed
+
+- Native startup discovers and validates the full font inventory while
+  preparing a default face. A process-wide worker prepares other immutable
+  font snapshots on demand, giving requested faces priority over background
+  serif and monospace warmups. Unchanged rescans reuse prepared and pending
+  sources.
+- Font matching defers variable-weight eligibility checks and monospace
+  fallback preparation until a candidate is needed. Registering or drawing
+  a regular face no longer prepares unrelated weights.
+- The text shape-run cache includes writing direction, fixing FZ14 and FZ18:
+  a neutral run shaped right to left cannot be reused as a left-to-right run.
+- Completed native snapshot packs release their writer while existing
+  mappings keep their bytes alive.
+
+### What you can delete
+
+- App-side font warmups that existed solely to work around alpha.80's eager
+  copying of the complete native font inventory.
+- Forced text-cache resets used to avoid stale bidi shaping when changing
+  paragraph direction or drawing in another window of a shared session.
+
+### Native verification
+
+On Windows x64, the workspace round and focused alpha.81 reruns covered
+3,315 passing Rust tests across 277 suites, with 24 ignored. The relay
+integration test timed out during the initial 32-suite parallel run;
+it passed alone and all 78 CLI integration tests passed together with
+four test threads. The focused reruns also passed the native font,
+cross-window text-direction, and native doctest checks.
+The full Node round passed 311 tests with one platform-specific skip;
+Node example typechecking and builds passed. All 59 Rust and 12 Node
+windowed examples presented 30 frames on both themes, 142 runs passing.
+The MSVC C round passed all ten checks, including both plugin linkage
+forms and refusal of a plugin without its ABI entry point.
+
+On Linux x64 in WSL Ubuntu 24.04, the versioned workspace and Node round
+passed 3,609 tests with 23 ignored, requiring the lavapipe GPU adapter.
+Native and WebAssembly portable-core smoke results matched at 131313.
+All 59 Rust windowed examples passed 30 frames on both themes, 118 runs,
+using sequential X11 windows under Xvfb with lavapipe. Initial WSLg runs
+were interrupted by compositor restarts. The C round passed all eleven
+checks, including wgpu-native hosts, accessibility attach/detach and plugin
+ABI refusal. Both platforms' C ABI checks covered 502 fields, 388 enum
+members and 425 prototypes.
+
+All release generators, formatting, workflow syntax, version consistency
+and the crate package's embedded shaper/license inventory passed.
+GitHub's Linux CI and macOS native round passed on the source commit.
+The manual macOS accessibility audit was not rerun because no logged-in
+Mac with Accessibility permission was available. Optional Windows
+GLFW/SDL and WebGPU C hosts lacked their headers; Linux lacked SDL3
+headers and an ALSA output device, so audio playback was not verified.
+
 ## 0.1.0-alpha.80 (2026-11-12)
 
 **What breaks.**

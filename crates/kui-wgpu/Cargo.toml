@@ -20,7 +20,7 @@ kui-core.workspace = true
 pollster.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-kui-core = { path = "../kui-core", version = "0.1.0-alpha.80", default-features = false }
+kui-core = { path = "../kui-core", version = "0.1.0-alpha.81", default-features = false }
 web-time = "1.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
