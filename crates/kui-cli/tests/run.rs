@@ -468,12 +468,20 @@ fn kui_perf_drives_and_checks() {
     let mut menus = Command::new(KUI);
     menus
         .current_dir(&tool)
-        .args(["test", "test/fixtures/menus.lua", "--output"])
+        // This is the whole file's budget, including all four cases and
+        // their intermediate captures on Windows' software adapter.
+        .args([
+            "test",
+            "test/fixtures/menus.lua",
+            "--timeout",
+            "60000",
+            "--output",
+        ])
         .arg(dir.join("menu-results"))
         .env("KUI_PERF_TEST_RECORDING", &recording)
         .env("KUI_PERF_TEST_GROWING", &growing)
         .env("KUI_PERF_TEST_REST", &menu_rest);
-    let o = run_kui(menus, 60);
+    let o = run_kui(menus, 90);
     assert!(o.status.success(), "{}", out(&o));
     let c = kui(&tool, &["check"], 60);
     assert!(out(&c).contains("ok: 3 file(s) checked"), "{}", out(&c));
