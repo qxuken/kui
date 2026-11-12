@@ -5607,6 +5607,30 @@ fn a_sparklines_unchanged_samples_stay_at_the_same_height_as_the_range_wobbles()
 }
 
 #[test]
+fn a_sparkline_keeps_its_scale_with_large_finite_values() {
+    use kui_core::{QuadKind, testing::quads_of};
+
+    for (lo, hi) in [(1e308, 1.797e308), (-8e307, 8e307)] {
+        let (mut core, warnings) = lua_app(
+            &format!(
+                r#"
+                local trend = channel({{ v = {{ {lo:e}, {hi:e} }} }})
+                function view(env)
+                  return component("kit/sparkline", {{ data = trend, field = "v" }})
+                end
+                "#,
+            ),
+            2,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let segments = quads_of(&mut core, QuadKind::Segment);
+        assert_eq!(segments.len(), 1);
+        let [_, y0, _, y1] = segments[0].segment_ends();
+        assert!(y0 - y1 > 8.0, "the samples span the plot: {y0} to {y1}");
+    }
+}
+
+#[test]
 fn a_bar_and_a_sparkline_show_the_value_under_the_pointer() {
     let mut r = LuaRig::new(
         r#"

@@ -419,7 +419,8 @@ function M.sparkline(c: Ctx, p: P): kui.Node
       lo, hi = held_lo, held_hi
     else
       local pad = span * 0.1
-      lo, hi = lo - pad, hi + pad
+      local padded_lo, padded_hi = lo - pad, hi + pad
+      if padded_hi - padded_lo < math.huge then lo, hi = padded_lo, padded_hi end
       st.spark_channel, st.spark_field = ch.id, field
       st.spark_lo, st.spark_hi = lo, hi
     end
