@@ -48,9 +48,9 @@ was the first bare bump to break an app in five releases).
   their existing values.
 - A `Transition` using `Easing::Spring` starts from its current value on the
   first frame after a settled spring receives a new target.
-- Kit gives positive selected-tab underlines a one-device-pixel minimum.
-  Channel-backed sparklines retain their vertical scale across small changes
-  in the visible range.
+- `kit.tabs` gives positive selected-tab underlines a one-device-pixel minimum.
+- `kit.sparkline` retains its vertical scale across small changes in the
+  visible range.
 
 ### Added
 

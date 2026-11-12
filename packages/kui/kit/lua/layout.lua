@@ -5,6 +5,7 @@
 
 local ctx = require("ctx")
 local icons = require("icons")
+local skin = require("skin")
 
 
 
@@ -37,7 +38,6 @@ function M.panel(c, p)
 
 
 
-      local skin = require("skin")
       local head = {
          width = "grow", height = skin.ctl_h(c.s) + 8, pad = { x = 10 }, gap = 8, cross_align = "center",
          ctx.caption(c, p.title, { size = "$kitSizeLabel", bold = true }),
@@ -150,7 +150,7 @@ function M.tabs(c, p)
    local strip = { role = "tabList", width = "grow", height = "$kitCtl", gap = 2, cross_align = "end" }
 
 
-   local rule = c.s.rule_w or c.s.skin.rule_w
+   local rule = skin.rule_w(c.s)
    local underline = rule > 0 and math.max(rule, 1 / (c.env.scale or 1)) or rule
    for i, tb in ipairs(tabs) do
       local here = tb.value == p.value

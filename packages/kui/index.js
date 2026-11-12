@@ -364,7 +364,10 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // The app's input feel (ADR 0050): the window copies it to every window
   // it opens after the main.
   if (opts.smoothWheel !== undefined) surface.setSmoothWheel(opts.smoothWheel);
-  if (opts.wheelAcceleration !== undefined) surface.setWheelAcceleration(opts.wheelAcceleration);
+  // A window created by runWindowed already took this from windowOptions.
+  if (opts.wheelAcceleration != null && (opts.surface != null || !(surface instanceof KuiWindow))) {
+    surface.setWheelAcceleration(opts.wheelAcceleration);
+  }
   // A window took its feel when it opened (`windowOptions`), where
   // `KUI_WHEEL` in the environment overrides it; set here it would win.
   if (opts.wheelFeel !== undefined && !(surface instanceof KuiWindow)) surface.setWheelFeel(opts.wheelFeel);

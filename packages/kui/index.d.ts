@@ -3917,10 +3917,10 @@ export declare class Ctx {
    * How a wheel's notch scrolls: a preset's name, slow to
    * fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
    * alias of standard), `'swift'`; or `{ linePx, response, kick }`,
-   * any left out kept as they are — how far a line goes in
+   * any left out kept as they are — the base travel per line in
    * logical px (48), the glide's response in seconds (0.27)
    * and its kick, 0 to 1 (0.6). Clamped into what the glide
-   * can use. Off, a notch still jumps its `linePx`.
+   * can use.
    * `runWindowed` takes it for the whole app as `wheelFeel`.
    */
   setWheelFeel(feel: WheelPreset | Partial<WheelFeel>): void
@@ -5684,10 +5684,10 @@ export declare class KuiWindow {
    * How a wheel's notch scrolls: a preset's name, slow to
    * fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
    * alias of standard), `'swift'`; or `{ linePx, response, kick }`,
-   * any left out kept as they are — how far a line goes in
+   * any left out kept as they are — the base travel per line in
    * logical px (48), the glide's response in seconds (0.27)
    * and its kick, 0 to 1 (0.6). Clamped into what the glide
-   * can use. Off, a notch still jumps its `linePx`.
+   * can use.
    * `runWindowed` takes it for the whole app as `wheelFeel`.
    */
   setWheelFeel(feel: WheelPreset | Partial<WheelFeel>): void

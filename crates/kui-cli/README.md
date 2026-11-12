@@ -457,6 +457,7 @@ servers and workers they held run on.
 | `size`, `min_size` | `{ w = 900, h = 600 }`: the window's first and least size. |
 | `chrome` | `"native"` (the default), `"custom"` (the app draws its titlebar), `"borderless"`. |
 | `titlebar` | `"standard"`, `"medium"`, `"tall"`: the macOS strip under custom chrome. |
+| `wheel_acceleration` | `true` gives rapid mouse-wheel notches more travel on desktop scroll containers. Defaults to `false`. |
 | `icon` | A PNG for the Dock, the taskbar and the window. |
 | `id` | Reverse DNS, as `"dev.example.notes"`: names `kui.data_dir`, `kui.cache_dir` and the macOS bundle. `kui pack` needs one; `kui run` takes the folder's name. |
 | `version` | The app's own version: `kui.app_version`, the bundle's, the file names `kui pack` writes. |
