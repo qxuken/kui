@@ -84,8 +84,8 @@ end
 -- A card's full source: its own file, then each of the app's modules it
 -- requires (the sample data two cards share) and each file a line
 -- `-- Source also: path` names (where its data comes from: the live feeds,
--- the worker's job), each read-only, monospace, scrolled past 24 lines and
--- with a Copy button — so no card shows data the reader cannot see made.
+-- the worker's job), each with Lua highlighting, scrolled past 24 lines
+-- and with a Copy button — so no card shows data the reader cannot see made.
 function M.files_of(name)
   local paths, seen = {}, {}
   local function add(path)
@@ -104,7 +104,7 @@ end
 local function sources(name)
   local out = {}
   for _, path in ipairs(M.files_of(name)) do
-    out[#out + 1] = kit.code({ label = path, text = source(path) or "", copy = true, line_numbers = true, max_lines = 24 })
+    out[#out + 1] = kit.code({ label = path, language = "lua", text = source(path) or "", copy = true, line_numbers = true, max_lines = 24 })
   end
   if #out == 0 then
     out[1] = text("The source could not be read from the app's folder.", { size = 11, family = "$kitUi", color = "$kitMuted" })
@@ -129,7 +129,7 @@ local function card(m, name)
   local d = M.DEMOS[name]
   local open = m.source[name] == true
   local guided = m.guide[name] == true
-  local foot = { kit.code({ text = d.call, wrap = true }) }
+  local foot = { kit.code({ language = "lua", text = d.call, wrap = true }) }
   if open then foot = sources(name) end
   if guided then
     local g = guides(name)

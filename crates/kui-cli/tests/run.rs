@@ -1267,6 +1267,55 @@ fn kit_app(name: &str, entry: &str) -> PathBuf {
 }
 
 #[test]
+fn the_kit_app_highlights_its_code_and_animates_the_content_shader() {
+    let dir = kit_app(
+        "kit-app-content",
+        r#"
+        local kit = require("kit.ui")
+        local code, shader = kit.code, kit.shader
+        local languages, animated = {}, false
+        kit.code = function(p)
+          local name = p.label or "card call"
+          languages[name] = p.language
+          if not p.language then print("plain code", name) end
+          return code(p)
+        end
+        kit.shader = function(p)
+          if model.page == "content" and p.preset == "noise" then animated = p.animate == true end
+          return shader(p)
+        end
+        require("main")
+        model = init()
+        model.page = "content"
+        local steps = { { kind = "source", name = "content/reading" }, { kind = "theme_open" } }
+        local i = 0
+        kui.timer.every(120, function()
+          i = i + 1
+          if steps[i] then kui.dispatch(steps[i]); return end
+          for _, name in ipairs({ "card call", "demos/content/reading.lua", "project.lua", "Your theme" }) do
+            print("code language", name, languages[name])
+          end
+          print("content shader animated", animated)
+          kui.exit(0)
+        end)
+        "#,
+    );
+    let o = kui(&dir, &["run", "--headless", "walk.lua"], 20);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(s.contains("content shader animated\ttrue"), "{s}");
+    assert!(!s.contains("plain code\t"), "{s}");
+    for name in [
+        "card call",
+        "demos/content/reading.lua",
+        "project.lua",
+        "Your theme",
+    ] {
+        assert!(s.contains(&format!("code language\t{name}\tlua")), "{s}");
+    }
+}
+
+#[test]
 fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     // Every card's Source open (each reads its file from the app's folder)
     // and the Theme panel open, every page, then every skin, both held
