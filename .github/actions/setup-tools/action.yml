@@ -7,6 +7,9 @@ inputs:
   bindings:
     description: Wire the pinned wgpu-native library into the C and Odin checks
     default: 'false'
+  wasi:
+    description: Install the WASI SDK for the browser's Lua runners
+    default: 'false'
   cache:
     description: Cache installed tools (disabled for publishing)
     default: 'true'
@@ -28,3 +31,13 @@ runs:
     - if: inputs.bindings == 'true'
       shell: bash
       run: nu scripts/toolchain.nu bindings --github-env "$GITHUB_ENV"
+    - if: inputs.wasi == 'true'
+      shell: bash
+      run: |
+        set -eu
+        cd "$RUNNER_TEMP"
+        asset=wasi-sdk-34.0-x86_64-linux
+        curl -fsSL --retry 3 -o "$asset.tar.gz" "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/$asset.tar.gz"
+        echo "b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4  $asset.tar.gz" | sha256sum -c
+        tar -xzf "$asset.tar.gz"
+        echo "WASI_SDK_PATH=$RUNNER_TEMP/$asset" >> "$GITHUB_ENV"

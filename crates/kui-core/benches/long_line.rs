@@ -82,7 +82,9 @@ fn long_line_100k_scroll(bencher: divan::Bencher) {
 fn long_line_100k_edit(bencher: divan::Bencher) {
     let mut core = Core::new();
     let text = line(N, 0);
-    let x = 50_000.0 * 7.8;
+    // Keep the edit in view with either the stock face or a host's font.
+    let style = TextStyle::new(13.0).mono().wrap(TextWrap::None);
+    let x = core.measure_text(&text[..50_000], &style, None).width - 600.0;
     frame(&mut core, &text, x);
     let mut edited = text.clone();
     let mut n = 0u32;

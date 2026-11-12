@@ -62,7 +62,7 @@ impl App for Buttons {
                     widgets::button_with(
                         ui,
                         "add",
-                        "＋",
+                        "+",
                         widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("add").label("add a row"),
                         None,
                     );

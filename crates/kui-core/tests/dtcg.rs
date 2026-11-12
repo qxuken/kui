@@ -1,6 +1,8 @@
 //! The DTCG fixture (`tests/fixtures/dtcg`, ADR 0062) as every binding's
 //! test reads it: one brand, two appearances, one skipped shadow.
 
+#![allow(clippy::disallowed_methods)]
+
 use kui_core::dtcg::{self, DtcgOptions, DtcgValue};
 use kui_core::{Color, Core, Size, Theme};
 
@@ -15,9 +17,23 @@ fn opts() -> DtcgOptions {
     }
 }
 
+fn load_fixture() -> dtcg::Dtcg {
+    let path = fixture();
+    let read = |path: &std::path::Path| std::fs::read_to_string(path).map_err(|e| e.to_string());
+    let src = read(&path).unwrap();
+    dtcg::from_str_with(
+        &src,
+        path.parent(),
+        &path.display().to_string(),
+        &opts(),
+        &mut { read },
+    )
+    .unwrap()
+}
+
 #[test]
 fn the_fixture_loads_to_the_table_its_readme_lists() {
-    let d = dtcg::from_path(fixture(), &opts()).unwrap();
+    let d = load_fixture();
     assert!(d.resolver);
     let rows: Vec<(&str, &DtcgValue)> = d
         .names
@@ -51,7 +67,7 @@ fn the_fixture_loads_to_the_table_its_readme_lists() {
 
 #[test]
 fn added_to_a_core_the_halves_follow_the_theme_and_the_skip_is_a_warning() {
-    let d = dtcg::from_path(fixture(), &opts()).unwrap();
+    let d = load_fixture();
     let mut core = Core::new();
     core.add_dtcg(&d);
     let warnings = core.take_warnings();

@@ -3333,7 +3333,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["platform"],
         lua: &["platform"],
         c: "`kui_platform()`",
-        doc: "The platform the app runs on (backlog C116): `\"macos\"`, `\"windows\"` or `\"linux\"` (every other Unix reads as Linux) — `KUI_PLATFORM_*` in C, where 0 is a bad context. The same fact a `when` entry's `platform` condition reads, so a script that follows a platform's convention in Lua (a select stepping on a bare arrow off macOS) and a rule that follows it in a `when` always agree. Derived from the build, unless the core is told another (`Core::set_platform`) — a Rust test, or a headless run pinned to another platform's look (`Launcher::platform`, `kui run --platform`) — which both follow.",
+        doc: "The platform the app runs on (backlog C116): `\"macos\"`, `\"windows\"`, `\"linux\"` or `\"other\"` — `KUI_PLATFORM_*` in C, where 0 is a bad context. The same fact a `when` entry's `platform` condition reads, so a script that follows a platform's convention in Lua (a select stepping on a bare arrow off macOS) and a rule that follows it in a `when` always agree. Supplied by the host, or `other` for a portable core. The core can be pinned to another convention with `Core::set_platform`.",
     },
 ];
 
@@ -4311,20 +4311,29 @@ mod tests {
             );
             let camel = snake_to_camel(row.name);
             assert_eq!(row.node, camel, "{}'s Node spelling", row.name);
-            // A platform row's pair is what the struct reads on this
-            // platform, in both sets: the generator prints the pair for
-            // both columns on the strength of this.
+            // A bare metrics set has portable defaults. The host supplies
+            // the Windows caption height explicitly.
             if let Some(p) = row.platform {
                 assert_eq!(
                     (row.get)(&Metrics::default()),
-                    p.here(),
-                    "{}'s stock value",
+                    p.elsewhere,
+                    "{}'s portable stock value",
                     row.name
                 );
                 assert_eq!(
                     (row.get)(&m),
-                    p.here(),
+                    p.elsewhere,
                     "{}: compact leaves a platform row alone",
+                    row.name
+                );
+                let windows = Metrics {
+                    titlebar_h: crate::metrics::caption_h(crate::rules::Platform::Windows),
+                    ..Metrics::default()
+                };
+                assert_eq!(
+                    (row.get)(&windows),
+                    p.windows,
+                    "{}'s Windows value",
                     row.name
                 );
             }

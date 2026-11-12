@@ -21,6 +21,51 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.80 (unreleased)
+
+**What breaks.**
+
+- `Core::new` and `Session::new` use a portable fallback font and the
+  `Other` platform convention. Rust hosts that want installed fonts and
+  native path loading use `kui_native::system::new_core` or `new_session`.
+  A portable host can pass bundled fonts with `Session::with_fonts`.
+- `Core::perf_from_env` moves to `kui_native::system::configure_recording`.
+- `Core::devtools_from_env` becomes `Core::devtools_from_setting`, which
+  takes the value supplied by the host.
+- `Core::perf_trace_to` requires a host trace output. Use a native session
+  or supply a `PerfHost` with an output adapter.
+- `TextSystem::new` takes a `hint` boolean for glyph hinting.
+- `dtcg::from_path` moves to `kui_native::system::load_dtcg`. For a
+  document in memory with external references, use `dtcg::from_str_with`
+  and supply the resolver. `SvgSource::File` on a portable core uses
+  assets published by the host with `Core::set_svg_asset`.
+- The `kui-native` `gui` feature selects the runner. It is on by default.
+  Hosts that had used `--no-default-features` for a minimal runner now
+  enable `gui` explicitly. Enable `kui-native/tracing` to forward live
+  spans to a native subscriber.
+- Exhaustive Rust matches on `Platform` and `CaptureCommand` must handle
+  `Other` and `Devtools`, respectively. The desktop platform codes keep
+  their existing values.
+- A `Transition` using `Easing::Spring` starts from its current value on the
+  first frame after a settled spring receives a new target.
+
+### Added
+
+- The browser runner uses the shared `kui-wgpu` renderer and falls back
+  to Canvas 2D. The counter and notes workspace demonstrate pointer input,
+  touch scrolling, text editing, and the accessibility mirror.
+- `kui pack --format web` packages Lua and Teal apps with a prebuilt
+  browser runner and Kit. Serve the output as a static site. Files in
+  `kui.data_dir` persist in the browser for each app. Packed apps use
+  `kui-wgpu` when WebGPU is available and fall back to Canvas 2D.
+
+### Fixed
+
+- A spring that receives a new target after settling starts integrating
+  from the frame that declared the target. Time spent at rest no longer
+  advances the new animation. Springs already in motion retain their
+  velocity on retargeting.
+
 ## 0.1.0-alpha.79 (2026-11-09)
 
 **What breaks.**

@@ -74,7 +74,7 @@ unsafe extern "system" fn subclass_proc(
         // A font added or removed system-wide (`mod system_fonts`): the
         // same subclass, since every top-level window gets the broadcast
         // and this is where they are heard.
-        WM_FONTCHANGE => crate::system_fonts::changed(),
+        WM_FONTCHANGE => crate::gui::system_fonts::changed(),
         WM_DESTROY => unsafe {
             RemoveWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID);
         },

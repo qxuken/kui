@@ -33,8 +33,25 @@ fn frame_with(core: &mut Core, root: Option<NodeSpec>) {
     ui.finish();
 }
 
-fn on() -> Core {
+fn with_clock() -> Core {
+    use crate::perf::{PerfClock, PerfHost};
+    use std::{cell::Cell, rc::Rc};
+
+    #[derive(Default)]
+    struct Tick(Cell<u64>);
+    impl PerfClock for Tick {
+        fn now_us(&self) -> u64 {
+            self.0.replace(self.0.get() + 10)
+        }
+    }
+
     let mut core = Core::new();
+    core.supply_perf_host(PerfHost::new(Some(Rc::new(Tick::default())), None));
+    core
+}
+
+fn on() -> Core {
+    let mut core = with_clock();
     core.set_devtools(true);
     frame(&mut core);
     frame(&mut core);
@@ -2623,7 +2640,7 @@ fn a_thread_span_nests_where_it_ran() {
 /// are counted, not kept (backlog F216).
 #[test]
 fn a_note_is_kept_in_its_frame_and_bounded() {
-    let mut core = Core::new();
+    let mut core = with_clock();
     core.perf_note("nothing listens");
     core.set_perf_recording(true);
     let mut ui = core.frame(VIEWPORT, 1.0);
@@ -2738,13 +2755,14 @@ fn the_panel_s_captures_answer_the_panel_and_an_app_s_the_app() {
     core.devtools_act("screenshot");
     frame(&mut core);
     let asks = core.take_capture_commands();
-    assert!(
-        matches!(&asks[..], [crate::CaptureCommand::Still { path, .. }] if path.ends_with(".png")),
-        "{asks:?}"
+    assert_eq!(
+        asks,
+        [crate::CaptureCommand::Devtools(
+            crate::DevtoolsCapture::Screenshot
+        )]
     );
-    let crate::CaptureCommand::Still { path, message } = asks[0].clone() else {
-        unreachable!()
-    };
+    let path = "kui-test.png".to_string();
+    let message = Some(core.devtools_capture_started(&path, false));
     core.captured(
         message.clone(),
         crate::event::Captured {
@@ -3064,9 +3082,6 @@ fn the_menu_holds_the_placements_and_an_overflowing_strip_scrolls() {
 /// core starts no process (backlog F253).
 #[test]
 fn open_in_kui_perf_saves_the_trace_and_asks_the_runner() {
-    let dir = std::env::temp_dir().join(format!("kui-f253-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    super::TEST_CAPTURE_DIR.with_borrow_mut(|d| *d = Some(dir.clone()));
     let busy = |core: &mut Core| {
         let mut ui = core.frame(VIEWPORT, 1.0);
         view(&mut ui, None);
@@ -3088,24 +3103,32 @@ fn open_in_kui_perf_saves_the_trace_and_asks_the_runner() {
     let _ = core.take_menu_actions();
     access_click(&mut core, button);
     busy(&mut core);
-    let asked: Vec<String> = core
-        .take_menu_actions()
-        .into_iter()
-        .filter_map(|a| match a {
-            crate::menu::MenuAction::OpenRecording { path } => Some(path),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(asked.len(), 1, "the runner is asked once");
-    let bytes = std::fs::read(&asked[0]).expect("saved first");
+    assert!(core.take_menu_actions().is_empty());
+    let asks = core.take_capture_commands();
+    let [
+        crate::CaptureCommand::Devtools(crate::DevtoolsCapture::Trace {
+            bytes,
+            inspect: true,
+        }),
+    ] = &asks[..]
+    else {
+        panic!("expected trace export, got {asks:?}");
+    };
     assert!(
-        kui_trace::Trace::from_bytes(&bytes)
+        kui_trace::Trace::from_bytes(bytes)
             .unwrap()
             .timeline()
             .frames
             .len()
             >= 5
     );
-    super::TEST_CAPTURE_DIR.with_borrow_mut(|d| *d = None);
-    let _ = std::fs::remove_dir_all(&dir);
+    core.devtools_trace_exported("test.kuitrace".into(), true, Err("write failed".into()));
+    assert!(core.take_menu_actions().is_empty());
+    core.devtools_trace_exported("test.kuitrace".into(), true, Ok(()));
+    assert_eq!(
+        core.take_menu_actions(),
+        [crate::menu::MenuAction::OpenRecording {
+            path: "test.kuitrace".into()
+        }]
+    );
 }

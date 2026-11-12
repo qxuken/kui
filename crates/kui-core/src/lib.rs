@@ -177,7 +177,7 @@ pub use access::{
 pub use anim::{Bounce, Easing, MAX_BOUNCE, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId, Why};
 pub use calc::{Calc, Expr as SizeExpr};
-pub use captures::{CaptureCommand, CaptureFormat};
+pub use captures::{CaptureCommand, CaptureFormat, DevtoolsCapture};
 pub use cells::{Cell, CellGrid, CellStore, CellsId, CursorShape as CellCursor};
 pub use color::Color;
 pub use cursor::CursorShape;
@@ -239,6 +239,7 @@ pub use runtime::{
     Content, Core, Extension, FillAnswer, MenuPopupAnswer, MenuPopupSubmenu, Owed, PaintAudit,
     PaintEscape, SvgOpts, SvgSource,
 };
+pub use runtime::{SvgAssetRequest, SvgFileResolver, SvgFileUpdate, SvgStamp};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry, WheelFeel};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};
 pub use session::{Session, SharedAudio, SharedResources};

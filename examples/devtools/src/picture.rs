@@ -115,9 +115,9 @@ pub fn record<E: Example>(
     std::fs::write(path, apng).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// A bare core with the pins every picture has.
+/// A native core with the pins every picture has.
 fn core(cli: &Cli) -> Core {
-    let mut core = Core::new();
+    let mut core = kui_native::system::new_core();
     core.set_system(SystemEnv {
         appearance: cli.base.unwrap_or(Appearance::Light),
         accent: cli.accent,

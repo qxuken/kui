@@ -3,6 +3,8 @@
 //! and the drawn menu bar, by the pointer and by the keyboard, and the
 //! doors a host that shows menus itself reports a row inside one through.
 
+mod support;
+
 use kui_core::testing::{click, edit_key, hover};
 use kui_core::{
     BarMenu, Core, EditKey, Key, Menu, MenuBar, MenuItem, Mods, NodeSpec, Rect, Role, Size,
@@ -311,7 +313,7 @@ fn a_resting_pointer_does_not_undo_the_keyboard() {
 /// with the submenu draws a chevron where an accelerator would be.
 #[test]
 fn a_row_inside_reads_its_accelerator_in_the_platforms_spelling() {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     open(&mut core);
     let kui = MenuItem::at_path(&core.menu().unwrap().items, &[1, 2, 0])
         .unwrap()

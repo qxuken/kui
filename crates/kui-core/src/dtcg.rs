@@ -143,34 +143,39 @@ fn fail(message: impl Into<String>) -> DtcgError {
     }
 }
 
-/// Loads the DTCG file at `path`: a token file, or a resolver whose `$ref`s
-/// resolve relative to it.
-pub fn from_path(path: impl AsRef<Path>, opts: &DtcgOptions) -> Result<Dtcg, DtcgError> {
-    let path = path.as_ref();
-    let src =
-        std::fs::read_to_string(path).map_err(|e| fail(format!("{}: {e}", path.display())))?;
-    let base = path.parent().map(Path::to_path_buf);
-    from_str_named(&src, base.as_deref(), &path.display().to_string(), opts)
-}
-
-/// Loads a DTCG document from text; a resolver's relative `$ref`s resolve
-/// against `base`, and are refused without one.
+/// Loads an in-memory DTCG document. External references need an explicit resolver.
 pub fn from_str(src: &str, base: Option<&Path>, opts: &DtcgOptions) -> Result<Dtcg, DtcgError> {
-    from_str_named(src, base, "the document", opts)
+    from_str_with(src, base, "the document", opts, &mut |_| {
+        Err("no document resolver supplied".into())
+    })
 }
 
-fn from_str_named(
+/// Loads a DTCG document and its relative references through a host resolver.
+pub fn from_path_with(
+    path: &Path,
+    opts: &DtcgOptions,
+    read: &mut dyn FnMut(&Path) -> Result<String, String>,
+) -> Result<Dtcg, DtcgError> {
+    let name = path.display().to_string();
+    let src = read(path).map_err(|e| fail(format!("{name}: {e}")))?;
+    from_str_with(&src, path.parent(), &name, opts, read)
+}
+
+/// Loads a DTCG document and asks the caller for each referenced document.
+/// Paths are joined to `base` and each document is parsed once per load.
+pub fn from_str_with(
     src: &str,
     base: Option<&Path>,
     name: &str,
     opts: &DtcgOptions,
+    read: &mut dyn FnMut(&Path) -> Result<String, String>,
 ) -> Result<Dtcg, DtcgError> {
     let doc = json::parse(src).map_err(|e| fail(format!("{name}: {e}")))?;
     let mut warnings = Vec::new();
-    let mut files = Files::new(base);
+    let mut files = Files::new(base, read);
     let (light, dark, resolver) = if doc.get("resolutionOrder").is_some() {
         let modifier = pick_modifier(&doc, opts)?;
-        let half = |ctx: &str, files: &mut Files| -> Result<Flat, DtcgError> {
+        let half = |ctx: &str, files: &mut Files<'_>| -> Result<Flat, DtcgError> {
             let mut inputs = opts.inputs.clone();
             if let Some(m) = &modifier {
                 inputs.retain(|(k, _)| !k.eq_ignore_ascii_case(m));
@@ -280,14 +285,18 @@ fn flatten(v: &Value, path: &mut Vec<String>, ty: Option<&str>, out: &mut Flat) 
 }
 
 /// The documents a resolver names, read once each.
-struct Files {
+type ReadDocument<'a> = dyn FnMut(&Path) -> Result<String, String> + 'a;
+
+struct Files<'a> {
+    read: &'a mut ReadDocument<'a>,
     base: Option<PathBuf>,
     cache: Vec<(PathBuf, Value)>,
 }
 
-impl Files {
-    fn new(base: Option<&Path>) -> Self {
+impl<'a> Files<'a> {
+    fn new(base: Option<&Path>, read: &'a mut ReadDocument<'a>) -> Self {
         Files {
+            read,
             base: base.map(Path::to_path_buf),
             cache: Vec::new(),
         }
@@ -308,8 +317,7 @@ impl Files {
         if let Some((_, v)) = self.cache.iter().find(|(p, _)| *p == path) {
             return Ok(v.clone());
         }
-        let src =
-            std::fs::read_to_string(&path).map_err(|e| fail(format!("{}: {e}", path.display())))?;
+        let src = (self.read)(&path).map_err(|e| fail(format!("{}: {e}", path.display())))?;
         let v = json::parse(&src).map_err(|e| fail(format!("{}: {e}", path.display())))?;
         self.cache.push((path, v.clone()));
         Ok(v)
@@ -332,7 +340,12 @@ fn pointer<'a>(v: &'a Value, ptr: &str) -> Option<&'a Value> {
 
 /// A `$ref` entry's target, with the entry's sibling keys laid over it
 /// (shallowly, as the Resolver Module says).
-fn deref(doc: &Value, entry: &Value, files: &mut Files, depth: usize) -> Result<Value, DtcgError> {
+fn deref(
+    doc: &Value,
+    entry: &Value,
+    files: &mut Files<'_>,
+    depth: usize,
+) -> Result<Value, DtcgError> {
     if depth > 32 {
         return Err(fail("$ref chain too deep (circular?)"));
     }
@@ -369,7 +382,7 @@ fn deref(doc: &Value, entry: &Value, files: &mut Files, depth: usize) -> Result<
 fn add_sources(
     doc: &Value,
     sources: &Value,
-    files: &mut Files,
+    files: &mut Files<'_>,
     out: &mut Flat,
 ) -> Result<(), DtcgError> {
     let Value::List(list) = sources else {
@@ -385,7 +398,11 @@ fn add_sources(
 /// One resolution of a resolver document under `inputs` (Resolver Module
 /// §5): sets contribute their sources, modifiers their chosen context,
 /// later entries over earlier ones.
-fn resolve(doc: &Value, inputs: &[(String, String)], files: &mut Files) -> Result<Flat, DtcgError> {
+fn resolve(
+    doc: &Value,
+    inputs: &[(String, String)],
+    files: &mut Files<'_>,
+) -> Result<Flat, DtcgError> {
     let Some(Value::List(order)) = doc.get("resolutionOrder") else {
         return Err(fail("`resolutionOrder` must be a list"));
     };
@@ -929,8 +946,27 @@ fn convert(light: &Flat, dark: &Flat, opts: &DtcgOptions, warnings: &mut Vec<Dtc
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+
+    fn from_path(path: PathBuf, opts: &DtcgOptions) -> Result<Dtcg, DtcgError> {
+        from_path_with(&path, opts, &mut |path| {
+            std::fs::read_to_string(path).map_err(|e| e.to_string())
+        })
+    }
+
+    #[test]
+    fn a_root_read_error_names_the_document() {
+        let error = from_path_with(
+            Path::new("theme.json"),
+            &DtcgOptions::default(),
+            &mut |_| Err("permission denied".into()),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error.message, "theme.json: permission denied");
+    }
 
     fn temp(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("kui-dtcg-{tag}-{}", std::process::id()));

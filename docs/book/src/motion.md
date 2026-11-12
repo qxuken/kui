@@ -1,5 +1,7 @@
 # Motion
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/08_motion">Live chapter example</a>
+
 At the end of this chapter, a panel springs between two widths, and
 toasts slide in and out.
 

@@ -23,6 +23,9 @@ mlua.workspace = true
 # extensions (ADR 0059), and a script's `env.add_extension` opens a C plugin
 # through the loader kui-ffi registers (`set_native_loader`).
 
+[target.'cfg(not(target_os = "wasi"))'.dependencies]
+kui-native.workspace = true
+
 [dev-dependencies]
 # The C loader, for the examples and tests whose script loads a C plugin
 # (`kui_ffi::register_native_loader`). A dev-dependency may close the cycle,
@@ -32,7 +35,7 @@ mlua.workspace = true
 # first publish stopped there, before uploading anything.
 kui-ffi = { path = "../kui-ffi", default-features = false }
 divan.workspace = true
-kui-native.workspace = true
+kui-native = { workspace = true, features = ["default"] }
 # The examples' devtools (docs/adr/0021), for the Rust host of the panel.
 kui-devtools.workspace = true
 # Kit (addons/kit) placed through its generated wrappers, and its schema

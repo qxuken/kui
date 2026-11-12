@@ -115,7 +115,7 @@ impl App for Motion {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Motion")
         .size(480.0, 360.0)
         .run(Motion::default())

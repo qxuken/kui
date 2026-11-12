@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 kui-core.workspace = true
-kui-native.workspace = true
+kui-native = { workspace = true, features = ["default"] }
 # For `CExtension` and nothing else: the loader that turns a C shared
 # library into an `Extension` this addon can host (ADR 0014). Without the
 # `runner` default, which is the windowed C entry points — this crate has

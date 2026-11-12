@@ -94,6 +94,15 @@ impl ScrollRegion {
 }
 
 impl Core {
+    /// Dispatches a pixel scroll and reports whether kui claimed it.
+    /// An embedding host can leave unclaimed deltas to its surrounding view.
+    pub fn handle_scroll(&mut self, delta: Vec2, begins: bool) -> (Vec<UiEvent>, bool) {
+        let events = self.handle_input(InputEvent::ScrollGesture { delta, begins });
+        let consumed = (delta.x != 0.0 && self.scroll_latch.x.is_some())
+            || (delta.y != 0.0 && self.scroll_latch.y.is_some());
+        (events, consumed)
+    }
+
     /// Routes one wheel delta: to the targets the gesture under way
     /// latched, or — for the gesture's first event, or an axis it first
     /// moves on — to the ones picked under the pointer now. `wheel` is a

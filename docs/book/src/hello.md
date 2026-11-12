@@ -1,5 +1,7 @@
 # Hello, window
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/01_hello">Live chapter example</a>
+
 At the end of this chapter, a window shows one line of text.
 
 ## The whole program

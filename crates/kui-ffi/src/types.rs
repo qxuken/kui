@@ -230,7 +230,7 @@ impl KuiCtx {
     #[cfg(any(feature = "runner", test))]
     pub(crate) fn take_core(&mut self) -> Option<Box<Core>> {
         let taken = self._owned.take()?;
-        let mut fresh = Box::new(Core::new());
+        let mut fresh = Box::new(kui_native::system::new_core());
         fresh.set_diagnostics(false);
         self.core = &mut *fresh;
         self._owned = Some(fresh);

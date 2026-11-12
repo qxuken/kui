@@ -1,5 +1,5 @@
 //! Acquire the next drawable without blocking AppKit input delivery.
-use crate::access_bridge::UserEvent;
+use crate::gui::access_bridge::UserEvent;
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use std::sync::{Arc, Mutex, mpsc};

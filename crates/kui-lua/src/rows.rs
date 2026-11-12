@@ -25,12 +25,13 @@ fn row(i: &Value, what: &str) -> mlua::Result<usize> {
     crate::measure_arg(i, what)
 }
 
-/// The most rows a list holds: what Node's `count` reads a row count up
-/// to, and the most the core's unmeasured-row tally (a `u32` prefix sum)
-/// counts. A row count is a measure, so `math.huge` saturates to
-/// `usize::MAX`, and `RowHeights` asked the allocator for that many
-/// heights and panicked on the capacity.
-const MAX_ROWS: usize = u32::MAX as usize;
+/// The limit of the core's u32 tally, or on a 32-bit target the limit of
+/// an allocation of four-byte elements with room for the prefix's zero.
+const MAX_ROWS: usize = if usize::BITS <= 32 {
+    isize::MAX as usize / size_of::<f32>() - 1
+} else {
+    u32::MAX as usize
+};
 
 /// A list's row count — [`row`], refused naming `what` past [`MAX_ROWS`]
 /// rather than cut to it: a cut count still allocates a height a row, and

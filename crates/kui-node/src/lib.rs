@@ -529,7 +529,7 @@ impl Ctx {
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Ctx::around(Core::new())
+        Ctx::around(kui_native::system::new_core())
     }
 
     /// A context owning `core`. Armed for `hit` and `pointerWants` from
@@ -2005,7 +2005,7 @@ pub fn load_tokens(source: Json, options: Option<Json>) -> Result<Json> {
         }
     }
     let loaded = match &source {
-        Json::String(path) => dtcg::from_path(path, &opts),
+        Json::String(path) => kui_native::system::load_dtcg(path, &opts),
         other @ Json::Object(_) => dtcg::from_str(&other.to_string(), None, &opts),
         _ => return Err(err("loadTokens(): source is a path or a token document")),
     }
@@ -5497,7 +5497,7 @@ impl KuiWindow {
     /// The core the shared doors reach from inside `onTeardown`.
     fn detached(&mut self) -> &mut (Core, Vec<UiEvent>) {
         self.detached
-            .get_or_insert_with(|| Box::new((Core::new(), Vec::new())))
+            .get_or_insert_with(|| Box::new((kui_native::system::new_core(), Vec::new())))
     }
 
     /// Through the runner's own list, for the same reason a headless

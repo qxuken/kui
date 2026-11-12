@@ -13,7 +13,7 @@ const SCRIPT: &str = r#"
           shadow_color = 0x00000080, shadow_blur = 6, shadow_x = 2, shadow_y = 2,
           when = {
             -- Every platform: the entry always holds.
-            { platform = { "macos", "windows", "linux" }, shadow_x = 3, shadow_y = 5 },
+            { platform = { "macos", "windows", "linux", "other" }, shadow_x = 3, shadow_y = 5 },
           },
         }
       end,

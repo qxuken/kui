@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 
 use winit::event::TouchPhase;
 
-use crate::axis_lock::GAP;
+use crate::gui::axis_lock::GAP;
 
 /// How soon after the fingers lift a `Started` is the glide's rather
 /// than a finger's: macOS starts the glide on the next event, and no hand

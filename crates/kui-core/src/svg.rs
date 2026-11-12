@@ -161,10 +161,13 @@ mod real {
         }
     }
 
-    fn options() -> usvg::Options<'static> {
+    fn options(css: String) -> usvg::Options<'static> {
         usvg::Options {
-            style_sheet: Some(SENTINEL_CSS.into()),
-            resources_dir: None,
+            style_sheet: Some(css),
+            image_href_resolver: usvg::ImageHrefResolver {
+                resolve_string: Box::new(|_, _| None),
+                ..Default::default()
+            },
             ..usvg::Options::default()
         }
     }
@@ -174,7 +177,7 @@ mod real {
         /// `<image>` it names by path is left out (and the picture is drawn
         /// as an image without it), only a `data:` one is kept.
         pub fn parse(data: &[u8]) -> Result<Svg, SvgError> {
-            let tree = usvg::Tree::from_data(data, &options())
+            let tree = usvg::Tree::from_data(data, &options(SENTINEL_CSS.into()))
                 .map_err(|e| SvgError(format!("svg: {e}")))?;
             let size = (tree.size().width(), tree.size().height());
             let mut shapes = Vec::new();
@@ -311,14 +314,7 @@ mod real {
             // needs no recolouring pass.
             let hex = color.to_hex();
             let css = format!("svg {{ color: #{:06x}; }}", hex >> 8);
-            let recoloured = usvg::Tree::from_data(
-                &self.source,
-                &usvg::Options {
-                    style_sheet: Some(css),
-                    resources_dir: None,
-                    ..usvg::Options::default()
-                },
-            );
+            let recoloured = usvg::Tree::from_data(&self.source, &options(css));
             let tree = recoloured.as_ref().unwrap_or(&self.tree);
             if self.reaches_past_raster(w, h, scale, fit) {
                 return (pw, ph, vec![0; (pw * ph * 4) as usize]);

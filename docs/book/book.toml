@@ -12,6 +12,8 @@ create-missing = false
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "navy"
+additional-js = ["live-example.js"]
+additional-css = ["live-example.css"]
 
 [output.html.fold]
 enable = false

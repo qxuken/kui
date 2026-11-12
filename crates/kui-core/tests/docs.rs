@@ -3,6 +3,8 @@
 //! it shipped in. Nothing here reads the code — these are the two claims a
 //! page makes that another file in the same commit can settle.
 
+#![allow(clippy::disallowed_methods)]
+
 use std::path::{Path, PathBuf};
 
 fn docs_dir() -> PathBuf {

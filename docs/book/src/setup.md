@@ -78,8 +78,13 @@ with [mdBook](https://rust-lang.github.io/mdBook/) from `docs/book` in a
 checkout of [the repository](https://github.com/qxuken/kui):
 
 ```bash
-cargo install mdbook
-mdbook serve docs/book --open
+mise install --locked rust nu mdbook node npm
+export WASI_SDK_PATH=/path/to/wasi-sdk
+nu scripts/book-build.nu --install-tools
+python3 -m http.server 8080 --bind 127.0.0.1 --directory target/book
 ```
 
-`serve` rebuilds on every save and reloads the browser.
+The Lua examples need [WASI SDK 34](https://github.com/WebAssembly/wasi-sdk/releases/tag/wasi-sdk-34).
+
+Open [the local book](http://127.0.0.1:8080/) to try the live examples.
+For a text-only preview with live Markdown reload, run `mdbook serve docs/book --open`.

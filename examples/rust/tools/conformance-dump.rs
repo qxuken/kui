@@ -1,6 +1,6 @@
 //! Dumps the scene corpus's reference report (see `kui_core::conformance`).
 //!
-//!     cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+//!     cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt
 //!
 //! The other bindings rebuild the same scenes and diff their own report
 //! against this file. It is generated, never checked in: the quad digests
@@ -8,7 +8,7 @@
 //! that produced them.
 
 fn main() {
-    let text = kui_core::conformance::reference_report();
+    let text = kui_native::conformance::reference_report_with(kui_native::system::new_core);
     match std::env::args().nth(1) {
         Some(path) => std::fs::write(&path, text).unwrap_or_else(|e| {
             eprintln!("conformance-dump: {path}: {e}");

@@ -16,8 +16,18 @@ that runs under plain `cargo test`.
 cargo add kui-native
 ```
 
-Default features: `audio`, `accesskit`, `derive` (`#[derive(Message)]`) and
-`dialogs`; each can be turned off with `--no-default-features`.
+The default features enable `gui`, `audio`, `accesskit`, `derive`
+(`#[derive(Message)]`) and `dialogs`. An app can use `--no-default-features`
+with `gui` to choose the runner and enable those integrations individually.
+Hosts with their own renderer and loop can use `kui_native::system::new_core`
+with default features disabled. `image-codecs` enables the image encoders
+and decoders independently of the runner.
+
+`system::new_core` prepares the desktop font catalog and installs the native
+font, SVG, and recording adapters. `system::new_session` does the same for
+windows that share a session. For a fixed font set, use `Session::with_fonts`
+and supply the platform convention explicitly. Enable `tracing` for live
+span forwarding to a native subscriber.
 
 On Linux the build needs `pkg-config` and ALSA's headers (`libasound2-dev`
 on Debian and Ubuntu). A window loads `libxkbcommon`, the X11 or Wayland

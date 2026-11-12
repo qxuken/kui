@@ -175,7 +175,7 @@ fn work_area(window: &Window, p: (f64, f64)) -> Option<Area> {
         // AppKit's frames are the other way up, but the insets are not:
         // the menu bar is what the visible frame leaves at the top, the
         // Dock what it leaves at the bottom or a side.
-        if let Some(screen) = crate::macos_chrome::ns_window(window).and_then(|w| w.screen()) {
+        if let Some(screen) = crate::gui::macos_chrome::ns_window(window).and_then(|w| w.screen()) {
             let (f, v) = (screen.frame(), screen.visibleFrame());
             let top = (f.origin.y + f.size.height) - (v.origin.y + v.size.height);
             let bottom = v.origin.y - f.origin.y;
@@ -716,7 +716,7 @@ impl DynShell<'_> {
                     return false;
                 }
             };
-        let applied = crate::backdrop::apply(&window, &renderer, Backdrop::Opaque);
+        let applied = crate::gui::backdrop::apply(&window, &renderer, Backdrop::Opaque);
         #[cfg(target_os = "macos")]
         macos_key::refuse_key(&window);
         core.env.window.id = id;

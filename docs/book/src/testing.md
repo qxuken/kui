@@ -1,5 +1,7 @@
 # Testing without a window
 
+<a data-kui-example="400" href="live/gallery.html?example=tutorial/10_testing">Live chapter example</a>
+
 `kui test` runs Lua and Teal app tests with no window. Input still passes
 through the real core and Kit: routing, focus, editing and layout are the
 same paths the app normally uses.
@@ -84,6 +86,12 @@ fonts, scale 1, Linux platform conventions, light appearance, en-US and a
 fixed clock origin. `--system-fonts` uses the machine's fonts instead.
 Original captured pixels remain available when drawing playback on another
 GPU/backend differs slightly.
+
+Rust tests can pass a portable `kui_core::Core::new()` to
+`kui_native::testing::Drive`. For assertions that depend on font metrics,
+construct the core with `Session::with_fonts` and fixed font bytes. Use
+`kui_native::system::new_core()` when the test exercises installed fonts,
+native shortcuts, or path-based font and SVG loading.
 
 ## Temporary resources and mocks
 

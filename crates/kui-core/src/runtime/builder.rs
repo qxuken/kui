@@ -897,6 +897,7 @@ impl Core {
     /// `open_with_key` with the node named `label` for `key_of`, the way
     /// `open_keyed` names its node — for a key the caller fixed rather
     /// than derived (a devtools tab's body).
+    #[cfg(feature = "devtools")]
     pub(crate) fn open_with_key_named(&mut self, key: Key, label: &str, spec: NodeSpec) {
         if self.tree.is_empty() {
             return;

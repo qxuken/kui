@@ -106,7 +106,7 @@ run options:
   --time MS      with --export, pin the snapshot clock (default 0)
   --appearance light|dark
                  pin the light or dark appearance over the OS's (headless has none of its own)
-  --platform macos|windows|linux
+  --platform macos|windows|linux|other
                  with --headless or --shot, draw as that platform does: its shortcut labels
                  and keys, and under custom chrome its titlebar (a Mac's traffic lights)
   -- ARGS        what follows is the app's, in kui.args
@@ -264,7 +264,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
                     it.next()
                         .as_deref()
                         .and_then(kui_native::Platform::parse)
-                        .ok_or("--platform needs macos, windows or linux")?,
+                        .ok_or("--platform needs macos, windows, linux or other")?,
                 );
             }
             "--scale" => {
@@ -991,13 +991,13 @@ kui pack — build the app for any platform (ADR 0068)
 usage: kui pack [path] [options]
 
   --target T,...       linux-x64, linux-arm64, darwin-arm64, win32-x64, or all (default: this machine)
-  --format F,...       exe (Windows), app (macOS), bin (Linux), npm, kui (the archive alone);
+  --format F,...       exe (Windows), app (macOS), bin (Linux), npm, kui (the archive alone), or web;
                        default: each target's own
   --out DIR            where the builds go (default: dist)
   --bytecode           compile the app's Lua to bytecode (sources by default)
   --strip              with --bytecode, drop the debug information
   --installer URL      also write install.sh and install.ps1 fetching the builds from URL
-  --runner FILE        use this runner binary rather than the release's
+  --runner FILE        use a local runner binary or web runner zip
   --runner-mirror URL  fetch runners from a mirror with the release's layout (also KUI_RUNNER_MIRROR)
 
 The app needs an id in kui.config.lua. It packs the runner it pins (kui = \"<version>\"),

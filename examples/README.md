@@ -30,6 +30,9 @@ and `cargo run` needs the right `-p` — the tables below have it. The
 published crates do not carry their examples in the tarball (cargo drops
 a target whose source sits outside the package); read them here.
 
+The [web counter](web/README.md) runs the same Rust view and event handler
+in a browser using WebAssembly and Canvas 2D.
+
 ## The devtools
 
 Every example runs inside [`devtools/`](devtools) (Rust; `node/devtools.tsx`
@@ -216,7 +219,7 @@ scripts beside it in `11_extensions/`, and it has tests too.
 
 | Tool | Run | What it is |
 |---|---|---|
-| [`conformance-dump.rs`](rust/tools/conformance-dump.rs) | `cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt` | Writes the scene corpus's reference report the other bindings diff against; generated, never checked in |
+| [`conformance-dump.rs`](rust/tools/conformance-dump.rs) | `cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt` | Writes the scene corpus's reference report the other bindings diff against; generated, never checked in |
 | [`schema-dump.rs`](rust/tools/schema-dump.rs) | `cargo run -p kui-core --example schema-dump -- target/odin/schema.json` | Writes the prop schema (`kui_core::schema`: props, composites, elements, events, the verb table, the name lists) as JSON, for a binding generated outside Rust — the Odin one's input |
 
 ## C — [`c/`](c)

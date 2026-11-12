@@ -1246,7 +1246,8 @@ fn drive_entry(
         }
         let tw = entry.as_mut().expect("checked above");
         tw.last_used = frame_no;
-        if !follow && tw.to != target && tw.value == tw.to && tw.velocity == [0.0; 4] {
+        let retargeting_at_rest = tw.to != target && tw.value == tw.to && tw.velocity == [0.0; 4];
+        if !follow && retargeting_at_rest {
             // Off the leash: settled, and the view moved it — snap.
             tw.from = target;
             tw.to = target;
@@ -1256,7 +1257,11 @@ fn drive_entry(
             return target;
         }
         if let Some(zeta) = transition.damping() {
-            // Springs retarget freely: the velocity carries over.
+            // Springs retarget freely: the velocity carries over. At
+            // rest the new target only exists from this frame onward.
+            if retargeting_at_rest {
+                tw.last_time = now;
+            }
             tw.to = target;
             tw.duration_ms = transition.duration_ms;
             tw.easing = transition.curve();
@@ -1412,6 +1417,29 @@ mod tests {
         a.set_time(0.10);
         a.begin_frame(frame.next());
         assert!((a.drive(k, Slot::Width, None, one(0.0), t, true)[0] - 25.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_spring_retargeted_at_rest_starts_when_the_target_changes() {
+        let mut anim = AnimStore::default();
+        let key = Key::ROOT.str("bar");
+        let spring = Transition::ms(100.0).easing(Easing::Smooth);
+        anim.set_time(0.0);
+        anim.begin_frame(1);
+        anim.drive(key, Slot::Width, None, one(0.0), spring, true);
+
+        anim.set_time(1.0);
+        anim.begin_frame(2);
+        assert_eq!(
+            anim.drive(key, Slot::Width, None, one(100.0), spring, true)[0],
+            0.0
+        );
+        assert!(anim.animating());
+
+        anim.set_time(1.0 + 1.0 / 60.0);
+        anim.begin_frame(3);
+        let width = anim.drive(key, Slot::Width, None, one(100.0), spring, true)[0];
+        assert!((0.0..100.0).contains(&width) && width > 0.0);
     }
 
     #[test]
@@ -1674,6 +1702,12 @@ mod tests {
         assert!(!a.animating());
         // Given its length back, it eases from there.
         a.set_time(0.048);
+        a.begin_frame(frame.next());
+        assert_eq!(
+            a.drive(k, Slot::Width, None, one(90.0), springy, true)[0],
+            60.0
+        );
+        a.set_time(0.064);
         a.begin_frame(frame.next());
         let v = a.drive(k, Slot::Width, None, one(90.0), springy, true)[0];
         assert!(v > 60.0 && v < 90.0, "eases on from 60: {v}");

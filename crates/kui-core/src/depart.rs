@@ -791,7 +791,7 @@ mod tests {
     fn a_ghost_plays_out_and_then_goes() {
         let mut d = DepartStore::default();
         let mut frame = Frames(0);
-        let text = crate::text::TextSystem::new();
+        let text = crate::text::TextSystem::default();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let paths = crate::path::PathStore::default();
@@ -820,7 +820,7 @@ mod tests {
     fn a_key_that_comes_back_takes_its_ghost_with_it() {
         let mut d = DepartStore::default();
         let mut frame = Frames(0);
-        let text = crate::text::TextSystem::new();
+        let text = crate::text::TextSystem::default();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let paths = crate::path::PathStore::default();
@@ -845,7 +845,7 @@ mod tests {
     fn a_second_departure_of_one_key_replaces_the_first() {
         let mut d = DepartStore::default();
         let mut frame = Frames(0);
-        let text = crate::text::TextSystem::new();
+        let text = crate::text::TextSystem::default();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let paths = crate::path::PathStore::default();
@@ -866,7 +866,7 @@ mod tests {
 
     #[test]
     fn a_node_without_both_halves_never_departs() {
-        let text = crate::text::TextSystem::new();
+        let text = crate::text::TextSystem::default();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let paths = crate::path::PathStore::default();
@@ -894,7 +894,7 @@ mod tests {
     /// departed one after another at `now` — the way `collect_departures`
     /// feeds a frame's admitted removal to the store.
     fn depart_sixteens(d: &mut DepartStore, from: u64, count: u64, now: f64) {
-        let text = crate::text::TextSystem::new();
+        let text = crate::text::TextSystem::default();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let paths = crate::path::PathStore::default();
@@ -1006,7 +1006,7 @@ mod tests {
     fn a_ghost_nobody_replays_is_swept() {
         let mut d = DepartStore::default();
         let mut frame = Frames(0);
-        let text = crate::text::TextSystem::new();
+        let text = crate::text::TextSystem::default();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let paths = crate::path::PathStore::default();
@@ -1027,7 +1027,7 @@ mod tests {
     fn springs_play_out_as_ease_out() {
         let mut d = DepartStore::default();
         let mut frame = Frames(0);
-        let text = crate::text::TextSystem::new();
+        let text = crate::text::TextSystem::default();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let paths = crate::path::PathStore::default();
@@ -1050,7 +1050,7 @@ mod tests {
     fn the_exit_reads_an_enter_backwards() {
         let mut d = DepartStore::default();
         let mut frame = Frames(0);
-        let text = crate::text::TextSystem::new();
+        let text = crate::text::TextSystem::default();
         let lines = crate::line::LineStore::default();
         let fragments = crate::fragment::FragmentList::default();
         let paths = crate::path::PathStore::default();

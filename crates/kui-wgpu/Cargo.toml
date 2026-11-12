@@ -12,10 +12,16 @@ readme = "README.md"
 publish = ["crates-io"]
 
 [dependencies]
-kui-core.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+kui-core.workspace = true
 pollster.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+kui-core = { path = "../kui-core", version = "0.1.0-alpha.79", default-features = false }
+web-time = "1.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

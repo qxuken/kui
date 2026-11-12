@@ -6,6 +6,8 @@
 //! only make the letter large on its first line, which stood that line
 //! apart from the next.
 
+mod support;
+
 use kui_core::{
     Color, Core, FontFamily, Key, NodeSpec, QuadKind, Rect, Role, Size, Sizing, Span, TextHit,
     TextStyle, Vec2,
@@ -198,7 +200,7 @@ fn a_text_laid_out_again_at_another_width_and_back_is_where_it_was() {
 fn rich_text_keeps_its_spans_and_the_letter_its_face_and_colour() {
     let red = Color::hex(0xc02020ff);
     let wash = Color::hex(0xffe08aff);
-    let mut core = Core::new();
+    let mut core = support::fonts();
     let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let para = ui.with_keyed("para", NodeSpec::row().width(Sizing::Fixed(WIDTH)), |ui| {

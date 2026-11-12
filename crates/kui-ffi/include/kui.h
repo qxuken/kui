@@ -4026,9 +4026,10 @@ enum {
     KUI_PLATFORM_MACOS = 1,
     KUI_PLATFORM_WINDOWS = 2,
     KUI_PLATFORM_LINUX = 3,
+    KUI_PLATFORM_OTHER = 4,
 };
-/* The platform the app runs on, a KUI_PLATFORM_* (backlog C116; every
- * other Unix reads as Linux): the fact a `when` entry's `platform`
+/* The platform the host supplied, a KUI_PLATFORM_* (backlog C116):
+ * the fact a `when` entry's `platform`
  * condition reads, so a view that follows a platform's convention in C and
  * a rule that follows it agree. 0 on a bad context. ABI 39. */
 uint32_t kui_platform(KuiCtx *ctx);

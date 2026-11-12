@@ -2,10 +2,12 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
-<img src="../../img/examples/apps/counter.png" width="560" alt="apps/counter: its settled frame, drawn headlessly by --shot">
-
-*The example as it draws: its settled frame, drawn headlessly by `--shot`.*
+<a data-kui-example="480" href="../../live/gallery.html?example=apps/counter">Live counter example</a>
 
 ```rust,noplayground
 {{#include ../../../../../examples/rust/apps/counter.rs}}
+```
+
+```rust,noplayground
+{{#include ../../../../../examples/rust/apps/counter/app.rs}}
 ```

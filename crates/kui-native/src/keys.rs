@@ -662,7 +662,7 @@ impl DynShell<'_> {
         // and a record that says Option is down swallows every key typed
         // after it (backlog RG83).
         let option_alt = cfg!(target_os = "macos")
-            && crate::pane::option_is_alt(
+            && crate::gui::pane::option_is_alt(
                 self.panes[from].applied_option_as_alt,
                 self.panes[from].alt_held,
             );

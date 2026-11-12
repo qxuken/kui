@@ -5,7 +5,7 @@
 // would use, its steps replayed, and the report diffed byte for byte against
 // the reference kui-core wrote. A tool, not an example.
 //
-//   cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+//   cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt
 //   nu scripts/odin.nu run conformance [target/conformance.txt]
 //
 // The reference path is the first argument, else KUI_CONFORMANCE, else
@@ -2913,7 +2913,7 @@ conformance :: proc(path: string) -> int {
 	data, err := os.read_entire_file(path, context.allocator)
 	if err != nil {
 		fmt.eprintf(
-			"conformance: cannot read %s\n  generate it with: cargo run -p kui-core --features conformance --example conformance-dump -- %s\n",
+			"conformance: cannot read %s\n  generate it with: cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- %s\n",
 			path,
 			path,
 		)

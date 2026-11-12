@@ -435,7 +435,7 @@ pub const DOORS: &[Door] = &[
         odin: Is("platform"),
         node: As("`env().platform`, a reading"),
         lua: As("`env.platform`, a reading"),
-        doc: "The platform the app runs on (backlog C116): macOS, Windows or Linux (`\"macos\"` / `\"windows\"` / `\"linux\"` in Lua and Node, a `KUI_PLATFORM_*` in C), the fact a `when` entry's `platform` condition reads, so a script following a platform's convention and a rule following it agree.",
+        doc: "The platform the app runs on (backlog C116): macOS, Windows, Linux or Other (`\"macos\"` / `\"windows\"` / `\"linux\"` / `\"other\"` in Lua and Node, a `KUI_PLATFORM_*` in C), the fact a `when` entry's `platform` condition reads, so a script following a platform's convention and a rule following it agree.",
     },
     Door {
         rust: "Core::set_platform",
@@ -2434,6 +2434,7 @@ pub const DOORS: &[Door] = &[
 ];
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 
@@ -2475,7 +2476,7 @@ mod tests {
             + &read(root.join("../../kui-channel/src/lanes.rs"));
         let menu = read(root.join("menu.rs"));
         let gpu = read(root.join("gpu.rs"));
-        let launcher = read(root.join("../../kui-native/src/lib.rs"));
+        let launcher = read(root.join("../../kui-native/src/gui.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
             + &read(root.join("../../kui-native/src/encode.rs"))

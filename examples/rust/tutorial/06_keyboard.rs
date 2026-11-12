@@ -142,7 +142,7 @@ impl App for Grid {
     // ANCHOR_END: on_event
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui_native::app("Keyboard")
         .size(420.0, 320.0)
         .run(Grid::default())

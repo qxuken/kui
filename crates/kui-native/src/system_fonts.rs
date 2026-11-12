@@ -1,7 +1,7 @@
 //! The system's installed fonts changing while the app runs.
 //!
-//! kui scans the system's fonts once a process (`kui_core`'s
-//! `text::new_font_system`), so a font the user installs afterwards is not
+//! The system adapter caches its prepared font catalog per process, so a
+//! font the user installs afterwards is not
 //! in any session until `Core::reload_system_fonts` scans again. Where the
 //! platform says the set changed, the runner does that itself: this module
 //! turns the platform's signal into one `UserEvent::FontsChanged` on the
@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use winit::event_loop::EventLoopProxy;
 
-use crate::access_bridge::UserEvent;
+use crate::gui::access_bridge::UserEvent;
 
 /// Where a signal goes: the loop's proxy, once the shell has one.
 static PROXY: Mutex<Option<EventLoopProxy<UserEvent>>> = Mutex::new(None);

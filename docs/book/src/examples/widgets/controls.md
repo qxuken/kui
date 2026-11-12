@@ -2,9 +2,7 @@
 
 <!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->
 
-<img src="../../img/examples/widgets/controls.png" width="520" alt="widgets/controls: its settled frame, drawn headlessly by --shot">
-
-*The example as it draws: its settled frame, drawn headlessly by `--shot`.*
+<a data-kui-example="480" href="../../live/gallery.html?example=widgets/controls">Live controls example</a>
 
 ```rust,noplayground
 {{#include ../../../../../examples/rust/widgets/controls.rs}}

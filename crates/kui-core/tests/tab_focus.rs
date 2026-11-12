@@ -3,6 +3,8 @@
 //! ring confined to a modal subtree
 //! (`docs/adr/0003-modal-surfaces.md`).
 
+mod support;
+
 use kui_core::testing::tab;
 use kui_core::{
     Align, Core, EditOptions, FloatConfig, InputEvent, Key, KeyCode, KeyMods, KeyPress, NodeSpec,
@@ -168,7 +170,7 @@ fn any_other_key_disarms_the_escape_and_a_second_escape_lets_go() {
 /// sink.
 #[test]
 fn the_toggle_makes_tab_move_focus_and_an_app_reads_it() {
-    let mut core = Core::new();
+    let mut core = support::desktop();
     let (_, area, after) = area_frame(&mut core, false);
     let chord = if cfg!(target_os = "macos") {
         KeyMods::NONE.with_ctrl().with_shift()

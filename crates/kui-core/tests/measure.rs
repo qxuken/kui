@@ -3,6 +3,8 @@
 //! and between frames, wrapped or not — so a view sizes to its labels
 //! from numbers, not screenshots.
 
+mod support;
+
 use kui_core::{Color, Core, NodeSpec, Size, Span, TextStyle};
 
 /// The laid-out size of a text node: a fit-sized box with a background
@@ -157,7 +159,7 @@ fn spaces_measure_at_the_advance_unwrapped() {
 /// out to the same width.
 #[test]
 fn a_bold_style_is_a_bold_span_over_the_whole_text() {
-    let mut core = Core::new();
+    let mut core = support::fonts();
     let plain = TextStyle::new(14.0);
     let bold = TextStyle::new(14.0).bold();
     let as_style = core.measure_text("Heading one", &bold, None);

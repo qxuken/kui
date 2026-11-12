@@ -88,6 +88,7 @@ jobs:
         with:
           tools: rust node npm nu odin mdbook wgpu-native actionlint
           bindings: 'true'
+          wasi: 'true'
 
       # The book's Examples part lists every example; an example added,
       # renamed or removed without a rerun of the script would leave the
@@ -158,6 +159,16 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Native system adapter without the runner
+        run: cargo check --locked -p kui-native --no-default-features --lib
+
+      - name: Portable core
+        run: |
+          CLIPPY_CONF_DIR="$PWD/crates/kui-core" cargo clippy --locked -p kui-core --lib -- -D clippy::disallowed_methods
+          rustup target add wasm32-unknown-unknown
+          cargo check --locked -p kui-core --no-default-features --target wasm32-unknown-unknown --lib
+          nu scripts/portable-core-smoke.nu
+
       # Covers the Rust and Lua adapters over the scene corpus
       # (crates/kui-core/src/conformance.rs): kui-core asserts the scenes
       # against their checked-in expectations and that they still cover
@@ -177,14 +188,14 @@ jobs:
       # build failure here rather than a chapter that quietly shows nothing.
       # The steps themselves compile under `cargo test` above.
       - name: Book
-        run: mdbook build docs/book -d "$RUNNER_TEMP/book"
+        run: nu scripts/book-build.nu --install-tools --out-dir "$RUNNER_TEMP/book"
 
       # The conformance reference: quad digests over real glyph geometry,
       # so it holds only for this machine's fonts and is never checked in.
       # The C, Odin and Node adapters below diff their own scenes against it.
       - name: Conformance reference report
         run: |
-          cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+          cargo run -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt
           echo "KUI_CONFORMANCE=$(pwd)/target/conformance.txt" >> "$GITHUB_ENV"
 
       # A wgpu-native release, unpacked where cbuild looks first

@@ -1,7 +1,7 @@
 //! A spring, tuned by eye: the two numbers a person means when they say a
 //! motion feels right, and nothing from the physics lesson.
 //!
-//! - `transition(ms)`: how long the spring takes to get there;
+//! - `transition(ms)`: the spring's response time. It can take longer to settle.
 //! - `bounce`: how far it overshoots — 0 glides in, 0.5 visibly bounces,
 //!   0.9 rings a while (the most there is: a spring at 1 never settles).
 //!
@@ -79,7 +79,7 @@ impl App for Spring {
                 .cross_align(Align::Start)
                 .bg(t.bg),
             |ui| {
-                heading(ui, "how long it takes to get there");
+                heading(ui, "spring response time");
                 ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
                     widgets::slider_with(
                         ui,

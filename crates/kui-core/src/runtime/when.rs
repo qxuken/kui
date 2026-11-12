@@ -89,8 +89,8 @@ impl Core {
     /// The platform this core says it runs on (backlog C116): what a
     /// `platform` condition holds on and what every binding's reading
     /// reports (`env.platform` in Lua and Node, `kui_platform` in C), so
-    /// the two cannot disagree. The build's ([`Platform::current`]) unless
-    /// [`Self::set_platform`] said otherwise.
+    /// the two cannot disagree. Defaults to the session's platform,
+    /// or [`Platform::Other`] for a portable session.
     pub fn platform(&self) -> Platform {
         self.platform
     }

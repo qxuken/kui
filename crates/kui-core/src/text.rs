@@ -55,12 +55,12 @@ pub(crate) fn hints_at(scale: f32, platform: crate::rules::Platform) -> bool {
 }
 
 impl Raster {
-    fn new() -> Self {
+    fn new(hint: bool) -> Self {
         Self {
             ctx: swash::scale::ScaleContext::new(),
             axes: FxHashMap::default(),
             subpixel: false,
-            hint: hints_at(1.0, crate::rules::Platform::current()),
+            hint,
         }
     }
 
@@ -1410,38 +1410,11 @@ pub(crate) fn cosmic_features(f: &crate::spec::FontFeatures) -> cosmic_text::Fon
     out
 }
 
-/// The faces the three generic families resolve to, per platform, in
-/// order of preference. cosmic-text's own defaults are `Open Sans`,
-/// `DejaVu Serif` and `Noto Sans Mono`, none of which a stock Windows or
-/// macOS machine has; sans survives that through the platform fallback
-/// list, but a missing monospace family falls to the *lowest-id*
-/// monospaced face in the database — style is not in that ranking's key,
-/// so on a machine whose first monospaced face is an italic instance every
-/// `Mono` glyph is italic. The first installed name in each
-/// list wins; when none is, cosmic-text's own name stays so its fallback
-/// still runs.
-#[cfg(target_os = "macos")]
-const DEFAULT_FAMILIES: [&[&str]; 3] = [
-    &["Helvetica Neue", "Helvetica"],
-    &["Times New Roman", "Times"],
-    &["SF Mono", "Menlo", "Monaco"],
-];
-#[cfg(target_os = "windows")]
-const DEFAULT_FAMILIES: [&[&str]; 3] = [
-    &["Segoe UI", "Arial"],
-    &["Times New Roman"],
-    &["Cascadia Mono", "Consolas", "Courier New"],
-];
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const DEFAULT_FAMILIES: [&[&str]; 3] = [
-    &["DejaVu Sans", "Noto Sans", "Liberation Sans", "Ubuntu"],
-    &["DejaVu Serif", "Noto Serif", "Liberation Serif"],
-    &[
-        "DejaVu Sans Mono",
-        "Noto Sans Mono",
-        "Liberation Mono",
-        "Ubuntu Mono",
-    ],
+/// Preferences for a catalog of bundled fonts.
+const BUNDLED_FAMILIES: [&[&str]; 3] = [
+    &["Noto Sans", "DejaVu Sans", "Liberation Sans"],
+    &["Noto Serif", "DejaVu Serif", "Liberation Serif"],
+    &["Noto Sans Mono", "DejaVu Sans Mono", "Liberation Mono"],
 ];
 
 /// The first family on `list` that some installed face is a member of,
@@ -1453,25 +1426,6 @@ fn first_installed<'a>(db: &cosmic_text::fontdb::Database, list: &[&'a str]) -> 
     })
 }
 
-/// The session's font database, set up the way kui shapes against it: the
-/// generic sans, serif and monospace families pinned to an installed face
-/// (see [`DEFAULT_FAMILIES`]), so weight and style matching starts from a
-/// face with real variants rather than whatever the fallback pops.
-/// Faces whose glyphs cannot be measured are taken out first.
-///
-/// The system's faces are scanned and checked once a process
-/// ([`system_fonts`]); every session after the first starts from a copy of
-/// that database. The scan opens every font file twice (fontdb's, then
-/// [`keep_measurable`]'s) — on a Mac 1312 faces in ~850 files, 20–70 ms and
-/// most of it `open`, paid again by every `Core::new` — where a copy is a
-/// list of names. A font installed while the process runs is seen when
-/// something asks for a new scan (`Core::reload_system_fonts`).
-pub(crate) fn new_font_system() -> (FontSystem, std::sync::Arc<SystemFonts>) {
-    let system = system_fonts();
-    let fonts = font_system_over(system.locale.clone(), system.db.clone(), &[]);
-    (fonts, system)
-}
-
 /// A font system over `db` whose fallback asks `first`'s families before
 /// the platform's ([`AppFallback`]). cosmic-text reads its fallback lists
 /// when the system is built and keeps them, so a new list is a new system
@@ -1480,8 +1434,9 @@ pub(crate) fn font_system_over(
     locale: String,
     db: cosmic_text::fontdb::Database,
     first: &[String],
+    fallback: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
 ) -> FontSystem {
-    FontSystem::new_with_locale_and_db_and_fallback(locale, db, AppFallback::new(first))
+    FontSystem::new_with_locale_and_db_and_fallback(locale, db, AppFallback::new(first, fallback))
 }
 
 /// The platform's fallback lists with the app's families ahead of them
@@ -1491,7 +1446,7 @@ pub(crate) fn font_system_over(
 /// system's proportional face, which is no editor's second choice.
 /// With none it is the platform's lists as they are.
 pub(crate) struct AppFallback {
-    platform: cosmic_text::PlatformFallback,
+    platform: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
     first: &'static [&'static str],
     common: &'static [&'static str],
     /// A script's list with `first` ahead of it, made when first asked
@@ -1527,14 +1482,12 @@ fn keep_name(name: &str) -> &'static str {
 }
 
 impl AppFallback {
-    pub(crate) fn new(first: &[String]) -> Self {
-        use cosmic_text::Fallback;
-        let platform = cosmic_text::PlatformFallback;
+    fn new(first: &[String], platform: Option<std::sync::Arc<dyn cosmic_text::Fallback>>) -> Self {
         let first = keep(first.iter().map(|n| keep_name(n)).collect());
         let common = keep(
             first
                 .iter()
-                .chain(platform.common_fallback())
+                .chain(platform.as_ref().map_or(&[][..], |p| p.common_fallback()))
                 .copied()
                 .collect(),
         );
@@ -1553,11 +1506,16 @@ impl cosmic_text::Fallback for AppFallback {
     }
 
     fn forbidden_fallback(&self) -> &[&'static str] {
-        self.platform.forbidden_fallback()
+        self.platform
+            .as_ref()
+            .map_or(&[], |p| p.forbidden_fallback())
     }
 
     fn script_fallback(&self, script: unicode_script::Script, locale: &str) -> &[&'static str] {
-        let theirs = self.platform.script_fallback(script, locale);
+        let theirs = self
+            .platform
+            .as_ref()
+            .map_or(&[][..], |p| p.script_fallback(script, locale));
         if self.first.is_empty() {
             return theirs;
         }
@@ -1568,18 +1526,25 @@ impl cosmic_text::Fallback for AppFallback {
     }
 }
 
-/// One scan of the system's fonts, checked and pinned the way kui shapes
-/// against them, and which files' faces it found — what a session started
-/// from, so a later scan can say what came and went since.
-pub(crate) struct SystemFonts {
-    locale: String,
+type SharedFontBytes = std::sync::Arc<dyn AsRef<[u8]> + Send + Sync>;
+
+/// An immutable catalog of prepared faces. Its backing bytes are shared
+/// by sessions, while each session owns its shaping state.
+pub struct FontCatalog {
+    pub(crate) locale: String,
     pub(crate) db: cosmic_text::fontdb::Database,
-    /// Each face the scan kept, by its file and its index in the file.
-    pub(crate) faces: rustc_hash::FxHashSet<(std::path::PathBuf, u32)>,
-    /// The scan found no face the shaper can read, so the database holds
-    /// [`LAST_RESORT_FAMILY`] alone and text draws as boxes
-    /// (`no-system-fonts`).
+    faces: rustc_hash::FxHashMap<(std::path::PathBuf, u32), SharedFontBytes>,
     pub(crate) last_resort: bool,
+    pub(crate) preferences: [&'static [&'static str]; 3],
+    pub(crate) fallback: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
+}
+
+/// A native host's synchronous path-based font compatibility operations.
+/// A core that only receives font bytes needs no loader.
+pub trait FontLoader {
+    fn file(&self, path: &std::path::Path) -> Vec<cosmic_text::fontdb::FaceInfo>;
+    fn directory(&self, path: &std::path::Path) -> Vec<cosmic_text::fontdb::FaceInfo>;
+    fn reload(&self) -> std::sync::Arc<FontCatalog>;
 }
 
 /// The family of the face a session falls back to when the system has no
@@ -1589,84 +1554,126 @@ pub(crate) struct SystemFonts {
 /// where cosmic-text found no default font and panicked.
 pub const LAST_RESORT_FAMILY: &str = "kui last resort";
 
-/// The process's scan; `None` until the first session asks.
-static SYSTEM: std::sync::Mutex<Option<std::sync::Arc<SystemFonts>>> = std::sync::Mutex::new(None);
-
-/// The process's scan of the system's fonts, made on the first call. Held
-/// under the lock while it scans, so sessions made at once on several
-/// threads wait for one scan rather than each making its own.
-pub(crate) fn system_fonts() -> std::sync::Arc<SystemFonts> {
-    let mut held = SYSTEM.lock().unwrap_or_else(|e| e.into_inner());
-    held.get_or_insert_with(|| std::sync::Arc::new(scan_system_fonts()))
-        .clone()
-}
-
-/// Scans the system's fonts again and makes that the process's scan, so
-/// sessions made from here on start from it; returns it.
-pub(crate) fn rescan_system_fonts() -> std::sync::Arc<SystemFonts> {
-    let fresh = std::sync::Arc::new(scan_system_fonts());
-    *SYSTEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(fresh.clone());
-    fresh
-}
-
-fn scan_system_fonts() -> SystemFonts {
-    let (locale, db) = FontSystem::new().into_locale_and_db();
-    SystemFonts::from_db(locale, db)
-}
-
-impl SystemFonts {
-    /// A scan from a database already loaded: the unmeasurable faces taken
-    /// out and the generic families pinned.
-    pub(crate) fn from_db(locale: String, mut db: cosmic_text::fontdb::Database) -> Self {
+impl FontCatalog {
+    /// Prepares a catalog from supplied font data. Unreadable faces and
+    /// sources that would need to open a file are discarded.
+    pub fn from_database(
+        locale: String,
+        mut db: cosmic_text::fontdb::Database,
+        preferences: [&'static [&'static str]; 3],
+        fallback: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
+    ) -> Self {
         let all: Vec<_> = db.faces().map(|face| face.id).collect();
         keep_measurable(&mut db, all);
-        pin_default_families(&mut db);
-        let faces = db.faces().filter_map(face_file).collect();
+        Self::from_validated_database(locale, db, preferences, fallback)
+    }
+
+    /// Builds a catalog from faces whose byte ranges have already passed
+    /// [`Self::can_measure`]. This lets a host validate using a temporary
+    /// view of stable font bytes before publishing their backing store.
+    /// Sources without resident byte backing are always discarded.
+    pub fn from_validated_database(
+        locale: String,
+        mut db: cosmic_text::fontdb::Database,
+        preferences: [&'static [&'static str]; 3],
+        fallback: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
+    ) -> Self {
+        use cosmic_text::fontdb::Source;
+        let missing: Vec<_> = db
+            .faces()
+            .filter(|face| !matches!(face.source, Source::Binary(_) | Source::SharedFile(..)))
+            .map(|face| face.id)
+            .collect();
+        for id in missing {
+            db.remove_face(id);
+        }
+        pin_default_families(&mut db, preferences);
+        let faces = db
+            .faces()
+            .filter_map(|face| shared_face(face).map(|(key, bytes)| (key, bytes.clone())))
+            .collect();
         let last_resort = db.faces().next().is_none();
         if last_resort {
-            db.load_font_data(crate::stock_face::build(&crate::stock_face::Face {
-                family: LAST_RESORT_FAMILY,
-                ..crate::stock_face::Face::LIGA
-            }));
-            db.set_sans_serif_family(LAST_RESORT_FAMILY);
-            db.set_serif_family(LAST_RESORT_FAMILY);
-            db.set_monospace_family(LAST_RESORT_FAMILY);
+            insert_last_resort(&mut db);
         }
         Self {
             locale,
             db,
             faces,
             last_resort,
+            preferences,
+            fallback,
         }
     }
 
-    /// This scan's database, to build a test's own scan from.
-    #[cfg(test)]
-    pub(crate) fn db(&self) -> &cosmic_text::fontdb::Database {
-        &self.db
+    pub(crate) fn contains_face(&self, face: &cosmic_text::fontdb::FaceInfo) -> bool {
+        shared_face(face).is_some_and(|(key, bytes)| {
+            self.faces
+                .get(&key)
+                .is_some_and(|other| std::sync::Arc::ptr_eq(bytes, other))
+        })
     }
 
-    #[cfg(test)]
-    pub(crate) fn locale(&self) -> &str {
-        &self.locale
+    pub(crate) fn same_faces(&self, other: &Self) -> bool {
+        self.faces.len() == other.faces.len()
+            && self.faces.iter().all(|(key, bytes)| {
+                other
+                    .faces
+                    .get(key)
+                    .is_some_and(|other| std::sync::Arc::ptr_eq(bytes, other))
+            })
+    }
+
+    /// Whether this face has the horizontal metrics the shaper needs.
+    pub fn can_measure(data: &[u8], index: u32) -> bool {
+        measurable(data, index)
+    }
+
+    pub(crate) fn from_db(locale: String, db: cosmic_text::fontdb::Database) -> Self {
+        Self::from_database(locale, db, BUNDLED_FAMILIES, None)
+    }
+
+    pub(crate) fn portable() -> std::sync::Arc<Self> {
+        use std::sync::{Arc, OnceLock};
+        static CATALOG: OnceLock<Arc<FontCatalog>> = OnceLock::new();
+        CATALOG
+            .get_or_init(|| {
+                let mut db = cosmic_text::fontdb::Database::new();
+                insert_last_resort(&mut db);
+                Arc::new(Self::from_db("en-US".into(), db))
+            })
+            .clone()
     }
 }
 
-/// The file a face was read from and its index there; `None` for a face
-/// loaded from bytes.
-pub(crate) fn face_file(face: &cosmic_text::fontdb::FaceInfo) -> Option<(std::path::PathBuf, u32)> {
+pub(crate) fn insert_last_resort(db: &mut cosmic_text::fontdb::Database) {
+    db.load_font_data(crate::stock_face::build(&crate::stock_face::Face {
+        family: LAST_RESORT_FAMILY,
+        ..crate::stock_face::Face::LIGA
+    }));
+    db.set_sans_serif_family(LAST_RESORT_FAMILY);
+    db.set_serif_family(LAST_RESORT_FAMILY);
+    db.set_monospace_family(LAST_RESORT_FAMILY);
+}
+
+/// A file face's stable key and the backing for this revision.
+pub(crate) fn shared_face(
+    face: &cosmic_text::fontdb::FaceInfo,
+) -> Option<((std::path::PathBuf, u32), &SharedFontBytes)> {
     use cosmic_text::fontdb::Source;
     match &face.source {
-        Source::File(path) | Source::SharedFile(path, _) => Some((path.clone(), face.index)),
-        Source::Binary(_) => None,
+        Source::SharedFile(path, bytes) => Some(((path.clone(), face.index), bytes)),
+        _ => None,
     }
 }
 
 /// Points the generic sans, serif and monospace families at the first
-/// installed family of [`DEFAULT_FAMILIES`]' lists; a list with none
+/// installed family of the catalog preferences' lists; a list with none
 /// installed leaves its generic as it was.
-pub(crate) fn pin_default_families(db: &mut cosmic_text::fontdb::Database) {
-    let [sans, serif, mono] = DEFAULT_FAMILIES;
+pub(crate) fn pin_default_families(
+    db: &mut cosmic_text::fontdb::Database,
+    [sans, serif, mono]: [&[&str]; 3],
+) {
     if let Some(name) = first_installed(db, sans) {
         db.set_sans_serif_family(name);
     }
@@ -1678,12 +1685,12 @@ pub(crate) fn pin_default_families(db: &mut cosmic_text::fontdb::Database) {
     }
 }
 
-/// [`new_font_system`] over a database already loaded. The font system is
+/// A font system over a database already loaded. The font system is
 /// built after the unmeasurable faces are out, so cosmic-text's list of
 /// monospaced faces, which `Mono`'s fallback walks, never names one.
 #[cfg(test)]
 fn font_system_with(locale: String, db: cosmic_text::fontdb::Database) -> FontSystem {
-    let system = SystemFonts::from_db(locale, db);
+    let system = FontCatalog::from_db(locale, db);
     FontSystem::new_with_locale_and_db(system.locale, system.db)
 }
 
@@ -1708,98 +1715,29 @@ pub(crate) fn measurable(data: &[u8], index: u32) -> bool {
         && font.hmtx().is_ok()
 }
 
-/// Files per checking thread, below which [`keep_measurable`] checks on
-/// the caller's thread: a font added from bytes, or a folder of a few.
-const FILES_PER_CHECKER: usize = 64;
-
-/// Takes the faces of `ids` the shaper cannot measure out of `db` (see
-/// [`measurable`]) and returns the rest, so a face that would shape to
-/// infinitely wide glyphs is not a family to list, to name or to fall
-/// back to. A face whose file cannot be read goes too: the
-/// shaper could not load it either.
-///
-/// Each file is opened once for all its faces, and the files are spread
-/// over a few threads: opening one is most of the cost. Measured over the
-/// 1312 faces in 850 files of a Mac, the check adds about 4.5 ms to the
-/// ~20 ms fontdb takes to scan them warm (release build); on one thread
-/// it took 15–22 ms.
+/// Drops unusable faces without touching a file.
 pub(crate) fn keep_measurable(
     db: &mut cosmic_text::fontdb::Database,
-    ids: Vec<cosmic_text::fontdb::ID>,
+    mut ids: Vec<cosmic_text::fontdb::ID>,
 ) -> Vec<cosmic_text::fontdb::ID> {
-    use cosmic_text::fontdb::{ID, Source};
-    // The faces of one file together; bytes already in memory each alone.
-    let mut by_file = FxHashMap::<&std::path::Path, Vec<ID>>::default();
-    let mut groups = Vec::new();
-    for &id in &ids {
-        match db.face(id).map(|face| &face.source) {
-            Some(Source::File(path) | Source::SharedFile(path, _)) => {
-                by_file.entry(path).or_default().push(id);
+    use cosmic_text::fontdb::Source;
+    ids.retain(|&id| {
+        let usable = db.face(id).is_some_and(|face| match &face.source {
+            Source::Binary(bytes) | Source::SharedFile(_, bytes) => {
+                measurable(bytes.as_ref().as_ref(), face.index)
             }
-            Some(Source::Binary(_)) => groups.push(vec![id]),
-            None => {}
+            _ => false,
+        });
+        if !usable {
+            db.remove_face(id);
         }
-    }
-    groups.extend(by_file.into_values());
-    let db_ref = &*db;
-    let unmeasurable_in = |groups: &[Vec<ID>]| -> Vec<ID> {
-        let mut out = Vec::new();
-        for group in groups {
-            let read = db_ref.with_face_data(group[0], |data, _| {
-                group
-                    .iter()
-                    .filter(|&&id| {
-                        db_ref
-                            .face(id)
-                            .is_none_or(|face| !measurable(data, face.index))
-                    })
-                    .copied()
-                    .collect::<Vec<_>>()
-            });
-            out.extend(read.unwrap_or_else(|| group.clone()));
-        }
-        out
-    };
-    let checkers = std::thread::available_parallelism()
-        .map_or(1, |n| n.get())
-        .min(groups.len().div_ceil(FILES_PER_CHECKER));
-    let unmeasurable = if checkers <= 1 {
-        unmeasurable_in(&groups)
-    } else {
-        let per = groups.len().div_ceil(checkers);
-        std::thread::scope(|scope| {
-            let parts: Vec<_> = groups
-                .chunks(per)
-                .map(|part| {
-                    let spawned = std::thread::Builder::new()
-                        .name("kui-font-check".into())
-                        .spawn_scoped(scope, move || unmeasurable_in(part));
-                    (part, spawned.ok())
-                })
-                .collect();
-            let mut out = Vec::new();
-            for (part, checker) in parts {
-                out.extend(match checker {
-                    Some(checker) => checker
-                        .join()
-                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
-                    // No thread to be had: check that part here.
-                    None => unmeasurable_in(part),
-                });
-            }
-            out
-        })
-    };
-    for &id in &unmeasurable {
-        db.remove_face(id);
-    }
-    ids.into_iter()
-        .filter(|id| !unmeasurable.contains(id))
-        .collect()
+        usable
+    });
+    ids
 }
 
 /// The family names `Sans`, `Serif` and `Mono` shape with, in that order —
-/// what [`new_font_system`] pinned, or cosmic-text's own name where nothing
+/// what the catalog pinned, or cosmic-text's own name where nothing
 /// on the list was installed.
 pub(crate) fn default_families(fs: &FontSystem) -> [&str; 3] {
     let db = fs.db();
@@ -1811,9 +1749,9 @@ pub(crate) fn default_families(fs: &FontSystem) -> [&str; 3] {
 }
 
 impl TextSystem {
-    pub fn new() -> Self {
+    pub fn new(hint: bool) -> Self {
         Self {
-            raster: Raster::new(),
+            raster: Raster::new(hint),
             joins: Vec::new(),
             entries: FxHashMap::default(),
             bytes: 0,
@@ -5392,7 +5330,7 @@ fn caret_x(run: &cosmic_text::LayoutRun<'_>, index: usize) -> f32 {
 
 impl Default for TextSystem {
     fn default() -> Self {
-        Self::new()
+        Self::new(true)
     }
 }
 
@@ -5847,6 +5785,22 @@ impl TextSystem {
 /// upright, and monospaced for `Mono`.
 #[cfg(test)]
 mod default_families {
+    fn fixture() -> FontSystem {
+        let mut db = cosmic_text::fontdb::Database::new();
+        for (family, fixed_pitch) in [
+            ("Noto Sans", false),
+            ("Noto Serif", false),
+            ("Noto Sans Mono", true),
+        ] {
+            db.load_font_data(crate::stock_face::build(&crate::stock_face::Face {
+                family,
+                fixed_pitch,
+                ..crate::stock_face::Face::LIGA
+            }));
+        }
+        font_system_with("en-US".into(), db)
+    }
+
     use super::*;
     use cosmic_text::Family;
     use cosmic_text::fontdb::FaceInfo;
@@ -5863,7 +5817,7 @@ mod default_families {
 
     #[test]
     fn mono_is_an_upright_monospaced_face() {
-        let mut fs = new_font_system().0;
+        let mut fs = fixture();
         if !fs.db().faces().any(|f| f.monospaced) {
             eprintln!("skipped: no monospaced face installed");
             return;
@@ -5885,7 +5839,7 @@ mod default_families {
 
     #[test]
     fn sans_and_serif_are_upright_and_not_monospaced() {
-        let mut fs = new_font_system().0;
+        let mut fs = fixture();
         if fs.db().faces().next().is_none() {
             eprintln!("skipped: no face installed");
             return;
@@ -5911,9 +5865,9 @@ mod default_families {
     /// `Family::Name(pinned)` and the generic family agree.
     #[test]
     fn pinned_names_are_installed_or_cosmic_texts_own() {
-        let fs = new_font_system().0;
+        let fs = fixture();
         let db = fs.db();
-        for (name, list) in default_families(&fs).into_iter().zip(DEFAULT_FAMILIES) {
+        for (name, list) in default_families(&fs).into_iter().zip(BUNDLED_FAMILIES) {
             let installed = db
                 .faces()
                 .any(|f| f.families.iter().any(|(fam, _)| fam == name));
@@ -6156,7 +6110,7 @@ mod no_system_fonts {
 
     #[test]
     fn an_empty_system_shapes_text_in_the_last_resort_face() {
-        let system = SystemFonts::from_db("en-US".into(), Database::new());
+        let system = FontCatalog::from_db("en-US".into(), Database::new());
         assert!(system.last_resort);
         let families: Vec<String> = system.db.faces().map(|f| f.families[0].0.clone()).collect();
         assert_eq!(families, [LAST_RESORT_FAMILY]);
@@ -6186,7 +6140,7 @@ mod no_system_fonts {
             family: "Installed",
             ..crate::stock_face::Face::LIGA
         }));
-        let system = SystemFonts::from_db("en-US".into(), db);
+        let system = FontCatalog::from_db("en-US".into(), db);
         assert!(!system.last_resort);
         assert!(
             system

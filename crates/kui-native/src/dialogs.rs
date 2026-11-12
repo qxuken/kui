@@ -14,7 +14,7 @@
 //! paths — what a cancelled dialog answers — so an app that asks is never
 //! left waiting for a panel that will not come.
 
-use crate::DynShell;
+use crate::gui::DynShell;
 use kui_core::InputEvent;
 use winit::event_loop::ActiveEventLoop;
 
@@ -39,7 +39,7 @@ impl DynShell<'_> {
 fn show(
     dialog: kui_core::FileDialog,
     window: &winit::window::Window,
-    proxy: winit::event_loop::EventLoopProxy<crate::access_bridge::UserEvent>,
+    proxy: winit::event_loop::EventLoopProxy<crate::gui::access_bridge::UserEvent>,
 ) {
     use kui_core::FileDialogMode;
     use std::future::Future;
@@ -109,7 +109,7 @@ fn show(
         .name("kui-file-dialog".into())
         .spawn(move || {
             let paths = pollster::block_on(answer);
-            let _ = proxy.send_event(crate::access_bridge::UserEvent::Files { window, paths });
+            let _ = proxy.send_event(crate::gui::access_bridge::UserEvent::Files { window, paths });
         })
         .expect("a thread to wait on the dialog");
 }
