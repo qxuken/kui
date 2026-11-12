@@ -448,14 +448,31 @@ fn kui_perf_drives_and_checks() {
     );
     let s = out(&o);
     assert!(s.contains("all passed"), "{s}");
-    std::fs::write(&a, &bytes[..half]).unwrap();
+
+    // The pointer-driven cases redraw the inspector after each action.
+    // A short recording exercises the menus without redrawing the large
+    // trace used for the timeline and filter assertions above.
+    let menu_bytes = kui_trace::synth::Synth {
+        frames: 24,
+        ..Default::default()
+    }
+    .trace()
+    .to_bytes();
+    let (initial, remaining) = menu_bytes.split_at(menu_bytes.len() / 2);
+    let recording = dir.join("menu.kuitrace");
+    let growing = dir.join("menu-growing.kuitrace");
+    let menu_rest = dir.join("menu-rest.bin");
+    std::fs::write(&recording, &menu_bytes).unwrap();
+    std::fs::write(&growing, initial).unwrap();
+    std::fs::write(&menu_rest, remaining).unwrap();
     let mut menus = Command::new(KUI);
     menus
         .current_dir(&tool)
         .args(["test", "test/fixtures/menus.lua", "--output"])
         .arg(dir.join("menu-results"))
-        .env("KUI_PERF_TEST_RECORDING", &a)
-        .env("KUI_PERF_TEST_REST", &rest);
+        .env("KUI_PERF_TEST_RECORDING", &recording)
+        .env("KUI_PERF_TEST_GROWING", &growing)
+        .env("KUI_PERF_TEST_REST", &menu_rest);
     let o = run_kui(menus, 60);
     assert!(o.status.success(), "{}", out(&o));
     let c = kui(&tool, &["check"], 60);

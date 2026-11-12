@@ -179,6 +179,8 @@ objc2-app-kit = { version = "0.3", default-features = false, optional = true, fe
     "NSButton",
     "NSControl",
     "NSResponder",
+    "NSTextInputClient",
+    "NSTextInputContext",
     "NSView",
     "NSEvent",
     # Force Touch: asking the view for the deep-click stage (step 5).

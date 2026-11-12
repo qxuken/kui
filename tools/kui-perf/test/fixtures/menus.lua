@@ -18,7 +18,7 @@ test.it("File opens the recording picker", function()
 end)
 
 test.it("View toggles Live and reads pending frames when resumed", function()
-  local path = assert(os.getenv("KUI_PERF_TEST_RECORDING"))
+  local path = assert(os.getenv("KUI_PERF_TEST_GROWING"))
   test.start { args = { path } }
   test.click("Got it")
   test.click("View")
@@ -52,7 +52,10 @@ test.it("View navigates and Open Recent reopens the recording", function()
   test.expect(test.eval("return model.ins.follow")):to_be(false)
   test.click("View")
   test.click("Go to the latest")
-  test.expect(test.eval("return model.ins.follow")):to_be(true)
+  test.expect(test.eval([[
+    local ins = model.ins
+    return ins.follow and ins.v0 > ins.session.start and math.abs(ins.v1 - ins.session.finish) < 1e-9
+  ]])):to_be(true)
   test.click("View")
   test.click("Fit the recording")
   test.expect(test.eval([[

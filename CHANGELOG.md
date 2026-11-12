@@ -51,6 +51,8 @@ was the first bare bump to break an app in five releases).
 - `kit.tabs` gives positive selected-tab underlines a one-device-pixel minimum.
 - `kit.sparkline` retains its vertical scale across small changes in the
   visible range.
+- On macOS, a window without a focused caret hides the input-source
+  indicator.
 
 ### Added
 
@@ -76,6 +78,10 @@ was the first bare bump to break an app in five releases).
 - The Kit gallery animates its Content shader and highlights Lua in its
   example calls, source panes, and theme export.
 - Kui Perf handles the File and View menu items on Windows.
+- When a caret disappears on macOS, the native runner stops reporting its
+  old position and hides the input-source indicator. A terminal whose
+  cursor is hidden or scrolled out of view can no longer place the indicator
+  at a stale position.
 
 ## 0.1.0-alpha.79 (2026-11-09)
 
