@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.80 (unreleased)
+## 0.1.0-alpha.80 (2026-11-12)
 
 **What breaks.**
 
@@ -82,6 +82,35 @@ was the first bare bump to break an app in five releases).
   old position and hides the input-source indicator. A terminal whose
   cursor is hidden or scrolled out of view can no longer place the indicator
   at a stale position.
+
+### Native verification
+
+On Windows x64, the versioned workspace round and corrected feed-fixture
+rerun covered 3,266 passing Rust tests across 264 suites, with 18 ignored.
+The Node round passed 311 tests, including presentation and C-plugin
+coverage, with one platform-specific loader test skipped. The MSVC C round
+passed all ten checks, including both Windows plugin linkage forms and
+refusal of a plugin missing its ABI entry point. The C ABI check covered
+502 fields, 388 enum members and 425 prototypes.
+
+All 59 Rust and 12 Node windowed examples presented 30 frames on both
+theme bases, one window at a time, with all 142 runs passing.
+
+Release generators, formatting, Node typechecking, version consistency
+and workflow syntax passed. Before the version bump, GitHub's Linux CI
+and macOS native round passed, including the portable-core check,
+browser-runner build, workspace tests, windowed examples and C hosts.
+
+Immutable font snapshots add fresh-process startup work on Windows. With
+about 958 MiB of installed fonts, five interleaved debug probes measured
+startup through the first text frame at 562–2,574 ms, with a 658 ms median,
+against 19–22 ms for the previous native path. Concurrent builds were
+active during these measurements. Additional cores in the same process
+reuse the prepared catalog.
+
+The manual macOS accessibility audit was not rerun because no logged-in
+Mac with Accessibility permission was available. Optional Windows
+GLFW/SDL and WebGPU C host checks lacked their development headers.
 
 ## 0.1.0-alpha.79 (2026-11-09)
 

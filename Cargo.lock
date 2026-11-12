@@ -2058,7 +2058,7 @@ dependencies = [
 
 [[package]]
 name = "kui-access"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -2072,14 +2072,14 @@ dependencies = [
 
 [[package]]
 name = "kui-addon-schema"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "mlua",
 ]
 
 [[package]]
 name = "kui-book-web"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "image",
  "js-sys",
@@ -2095,7 +2095,7 @@ dependencies = [
 
 [[package]]
 name = "kui-channel"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "kui-value",
  "mlua",
@@ -2104,7 +2104,7 @@ dependencies = [
 
 [[package]]
 name = "kui-cli"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "apple-native-keyring-store",
  "argon2",
@@ -2141,7 +2141,7 @@ dependencies = [
 
 [[package]]
 name = "kui-core"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2166,7 +2166,7 @@ dependencies = [
 
 [[package]]
 name = "kui-derive"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "kui-core",
  "proc-macro2",
@@ -2176,7 +2176,7 @@ dependencies = [
 
 [[package]]
 name = "kui-devtools"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "cc",
  "kui-native",
@@ -2184,7 +2184,7 @@ dependencies = [
 
 [[package]]
 name = "kui-ffi"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "bytemuck",
  "divan",
@@ -2197,7 +2197,7 @@ dependencies = [
 
 [[package]]
 name = "kui-fuzz"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "arbitrary",
  "kui-core",
@@ -2208,14 +2208,14 @@ dependencies = [
 
 [[package]]
 name = "kui-kit"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "kui-core",
 ]
 
 [[package]]
 name = "kui-lua"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "divan",
  "kui-addon-schema",
@@ -2232,7 +2232,7 @@ dependencies = [
 
 [[package]]
 name = "kui-native"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "accesskit_winit",
  "arboard",
@@ -2269,7 +2269,7 @@ dependencies = [
 
 [[package]]
 name = "kui-node"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "kui-core",
  "kui-ffi",
@@ -2282,7 +2282,7 @@ dependencies = [
 
 [[package]]
 name = "kui-trace"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "kui-channel",
  "kui-value",
@@ -2291,7 +2291,7 @@ dependencies = [
 
 [[package]]
 name = "kui-value"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "kui-derive",
  "mlua",
@@ -2299,7 +2299,7 @@ dependencies = [
 
 [[package]]
 name = "kui-web"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "js-sys",
  "kui-core",
@@ -2314,7 +2314,7 @@ dependencies = [
 
 [[package]]
 name = "kui-web-lua"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "kui-core",
  "kui-lua",
@@ -2325,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "kui-wgpu"
-version = "0.1.0-alpha.79"
+version = "0.1.0-alpha.80"
 dependencies = [
  "bytemuck",
  "kui-core",
