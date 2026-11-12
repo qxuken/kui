@@ -147,6 +147,10 @@ end
 function M.tabs(c: Ctx, p: P): kui.Node
   local tabs = (p.tabs or {}) as {P}
   local strip: kui.Props = { role = "tabList", width = "grow", height = "$kitCtl", gap = 2, cross_align = "end" }
+  -- A fractional rule can fall between device pixels. The selected tab's
+  -- mark must cover a pixel wherever the strip lands, unless turned off.
+  local rule = c.s.rule_w or c.s.skin.rule_w
+  local underline = rule > 0 and math.max(rule, 1 / (c.env.scale or 1)) or rule
   for i, tb in ipairs(tabs) do
     local here = tb.value == p.value
     local t: kui.Props = {
@@ -170,7 +174,7 @@ function M.tabs(c: Ctx, p: P): kui.Node
       key = "tab" .. i,
       height = "grow",
       row(t),
-      column { width = "grow", height = "$kitRuleW", bg = here and ref(c, "accent") or nil },
+      column { width = "grow", height = underline, bg = here and ref(c, "accent") or nil },
     }
   end
   -- What acts on the chosen tab — close it, run it — at the strip's far side,

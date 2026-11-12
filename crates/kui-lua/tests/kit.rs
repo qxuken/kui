@@ -1251,6 +1251,38 @@ fn lua_app_at(src: &str, frames: usize, scale: f32) -> (Core, Vec<String>) {
     (core, warnings)
 }
 
+#[test]
+fn a_subpixel_tab_underline_covers_a_device_pixel() {
+    use kui_core::Color;
+
+    for scale in [1.0, 1.25, 1.5, 2.0] {
+        let (mut core, warnings) = lua_app_at(
+            r#"
+            function view(env)
+              return column { width = "grow", height = "grow", pad = { t = 0.125 },
+                component("kit/settings", { hair = 1.5, rule = 0.5, roles = { accent = 0x00ff00ff } }),
+                component("kit/tabs", { value = "one", tabs = {
+                  { value = "one", label = "One" }, { value = "two", label = "Two" } } }) }
+            end
+            "#,
+            2,
+            scale,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let underlines: Vec<_> = kui_core::testing::solids(&mut core)
+            .into_iter()
+            .filter(|quad| quad.color == Color::hex(0x00ff00ff))
+            .collect();
+        assert_eq!(underlines.len(), 1, "only the selected tab is underlined");
+        let rect = underlines[0].rect;
+        let first_pixel_center = (rect.y - 0.5).ceil() + 0.5;
+        assert!(
+            first_pixel_center < rect.y + rect.h,
+            "at scale {scale} no device pixel center is inside {rect:?}"
+        );
+    }
+}
+
 /// A Lua app placing Kit, kept across frames: its own `on_event` hears
 /// what Kit proposes, so a test drives it with the pointer and reads the
 /// tree it draws.
@@ -5517,6 +5549,61 @@ fn a_focusable_line_chart_steps_its_readout_with_the_keyboard() {
         "Tab leaves the chart (round to the first stop)"
     );
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn a_sparklines_unchanged_samples_stay_at_the_same_height_as_the_range_wobbles() {
+    use kui_core::{QuadKind, testing::quads_of};
+
+    let mut r = LuaRig::new(
+        r#"
+        local trend = channel({ cpu = { 20, 45, 70 } })
+        function sample(last)
+          trend = trend:publish({ cpu = { 20, 45, last } })
+        end
+        function view(env)
+          return component("kit/sparkline", { data = trend, field = "cpu", readout = false })
+        end
+        "#,
+    );
+    let draw = |r: &mut LuaRig| {
+        r.frames(1);
+        let segments = quads_of(&mut r.core, QuadKind::Segment);
+        assert_eq!(segments.len(), 2);
+        (segments[0].segment_ends(), segments[1].segment_ends())
+    };
+    let publish = |r: &LuaRig, value| {
+        r.app
+            .globals()
+            .get::<mlua::Function>("sample")
+            .unwrap()
+            .call::<()>(value)
+            .unwrap();
+    };
+    let (initial, last) = draw(&mut r);
+    for value in [74, 64, 72] {
+        publish(&r, value);
+        let (first, tail) = draw(&mut r);
+        assert!(
+            (first[1] - initial[1]).abs() < 1e-4 && (first[3] - initial[3]).abs() < 1e-4,
+            "the first two samples are still 20 and 45: {first:?} vs {initial:?}"
+        );
+        assert_ne!(tail[3], last[3], "the changed sample still moves");
+    }
+    publish(&r, 120);
+    let (first, tail) = draw(&mut r);
+    assert_ne!(
+        first, initial,
+        "a value outside the range still rescales it"
+    );
+    assert!(tail[3] >= 0.0, "the new maximum stays in view");
+    publish(&r, 70);
+    let (first, _) = draw(&mut r);
+    assert!(
+        (first[3] - initial[3]).abs() < 1e-4,
+        "the range tightens after the spike"
+    );
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
 }
 
 #[test]
