@@ -40,6 +40,11 @@
 //!   caret), the range from the focused stock editor's caret and
 //!   selection as UTF-16 offsets into its text, `{0, 0}` for a sink.
 //!   With nothing focused, winit's own answers (`{NSNotFound, 0}`).
+//! - `firstRectForCharacterRange:actualRange:` and
+//!   `preferredTextAccessoryPlacement` — a view without a caret has no
+//!   rectangle and hides the system cursor accessory, including the
+//!   input-source indicator. Winit's cached rect can outlive its caret
+//!   even after the runner turns composition off.
 //!
 //! **What stays winit's.** A replacement range is ignored — winit's own
 //! TODO — so a dictation *revision* of words already committed appends
@@ -65,8 +70,8 @@ use objc2::encode::Encode;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Method, Sel};
 use objc2::{ffi, msg_send, sel};
-use objc2_app_kit::NSView;
-use objc2_foundation::{NSAttributedString, NSObject, NSRange, NSString};
+use objc2_app_kit::{NSTextCursorAccessoryPlacement, NSView};
+use objc2_foundation::{NSAttributedString, NSNotFound, NSObject, NSRange, NSRect, NSString};
 use winit::window::Window;
 
 use crate::Waker;
@@ -111,6 +116,7 @@ struct Originals {
     key_down: Imp,
     insert_text: Imp,
     selected_range: Imp,
+    first_rect: Imp,
 }
 
 static ORIGINALS: OnceLock<Option<Originals>> = OnceLock::new();
@@ -172,29 +178,34 @@ pub fn detach(window: &Window) {
 /// out. Cheap when nothing moved: a compare against what the last count
 /// was computed from.
 pub fn stamp(window: &Window, core: &Core) {
-    let Some(ptr) = view_ptr(window) else {
+    let Some(view) = view_of(window) else {
         return;
     };
-    STATE.with(|s| {
+    let ptr = Retained::as_ptr(&view) as usize;
+    let lost_anchor = STATE.with(|s| {
         let mut s = s.borrow_mut();
         let Some(facts) = s.facts.get_mut(&ptr) else {
-            return;
+            return false;
         };
-        facts.editable = core.ime_rect().is_some();
+        if core.ime_rect().is_none() {
+            let lost_anchor = facts.editable;
+            *facts = Facts::default();
+            return lost_anchor;
+        }
+        facts.editable = true;
         let Some(key) = core.edit.focused() else {
-            // A sink with a caret, or nothing: a range dictation accepts
-            // and nothing reads the numbers of.
+            // A sink with a caret: give dictation a valid range.
             facts.caret = 0;
             facts.selection = 0;
             facts.from = None;
-            return;
+            return false;
         };
         let Some((caret, selection)) = core.edit.caret_and_selection(key) else {
-            return;
+            return false;
         };
         let from = Some((key, core.edit.version(key), caret, selection));
         if facts.from == from {
-            return;
+            return false;
         }
         facts.from = from;
         // A secure editor's offsets are in its bullets, one UTF-16 unit
@@ -204,7 +215,7 @@ pub fn stamp(window: &Window, core: &Core) {
             None
         } else {
             let Some(text) = core.edit.text(key) else {
-                return;
+                return false;
             };
             Some(text)
         };
@@ -222,7 +233,13 @@ pub fn stamp(window: &Window, core: &Core) {
                 facts.selection = 0;
             }
         }
+        false
     });
+    // AppKit can cache the coordinates even with composition disabled.
+    // Invalidate after releasing the facts borrow, since it can query us.
+    if lost_anchor && let Some(context) = view.inputContext() {
+        context.invalidateCharacterCoordinates();
+    }
 }
 
 /// Drops the composition `window`'s view has open, if any — what the
@@ -234,14 +251,8 @@ pub fn discard_marked_text(window: &Window) {
     let Some(view) = view_of(window) else {
         return;
     };
-    // SAFETY: a live view on the main thread; `inputContext` is NSView's
-    // (nil for a view that takes no text), `discardMarkedText`
-    // NSTextInputContext's.
-    unsafe {
-        let ctx: Option<Retained<AnyObject>> = msg_send![&*view, inputContext];
-        if let Some(ctx) = ctx {
-            let _: () = msg_send![&*ctx, discardMarkedText];
-        }
+    if let Some(context) = view.inputContext() {
+        context.discardMarkedText();
     }
 }
 
@@ -254,7 +265,10 @@ pub fn take_commits() -> Vec<(usize, String)> {
 type KeyDownFn = unsafe extern "C-unwind" fn(&AnyObject, Sel, &AnyObject);
 type InsertTextFn = unsafe extern "C-unwind" fn(&AnyObject, Sel, &NSObject, NSRange);
 type SelectedRangeFn = unsafe extern "C-unwind" fn(&AnyObject, Sel) -> NSRange;
+type FirstRectFn = unsafe extern "C-unwind" fn(&AnyObject, Sel, NSRange, *mut NSRange) -> NSRect;
 type IsEditableFn = unsafe extern "C-unwind" fn(&AnyObject, Sel) -> Bool;
+type AccessoryPlacementFn =
+    unsafe extern "C-unwind" fn(&AnyObject, Sel) -> NSTextCursorAccessoryPlacement;
 
 /// A typed override as the runtime takes it.
 fn imp<F: Copy>(f: F) -> Imp {
@@ -291,41 +305,58 @@ fn install(cls: &AnyClass) -> Option<Originals> {
     let (_, key_down) = defining_class(cls, sel!(keyDown:))?;
     let (owner, insert_text) = defining_class(cls, sel!(insertText:replacementRange:))?;
     let (_, selected_range) = defining_class(cls, sel!(selectedRange))?;
+    let (_, first_rect) = defining_class(cls, sel!(firstRectForCharacterRange:actualRange:))?;
     let originals = Originals {
         key_down: key_down.implementation(),
         insert_text: insert_text.implementation(),
         selected_range: selected_range.implementation(),
+        first_rect: first_rect.implementation(),
     };
+    // Added to the class whose NSTextInputClient this is: winit does not
+    // define isEditable and dictation asks for it.
+    let types = format!("{}@:\0", Bool::ENCODING);
+    // SAFETY: the type string matches the override's signature; the class
+    // is alive for the process.
+    let owner = owner as *const AnyClass as *mut AnyClass;
+    let added = unsafe {
+        ffi::class_addMethod(
+            owner,
+            sel!(isEditable),
+            imp(is_editable_override as IsEditableFn),
+            types.as_ptr().cast(),
+        )
+    };
+    if !added.as_bool() {
+        return None;
+    }
+    let types = format!("{}@:\0", NSTextCursorAccessoryPlacement::ENCODING);
+    // SAFETY: the optional NSTextInputClient selector returns NSInteger.
+    unsafe {
+        ffi::class_addMethod(
+            owner,
+            sel!(preferredTextAccessoryPlacement),
+            imp(accessory_placement_override as AccessoryPlacementFn),
+            types.as_ptr().cast(),
+        );
+    }
     // Replaced, each on the class that defines it. An `Imp` is any
     // function pointer as far as the runtime is concerned; the
     // signatures are checked where each is called.
-    let imps: [(&Method, Imp); 3] = [
+    let imps: [(&Method, Imp); 4] = [
         (key_down, imp(key_down_override as KeyDownFn)),
         (insert_text, imp(insert_text_override as InsertTextFn)),
         (
             selected_range,
             imp(selected_range_override as SelectedRangeFn),
         ),
+        (first_rect, imp(first_rect_override as FirstRectFn)),
     ];
     for (m, imp) in imps {
         // SAFETY: each override has the selector's C signature, calls the
         // implementation it replaced, and handles what it handled.
         unsafe { m.set_implementation(imp) };
     }
-    // Added to the class whose `NSTextInputClient` this is: nothing in
-    // the chain defines it, and dictation asks.
-    let types = format!("{}@:\0", Bool::ENCODING);
-    // SAFETY: the type string matches the override's signature; the class
-    // is alive for the process.
-    let added = unsafe {
-        ffi::class_addMethod(
-            owner as *const AnyClass as *mut AnyClass,
-            sel!(isEditable),
-            imp(is_editable_override as IsEditableFn),
-            types.as_ptr().cast(),
-        )
-    };
-    added.as_bool().then_some(originals)
+    Some(originals)
 }
 
 fn originals() -> &'static Originals {
@@ -418,6 +449,35 @@ unsafe extern "C-unwind" fn selected_range_override(this: &AnyObject, sel: Sel) 
     }
 }
 
+unsafe extern "C-unwind" fn first_rect_override(
+    this: &AnyObject,
+    sel: Sel,
+    range: NSRange,
+    actual_range: *mut NSRange,
+) -> NSRect {
+    if facts_of(this).is_some_and(|f| !f.editable) {
+        if !actual_range.is_null() {
+            // SAFETY: AppKit supplies a writable out pointer or null.
+            unsafe { actual_range.write(NSRange::new(NSNotFound as usize, 0)) };
+        }
+        return NSRect::ZERO;
+    }
+    // SAFETY: winit's firstRectForCharacterRange:actualRange: implementation.
+    let orig: FirstRectFn = unsafe { std::mem::transmute(originals().first_rect) };
+    unsafe { orig(this, sel, range, actual_range) }
+}
+
+unsafe extern "C-unwind" fn accessory_placement_override(
+    this: &AnyObject,
+    _sel: Sel,
+) -> NSTextCursorAccessoryPlacement {
+    if facts_of(this).is_some_and(|f| !f.editable) {
+        NSTextCursorAccessoryPlacement::Invisible
+    } else {
+        NSTextCursorAccessoryPlacement::Unspecified
+    }
+}
+
 /// YES for a view the runner has not registered yet — one being created.
 /// AppKit will not *create* an `NSTextInputContext` for a view that
 /// answers `isEditable` NO (an existing context is handed back regardless,
@@ -428,4 +488,53 @@ unsafe extern "C-unwind" fn selected_range_override(this: &AnyObject, sel: Sel) 
 /// no context. Registered views answer from the stamp.
 unsafe extern "C-unwind" fn is_editable_override(this: &AnyObject, _sel: Sel) -> Bool {
     Bool::new(facts_of(this).is_none_or(|f| f.editable))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn appkit_has_no_anchor_or_accessory_when_the_caret_disappears() {
+        let view = NSObject::new();
+        let ptr = Retained::as_ptr(&view).cast::<AnyObject>();
+        // SAFETY: NSObject is an Objective-C object, retained by view.
+        let this = unsafe { &*ptr };
+        let id = ptr as usize;
+        let accessory =
+            || unsafe { accessory_placement_override(this, sel!(preferredTextAccessoryPlacement)) };
+        let expected = [
+            (true, NSTextCursorAccessoryPlacement::Unspecified),
+            (false, NSTextCursorAccessoryPlacement::Invisible),
+            (true, NSTextCursorAccessoryPlacement::Unspecified),
+        ];
+        for (editable, placement) in expected {
+            STATE.with(|s| {
+                s.borrow_mut().facts.insert(
+                    id,
+                    Facts {
+                        editable,
+                        ..Facts::default()
+                    },
+                );
+            });
+            assert_eq!(accessory(), placement);
+            if !editable {
+                let mut actual = NSRange::new(0, 1);
+                // SAFETY: there is no caret, so the override answers directly.
+                let rect = unsafe {
+                    first_rect_override(
+                        this,
+                        sel!(firstRectForCharacterRange:actualRange:),
+                        NSRange::new(0, 0),
+                        &mut actual,
+                    )
+                };
+                assert_eq!(rect, NSRect::ZERO);
+                assert_eq!(actual, NSRange::new(NSNotFound as usize, 0));
+            }
+        }
+        STATE.with(|s| s.borrow_mut().facts.remove(&id));
+        assert_eq!(accessory(), NSTextCursorAccessoryPlacement::Unspecified);
+    }
 }

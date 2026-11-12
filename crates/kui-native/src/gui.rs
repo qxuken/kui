@@ -2867,6 +2867,11 @@ impl DynShell<'_> {
             }
         }
 
+        // Publish the new caret state before either winit or AppKit
+        // asks the view to refresh its text-input coordinates.
+        #[cfg(target_os = "macos")]
+        macos_text_input::stamp(window, &pane.core);
+
         // The input method, the same way (backlog F125). Off, winit's
         // `keyDown:` stops calling `interpretKeyEvents:`, and everything
         // the OS composes there goes with it — an IME, a dead key, and
@@ -2907,10 +2912,6 @@ impl DynShell<'_> {
                 winit::dpi::LogicalSize::new(r.w.max(1.0), r.h),
             );
         }
-        // And say what the platform's own text input may ask the view:
-        // whether there is somewhere to type, and where the caret is.
-        #[cfg(target_os = "macos")]
-        macos_text_input::stamp(window, &pane.core);
 
         // Unseen: built, and nothing to draw it to. What it left for a
         // backend — an atlas page, a texture dropped — rides on to the
