@@ -32,7 +32,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.78"
+version = "0.1.0-alpha.79"
 edition = "2024"
 license = "MIT"
 # `homepage` is the book (docs/book), which is what a reader arriving from

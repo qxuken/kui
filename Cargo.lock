@@ -2070,7 +2070,7 @@ dependencies = [
 
 [[package]]
 name = "kui-book-web"
-version = "0.1.0-alpha.78"
+version = "0.1.0-alpha.79"
 dependencies = [
  "image",
  "js-sys",
@@ -2290,7 +2290,7 @@ dependencies = [
 
 [[package]]
 name = "kui-web"
-version = "0.1.0-alpha.78"
+version = "0.1.0-alpha.79"
 dependencies = [
  "js-sys",
  "kui-core",
@@ -2305,7 +2305,7 @@ dependencies = [
 
 [[package]]
 name = "kui-web-lua"
-version = "0.1.0-alpha.78"
+version = "0.1.0-alpha.79"
 dependencies = [
  "kui-core",
  "kui-lua",
