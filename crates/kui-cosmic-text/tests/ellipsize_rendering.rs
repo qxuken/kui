@@ -1,3 +1,4 @@
+// Modified for kui to remove imports unused by the upstream tests.
 use common::DrawTestCfg;
 use cosmic_text::{Align, Attrs, Ellipsize, EllipsizeHeightLimit, Family, Wrap};
 

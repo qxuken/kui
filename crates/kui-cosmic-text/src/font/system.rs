@@ -1,3 +1,4 @@
+// Modified for kui to cache variable-weight ranges and check them on demand.
 use crate::{Attrs, Font, FontMatchAttrs, HashMap, ShapeBuffer};
 use alloc::boxed::Box;
 use alloc::collections::BTreeSet;

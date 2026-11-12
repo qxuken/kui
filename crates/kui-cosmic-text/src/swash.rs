@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// Modified for kui to explain font parsing failures in the upstream test.
 
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;

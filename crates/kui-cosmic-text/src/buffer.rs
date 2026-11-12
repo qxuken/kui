@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// Modified for kui to satisfy workspace documentation and expression lints.
 
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// Modified for kui to defer weight checks and preparation of mono fallbacks.
 
 use alloc::borrow::ToOwned;
 use alloc::string::String;

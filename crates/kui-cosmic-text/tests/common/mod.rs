@@ -1,4 +1,4 @@
-// Each integration test compiles its own copy and uses part of this helper.
+// Modified for kui. Separate test targets use subsets of this shared helper.
 #![allow(dead_code)]
 
 use std::path::PathBuf;

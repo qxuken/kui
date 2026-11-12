@@ -1,3 +1,5 @@
+# Modified for kui from cosmic-text 0.19.0 to integrate the vendored
+# package and its tests with the kui workspace.
 [package]
 edition = "2021"
 rust-version = "1.89"

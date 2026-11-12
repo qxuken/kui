@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// Modified for kui to satisfy workspace iteration and formatting lints.
 
 #![allow(clippy::too_many_arguments)]
 
