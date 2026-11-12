@@ -1222,7 +1222,9 @@ fn a_font_file_is_read_against_the_app_folder() {
     );
     // Started from the folder above, naming the app's.
     let name = dir.file_name().unwrap().to_str().unwrap().to_string();
-    let o = kui(dir.parent().unwrap(), &["run", "--headless", &name], 20);
+    // The first hosted Windows process can spend over a minute preparing
+    // installed fonts. With the smoke timeout scale, allow two minutes.
+    let o = kui(dir.parent().unwrap(), &["run", "--headless", &name], 40);
     let s = out(&o);
     assert!(o.status.success(), "{s}");
     let missing = s.lines().find(|l| l.starts_with("missing")).unwrap_or("");
@@ -2006,110 +2008,87 @@ fn the_kit_app_describes_its_design_system() {
     );
 }
 
-/// The Kit app's live feeds tick only while the page in view reads them:
-/// on the Inputs page, Live on, no timer wakes the app and the view stands
-/// still; the Charts page's chart ticks every 100 ms, the Data page's log
-/// every 400 ms, kept to its last 500 lines, and Overview's sample count
-/// once a second, ten samples at a time.
+/// The Kit app's live feeds tick only while the page in view reads them.
+/// Drive the real timer callbacks with virtual time and count feed
+/// messages independently of unrelated worker replies and redraws.
 #[test]
 fn the_kit_apps_feeds_tick_only_for_a_page_that_reads_them() {
     let dir = kit_app(
         "kit-app-feeds",
         r##"
-        require("main")
-        model = init()
-        local live = require("demos.feeds")
-        local views, inner = 0, view
-        local function rev(ch) return ch and ch.rev or -1 end
-        local at = {}
-        local function mark(name) at[name] = { views = views, chart = rev(model.chart), log = rev(model.log), n = #model.series.t } end
-        local function say(name)
-          local a = at[name]
-          print(name, views - a.views, rev(model.chart) ~= a.chart, rev(model.log) ~= a.log, #model.series.t - a.n)
-        end
-        local plan = {
-          { 1500, function() kui.dispatch({ kind = "page", change = { value = "inputs" } }) end },
-          { 2000, function() mark("inputs") end },
-          { 3500, function() say("inputs") kui.dispatch({ kind = "page", change = { value = "charts" } }) end },
-          { 3700, function() mark("charts") end },
-          { 4700, function() say("charts") kui.dispatch({ kind = "page", change = { value = "data" } }) end },
-          { 4900, function() mark("data") end },
-          { 5900, function() say("data") kui.dispatch({ kind = "page", change = { value = "overview" } }) end },
-          { 6100, function() mark("overview") end },
-          { 8200, function() say("overview") kui.dispatch({ kind = "live", toggle = { on = false } }) end },
-          { 8400, function() mark("paused") end },
-          { 9500, function() say("paused")
-            -- The log keeps its last 500 lines.
+        local test = require("kui.test")
+        test.it("live feeds follow the page and Live switch", function()
+          test.start()
+          test.task([[
+            -- The worker's large datasets are covered by the gallery
+            -- tests. Keep them out of this probe's recorded frames.
+            model.rows, model.spans = nil, nil
+            local deliveries = { tick = 0, log = 0 }
+            local app_update = update
+            function update(msg)
+              if msg.kind == "rows" or msg.kind == "trace" then return end
+              if deliveries[msg.kind] ~= nil then
+                deliveries[msg.kind] = deliveries[msg.kind] + 1
+              end
+              app_update(msg)
+            end
+
+            local function show(page)
+              kui.dispatch({ kind = "page", change = { value = page } })
+              repeat kui.sleep(1) until model.page == page
+            end
+            local function rev(ch) return ch and ch.rev or -1 end
+            local function period(feed) return timers[feed] and timers[feed].ms end
+            local function observe(ms, ticks, logs, samples)
+              local tick, log = deliveries.tick, deliveries.log
+              local chart_rev, log_rev = rev(model.chart), rev(model.log)
+              local n, lines = #model.series.t, #model.log_lines.time
+              kui.sleep(ms)
+              local where = model.page .. (model.live and "" or " with Live off")
+              assert(deliveries.tick - tick == ticks, where .. ": unexpected chart ticks")
+              assert(deliveries.log - log == logs, where .. ": unexpected log ticks")
+              assert(#model.series.t - n == samples, where .. ": unexpected chart sample count")
+              assert(#model.log_lines.time - lines == logs, where .. ": unexpected log line count")
+              assert((rev(model.chart) ~= chart_rev) == (ticks > 0), where .. ": unexpected chart revision")
+              assert((rev(model.log) ~= log_rev) == (logs > 0), where .. ": unexpected log revision")
+            end
+
+            show("inputs")
+            assert(next(timers) == nil, "Inputs does not schedule a feed")
+            observe(1001, 0, 0, 0)
+
+            show("charts")
+            assert(period("tick") == 100 and period("log") == nil, "Charts runs the chart every 100 ms")
+            observe(301, 3, 0, 3)
+
+            show("data")
+            assert(period("tick") == nil and period("log") == 400, "Data runs the log every 400 ms")
+            observe(801, 0, 2, 0)
+
+            show("overview")
+            assert(period("tick") == 1000 and period("log") == nil, "Overview runs the chart every second")
+            observe(2001, 2, 0, 20)
+
+            kui.dispatch({ kind = "live", toggle = { on = false } })
+            repeat kui.sleep(1) until not model.live
+            assert(next(timers) == nil, "Live off cancels all feed timers")
+            observe(1001, 0, 0, 0)
+
+            local live = require("demos.feeds")
             model.live = true
             for _ = 1, 600 do live.log_line(model) end
-            print("lines", #model.log, #model.log_lines.time)
-            kui.exit(0)
-          end },
-        }
-        -- Start measuring after native font discovery and the first view.
-        -- Otherwise a slow startup can deliver several page switches and
-        -- observations in one drain before the chart has drawn a frame.
-        local plan_started = false
-        function view(env)
-          views = views + 1
-          local tree = inner(env)
-          if not plan_started then
-            plan_started = true
-            for _, step in ipairs(plan) do kui.timer.after(step[1], step[2]) end
-          end
-          return tree
-        end
+            assert(#model.log == 500 and #model.log_lines.time == 500, "the log keeps its last 500 lines")
+          ]])
+        end)
         "##,
     );
-    let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
+    let o = kui(&dir, &["test", "walk.lua"], 60);
     let s = out(&o);
-    assert!(o.status.success(), "{s}");
+    assert!(
+        o.status.success() && s.contains("1 passed, 0 failed"),
+        "{s}"
+    );
     assert!(!s.contains("warning"), "{s}");
-    let line = |name: &str| -> Vec<String> {
-        s.lines()
-            .find_map(|l| l.strip_prefix(&format!("{name}\t")))
-            .unwrap_or_else(|| panic!("no {name} line:\n{s}"))
-            .split('\t')
-            .map(str::to_string)
-            .collect()
-    };
-    let views = |name: &str| line(name)[0].parse::<u32>().unwrap();
-    let (inputs, charts, data, overview, paused) = (
-        line("inputs"),
-        line("charts"),
-        line("data"),
-        line("overview"),
-        line("paused"),
-    );
-    // Over 1.5 s on Inputs the worker's rows may still land, and a cancelled
-    // timer wakes once more to end: three views at most.
-    assert!(
-        views("inputs") <= 3 && inputs[1] == "false" && inputs[2] == "false",
-        "nothing ticks on Inputs: {inputs:?}\n{s}"
-    );
-    assert!(
-        views("charts") >= 3 && charts[1] == "true" && charts[2] == "false",
-        "the chart ticks on Charts, the log not: {charts:?}"
-    );
-    assert!(
-        data[1] == "false" && data[2] == "true",
-        "the log ticks on Data, the chart not: {data:?}"
-    );
-    let n: i64 = overview[3].parse().unwrap();
-    assert!(
-        views("overview") <= 4 && overview[2] == "false" && n >= 10 && n % 10 == 0,
-        "Overview counts ten samples a second: {overview:?}"
-    );
-    // The cancelled timer wakes once more to end, as on Inputs.
-    assert!(
-        views("paused") <= 2 && paused[1] == "false" && paused[3] == "0",
-        "Live off on Overview, nothing ticks: {paused:?}"
-    );
-    assert_eq!(
-        line("lines"),
-        ["500", "500"],
-        "the log keeps its last 500 lines"
-    );
 }
 
 /// Kit's design system docs stay true to Kit: a guideline for every

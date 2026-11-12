@@ -78,6 +78,8 @@ was the first bare bump to break an app in five releases).
 - The Kit gallery animates its Content shader and highlights Lua in its
   example calls, source panes, and theme export.
 - Kui Perf handles the File and View menu items on Windows.
+- The test runner retries transient Windows file locks while writing
+  reports and captures, preserving atomic replacement of each artifact.
 - When a caret disappears on macOS, the native runner stops reporting its
   old position and hides the input-source indicator. A terminal whose
   cursor is hidden or scrolled out of view can no longer place the indicator
@@ -85,8 +87,10 @@ was the first bare bump to break an app in five releases).
 
 ### Native verification
 
-On Windows x64, the versioned workspace round and corrected feed-fixture
-rerun covered 3,266 passing Rust tests across 264 suites, with 18 ignored.
+On Windows x64, the versioned workspace round and focused reruns covered
+3,267 passing Rust tests across 264 suites, with 18 ignored. The focused
+rounds covered deterministic feed timing and atomic artifact replacement
+while a reader briefly holds the destination open.
 The Node round passed 311 tests, including presentation and C-plugin
 coverage, with one platform-specific loader test skipped. The MSVC C round
 passed all ten checks, including both Windows plugin linkage forms and

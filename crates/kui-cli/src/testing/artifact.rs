@@ -4,6 +4,7 @@ use serde::Serialize;
 use serde_json::{Value as J, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 pub fn atomic_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
@@ -14,9 +15,62 @@ pub fn atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let mut f = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
     f.write_all(bytes).map_err(|e| e.to_string())?;
-    f.persist(path).map_err(|e| e.to_string())?;
-    Ok(())
+    persist(f, path, std::thread::sleep)
 }
+
+fn persist(
+    mut file: tempfile::NamedTempFile,
+    path: &Path,
+    mut wait: impl FnMut(Duration),
+) -> Result<(), String> {
+    let mut delay = Duration::from_millis(10);
+    loop {
+        match file.persist(path) {
+            Ok(_) => return Ok(()),
+            // A reader or scanner can briefly block a Windows rename.
+            // Retry access denied, sharing violation and lock violation.
+            Err(e)
+                if cfg!(windows)
+                    && matches!(e.error.raw_os_error(), Some(5 | 32 | 33))
+                    && delay <= Duration::from_millis(320) =>
+            {
+                file = e.file;
+                wait(delay);
+                delay *= 2;
+            }
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+#[test]
+fn persist_retries_after_a_windows_reader_releases_the_destination() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("status.json");
+    std::fs::write(&path, b"old").unwrap();
+    let mut reader = Some(
+        std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap(),
+    );
+    let mut file = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
+    file.write_all(b"new").unwrap();
+
+    persist(file, &path, |_| {
+        drop(reader.take().expect("the lock should require one retry"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"old");
+    })
+    .unwrap();
+
+    assert!(reader.is_none(), "expected a retry");
+    assert_eq!(std::fs::read(&path).unwrap(), b"new");
+}
+
 pub fn value(v: &Value) -> J {
     match v {
         Value::Null => J::Null,
