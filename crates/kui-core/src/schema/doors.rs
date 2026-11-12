@@ -1501,6 +1501,22 @@ pub const DOORS: &[Door] = &[
         doc: "That switch, read back.",
     },
     Door {
+        rust: "Core::set_wheel_acceleration",
+        c: Is("kui_set_wheel_acceleration"),
+        odin: Is("set_wheel_acceleration"),
+        node: Is("setWheelAcceleration"),
+        lua: No(GUEST),
+        doc: "Whether rapid wheel notches travel farther on scroll containers. Off by default. Pixel scrolling and scroll handlers are unaffected.",
+    },
+    Door {
+        rust: "Core::wheel_acceleration",
+        c: Is("kui_wheel_acceleration"),
+        odin: Is("wheel_acceleration"),
+        node: Is("wheelAcceleration"),
+        lua: No(GUEST),
+        doc: "That switch, read back.",
+    },
+    Door {
         rust: "Core::set_wheel_feel",
         c: Is("kui_set_wheel_feel"),
         odin: Is("set_wheel_feel"),

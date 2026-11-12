@@ -30,6 +30,53 @@ use crate::tree::NIL;
 /// px: a sub-pixel remainder is no room to move.
 const AT_LIMIT: f32 = 0.5;
 
+/// The last whole-notch delta on one axis. Each rapid follow-up adds a
+/// quarter of the usual travel, capped at twice the usual travel.
+#[derive(Clone, Copy)]
+pub(super) struct WheelTurn {
+    key: Key,
+    positive: bool,
+    time: f64,
+    multiplier: f32,
+}
+
+impl WheelTurn {
+    fn accelerate(
+        previous: &mut Option<Self>,
+        target: Option<ScrollRegion>,
+        delta: f32,
+        line_px: f32,
+        time: Option<f64>,
+    ) -> f32 {
+        const RAPID_GAP: f64 = 0.12;
+        if delta == 0.0 {
+            return delta;
+        }
+        let Some((target, time)) = target
+            .filter(|r| !r.handler)
+            .zip(time)
+            .filter(|_| delta.is_finite() && delta.abs() >= line_px)
+        else {
+            *previous = None;
+            return delta;
+        };
+        let positive = delta.is_sign_positive();
+        let multiplier = previous
+            .filter(|p| {
+                let gap = time - p.time;
+                p.key == target.key && p.positive == positive && gap > 0.0 && gap <= RAPID_GAP
+            })
+            .map_or(1.0, |p| (p.multiplier + 0.25).min(2.0));
+        *previous = Some(Self {
+            key: target.key,
+            positive,
+            time,
+            multiplier,
+        });
+        delta * multiplier
+    }
+}
+
 /// The targets the gesture under way has latched, per axis. `None` on an
 /// axis the gesture has not moved on yet, or that found nothing to move.
 #[derive(Clone, Copy, Debug, Default)]
@@ -142,6 +189,17 @@ impl Core {
         let ty = (delta.y != 0.0)
             .then(|| self.scroll_target(false, delta.y, sideways))
             .flatten();
+        if self.wheel_acceleration {
+            if begins || wheel.is_none() {
+                self.wheel_turns = [None; 2];
+            }
+            if wheel.is_some() {
+                let time = self.anim.time().filter(|t| t.is_finite());
+                let line = self.wheel_feel().line_px;
+                delta.x = WheelTurn::accelerate(&mut self.wheel_turns[0], tx, delta.x, line, time);
+                delta.y = WheelTurn::accelerate(&mut self.wheel_turns[1], ty, delta.y, line, time);
+            }
+        }
         let turned = ty.is_some() && self.scroll_latch.y_sideways;
         match (tx, ty) {
             // One target for both: one event on a handler, as the whole

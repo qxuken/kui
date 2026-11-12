@@ -2797,6 +2797,13 @@ test('wheel: a notch glides to its place, and jumps with smoothWheel off', () =>
   assert.equal(windowOptions({ wheelFeel: 'brisk' }).wheelFeel, 'brisk');
   const app = createApp({ init: () => 0, update: (m) => m, view: () => box({}) }, { wheelFeel: 'swift' });
   assert.equal(app.ctx.wheelFeel().linePx, 64);
+
+  assert.equal(ctx.wheelAcceleration(), false);
+  ctx.setWheelAcceleration(true);
+  assert.equal(ctx.wheelAcceleration(), true);
+  assert.equal(windowOptions({ wheelAcceleration: true }).wheelAcceleration, true);
+  const accelerated = createApp({ init: () => 0, update: (m) => m, view: () => box({}) }, { wheelAcceleration: true });
+  assert.equal(accelerated.ctx.wheelAcceleration(), true);
 });
 
 // The edge scroll (ADR 0029, amended 2026-10-25): the feel by preset or

@@ -1251,6 +1251,24 @@ pub extern "C" fn kui_smooth_wheel(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Enables acceleration for rapid wheel notches on scroll containers.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_wheel_acceleration(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_wheel_acceleration(on);
+        }
+    });
+}
+
+/// Whether wheel acceleration is enabled. False for a null context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_wheel_acceleration(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().wheel_acceleration())
+    })
+}
+
 /// How a wheel's notch scrolls (`WheelFeel`): how far a line goes in
 /// logical px, the glide's response in seconds and its kick, from 0 to 1.
 /// Clamped into what the glide can use; a number that is not finite takes

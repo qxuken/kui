@@ -22,6 +22,8 @@ pub struct Project {
     /// `titlebar = "medium"` or `"tall"`: the macOS strip under custom
     /// chrome.
     pub titlebar: kui_native::Titlebar,
+    /// Opt in to acceleration for rapid wheel notches on scroll containers.
+    pub wheel_acceleration: bool,
     /// A PNG for the Dock, the taskbar and the window, against the app's
     /// folder.
     pub icon: Option<PathBuf>,
@@ -146,6 +148,7 @@ pub fn find(path: &Path) -> Result<Project, String> {
         min_size: None,
         chrome: kui_native::Chrome::Native,
         titlebar: kui_native::Titlebar::Standard,
+        wheel_acceleration: false,
         icon: None,
         devtools: false,
         rename: true,
@@ -296,6 +299,11 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
             };
         }
         p.devtools = t.get::<Option<bool>>("devtools")?.unwrap_or(false);
+        p.wheel_acceleration = match t.get::<mlua::Value>("wheel_acceleration")? {
+            mlua::Value::Nil => false,
+            mlua::Value::Boolean(on) => on,
+            _ => return Err(mlua::Error::runtime("wheel_acceleration must be a boolean")),
+        };
         p.devtools_key = match t.get::<mlua::Value>("devtools_key")? {
             mlua::Value::Nil | mlua::Value::Boolean(true) => DevtoolsKey::F12,
             mlua::Value::Boolean(false) => DevtoolsKey::Core,
@@ -479,6 +487,21 @@ mod tests {
         let p = find(&dir);
         let _ = std::fs::remove_dir_all(&dir);
         p
+    }
+
+    #[test]
+    fn wheel_acceleration_is_opt_in() {
+        assert!(
+            !with_config("wheel-default", "return {}")
+                .unwrap()
+                .wheel_acceleration
+        );
+        assert!(
+            with_config("wheel-on", "return { wheel_acceleration = true }")
+                .unwrap()
+                .wheel_acceleration
+        );
+        assert!(with_config("wheel-invalid", "return { wheel_acceleration = 1 }").is_err());
     }
 
     #[test]

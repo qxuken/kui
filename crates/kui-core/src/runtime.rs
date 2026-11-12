@@ -686,6 +686,9 @@ pub struct Core {
     pinch_latch: gesture::PinchLatch,
     /// Whether a wheel's notch glides on a scroll container (ADR 0050).
     smooth_wheel: bool,
+    wheel_acceleration: bool,
+    /// The current burst of wheel notches on each input axis.
+    wheel_turns: [Option<gesture::WheelTurn>; 2],
     /// How a held drag scrolls a container at its edge (ADR 0029,
     /// amended 2026-10-25), clamped.
     edge_feel: crate::edge_scroll::EdgeScrollFeel,
@@ -1607,6 +1610,8 @@ impl Core {
             scroll_latch: Default::default(),
             pinch_latch: Default::default(),
             smooth_wheel: true,
+            wheel_acceleration: false,
+            wheel_turns: [None; 2],
             edge_feel: crate::edge_scroll::EdgeScrollFeel::STANDARD,
             edge_ramps: Vec::new(),
             sel_ords: Vec::new(),
@@ -2011,6 +2016,20 @@ impl Core {
     /// system's reduced motion overrides it.
     pub fn smooth_wheel(&self) -> bool {
         self.smooth_wheel
+    }
+
+    /// Opts in to more travel for rapid, same-direction wheel notches on
+    /// a scroll container. Pixel scrolling and scroll handlers are unaffected.
+    pub fn set_wheel_acceleration(&mut self, on: bool) {
+        if self.wheel_acceleration != on {
+            self.wheel_turns = [None; 2];
+        }
+        self.wheel_acceleration = on;
+    }
+
+    /// Whether wheel acceleration is enabled. Off by default.
+    pub fn wheel_acceleration(&self) -> bool {
+        self.wheel_acceleration
     }
 
     /// Whether a notch glides now: the switch, and no reduced motion —

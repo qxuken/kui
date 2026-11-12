@@ -2530,6 +2530,8 @@ export interface WindowOptions {
    *  Default on; the system's reduced motion jumps either way. A trackpad
    *  is unaffected. */
   smoothWheel?: boolean;
+  /** Accelerate rapid wheel notches on scroll containers. Off by default. */
+  wheelAcceleration?: boolean;
   /** How a mouse wheel's notch scrolls, in every window of the app: a
    *  preset's name (`'brisk'` is a touch faster than the default) or the
    *  numbers to change from the standard feel. Taken as the window opens,
@@ -3907,6 +3909,10 @@ export declare class Ctx {
   setSmoothWheel(on: boolean): void
   /** That switch, read back. */
   smoothWheel(): boolean
+  /** Enables acceleration for rapid wheel notches on scroll containers. */
+  setWheelAcceleration(on: boolean): void
+  /** Whether wheel acceleration is enabled. Off by default. */
+  wheelAcceleration(): boolean
   /**
    * How a wheel's notch scrolls: a preset's name, slow to
    * fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
@@ -5670,6 +5676,10 @@ export declare class KuiWindow {
   setSmoothWheel(on: boolean): void
   /** That switch, read back. */
   smoothWheel(): boolean
+  /** Enables acceleration for rapid wheel notches on scroll containers. */
+  setWheelAcceleration(on: boolean): void
+  /** Whether wheel acceleration is enabled. Off by default. */
+  wheelAcceleration(): boolean
   /**
    * How a wheel's notch scrolls: a preset's name, slow to
    * fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
@@ -7198,6 +7208,8 @@ export declare function createApp<M, A = AppMsg, E = never>(
     /** `false`: a wheel's notch (`app.ctx.wheel`) jumps rather than glides
      *  (ADR 0050). Default on. */
     smoothWheel?: boolean;
+    /** Accelerate rapid wheel notches on scroll containers. Off by default. */
+    wheelAcceleration?: boolean;
     /** How a wheel's notch scrolls: a preset's name or the numbers to
      *  change (`app.ctx.setWheelFeel`). Default `'standard'`. */
     wheelFeel?: WheelPreset | Partial<WheelFeel>;

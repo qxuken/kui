@@ -2503,6 +2503,11 @@ impl KuiWindow {
                 )));
             }
         };
+        match o.get("wheelAcceleration") {
+            None | Some(Json::Null) => {}
+            Some(Json::Bool(on)) => launcher = launcher.wheel_acceleration(*on),
+            Some(_) => return Err(err("window options: wheelAcceleration must be a boolean")),
+        }
         // The wheel feel, the launcher's `wheel_feel`, so `KUI_WHEEL` in
         // the environment still wins: a user's override over the app's.
         if let Some(v) = o.get("wheelFeel").filter(|v| !v.is_null()) {
@@ -3810,6 +3815,18 @@ macro_rules! core_methods {
             #[napi]
             pub fn smooth_wheel(&mut self) -> bool {
                 self.$core().smooth_wheel()
+            }
+
+            /// Enables acceleration for rapid wheel notches on scroll containers.
+            #[napi]
+            pub fn set_wheel_acceleration(&mut self, on: bool) {
+                self.$core().set_wheel_acceleration(on);
+            }
+
+            /// Whether wheel acceleration is enabled. Off by default.
+            #[napi]
+            pub fn wheel_acceleration(&mut self) -> bool {
+                self.$core().wheel_acceleration()
             }
 
             /// How a wheel's notch scrolls: a preset's name, slow to

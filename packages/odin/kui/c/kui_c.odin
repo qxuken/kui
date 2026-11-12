@@ -1497,6 +1497,8 @@ foreign lib {
 	set_diagnostics :: proc(ctx: ^Ctx, on: bool) ---
 	set_smooth_wheel :: proc(ctx: ^Ctx, on: bool) ---
 	smooth_wheel :: proc(ctx: ^Ctx) -> bool ---
+	set_wheel_acceleration :: proc(ctx: ^Ctx, on: bool) ---
+	wheel_acceleration :: proc(ctx: ^Ctx) -> bool ---
 	set_wheel_feel :: proc(ctx: ^Ctx, line_px: f32, response: f32, kick: f32) ---
 	set_wheel_preset :: proc(ctx: ^Ctx, name: string) -> bool ---
 	wheel_feel :: proc(ctx: ^Ctx, line_px: ^f32, response: ^f32, kick: ^f32) ---
