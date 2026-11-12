@@ -2020,7 +2020,6 @@ fn the_kit_apps_feeds_tick_only_for_a_page_that_reads_them() {
         model = init()
         local live = require("demos.feeds")
         local views, inner = 0, view
-        function view(env) views = views + 1 return inner(env) end
         local function rev(ch) return ch and ch.rev or -1 end
         local at = {}
         local function mark(name) at[name] = { views = views, chart = rev(model.chart), log = rev(model.log), n = #model.series.t } end
@@ -2047,7 +2046,19 @@ fn the_kit_apps_feeds_tick_only_for_a_page_that_reads_them() {
             kui.exit(0)
           end },
         }
-        for _, step in ipairs(plan) do kui.timer.after(step[1], step[2]) end
+        -- Start measuring after native font discovery and the first view.
+        -- Otherwise a slow startup can deliver several page switches and
+        -- observations in one drain before the chart has drawn a frame.
+        local plan_started = false
+        function view(env)
+          views = views + 1
+          local tree = inner(env)
+          if not plan_started then
+            plan_started = true
+            for _, step in ipairs(plan) do kui.timer.after(step[1], step[2]) end
+          end
+          return tree
+        end
         "##,
     );
     let o = kui(&dir, &["run", "--headless", "walk.lua"], 60);
