@@ -1,0 +1,3 @@
+# Preserve upstream fixtures and font-license text byte for byte.
+fonts/*-LICENSE -text whitespace=-blank-at-eol,cr-at-eol
+sample/* -text whitespace=-blank-at-eol,cr-at-eol

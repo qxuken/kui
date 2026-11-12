@@ -651,8 +651,8 @@ fn families_of(
 
 impl crate::session::Session {
     /// `Core::add_system_font`'s registration, on the session every window
-    /// shares: a query against the font database's scan and an idempotent
-    /// registry entry, with no file opened. Here rather than on `Core` so
+    /// shares. Queries the catalog, waits for the selected face's bytes,
+    /// and creates an idempotent registry entry. Kept on the session so
     /// a binding's prop parser, which holds the token lookup's borrow of
     /// the core, can name a family while it parses.
     pub(crate) fn register_family(&self, name: &str) -> Option<crate::resources::FontId> {
@@ -664,6 +664,9 @@ impl crate::session::Session {
             ..Default::default()
         };
         let id = db.query(&query)?;
+        if !db.with_face_data(id, crate::text::measurable)? {
+            return None;
+        }
         // The canonical spelling, so the style matches the way fontdb does.
         let family = db.face(id)?.families.first()?.0.clone();
         if let Some((id, _)) = sess

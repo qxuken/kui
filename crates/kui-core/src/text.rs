@@ -1528,8 +1528,10 @@ impl cosmic_text::Fallback for AppFallback {
 
 type SharedFontBytes = std::sync::Arc<dyn AsRef<[u8]> + Send + Sync>;
 
-/// An immutable catalog of prepared faces. Its backing bytes are shared
-/// by sessions, while each session owns its shaping state.
+/// A catalog of validated faces with stable byte sources. Sources may
+/// wait for a native host's first preparation. Once a source exposes its
+/// bytes, they remain immutable. Sessions share the sources and own their
+/// shaping state.
 pub struct FontCatalog {
     pub(crate) locale: String,
     pub(crate) db: cosmic_text::fontdb::Database,
@@ -1571,7 +1573,8 @@ impl FontCatalog {
     /// Builds a catalog from faces whose byte ranges have already passed
     /// [`Self::can_measure`]. This lets a host validate using a temporary
     /// view of stable font bytes before publishing their backing store.
-    /// Sources without resident byte backing are always discarded.
+    /// File-opening sources are discarded. A host-provided byte source
+    /// may wait for its preparation before exposing immutable bytes.
     pub fn from_validated_database(
         locale: String,
         mut db: cosmic_text::fontdb::Database,

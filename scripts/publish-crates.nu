@@ -25,7 +25,7 @@
 # kui-value and kui-channel (ADR 0075) before both, which build on them.
 # kui-access (backlog F269) after kui-core and before kui-native and
 # kui-ffi, which both bridge through it.
-const CRATES = [kui-derive kui-value kui-channel kui-trace kui-core kui-access kui-wgpu kui-native kui-lua kui-ffi]
+const CRATES = [kui-derive kui-value kui-channel kui-trace kui-cosmic-text kui-core kui-access kui-wgpu kui-native kui-lua kui-ffi]
 
 const INDEX = {
     crates-io: "https://index.crates.io"

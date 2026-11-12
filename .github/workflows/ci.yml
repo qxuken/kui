@@ -164,7 +164,7 @@ jobs:
 
       - name: Portable core
         run: |
-          CLIPPY_CONF_DIR="$PWD/crates/kui-core" cargo clippy --locked -p kui-core --lib -- -D clippy::disallowed_methods
+          CLIPPY_CONF_DIR="$PWD/crates/kui-core" cargo clippy --locked --no-deps -p kui-core --lib -- -D clippy::disallowed_methods
           rustup target add wasm32-unknown-unknown
           cargo check --locked -p kui-core --no-default-features --target wasm32-unknown-unknown --lib
           nu scripts/portable-core-smoke.nu

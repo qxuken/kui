@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/kui-value",
     "crates/kui-channel",
+    "crates/kui-cosmic-text",
     "crates/kui-core",
     "crates/kui-derive",
     "crates/kui-trace",
@@ -71,7 +72,7 @@ kui-addon-schema = { path = "crates/kui-addon-schema" }
 
 slotmap = "1.1.1"
 rustc-hash = "2"
-cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash", "shape-run-cache"] }
+cosmic-text = { path = "crates/kui-cosmic-text", version = "0.1.0-alpha.80", package = "kui-cosmic-text", default-features = false, features = ["std", "swash", "shape-run-cache"] }
 # Same major cosmic-text builds on: `Font::as_swash()` hands us its FontRef.
 swash = "0.2"
 wgpu = "30"
@@ -94,6 +95,11 @@ debug = "line-tables-only"
 # Dependencies optimised and without debug info: they are not stepped into
 # at opt-level 2, and without it rustc keeps no loose objects for them.
 [profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+# Preserve the shaper's optimization as a vendored workspace dependency.
+[profile.dev.package.kui-cosmic-text]
 opt-level = 2
 debug = false
 

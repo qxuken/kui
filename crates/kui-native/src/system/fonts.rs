@@ -6,6 +6,8 @@ use std::io::{self, Read, Seek};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+mod source;
+
 #[cfg(target_os = "macos")]
 const FAMILIES: [&[&str]; 3] = [
     &["Helvetica Neue", "Helvetica"],
@@ -32,7 +34,7 @@ const FAMILIES: [&[&str]; 3] = [
 
 struct Scan {
     fonts: Arc<FontCatalog>,
-    mappings: HashMap<PathBuf, Mapping>,
+    sources: HashMap<PathBuf, Arc<source::Source>>,
 }
 
 static CATALOG: Mutex<Option<Scan>> = Mutex::new(None);
@@ -45,8 +47,69 @@ pub(super) fn catalog() -> Arc<FontCatalog> {
         .clone()
 }
 
-fn scan(previous: &HashMap<PathBuf, Mapping>) -> Scan {
+fn scan(previous: &HashMap<PathBuf, Arc<source::Source>>) -> Scan {
     let (locale, db) = cosmic_text::FontSystem::new().into_locale_and_db();
+    prepare_catalog(locale, &db, previous)
+}
+
+fn prepare_catalog(
+    locale: String,
+    db: &Database,
+    previous: &HashMap<PathBuf, Arc<source::Source>>,
+) -> Scan {
+    use cosmic_text::fontdb::{Family, Query};
+
+    let faces: Vec<_> = db
+        .faces()
+        .filter(|face| {
+            db.with_face_data(face.id, FontCatalog::can_measure)
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect();
+    let mut paths = HashMap::<PathBuf, Vec<u32>>::new();
+    for face in &faces {
+        if let Source::File(path) = &face.source {
+            let indices = paths.entry(path.clone()).or_default();
+            if !indices.contains(&face.index) {
+                indices.push(face.index);
+            }
+        }
+    }
+    let sources: HashMap<_, _> = paths
+        .into_iter()
+        .map(|(path, indices)| {
+            let revision = File::open(&path)
+                .ok()
+                .and_then(|file| Revision::read(&file));
+            let source = previous
+                .get(&path)
+                .filter(|source| {
+                    revision.is_some() && source.revision() == revision.as_ref() && !source.failed()
+                })
+                .cloned()
+                .unwrap_or_else(|| Arc::new(source::Source::new(path.clone(), indices, revision)));
+            (path, source)
+        })
+        .collect();
+
+    // Keep a usable default resident even if another font is removed
+    // before its first use. Remaining files are prepared on demand.
+    let preferred = FAMILIES[0].iter().find_map(|name| {
+        db.query(&Query {
+            families: &[Family::Name(name)],
+            ..Default::default()
+        })
+    });
+    let usable = preferred
+        .into_iter()
+        .chain(faces.iter().map(|face| face.id))
+        .any(|id| {
+            db.face(id).is_some_and(|face| match &face.source {
+                Source::File(path) => sources.get(path).is_some_and(|source| source.prepare()),
+                _ => true,
+            })
+        });
     let mut prepared = Database::new();
     for family in [
         cosmic_text::Family::SansSerif,
@@ -60,8 +123,13 @@ fn scan(previous: &HashMap<PathBuf, Mapping>) -> Scan {
             _ => prepared.set_monospace_family(name),
         }
     }
-    let (faces, mappings) = prepare(&db, previous);
-    for face in faces {
+    for mut face in faces {
+        if let Source::File(path) = &face.source {
+            if !usable {
+                continue;
+            }
+            face.source = Source::SharedFile(path.clone(), sources[path].clone());
+        }
         prepared.push_face_info(face);
     }
     let fonts = Arc::new(FontCatalog::from_validated_database(
@@ -70,7 +138,27 @@ fn scan(previous: &HashMap<PathBuf, Mapping>) -> Scan {
         FAMILIES,
         Some(Arc::new(cosmic_text::PlatformFallback)),
     ));
-    Scan { fonts, mappings }
+    // A requested family can overtake these small default-family warmups.
+    for family in [cosmic_text::Family::Serif, cosmic_text::Family::Monospace] {
+        let names = if family == Family::Serif {
+            FAMILIES[1]
+        } else {
+            FAMILIES[2]
+        };
+        let id = names.iter().find_map(|name| {
+            db.query(&Query {
+                families: &[Family::Name(name)],
+                ..Default::default()
+            })
+        });
+        if let Some(face) = id.and_then(|id| db.face(id))
+            && let Source::File(path) = &face.source
+            && let Some(source) = sources.get(path)
+        {
+            source.request(false);
+        }
+    }
+    Scan { fonts, sources }
 }
 
 type FontBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
@@ -202,7 +290,9 @@ impl Snapshots {
         }
         let pack = self.small.as_mut().unwrap();
         let mapped = pack.append(bytes);
-        if mapped.is_err() {
+        // The on-demand worker lives for the process. Release completed
+        // packs so obsolete ranges can go away with their last mapping.
+        if mapped.is_err() || pack.len >= 8 * 1024 * 1024 {
             self.small = None;
         }
         mapped
@@ -374,7 +464,7 @@ impl FontLoader for Loader {
     fn reload(&self) -> Arc<FontCatalog> {
         let mut cached = CATALOG.lock().unwrap_or_else(|e| e.into_inner());
         let fresh = match cached.as_ref() {
-            Some(previous) => scan(&previous.mappings),
+            Some(previous) => scan(&previous.sources),
             None => scan(&HashMap::new()),
         };
         let fonts = fresh.fonts.clone();
@@ -386,6 +476,97 @@ impl FontLoader for Loader {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
+
+    #[cfg(unix)]
+    #[test]
+    fn completed_snapshot_packs_keep_old_mappings_and_release_the_writer() {
+        let mut snapshots = super::Snapshots::default();
+        let bytes = vec![42; 512 * 1024];
+        let first = snapshots.pack(&bytes).unwrap();
+        for _ in 1..16 {
+            assert_eq!(&*snapshots.pack(&bytes).unwrap(), &bytes);
+        }
+        assert!(snapshots.small.is_none());
+        assert_eq!(&*first, &bytes);
+        assert_eq!(&*snapshots.pack(b"next pack").unwrap(), b"next pack");
+        assert!(snapshots.small.is_some());
+    }
+
+    #[test]
+    fn startup_prepares_the_default_face_and_keeps_other_weights_deferred() {
+        let dir = tempfile::tempdir().unwrap();
+        let regular = dir.path().join("regular.ttf");
+        let bold = dir.path().join("bold.ttf");
+        std::fs::write(
+            &regular,
+            include_bytes!("../../../kui-cli/assets/fonts/NotoSans-Regular.ttf"),
+        )
+        .unwrap();
+        std::fs::write(
+            &bold,
+            include_bytes!("../../../kui-cli/assets/fonts/NotoSans-Bold.ttf"),
+        )
+        .unwrap();
+        let mut db = cosmic_text::fontdb::Database::new();
+        db.load_font_file(&regular).unwrap();
+        db.load_font_file(&bold).unwrap();
+        let scan = super::prepare_catalog("en-US".into(), &db, &Default::default());
+        let session = kui_core::Session::with_font_catalog(scan.fonts);
+        let mut core = kui_core::Core::new_in(&session);
+        assert!(scan.sources[&regular].prepared());
+        assert!(
+            !scan.sources[&bold].prepared(),
+            "startup copied an unrequested font file"
+        );
+        assert_eq!(core.system_font_families(), ["Noto Sans"]);
+
+        let mut ui = core.frame(kui_core::Size::new(400.0, 200.0), 1.0);
+        ui.text("The first regular label", kui_core::TextStyle::new(18.0));
+        ui.finish();
+        assert!(
+            !scan.sources[&bold].prepared(),
+            "matching a regular label loaded an unrelated weight"
+        );
+
+        let font = core.add_system_font("Noto Sans").unwrap();
+        assert!(
+            !scan.sources[&bold].prepared(),
+            "registering a regular face loaded an unrequested weight"
+        );
+        let style = kui_core::TextStyle::new(18.0).font(font).bold();
+        let measured = core.measure_text("Bold is ready on its first use", &style, None);
+        assert!(scan.sources[&bold].prepared());
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&bold)
+            .unwrap()
+            .set_len(0)
+            .unwrap();
+        assert_eq!(
+            measured,
+            core.measure_text("Bold is ready on its first use", &style, None)
+        );
+    }
+
+    #[test]
+    fn unchanged_rescans_reuse_prepared_and_pending_sources() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(include_bytes!(
+            "../../../kui-cli/assets/fonts/NotoSans-Regular.ttf"
+        ))
+        .unwrap();
+        let mut db = cosmic_text::fontdb::Database::new();
+        db.load_font_file(file.path()).unwrap();
+        let first = super::prepare_catalog("en-US".into(), &db, &Default::default());
+        let next = super::prepare_catalog("en-US".into(), &db, &first.sources);
+        assert!(std::sync::Arc::ptr_eq(
+            &first.sources[file.path()],
+            &next.sources[file.path()]
+        ));
+        let session = kui_core::Session::with_font_catalog(first.fonts);
+        let mut core = kui_core::Core::new_in(&session);
+        assert_eq!(core.apply_font_catalog(next.fonts), 0);
+    }
 
     #[test]
     fn registered_file_survives_an_in_place_truncate() {
