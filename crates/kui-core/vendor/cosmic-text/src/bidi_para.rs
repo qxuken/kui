@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+// Modified for kui to follow the workspace's import formatting.
 
 use alloc::vec::Vec;
-use unicode_bidi::{bidi_class, BidiClass, BidiInfo, ParagraphInfo};
+use unicode_bidi::{BidiClass, BidiInfo, ParagraphInfo, bidi_class};
 
 /// An iterator over the paragraphs in the input text.
 /// It is equivalent to [`core::str::Lines`] but follows `unicode-bidi` behaviour.

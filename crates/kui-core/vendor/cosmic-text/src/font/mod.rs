@@ -1,3 +1,4 @@
+// Modified for kui to embed this source as a private module.
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use harfrust::Shaper;
@@ -7,13 +8,13 @@ use skrifa::{metrics::Metrics, prelude::*};
 // re-export skrifa
 pub use skrifa;
 // re-export peniko::Font;
-#[cfg(feature = "peniko")]
+#[cfg(any())]
 pub use linebender_resource_handle::FontData as PenikoFont;
 
 use core::fmt;
 
 use alloc::sync::Arc;
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use alloc::vec::Vec;
 use fontdb::Style;
 use self_cell::self_cell;
@@ -48,7 +49,6 @@ struct FontMonospaceFallback {
 
 /// A font
 pub struct Font {
-    #[cfg(feature = "swash")]
     swash: (u32, swash::CacheKey),
     harfrust: OwnedFace,
     data: FontData,
@@ -102,12 +102,11 @@ impl Font {
         &self.harfrust.borrow_owner().metrics
     }
 
-    #[cfg(feature = "peniko")]
+    #[cfg(any())]
     pub fn as_peniko(&self) -> PenikoFont {
         self.data.clone()
     }
 
-    #[cfg(feature = "swash")]
     pub fn as_swash(&self) -> swash::FontRef<'_> {
         let swash = &self.swash;
         swash::FontRef {
@@ -124,12 +123,10 @@ impl Font {
 
         let data = match &info.source {
             fontdb::Source::Binary(data) => Arc::clone(data),
-            #[cfg(feature = "std")]
             fontdb::Source::File(path) => {
                 log::warn!("Unsupported fontdb Source::File('{}')", path.display());
                 return None;
             }
-            #[cfg(feature = "std")]
             fontdb::Source::SharedFile(_path, data) => Arc::clone(data),
         };
 
@@ -143,7 +140,7 @@ impl Font {
             .location([(Tag::new(b"wght"), weight.0 as f32)]);
         let metrics = font_ref.metrics(Size::unscaled(), &location);
 
-        let monospace_fallback = if cfg!(feature = "monospace_fallback") {
+        let monospace_fallback = if cfg!(any()) {
             (|| {
                 let glyph_metrics = font_ref.glyph_metrics(Size::unscaled(), &location);
                 let charmap = font_ref.charmap();
@@ -207,7 +204,6 @@ impl Font {
         Some(Self {
             id: info.id,
             monospace_fallback,
-            #[cfg(feature = "swash")]
             swash: {
                 let swash = swash::FontRef::from_index((*data).as_ref(), info.index as usize)?;
                 (swash.offset, swash.key)
@@ -244,7 +240,7 @@ impl Font {
 mod test {
     #[test]
     fn test_fonts_load_time() {
-        use crate::FontSystem;
+        use crate::cosmic_text::FontSystem;
         use sys_locale::get_locale;
 
         #[cfg(not(target_arch = "wasm32"))]

@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use cosmic_text::{
-    fontdb::Database, Align, Attrs, AttrsOwned, Buffer, Color, Ellipsize, Family, FontSystem,
-    Metrics, Shaping, SwashCache, Wrap,
+    Align, Attrs, AttrsOwned, Buffer, Color, Ellipsize, Family, FontSystem, Metrics, Shaping,
+    SwashCache, Wrap, fontdb::Database,
 };
 use tiny_skia::{Paint, Pixmap, Rect, Transform};
 

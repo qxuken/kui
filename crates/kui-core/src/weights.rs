@@ -19,6 +19,8 @@
 //! draws a marked glyph at the axis's bold, and emboldens the outline of
 //! a marked glyph whose face has no heavier instance.
 
+use crate::cosmic_text;
+
 use cosmic_text::{Attrs, CacheKeyFlags, Weight, fontdb};
 
 /// kui's own bit in a glyph's cache key (backlog F100): the glyph's span

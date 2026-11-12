@@ -1,7 +1,8 @@
+// Modified for kui to embed this source as a private module.
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Modified for kui to satisfy workspace lints when selecting glyph colors.
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -10,10 +11,10 @@ use core::cmp;
 
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{
-    render_decoration, Action, Attrs, AttrsList, BorrowedWithFontSystem, BufferLine, BufferRef,
-    Change, ChangeItem, Color, Cursor, Edit, FontSystem, LayoutRun, LineEnding, LineIter, Renderer,
-    Selection, Shaping,
+use crate::cosmic_text::{
+    Action, Attrs, AttrsList, BorrowedWithFontSystem, BufferLine, BufferRef, Change, ChangeItem,
+    Color, Cursor, Edit, FontSystem, LayoutRun, LineEnding, LineIter, Renderer, Selection, Shaping,
+    render_decoration,
 };
 
 /// A wrapper of [`Buffer`] for easy editing
@@ -50,12 +51,11 @@ impl<'buffer> Editor<'buffer> {
     /// Draw the editor
     ///
     /// Automatically resolves any pending dirty state before drawing.
-    #[cfg(feature = "swash")]
     #[allow(clippy::too_many_arguments)]
     pub fn draw<F>(
         &mut self,
         font_system: &mut FontSystem,
-        cache: &mut crate::SwashCache,
+        cache: &mut crate::cosmic_text::SwashCache,
         text_color: Color,
         cursor_color: Color,
         selection_color: Color,
@@ -65,7 +65,7 @@ impl<'buffer> Editor<'buffer> {
         F: FnMut(i32, i32, u32, u32, Color),
     {
         self.with_buffer_mut(|buffer| buffer.shape_until_scroll(font_system, false));
-        let mut renderer = crate::LegacyRenderer {
+        let mut renderer = crate::cosmic_text::LegacyRenderer {
             font_system,
             cache,
             callback,
@@ -869,10 +869,9 @@ impl<'buffer> Edit<'buffer> for Editor<'buffer> {
 }
 
 impl BorrowedWithFontSystem<'_, Editor<'_>> {
-    #[cfg(feature = "swash")]
     pub fn draw<F>(
         &mut self,
-        cache: &mut crate::SwashCache,
+        cache: &mut crate::cosmic_text::SwashCache,
         text_color: Color,
         cursor_color: Color,
         selection_color: Color,

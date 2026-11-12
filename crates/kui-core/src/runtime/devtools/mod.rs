@@ -3,7 +3,7 @@
 //!
 //! Turned on by [`Core::set_devtools`] — or by `KUI_DEVTOOLS` in the
 //! environment, which the windowed runners read before the first frame
-//! ([`Core::devtools_from_env`]) — the panel sits beside the host's
+//! ([`Core::devtools_from_setting`]) — the panel sits beside the host's
 //! tree in the main window (`left`, `right`, `bottom`; a handle on the
 //! pane's inner edge resizes it), in a window of its own (`window`), or
 //! nowhere with its chords still live (`off`). It shows what

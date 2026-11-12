@@ -1,5 +1,6 @@
+// Modified for kui to embed this source as a private module.
 // Modified for kui to cache variable-weight ranges and check them on demand.
-use crate::{Attrs, Font, FontMatchAttrs, HashMap, ShapeBuffer};
+use crate::cosmic_text::{Attrs, Font, FontMatchAttrs, HashMap, ShapeBuffer};
 use alloc::boxed::Box;
 use alloc::collections::BTreeSet;
 use alloc::string::String;
@@ -8,8 +9,8 @@ use alloc::vec::Vec;
 use core::fmt;
 use core::ops::{Deref, DerefMut};
 use fontdb::{FaceInfo, Query, Style};
-use skrifa::raw::{ReadError, TableProvider as _};
 use skrifa::MetadataProvider;
+use skrifa::raw::{ReadError, TableProvider as _};
 
 // re-export fontdb and harfrust
 pub use fontdb;
@@ -153,8 +154,7 @@ pub struct FontSystem {
     pub(crate) monospace_fallbacks_buffer: BTreeSet<MonospaceFallbackInfo>,
 
     /// Cache for shaped runs
-    #[cfg(feature = "shape-run-cache")]
-    pub shape_run_cache: crate::ShapeRunCache,
+    pub shape_run_cache: crate::cosmic_text::ShapeRunCache,
 
     /// List of fallbacks
     pub(crate) dyn_fallback: Box<dyn Fallback>,
@@ -174,34 +174,6 @@ impl fmt::Debug for FontSystem {
 
 impl FontSystem {
     const FONT_MATCHES_CACHE_SIZE_LIMIT: usize = 256;
-    /// Create a new [`FontSystem`], that allows access to any installed system fonts
-    ///
-    /// # Timing
-    ///
-    /// This function takes some time to run. On the release build, it can take up to a second,
-    /// while debug builds can take up to ten times longer. For this reason, it should only be
-    /// called once, and the resulting [`FontSystem`] should be shared.
-    pub fn new() -> Self {
-        Self::new_with_fonts(core::iter::empty())
-    }
-
-    /// Create a new [`FontSystem`] with a pre-specified set of fonts.
-    pub fn new_with_fonts(fonts: impl IntoIterator<Item = fontdb::Source>) -> Self {
-        let locale = Self::get_locale();
-        log::debug!("Locale: {locale}");
-
-        let mut db = fontdb::Database::new();
-
-        Self::load_fonts(&mut db, fonts.into_iter());
-
-        //TODO: configurable default fonts
-        db.set_monospace_family("Noto Sans Mono");
-        db.set_sans_serif_family("Open Sans");
-        db.set_serif_family("DejaVu Serif");
-
-        Self::new_with_locale_and_db_and_fallback(locale, db, PlatformFallback)
-    }
-
     /// Create a new [`FontSystem`] with a pre-specified locale, font database and font fallback list.
     pub fn new_with_locale_and_db_and_fallback(
         locale: String,
@@ -220,7 +192,7 @@ impl FontSystem {
         let mut per_script_monospace_font_ids: HashMap<[u8; 4], BTreeSet<fontdb::ID>> =
             HashMap::default();
 
-        if cfg!(feature = "monospace_fallback") {
+        if cfg!(any()) {
             for &id in &monospace_font_ids {
                 db.with_face_data(id, |font_data, face_index| {
                     let face = skrifa::FontRef::from_index(font_data, face_index)?;
@@ -258,8 +230,7 @@ impl FontSystem {
             font_weight_ranges: HashMap::default(),
             font_codepoint_support_info_cache: HashMap::default(),
             monospace_fallbacks_buffer: BTreeSet::default(),
-            #[cfg(feature = "shape-run-cache")]
-            shape_run_cache: crate::ShapeRunCache::default(),
+            shape_run_cache: crate::cosmic_text::ShapeRunCache::default(),
             shape_buffer: ShapeBuffer::default(),
             dyn_fallback: Box::new(impl_fallback),
             fallbacks,
@@ -298,7 +269,6 @@ impl FontSystem {
         self.font_cache
             .entry((id, weight))
             .or_insert_with(|| {
-                #[cfg(feature = "std")]
                 unsafe {
                     self.db.make_shared_face_data(id);
                 }
@@ -378,7 +348,7 @@ impl FontSystem {
             //TODO: do not create AttrsOwned unless entry does not already exist
             .entry(attrs.into())
             .or_insert_with(|| {
-                #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
+                #[cfg(not(target_arch = "wasm32"))]
                 let now = std::time::Instant::now();
 
                 let mut font_match_keys = self
@@ -417,7 +387,7 @@ impl FontSystem {
                     }
                 }
 
-                #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
+                #[cfg(not(target_arch = "wasm32"))]
                 {
                     let elapsed = now.elapsed();
                     log::debug!("font matches for {attrs:?} in {elapsed:?}");
@@ -426,45 +396,6 @@ impl FontSystem {
                 Arc::new(font_match_keys)
             })
             .clone()
-    }
-
-    #[cfg(feature = "std")]
-    fn get_locale() -> String {
-        sys_locale::get_locale().unwrap_or_else(|| {
-            log::warn!("failed to get system locale, falling back to en-US");
-            String::from("en-US")
-        })
-    }
-
-    #[cfg(not(feature = "std"))]
-    fn get_locale() -> String {
-        String::from("en-US")
-    }
-
-    #[cfg(feature = "std")]
-    fn load_fonts(db: &mut fontdb::Database, fonts: impl Iterator<Item = fontdb::Source>) {
-        #[cfg(not(target_arch = "wasm32"))]
-        let now = std::time::Instant::now();
-
-        db.load_system_fonts();
-
-        for source in fonts {
-            db.load_font_source(source);
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        log::debug!(
-            "Parsed {} font faces in {}ms.",
-            db.len(),
-            now.elapsed().as_millis()
-        );
-    }
-
-    #[cfg(not(feature = "std"))]
-    fn load_fonts(db: &mut fontdb::Database, fonts: impl Iterator<Item = fontdb::Source>) {
-        for source in fonts {
-            db.load_font_source(source);
-        }
     }
 }
 

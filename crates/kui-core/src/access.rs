@@ -38,6 +38,8 @@
 //! on the sink, `role="line"` on each line, and `caret` /
 //! `selectionAnchor` byte offsets on the lines that hold them.
 
+use crate::cosmic_text;
+
 use std::sync::Arc;
 
 use cosmic_text::Buffer;

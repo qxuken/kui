@@ -1,3 +1,4 @@
+// Modified for kui to follow the workspace's derive formatting.
 /// Current cursor location
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Cursor {
@@ -44,19 +45,11 @@ impl Affinity {
     }
 
     pub const fn from_before(before: bool) -> Self {
-        if before {
-            Self::Before
-        } else {
-            Self::After
-        }
+        if before { Self::Before } else { Self::After }
     }
 
     pub const fn from_after(after: bool) -> Self {
-        if after {
-            Self::After
-        } else {
-            Self::Before
-        }
+        if after { Self::After } else { Self::Before }
     }
 }
 

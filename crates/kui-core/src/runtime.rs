@@ -14,6 +14,8 @@
 //! wrapper so that flat C bindings can drive a frame through one opaque
 //! pointer; the Rust [`Ui`] is a thin safe facade over it.
 
+use crate::cosmic_text;
+
 use std::rc::Rc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -2672,7 +2674,7 @@ pub trait Extension {
     /// `Some` lets the core keep the root's fill while an animation of
     /// its own runs (a keyframe cycle, a transition) and replay it on a
     /// frame only that animation asks for
-    /// ([`Core::frame_animates_only`]), while the revision and every fact
+    /// ([`Core::reframe`]), while the revision and every fact
     /// of the frame the fill read stay put. `None`, the default, runs the
     /// root fresh every frame, as a root always was: the core cannot know
     /// what a view reads beyond its own doors.

@@ -2,6 +2,8 @@
 //! mirror it to a texture; `dirty`/`epoch` tell them when to re-upload,
 //! and `dirty_rect` which part.
 
+use crate::cosmic_text;
+
 use cosmic_text::CacheKey;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -606,7 +608,7 @@ impl GlyphAtlas {
     /// Cached lookup; rasterizes on miss — or, the frame after the page
     /// was emptied, copies what the old page held. `None` means
     /// unrasterizable (e.g. whitespace) and is cached as such.
-    pub fn get_or_insert(
+    pub(crate) fn get_or_insert(
         &mut self,
         key: CacheKey,
         raster: impl FnOnce() -> Option<RasterGlyph>,

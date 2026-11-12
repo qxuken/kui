@@ -1,4 +1,5 @@
-#![cfg(feature = "vi")]
+// Modified for kui. The embedded configuration disables the upstream vi feature.
+#![cfg(any())]
 
 use std::sync::OnceLock;
 

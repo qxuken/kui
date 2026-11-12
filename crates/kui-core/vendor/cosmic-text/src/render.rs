@@ -1,11 +1,11 @@
+// Modified for kui to embed this source as a private module.
 //! Helpers for rendering buffers and editors
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use core_maths::CoreFloat;
 
-use crate::{Color, DecorationSpan, LayoutRun, PhysicalGlyph, UnderlineStyle};
-#[cfg(feature = "swash")]
-use crate::{FontSystem, SwashCache};
+use crate::cosmic_text::{Color, DecorationSpan, LayoutRun, PhysicalGlyph, UnderlineStyle};
+use crate::cosmic_text::{FontSystem, SwashCache};
 
 /// Custom renderer for buffers and editors
 pub trait Renderer {
@@ -123,7 +123,6 @@ fn draw_decoration_span<R: Renderer>(
 
 /// Helper to migrate from old renderer
 //TODO: remove in future version
-#[cfg(feature = "swash")]
 #[derive(Debug)]
 pub struct LegacyRenderer<'a, F: FnMut(i32, i32, u32, u32, Color)> {
     pub font_system: &'a mut FontSystem,
@@ -131,7 +130,6 @@ pub struct LegacyRenderer<'a, F: FnMut(i32, i32, u32, u32, Color)> {
     pub callback: F,
 }
 
-#[cfg(feature = "swash")]
 impl<'a, F: FnMut(i32, i32, u32, u32, Color)> Renderer for LegacyRenderer<'a, F> {
     fn rectangle(&mut self, x: i32, y: i32, w: u32, h: u32, color: Color) {
         (self.callback)(x, y, w, h, color);

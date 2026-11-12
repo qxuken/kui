@@ -3,6 +3,8 @@
 //! it for every window; playback is commands the driver drains
 //! (`audio`). Nothing here touches a device.
 
+use crate::cosmic_text;
+
 use super::*;
 
 impl Core {

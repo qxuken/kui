@@ -1,22 +1,23 @@
+// Modified for kui to embed this source as a private module.
 use alloc::sync::Arc;
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use alloc::{string::String, vec::Vec};
 use core::cmp;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{AttrsList, BorrowedWithFontSystem, Buffer, Cursor, FontSystem, Motion};
+use crate::cosmic_text::{AttrsList, BorrowedWithFontSystem, Buffer, Cursor, FontSystem, Motion};
 
 pub use self::editor::*;
 mod editor;
 
-#[cfg(feature = "syntect")]
+#[cfg(any())]
 pub use self::syntect::*;
-#[cfg(feature = "syntect")]
+#[cfg(any())]
 mod syntect;
 
-#[cfg(feature = "vi")]
+#[cfg(any())]
 pub use self::vi::*;
-#[cfg(feature = "vi")]
+#[cfg(any())]
 mod vi;
 
 /// An action to perform on an [`Editor`]

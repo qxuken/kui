@@ -1,20 +1,20 @@
+// Modified for kui to embed this source as a private module.
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Modified for kui to satisfy workspace documentation and expression lints.
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use alloc::{string::String, vec::Vec};
 
 use core::{cmp, fmt};
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use core_maths::CoreFloat;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{
-    render_decoration, Affinity, Align, Attrs, AttrsList, BidiParagraphs, BorrowedWithFontSystem,
-    BufferLine, Color, Cursor, DecorationSpan, Ellipsize, FontSystem, Hinting, LayoutCursor,
-    LayoutGlyph, LayoutLine, LineEnding, LineIter, Motion, Renderer, Scroll, ShapeLine, Shaping,
-    Wrap,
+use crate::cosmic_text::{
+    Affinity, Align, Attrs, AttrsList, BidiParagraphs, BorrowedWithFontSystem, BufferLine, Color,
+    Cursor, DecorationSpan, Ellipsize, FontSystem, Hinting, LayoutCursor, LayoutGlyph, LayoutLine,
+    LineEnding, LineIter, Motion, Renderer, Scroll, ShapeLine, Shaping, Wrap, render_decoration,
 };
 
 bitflags::bitflags! {
@@ -1085,7 +1085,7 @@ impl Buffer {
 
     /// Set text of buffer, using an iterator of styled spans (pairs of text and attributes).
     ///
-    /// ```
+    /// ```rust,ignore
     /// # use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
     /// # let mut font_system = FontSystem::new();
     /// let mut buffer = Buffer::new_empty(Metrics::new(32.0, 44.0));
@@ -1143,7 +1143,7 @@ impl Buffer {
     ///
     /// [`shape_until_scroll`]: Self::shape_until_scroll
     pub fn hit(&self, x: f32, y: f32) -> Option<Cursor> {
-        #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
+        #[cfg(not(target_arch = "wasm32"))]
         let instant = std::time::Instant::now();
 
         let mut new_cursor_opt = None;
@@ -1236,7 +1236,7 @@ impl Buffer {
             }
         }
 
-        #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
+        #[cfg(not(target_arch = "wasm32"))]
         log::trace!("click({}, {}): {:?}", x, y, instant.elapsed());
 
         new_cursor_opt
@@ -1601,18 +1601,17 @@ impl Buffer {
     /// Draw the buffer.
     ///
     /// Automatically resolves any pending dirty state before drawing.
-    #[cfg(feature = "swash")]
     pub fn draw<F>(
         &mut self,
         font_system: &mut FontSystem,
-        cache: &mut crate::SwashCache,
+        cache: &mut crate::cosmic_text::SwashCache,
         color: Color,
         callback: F,
     ) where
         F: FnMut(i32, i32, u32, u32, Color),
     {
         self.shape_until_scroll(font_system, false);
-        let mut renderer = crate::LegacyRenderer {
+        let mut renderer = crate::cosmic_text::LegacyRenderer {
             font_system,
             cache,
             callback,
@@ -1784,8 +1783,7 @@ impl BorrowedWithFontSystem<'_, Buffer> {
     /// Draw the buffer.
     ///
     /// Automatically resolves any pending dirty state.
-    #[cfg(feature = "swash")]
-    pub fn draw<F>(&mut self, cache: &mut crate::SwashCache, color: Color, f: F)
+    pub fn draw<F>(&mut self, cache: &mut crate::cosmic_text::SwashCache, color: Color, f: F)
     where
         F: FnMut(i32, i32, u32, u32, Color),
     {

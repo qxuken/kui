@@ -1,17 +1,18 @@
+// Modified for kui to embed this source as a private module.
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Modified for kui to explain font parsing failures in the upstream test.
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use alloc::boxed::Box;
-#[cfg(feature = "no_std")]
+#[cfg(any())]
 use core_maths::CoreFloat;
 
 use core::fmt;
-use swash::scale::{image::Content, ScaleContext};
 use swash::scale::{Render, Source, StrikeWith};
+use swash::scale::{ScaleContext, image::Content};
 use swash::zeno::{Format, Vector};
 
-use crate::{CacheKey, CacheKeyFlags, Color, FontSystem, HashMap};
+use crate::cosmic_text::{CacheKey, CacheKeyFlags, Color, FontSystem, HashMap};
 
 pub use swash::scale::image::{Content as SwashContent, Image as SwashImage};
 pub use swash::zeno::{Angle, Command, Placement, Transform};

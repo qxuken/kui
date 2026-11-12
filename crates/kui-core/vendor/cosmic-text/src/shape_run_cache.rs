@@ -1,8 +1,10 @@
-#[cfg(not(feature = "std"))]
+// Modified for kui to embed this source as a private module.
+// Modified for kui to include run direction in the shaping cache key.
+#[cfg(any())]
 use alloc::{string::String, vec::Vec};
 use core::ops::Range;
 
-use crate::{AttrsOwned, HashMap, ShapeGlyph};
+use crate::cosmic_text::{AttrsOwned, HashMap, ShapeGlyph};
 
 /// Key for caching shape runs.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -10,6 +12,7 @@ pub struct ShapeRunKey {
     pub text: String,
     pub default_attrs: AttrsOwned,
     pub attrs_spans: Vec<(Range<usize>, AttrsOwned)>,
+    pub rtl: bool,
 }
 
 /// A helper structure for caching shape runs.

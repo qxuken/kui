@@ -4,6 +4,8 @@
 //! costs a hash lookup per frame. Rasterization feeds the shared glyph atlas;
 //! renderers only ever see positioned atlas quads.
 
+use crate::cosmic_text;
+
 use cosmic_text::{
     Attrs, Buffer, CacheKeyFlags, Ellipsize, EllipsizeHeightLimit, FontSystem, Metrics, Shaping,
     Style as FontStyle, SwashContent, Weight, Wrap,
@@ -1434,7 +1436,7 @@ pub(crate) fn font_system_over(
     locale: String,
     db: cosmic_text::fontdb::Database,
     first: &[String],
-    fallback: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
+    fallback: Option<std::sync::Arc<dyn FontFallback>>,
 ) -> FontSystem {
     FontSystem::new_with_locale_and_db_and_fallback(locale, db, AppFallback::new(first, fallback))
 }
@@ -1446,7 +1448,7 @@ pub(crate) fn font_system_over(
 /// system's proportional face, which is no editor's second choice.
 /// With none it is the platform's lists as they are.
 pub(crate) struct AppFallback {
-    platform: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
+    platform: Option<std::sync::Arc<dyn FontFallback>>,
     first: &'static [&'static str],
     common: &'static [&'static str],
     /// A script's list with `first` ahead of it, made when first asked
@@ -1482,7 +1484,7 @@ fn keep_name(name: &str) -> &'static str {
 }
 
 impl AppFallback {
-    fn new(first: &[String], platform: Option<std::sync::Arc<dyn cosmic_text::Fallback>>) -> Self {
+    fn new(first: &[String], platform: Option<std::sync::Arc<dyn FontFallback>>) -> Self {
         let first = keep(first.iter().map(|n| keep_name(n)).collect());
         let common = keep(
             first
@@ -1528,6 +1530,32 @@ impl cosmic_text::Fallback for AppFallback {
 
 type SharedFontBytes = std::sync::Arc<dyn AsRef<[u8]> + Send + Sync>;
 
+/// Host-supplied family lists for fallback selection.
+pub trait FontFallback: Send + Sync {
+    /// Families asked after script-specific fallback families.
+    fn common_fallback(&self) -> &[&'static str];
+
+    /// Families excluded from exhaustive fallback.
+    fn forbidden_fallback(&self) -> &[&'static str];
+
+    /// Families asked for a script in the session's locale.
+    fn script_fallback(&self, script: unicode_script::Script, locale: &str) -> &[&'static str];
+}
+
+impl FontFallback for cosmic_text::PlatformFallback {
+    fn common_fallback(&self) -> &[&'static str] {
+        cosmic_text::Fallback::common_fallback(self)
+    }
+
+    fn forbidden_fallback(&self) -> &[&'static str] {
+        cosmic_text::Fallback::forbidden_fallback(self)
+    }
+
+    fn script_fallback(&self, script: unicode_script::Script, locale: &str) -> &[&'static str] {
+        cosmic_text::Fallback::script_fallback(self, script, locale)
+    }
+}
+
 /// A catalog of validated faces with stable byte sources. Sources may
 /// wait for a native host's first preparation. Once a source exposes its
 /// bytes, they remain immutable. Sessions share the sources and own their
@@ -1538,14 +1566,14 @@ pub struct FontCatalog {
     faces: rustc_hash::FxHashMap<(std::path::PathBuf, u32), SharedFontBytes>,
     pub(crate) last_resort: bool,
     pub(crate) preferences: [&'static [&'static str]; 3],
-    pub(crate) fallback: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
+    pub(crate) fallback: Option<std::sync::Arc<dyn FontFallback>>,
 }
 
 /// A native host's synchronous path-based font compatibility operations.
 /// A core that only receives font bytes needs no loader.
 pub trait FontLoader {
-    fn file(&self, path: &std::path::Path) -> Vec<cosmic_text::fontdb::FaceInfo>;
-    fn directory(&self, path: &std::path::Path) -> Vec<cosmic_text::fontdb::FaceInfo>;
+    fn file(&self, path: &std::path::Path) -> Vec<fontdb::FaceInfo>;
+    fn directory(&self, path: &std::path::Path) -> Vec<fontdb::FaceInfo>;
     fn reload(&self) -> std::sync::Arc<FontCatalog>;
 }
 
@@ -1561,9 +1589,9 @@ impl FontCatalog {
     /// sources that would need to open a file are discarded.
     pub fn from_database(
         locale: String,
-        mut db: cosmic_text::fontdb::Database,
+        mut db: fontdb::Database,
         preferences: [&'static [&'static str]; 3],
-        fallback: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
+        fallback: Option<std::sync::Arc<dyn FontFallback>>,
     ) -> Self {
         let all: Vec<_> = db.faces().map(|face| face.id).collect();
         keep_measurable(&mut db, all);
@@ -1577,9 +1605,9 @@ impl FontCatalog {
     /// may wait for its preparation before exposing immutable bytes.
     pub fn from_validated_database(
         locale: String,
-        mut db: cosmic_text::fontdb::Database,
+        mut db: fontdb::Database,
         preferences: [&'static [&'static str]; 3],
-        fallback: Option<std::sync::Arc<dyn cosmic_text::Fallback>>,
+        fallback: Option<std::sync::Arc<dyn FontFallback>>,
     ) -> Self {
         use cosmic_text::fontdb::Source;
         let missing: Vec<_> = db
@@ -1607,6 +1635,21 @@ impl FontCatalog {
             preferences,
             fallback,
         }
+    }
+
+    /// Builds a validated host catalog using the current platform's
+    /// fallback family lists. Sources follow [`Self::from_validated_database`].
+    pub fn from_platform_database(
+        locale: String,
+        db: fontdb::Database,
+        preferences: [&'static [&'static str]; 3],
+    ) -> Self {
+        Self::from_validated_database(
+            locale,
+            db,
+            preferences,
+            Some(std::sync::Arc::new(cosmic_text::PlatformFallback)),
+        )
     }
 
     pub(crate) fn contains_face(&self, face: &cosmic_text::fontdb::FaceInfo) -> bool {

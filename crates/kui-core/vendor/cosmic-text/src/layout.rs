@@ -1,14 +1,15 @@
+// Modified for kui to embed this source as a private module.
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use core::fmt::Display;
 
 use core::ops::Range;
 
-use crate::{math, CacheKey, CacheKeyFlags, Color, GlyphDecorationData};
-#[cfg(not(feature = "std"))]
+use crate::cosmic_text::{CacheKey, CacheKeyFlags, Color, GlyphDecorationData, math};
+#[cfg(any())]
 use alloc::vec::Vec;
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use core_maths::CoreFloat;
 
 /// A laid out glyph

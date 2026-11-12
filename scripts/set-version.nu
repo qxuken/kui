@@ -30,7 +30,7 @@ def main [version: string] {
         edit-lines $manifest {|l|
             $l
             | str replace -r '^version = "[^"]+"' $'version = "($ver)"'
-            | str replace -r '^((?:kui(-[a-z]+)?|cosmic-text) = \{ path = "[^"]+", version = )"[^"]+"' $'${1}"($ver)"'
+            | str replace -r '^(kui(-[a-z]+)? = \{ path = "[^"]+", version = )"[^"]+"' $'${1}"($ver)"'
         }
     }
     # The changelog's top heading is the fourth place the version is spelled

@@ -1,8 +1,9 @@
+// Modified for kui to embed this source as a private module.
 use alloc::{collections::BTreeMap, string::String};
 use core::cmp;
 use modit::{Event, Key, Parser, TextObject, WordIter};
 
-use crate::{
+use crate::cosmic_text::{
     Action, AttrsList, BorrowedWithFontSystem, BufferRef, Change, Color, Cursor, Edit, FontSystem,
     Motion, Renderer, Selection, SyntaxEditor, SyntaxTheme,
 };
@@ -212,12 +213,11 @@ impl<'syntax_system, 'buffer> ViEditor<'syntax_system, 'buffer> {
     ///
     /// ## Errors
     /// Returns an `io::Error` if reading the file fails
-    #[cfg(feature = "std")]
     pub fn load_text<P: AsRef<std::path::Path>>(
         &mut self,
         font_system: &mut FontSystem,
         path: P,
-        attrs: crate::Attrs,
+        attrs: crate::cosmic_text::Attrs,
     ) -> std::io::Result<()> {
         self.editor.load_text(font_system, path, attrs)
     }
@@ -305,17 +305,16 @@ impl<'syntax_system, 'buffer> ViEditor<'syntax_system, 'buffer> {
     /// Draw the editor.
     ///
     /// Automatically resolves any pending dirty state before drawing.
-    #[cfg(feature = "swash")]
     pub fn draw<F>(
         &mut self,
         font_system: &mut FontSystem,
-        cache: &mut crate::SwashCache,
+        cache: &mut crate::cosmic_text::SwashCache,
         callback: F,
     ) where
         F: FnMut(i32, i32, u32, u32, Color),
     {
         self.with_buffer_mut(|buffer| buffer.shape_until_scroll(font_system, false));
-        let mut renderer = crate::LegacyRenderer {
+        let mut renderer = crate::cosmic_text::LegacyRenderer {
             font_system,
             cache,
             callback,
@@ -1162,17 +1161,15 @@ impl BorrowedWithFontSystem<'_, ViEditor<'_, '_>> {
     ///
     /// ## Errors
     /// Returns an `io::Error` if reading the file fails
-    #[cfg(feature = "std")]
     pub fn load_text<P: AsRef<std::path::Path>>(
         &mut self,
         path: P,
-        attrs: crate::Attrs,
+        attrs: crate::cosmic_text::Attrs,
     ) -> std::io::Result<()> {
         self.inner.load_text(self.font_system, path, attrs)
     }
 
-    #[cfg(feature = "swash")]
-    pub fn draw<F>(&mut self, cache: &mut crate::SwashCache, f: F)
+    pub fn draw<F>(&mut self, cache: &mut crate::cosmic_text::SwashCache, f: F)
     where
         F: FnMut(i32, i32, u32, u32, Color),
     {

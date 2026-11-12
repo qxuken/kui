@@ -1,10 +1,11 @@
+// Modified for kui to embed this source as a private module.
 #![allow(clippy::too_many_arguments)]
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use alloc::{string::String, vec::Vec};
 use core::mem;
 
-use crate::{
+use crate::cosmic_text::{
     Align, Attrs, AttrsList, Cached, Ellipsize, FontSystem, Hinting, LayoutLine, LayoutRunIter,
     LineEnding, ShapeLine, Shaping, Wrap,
 };

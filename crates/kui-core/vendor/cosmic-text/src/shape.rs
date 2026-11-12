@@ -1,15 +1,16 @@
+// Modified for kui to embed this source as a private module.
 // SPDX-License-Identifier: MIT OR Apache-2.0
-// Modified for kui to satisfy workspace iteration and formatting lints.
+// Modified for kui to key cached runs by direction and satisfy workspace lints.
 
 #![allow(clippy::too_many_arguments)]
 
-use crate::fallback::FontFallbackIter;
-use crate::{
-    math, Align, Attrs, AttrsList, CacheKeyFlags, Color, DecorationMetrics, DecorationSpan,
-    Ellipsize, EllipsizeHeightLimit, Family, Font, FontSystem, GlyphDecorationData, Hinting,
-    LayoutGlyph, LayoutLine, Metrics, Wrap,
+use crate::cosmic_text::fallback::FontFallbackIter;
+use crate::cosmic_text::{
+    Align, Attrs, AttrsList, CacheKeyFlags, Color, DecorationMetrics, DecorationSpan, Ellipsize,
+    EllipsizeHeightLimit, Family, Font, FontSystem, GlyphDecorationData, Hinting, LayoutGlyph,
+    LayoutLine, Metrics, Wrap, math,
 };
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use alloc::{format, vec, vec::Vec};
 
 use alloc::collections::VecDeque;
@@ -18,7 +19,7 @@ use core::fmt;
 use core::mem;
 use core::ops::Range;
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use core_maths::CoreFloat;
 use fontdb::Style;
 use unicode_script::{Script, UnicodeScript};
@@ -34,7 +35,6 @@ pub enum Shaping {
     ///
     /// You should use this strategy when you have complete control of the text
     /// and the font you are displaying in your application.
-    #[cfg(feature = "swash")]
     Basic,
     /// Advanced text shaping and font fallback.
     ///
@@ -56,9 +56,8 @@ impl Shaping {
         span_rtl: bool,
     ) {
         match self {
-            #[cfg(feature = "swash")]
             Self::Basic => shape_skip(font_system, glyphs, line, attrs_list, start_run, end_run),
-            #[cfg(not(feature = "shape-run-cache"))]
+            #[cfg(any())]
             Self::Advanced => shape_run(
                 glyphs,
                 font_system,
@@ -68,7 +67,6 @@ impl Shaping {
                 end_run,
                 span_rtl,
             ),
-            #[cfg(feature = "shape-run-cache")]
             Self::Advanced => shape_run_cached(
                 glyphs,
                 font_system,
@@ -414,7 +412,6 @@ fn shape_run(
     font_system.shape_buffer.scripts = scripts;
 }
 
-#[cfg(feature = "shape-run-cache")]
 fn shape_run_cached(
     glyphs: &mut Vec<ShapeGlyph>,
     font_system: &mut FontSystem,
@@ -424,13 +421,14 @@ fn shape_run_cached(
     end_run: usize,
     span_rtl: bool,
 ) {
-    use crate::{AttrsOwned, ShapeRunKey};
+    use crate::cosmic_text::{AttrsOwned, ShapeRunKey};
 
     let run_range = start_run..end_run;
     let mut key = ShapeRunKey {
         text: line[run_range.clone()].to_string(),
         default_attrs: AttrsOwned::new(&attrs_list.defaults()),
         attrs_spans: Vec::new(),
+        rtl: span_rtl,
     };
     for (attrs_range, attrs) in attrs_list.spans.overlapping(&run_range) {
         if attrs == &key.default_attrs {
@@ -474,7 +472,6 @@ fn shape_run_cached(
     font_system.shape_run_cache.insert(key, cache_glyphs);
 }
 
-#[cfg(feature = "swash")]
 fn shape_skip(
     font_system: &mut FontSystem,
     glyphs: &mut Vec<ShapeGlyph>,
@@ -560,7 +557,6 @@ fn shape_skip(
     }
 }
 
-#[cfg(feature = "swash")]
 fn shape_skip_glyphs(
     glyphs: &mut Vec<ShapeGlyph>,
     font: &Font,
@@ -1014,7 +1010,6 @@ impl ShapeSpan {
                             // 2. If we have the same number of glyphs, they might be contextual alternates (e.g. |> becoming 2 special glyphs).
                             // Check if the glyphs match the standard "cmap" (character to glyph) mapping.
                             // If they differ, the shaper substituted them, so we should keep them together.
-                            #[cfg(feature = "swash")]
                             if glyphs.len() == probe_text.chars().count() {
                                 let charmap = font.as_swash().charmap();
                                 let mut is_modified = false;
@@ -1429,8 +1424,8 @@ impl ShapeLine {
                 attrs_list.defaults()
             } else {
                 attrs_list.get_span(0) // TODO: using the attrs from the first span for
-                                       // ellipsis even if it's at the end. Which for rich text may look weird if the first
-                                       // span has a different color or size than where ellipsizing is happening
+                // ellipsis even if it's at the end. Which for rich text may look weird if the first
+                // span has a different color or size than where ellipsizing is happening
             };
             let mut glyphs = shape_ellipsis(font_system, &attrs, shaping, rtl);
             if rtl {

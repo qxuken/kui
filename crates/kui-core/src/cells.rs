@@ -46,6 +46,8 @@
 //! Powerline separators are not shaped at all but rasterized from the cell
 //! box, so a TUI's frames are seamless in any font.
 
+use crate::cosmic_text;
+
 use cosmic_text::{Attrs, Buffer, FontSystem, Shaping, Style as FontStyle};
 use rustc_hash::FxHashMap;
 

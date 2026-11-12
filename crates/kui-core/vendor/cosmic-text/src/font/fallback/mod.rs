@@ -1,3 +1,4 @@
+// Modified for kui to embed this source as a private module.
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Modified for kui to defer weight checks and preparation of mono fallbacks.
 
@@ -9,7 +10,7 @@ use core::{mem, ops::Range};
 use fontdb::Family;
 use unicode_script::Script;
 
-use crate::{BuildHasher, Font, FontMatchKey, FontSystem, HashMap, ShapeBuffer};
+use crate::cosmic_text::{BuildHasher, Font, FontMatchKey, FontSystem, HashMap, ShapeBuffer};
 
 #[cfg(not(any(all(unix, not(target_os = "android")), target_os = "windows")))]
 #[path = "other.rs"]
@@ -33,7 +34,7 @@ mod platform;
 ///
 /// A default implementation is provided by the [`PlatformFallback`] struct, which encapsulates the target platform's pre-configured fallback lists.
 ///
-/// ```rust
+/// ```rust,ignore
 /// # use unicode_script::Script;
 /// # use cosmic_text::{Fallback, FontSystem};
 /// struct MyFallback;
@@ -166,9 +167,8 @@ impl Fallbacks {
 
 pub use platform::PlatformFallback;
 
-#[cfg(not(feature = "warn_on_missing_glyphs"))]
 use log::debug as missing_warn;
-#[cfg(feature = "warn_on_missing_glyphs")]
+#[cfg(any())]
 use log::warn as missing_warn;
 
 // Rank remaining mono faces by weight distance, missing codepoints, and weight.
@@ -377,10 +377,11 @@ impl<'a> FontFallbackIter<'a> {
                                 font_weight: m_key.font_weight,
                                 id: m_key.id,
                             };
-                            assert!(self
-                                .font_system
-                                .monospace_fallbacks_buffer
-                                .insert(fallback_info));
+                            assert!(
+                                self.font_system
+                                    .monospace_fallbacks_buffer
+                                    .insert(fallback_info)
+                            );
                         }
                     }
                 }

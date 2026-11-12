@@ -1,6 +1,6 @@
-use cosmic_text::{fontdb, Attrs, Family, FontSystem, Weight};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use cosmic_text::{Attrs, Family, FontSystem, Weight, fontdb};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct CountedBytes {
     bytes: &'static [u8],
@@ -34,9 +34,11 @@ fn matching_keeps_unrelated_font_bytes_unread() {
     let mut fonts = FontSystem::new_with_locale_and_db("en-US".into(), db);
     reads.store(0, Ordering::Relaxed);
 
-    assert!(!fonts
-        .get_font_matches(&Attrs::new().family(Family::Name("Inter")))
-        .is_empty());
+    assert!(
+        !fonts
+            .get_font_matches(&Attrs::new().family(Family::Name("Inter")))
+            .is_empty()
+    );
     assert_eq!(reads.load(Ordering::Relaxed), 0);
 }
 

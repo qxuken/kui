@@ -97,6 +97,12 @@
 //! - The repository: <https://github.com/qxuken/kui> (design records live
 //!   under `docs/adr` there)
 
+extern crate alloc;
+
+#[doc(hidden)]
+#[path = "../vendor/cosmic-text/src/lib.rs"]
+mod cosmic_text;
+
 pub mod access;
 pub mod anim;
 pub mod atlas;

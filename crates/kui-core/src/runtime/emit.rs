@@ -6,6 +6,8 @@
 //! share. Everything here reads the tree `builder` built and writes
 //! `display`; the input side of the same frame is `dispatch`.
 
+use crate::cosmic_text;
+
 use super::*;
 
 const SCROLLBAR_W: f32 = 4.0;

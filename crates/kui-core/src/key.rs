@@ -55,7 +55,7 @@ const LANES: usize = 8;
 /// for the bulk a text cache key is made of. Fx's round (rotate, xor,
 /// multiply) with the length mixed first and murmur's finalizer after, so
 /// a tail of zero bytes and a shorter text differ and every input bit
-/// reaches every output bit. Whole 64-byte blocks go through [`LANES`]
+/// reaches every output bit. Whole 64-byte blocks go through `LANES`
 /// chains, each seeded apart and folded into one by the same round; the
 /// words past the last block through that one. Not a digest anything
 /// keeps across versions.

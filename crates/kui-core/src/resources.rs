@@ -41,6 +41,8 @@
 //! `Core::take_warnings` reports. The mint is touched on registration,
 //! removal and the miss path only; a live lookup never locks it.
 
+use crate::cosmic_text;
+
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};

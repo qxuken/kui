@@ -1,13 +1,14 @@
+// Modified for kui to embed this source as a private module.
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#[cfg(not(feature = "std"))]
+#[cfg(any())]
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use core::ops::Range;
 use rangemap::RangeMap;
 use smol_str::SmolStr;
 
-use crate::{CacheKeyFlags, Metrics};
+use crate::cosmic_text::{CacheKeyFlags, Metrics};
 
 pub use fontdb::{Family, Stretch, Style, Weight};
 

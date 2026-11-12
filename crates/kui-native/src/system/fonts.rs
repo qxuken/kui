@@ -1,4 +1,4 @@
-use cosmic_text::fontdb::{Database, FaceInfo, Source};
+use fontdb::{Database, FaceInfo, Source};
 use kui_core::text::{FontCatalog, FontLoader};
 use std::collections::HashMap;
 use std::fs::File;
@@ -48,7 +48,12 @@ pub(super) fn catalog() -> Arc<FontCatalog> {
 }
 
 fn scan(previous: &HashMap<PathBuf, Arc<source::Source>>) -> Scan {
-    let (locale, db) = cosmic_text::FontSystem::new().into_locale_and_db();
+    let locale = sys_locale::get_locale().unwrap_or_else(|| "en-US".into());
+    let mut db = Database::new();
+    db.load_system_fonts();
+    db.set_monospace_family("Noto Sans Mono");
+    db.set_sans_serif_family("Open Sans");
+    db.set_serif_family("DejaVu Serif");
     prepare_catalog(locale, &db, previous)
 }
 
@@ -57,7 +62,7 @@ fn prepare_catalog(
     db: &Database,
     previous: &HashMap<PathBuf, Arc<source::Source>>,
 ) -> Scan {
-    use cosmic_text::fontdb::{Family, Query};
+    use fontdb::{Family, Query};
 
     let faces: Vec<_> = db
         .faces()
@@ -112,14 +117,14 @@ fn prepare_catalog(
         });
     let mut prepared = Database::new();
     for family in [
-        cosmic_text::Family::SansSerif,
-        cosmic_text::Family::Serif,
-        cosmic_text::Family::Monospace,
+        fontdb::Family::SansSerif,
+        fontdb::Family::Serif,
+        fontdb::Family::Monospace,
     ] {
         let name = db.family_name(&family);
         match family {
-            cosmic_text::Family::SansSerif => prepared.set_sans_serif_family(name),
-            cosmic_text::Family::Serif => prepared.set_serif_family(name),
+            fontdb::Family::SansSerif => prepared.set_sans_serif_family(name),
+            fontdb::Family::Serif => prepared.set_serif_family(name),
             _ => prepared.set_monospace_family(name),
         }
     }
@@ -132,14 +137,11 @@ fn prepare_catalog(
         }
         prepared.push_face_info(face);
     }
-    let fonts = Arc::new(FontCatalog::from_validated_database(
-        locale,
-        prepared,
-        FAMILIES,
-        Some(Arc::new(cosmic_text::PlatformFallback)),
+    let fonts = Arc::new(FontCatalog::from_platform_database(
+        locale, prepared, FAMILIES,
     ));
     // A requested family can overtake these small default-family warmups.
-    for family in [cosmic_text::Family::Serif, cosmic_text::Family::Monospace] {
+    for family in [fontdb::Family::Serif, fontdb::Family::Monospace] {
         let names = if family == Family::Serif {
             FAMILIES[1]
         } else {
@@ -507,7 +509,7 @@ mod tests {
             include_bytes!("../../../kui-cli/assets/fonts/NotoSans-Bold.ttf"),
         )
         .unwrap();
-        let mut db = cosmic_text::fontdb::Database::new();
+        let mut db = fontdb::Database::new();
         db.load_font_file(&regular).unwrap();
         db.load_font_file(&bold).unwrap();
         let scan = super::prepare_catalog("en-US".into(), &db, &Default::default());
@@ -555,7 +557,7 @@ mod tests {
             "../../../kui-cli/assets/fonts/NotoSans-Regular.ttf"
         ))
         .unwrap();
-        let mut db = cosmic_text::fontdb::Database::new();
+        let mut db = fontdb::Database::new();
         db.load_font_file(file.path()).unwrap();
         let first = super::prepare_catalog("en-US".into(), &db, &Default::default());
         let next = super::prepare_catalog("en-US".into(), &db, &first.sources);

@@ -1,13 +1,13 @@
-#[cfg(not(feature = "std"))]
+// Modified for kui to embed this source as a private module.
+#[cfg(any())]
 use alloc::{string::String, vec::Vec};
-#[cfg(feature = "std")]
 use std::{fs, io, path::Path};
 use syntect::highlighting::{
     FontStyle, HighlightState, Highlighter, RangedHighlightIterator, ThemeSet,
 };
 use syntect::parsing::{ParseState, ScopeStack, SyntaxReference, SyntaxSet};
 
-use crate::{
+use crate::cosmic_text::{
     Action, AttrsList, BorrowedWithFontSystem, BufferRef, Change, Color, Cursor, Edit, Editor,
     FontSystem, Renderer, Selection, Shaping, Style, UnderlineStyle, Weight,
 };
@@ -104,12 +104,11 @@ impl<'syntax_system, 'buffer> SyntaxEditor<'syntax_system, 'buffer> {
     /// ## Errors
     ///
     /// Returns an [`io::Error`] if reading the file fails
-    #[cfg(feature = "std")]
     pub fn load_text<P: AsRef<Path>>(
         &mut self,
         _font_system: &mut FontSystem,
         path: P,
-        mut attrs: crate::Attrs,
+        mut attrs: crate::cosmic_text::Attrs,
     ) -> io::Result<()> {
         let path = path.as_ref();
 
@@ -220,11 +219,10 @@ impl<'syntax_system, 'buffer> SyntaxEditor<'syntax_system, 'buffer> {
     /// Draw the editor
     ///
     /// Automatically resolves any pending dirty state before drawing.
-    #[cfg(feature = "swash")]
     pub fn draw<F>(
         &mut self,
         font_system: &mut FontSystem,
-        cache: &mut crate::SwashCache,
+        cache: &mut crate::cosmic_text::SwashCache,
         callback: F,
     ) where
         F: FnMut(i32, i32, u32, u32, Color),
@@ -303,7 +301,6 @@ impl<'buffer> Edit<'buffer> for SyntaxEditor<'_, 'buffer> {
     }
 
     fn shape_as_needed(&mut self, font_system: &mut FontSystem, prune: bool) {
-        #[cfg(feature = "std")]
         let now = std::time::Instant::now();
 
         let cursor = self.cursor();
@@ -424,7 +421,6 @@ impl<'buffer> Edit<'buffer> for SyntaxEditor<'_, 'buffer> {
 
             if highlighted > 0 {
                 buffer.set_redraw(true);
-                #[cfg(feature = "std")]
                 log::debug!(
                     "Syntax highlighted {} lines in {:?}",
                     highlighted,
@@ -479,13 +475,15 @@ impl BorrowedWithFontSystem<'_, SyntaxEditor<'_, '_>> {
     /// ## Errors
     ///
     /// Returns an [`io::Error`] if reading the file fails
-    #[cfg(feature = "std")]
-    pub fn load_text<P: AsRef<Path>>(&mut self, path: P, attrs: crate::Attrs) -> io::Result<()> {
+    pub fn load_text<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        attrs: crate::cosmic_text::Attrs,
+    ) -> io::Result<()> {
         self.inner.load_text(self.font_system, path, attrs)
     }
 
-    #[cfg(feature = "swash")]
-    pub fn draw<F>(&mut self, cache: &mut crate::SwashCache, f: F)
+    pub fn draw<F>(&mut self, cache: &mut crate::cosmic_text::SwashCache, f: F)
     where
         F: FnMut(i32, i32, u32, u32, Color),
     {

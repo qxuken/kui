@@ -1,6 +1,7 @@
+// Modified for kui to follow the workspace's import formatting.
 use cosmic_text::{
-    fontdb, Align, Attrs, AttrsList, BidiParagraphs, Buffer, Family, FontSystem, Hinting,
-    LayoutLine, Metrics, ShapeLine, Shaping, Weight, Wrap,
+    Align, Attrs, AttrsList, BidiParagraphs, Buffer, Family, FontSystem, Hinting, LayoutLine,
+    Metrics, ShapeLine, Shaping, Weight, Wrap, fontdb,
 };
 
 // Test for https://github.com/pop-os/cosmic-text/issues/134

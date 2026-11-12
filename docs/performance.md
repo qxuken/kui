@@ -392,6 +392,10 @@ repeated within 8% across runs:
 | `keystroke_apply_100k_lines` | the 100k edit alone, the frame run untimed between samples: the half RG156 tripled, when the text was copied for an editor that declared no `on_change` | ~3.1 ms |
 | `cosmic_insert_and_shape_500_lines` | cosmic-text alone, an insert and its reshape in 500 lines, for scale | ~170 µs |
 
+Current runs of the direct shaper row use the unpublished
+`kui-cosmic-text-tests` harness, which compiles the same embedded source
+as kui-core.
+
 The rows time the whole keystroke because one short call timed alone
 reads bimodal on this machine (the 500-line edit alone 86 to 266 µs),
 wider than the guard's 10%; the apply row is the exception, kept for
