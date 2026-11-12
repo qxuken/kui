@@ -107,6 +107,8 @@ jobs:
         env:
           # Headless CLI tests also start the software GPU adapter.
           RUST_TEST_THREADS: ${{ runner.os == 'Windows' && '2' || '4' }}
+          # Cold Windows font preparation can exceed the local startup budget.
+          KUI_TEST_TIMEOUT_SCALE: ${{ runner.os == 'Windows' && '3' || '1' }}
         run: cargo test --workspace --no-fail-fast
 
       - name: Runner HTTP integration tests

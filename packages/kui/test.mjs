@@ -9204,8 +9204,12 @@ test('metrics() is the sizes the protocol declares, and setMetrics reaches the s
   assert.ok(rows.length >= 12, 'the protocol declares the metrics');
   const ctx = new Ctx();
   const stock = ctx.metrics();
+  // The native context applies the host's platform defaults. The protocol
+  // also carries portable stock values for hosts that choose another platform.
+  const platform = process.platform === 'win32' ? 'windows' : 'elsewhere';
   for (const r of rows) {
-    assert.equal(stock[r.node], r.stock, `${r.node} is the stock value`);
+    const expected = r.platform?.[platform] ?? r.stock;
+    assert.equal(stock[r.node], expected, `${r.node} is the native stock value`);
   }
   assert.equal(stock.radius, 6);
   assert.equal(stock.controlText, 15);
