@@ -19,6 +19,8 @@
 //! draws a marked glyph at the axis's bold, and emboldens the outline of
 //! a marked glyph whose face has no heavier instance.
 
+use crate::cosmic_text;
+
 use cosmic_text::{Attrs, CacheKeyFlags, Weight, fontdb};
 
 /// kui's own bit in a glyph's cache key (backlog F100): the glyph's span
@@ -51,10 +53,9 @@ impl Weights {
     /// database is asked as [`Self::CSS`]; cosmic-text falls back for it
     /// whatever it is asked.
     pub(crate) fn of(db: &fontdb::Database, family: &str) -> Self {
-        let faces: Vec<(u16, Option<(f32, f32)>)> = db
+        let faces: Vec<_> = db
             .faces()
             .filter(|face| face.families.iter().any(|(name, _)| name == family))
-            .map(|face| (face.weight.0, wght_range(db, face.id)))
             .collect();
         if faces.is_empty() {
             return Self::CSS;
@@ -62,14 +63,15 @@ impl Weights {
         // cosmic-text's own test, `FontFallbackIter::default_font_match_key`:
         // the face's weight, or a `wght` axis that spans the one asked.
         let serve = |asked: u16| -> Weight {
-            let covered = faces.iter().any(|&(weight, range)| {
-                weight == asked
-                    || range.is_some_and(|(lo, hi)| (lo..=hi).contains(&f32::from(asked)))
-            });
+            let covered = faces.iter().any(|face| face.weight.0 == asked)
+                || faces.iter().any(|face| {
+                    wght_range(db, face.id)
+                        .is_some_and(|(lo, hi)| (lo..=hi).contains(&f32::from(asked)))
+                });
             if covered {
                 return Weight(asked);
             }
-            Weight(css_match(asked, faces.iter().map(|&(weight, _)| weight)).unwrap_or(asked))
+            Weight(css_match(asked, faces.iter().map(|face| face.weight.0)).unwrap_or(asked))
         };
         Self {
             regular: serve(Weight::NORMAL.0),

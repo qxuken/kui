@@ -41,6 +41,8 @@
 //! multi-window app are driven one frame at a time on one thread, so the
 //! check never contends.
 
+use crate::cosmic_text;
+
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use std::sync::Arc;

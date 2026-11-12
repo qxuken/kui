@@ -18,7 +18,7 @@ fn glyph_quads(core: &mut Core, style: TextStyle) -> usize {
 }
 
 fn with_path_loader() -> Core {
-    use cosmic_text::fontdb::{Database, FaceInfo};
+    use fontdb::{Database, FaceInfo};
     use kui_core::text::{FontCatalog, FontLoader};
     use std::{path::Path, rc::Rc, sync::Arc};
 

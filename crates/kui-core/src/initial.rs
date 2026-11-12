@@ -17,6 +17,8 @@
 //! word of its own are collapsed, as CSS collapses them (backlog F166),
 //! so the first row beside the letter starts where the others do.
 
+use crate::cosmic_text;
+
 use cosmic_text::{AttrsList, Buffer, BufferLine, FontSystem, LineEnding};
 
 use crate::geom::Rect;

@@ -1,0 +1,69 @@
+[package]
+name = "kui-cosmic-text-tests"
+version.workspace = true
+edition.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Private test harness for kui's embedded text shaper"
+autotests = false
+
+[lib]
+name = "cosmic_text"
+path = "src/lib.rs"
+
+[dependencies]
+bitflags.workspace = true
+fontdb.workspace = true
+harfrust.workspace = true
+linebender_resource_handle.workspace = true
+log.workspace = true
+rangemap.workspace = true
+rustc-hash.workspace = true
+self_cell.workspace = true
+skrifa.workspace = true
+smol_str.workspace = true
+swash.workspace = true
+sys-locale.workspace = true
+unicode-bidi.workspace = true
+unicode-linebreak = "0.1"
+unicode-script = "0.5"
+unicode-segmentation = "1"
+
+[dev-dependencies]
+tiny-skia = "0.11.4"
+
+[[test]]
+name = "font_match_laziness"
+path = "tests/font_match_laziness.rs"
+
+[[test]]
+name = "editor_modified_state"
+path = "tests/editor_modified_state.rs"
+
+[[test]]
+name = "ellipsize_rendering"
+path = "tests/ellipsize_rendering.rs"
+
+[[test]]
+name = "richtext_layout"
+path = "tests/richtext_layout.rs"
+
+[[test]]
+name = "shaping_and_rendering"
+path = "tests/shaping_and_rendering.rs"
+
+[[test]]
+name = "text_decorations"
+path = "tests/text_decorations.rs"
+
+[[test]]
+name = "variable_font_weight"
+path = "tests/variable_font_weight.rs"
+
+[[test]]
+name = "wrap_stability"
+path = "tests/wrap_stability.rs"
+
+[[test]]
+name = "wrap_word_fallback"
+path = "tests/wrap_word_fallback.rs"

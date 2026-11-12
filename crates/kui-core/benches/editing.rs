@@ -11,6 +11,7 @@
 
 use std::cell::RefCell;
 
+use cosmic_text_tests as cosmic_text;
 use kui_core::{Core, EditOptions, FontFamily, InputEvent, NodeSpec, Size, TextStyle, Value};
 
 fn doc(lines: usize) -> String {

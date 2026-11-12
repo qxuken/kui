@@ -33,6 +33,14 @@ an independent `perf::PerfClock` for timing within a frame. For installed
 fonts and native path handling, construct the core with
 `kui_native::system::new_core`.
 
+The text shaper is embedded as a private module. Custom font hosts use
+`text::FontCatalog`, `text::FontLoader`, and `fontdb` metadata.
+`FontCatalog::from_platform_database` supplies the current platform's
+fallback lists. A host can implement `text::FontFallback` to supply its
+own lists. `GlyphAtlas::get_or_insert` and the shaper-taking `EditStore`
+methods (`set_text`, `replace_all`, `replace_selection`, and
+`delete_selection`) are internal. Apps use Core's text and editor methods.
+
 ```rust
 use kui_core::{Core, InputEvent, NodeSpec, Size, TextStyle, widgets};
 
@@ -84,3 +92,6 @@ assert!(events.iter().any(|e| e.payload.as_str() == Some("save")));
 ## License
 
 MIT
+
+The embedded cosmic-text source retains its MIT OR Apache-2.0 licenses in
+`vendor/cosmic-text`.

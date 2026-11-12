@@ -3348,11 +3348,19 @@ a frame, 7 and 12 s each alone under ASan against its 60 s.
 
 The hour's corpus then failed `tests/reuse.rs` (`KUI_FUZZ_CORPUS=1`):
 514 of 10 708 `events` runs and 2 of 23 152 `scenes` runs read
-differently on a kept session than on a new one. That is FZ14, open: a
-word shaped right to left is handed back for the same word left to
-right, by a cache in cosmic-text that every window of a session shares.
+differently on a kept session than on a new one. That was FZ14, fixed
+2026-11-12. A cache shared by every window of a session handed back a
+word shaped right to left for the same word in left-to-right text.
 
 ### `.` FZ14 — A word shaped right to left comes back for the same word left to right
+
+**Built 2026-11-12.** The shaper embedded in kui-core includes `span_rtl`
+as `rtl` in `ShapeRunKey`. A neutral run cached in one direction now gets
+a separate entry when its next paragraph gives it the other direction.
+`crates/kui-core/tests/shaped_direction.rs` supplies fixed font bytes and
+checks carets after `א k]] א` followed by `]] b`, both in one window and
+in another window sharing the session. Both tests failed before the key
+included direction and passed with it. This also fixes FZ18.
 
 **Found.** The alpha.66 fuzz hour's corpus, under `tests/reuse.rs`: on
 a kept session an `events` field of `]]` and tabs had its carets in
@@ -3368,8 +3376,8 @@ reversed, and after it `"]] b"` draws `[[ b` with its carets backwards,
 in that window or any other of the session; `"א k)) א"` then `)) b`
 the same. A run with a strong letter has one direction wherever it is
 and is safe. Older than alpha.66: the cache has been on since the
-editor's first commit (`f189ab4f`). cosmic-text 0.19.0 is the newest
-release, and its main branch has the same key (checked 2026-10-24).
+editor's first commit (`f189ab4f`). On 2026-10-24 cosmic-text 0.19.0 was
+the newest release, and its main branch had the same key.
 
 **Measured.** Turning the feature off is correct and too dear (M3 Pro,
 AC power, `cargo bench -p kui-core`, medians): a keystroke in 500 lines
@@ -3377,7 +3385,7 @@ AC power, `cargo bench -p kui-core`, medians): a keystroke in 500 lines
 line 1.28 → 11.7 ms, `edit_value_field_splice` 5.2 → 808 µs,
 `stream_50x200_log` 24 → 169 ms; 50 of 74 rows within 3%.
 
-**Do.** One of, or both:
+**Approaches considered.**
 
 - **Upstream**: a run's direction in cosmic-text's key (`span_rtl` in
   `ShapeRunKey`), and the workspace on the release that has it.
@@ -3388,10 +3396,6 @@ line 1.28 → 11.7 ms, `edit_value_field_splice` 5.2 → 808 µs,
   rest. Every place that hands cosmic-text attributes would mark it:
   plain and rich text, the editors after each edit cosmic-text applies
   in place, the cell grid, drop caps.
-
-The test is written — carets of `]] b` in order after `א k]] א`, in the
-same window and in another; red on the cache — and goes in with the
-fix as `crates/kui-core/tests/shaped_direction.rs`.
 
 **The upstream fix, tried** (2026-10-24, on a copy of cosmic-text 0.19.0
 under a `[patch.crates-io]` that was not kept). Two lines: a field in
@@ -3411,19 +3415,20 @@ the key, set where the key is made.
      };
 ```
 
-With it the test is green, and `KUI_FUZZ_CORPUS=1 cargo test --release
--p kui-fuzz --test reuse` passes over the hour's whole corpus (10 708
+In that prototype the test passed, and `KUI_FUZZ_CORPUS=1 cargo test --release
+-p kui-fuzz --test reuse` passed over the hour's whole corpus (10 708
 `events` runs, 23 152 `scenes`): all 516 runs that read differently on
-a kept session were this bug, and nothing else in a kept session leaks.
-It costs nothing measured: the four bench files above, 64 of 74 rows
+a kept session were this bug, and nothing else in a kept session leaked.
+The prototype had no measurable cost in the four bench files above, 64 of 74 rows
 within 3% and the rest −7.6% to +7.0% both ways; the one row past +5%,
 `keystroke_100k_lines`, read 3.86 and 3.87 ms on the patch and 3.97 and
 3.93 ms without it, run back to back. `ShapeRunKey`'s fields are
-public, so the field is an addition to its API (a minor release under
-cosmic-text's 0.x).
+public in upstream cosmic-text, so the proposed upstream field adds to its
+API (a minor release under cosmic-text's 0.x). Kui's embedded shaper keeps
+the key private to its implementation.
 
-**For a fix in kui**, the places that hand cosmic-text attributes:
-plain text (`text.rs`, `buffer.set_text` in the shaping of a text
+**The alternative attributes approach** would have changed plain text
+(`text.rs`, `buffer.set_text` in the shaping of a text
 entry), rich text (`set_rich_text`, where each span's index is already
 its `metadata` and is read back as `g.metadata.min(last)`), the editor
 (`edit.rs`: `set_text` and the buffers it builds, and the lines
@@ -4115,10 +4120,16 @@ an hour of all ten fuzz targets — and smoke.yml's macOS run on main,
 after two releases (alpha.67's 254 commits, alpha.68's) whose macOS and
 Windows rounds had run only on GitHub's hosted runners. F241–F243, FZ16
 and FZ17 were **built 2026-10-27/28**, the days they were filed, and are
-in the archive; smoke.yml blocks a release from alpha.69 on. Two stay
-open.
+in the archive; smoke.yml blocks a release from alpha.69 on. FZ18 was
+fixed 2026-11-12. F244 stays open.
 
 ### `.` FZ18 — A run of neutral characters reuses its shape from the other direction
+
+**Built 2026-11-12.** This is FZ14's missing-direction cache key. The
+shaper embedded in kui-core now includes `span_rtl` as `rtl` in
+`ShapeRunKey`. The two tests in `crates/kui-core/tests/shaped_direction.rs`
+were red before the fix and green after it, covering reuse in one window
+and another window in the same session.
 
 **Found** 2026-10-28 by the corpus reuse check after the alpha.69 fuzz
 hour (`KUI_FUZZ_CORPUS=1 cargo test --release -p kui-fuzz --test
@@ -4134,11 +4145,12 @@ text and attributes, not by `span_rtl`. A run of neutral characters
 takes its paragraph's direction, so the same `" — "`, `"()"` or `"..."`
 shaped inside right-to-left text and then in left-to-right text — in one
 session, any window — gets the first one's glyphs: brackets mirrored,
-advances reversed, and an access run of negative width. **Do.** The
-direction in the key upstream (`ShapeRunKey` gains `rtl`, one line in
-`shape_run_cached`), and until a release has it either a `[patch]` of
-cosmic-text or the feature off — `benches/` say what the cache is worth
-first. Then the reuse check is the test: 0 of the corpus's runs differ.
+advances reversed, and an access run of negative width. The original
+proposal added direction to the upstream key (`ShapeRunKey` gains `rtl`,
+one line in `shape_run_cached`), with a temporary dependency patch or the
+feature off until an upstream release included it. Kui now carries that
+key change in its embedded shaper. The full corpus reuse check remains the
+broader comparison of kept sessions with fresh ones.
 
 ### `.` F244 — Vulkan instances made at once on several threads sometimes fail to load
 
@@ -4351,7 +4363,7 @@ kui changes.
 ## From the alpha.73 pre-tag round (2026-10-31)
 
 Five entries, FZ21–FZ25, filed and built the same day. The corpus-reuse
-check also reproduced the open direction-cache issue (FZ14/FZ18) in 608 of
+check also reproduced the then-open direction-cache issue (FZ14/FZ18) in 608 of
 11,944 `events` runs; `scenes` was clean.
 
 ### `!` FZ21 — A corrupt recording's string length can wrap the trace reader's offset
@@ -6615,11 +6627,11 @@ move.
 - `!` **V10** — [A node's shadow is drawn under it, and shows through it when translucent or faded](backlog/closed-2026-09.md#-v10--a-nodes-shadow-is-drawn-under-it-and-shows-through-it-when-translucent-or-faded--done-2026-10-23) — done (2026-10-23) — the shadow quad carries the node's own box in the fields it had no use for (`Quad::shadow_knockout`) and the shader leaves the shadow out where the box covers, as CSS does; a faded card is the card faded whole but for its antialiased edge
 - `.` **V11** — [A faded subtree blends piece by piece: a label on its own fill washes out, overlaps blend twice](backlog/closed-2026-09.md#-v11--a-faded-subtree-blends-piece-by-piece-a-label-on-its-own-fill-washes-out-overlaps-blend-twice--done-2026-10-23) — done (2026-10-23) — a node whose own `opacity` is under 1 draws its subtree into a picture of its own, faded once (ADR 0056): `Core::set_opacity_groups`, on in every window, group markers in the display list, two shared textures in kui-wgpu
 
-**From the alpha.66 fuzz hour (2026-10-24)** — FZ12 and FZ13, filed and built the same day; FZ14 open
+**From the alpha.66 fuzz hour (2026-10-24)** — FZ12 and FZ13, filed and built the same day; FZ14 built 2026-11-12
 
 - `.` **FZ12** — [A recorded GIF cannot turn a pixel clear](backlog/closed-2026-09.md#-fz12--a-recorded-gif-cannot-turn-a-pixel-clear--done-2026-10-24) — done (2026-10-24) — a frame that clears a pixel is written whole on a canvas the frame before clears once shown (`DisposalMethod::Background`); found by the new `encode` target
 - `.` **FZ13** — [A recorded frame held past what a delay holds loses the rest of its time](backlog/closed-2026-09.md#-fz13--a-recorded-frame-held-past-what-a-delay-holds-loses-the-rest-of-its-time--done-2026-10-24) — done (2026-10-24) — written as itself and then frames that change nothing, the time shared among them, up to 256 of them; found by the `encode` target
-- `.` **FZ14** — [A word shaped right to left comes back for the same word left to right](#-fz14--a-word-shaped-right-to-left-comes-back-for-the-same-word-left-to-right) — open — cosmic-text's shape-run cache keys a run without its direction; found by the hour's corpus under `tests/reuse.rs`
+- `.` **FZ14** — [A word shaped right to left comes back for the same word left to right](#-fz14--a-word-shaped-right-to-left-comes-back-for-the-same-word-left-to-right) — done (2026-11-12) — the embedded shaper's `ShapeRunKey` includes `rtl`; carets are checked after reuse in one window and another window in the same session
 
 **From kawoosh's screenshot commands (2026-10-24)** — F189, filed and built the same day
 
@@ -6761,14 +6773,14 @@ move.
 - `.` **F246** — [A window shows white as it closes, for as long as the app's teardown takes](backlog/closed-2026-09.md#-f246--a-window-shows-white-as-it-closes-for-as-long-as-the-apps-teardown-takes--done-2026-10-28) — done (2026-10-28) — every window hidden the moment the close is accepted, before `teardown`; a pane before it is destroyed
 - `.` **F247** — [An app cannot put a file on the clipboard](backlog/closed-2026-09.md#-f247--an-app-cannot-put-a-file-on-the-clipboard--done-2026-10-28) — done (2026-10-28) — `set_clipboard_files`: `CF_HDROP`, file URLs, `text/uri-list` through arboard; in every binding
 
-**From the alpha.69 pre-tag round (2026-10-27)** — F241–F243, FZ16 and FZ17, filed and built the same day; FZ18 and F244 open; smoke.yml blocks a release from here on
+**From the alpha.69 pre-tag round (2026-10-27)** — F241–F243, FZ16 and FZ17, filed and built the same day; FZ18 built 2026-11-12; F244 open; smoke.yml blocks a release from here on
 
 - `!` **F241** — [A capture's wait panics in wgpu-core when another thread's poll empties the queue first](backlog/closed-2026-09.md#-f241--a-captures-wait-panics-in-wgpu-core-when-another-threads-poll-empties-the-queue-first--done-2026-10-27) — done (2026-10-27) — `PendingCapture::wait` polls with `PollType::Poll` and sleeps between; found by smoke.yml's macOS leg
 - `!` **F242** — [`kui check` on Windows fails when a declaration file is held open as it is replaced](backlog/closed-2026-09.md#-f242--kui-check-on-windows-fails-when-a-declaration-file-is-held-open-as-it-is-replaced--done-2026-10-27) — done (2026-10-27) — `write_whole` retries the rename on `PermissionDenied`; its test writes a folder of its own
 - `.` **F243** — [`kill` on Windows prints taskkill's lines into the app's output](backlog/closed-2026-09.md#-f243--kill-on-windows-prints-taskkills-lines-into-the-apps-output--done-2026-10-27) — done (2026-10-27) — taskkill's output is null
 - `!` **FZ16** — [A hex colour with a character past ASCII panics the token loader](backlog/closed-2026-09.md#-fz16--a-hex-colour-with-a-character-past-ascii-panics-the-token-loader--done-2026-10-27) — done (2026-10-27) — `dtcg::hex` takes ASCII hex digits alone; found by `dtcg`
 - `!` **FZ17** — [A composition begun over a selection and abandoned loses the selection without a `change`](backlog/closed-2026-09.md#-fz17--a-composition-begun-over-a-selection-and-abandoned-loses-the-selection-without-a-change--done-2026-10-28) — done (2026-10-28) — `set_preedit` answers whether the committed text changed and dispatch raises the `change`; found by `events` in the alpha.69 fuzz hour, present since alpha.67 at least
-- `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — open — cosmic-text's shape-run cache keys no direction; the key upstream, or a `[patch]` / the feature off meanwhile
+- `.` **FZ18** — [A run of neutral characters reuses its shape from the other direction](#-fz18--a-run-of-neutral-characters-reuses-its-shape-from-the-other-direction) — done (2026-11-12) — FZ14's direction in the embedded shaper's cache key, checked across a shared session
 - `.` **F244** — [Vulkan instances made at once on several threads sometimes fail to load](#-f244--vulkan-instances-made-at-once-on-several-threads-sometimes-fail-to-load) — open — the loader's or the driver's, then a lock in kui-wgpu or a line in the docs
 
 **From the kui-perf grilling (2026-10-27)** — F248–F255 and F258–F260, built 2026-10-28

@@ -29,6 +29,8 @@ members = [
     # The fuzz targets (cargo-fuzz) and the stable replay of what they
     # found; see fuzz/Cargo.toml and scripts/fuzz.nu. Never published.
     "fuzz",
+    # Private upstream tests for the shaper embedded in kui-core.
+    "crates/kui-cosmic-text-tests",
 ]
 
 [workspace.package]
@@ -71,7 +73,19 @@ kui-addon-schema = { path = "crates/kui-addon-schema" }
 
 slotmap = "1.1.1"
 rustc-hash = "2"
-cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash", "shape-run-cache"] }
+cosmic-text-tests = { path = "crates/kui-cosmic-text-tests", package = "kui-cosmic-text-tests" }
+# Dependencies shared by the embedded shaper and its private test harness.
+bitflags = "2.10"
+fontdb = { version = "0.23", default-features = false, features = ["std", "memmap"] }
+harfrust = { version = "0.5", default-features = false, features = ["std"] }
+linebender_resource_handle = { version = "0.1", default-features = false, features = ["std"] }
+log = "0.4"
+rangemap = "1.7"
+self_cell = "1.2"
+skrifa = { version = "0.40", default-features = false, features = ["std"] }
+smol_str = { version = "0.3", default-features = false }
+sys-locale = "0.3"
+unicode-bidi = { version = "0.3", default-features = false, features = ["std", "hardcoded-data"] }
 # Same major cosmic-text builds on: `Font::as_swash()` hands us its FontRef.
 swash = "0.2"
 wgpu = "30"
@@ -94,6 +108,11 @@ debug = "line-tables-only"
 # Dependencies optimised and without debug info: they are not stepped into
 # at opt-level 2, and without it rustc keeps no loose objects for them.
 [profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+# Keep the private upstream test harness optimized in development.
+[profile.dev.package.kui-cosmic-text-tests]
 opt-level = 2
 debug = false
 

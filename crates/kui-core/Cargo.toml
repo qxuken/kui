@@ -16,7 +16,16 @@ slotmap.workspace = true
 # The renderer's instance and uniform as plain bytes (`gpu`, backlog F234).
 bytemuck.workspace = true
 rustc-hash.workspace = true
-cosmic-text.workspace = true
+bitflags.workspace = true
+fontdb.workspace = true
+harfrust.workspace = true
+linebender_resource_handle.workspace = true
+log.workspace = true
+rangemap.workspace = true
+self_cell.workspace = true
+skrifa.workspace = true
+smol_str.workspace = true
+unicode-bidi.workspace = true
 swash.workspace = true
 naga.workspace = true
 # Word boundaries for the access tree's text runs (already in the tree via cosmic-text).
@@ -66,6 +75,8 @@ conformance = []
 tracing = []
 
 [dev-dependencies]
+cosmic-text-tests.workspace = true
+sys-locale.workspace = true
 divan.workspace = true
 # Self-dependency: the one way to enable a feature for the tests without
 # gating the test target itself (which `cargo test` would then silently skip).

@@ -5,7 +5,7 @@
 //! Nothing is recorded unless something listens (decision 1): the
 //! devtools' Perf tab recording or on show, `KUI_PERF_TRACE` naming a
 //! file, a `tracing` subscriber under the feature. Off, every door here is
-//! one test of [`Recorder::why`] — no clock read, no allocation — and
+//! one test of `Recorder::why` — no clock read, no allocation — and
 //! [`Core::perf_measuring`] says so to an app that would read clocks of its
 //! own. On, the frame trace (F111) is held on too, for the frame's causes
 //! by name, its holders and whether it drew anything new, and put back as

@@ -30,6 +30,8 @@
 //! assert_eq!(core.edit_text(field).as_deref(), Some("hello world"));
 //! ```
 
+use crate::cosmic_text;
+
 use std::collections::VecDeque;
 
 use cosmic_text::{
@@ -1469,7 +1471,13 @@ impl EditStore {
     /// changed yet and the frame that will change it is the app's — a
     /// driver that redraws on every write would re-lower the tree that
     /// declares no editor and drop the seed to the warning.
-    pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem, res: &Resources) -> bool {
+    pub(crate) fn set_text(
+        &mut self,
+        key: Key,
+        text: &str,
+        fs: &mut FontSystem,
+        res: &Resources,
+    ) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             // Nothing has declared this key yet. The call is not wrong —
             // the `update` that opens an editor runs before the view that
@@ -1682,7 +1690,7 @@ impl EditStore {
     /// app's own replacement, clears the history. False when the text is
     /// already `text`. A secure editor replaces its secret and records
     /// nothing, as for typing.
-    pub fn replace_all(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
+    pub(crate) fn replace_all(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
         };
@@ -1717,7 +1725,7 @@ impl EditStore {
     /// line break in a field, and the bidi paragraph ends `one_paragraph`
     /// keeps from the shaper (FZ6) - and a value declared back from the
     /// `change` it reported was then not the text the editor held.
-    pub fn replace_selection(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
+    pub(crate) fn replace_selection(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
         };
@@ -1769,7 +1777,7 @@ impl EditStore {
     }
 
     /// Deletes the selection; returns true if anything was deleted.
-    pub fn delete_selection(&mut self, key: Key, fs: &mut FontSystem) -> bool {
+    pub(crate) fn delete_selection(&mut self, key: Key, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
         };

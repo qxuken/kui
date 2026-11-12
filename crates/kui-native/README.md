@@ -29,6 +29,14 @@ windows that share a session. For a fixed font set, use `Session::with_fonts`
 and supply the platform convention explicitly. Enable `tracing` for live
 span forwarding to a native subscriber.
 
+The native catalog discovers and validates font metadata at startup and
+prepares a default face. A process-wide worker prepares immutable font
+snapshots on demand. Requested fonts take priority over queued serif and
+monospace warmups. Registering a family waits for its selected face, and
+automatic fallback waits for the files it needs before returning text
+metrics. Prepared snapshots are shared across sessions. An unchanged
+rescan reuses both prepared snapshots and queued work.
+
 On Linux the build needs `pkg-config` and ALSA's headers (`libasound2-dev`
 on Debian and Ubuntu). A window loads `libxkbcommon`, the X11 or Wayland
 client libraries and Vulkan or EGL at run time. macOS and Windows need only
