@@ -124,8 +124,7 @@ fn it_writes_a_file_for_every_binding() {
             "node/demo.js",
             "odin/demo/demo.odin",
             "reference.md",
-            "rust/Cargo.toml",
-            "rust/src/lib.rs",
+            "rust/src/components.rs",
             "teal/demo/ui.d.tl",
         ]
     );
@@ -173,8 +172,8 @@ fn every_binding_places_under_the_addons_namespace_and_can_take_another() {
     let text = |p: &str| generate(&s).into_iter().find(|f| f.path == p).unwrap().text;
     assert!(text("lua/demo/ui.lua").contains(r#"namespace .. "/chip""#));
     assert!(text("lua/demo/ui.lua").contains("function M.at(other)"));
-    assert!(text("rust/src/lib.rs").contains(r#"ui.component("demo/chip""#));
-    assert!(text("rust/src/lib.rs").contains("pub fn place_in("));
+    assert!(text("rust/src/components.rs").contains(r#"ui.component("demo/chip""#));
+    assert!(text("rust/src/components.rs").contains("pub fn place_in("));
     assert!(text("c/demo.h").contains(r#"DEMO_NAMESPACE "/chip""#));
     assert!(text("odin/demo/demo.odin").contains("chip_in :: proc"));
     assert!(text("node/demo.js").contains("/chip"));
@@ -190,7 +189,7 @@ fn optional_props_are_left_out_unset_rather_than_sent_as_null() {
         "an unset enum is zero in C"
     );
     assert!(c.contains("if (p->rows != NULL)"));
-    let rust = text("rust/src/lib.rs");
+    let rust = text("rust/src/components.rs");
     assert!(rust.contains("if let Some(v) = &self.size"));
     let odin = text("odin/demo/demo.odin");
     assert!(odin.contains("if x, ok := p.size.?; ok"));

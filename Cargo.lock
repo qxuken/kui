@@ -2050,6 +2050,7 @@ dependencies = [
  "image",
  "js-sys",
  "kui-core",
+ "kui-kit",
  "kui-lua",
  "kui-web",
  "mlua",
@@ -2079,6 +2080,7 @@ dependencies = [
  "flate2",
  "keyring-core",
  "kui-core",
+ "kui-kit",
  "kui-lua",
  "kui-native",
  "kui-trace",
@@ -2211,6 +2213,9 @@ name = "kui-kit"
 version = "0.1.0-alpha.82"
 dependencies = [
  "kui-core",
+ "kui-lua",
+ "kui-native",
+ "mlua",
 ]
 
 [[package]]
@@ -2318,6 +2323,7 @@ name = "kui-web-lua"
 version = "0.1.0-alpha.82"
 dependencies = [
  "kui-core",
+ "kui-kit",
  "kui-lua",
  "kui-web",
  "mlua",

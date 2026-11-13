@@ -26,7 +26,8 @@
 # kui-access (backlog F269) after kui-core and before kui-native and
 # kui-ffi, which both bridge through it.
 # kui-web follows kui-wgpu, its optional WebGPU renderer.
-const CRATES = [kui-derive kui-value kui-channel kui-trace kui-core kui-access kui-wgpu kui-web kui-native kui-lua kui-ffi]
+# kui-kit follows kui-lua, which loads its embedded extension.
+const CRATES = [kui-derive kui-value kui-channel kui-trace kui-core kui-access kui-wgpu kui-web kui-native kui-lua kui-kit kui-ffi]
 
 const INDEX = {
     crates-io: "https://index.crates.io"

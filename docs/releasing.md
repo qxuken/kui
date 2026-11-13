@@ -2,7 +2,7 @@
 
 Tagged commits publish the library crates (`kui-derive`, `kui-value`,
 `kui-channel`, `kui-trace`, `kui-core`, `kui-access`, `kui-wgpu`, `kui-web`, `kui-native`,
-`kui-lua`, `kui-ffi`) to crates.io; ten npm
+`kui-lua`, `kui-kit`, `kui-ffi`) to crates.io; ten npm
 packages to npmjs
 ([ADR 0068](adr/0068-how-kui-reaches-a-machine.md), esbuild's shape):
 [`packages/kui`](../packages/kui) as `@qxuken/kui`, the JS and types, and

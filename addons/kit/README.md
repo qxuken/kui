@@ -55,10 +55,39 @@ as a Finder or Explorer list does.
 
 ## Placing Kit
 
-Load `addons/kit/lua/kit.lua` under the namespace `kit`, then:
+Rust hosts use the `kui-kit` crate, which embeds all of Kit's Lua modules
+and shaders. Add `kui-native` and `kui-kit` at matching versions, then
+register the extension once:
 
 ```rust
-// Rust: the kui-kit crate (bindings/rust)
+use kui_kit as kit;
+
+kui_native::app("My app")
+    .extension_as(kit::NAMESPACE, kit::extension()?)
+    .run(MyApp::default())?;
+```
+
+There are no runtime Lua files to distribute, and consuming the crate
+needs no Lua installation, Teal compiler or binding generation. For a
+checkout before publication, use path dependencies on `crates/kui-native`
+and `addons/kit` from the same checkout. macOS and Windows need a Rust
+toolchain; Linux prerequisites are in kui-native's README.
+
+The complete [Rust counter](examples/kit_counter.rs) uses only these two
+public crates and includes a headless test of rendering, an embedded
+shader and a button's typed message:
+
+```bash
+cargo run -p kui-kit --example kit_counter
+cargo test -p kui-kit --example kit_counter
+```
+
+Copy it into an external project's `src/main.rs` and use `cargo run` or
+`cargo test` there. Other hosts load `addons/kit/lua/kit.lua` under the
+namespace `kit`. In a view, each binding places the same components:
+
+```rust
+// Rust: the kui-kit crate
 kit::Settings::new().skin(kit::Skin::Neutral).place(ui);
 kit::Toolbar::new().place_with(ui, |group, ui| {
     if group.is_empty() {
@@ -190,7 +219,8 @@ or icon fails them until its note, guideline or name is written.
 | `schema.lua` | The API: every component's props, events and child groups, with docs. |
 | `src/*.tl` | The Teal source: `kit` (the entry), `skin` and the three skins, `ctx` (what every component paints through), `icons`, and the components by group: `layout`, `inputs`, `data`, `overlays`, `charts`, `waterfall`. |
 | `lua/*.lua` | What a host loads, generated from `src/`. Edit the `.tl`, never these. |
-| `bindings/` | The wrappers generated from `schema.lua`. Never edit these either. |
+| `bindings/` | The wrappers generated from `schema.lua`. Never edit the generated files. |
+| `Cargo.toml`, `bindings/rust/src/lib.rs`, `bindings/rust/src/embedded.rs` | The hand-written Rust package and embedded loader. The generated Rust wrappers are `bindings/rust/src/components.rs`; the package ships them beside `lua/`. |
 | `app/` | The Kit app, on the `kui` runner: `main.lua` the shell, `pages.lua` the pages, `theme.lua` the Theme panel, `design.lua` the design system's pages, a card a file under `demos/`. |
 | `app/design/` | Kit as a design system: the brand book, `tokens.json` (and `tokens.lua`, which writes its values from Kit), a guideline per component. |
 | `shaders/` | Kit's own WGSL, embedded by `build.lua` and registered by Kit: `shimmer.wgsl` (the skeletons' sweep), `noise.wgsl`. |

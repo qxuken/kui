@@ -33,6 +33,12 @@ a target whose source sits outside the package); read them here.
 The [web counter](web/README.md) runs the same Rust view and event handler
 in a browser using WebAssembly and Canvas 2D.
 
+Kit also ships a [standalone Rust counter](../addons/kit/examples/kit_counter.rs)
+in its published crate: `cargo run -p kui-kit --example kit_counter` and
+`cargo test -p kui-kit --example kit_counter`. It uses only `kui-native`
+and `kui-kit`, with Kit's extension and shaders embedded, and can be copied
+into an external project's `src/main.rs`.
+
 ## The devtools
 
 Every example runs inside [`devtools/`](devtools) (Rust; `node/devtools.tsx`

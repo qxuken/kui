@@ -24,6 +24,7 @@ Try `kui run addons/kit/samples/presentations -- --presenter`.
 | `kui-trace` | The recording format: its reader and writer, the `kui-trace` tool (`dump`, `stats`, `convert`, `diff`, `synth`) and, behind `lua`, a recording as channels | [crates.io](https://crates.io/crates/kui-trace) · [docs.rs](https://docs.rs/kui-trace) |
 | `kui-derive` | `#[derive(Message)]`: an enum that travels through the frame as data and comes back typed | [crates.io](https://crates.io/crates/kui-derive) · [docs.rs](https://docs.rs/kui-derive) |
 | `kui-lua` | Lua extensions via mlua: scripts return table trees and receive events as tables | [crates.io](https://crates.io/crates/kui-lua) · [docs.rs](https://docs.rs/kui-lua) |
+| `kui-kit` | Kit's typed component builders and embedded `extension()` loader: no runtime Lua assets to distribute | [Kit](addons/kit/README.md) · [Rust counter](addons/kit/examples/kit_counter.rs) |
 | `kui-ffi` | The C API (a cdylib, a staticlib on request, plus [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, a windowed runner via callbacks, and `CExtension`, a C shared library as a guest in another host's frame | [crates.io](https://crates.io/crates/kui-ffi) · [docs.rs](https://docs.rs/kui-ffi) |
 | `kui-node` | The Node.js addon (napi-rs) behind the [`@qxuken/kui`](packages/kui) npm package: JSX views lowered into the IR in one call per frame, Elm-style messages as data. Ships through npm, not crates.io | [packages/kui](packages/kui/README.md) |
 

@@ -380,7 +380,7 @@ fn rig() -> Rig {
     let mut exts = Extensions::new();
     exts.push_as(
         "kit",
-        Box::new(LuaExtension::from_file(KIT).expect("load Kit")),
+        Box::new(kit::extension().expect("load embedded Kit")),
     )
     .unwrap();
     let mut core = Core::new();

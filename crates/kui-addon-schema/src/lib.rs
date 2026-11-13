@@ -6,7 +6,7 @@
 //! with their fields, its child groups — and [`generate`] writes a wrapper
 //! module per binding: a Lua host module with LuaLS annotations and its
 //! Teal declarations, Node functions that are also JSX components with
-//! their `.d.ts`, a Rust crate, a C header and an Odin package. Each wrapper
+//! their `.d.ts`, a Rust module, a C header and an Odin package. Each wrapper
 //! builds the props value and calls the binding's component door; the
 //! extension itself is unchanged.
 //!

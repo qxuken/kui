@@ -31,6 +31,10 @@ was the first bare bump to break an app in five releases).
 
 ### Added
 
+- `kui-kit` is publishable on crates.io, with typed Rust component builders
+  and `extension()` embedding Kit's Lua modules and shaders. Its standalone
+  `kit_counter` example uses only `kui-native` and `kui-kit` and carries a
+  headless interaction test.
 - `kui-web` is published on crates.io, with the Rust browser host and its
   `canvas.js` and `editor.js` bridges. Canvas 2D and the optional shared
   WebGPU renderer are checked on their WebAssembly target in CI, and
@@ -51,6 +55,8 @@ was the first bare bump to break an app in five releases).
 
 ### What you can delete
 
+- Kit runtime asset directories and custom Lua preload code in Rust hosts
+  using `kui_kit::extension()`.
 - Local path dependencies used solely because `kui-web` was not available
   on crates.io.
 - Browser momentum and editor refocusing workarounds for the touch bridge's
