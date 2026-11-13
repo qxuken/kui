@@ -40,7 +40,10 @@ while a note button is focused. Enter opens the focused note. Save marks
 the current draft as saved for this tab.
 
 Tap to open notes or focus the editor. Drag over a scrollable region to
-scroll it, or over text to select it. Sliders, scrollbar thumbs and
+scroll it, or over text to select it. A flick keeps scrolling with
+deceleration after release; touching again stops it. Holding still
+before release ends the scroll without momentum. Tapping an editor
+opens the software keyboard on iPhone and iPad. Sliders, scrollbar thumbs and
 explicit drag handlers get the primary press. The browser owns pinch
 zoom on the notes canvas.
 
@@ -76,3 +79,9 @@ renderer. Run `node examples/web/touch-smoke.mjs` to test touch input
 through Chromium's mobile emulation with both renderers. With a
 WebGPU-capable Chrome, run `node examples/web/renderer-smoke.mjs` to
 exercise failed startup and a failed first recovery attempt.
+Run `node examples/web/mobile-keyboard-smoke.mjs` for trusted touch focus,
+typing, Enter and Backspace in Chromium and WebKit at phone and tablet
+sizes. Software keyboard visibility still needs Safari on an iPhone/iPad
+simulator or device: open the notes URL there, tap the editor, type with
+the onscreen keys, dismiss the keyboard and tap again to reopen it.
+Ensure the simulator's software keyboard is enabled when doing this check.
