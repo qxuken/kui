@@ -5,6 +5,8 @@ Rust of your own, drawn by Kit — and a test checks it without a window.
 
 <a data-kui-example="440" href="live/tasks/index.html">Live Lua task list</a>
 
+To write a view directly in the book, open the [Lua playground](playground.md).
+
 The browser example was built by `kui pack --format web` from the Lua
 project below. Its data file is stored in this browser.
 

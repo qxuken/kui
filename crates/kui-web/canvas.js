@@ -242,7 +242,7 @@ function painter(canvas, restoreCanvas) {
 }
 
 /** Mount one Wasm app for the lifetime of its canvas. */
-export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame, contentScale = () => 1, panOutside, overlayCanvas, instantiate = WebAssembly.instantiate, present } = {}) {
+export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", initialize, afterFrame, contentScale = () => 1, panOutside, overlayCanvas, instantiate = WebAssembly.instantiate, wasmModule, present } = {}) {
   let wasm;
   let snapshot;
   let clipboardText;
@@ -313,9 +313,14 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
       };
     }
     const imports = { canvas: { ...paint, ...browserCallbacks } };
-    const response = await fetch(wasmUrl);
-    if (!response.ok) throw new Error(`Wasm fetch failed (${response.status})`);
-    ({ instance: { exports: wasm } } = await instantiate(await response.arrayBuffer(), imports));
+    let input = wasmModule;
+    if (!input) {
+      const response = await fetch(wasmUrl);
+      if (!response.ok) throw new Error(`Wasm fetch failed (${response.status})`);
+      input = await response.arrayBuffer();
+    }
+    const loaded = await instantiate(input, imports);
+    wasm = (loaded.instance ?? loaded).exports;
     initialize?.(wasm);
     setPlatform();
     frame = present

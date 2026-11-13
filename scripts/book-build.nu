@@ -2,38 +2,46 @@
 # Build the book and stage its live examples in the same static site.
 
 use wasi-build.nu
+use web-build.nu
 
 const ROOT = (path self | path dirname | path dirname)
 
 def main [--out-dir: path = "target/book", --install-tools] {
     cd $ROOT
+    let tools = (web-build tools --install=$install_tools)
     let out = ($out_dir | path expand)
-    let target = ($env.CARGO_TARGET_DIR? | default "target")
-    let tools = ($target | path join "web-tools" | path expand)
-    if $install_tools {
-        let version = (open --raw Cargo.lock | from toml | get package
-            | where name == "wasm-bindgen" | first | get version)
-        ^rustup target add wasm32-unknown-unknown wasm32-wasip1
-        ^cargo install --locked --root $tools --version $version wasm-bindgen-cli
-    }
+    let target = (web-build target-dir)
 
     ^mdbook build docs/book -d $out
-    with-env {PATH: ($env.PATH | prepend ($tools | path join "bin"))} {
-        ^nu scripts/web-counter.nu --build-only --book --out-dir ($out | path join "live")
-    }
+    ^nu scripts/web-counter.nu --build-only --book --out-dir ($out | path join "live")
 
     let live = ($out | path join "live")
     let shim = ($live | path join "wasi")
     wasi-build stage-shim $shim
     cp examples/book-web/gallery-lua.js $live
     wasi-build build kui-book-web
-    cp ($target | path join "wasm32-wasip1" "release" "kui_book_web.wasm") ($live | path join "gallery-lua.wasm")
+    let wasi = (web-build directory wasm32-wasip1 | path join kui_book_web.wasm)
+    web-build optimize $tools.wasm_opt $wasi ($live | path join gallery-lua.wasm)
 
     let runner = ($target | path join "web-tools" "book-runner.zip" | path expand)
     ^nu scripts/web-runner.nu --out $runner --shim $shim
     let tasks = ($live | path join "tasks")
     ^cargo run --locked --quiet -p kui-cli --bin kui -- pack examples/lua/tutorial/tasks --format web --runner $runner --out $tasks
-    cp docs/book/book-tasks.js ($tasks | path join "kui")
+    # The book's apps and editor share one cacheable runtime, rather than
+    # copying a full runner into every page or compiling editor-only Wasm.
+    let runtime = ($live | path join runtime)
+    if ($runtime | path exists) { rm -rf $runtime }
+    mv ($tasks | path join kui) $runtime
+    cp ($tasks | path join runner-version.txt) $runtime
+    cp docs/book/book-tasks.js docs/book/book-runtime.js $runtime
+    let cache = (glob ($runtime | path join "**/*")
+        | where {|file| ($file | path type) == "file" }
+        | sort
+        | each {|file| $"($file | path relative-to $runtime):(open --raw $file | hash sha256)" }
+        | str join "\n" | hash sha256)
+    {version: (open Cargo.toml | get workspace.package.version), cache: $cache}
+        | to json | save --force ($runtime | path join manifest.json)
     let index = ($tasks | path join "index.html")
-    open --raw $index | str replace "./kui/web-app.js" "./kui/book-tasks.js" | save --force --raw $index
+    open --raw $index | str replace "./kui/web-app.js" "../runtime/book-tasks.js" | save --force --raw $index
+    cp -r examples/book-web/playground $live
 }

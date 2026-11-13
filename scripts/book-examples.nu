@@ -2,7 +2,8 @@
 # Writes the book's Examples part: a page per Rust example under
 # examples/rust/{apps,widgets,features,tools}, a page per kind listing them,
 # an overview, and the part's entries at the end of docs/book/src/SUMMARY.md
-# (everything from its `# Examples` line down is this script's).
+# and the trailing playground link (everything from its `# Examples` line
+# down is this script's).
 #
 # A page holds no source of its own - it `{{#include}}`s the example's file,
 # so the book shows what the file says the day it is built. What can drift is
@@ -114,7 +115,8 @@ def generate [src: string] {
             [$"- [($kind)]\(examples/($kind).md\)"]
             | append (examples-of $kind | each {|n| $"  - [($n)]\(examples/($kind)/($n).md\)" })
         } | flatten))
-    text ([$head] | append $part) | save -f --raw $summary
+    text ([$head] | append $part | append ["" "# Playground" "" "- [Lua playground](playground.md)"])
+        | save -f --raw $summary
 }
 
 def main [

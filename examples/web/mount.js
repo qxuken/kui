@@ -1,6 +1,6 @@
 import { startCanvas } from "./canvas.js";
 
-export async function mountDemo(wasmUrl, { initialize, afterFrame, contentScale, instantiate, panOutside, overlayCanvas, renderer = "auto", present } = {}) {
+export async function mountDemo(wasmUrl, { initialize, afterFrame, contentScale, instantiate, wasmModule, panOutside, overlayCanvas, renderer = "auto", present } = {}) {
   const params = new URLSearchParams(location.search);
   const embed = params.has("embed");
   if (embed) document.documentElement.dataset.embed = "";
@@ -18,6 +18,7 @@ export async function mountDemo(wasmUrl, { initialize, afterFrame, contentScale,
       afterFrame,
       contentScale,
       instantiate,
+      wasmModule,
       overlayCanvas,
       present,
       panOutside: embed ? panOutside : undefined,

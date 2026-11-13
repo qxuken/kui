@@ -14,6 +14,7 @@ use serde_json::Value;
 mod app;
 #[path = "../../../examples/web/host.rs"]
 mod host;
+mod playground;
 
 thread_local! {
     static APP: RefCell<Option<Extensions>> = const { RefCell::new(None) };
@@ -85,13 +86,24 @@ fn load() -> Result<(), Box<dyn std::error::Error>> {
     let entry = root.join(entry);
     let source =
         std::fs::read_to_string(&entry).map_err(|e| format!("{}: {e}", entry.display()))?;
+    let editable = manifest["playground"].as_bool() == Some(true);
+    if editable && source.len() > 128 * 1024 {
+        return Err("Playground source is limited to 128 KiB".into());
+    }
     let app = LuaExtension::from_source_with(format!("@{}", entry.display()), &source, |lua| {
+        if editable {
+            playground::install(lua)?;
+        }
         kui_lua::set_script_dir(lua, root)?;
         app::install(lua, name, id, version)
     })?;
     let drain = app::initialize(&app)?;
     let mut extensions = Extensions::new();
-    extensions.push_as(app::kit::NAMESPACE, Box::new(app::kit::extension()?))?;
+    let kit = app::kit::extension()?;
+    if editable {
+        playground::install(kit.lua())?;
+    }
+    extensions.push_as(app::kit::NAMESPACE, Box::new(kit))?;
     extensions.push_as("app", Box::new(app))?;
     TASKS.with(|tasks| {
         tasks
@@ -100,6 +112,28 @@ fn load() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     APP.with_borrow_mut(|app| *app = Some(extensions));
     Ok(())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn playground_reset_budget() {
+    playground::reset();
+}
+
+/// View errors are normally drawn in the core and available in devtools.
+/// Editable previews also surface them beside the source, without treating
+/// ordinary layout/configuration warnings as failed Lua execution.
+#[unsafe(no_mangle)]
+pub extern "C" fn playground_error() -> usize {
+    host::RUNNER.with_borrow_mut(|runner| {
+        runner
+            .core_mut()
+            .take_warnings()
+            .into_iter()
+            .find(|warning| warning.code == kui_core::diag::EXTENSION_VIEW_ERROR)
+            .map_or(0, |warning| {
+                host::publish_browser_bytes(warning.message.into_bytes())
+            })
+    })
 }
 
 #[unsafe(no_mangle)]

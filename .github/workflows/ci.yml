@@ -86,7 +86,7 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: rust node npm nu odin mdbook wgpu-native actionlint
+          tools: rust node npm nu odin mdbook wgpu-native actionlint binaryen
           bindings: 'true'
           wasi: 'true'
 
@@ -195,7 +195,9 @@ jobs:
       # build failure here rather than a chapter that quietly shows nothing.
       # The steps themselves compile under `cargo test` above.
       - name: Book
-        run: nu scripts/book-build.nu --install-tools --out-dir "$RUNNER_TEMP/book"
+        run: |
+          nu scripts/book-build.nu --install-tools --out-dir "$RUNNER_TEMP/book"
+          nu scripts/web-build-test.nu
 
       # The conformance reference: quad digests over real glyph geometry,
       # so it holds only for this machine's fonts and is never checked in.

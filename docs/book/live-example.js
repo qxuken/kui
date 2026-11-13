@@ -29,6 +29,10 @@ for (const link of document.querySelectorAll("a[data-kui-example]")) {
   example.append(toolbar, viewport);
 
   const url = new URL(link.href);
+  if (link.hasAttribute("data-kui-playground")) {
+    const preset = new URLSearchParams(location.search).get("example");
+    if (preset) url.searchParams.set("example", preset);
+  }
   url.searchParams.set("embed", "");
   let frame;
   let timeout;

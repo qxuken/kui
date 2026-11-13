@@ -26,8 +26,8 @@ ignore = [
     # on macOS and Windows.
     #
     # Drop this line when cosmic-text moves off fontdb or fontdb moves off
-    # ttf-parser. That is the same upstream we are already waiting on for the
-    # skrifa 0.40/0.44 split between cosmic-text and swash.
+    # ttf-parser. The shaping/rasterization stack now shares read-fonts and
+    # skrifa; that alignment does not remove fontdb's ttf-parser dependency.
     "RUSTSEC-2026-0192",
 
     # zvariant, zvariant_derive and zbus_names are unmaintained

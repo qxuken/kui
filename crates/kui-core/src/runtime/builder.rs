@@ -1995,12 +1995,16 @@ impl Core {
 
     /// The stock polygon fragment's handle, registered on first use and
     /// again after `remove_fragment` forgot it.
-    fn stock_polygon(&mut self) -> Option<crate::resources::FragmentId> {
+    fn stock_polygon(&mut self) -> crate::resources::FragmentId {
         if let Some(id) = self.stock_polygon {
-            return Some(id);
+            return id;
         }
-        let id = self.add_fragment(crate::fragment::POLYGON);
-        self.stock_polygon = id;
+        let id = self
+            .session
+            .state()
+            .resources
+            .add_builtin_fragment(crate::fragment::Builtin::Polygon);
+        self.stock_polygon = Some(id);
         id
     }
 
@@ -2029,9 +2033,7 @@ impl Core {
             });
         }
         let points = &points[..points.len().min(crate::fragment::POLYGON_MAX_POINTS)];
-        let Some(id) = self.stock_polygon() else {
-            return;
-        };
+        let id = self.stock_polygon();
         // The box: the points' bounds, a logical pixel out on every side
         // so the one-pixel edge ramp is never cut by the quad's own edge.
         let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
