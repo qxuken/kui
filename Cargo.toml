@@ -34,7 +34,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.82"
+version = "0.1.0-alpha.83"
 edition = "2024"
 license = "MIT"
 # `homepage` is the book (docs/book), which is what a reader arriving from
@@ -48,26 +48,26 @@ categories = ["gui"]
 # No `registry` key: the kui crates resolve from crates.io, which is where
 # they publish (scripts/publish-crates.nu), and crates.io refuses a
 # dependency from any other registry.
-kui-value = { path = "crates/kui-value", version = "0.1.0-alpha.82" }
-kui-channel = { path = "crates/kui-channel", version = "0.1.0-alpha.82" }
-kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.82" }
-kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.82" }
-kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.82", default-features = false }
-kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.82" }
-kui-web = { path = "crates/kui-web", version = "0.1.0-alpha.82" }
+kui-value = { path = "crates/kui-value", version = "0.1.0-alpha.83" }
+kui-channel = { path = "crates/kui-channel", version = "0.1.0-alpha.83" }
+kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.83" }
+kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.83" }
+kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.83", default-features = false }
+kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.83" }
+kui-web = { path = "crates/kui-web", version = "0.1.0-alpha.83" }
 # Each host chooses between the system adapter and the full runner.
-kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.82", default-features = false }
+kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.83", default-features = false }
 # `default-features = false` so the runner takes the translation alone and
 # nothing it brings its own of (`accesskit_winit`); kui-ffi asks for the
 # host's bridge with the `platform` feature.
-kui-access = { path = "crates/kui-access", version = "0.1.0-alpha.82", default-features = false }
+kui-access = { path = "crates/kui-access", version = "0.1.0-alpha.83", default-features = false }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
-kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.82", default-features = false }
-kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.82" }
+kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.83", default-features = false }
+kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.83" }
 kui-devtools = { path = "examples/devtools" }
 # Kit's embedded Lua extension and typed Rust wrappers (ADR 0066).
-kui-kit = { path = "addons/kit", version = "0.1.0-alpha.82" }
+kui-kit = { path = "addons/kit", version = "0.1.0-alpha.83" }
 kui-addon-schema = { path = "crates/kui-addon-schema" }
 
 slotmap = "1.1.1"

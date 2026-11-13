@@ -21,6 +21,63 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.83 (2026-11-14)
+
+**What breaks.**
+
+- On Windows, main and secondary windows now become visible only after
+  their first successful presentation. A skipped first frame keeps the
+  window cloaked; activating windows receive focus when content appears.
+
+### Added
+
+- The book has an editable Lua playground with Counter, Layout and Controls
+  presets, saved browser drafts, fresh preview state on each Run, and
+  recovery to the last working preview after an error. Lua instruction,
+  memory and source limits bound editable examples. The playground and task
+  example share a cached, prebuilt runtime.
+- Tagged releases publish `kui-kit` alongside the other library crates.
+  Its typed Rust builders and `extension()` embed Kit's Lua modules and
+  shaders, including in the standalone `kit_counter` example.
+
+### Fixed
+
+- Windows startup no longer exposes an empty white surface before kui's
+  first frame, including with native, custom and borderless chrome.
+  Popups remain cloaked after a skipped acquisition, and newly presented
+  activating windows take focus without waiting for unrelated input.
+- Browser builds use a dedicated size-oriented release profile and pinned
+  Binaryen optimization. Fixed built-in shaders are validated at build
+  time, and HarfRust and Skrifa share one font-parser generation. Original
+  embedded fonts are retained. Failed bindgen or optimizer runs preserve
+  the previous generated JS and Wasm pair.
+- WASI book and web runners include Kit's embedded extension dependencies.
+
+### What you can delete
+
+- Windows startup hiding and delayed-focus workarounds used to conceal the
+  empty surface before the first rendered frame.
+- Separate Wasm builds for editable Lua examples that can use the book's
+  shared runtime, and custom browser size-processing steps covered by the
+  shipping web build scripts.
+
+### Native verification
+
+On macOS arm64, the release-version workspace round passed 3,354 Rust tests
+across 280 suites, with 23 ignored, and all 312 Node tests. The headless
+example round passed. All 59 Rust and 12 Node windowed examples presented
+30 frames on both themes, 142 successful runs, including `host_pass`.
+The compiled macOS accessibility audit passed all 106 checks. Every release
+generator, version consistency, workflow syntax, the dependency advisory
+check, and Node example typechecking and builds passed.
+
+On release base `2eb04c00`, CI passed the workspace, browser builds,
+Clippy, generated bindings, C and Odin rounds, and Node checks. Both macOS
+and Windows smoke rounds passed their workspace tests, windowed examples
+and C checks. The Windows lifecycle tests verified main and child windows
+with native, custom and borderless chrome, and the activation test verified
+focus transfer after the first presented frame.
+
 ## 0.1.0-alpha.82 (2026-11-13)
 
 **What breaks.**
