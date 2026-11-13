@@ -20,8 +20,8 @@ members = [
     "crates/kui-addon-schema",
     # The `kui` runner (ADR 0064).
     "crates/kui-cli",
-    # Kit's typed wrappers, generated from addons/kit/schema.lua.
-    "addons/kit/bindings/rust",
+    # Kit's embedded extension and generated typed wrappers.
+    "addons/kit",
     # The examples' devtools (docs/adr/0021): a dev-dependency of the crates
     # whose examples run inside it, never published.
     "examples/devtools",
@@ -66,9 +66,8 @@ kui-access = { path = "crates/kui-access", version = "0.1.0-alpha.82", default-f
 kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.82", default-features = false }
 kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.82" }
 kui-devtools = { path = "examples/devtools" }
-# Kit's generated Rust wrappers and the generator itself (ADR 0066); never
-# published yet.
-kui-kit = { path = "addons/kit/bindings/rust" }
+# Kit's embedded Lua extension and typed Rust wrappers (ADR 0066).
+kui-kit = { path = "addons/kit", version = "0.1.0-alpha.82" }
 kui-addon-schema = { path = "crates/kui-addon-schema" }
 
 slotmap = "1.1.1"

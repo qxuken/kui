@@ -40,7 +40,9 @@ kui-native = { workspace = true, features = ["default"] }
 kui-devtools.workspace = true
 # Kit (addons/kit) placed through its generated wrappers, and its schema
 # read back, for tests/kit.rs.
-kui-kit.workspace = true
+# Path-only so publishing drops this dev-dependency: kui-kit depends on
+# kui-lua for its embedded extension loader.
+kui-kit = { path = "../../addons/kit" }
 kui-addon-schema.workspace = true
 # tests/conformance.rs drives the scene corpus, which kui-core keeps behind a
 # feature; on here only, so the published extension does not carry it.

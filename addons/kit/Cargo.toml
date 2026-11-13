@@ -1,0 +1,31 @@
+[package]
+name = "kui-kit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Kit components for kui: typed Rust builders and an embedded Lua extension"
+readme = "README.md"
+publish = ["crates-io"]
+# Keep the runtime and generated wrappers in the same package. No assets
+# outside this directory are needed to build or run a published crate.
+include = ["/bindings/rust/src/**", "/lua/*.lua", "/examples/*.rs", "/README.md"]
+
+[lib]
+path = "bindings/rust/src/lib.rs"
+
+[dependencies]
+kui-core.workspace = true
+kui-lua.workspace = true
+mlua.workspace = true
+
+[dev-dependencies]
+kui-native = { workspace = true, features = ["default"] }
+
+[[example]]
+name = "kit_counter"
+path = "examples/kit_counter.rs"
+test = true
