@@ -2050,6 +2050,7 @@ dependencies = [
  "image",
  "js-sys",
  "kui-core",
+ "kui-kit",
  "kui-lua",
  "kui-web",
  "mlua",
@@ -2322,6 +2323,7 @@ name = "kui-web-lua"
 version = "0.1.0-alpha.82"
 dependencies = [
  "kui-core",
+ "kui-kit",
  "kui-lua",
  "kui-web",
  "mlua",

@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 
 [target.'cfg(target_os = "wasi")'.dependencies]
 kui-core = { workspace = true, features = ["svg", "devtools"] }
+kui-kit.workspace = true
 kui-lua.workspace = true
 kui-web = { workspace = true, features = ["packed-gpu"] }
 mlua = { workspace = true, features = ["serde"] }
