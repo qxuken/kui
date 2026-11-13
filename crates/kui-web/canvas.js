@@ -2,6 +2,10 @@ import { editorBridge } from "./editor.js";
 
 const TINT_BYTES = 16 * 1024 * 1024;
 const TOUCH_SLOP = 8;
+const FLICK_WINDOW = 0.08;
+const FLICK_DECAY = 5;
+const FLICK_MIN_SPEED = 20;
+const FLICK_MAX_SPEED = 3000;
 
 // Canvas 2D paints kui's physical-pixel quads. The app never draws DOM text.
 function painter(canvas, restoreCanvas) {
@@ -399,6 +403,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
 
   function draw() {
     scheduled = false;
+    advanceMomentum(seconds());
     let next;
     try {
       next = paintFrame();
@@ -414,7 +419,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     }
     if (next === undefined) return;
     recoveryDelay = 0;
-    if (next) schedule();
+    if (next || momentum) schedule();
     afterFrame?.(wasm, canvas, schedule, drawOverlay);
     scheduleWake();
     syncAccess();
@@ -445,7 +450,44 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   // Wait out finger jitter before pressing anything. A swipe over a
   // scrolling region feeds the same latched scroll path as the wheel.
   let touch;
+  let momentum;
+  let touchEnded = false;
   let otherPointer = null;
+  function advanceMomentum(time) {
+    if (!momentum) return;
+    const dt = time - momentum.time;
+    // A suspended tab must not jump when it becomes visible again.
+    if (dt > 0.1) {
+      momentum = undefined;
+      return;
+    }
+    const decay = Math.exp(-FLICK_DECAY * dt);
+    const distance = (1 - decay) / FLICK_DECAY;
+    const { x, y, page } = momentum;
+    const claimed = page
+      ? (panOutside(-y * distance), true)
+      : wasm.scroll_gesture(x * distance, y * distance, 0, time);
+    momentum.x *= decay;
+    momentum.y *= decay;
+    momentum.time = time;
+    if (!claimed || Math.hypot(momentum.x, momentum.y) < FLICK_MIN_SPEED) momentum = undefined;
+  }
+  function startMomentum(gesture, time) {
+    if (!gesture.pan || !gesture.moving || (!gesture.claimed && !gesture.page)) return;
+    const samples = gesture.samples.filter(sample => time - sample.time <= FLICK_WINDOW);
+    if (samples.length < 2) return;
+    const first = samples[0], last = samples.at(-1);
+    const dt = time - first.time;
+    if (dt < 0.005 || time - last.time > FLICK_WINDOW) return;
+    const scale = gesture.page ? 1 : contentScale();
+    const x = (last.x - first.x) / dt / scale;
+    const y = (last.y - first.y) / dt / scale;
+    const speed = Math.hypot(x, y);
+    if (speed < FLICK_MIN_SPEED) return;
+    const limit = Math.min(1, FLICK_MAX_SPEED / speed);
+    momentum = { x: x * limit, y: y * limit, time, page: gesture.page };
+    schedule();
+  }
   function moveTouch(event, time) {
     if (touch?.start.pointerId !== event.pointerId) return;
     const dx = event.screenX - touch.last.screenX;
@@ -456,9 +498,12 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
       if (begins) move(touch.start, time);
       if (!touch.page) {
         const claimed = wasm.scroll_gesture(dx / contentScale(), dy / contentScale(), Number(begins), time);
+        touch.claimed = !!claimed;
         if (begins && !claimed && panOutside) touch.page = true;
       }
       if (touch.page) panOutside(-dy);
+      touch.samples.push({ x: event.screenX, y: event.screenY, time });
+      touch.samples = touch.samples.filter(sample => time - sample.time <= FLICK_WINDOW);
     } else {
       if (begins) press(touch.start, 1, time);
       move(event, time);
@@ -468,6 +513,8 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     schedule();
   }
   function cancelTouch() {
+    momentum = undefined;
+    touchEnded = false;
     const cancelled = touch;
     touch = undefined;
     if (!cancelled?.moving) return;
@@ -489,6 +536,8 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   });
   let mousePressPending = false;
   canvas.addEventListener("pointerdown", (event) => {
+    momentum = undefined;
+    touchEnded = false;
     if (event.pointerType === "touch") {
       if (!event.isPrimary) {
         cancelTouch();
@@ -503,7 +552,10 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
         (event.clientY - rect.top) / contentScale(),
         Number(!!panOutside),
       );
-      touch = { start: event, last: event, pan, moving: false };
+      touch = {
+        start: event, last: event, pan, moving: false,
+        samples: [{ x: event.screenX, y: event.screenY, time: seconds() }],
+      };
       return;
     }
     if (touch) return;
@@ -524,19 +576,23 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     if (bridge) event.preventDefault();
     press(event, event.detail, seconds());
   });
+  canvas.addEventListener("touchstart", () => {
+    if (touch) touch.native = true;
+  }, { passive: true });
   canvas.addEventListener("pointerup", (event) => {
     if (event.pointerType === "touch") {
       if (touch?.start.pointerId !== event.pointerId) return;
       const time = seconds();
       moveTouch(event, time);
-      const { start, moving, pan } = touch;
+      const { start, moving, pan, native } = touch;
+      startMomentum(touch, time);
       touch = undefined;
+      touchEnded = true;
       if (!moving) press(start, 1, time);
       if (!moving || !pan) {
         release(event, time);
-        // Keep editor focus inside the trusted tap, so a browser can
-        // open its software keyboard without waiting for a frame.
-        syncAccess();
+        // Browsers without legacy touch events still focus in this tap.
+        if (!native) syncAccess();
       }
       leave(time);
       return;
@@ -547,6 +603,14 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     mousePressPending = false;
     release(event, seconds());
   });
+  canvas.addEventListener("touchend", event => {
+    if (!touchEnded || event.touches.length) return;
+    touchEnded = false;
+    // iOS opens the keyboard only during the trusted touch. Cancel the
+    // synthetic mouse/click default, which would focus the canvas again.
+    event.preventDefault();
+    syncAccess();
+  }, { passive: false });
   const cancelPointer = (event) => {
     if (touch?.start.pointerId === event.pointerId) {
       cancelTouch();
@@ -562,6 +626,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   canvas.addEventListener("pointercancel", cancelPointer);
   canvas.addEventListener("lostpointercapture", cancelPointer);
   if (bridge) canvas.addEventListener("wheel", (event) => {
+    momentum = undefined;
     if (event.ctrlKey) return; // Browser zoom remains available.
     const time = seconds();
     move(event, time);
@@ -570,6 +635,10 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     schedule();
   }, { passive: false });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+  window.addEventListener("blur", cancelTouch);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) cancelTouch();
+  });
   canvas.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
