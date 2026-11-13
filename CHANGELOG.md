@@ -33,7 +33,8 @@ was the first bare bump to break an app in five releases).
 
 - `kui-web` is published on crates.io, with the Rust browser host and its
   `canvas.js` and `editor.js` bridges. Canvas 2D and the optional shared
-  WebGPU renderer are checked on their WebAssembly target in CI. The
+  WebGPU renderer are checked on their WebAssembly target in CI, and
+  docs.rs builds the browser API on that target with all features. The
   internal `kui-web-lua` runner remains part of the prebuilt web runtime.
 - The wheel-feel example has an independent acceleration switch and a
   headless check of rapid notches with glide enabled and disabled.
@@ -83,7 +84,9 @@ Formatting, every release generator, Clippy, workflow syntax and the
 dependency advisory check passed. The packaged `kui-web` crate built for
 WebAssembly with all features against crates.io dependencies before its
 alpha.81 bootstrap publish; its GitHub trusted publisher is `qxuken/kui`,
-`release.yml`, with no environment.
+`release.yml`, with no environment. The alpha.82 browser API documentation
+built with all features and warnings denied; `Runner` and `WgpuPainter`
+pages were verified before the final tag.
 
 ## 0.1.0-alpha.81 (2026-11-13)
 
