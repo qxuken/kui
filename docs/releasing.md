@@ -1,7 +1,7 @@
 # Releases
 
 Tagged commits publish the library crates (`kui-derive`, `kui-value`,
-`kui-channel`, `kui-trace`, `kui-core`, `kui-wgpu`, `kui-native`,
+`kui-channel`, `kui-trace`, `kui-core`, `kui-access`, `kui-wgpu`, `kui-web`, `kui-native`,
 `kui-lua`, `kui-ffi`) to crates.io; ten npm
 packages to npmjs
 ([ADR 0068](adr/0068-how-kui-reaches-a-machine.md), esbuild's shape):
@@ -189,6 +189,13 @@ token that lives 30 minutes and is revoked when the job ends, then
   token in `~/.cargo/credentials.toml`), add `release.yml` as each new
   one's trusted publisher, and re-run `publish`: the crates already up
   are skipped.
+- `kui-web` joins the crate release list at alpha.82, after `kui-wgpu`.
+  Bootstrap it from the prepared alpha.81 manifest with
+  `cargo publish -p kui-web --registry crates-io`, so its dependencies
+  already exist. On crates.io, add GitHub owner `qxuken`, repository
+  `kui`, workflow `release.yml`, with no environment, as its trusted
+  publisher before tagging alpha.82. The package includes `canvas.js`
+  and `editor.js`; the `kui-web-lua` runner stays private.
 - A field that does not match (another workflow file, an environment
   named on crates.io that the job does not use) shows only at the token
   step, as the action's error.

@@ -3,7 +3,13 @@ name = "kui-web"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish = false
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "A single-canvas browser host for kui, with Canvas 2D and WebGPU renderers"
+readme = "README.md"
+publish = ["crates-io"]
 
 [dependencies]
 kui-core = { path = "../kui-core", version = "0.1.0-alpha.81", default-features = false, features = ["derive"] }

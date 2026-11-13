@@ -184,7 +184,7 @@ def main [
             ^cargo run -q -p kui-native --no-default-features --features conformance --example conformance-dump -- target/conformance.txt
         } catch { print -e "the conformance report failed to build"; exit 2 }
         let npx = if $nu.os-info.name == "windows" { "node.exe" } else { "node" }
-        $records = ($records | append {key: "node", cwd: ($root | path join packages kui), argv: [$npx "--test" "test.mjs"]})
+        $records = ($records | append {key: "node", cwd: ($root | path join packages kui), argv: [$npx "--test" "test.mjs" "presentation.test.mjs" "presentation-native.test.mjs"]})
     }
 
     # Slowest first, by last run's times; a binary with none yet goes first.

@@ -169,6 +169,13 @@ jobs:
           cargo check --locked -p kui-core --no-default-features --target wasm32-unknown-unknown --lib
           nu scripts/portable-core-smoke.nu
 
+      # Native builds see an empty kui-web library; check both browser
+      # renderers and the packed renderer on their actual target.
+      - name: Browser host
+        run: |
+          cargo check --locked -p kui-web --target wasm32-unknown-unknown --lib
+          cargo check --locked -p kui-web --target wasm32-unknown-unknown --all-features --lib
+
       # Covers the Rust and Lua adapters over the scene corpus
       # (crates/kui-core/src/conformance.rs): kui-core asserts the scenes
       # against their checked-in expectations and that they still cover
