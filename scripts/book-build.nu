@@ -27,7 +27,21 @@ def main [--out-dir: path = "target/book", --install-tools] {
     ^nu scripts/web-runner.nu --out $runner --shim $shim
     let tasks = ($live | path join "tasks")
     ^cargo run --locked --quiet -p kui-cli --bin kui -- pack examples/lua/tutorial/tasks --format web --runner $runner --out $tasks
-    cp docs/book/book-tasks.js ($tasks | path join "kui")
+    # The book's apps and editor share one cacheable runtime, rather than
+    # copying a full runner into every page or compiling editor-only Wasm.
+    let runtime = ($live | path join runtime)
+    if ($runtime | path exists) { rm -rf $runtime }
+    mv ($tasks | path join kui) $runtime
+    cp ($tasks | path join runner-version.txt) $runtime
+    cp docs/book/book-tasks.js docs/book/book-runtime.js $runtime
+    let cache = (glob ($runtime | path join "**/*")
+        | where {|file| ($file | path type) == "file" }
+        | sort
+        | each {|file| $"($file | path relative-to $runtime):(open --raw $file | hash sha256)" }
+        | str join "\n" | hash sha256)
+    {version: (open Cargo.toml | get workspace.package.version), cache: $cache}
+        | to json | save --force ($runtime | path join manifest.json)
     let index = ($tasks | path join "index.html")
-    open --raw $index | str replace "./kui/web-app.js" "./kui/book-tasks.js" | save --force --raw $index
+    open --raw $index | str replace "./kui/web-app.js" "../runtime/book-tasks.js" | save --force --raw $index
+    cp -r examples/book-web/playground $live
 }

@@ -59,7 +59,7 @@ try {
   reportSize(0);
   let wired = false;
   const runtime = new URL("./runner.wasm", import.meta.url);
-  runtime.searchParams.set("v", app.runner);
+  runtime.searchParams.set("v", new URL(import.meta.url).searchParams.get("v") ?? app.runner);
   const gpu = packedGpu(main.querySelector("canvas"), runtime);
   await mountDemo(runtime, {
     contentScale: () => scale,

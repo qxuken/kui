@@ -1,4 +1,5 @@
 import { migrateAppFile } from "./filesystem.js";
+import { runtimeInfo } from "./book-runtime.js";
 
 async function migrateTasks() {
   const key = "kui-book/tasks.json";
@@ -28,4 +29,15 @@ try {
 } catch (error) {
   console.warn("Could not migrate saved book tasks", error);
 }
-await import("./web-app.js");
+try {
+  const { cache } = await runtimeInfo();
+  const entry = new URL("./web-app.js", import.meta.url);
+  entry.searchParams.set("v", cache);
+  await import(entry.href);
+} catch (error) {
+  const status = document.querySelector("#status");
+  status.textContent = `Could not load application. ${error.message}`;
+  status.hidden = false;
+  if (parent !== window) parent.postMessage({ type: "kui-example", state: "error", message: error.message }, location.origin);
+  throw error;
+}

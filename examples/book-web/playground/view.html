@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lua preview</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #14161e; color: #eee; font: 14px system-ui, sans-serif; }
+    main { position: relative; width: 100vw; height: 100dvh; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: pinch-zoom; }
+    #access { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+    #access :is(button,textarea,input) { position: absolute; margin: 0; padding: 0; border: 0; resize: none; }
+    #status { position: absolute; top: 12px; left: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <canvas aria-label="Lua preview" tabindex="0"></canvas>
+    <div id="access" role="group" aria-label="Lua preview"></div>
+    <span id="renderer" hidden></span>
+    <p id="status" role="status">Starting preview…</p>
+  </main>
+  <script type="module">
+    try { await import("./view.js"); }
+    catch (error) {
+      document.querySelector("#status").textContent = error.message;
+      if (parent !== window) parent.postMessage({ type: "kui-playground", state: "error", message: error.message }, location.origin);
+    }
+  </script>
+</body>
+</html>

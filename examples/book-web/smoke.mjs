@@ -53,9 +53,14 @@ try {
       url.hash === "#saved");
     await packed.getByRole("textbox", { name: "New task" }).waitFor();
     console.log("OK legacy tasks link");
+    await packed.goto(base + "/playground.html?example=layout");
+    const playground = packed.frameLocator(".kui-example-viewport iframe");
+    await playground.locator("#status").filter({ hasText: /^Ready$/ }).waitFor();
+    assert.match(await playground.getByRole("textbox", { name: "Lua source" }).inputValue(), /Make room/);
+    console.log("OK Lua playground");
   } finally {
     await packed.close();
   }
-  console.log("total",ids.size + 1,"failed",bad.length);
+  console.log("total",ids.size + 2,"failed",bad.length);
   assert.deepEqual(bad, []);
 } finally {await browser.close();}

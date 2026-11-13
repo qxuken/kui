@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lua playground · kui</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <a class="book-link" href="../../playground.html">← The kui book</a>
+      <h1>Lua playground</h1>
+      <div class="actions">
+        <label>Example <select id="example">
+          <option value="counter">Counter</option>
+          <option value="layout">Layout</option>
+          <option value="controls">Controls</option>
+        </select></label>
+        <button id="reset" type="button">Reset example</button>
+        <button id="run" type="button" disabled>Run <kbd>⌘ / Ctrl ↵</kbd></button>
+      </div>
+    </header>
+    <p class="hint">Edit the Lua, then Run to start a fresh view. Your draft stays in this browser.</p>
+    <div class="workspace">
+      <section class="source-pane" aria-label="Editor">
+        <h2>main.lua</h2>
+        <textarea id="source" aria-label="Lua source" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+      </section>
+      <section class="preview-pane" aria-label="Preview">
+        <h2>Preview <span id="status" role="status">Loading example…</span></h2>
+        <div id="preview" aria-busy="true"></div>
+      </section>
+    </div>
+    <pre id="error" role="alert" hidden></pre>
+  </main>
+  <script type="module">
+    try { await import("./editor.js"); }
+    catch (error) {
+      document.querySelector("#status").textContent = "Could not start";
+      const message = `Could not start the playground. Reload this page to retry. ${error.message}`;
+      const output = document.querySelector("#error");
+      output.hidden = false;
+      output.textContent = message;
+      if (parent !== window) parent.postMessage({ type: "kui-example", state: "error", message }, location.origin);
+    }
+  </script>
+</body>
+</html>

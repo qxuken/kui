@@ -181,18 +181,18 @@ function saveFiles(store, current, saved, changes, directories) {
   return conflicts;
 }
 
-export async function appFilesystem(id, appFiles, reportError) {
+export async function appFilesystem(id, appFiles, reportError, { persistent = true, stderr = line => console.error(line) } = {}) {
   const app = new PreopenDirectory("/app", filesystemTree(appFiles, true));
-  const db = await openStorage(id);
+  const db = persistent ? await openStorage(id) : undefined;
   let saved;
   let data;
   try {
-    const { files, recovered } = await storedFiles(db, recoverFiles);
+    const { files, recovered } = db ? await storedFiles(db, recoverFiles) : { files: new Map(), recovered: [] };
     if (recovered.length) console.warn(`Recovered conflicting application files: ${recovered.join(", ")}`);
     saved = files;
     data = new PreopenDirectory("/data", filesystemTree(saved, false));
   } catch (error) {
-    db.close();
+    db?.close();
     throw error;
   }
   const cache = new PreopenDirectory("/cache", new Map());
@@ -209,6 +209,7 @@ export async function appFilesystem(id, appFiles, reportError) {
   let saving = false;
 
   function flush() {
+    if (!db) return;
     if (!dirty || saving) return;
     dirty = false;
     const files = snapshot(data.dir);
@@ -236,7 +237,7 @@ export async function appFilesystem(id, appFiles, reportError) {
       const wasi = new WASI([], [], [
         new OpenFile(new File([])),
         ConsoleStdout.lineBuffered(line => console.log(line)),
-        ConsoleStdout.lineBuffered(line => console.error(line)),
+        ConsoleStdout.lineBuffered(stderr),
         app, data, cache,
       ], { debug: false });
       const fs = { ...wasi.wasiImport };
@@ -265,9 +266,10 @@ export async function appFilesystem(id, appFiles, reportError) {
           return result;
         };
       }
-      const module = await WebAssembly.instantiate(bytes, { ...imports, wasi_snapshot_preview1: fs });
-      wasi.initialize(module.instance);
-      return module;
+      const loaded = await WebAssembly.instantiate(bytes, { ...imports, wasi_snapshot_preview1: fs });
+      const instance = loaded.instance ?? loaded;
+      wasi.initialize(instance);
+      return { instance, module: loaded.module ?? bytes };
     },
   };
 }
