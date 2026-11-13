@@ -21,6 +21,70 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.82 (2026-11-13)
+
+**What breaks.**
+
+- Browser touch scrolling now continues with momentum after a flick.
+  Holding still before release ends the scroll without momentum; a new
+  touch, wheel input, cancellation or loss of focus stops it.
+
+### Added
+
+- `kui-web` is published on crates.io, with the Rust browser host and its
+  `canvas.js` and `editor.js` bridges. Canvas 2D and the optional shared
+  WebGPU renderer are checked on their WebAssembly target in CI. The
+  internal `kui-web-lua` runner remains part of the prebuilt web runtime.
+- The wheel-feel example has an independent acceleration switch and a
+  headless check of rapid notches with glide enabled and disabled.
+
+### Fixed
+
+- Mobile browser flicks keep scrolling with deceleration after release,
+  without turning a swipe into a click. A second touch interrupts momentum.
+- Editor taps focus the textarea during the trusted touch event and cancel
+  the synthetic canvas click, so iOS can open its software keyboard without
+  losing editor focus.
+- The local `scripts/test.nu --node` round runs both presentation suites
+  alongside the main Node suite, matching `npm test` and CI.
+
+### What you can delete
+
+- Local path dependencies used solely because `kui-web` was not available
+  on crates.io.
+- Browser momentum and editor refocusing workarounds for the touch bridge's
+  missing flick continuation and synthetic-click focus loss.
+
+### Native verification
+
+On macOS arm64, the workspace round passed 3,343 Rust tests across 277
+suites, with 23 ignored. The full Node round passed all 312 tests.
+The headless example round passed, including wheel acceleration. All 59
+Rust and 12 Node windowed examples presented 30 frames on both themes,
+142 successful runs. The optional `host_pass` example was built and run
+separately after the initial round found its executable missing.
+The compiled accessibility audit passed all 106 checks through macOS.
+
+The C round passed all eleven checks and its 67-scene conformance replay;
+the ABI check covered 502 fields, 388 enum members and 425 prototypes.
+Odin checking, headless drives and all four cross-language plugin
+combinations passed. Node example typechecking and builds passed.
+
+Browser notes flows passed in Chromium, Firefox and WebKit with Canvas 2D,
+and in Chrome with WebGPU. Touch panning, flick momentum, cancellation,
+editor focus and selection passed with both renderers. Trusted touch
+focus, typing, Enter and Backspace passed in Chromium and WebKit at phone
+and tablet sizes. Startup failure, first-frame failure, device loss and
+recovery retry checks passed. These automated mobile checks use desktop
+browser engines; software keyboard visibility was not rechecked on an iOS
+device in this round.
+
+Formatting, every release generator, Clippy, workflow syntax and the
+dependency advisory check passed. The packaged `kui-web` crate built for
+WebAssembly with all features against crates.io dependencies before its
+alpha.81 bootstrap publish; its GitHub trusted publisher is `qxuken/kui`,
+`release.yml`, with no environment.
+
 ## 0.1.0-alpha.81 (2026-11-13)
 
 **What breaks.**
