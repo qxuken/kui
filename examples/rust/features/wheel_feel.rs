@@ -6,7 +6,10 @@
 //! - three sliders set the numbers themselves — the line in px, the
 //!   glide's response in seconds and its kick — and the select reads
 //!   `custom` once they match no preset;
-//! - a switch turns the glide off, where a notch jumps its line.
+//! - a switch turns the glide off, where a notch jumps its line;
+//! - an acceleration switch (off by default) gives rapid, same-direction
+//!   notches up to twice the travel, with or without the glide. Try slow
+//!   notches, then a quick spin; trackpad pixels keep their usual travel.
 //!
 //! Turn the wheel over the list on the right to feel it. The line under
 //! the sliders is the same feel as `KUI_WHEEL` — a preset's name, or the
@@ -14,8 +17,9 @@
 //! it: the variable wins over whatever feel the app opens with.
 //!
 //! The view holds no copy of the feel: it reads the core's, and the
-//! handler writes the core's (`App::on_event_with`), so `KUI_WHEEL=brisk`
-//! in the environment opens the example on `brisk`.
+//! handler writes the core's (`App::on_event_with`), so `KUI_WHEEL=swift`
+//! in the environment opens the example on `swift`. `KUI_WHEEL` sets the
+//! three feel numbers; glide and acceleration are separate core switches.
 //!
 //! Run: cargo run -p kui-native --example wheel_feel [-- --headless]
 
@@ -59,6 +63,7 @@ impl App for WheelFeelDemo {
         let m = ui.metrics();
         let feel = ui.core().wheel_feel();
         let glides = ui.core().smooth_wheel();
+        let accelerates = ui.core().wheel_acceleration();
         let heading = |ui: &mut Ui<'_>, s: &str| {
             ui.text(s, TextStyle::new(12.0).color(t.muted));
         };
@@ -140,8 +145,11 @@ impl App for WheelFeelDemo {
                         format!("{:.2}", feel.kick),
                     );
 
-                    heading(ui, "whether a notch glides at all");
-                    widgets::switch(ui, "Glide", glides, message("glide"));
+                    heading(ui, "glide and extra travel for rapid notches (up to 2×)");
+                    ui.with(NodeSpec::row().gap(20.0).cross_align(Align::Center), |ui| {
+                        widgets::switch(ui, "Glide", glides, message("glide"));
+                        widgets::switch(ui, "Acceleration", accelerates, message("acceleration"));
+                    });
 
                     ui.leaf(NodeSpec::column().height(8.0));
                     heading(ui, "the same feel for any app — select it and copy");
@@ -224,6 +232,11 @@ impl App for WheelFeelDemo {
                 core.set_smooth_wheel(!on);
                 return;
             }
+            (Some("acceleration"), _) => {
+                let on = core.wheel_acceleration();
+                core.set_wheel_acceleration(!on);
+                return;
+            }
             _ => return,
         }
         core.set_wheel_feel(feel);
@@ -242,7 +255,8 @@ impl Example for WheelFeelDemo {
 
     /// A notch glides its line and lands there; a preset chosen in the
     /// select is the core's feel and the next notch goes its line; a
-    /// slider's step makes the feel custom; the switch off jumps.
+    /// slider's step makes the feel custom; the glide switch off jumps;
+    /// acceleration adds travel to a burst with either glide setting.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         let mut d = Drive::new(core, 820.0, 520.0);
         d.frame(self);
@@ -251,6 +265,7 @@ impl Example for WheelFeelDemo {
             d.core.wheel_feel() == WheelFeel::STANDARD,
             "the standard feel to start",
         )?;
+        d.check(!d.core.wheel_acceleration(), "acceleration is off to start")?;
         let list = d.key_of("list").ok_or("no list")?;
         let over = d.rect_of(list).ok_or("the list has no rect")?.center();
         d.move_to(self, over.x, over.y);
@@ -354,6 +369,64 @@ impl Example for WheelFeelDemo {
         d.frame(self);
         let y = d.core.scroll_geometry(list).map_or(-1.0, |g| g.offset.y);
         d.check(y == 178.0, &format!("a jump of the line, at once: {y}"))?;
+
+        // The same six-notch burst, switched through the controls: plain
+        // travel or 1×, 1.25×, 1.5×, 1.75×, 2×, 2×, gliding or jumping.
+        let acceleration = d.key_of("Acceleration").ok_or("no Acceleration switch")?;
+        for (accelerates, glides) in [(false, false), (true, false), (true, true), (false, true)] {
+            if d.core.wheel_acceleration() != accelerates {
+                d.click_key(self, acceleration);
+                d.frame(self);
+            }
+            if d.core.smooth_wheel() != glides {
+                d.click_key(self, glide);
+                d.frame(self);
+            }
+            d.check(
+                d.core.wheel_acceleration() == accelerates && d.core.smooth_wheel() == glides,
+                "the switches set acceleration and glide independently",
+            )?;
+            d.move_to(self, over.x, over.y);
+            let before = d
+                .core
+                .scroll_geometry(list)
+                .ok_or("no list geometry")?
+                .offset
+                .y;
+            for i in 0..6 {
+                d.advance(0.05);
+                d.frame(self);
+                d.input(
+                    self,
+                    InputEvent::Wheel {
+                        lines: Vec2::new(0.0, -1.0),
+                        begins: i == 0,
+                    },
+                );
+                d.frame(self);
+            }
+            for _ in 0..60 {
+                d.advance(1.0 / 60.0);
+                d.frame(self);
+                if !d.core.animating() {
+                    break;
+                }
+            }
+            let travel = d
+                .core
+                .scroll_geometry(list)
+                .ok_or("no list geometry")?
+                .offset
+                .y
+                - before;
+            let expected = 66.0 * if accelerates { 9.5 } else { 6.0 };
+            d.check(
+                travel == expected,
+                &format!(
+                    "acceleration={accelerates}, glide={glides}: {travel} px, expected {expected}"
+                ),
+            )?;
+        }
         let warned = d.warnings();
         d.check(warned.is_empty(), &format!("nothing warned: {warned:?}"))
     }
