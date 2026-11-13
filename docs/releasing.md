@@ -197,6 +197,12 @@ token that lives 30 minutes and is revoked when the job ends, then
   publisher before tagging alpha.82. The package includes `canvas.js`
   and `editor.js`; the `kui-web-lua` runner stays private. Bootstrap and
   trusted publisher setup completed on 2026-11-13.
+- `kui-kit` version [0.1.0-alpha.82](https://crates.io/crates/kui-kit/0.1.0-alpha.82)
+  was published from merged `main` on 2026-11-13. Its crates.io trusted
+  publisher is configured for GitHub owner `qxuken`, repository `kui`,
+  workflow `release.yml`, with no environment. It follows `kui-lua` in
+  `publish-crates.nu`; subsequent tagged releases publish it through
+  OIDC.
 - A field that does not match (another workflow file, an environment
   named on crates.io that the job does not use) shows only at the token
   step, as the action's error.
