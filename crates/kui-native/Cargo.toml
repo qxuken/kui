@@ -577,3 +577,13 @@ name = "tutorial_10_testing"
 path = "../../examples/rust/tutorial/10_testing.rs"
 # Its `mod tests` drives the app headlessly under `cargo test`.
 test = true
+
+[[test]]
+name = "windows_lifecycle"
+harness = false
+required-features = ["gui"]
+
+[[test]]
+name = "windows_activation"
+harness = false
+required-features = ["gui"]
