@@ -16,6 +16,15 @@ Monospace fallback yields its preferred face before preparing the
 remaining candidates and resumes their existing order if shaping needs them.
 Additional edits satisfy the workspace's lint checks.
 
+The workspace uses HarfRust 0.12 and Skrifa 0.44 so shaping, metrics, and
+Swash 0.2.10's rasterizer share read-fonts 0.41. The shaping call uses
+`ShapeOptions` with the existing cached plan and the run's font features;
+the local matching, fallback, variation coordinates, and cache policies are
+unchanged. The recorded upstream source base remains 0.19.0, with this
+dependency/API adaptation applied locally. Keep these dependency generations
+aligned when updating them and run the private harness's rendering tests
+against the existing image references.
+
 The shape-run cache also includes the run's direction. This fixes FZ14
 and FZ18, where neutral text shaped right to left could be reused in a
 left-to-right paragraph, including another window sharing the session.

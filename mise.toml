@@ -23,6 +23,7 @@ cargo-zigbuild = "cargo:cargo-zigbuild"
 npm = "npm:npm"
 gh = "github:cli/cli"
 actionlint = "github:rhysd/actionlint"
+binaryen = "github:WebAssembly/binaryen"
 
 [tools]
 nu = "0.116.1"
@@ -51,6 +52,18 @@ platforms.linux-x64.asset_pattern = "wgpu-linux-x86_64-release.zip"
 platforms.linux-arm64.asset_pattern = "wgpu-linux-aarch64-release.zip"
 platforms.macos-arm64.asset_pattern = "wgpu-macos-aarch64-release.zip"
 platforms.windows-x64.asset_pattern = "wgpu-windows-x86_64-msvc-release.zip"
+
+# Post-link optimization of every distributed Wasm module. Lock all supported
+# build hosts, so local examples and the Linux release job use the same pass.
+[tools.binaryen]
+version = "133"
+version_prefix = "version_"
+bin_path = "bin"
+strip_components = 1
+platforms.linux-x64.asset_pattern = "binaryen-version_*-x86_64-linux.tar.gz"
+platforms.linux-arm64.asset_pattern = "binaryen-version_*-aarch64-linux.tar.gz"
+platforms.macos-arm64.asset_pattern = "binaryen-version_*-arm64-macos.tar.gz"
+platforms.windows-x64.asset_pattern = "binaryen-version_*-x86_64-windows.tar.gz"
 
 [tasks.bindings-setup]
 description = "Prepare the pinned wgpu-native library for C and Odin checks"

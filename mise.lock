@@ -31,6 +31,66 @@ url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_
 url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924919"
 provenance = "github-attestations"
 
+[[tools.binaryen]]
+version = "133"
+backend = "github:WebAssembly/binaryen"
+specifiers = ["133"]
+
+[tools.binaryen.options]
+asset_pattern = "binaryen-version_*-aarch64-linux.tar.gz"
+version_prefix = "version_"
+
+[tools.binaryen."platforms.linux-arm64"]
+checksum = "sha256:89c07ea56faf38d0fbecf36ca8ec0721756716185f265b568e133d427f299bf8"
+checksum_source = "mise-versions"
+url = "https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-aarch64-linux.tar.gz"
+url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/580038503"
+
+[[tools.binaryen]]
+version = "133"
+backend = "github:WebAssembly/binaryen"
+specifiers = ["133"]
+
+[tools.binaryen.options]
+asset_pattern = "binaryen-version_*-x86_64-linux.tar.gz"
+version_prefix = "version_"
+
+[tools.binaryen."platforms.linux-x64"]
+checksum = "sha256:2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489"
+checksum_source = "mise-versions"
+url = "https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz"
+url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/580050094"
+
+[[tools.binaryen]]
+version = "133"
+backend = "github:WebAssembly/binaryen"
+specifiers = ["133"]
+
+[tools.binaryen.options]
+asset_pattern = "binaryen-version_*-arm64-macos.tar.gz"
+version_prefix = "version_"
+
+[tools.binaryen."platforms.macos-arm64"]
+checksum = "sha256:ad66da82ac13f163e424b1643f16c6dfcccc98b5966296b43e52d3cab04f84a8"
+checksum_source = "mise-versions"
+url = "https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-arm64-macos.tar.gz"
+url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/580039733"
+
+[[tools.binaryen]]
+version = "133"
+backend = "github:WebAssembly/binaryen"
+specifiers = ["133"]
+
+[tools.binaryen.options]
+asset_pattern = "binaryen-version_*-x86_64-windows.tar.gz"
+version_prefix = "version_"
+
+[tools.binaryen."platforms.windows-x64"]
+checksum = "sha256:17a2cbeac6b5693c5fbafab3838d3c65fd9c1eb38b05f5baec6c657e8c84995b"
+checksum_source = "mise-versions"
+url = "https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-windows.tar.gz"
+url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/580050907"
+
 [[tools.cargo-audit]]
 version = "0.22.2"
 backend = "cargo:cargo-audit"

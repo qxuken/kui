@@ -74,6 +74,11 @@ conformance = []
 # Allows the host to install a live span observer.
 tracing = []
 
+[build-dependencies]
+# Validate the fixed fragment sources on the host before compiling the target.
+# User-provided WGSL still uses the normal runtime dependency above.
+naga.workspace = true
+
 [dev-dependencies]
 cosmic-text-tests.workspace = true
 sys-locale.workspace = true

@@ -1,4 +1,6 @@
 # Build the vendored Lua interpreter for the browser and stage its WASI imports.
+use web-build.nu
+
 export def build [package: string] {
     if ($env.WASI_SDK_PATH? | is-not-empty) {
         let sdk = ($env.WASI_SDK_PATH | path expand)
@@ -10,15 +12,15 @@ export def build [package: string] {
             CFLAGS_wasm32_wasip1: $"--sysroot=($sysroot)"
             CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS: $"-Lnative=($libraries)"
         } {
-            ^cargo build --locked --release -p $package --lib --target wasm32-wasip1
+            web-build build $package wasm32-wasip1 [--lib]
         }
     } else {
-        ^cargo build --locked --release -p $package --lib --target wasm32-wasip1
+        web-build build $package wasm32-wasip1 [--lib]
     }
 }
 
 export def stage-shim [out: path] {
-    let target = ($env.CARGO_TARGET_DIR? | default "target")
+    let target = (web-build target-dir)
     let tools = ($target | path join "web-tools" "book-lua" | path expand)
     mkdir $tools $out
     cp examples/book-web/package.json examples/book-web/package-lock.json $tools

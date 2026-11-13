@@ -47,7 +47,7 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: rust node npm nu mdbook
+          tools: rust node npm nu mdbook binaryen
           wasi: 'true'
 
       - name: Install ALSA for the CLI packer

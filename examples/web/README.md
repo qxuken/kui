@@ -1,12 +1,11 @@
 # Web counter
 
-Run from the repository root with the pinned Rust toolchain, Nushell,
-Python 3, and the workspace's `wasm-bindgen` CLI version.
+Run from the repository root with mise, the pinned Rust toolchain,
+Nushell, and Python 3. The setup flag installs the checksum-locked Binaryen release,
+Rust's Wasm targets, and the `wasm-bindgen` CLI version in Cargo.lock:
 
 ```sh
-rustup target add wasm32-unknown-unknown
-cargo install --locked wasm-bindgen-cli --version 0.2.129
-nu scripts/web-counter.nu
+nu scripts/web-counter.nu --install-tools
 ```
 
 Open [the counter](http://127.0.0.1:8080/). Use **−1**, **+1** and
@@ -14,6 +13,28 @@ Open [the counter](http://127.0.0.1:8080/). Use **−1**, **+1** and
 dismiss the menu. The browser runner builds a static site in
 `target/web-counter/`. Use `--build-only` to stage it for another HTTP
 server, or `--port` to change the local port.
+
+Subsequent builds can omit `--install-tools`. A missing or mismatched tool
+fails before compilation with setup instructions. `wasm-bindgen` is resolved
+from Cargo's target directory under `web-tools/bin` or from an exactly matching
+installation on PATH. Binaryen is resolved from the repository's mise pin.
+
+All browser build scripts use the `web-release` Cargo profile (size optimization,
+fat LTO, one codegen unit). Cargo's artifacts keep function names for profiling;
+the distributed copies run through `wasm-opt -Oz --strip-debug --strip-producers`,
+after wasm-bindgen for WebGPU. Native release builds keep their existing profile.
+The scripts ask Cargo for its target directory, including `CARGO_TARGET_DIR`
+and Cargo configuration, and read artifacts under `<target>/<triple>/web-release`.
+Bindgen output is generated and optimized in a temporary directory before
+copying it to the site. Generation/optimization failures preserve the previous
+JS/Wasm pair; there is no fallback to unoptimized output. Publication of the
+whole site is not transactional: after a failed build, rerun it before serving
+or publishing that output directory.
+
+The same pipeline covers `nu scripts/book-build.nu --install-tools` and
+`nu scripts/web-runner.nu --install-tools`, including their Lua/WASI modules.
+Those builds additionally require the WASI SDK (`WASI_SDK_PATH`), as before.
+Run `nu scripts/web-build-test.nu` to check post-processing and failure handling.
 
 The desktop and web examples share the [counter's view and event handler](../rust/apps/counter/app.rs).
 The browser supplies monotonic time, pointer events and the canvas size.

@@ -835,6 +835,12 @@ impl Resources {
             .map(|(id, _)| id)
     }
 
+    /// Fixed sources checked by build.rs. The closed enum keeps arbitrary
+    /// application WGSL on Core::add_fragment's runtime-validation path.
+    pub(crate) fn add_builtin_fragment(&mut self, builtin: crate::fragment::Builtin) -> FragmentId {
+        self.add_fragment(builtin.source())
+    }
+
     /// Registers validated WGSL, or hands back the handle an identical
     /// source already has.
     pub(crate) fn add_fragment(&mut self, source: &str) -> FragmentId {

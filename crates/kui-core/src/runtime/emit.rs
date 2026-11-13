@@ -1721,7 +1721,9 @@ impl Core {
         let joins = self.text.take_joins();
         if !joins.is_empty() {
             let sess = &mut *self.session.state();
-            let id = sess.resources.add_fragment(crate::fragment::JOIN);
+            let id = sess
+                .resources
+                .add_builtin_fragment(crate::fragment::Builtin::Join);
             if let Some(source) = sess.resources.fragment(id).cloned() {
                 crate::join::shape(&mut self.display, &joins, id, &source, scale);
             }

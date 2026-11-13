@@ -325,7 +325,7 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: rust node npm nu odin gh
+          tools: rust node npm nu odin gh binaryen
           wasi: 'true'
 
       - name: Install ALSA
