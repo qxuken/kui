@@ -465,7 +465,7 @@ pub(crate) struct Pane {
     /// view, and what its core says goes back to the window the menu is
     /// in. `None` for every window the app declared.
     pub(crate) menu_pane: Option<crate::gui::menu_popup::MenuPane>,
-    /// A popup kept off the screen until its first frame is presented
+    /// A window kept off the screen until its first frame is presented
     /// (`menu_popup::cloak`), so it never shows the OS's empty surface.
     pub(crate) cloaked: bool,
     /// The platform accessibility bridge.

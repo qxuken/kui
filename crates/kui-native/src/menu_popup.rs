@@ -239,7 +239,7 @@ pub(crate) fn appear_at_once(window: &Window) {
 }
 
 /// Hides a window from the screen while it stays shown to everything else
-/// (DWM's cloak), or shows it again. A popup is cloaked from creation to
+/// (DWM's cloak), or shows it again. A window is cloaked from creation to
 /// its first frame presented (`Pane::cloaked`): shown at once, with no
 /// fade, Windows drew its empty surface white for the frames before kui's
 /// first one landed (the user, trying F210). Answers whether the platform
@@ -698,7 +698,6 @@ impl DynShell<'_> {
         };
         self.icon.set_on(&window);
         appear_at_once(&window);
-        let cloaked = cloak(&window, true);
         #[cfg(target_os = "macos")]
         macos_menu::exclude_from_windows_menu(&window);
         let Some(gpu) = self.gpu.clone() else {
@@ -742,7 +741,6 @@ impl DynShell<'_> {
         self.panes[i].core.set_menu_popups(false);
         self.panes[i].core.set_lookup_available(false);
         self.panes[i].menu_pane = Some(mp);
-        self.panes[i].cloaked = cloaked;
         // Opened under a held button — a select opened on its press — it
         // joins that press, as an app's popup does (ADR 0009 decision 1).
         if self.primary_down.is_some() {
