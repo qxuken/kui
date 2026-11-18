@@ -3,6 +3,7 @@
 # Credentials live only in a temporary keychain, removed on success or failure.
 set -euo pipefail
 set +x
+trap 'echo "Signing failed at line $LINENO (exit $?)." >&2' ERR
 
 for name in MACOS_CERTIFICATE_P12 MACOS_CERTIFICATE_PASSWORD \
     MACOS_SIGN_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
