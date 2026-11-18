@@ -142,11 +142,8 @@ jobs:
             fi
           done
           if (( ${#missing[@]} )); then
-            # Try the image's package indexes first. Refresh and retry if stale.
-            sudo apt-get install -y --no-install-recommends "${missing[@]}" || {
-              sudo apt-get update
-              sudo apt-get install -y --no-install-recommends "${missing[@]}"
-            }
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${missing[@]}"
           fi
           mkdir -p -m 700 /tmp/xdg
           echo "XDG_RUNTIME_DIR=/tmp/xdg" >> "$GITHUB_ENV"
