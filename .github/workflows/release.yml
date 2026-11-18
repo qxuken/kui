@@ -149,6 +149,8 @@ jobs:
   check:
     if: ${{ !inputs.signing_check_only }}
     uses: ./.github/workflows/ci.yml
+    with:
+      upload_browser_runner: true
 
   smoke:
     if: ${{ !inputs.signing_check_only }}
@@ -385,8 +387,7 @@ jobs:
       - name: Install pinned project tools
         uses: ./.github/actions/setup-tools
         with:
-          tools: rust node npm nu odin gh binaryen
-          wasi: 'true'
+          tools: rust node npm nu odin gh
 
       - name: Install ALSA
         run: |
@@ -427,10 +428,11 @@ jobs:
           path: target/pack/release
           merge-multiple: true
 
-      - name: Build the browser runner
-        run: |
-          ver=$(nu -c 'open Cargo.toml | get workspace.package.version')
-          nu scripts/web-runner.nu --install-tools --out "target/pack/release/kui-$ver-web.zip"
+      - name: Download the tested browser runner
+        uses: actions/download-artifact@v8
+        with:
+          name: kui-browser-runner
+          path: ${{ runner.temp }}/browser-runner
 
       # SHA256SUMS over every asset (pack-ffi.nu's own covered the C and
       # Odin archives only), then the linux-x64 runner installed the way a user
@@ -445,6 +447,7 @@ jobs:
             test -f "target/pack/release/kui-$ver-$p.tar.gz" || { echo "missing runner $p" >&2; exit 1; }
           done
           test -f "target/pack/release/kui-$ver-win32-x64.zip" || { echo "missing runner win32-x64" >&2; exit 1; }
+          mv "$RUNNER_TEMP/browser-runner/book-runner.zip" "target/pack/release/kui-$ver-web.zip"
           cp scripts/install/install.sh scripts/install/install.ps1 target/pack/release/
           nu scripts/pack-runner.nu sums target/pack/release
           mirror="$RUNNER_TEMP/mirror"
