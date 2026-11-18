@@ -21,6 +21,20 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.84 (unreleased)
+
+**What breaks.** No public API changes.
+
+The macOS arm64 CLI distributed through GitHub Releases and npm now carries
+a Developer ID signature and Apple notarization. Release packaging reuses
+the browser runner ZIP exercised by the book's Tasks example.
+
+### Native verification
+
+The release dry run on the preceding workflow changes passed the macOS and
+Windows smoke suites. The macOS runner's signature was verified after
+extraction from the release archive, and Apple accepted its notarization.
+
 ## 0.1.0-alpha.83 (2026-11-14)
 
 **What breaks.**
