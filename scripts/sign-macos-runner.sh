@@ -22,7 +22,12 @@ binary="${1:?usage: sign-macos-runner.sh path/to/kui}"
 umask 077
 work_dir=$(mktemp -d "$RUNNER_TEMP/kui-signing.XXXXXX")
 keychain="$work_dir/signing.keychain-db"
+original_keychains=()
+while IFS= read -r path; do
+    original_keychains+=("$path")
+done < <(security list-keychains -d user | sed -E 's/^[[:space:]]*"//; s/"[[:space:]]*$//')
 cleanup() {
+    security list-keychains -d user -s "${original_keychains[@]}" >/dev/null 2>&1 || true
     security delete-keychain "$keychain" >/dev/null 2>&1 || true
     rm -rf "$work_dir"
 }
@@ -40,6 +45,9 @@ security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
     -k "$keychain_password" "$keychain" >/dev/null
 rm "$work_dir/certificate.p12"
 
+# codesign's identity/key lookup still needs the keychain in the user search
+# list, even with --keychain. Keep the defaults for certificate-chain lookup.
+security list-keychains -d user -s "$keychain" "${original_keychains[@]}"
 codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$keychain" \
     --identifier dev.qxuken.kui --options runtime --timestamp "$binary"
 codesign --verify --strict --verbose=2 "$binary"

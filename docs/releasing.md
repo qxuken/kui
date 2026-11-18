@@ -220,6 +220,11 @@ with Apple's JSON log when available. Re-running the build submits again.
 After configuring the secrets, run `release.yml` with **Run workflow** to
 exercise the full signing path without publishing. The first real signing
 and notarization check requires these credentials and Apple's service.
+For a quick credential check, enable `signing_check_only` (or run
+`gh workflow run release.yml --ref <branch> -f signing_check_only=true`).
+This signs, notarizes and executes a tiny native probe with the same script,
+skipping the release builds and tests. It verifies the signing setup; use
+the full dry run to verify the actual kui runner and release packaging.
 
 Standalone executables cannot carry stapled tickets; Gatekeeper retrieves
 the notarization ticket online. `kui pack` applications still need their
