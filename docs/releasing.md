@@ -162,10 +162,77 @@ release pipeline:
   release and without `npm-stage` (a dry run stages nothing it will not
   publish; since alpha.69), leaving the release's assets as the run's
   `release-packs` artifact; the npm tarballs come from a tag's run only,
-  or by hand from a run's build artifacts (below). It needs no secret:
-  crates.io and npmjs both take the run through trusted publishing
-  (below). The runner is not on crates.io: `kui-cli` stays `publish =
+  or by hand from a run's build artifacts (below). macOS signing needs
+  the Apple secrets below; crates.io and npmjs both take the run through
+  trusted publishing. The runner is not on crates.io: `kui-cli` stays `publish =
   false` (ADR 0068).
+
+## macOS runner signing and notarization
+
+The macOS build signs `kui` with Developer ID, hardened runtime and a
+secure timestamp, then submits a temporary ZIP to Apple's notary service.
+Only an `Accepted` response allows packaging to continue. GitHub's runner
+archive and the npm runner package therefore contain the same signed,
+notarized executable; checksums are calculated after signing. Both tagged
+releases and `workflow_dispatch` runs require signing credentials.
+
+In GitHub → **Settings → Secrets and variables → Actions → Repository
+secrets**, configure:
+
+These names and value formats match Carnet's release workflow, so the
+same signing setup can be used in both repositories. Repository secrets
+must be set in kui too; they are not inherited from Carnet.
+
+| Secret | Value |
+| --- | --- |
+| `MACOS_CERTIFICATE_P12` | Base64 of a `.p12` export containing your **Developer ID Application** certificate and its private key. |
+| `MACOS_CERTIFICATE_PASSWORD` | The nonempty password used to protect that `.p12` export. |
+| `MACOS_SIGN_IDENTITY` | The complete identity, e.g. `Developer ID Application: Your Name (ABCD123456)`. |
+| `APPLE_ID` | Apple Account email authorized to notarize for your team. |
+| `APPLE_TEAM_ID` | The ten-character Apple Developer Team ID for that certificate. |
+| `APPLE_APP_PASSWORD` | An app-specific password created for that Apple Account; not its normal login password. |
+
+In Keychain Access, export the Developer ID Application identity from
+**My Certificates** as `.p12`, including its private key. A downloaded
+`.cer` alone is insufficient. Find the identity with
+`security find-identity -v -p codesigning`. Copy the export's base64 to the
+clipboard on your Mac, then paste it into the GitHub secret:
+
+```bash
+base64 -i /path/to/DeveloperID.p12 | pbcopy
+```
+
+If reusing Carnet's export, use `~/Downloads/carnet-developer-id.p12` and
+its existing export password. No new certificate is needed for another
+app published by the same Apple Developer team. A public `.cer` or CSR
+cannot replace the private key: use the existing `.p12`, or export the
+certificate together with its matching private key from Keychain Access.
+
+No provisioning profile or Developer ID Installer certificate is needed.
+The script creates a random password for a temporary keychain and removes
+the keychain and certificate files on exit. Secrets are supplied only to
+the signing step. Missing credentials, signing errors, rejected submissions
+and a notarization wait exceeding 60 minutes fail the build and block
+publication. Apple may keep processing after that timeout: the submission
+ID is in the `kui-notarization-darwin-arm64` workflow artifact, together
+with Apple's JSON log when available. Re-running the build submits again.
+
+After configuring the secrets, run `release.yml` with **Run workflow** to
+exercise the full signing path without publishing. The first real signing
+and notarization check requires these credentials and Apple's service.
+For a quick credential check, enable `signing_check_only` (or run
+`gh workflow run release.yml --ref <branch> -f signing_check_only=true`).
+This signs, notarizes and executes a tiny native probe with the same script,
+skipping the release builds and tests. It verifies the signing setup; use
+the full dry run to verify the actual kui runner and release packaging.
+
+Standalone executables cannot carry stapled tickets; Gatekeeper retrieves
+the notarization ticket online. `kui pack` applications still need their
+own final bundle signing and notarization. This step covers the CLI runner,
+not the Node addon or FFI libraries. See [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
+and [GitHub's certificate setup guide](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications).
+
+## Registry trusted publishing
 
 The crates.io half goes through trusted publishing too, since alpha.70
 (until then a `CRATES_IO_TOKEN` repository secret, an API token with
