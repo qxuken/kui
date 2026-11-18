@@ -70,7 +70,8 @@
 # no darwin-x64 leg: Intel Macs lost their prebuild after alpha.40 (the
 # CHANGELOG says why), and build the addon from source.
 #
-# No secrets: both registries take trusted publishing.
+# Both registries take trusted publishing. macOS runner signing and
+# notarization need the six signing secrets listed in docs/releasing.md.
 #
 # crates.io (since alpha.70; until then a CRATES_IO_TOKEN secret): each
 # kui-* crate trusts this workflow as its publisher (crates.io → the
@@ -237,6 +238,28 @@ jobs:
         if: runner.os != 'Linux'
         shell: bash
         run: cargo build -p kui-cli --release --target "${{ matrix.target }}"
+
+      # Sign before packaging: GitHub releases and npm use the same bytes.
+      # Dispatch runs exercise signing too; missing secrets fail closed.
+      - name: Sign and notarize the macOS runner
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: bash scripts/sign-macos-runner.sh "target/${{ matrix.target }}/release/kui"
+
+      - name: Upload notarization diagnostics
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: kui-notarization-${{ matrix.prebuild }}
+          path: ${{ runner.temp }}/kui-notarization/*.json
+          if-no-files-found: ignore
 
       # A cache saved before target/pack was left out of it still brings
       # one back, older versions' archives in it, and the uploads below
