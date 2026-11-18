@@ -47,6 +47,10 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      upload_browser_runner:
+        type: boolean
+        default: false
 
 # A newer push to the same ref cancels the run it makes stale. Called from
 # release.yml, `github.workflow` is the caller's, so a tag's check has a
@@ -103,10 +107,16 @@ jobs:
       - name: Free disk space
         run: |
           set -eu
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+          # Leave room for cache extraction and the full workspace build.
+          enough_space() { [ "$(df -Pk . | awk 'END {print $4}')" -ge $((32 * 1024 * 1024)) ]; }
+          df -h .
+          for dir in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
             /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift \
-            /usr/local/share/powershell /usr/local/share/chromium
-          sudo docker image prune --all --force >/dev/null
+            /usr/local/share/powershell /usr/local/share/chromium; do
+            enough_space && break
+            sudo rm -rf "$dir"
+          done
+          enough_space || sudo docker image prune --all --force >/dev/null
           df -h /
 
       # ALSA headers: the runner crate's audio backend (kira/cpal) links
@@ -125,9 +135,19 @@ jobs:
       - name: Install system deps
         run: |
           set -eu
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config \
-            libasound2-dev mesa-vulkan-drivers libvulkan1 clang libglfw3-dev libx11-dev
+          missing=()
+          for pkg in fonts-dejavu-core pkg-config libasound2-dev mesa-vulkan-drivers libvulkan1 clang libglfw3-dev libx11-dev; do
+            if [[ "$(dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null)" != 'install ok installed' ]]; then
+              missing+=("$pkg")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            # Try the image's package indexes first. Refresh and retry if stale.
+            sudo apt-get install -y --no-install-recommends "${missing[@]}" || {
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends "${missing[@]}"
+            }
+          fi
           mkdir -p -m 700 /tmp/xdg
           echo "XDG_RUNTIME_DIR=/tmp/xdg" >> "$GITHUB_ENV"
           cargo --version
@@ -198,6 +218,15 @@ jobs:
         run: |
           nu scripts/book-build.nu --install-tools --out-dir "$RUNNER_TEMP/book"
           nu scripts/web-build-test.nu
+
+      - name: Upload the tested browser runner
+        if: inputs.upload_browser_runner
+        uses: actions/upload-artifact@v7
+        with:
+          name: kui-browser-runner
+          path: target/web-tools/book-runner.zip
+          if-no-files-found: error
+          compression-level: 0
 
       # The conformance reference: quad digests over real glyph geometry,
       # so it holds only for this machine's fonts and is never checked in.
