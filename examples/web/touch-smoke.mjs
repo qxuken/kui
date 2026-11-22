@@ -101,6 +101,22 @@ try {
       const held = await top();
       await page.waitForTimeout(160);
       assert.equal(await top(), held, "holding still before release does not start momentum");
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.reload();
+      await page.waitForSelector("#status", { state: "hidden" });
+      const reducedStart = point(await row("01").boundingBox());
+      const beforeReduced = await top();
+      await send("touchStart", [reducedStart]);
+      for (let step = 1; step <= 5; step++) {
+        await page.waitForTimeout(16);
+        await send("touchMove", [{ x: reducedStart.x, y: reducedStart.y - 12 * step }]);
+      }
+      await send("touchEnd", []);
+      await page.waitForTimeout(50);
+      const afterReduced = await top();
+      assert.ok(afterReduced < beforeReduced - 30, "reduced motion still allows direct panning");
+      await page.waitForTimeout(160);
+      assert.equal(await top(), afterReduced, "reduced motion stops when the finger lifts");
       console.log(renderer, "touch pan, momentum, cancellation, keyboard and text drag passed");
     } finally {
       await page.close();

@@ -175,6 +175,12 @@ it has no announcement API to call.
    so a node removed in the same update it was announced in is a race.
    They read as a trailing status region, which is what an ARIA `status`
    region is.
+
+   The iOS mobile host posts one-off announcements directly to UIKit after
+   raising AccessKit's accessibility tree events. This lets a confirmation
+   follow layout notifications and apply its speech priority without adding
+   an extra status element to the tree. Declared live regions still use
+   AccessKit's tree updates.
 8. **Two diagnostics.**
    - `live-region-without-name`: a node declares `live` and neither
      carries a `label` nor has any text in its subtree, so nothing it

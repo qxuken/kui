@@ -27,8 +27,8 @@ existing behavior.
 
 ### Lossless Kit source storage in the browser runner
 
-The WASI runner includes the CLI's [Kit loader](../crates/kui-cli/src/kit.rs)
-through [app.rs](../crates/kui-web-lua/src/app.rs). Its 18 source inclusions
+The WASI runner uses the shared [Kit loader](../crates/kui-runner/src/kit.rs)
+through [app.rs](../crates/kui-runner/src/app.rs). Its 18 source inclusions
 occupy 291,242 bytes, all found byte-for-byte in the baseline shipping module.
 The full Lua-source census, also including the adapter prelude, argument
 helpers, and browser application wrapper, is 331,787 bytes. The probe keeps
@@ -42,7 +42,7 @@ the decoder already linked for browser fonts; no new runtime codec is needed.
 The prototype's actual module saving is smaller than the payload saving,
 because source indexing and loading add code/data.
 [Existing font decoder](../examples/web/bundled_fonts.rs),
-[existing lazy preload and chunk naming](../crates/kui-cli/src/kit.rs)
+[existing lazy preload and chunk naming](../crates/kui-runner/src/kit.rs)
 
 Adoption should retain `package.preload`/`require` behavior, original UTF-8,
 all whitespace and source line numbers, and `set_name` values. Use generated

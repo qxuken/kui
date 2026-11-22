@@ -1,6 +1,7 @@
 //! The small Wasm ABI shared by the browser examples.
 
-use std::cell::RefCell;
+use kui_core::touch::{Glide, PanSamples};
+use std::cell::{Cell, RefCell};
 #[cfg(feature = "rust-wgpu")]
 use wasm_bindgen::prelude::*;
 
@@ -22,6 +23,9 @@ pub fn session() -> Session {
 }
 
 thread_local! {
+    static PAN: RefCell<PanSamples> = RefCell::default();
+    static GLIDE: RefCell<Option<Glide>> = const { RefCell::new(None) };
+    static PAGE_DELTA: Cell<f32> = const { Cell::new(0.) };
     pub(crate) static RUNNER: RefCell<kui_web::Runner<crate::AppModel>> = RefCell::new(crate::make_runner());
     static TEXT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
@@ -123,6 +127,46 @@ pub extern "C" fn prefers_scroll(x: f32, y: f32, parent_can_pan: u32) -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn scroll_gesture(x: f32, y: f32, begins: u32, time: f64) -> u32 {
     RUNNER.with_borrow_mut(|runner| u32::from(runner.scroll(Vec2::new(x, y), begins != 0, time)))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn pan_sample(x: f32, y: f32, time: f64, begins: u32) {
+    PAN.with_borrow_mut(|samples| {
+        if begins != 0 {
+            *samples = PanSamples::default();
+        }
+        samples.record(time, Vec2::new(x, y));
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn release_pan(time: f64, scale: f32) -> bool {
+    let glide = PAN.with_borrow(|samples| samples.release(time, scale));
+    let active = glide.is_some();
+    GLIDE.replace(glide);
+    active
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn advance_pan(time: f64, page: bool) -> bool {
+    PAGE_DELTA.set(0.);
+    GLIDE.with_borrow_mut(|glide| {
+        glide.as_mut().is_some_and(|glide| {
+            glide.advance(time, |delta| {
+                if page {
+                    PAGE_DELTA.set(-delta.y);
+                    true
+                } else {
+                    RUNNER.with_borrow_mut(|runner| runner.scroll(delta, false, time))
+                }
+            })
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn page_pan_delta() -> f32 {
+    PAGE_DELTA.get()
 }
 
 #[unsafe(no_mangle)]

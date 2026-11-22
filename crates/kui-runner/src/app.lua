@@ -1,6 +1,6 @@
--- The browser runner services Lua tasks between frames. Its file
--- operations use an in-memory WASI mount backed by browser storage.
+-- The packaged host services queued Lua tasks between frames.
 local tasks, messages = {}, {}
+local host = kui.platform == "web" and "in the browser" or ("on " .. kui.platform)
 
 function kui.spawn(fn, ...)
   assert(type(fn) == "function", "kui.spawn takes a function")
@@ -18,7 +18,7 @@ function on_event(event)
   if handle then handle(event) end
 end
 
-function __web_run_tasks()
+function __kui_run_tasks()
   local pending = tasks
   tasks = {}
   for _, task in ipairs(pending) do
@@ -26,7 +26,7 @@ function __web_run_tasks()
     if not ok then
       kui.__task_error(tostring(err))
     elseif coroutine.status(task.thread) ~= "dead" then
-      kui.__task_error("kui.spawn: yielding from a task is unavailable in the browser")
+      kui.__task_error("kui.spawn: yielding from a task is unavailable " .. host)
     end
   end
   local dispatched = messages
@@ -55,7 +55,7 @@ end
 kui.json.decode = raising(kui.json.try_decode)
 
 local function unavailable(name)
-  local message = "kui." .. name .. " is unavailable in the browser"
+  local message = "kui." .. name .. " is unavailable " .. host
   return function() return false, message, "unavailable" end
 end
 for _, name in ipairs({ "process", "http", "sqlite", "secrets" }) do
@@ -68,4 +68,4 @@ for _, name in ipairs({ "process", "http", "sqlite", "secrets" }) do
 end
 kui.try_worker = unavailable("worker")
 kui.worker = raising(kui.try_worker)
-package.loadlib = function() return nil, "native libraries are unavailable in the browser" end
+package.loadlib = function() return nil, "native libraries are unavailable " .. host end

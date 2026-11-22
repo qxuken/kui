@@ -1,5 +1,6 @@
 [workspace]
 resolver = "3"
+exclude = ["third_party/winit"]
 members = [
     "crates/kui-value",
     "crates/kui-channel",
@@ -20,18 +21,25 @@ members = [
     "crates/kui-addon-schema",
     # The `kui` runner (ADR 0064).
     "crates/kui-cli",
+    "crates/kui-runner",
     # Kit's embedded extension and generated typed wrappers.
     "addons/kit",
     # The examples' devtools (docs/adr/0021): a dev-dependency of the crates
     # whose examples run inside it, never published.
     "examples/devtools",
     "examples/book-web",
+    "examples/rust/apps/mobile",
+    "examples/rust/apps/mobile/tasks",
     # The fuzz targets (cargo-fuzz) and the stable replay of what they
     # found; see fuzz/Cargo.toml and scripts/fuzz.nu. Never published.
     "fuzz",
     # Private upstream tests for the shaper embedded in kui-core.
     "crates/kui-cosmic-text-tests",
 ]
+
+[patch.crates-io]
+# Let Android's view hierarchy handle touch exploration on NativeActivity.
+winit = { path = "third_party/winit" }
 
 [workspace.package]
 version = "0.1.0-alpha.84"
@@ -65,6 +73,7 @@ kui-access = { path = "crates/kui-access", version = "0.1.0-alpha.84", default-f
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
 kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.84", default-features = false }
 kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.84" }
+kui-runner = { path = "crates/kui-runner" }
 kui-devtools = { path = "examples/devtools" }
 # Kit's embedded Lua extension and typed Rust wrappers (ADR 0066).
 kui-kit = { path = "addons/kit", version = "0.1.0-alpha.84" }

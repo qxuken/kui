@@ -430,6 +430,13 @@ impl Gpu {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 required_features,
+                // The quad shader uses locations 0..=13. iOS Metal can
+                // expose 15 varyings, below wgpu's default request of 16.
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                required_limits: wgpu::Limits {
+                    max_inter_stage_shader_variables: 14,
+                    ..Default::default()
+                },
                 ..Default::default()
             })
             .await?;

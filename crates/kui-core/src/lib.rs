@@ -169,6 +169,7 @@ pub mod testing;
 pub mod text;
 pub mod theme;
 pub mod tokens;
+pub mod touch;
 pub mod tree;
 pub mod ui;
 pub mod value;

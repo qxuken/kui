@@ -762,6 +762,11 @@ impl<'a> Ui<'a> {
         self.core.viewport()
     }
 
+    /// Logical edge distances to keep content clear of system UI and cutouts.
+    pub fn safe_area(&self) -> crate::Edges {
+        self.core.safe_area
+    }
+
     /// The env reading's inputs, the frame's facts included
     /// (`Core::env_facts`): what a binding's `env` table is filled from.
     pub fn env_facts(&self) -> crate::schema::EnvFacts {

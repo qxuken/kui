@@ -76,7 +76,7 @@ fn kui_sample_nearest(uv: vec2<f32>) -> vec4<f32> {
     let lo = r.xy + vec2<f32>(0.5, 0.5);
     let hi = r.xy + r.zw - vec2<f32>(0.5, 0.5);
     let t = clamp(r.xy + clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)) * r.zw, lo, max(lo, hi));
-    let c = textureSample(kui_atlas, kui_sampler_nearest, t / kui_globals.atlas_size);
+    let c = textureSampleLevel(kui_atlas, kui_sampler, (floor(t) + 0.5) / kui_globals.atlas_size, 0.0);
     return select(vec4<f32>(0.0), c, r.z > 0.0 && r.w > 0.0);
 }
 

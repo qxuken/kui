@@ -15,7 +15,6 @@
 //! runs that app: every argument is the app's, the runner's own come from
 //! `KUI_FLAGS` (ADR 0068).
 
-mod archive;
 mod compat;
 mod context;
 mod docs;
@@ -23,7 +22,6 @@ mod effects;
 mod gallery;
 mod host;
 mod icons;
-mod kit;
 mod modules;
 mod ops;
 mod pack;
@@ -44,6 +42,8 @@ mod tooling;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+use kui_runner::{archive, kit};
 
 // The runner's allocator, the Lua heaps' too: mlua's `lua_Alloc` calls
 // `std::alloc`. In the binary only, never a library crate (backlog C150).

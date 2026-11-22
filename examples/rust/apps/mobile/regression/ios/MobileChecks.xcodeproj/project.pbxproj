@@ -1,0 +1,19 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    objectVersion = 56;
+    objects = {
+        000000000000000000000001 = { isa = PBXProject; mainGroup = 000000000000000000000002; buildConfigurationList = 000000000000000000000007; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en, Base); targets = (000000000000000000000003); };
+        000000000000000000000002 = { isa = PBXGroup; children = (000000000000000000000004, 000000000000000000000005); sourceTree = "<group>"; };
+        000000000000000000000003 = { isa = PBXNativeTarget; name = MobileChecks; productName = MobileChecks; productType = "com.apple.product-type.bundle.ui-testing"; productReference = 000000000000000000000005; buildPhases = (000000000000000000000006); buildConfigurationList = 000000000000000000000008; };
+        000000000000000000000004 = { isa = PBXFileReference; path = MobileChecks.swift; lastKnownFileType = sourcecode.swift; sourceTree = "<group>"; };
+        000000000000000000000005 = { isa = PBXFileReference; path = MobileChecks.xctest; explicitFileType = wrapper.cfbundle; sourceTree = BUILT_PRODUCTS_DIR; };
+        000000000000000000000006 = { isa = PBXSourcesBuildPhase; files = (000000000000000000000009); };
+        000000000000000000000007 = { isa = XCConfigurationList; buildConfigurations = (00000000000000000000000A); defaultConfigurationName = Debug; };
+        000000000000000000000008 = { isa = XCConfigurationList; buildConfigurations = (00000000000000000000000B); defaultConfigurationName = Debug; };
+        000000000000000000000009 = { isa = PBXBuildFile; fileRef = 000000000000000000000004; };
+        00000000000000000000000A = { isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; }; };
+        00000000000000000000000B = { isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = dev.kui.mobile.checks; PRODUCT_NAME = MobileChecks; GENERATE_INFOPLIST_FILE = YES; TARGETED_DEVICE_FAMILY = "1,2"; }; };
+    };
+    rootObject = 000000000000000000000001;
+}

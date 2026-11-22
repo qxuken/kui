@@ -1,0 +1,41 @@
+[package]
+name = "kui-mobile-spike"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+fontdb.workspace = true
+kui-native = { workspace = true, features = ["mobile", "derive"] }
+
+[package.metadata.android]
+package = "dev.kui.mobile.spike"
+build_targets = ["aarch64-linux-android"]
+strip = "strip"
+
+[package.metadata.android.sdk]
+min_sdk_version = 28
+target_sdk_version = 35
+
+[package.metadata.android.application]
+label = "KUI Mobile"
+has_code = true
+
+[package.metadata.android.application.activity]
+name = "dev.kui.KuiActivity"
+
+[features]
+ipad-scenes = []
+candidate-trial = []
+editing-regression = []
+navigation-trial = []
+
+[target.'cfg(target_os = "android")'.dependencies]
+roxmltree = "0.21"
+jni = "0.22"
+
+[build-dependencies]
+cc = "1"

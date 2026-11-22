@@ -232,6 +232,10 @@ own final bundle signing and notarization. This step covers the CLI runner,
 not the Node addon or FFI libraries. See [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
 and [GitHub's certificate setup guide](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications).
 
+To release an app assembled by `kui pack`, follow the
+[Linux Docker signing guide](book/src/pack-macos.md). It uses `rcodesign`
+on the finished bundle and verifies the distribution ZIP on macOS.
+
 ## Registry trusted publishing
 
 The crates.io half goes through trusted publishing too, since alpha.70

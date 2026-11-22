@@ -1,10 +1,7 @@
 //! Browser host for the book's presentation controls.
 use crate::{App, Ui, Window};
+use kui_runner::{app as app_host, kit};
 use mlua::Function;
-
-#[path = "../../../crates/kui-web-lua/src/app.rs"]
-mod app_host;
-use app_host::kit;
 
 thread_local! {
     static TASKS: std::cell::OnceCell<Function> = const { std::cell::OnceCell::new() };
@@ -14,7 +11,7 @@ pub fn launch_presentation() -> Result<(), Box<dyn std::error::Error>> {
     let app = kui_lua::LuaExtension::from_source_with(
         "@presentations/main.lua",
         include_str!("../../lua/tutorial/presentations/main.lua"),
-        |lua| app_host::install(lua, "Presentations", "dev.kui.book.presentations", "1.0.0"),
+        |lua| app_host::install_web(lua, "Presentations", "dev.kui.book.presentations", "1.0.0"),
     )?;
     app.lua().load(include_str!("lua_app.lua")).exec()?;
     app.lua()

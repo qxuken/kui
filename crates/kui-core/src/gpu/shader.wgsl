@@ -328,9 +328,11 @@ fn shade(in: VsOut) -> Shaded {
 
     if kind == 3u {
         // Registered image tinted by color (white = as-is).
-        let lin = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0);
-        let near = textureSampleLevel(atlas_tex, nearest_smp, in.uv, 0.0);
-        let t = select(lin, near, in.params.y > 0.5);
+        // Sampling a texel center gives nearest filtering with the same sampler
+        // as linear images. GLES requires one sampler per texture in a shader.
+        let center = (floor(in.uv * globals.atlas_size) + 0.5) / globals.atlas_size;
+        let uv = select(in.uv, center, in.params.y > 0.5);
+        let t = textureSampleLevel(atlas_tex, atlas_smp, uv, 0.0);
         return Shaded(t.rgb * in.color.rgb, vec3<f32>(t.a * in.color.a * coverage * inside));
     }
 

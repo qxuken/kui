@@ -2,11 +2,6 @@ import { editorBridge } from "./editor.js";
 
 const TINT_BYTES = 16 * 1024 * 1024;
 const TOUCH_SLOP = 8;
-const FLICK_WINDOW = 0.08;
-const FLICK_DECAY = 5;
-const FLICK_MIN_SPEED = 20;
-const FLICK_MAX_SPEED = 3000;
-
 // Canvas 2D paints kui's physical-pixel quads. The app never draws DOM text.
 function painter(canvas, restoreCanvas) {
   const surface = canvas.getContext("2d", { alpha: false });
@@ -458,39 +453,24 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
   let momentum;
   let touchEnded = false;
   let otherPointer = null;
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   function advanceMomentum(time) {
     if (!momentum) return;
     const dt = time - momentum.time;
     // A suspended tab must not jump when it becomes visible again.
-    if (dt > 0.1) {
+    if (dt > 0.1 || reducedMotion.matches) {
       momentum = undefined;
       return;
     }
-    const decay = Math.exp(-FLICK_DECAY * dt);
-    const distance = (1 - decay) / FLICK_DECAY;
-    const { x, y, page } = momentum;
-    const claimed = page
-      ? (panOutside(-y * distance), true)
-      : wasm.scroll_gesture(x * distance, y * distance, 0, time);
-    momentum.x *= decay;
-    momentum.y *= decay;
+    const active = wasm.advance_pan(time, Number(momentum.page));
+    if (momentum.page) panOutside(wasm.page_pan_delta());
     momentum.time = time;
-    if (!claimed || Math.hypot(momentum.x, momentum.y) < FLICK_MIN_SPEED) momentum = undefined;
+    if (!active) momentum = undefined;
   }
   function startMomentum(gesture, time) {
-    if (!gesture.pan || !gesture.moving || (!gesture.claimed && !gesture.page)) return;
-    const samples = gesture.samples.filter(sample => time - sample.time <= FLICK_WINDOW);
-    if (samples.length < 2) return;
-    const first = samples[0], last = samples.at(-1);
-    const dt = time - first.time;
-    if (dt < 0.005 || time - last.time > FLICK_WINDOW) return;
-    const scale = gesture.page ? 1 : contentScale();
-    const x = (last.x - first.x) / dt / scale;
-    const y = (last.y - first.y) / dt / scale;
-    const speed = Math.hypot(x, y);
-    if (speed < FLICK_MIN_SPEED) return;
-    const limit = Math.min(1, FLICK_MAX_SPEED / speed);
-    momentum = { x: x * limit, y: y * limit, time, page: gesture.page };
+    if (reducedMotion.matches || !gesture.pan || !gesture.moving || (!gesture.claimed && !gesture.page)) return;
+    if (!wasm.release_pan(time, gesture.page ? 1 : contentScale())) return;
+    momentum = { time, page: !!gesture.page };
     schedule();
   }
   function moveTouch(event, time) {
@@ -507,8 +487,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
         if (begins && !claimed && panOutside) touch.page = true;
       }
       if (touch.page) panOutside(-dy);
-      touch.samples.push({ x: event.screenX, y: event.screenY, time });
-      touch.samples = touch.samples.filter(sample => time - sample.time <= FLICK_WINDOW);
+      wasm.pan_sample(event.screenX, event.screenY, event.timeStamp / 1000, 0);
     } else {
       if (begins) press(touch.start, 1, time);
       move(event, time);
@@ -557,10 +536,8 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
         (event.clientY - rect.top) / contentScale(),
         Number(!!panOutside),
       );
-      touch = {
-        start: event, last: event, pan, moving: false,
-        samples: [{ x: event.screenX, y: event.screenY, time: seconds() }],
-      };
+      touch = { start: event, last: event, pan, moving: false };
+      if (pan) wasm.pan_sample(event.screenX, event.screenY, event.timeStamp / 1000, 1);
       return;
     }
     if (touch) return;
@@ -590,7 +567,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
       const time = seconds();
       moveTouch(event, time);
       const { start, moving, pan, native } = touch;
-      startMomentum(touch, time);
+      startMomentum(touch, event.timeStamp / 1000);
       touch = undefined;
       touchEnded = true;
       if (!moving) press(start, 1, time);
