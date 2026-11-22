@@ -5,10 +5,26 @@ on:
     paths:
       - 'crates/kui-core/**'
       - 'crates/kui-native/**'
+      - 'crates/kui-runner/**'
       - 'crates/kui-wgpu/**'
       - 'crates/kui-access/**'
       - 'examples/rust/apps/mobile/**'
+      - 'third_party/winit/**'
       - '.github/workflows/mobile.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/kui-core/**'
+      - 'crates/kui-native/**'
+      - 'crates/kui-runner/**'
+      - 'crates/kui-wgpu/**'
+      - 'crates/kui-access/**'
+      - 'examples/rust/apps/mobile/**'
+      - 'third_party/winit/**'
+      - '.github/workflows/mobile.yml'
+      - 'Cargo.toml'
       - 'Cargo.lock'
   workflow_dispatch:
 

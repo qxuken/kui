@@ -1,6 +1,6 @@
 #![cfg(any(target_os = "android", target_os = "ios"))]
 
-use kui_native::{Core, Session, mobile};
+use kui_native::{Core, mobile};
 use kui_runner::embedded::EmbeddedApp;
 
 const PACK: &[u8] = include_bytes!(env!(
@@ -10,7 +10,7 @@ const PACK: &[u8] = include_bytes!(env!(
 
 fn core() -> Core {
     let font = include_bytes!("../../../../../../crates/kui-cli/assets/fonts/NotoSans-Regular.ttf");
-    let mut core = Core::new_in(&Session::with_fonts("en-US", vec![font.to_vec()]));
+    let mut core = Core::new_in(&mobile::session_with_japanese_fallback(font));
     core.set_native_menus(false);
     core.set_native_menu_bar(false);
     core

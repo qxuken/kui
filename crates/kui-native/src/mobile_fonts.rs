@@ -1,9 +1,11 @@
 use std::{path::PathBuf, sync::Arc};
 
+use crate::{Session, text::FontCatalog};
 use fontdb::{Database, FaceInfo};
-use kui_native::{Session, text::FontCatalog};
 
-pub(super) fn session(latin: &[u8]) -> Session {
+/// Build an English-locale session with the bundled Noto Sans face and the
+/// installed Japanese fallback when the platform provides one.
+pub fn session_with_japanese_fallback(latin: &[u8]) -> Session {
     let mut db = Database::new();
     if let Some((path, matches)) = japanese_face() {
         if db.load_font_file(&path).is_ok() {

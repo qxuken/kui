@@ -1,14 +1,33 @@
 //! Translate one finger into existing core inputs. Defer a press until lift
 //! or until movement distinguishes a drag from panning a scroll region.
 use kui_core::touch::{Glide, PanSamples, TOUCH_SLOP};
-use kui_core::{InputEvent, Vec2};
+use kui_core::{InputEvent, Vec2, input::Interaction};
 use std::collections::HashSet;
 use winit::event::TouchPhase;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum GestureAction {
+    Pan,
+    Drag,
+    TapOnly,
+}
+
+impl GestureAction {
+    pub fn at(input: &Interaction, point: Vec2) -> Self {
+        if input.prefers_drag_at(point) {
+            Self::Drag
+        } else if input.prefers_scroll_at(point) {
+            Self::Pan
+        } else {
+            Self::TapOnly
+        }
+    }
+}
 
 struct Gesture {
     start: Vec2,
     last: Vec2,
-    pan: bool,
+    action: GestureAction,
     moved: bool,
     claimed: bool,
     samples: PanSamples,
@@ -21,20 +40,25 @@ impl Gesture {
         if delta == Vec2::ZERO || first && delta.x.hypot(delta.y) <= TOUCH_SLOP {
             return;
         }
-        if first {
-            send(InputEvent::CursorMoved(self.start));
-            if !self.pan {
-                send(InputEvent::mouse_down(1));
+        match self.action {
+            GestureAction::Pan => {
+                if first {
+                    send(InputEvent::CursorMoved(self.start));
+                }
+                self.claimed = send(InputEvent::ScrollGesture {
+                    delta,
+                    begins: first,
+                });
+                self.samples.record(time, at);
             }
-        }
-        if self.pan {
-            self.claimed = send(InputEvent::ScrollGesture {
-                delta,
-                begins: first,
-            });
-            self.samples.record(time, at);
-        } else {
-            send(InputEvent::CursorMoved(at));
+            GestureAction::Drag => {
+                if first {
+                    send(InputEvent::CursorMoved(self.start));
+                    send(InputEvent::mouse_down(1));
+                }
+                send(InputEvent::CursorMoved(at));
+            }
+            GestureAction::TapOnly => {}
         }
         self.moved = true;
         self.last = at;
@@ -56,12 +80,12 @@ pub(crate) struct Contacts {
 }
 
 impl Contacts {
-    pub fn handle(
+    pub(super) fn handle(
         &mut self,
         phase: TouchPhase,
         id: u64,
         at: Vec2,
-        pan: bool,
+        action: GestureAction,
         time: f64,
         // The flag marks the press of a confirmed tap.
         mut send: impl FnMut(InputEvent, bool) -> bool,
@@ -80,7 +104,7 @@ impl Contacts {
                         start: at,
                         last: at,
                         moved: false,
-                        pan,
+                        action,
                         claimed: false,
                         samples,
                     });
@@ -102,7 +126,7 @@ impl Contacts {
                         send(InputEvent::CursorMoved(g.start), false);
                         send(InputEvent::mouse_down(1), true);
                     }
-                    if !g.moved || !g.pan {
+                    if !g.moved || g.action == GestureAction::Drag {
                         send(InputEvent::CursorMoved(at), false);
                         send(InputEvent::mouse_up(), false);
                     }
@@ -120,7 +144,11 @@ impl Contacts {
     fn cancel(&mut self, send: &mut impl FnMut(InputEvent) -> bool) {
         self.stop_glide();
         send(InputEvent::CursorLeft);
-        if self.gesture.take().is_some_and(|g| g.moved && !g.pan) {
+        if self
+            .gesture
+            .take()
+            .is_some_and(|g| g.moved && g.action == GestureAction::Drag)
+        {
             send(InputEvent::mouse_up());
         }
     }
@@ -167,7 +195,14 @@ mod tests {
             (TouchPhase::Moved, 60., 0.04),
             (TouchPhase::Ended, 60., release),
         ] {
-            contacts.handle(phase, 1, Vec2::new(10., at), true, time, |_, _| claimed);
+            contacts.handle(
+                phase,
+                1,
+                Vec2::new(10., at),
+                GestureAction::Pan,
+                time,
+                |_, _| claimed,
+            );
         }
         contacts
     }
@@ -208,7 +243,14 @@ mod tests {
             (TouchPhase::Moved, 62.13, 0.158),
             (TouchPhase::Ended, 60.73, 0.315),
         ] {
-            contacts.handle(phase, 1, Vec2::new(50., y), true, time, |_, _| true);
+            contacts.handle(
+                phase,
+                1,
+                Vec2::new(50., y),
+                GestureAction::Pan,
+                time,
+                |_, _| true,
+            );
         }
         let mut travelled = 0.;
         contacts.advance(0.4, |event| {
@@ -233,7 +275,14 @@ mod tests {
                 (TouchPhase::Moved, 62., 0.158),
                 (TouchPhase::Ended, y, time),
             ] {
-                contacts.handle(phase, 1, Vec2::new(50., y), true, time, |_, _| true);
+                contacts.handle(
+                    phase,
+                    1,
+                    Vec2::new(50., y),
+                    GestureAction::Pan,
+                    time,
+                    |_, _| true,
+                );
             }
             let mut dy = None;
             contacts.advance(time + 0.016, |event| {
@@ -256,7 +305,14 @@ mod tests {
             (TouchPhase::Moved, 80., 0.02),
             (TouchPhase::Ended, 30., 0.12),
         ] {
-            contacts.handle(phase, 1, Vec2::new(5., y), true, time, |_, _| true);
+            contacts.handle(
+                phase,
+                1,
+                Vec2::new(5., y),
+                GestureAction::Pan,
+                time,
+                |_, _| true,
+            );
         }
         assert!(contacts.advance(0.136, |_| true));
         assert!(
@@ -285,7 +341,14 @@ mod tests {
             (TouchPhase::Moved, 70., 0.23),
             (TouchPhase::Ended, 70., 0.38),
         ] {
-            contacts.handle(phase, 1, Vec2::new(0., y), true, time, |_, _| true);
+            contacts.handle(
+                phase,
+                1,
+                Vec2::new(0., y),
+                GestureAction::Pan,
+                time,
+                |_, _| true,
+            );
         }
         assert!(contacts.advance(0.40, |_| true));
     }
@@ -298,7 +361,14 @@ mod tests {
             (TouchPhase::Moved, 100., 0.04),
             (TouchPhase::Ended, 60., 0.36),
         ] {
-            contacts.handle(phase, 1, Vec2::new(0., y), true, time, |_, _| true);
+            contacts.handle(
+                phase,
+                1,
+                Vec2::new(0., y),
+                GestureAction::Pan,
+                time,
+                |_, _| true,
+            );
         }
         let mut travel = 0.;
         contacts.advance(0.64, |event| {
@@ -321,7 +391,7 @@ mod tests {
             (TouchPhase::Ended, 1),
             (TouchPhase::Ended, 2),
         ] {
-            contacts.handle(phase, id, at, true, 0.05, |e, _| {
+            contacts.handle(phase, id, at, GestureAction::Pan, 0.05, |e, _| {
                 events.push(e);
                 true
             });
@@ -341,7 +411,7 @@ mod tests {
             (TouchPhase::Moved, end),
             (TouchPhase::Ended, end),
         ] {
-            contacts.handle(phase, 1, at, false, 0.02, |e, _| {
+            contacts.handle(phase, 1, at, GestureAction::Drag, 0.02, |e, _| {
                 events.push(e);
                 true
             });
@@ -365,19 +435,54 @@ mod tests {
         let mut contacts = Contacts::default();
         let at = Vec2::new(10., 10.);
         let mut events = Vec::new();
-        contacts.handle(TouchPhase::Started, 1, at, true, 0., |e, _| {
-            events.push(e);
-            true
-        });
+        contacts.handle(
+            TouchPhase::Started,
+            1,
+            at,
+            GestureAction::Pan,
+            0.,
+            |e, _| {
+                events.push(e);
+                true
+            },
+        );
         contacts.reset(|e| {
             events.push(e);
             true
         });
-        contacts.handle(TouchPhase::Ended, 1, at, true, 0., |e, _| {
+        contacts.handle(TouchPhase::Ended, 1, at, GestureAction::Pan, 0., |e, _| {
             events.push(e);
             true
         });
         assert_eq!(events, [InputEvent::CursorLeft]);
+    }
+
+    #[test]
+    fn swipe_across_standalone_button_does_not_click() {
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(200., 150.), 1.);
+        ui.leaf(NodeSpec::column().size(160., 80.).on_click("increment"));
+        ui.finish();
+
+        let start = Vec2::new(30., 70.);
+        let end = Vec2::new(30., 10.);
+        let action = GestureAction::at(&core.interaction, start);
+        assert!(action == GestureAction::TapOnly);
+        let mut contacts = Contacts::default();
+        let mut clicks = 0;
+        let mut send = |input, _| {
+            clicks += core
+                .handle_input(input)
+                .iter()
+                .filter(|e| e.event.name() == "click")
+                .count();
+            true
+        };
+
+        contacts.handle(TouchPhase::Started, 1, start, action, 0., &mut send);
+        contacts.handle(TouchPhase::Moved, 1, end, action, 0.03, &mut send);
+        contacts.handle(TouchPhase::Ended, 1, end, action, 0.04, &mut send);
+        assert_eq!(clicks, 0);
     }
 
     #[test]
@@ -396,9 +501,9 @@ mod tests {
         let mut contacts = Contacts::default();
         let mut finger = |core: &mut Core, phase, y| {
             let at = Vec2::new(30., y);
-            let pan = core.interaction.prefers_scroll_at(at);
+            let action = GestureAction::at(&core.interaction, at);
             let mut clicks = 0;
-            contacts.handle(phase, 1, at, pan, 0., |input, _| {
+            contacts.handle(phase, 1, at, action, 0., |input, _| {
                 clicks += core
                     .handle_input(input)
                     .iter()

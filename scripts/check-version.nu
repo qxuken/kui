@@ -13,7 +13,10 @@ def main [version: string] {
     mut bad = []
     let meta = (^cargo metadata --no-deps --offline --format-version 1 | from json)
     for p in $meta.packages {
-        if $p.version != $want { $bad = ($bad | append $"($p.name) is ($p.version)") }
+        # cargo-apk derives the installed app's version from the package.
+        # Unpublished Android examples keep their own app versions.
+        let apk = ($p.publish == []) and ($p.metadata.android? != null)
+        if not $apk and ($p.version != $want) { $bad = ($bad | append $"($p.name) is ($p.version)") }
         for d in $p.dependencies {
             if not ($d.name | str starts-with "kui") { continue }
             # kui-core dev-depends on itself to turn on the `conformance`

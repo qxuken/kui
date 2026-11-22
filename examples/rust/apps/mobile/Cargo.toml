@@ -8,7 +8,6 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
-fontdb.workspace = true
 kui-native = { workspace = true, features = ["mobile", "derive"] }
 
 [package.metadata.android]
@@ -34,7 +33,6 @@ editing-regression = []
 navigation-trial = []
 
 [target.'cfg(target_os = "android")'.dependencies]
-roxmltree = "0.21"
 jni = "0.22"
 
 [build-dependencies]

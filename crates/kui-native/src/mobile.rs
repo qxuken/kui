@@ -1,6 +1,6 @@
 //! Touchscreen host for Android activities and UIKit windows. Build with
 //! `default-features = false` and the `mobile` feature.
-use crate::mobile_touch::Contacts;
+use crate::mobile_touch::{Contacts, GestureAction};
 use crate::{
     App, Core, Edges, Extensions, InputEvent, KeyCode, KeyMods, KeyPress, Size, UiEvent, Vec2,
 };
@@ -26,6 +26,9 @@ mod android_editor;
 
 #[path = "mobile_access.rs"]
 mod access;
+#[path = "mobile_fonts.rs"]
+mod fonts;
+pub use fonts::session_with_japanese_fallback;
 #[cfg(target_os = "ios")]
 #[path = "mobile_ios_editor.rs"]
 mod ios_editor;
@@ -94,8 +97,8 @@ pub fn run(
     )
 }
 
-/// Run a mobile app with the same component fills and event routing used by
-/// the desktop and web hosts.
+/// Run a mobile app with the same component instances and event routing used
+/// by the desktop and web hosts.
 pub fn run_with_extensions(
     #[cfg(target_os = "android")] activity: AndroidApp,
     core: Core,
@@ -599,15 +602,18 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
                 }
                 let pos = touch.location.to_logical::<f32>(window.scale_factor());
                 let at = Vec2::new(pos.x, pos.y);
-                let pan = touch.phase == winit::event::TouchPhase::Started
-                    && self.core.interaction.prefers_scroll_at(at);
+                let action = if touch.phase != winit::event::TouchPhase::Started {
+                    GestureAction::TapOnly
+                } else {
+                    GestureAction::at(&self.core.interaction, at)
+                };
                 let time = self.epoch.elapsed().as_secs_f64();
                 let mut dispatched = false;
                 self.tapped |= self.contacts.handle(
                     touch.phase,
                     touch.id,
                     at,
-                    pan,
+                    action,
                     time,
                     |input, tap_press| {
                         dispatched = true;
@@ -644,6 +650,7 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
                     });
                 }
                 self.core.set_focused(focused);
+                self.app.after_input(&mut self.core);
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let code = match event.logical_key {

@@ -184,11 +184,9 @@ impl App for Screen {
     }
 }
 
-mod fonts;
-
 fn session() -> kui_native::Session {
     let font = include_bytes!("../../../../../crates/kui-cli/assets/fonts/NotoSans-Regular.ttf");
-    fonts::session(font)
+    mobile::session_with_japanese_fallback(font)
 }
 
 fn core() -> Core {

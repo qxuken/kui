@@ -2273,10 +2273,8 @@ name = "kui-mobile-spike"
 version = "0.1.0"
 dependencies = [
  "cc",
- "fontdb",
  "jni 0.22.4",
  "kui-native",
- "roxmltree 0.21.2",
 ]
 
 [[package]]
@@ -2310,6 +2308,7 @@ dependencies = [
  "png 0.18.1",
  "pollster 1.0.1",
  "rfd",
+ "roxmltree 0.21.2",
  "sys-locale",
  "tempfile",
  "tracing",

@@ -73,7 +73,7 @@ kui-access = { path = "crates/kui-access", version = "0.1.0-alpha.84", default-f
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
 kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.84", default-features = false }
 kui-lua = { path = "crates/kui-lua", version = "0.1.0-alpha.84" }
-kui-runner = { path = "crates/kui-runner" }
+kui-runner = { path = "crates/kui-runner", version = "0.1.0-alpha.84" }
 kui-devtools = { path = "examples/devtools" }
 # Kit's embedded Lua extension and typed Rust wrappers (ADR 0066).
 kui-kit = { path = "addons/kit", version = "0.1.0-alpha.84" }

@@ -97,6 +97,14 @@ Enable `kui-native`'s `mobile` feature and set `default-features = false` in the
 mobile target's dependencies. Call `mobile::run` with a `Core` and your `App`.
 Android also passes its `AndroidApp` from `android_main`. Use
 `mobile::run_with_extensions` to pass Kit or another extension list.
+Use `mobile::session_with_japanese_fallback` with bundled Noto Sans bytes to
+use the installed Japanese face. The Tasks host and the Rust example share
+this font setup.
+
+The workspace patches `winit` so TalkBack receives touch exploration events.
+Android apps built in a separate workspace need the same patch until their
+`winit` version includes the fix.
+[Workspace Cargo.toml](https://github.com/qxuken/kui/blob/main/Cargo.toml)
 
 Build your view inside `ui.safe_area()` using a filling root and a scrollable
 container for fields that may move above the keyboard. Continue using click
