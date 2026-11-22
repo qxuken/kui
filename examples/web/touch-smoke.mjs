@@ -73,6 +73,17 @@ try {
         const editor = document.activeElement;
         return editor.selectionEnd > editor.selectionStart;
       }, undefined, { timeout: 3000 });
+
+      const save = await page.getByRole("button", { name: "Save note" }).boundingBox();
+      const saveStart = point(save, save.width / 4);
+      await swipe(saveStart, save.width / 2, 0);
+      await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      assert.equal(await page.getByText("Unsaved changes", { exact: true }).count(), 1,
+        "swiping across a standalone button leaves the draft unsaved");
+      const saveCenter = point(save);
+      await page.touchscreen.tap(saveCenter.x, saveCenter.y);
+      await page.getByText("Saved in this tab", { exact: true }).waitFor();
+
       await page.reload();
       await page.waitForSelector("#status", { state: "hidden" });
       const top = () => row("03").evaluate(el => el.getBoundingClientRect().top);

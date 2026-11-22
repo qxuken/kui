@@ -125,6 +125,11 @@ pub extern "C" fn prefers_scroll(x: f32, y: f32, parent_can_pan: u32) -> u32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn prefers_drag(x: f32, y: f32) -> u32 {
+    RUNNER.with_borrow(|runner| u32::from(runner.prefers_drag_at(Vec2::new(x, y))))
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn scroll_gesture(x: f32, y: f32, begins: u32, time: f64) -> u32 {
     RUNNER.with_borrow_mut(|runner| u32::from(runner.scroll(Vec2::new(x, y), begins != 0, time)))
 }

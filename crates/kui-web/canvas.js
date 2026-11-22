@@ -488,7 +488,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
       }
       if (touch.page) panOutside(-dy);
       wasm.pan_sample(event.screenX, event.screenY, event.timeStamp / 1000, 0);
-    } else {
+    } else if (touch.drag) {
       if (begins) press(touch.start, 1, time);
       move(event, time);
     }
@@ -504,7 +504,7 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
     if (!cancelled?.moving) return;
     const time = seconds();
     leave(time);
-    if (!cancelled.pan) wasm.pointer_button(0, 0, time, 0);
+    if (cancelled.drag) wasm.pointer_button(0, 0, time, 0);
   }
 
   canvas.addEventListener("pointermove", (event) => {
@@ -531,12 +531,11 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
       event.preventDefault();
       canvas.setPointerCapture(event.pointerId);
       const rect = canvas.getBoundingClientRect();
-      const pan = !!wasm.prefers_scroll(
-        (event.clientX - rect.left) / contentScale(),
-        (event.clientY - rect.top) / contentScale(),
-        Number(!!panOutside),
-      );
-      touch = { start: event, last: event, pan, moving: false };
+      const x = (event.clientX - rect.left) / contentScale();
+      const y = (event.clientY - rect.top) / contentScale();
+      const pan = !!wasm.prefers_scroll(x, y, Number(!!panOutside));
+      const drag = !pan && !!(wasm.prefers_drag?.(x, y) ?? 1);
+      touch = { start: event, last: event, pan, drag, moving: false };
       if (pan) wasm.pan_sample(event.screenX, event.screenY, event.timeStamp / 1000, 1);
       return;
     }
@@ -566,12 +565,12 @@ export async function startCanvas(canvas, wasmUrl, { access, renderer = "auto", 
       if (touch?.start.pointerId !== event.pointerId) return;
       const time = seconds();
       moveTouch(event, time);
-      const { start, moving, pan, native } = touch;
+      const { start, moving, drag, native } = touch;
       startMomentum(touch, event.timeStamp / 1000);
       touch = undefined;
       touchEnded = true;
       if (!moving) press(start, 1, time);
-      if (!moving || !pan) {
+      if (!moving || drag) {
         release(event, time);
         // Browsers without legacy touch events still focus in this tap.
         if (!native) syncAccess();

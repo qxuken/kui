@@ -31,6 +31,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   iphone:
     runs-on: macos-15
@@ -80,13 +84,17 @@ jobs:
           export CC_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang"
           export AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
           cargo check --locked -p kui-mobile-spike --target aarch64-linux-android --features editing-regression
+      - name: Add Android SDK commands to PATH
+        run: |
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
       - name: Prepare the x86_64 emulator
         env:
           ANDROID_IMAGE: ${{ matrix.image }}
         run: |
           rustup target add x86_64-linux-android
           cargo install --locked cargo-apk --version 0.10.0
-          sdkmanager 'build-tools;35.0.0' 'platforms;android-35' "$ANDROID_IMAGE"
+          sdkmanager 'platform-tools' 'emulator' 'build-tools;35.0.0' 'platforms;android-35' "$ANDROID_IMAGE"
           echo no | avdmanager create avd -n kui -k "$ANDROID_IMAGE"
           sudo chmod a+rw /dev/kvm
           "$ANDROID_HOME/emulator/emulator" -avd kui -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &

@@ -145,6 +145,11 @@ impl<A: App> Runner<A> {
         }
     }
 
+    /// Whether moving a finger from here starts a drag with the pointer held.
+    pub fn prefers_drag_at(&self, point: kui_core::Vec2) -> bool {
+        self.core.interaction.prefers_drag_at(point)
+    }
+
     pub fn set_platform(&mut self, platform: Platform) {
         self.core.set_platform(platform);
     }
