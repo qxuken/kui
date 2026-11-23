@@ -42,7 +42,7 @@ The phone preview, navigation and gesture-interruption hardware checks and the i
 
 The early `か` commit came from the test setup. With a deliberate 600 ms delay before the focus switch, the Galaxy trace showed the bridge publish the marked range and Gboard call `finishComposingText` on the active connection about 210 ms later. The same delayed build failed four times with Gboard and passed four times with the test keyboard. The updated runner gives the probe control of composition on Android's real input connection. The production bridge and its assertions are unchanged. The Android 15 emulator also passed five cold launches. The 11 native touch unit tests passed locally.
 
-On Android, the native input queue receives hover events before the Java view hierarchy. Winit 0.30.13 marked them handled without delivering them. The workspace uses a vendored copy of that release with the three hover actions returned as unhandled, so they reach the AccessKit delegate. Downstream Android builds need the same Winit fix until a release includes it.
+On Android, the native input queue receives hover events before the Java view hierarchy. Upstream winit 0.30.13 marks them handled without delivering them. The mobile feature selects `kui-winit`, which lets the three hover actions reach the AccessKit delegate. It also initializes iOS windows in the selected UIKit scene.
 
 ## Milestones and acceptance checks
 

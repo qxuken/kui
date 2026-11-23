@@ -37,11 +37,6 @@ members = [
     "crates/kui-cosmic-text-tests",
 ]
 
-[patch.crates-io]
-# Let Android's view hierarchy handle touch exploration on NativeActivity.
-# Initialize iOS windows with the sole connected UIKit scene when available.
-winit = { path = "third_party/winit" }
-
 [workspace.package]
 version = "0.1.0-alpha.84"
 edition = "2024"
@@ -104,6 +99,9 @@ wgpu = "30"
 # same naga wgpu pins, so a windowed app links one copy.
 naga = { version = "30", default-features = false, features = ["wgsl-in"] }
 winit = "0.30"
+# Publishable backend for mobile. Its pin follows the upstream winit fork,
+# which has its own version and license.
+mobile-winit = { package = "kui-winit", path = "third_party/winit", version = "=0.30.13-kui.1", default-features = false, features = ["rwh_06"] }
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "1"
 mlua = { version = "0.12", features = ["lua55", "vendored"] }

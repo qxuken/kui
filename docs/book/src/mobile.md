@@ -101,12 +101,11 @@ Use `mobile::session_with_japanese_fallback` with bundled Noto Sans bytes to
 use the installed Japanese face. The Tasks host and the Rust example share
 this font setup.
 
-The workspace patches `winit` on both mobile platforms. On Android, the patch
-lets TalkBack receive touch exploration events. On iOS, it initializes each
-window in its UIKit scene before showing it, so the software keyboard uses
-that scene's geometry. Apply the workspace patch when building in a
-separate mobile workspace until your `winit` version includes these fixes.
-[Workspace Cargo.toml](https://github.com/qxuken/kui/blob/main/Cargo.toml)
+On iOS and Android, the `mobile` feature automatically selects KUI's
+`kui-winit` backend. It creates each iOS window in its UIKit scene, so the
+software keyboard uses that scene's geometry, and passes Android touch
+exploration to TalkBack. Use the same `kui-native` dependency declaration
+in a separate project. Desktop KUI uses upstream `winit`.
 
 Build your view inside `ui.safe_area()` using a filling root and a scrollable
 container for fields that may move above the keyboard. Continue using click

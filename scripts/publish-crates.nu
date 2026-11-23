@@ -86,6 +86,12 @@ def main [
         print $"($registry): every crate is already at ($version)"
         return
     }
+    # Cargo verifies optional dependencies against the registry too. Publish
+    # the independently versioned mobile backend before releasing kui-native.
+    let backend = (open third_party/winit/Cargo.toml | get package)
+    if not (crate-published $registry $backend.name $backend.version) {
+        error make {msg: $"($registry) needs ($backend.name) ($backend.version) before publishing kui-native. Publish it with `cargo publish --manifest-path third_party/winit/Cargo.toml --registry ($registry)` \(docs/releasing.md\)"}
+    }
     print $"($registry): publishing ($pending | str join ', ') at ($version)"
     # One invocation: cargo publishes in dependency order and waits for each
     # crate to reach the index before verifying the next against it.

@@ -1,5 +1,10 @@
 # winit - Cross-platform window creation and management in Rust
 
+KUI packages this fork of [winit 0.30.13](https://github.com/rust-windowing/winit/releases/tag/v0.30.13)
+as `kui-winit`. It initializes iOS windows in their UIKit scene and lets
+Android's view hierarchy handle TalkBack touch exploration. `kui-native`
+selects it for mobile builds.
+
 [![Crates.io](https://img.shields.io/crates/v/winit.svg)](https://crates.io/crates/winit)
 [![Docs.rs](https://docs.rs/winit/badge.svg)](https://docs.rs/winit)
 [![Master Docs](https://img.shields.io/github/actions/workflow/status/rust-windowing/winit/docs.yml?branch=master&label=master%20docs

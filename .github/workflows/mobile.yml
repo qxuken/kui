@@ -52,6 +52,8 @@ jobs:
           echo "UDID=$udid" >> "$GITHUB_ENV"
       - name: Check composition and field switching
         run: KUI_EDITING_REGRESSION=1 examples/rust/apps/mobile/run-ios-sim.sh "$UDID"
+      - name: Check a standalone iOS project
+        run: python3 examples/rust/apps/mobile/regression/downstream.py aarch64-apple-ios-sim
       - name: Check the bottom editor, rotation and draft restoration
         run: |
           examples/rust/apps/mobile/run-ios-sim.sh "$UDID"
@@ -86,6 +88,7 @@ jobs:
           export CC_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang"
           export AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
           cargo check --locked -p kui-mobile-spike --target aarch64-linux-android --features editing-regression
+          python3 examples/rust/apps/mobile/regression/downstream.py aarch64-linux-android
       - name: Add Android SDK commands to PATH
         run: |
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"

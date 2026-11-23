@@ -6,6 +6,15 @@
 pub use kui_core::widgets;
 pub use kui_core::*;
 
+// Desktop AccessKit shares upstream winit's types. The standalone mobile
+// host uses the packaged backend for scene creation and touch exploration.
+#[cfg(all(
+    feature = "mobile",
+    not(feature = "gui"),
+    any(target_os = "android", target_os = "ios")
+))]
+extern crate mobile_winit as winit;
+
 pub mod spawn;
 pub mod system;
 pub use spawn::set_spawner;

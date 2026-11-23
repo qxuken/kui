@@ -12,8 +12,8 @@
 [package]
 edition = "2021"
 rust-version = "1.70.0"
-name = "winit"
-version = "0.30.13"
+name = "kui-winit"
+version = "0.30.13-kui.1"
 authors = [
     "The winit contributors",
     "Pierre Krieger <pierre.krieger1708@gmail.com>",
@@ -35,13 +35,14 @@ autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = "Cross-platform window creation library."
-documentation = "https://docs.rs/winit"
+description = "KUI's winit backend for UIKit window scenes and Android touch exploration."
+documentation = "https://docs.rs/kui-winit"
 readme = "README.md"
 keywords = ["windowing"]
 categories = ["gui"]
 license = "Apache-2.0"
-repository = "https://github.com/rust-windowing/winit"
+repository = "https://github.com/qxuken/kui"
+publish = ["crates-io"]
 
 [package.metadata.docs.rs]
 features = [

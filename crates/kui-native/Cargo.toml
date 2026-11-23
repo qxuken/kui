@@ -67,7 +67,7 @@ gui = [
     "dep:objc2-quartz-core", "dep:objc2-foundation",
 ]
 # Touch runner, independent of desktop clipboard and window services.
-mobile = ["dep:kui-access", "dep:accesskit_android", "dep:accesskit_ios", "dep:jni", "dep:objc2", "dep:objc2-ui-kit", "dep:roxmltree", "dep:winit", "winit/android-native-activity", "dep:kui-wgpu", "dep:pollster"]
+mobile = ["dep:kui-access", "dep:accesskit_android", "dep:accesskit_ios", "dep:jni", "dep:objc2", "dep:objc2-ui-kit", "dep:roxmltree", "dep:mobile-winit", "mobile-winit/android-native-activity", "dep:kui-wgpu", "dep:pollster"]
 image-codecs = ["dep:image", "dep:png", "dep:gif"]
 tracing = ["dep:tracing", "kui-core/tracing"]
 # Reference scenes for checking the other bindings against the native host.
@@ -151,6 +151,9 @@ wayland-client = { version = "0.31", optional = true }
 wayland-backend = { version = "0.3", features = ["client_system"], optional = true }
 wayland-protocols = { version = "0.32", features = ["client", "staging"], optional = true }
 wayland-protocols-plasma = { version = "0.3", features = ["client"], optional = true }
+
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+mobile-winit = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 accesskit_android = { version = "0.9", optional = true }

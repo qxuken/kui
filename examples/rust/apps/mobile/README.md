@@ -38,9 +38,9 @@ text editor. KUI still draws the field and owns its value and selection. The
 Android input connection forwards composition and committed text through the
 existing KUI events.
 
-This checkout patches `winit` so TalkBack receives touch exploration events.
-Apply the same patch in a separate Android workspace until your `winit`
-version includes the fix. [Workspace manifest](../../../../Cargo.toml)
+`kui-native`'s mobile feature selects the `kui-winit` backend automatically
+so TalkBack receives touch exploration events. Use the same feature in a
+separate Android project. [Workspace manifest](../../../../Cargo.toml)
 
 ```sh
 rustup target add aarch64-linux-android

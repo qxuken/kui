@@ -12,6 +12,7 @@ def main [version: string] {
     let want = $version
     mut bad = []
     let meta = (^cargo metadata --no-deps --offline --format-version 1 | from json)
+    let mobile_backend = (open third_party/winit/Cargo.toml | get package.version)
     for p in $meta.packages {
         # cargo-apk derives the installed app's version from the package.
         # Unpublished Android examples keep their own app versions.
@@ -19,6 +20,13 @@ def main [version: string] {
         if not $apk and ($p.version != $want) { $bad = ($bad | append $"($p.name) is ($p.version)") }
         for d in $p.dependencies {
             if not ($d.name | str starts-with "kui") { continue }
+            # The mobile backend is a fork with its own release version.
+            if $d.name == "kui-winit" {
+                if $d.req != $"=($mobile_backend)" {
+                    $bad = ($bad | append $"($p.name) requires kui-winit ($d.req), expected =($mobile_backend)")
+                }
+                continue
+            }
             # kui-core dev-depends on itself to turn on the `conformance`
             # feature for its own tests. A self dependency resolves to the
             # crate being built, never to the registry, so it carries a path
