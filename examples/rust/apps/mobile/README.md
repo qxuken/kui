@@ -266,8 +266,9 @@ With A and B side by side, run the cold-launch regression on the same simulator.
 Use drafts of at least two characters in A and five in B. The check moves both
 carets and lists, sends SIGKILL, and launches the installed app again. It locates
 each paragraph on screen within two points of its previous position, types at
-both restored carets using Command–grave to switch windows, and removes the
-probe characters after verifying both drafts.
+both restored carets, and removes the probe characters after verifying both
+drafts. It briefly drags the other window's title to give it keyboard focus
+without moving its caret.
 
 ```sh
 swift examples/rust/apps/mobile/touch-smoke.swift ios "$IPAD_UDID" 2 --restore-windows

@@ -211,6 +211,12 @@ func smoke() throws {
             if restored { break }
         } while Date() < deadline
         guard restored else { throw Failure("The two saved paragraphs did not return to their original screen positions") }
+        func moveTitle(from: CGPoint, toX: CGFloat) throws {
+            try axe("swipe", ["--start-x", "\(Int(from.x))", "--end-x", "\(Int(toX))",
+                              "--start-y", "\(Int(from.y))", "--end-y", "\(Int(from.y))",
+                              "--duration", "0.6", "--delta", "4", "--post-delay", "0.5"])
+        }
+        var movedTitle: (CGPoint, CGFloat)?
         var tested = Set<Int>()
         for probe in ["q", "z"] {
             try axe("type", [probe])
@@ -232,9 +238,16 @@ func smoke() throws {
             guard try drafts() == original else { throw Failure("Probe cleanup failed") }
             print("Note \(notes[i]): paragraph \(markers[i].0) at y \(Int(markers[i].1.y.rounded())), insertion at character \(carets[i]).")
             if tested.count == 1 {
-                // Cycle the key window without touching either field or moving its caret.
-                try axe("key-combo", ["--modifiers", "227", "--key", "53"])
+                // Drag the other title to activate its window without moving its caret.
+                let titles = [a, b]
+                let title = titles[1 - i]
+                let x = title.x + (title.x < titles[i].x ? 28 : -28)
+                try moveTitle(from: title, toX: x)
+                movedTitle = (CGPoint(x: x, y: title.y), title.x)
             }
+        }
+        if let (from, toX) = movedTitle {
+            try moveTitle(from: from, toX: toX)
         }
         return
     }
