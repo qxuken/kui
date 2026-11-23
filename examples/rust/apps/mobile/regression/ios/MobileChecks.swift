@@ -26,31 +26,47 @@ final class MobileChecks: XCTestCase {
         scrollToField()
         field.tap()
         let keyboard = app.keyboards.firstMatch
-        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
-        func typeOnKeyboard(_ text: String) {
-            for letter in text {
-                let key = keyboard.keys.matching(NSPredicate(format: "label ==[c] %@", String(letter))).firstMatch
-                if key.exists && key.isHittable {
-                    key.tap()
-                } else {
-                    app.typeKey(String(letter), modifierFlags: [])
-                }
-            }
+        func softwareKey(_ letter: String) -> XCUIElement {
+            keyboard.keys.matching(NSPredicate(format: "label ==[c] %@", letter)).firstMatch
         }
-        typeOnKeyboard("www")
-        for (orientation, suffix) in [(UIDeviceOrientation.landscapeLeft, "x"), (.portrait, "y")] {
+        func waitUntil(_ condition: @escaping () -> Bool) -> Bool {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
+            return XCTWaiter.wait(for: [ready], timeout: 12) == .completed
+        }
+        // Fresh simulators can show the QuickPath introduction in place of the keys.
+        let introduction = app.buttons["Continue"].firstMatch
+        let w = softwareKey("w")
+        XCTAssertTrue(waitUntil { w.isHittable || introduction.isHittable }, "Waiting for the software keyboard")
+        if introduction.isHittable {
+            introduction.tap()
+        }
+
+        func type(_ key: XCUIElement, expecting text: String) {
+            XCTAssertTrue(waitUntil { key.isHittable }, "Waiting for a software key to enter \(text)")
+            key.tap()
+            XCTAssertTrue(waitUntil { (field.value as? String)?.lowercased() == text }, "Expected \(text) in Bottom note")
+        }
+        for text in ["w", "ww", "www"] {
+            type(w, expecting: text)
+        }
+        for (orientation, suffix, text) in [(UIDeviceOrientation.landscapeLeft, "x", "wwwx"), (.portrait, "y", "wwwxy")] {
             XCUIDevice.shared.orientation = orientation
-            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let key = softwareKey(suffix)
+            let ready = waitUntil {
                 let viewport = app.frame
                 guard (viewport.width > viewport.height) == (orientation == .landscapeLeft),
-                      field.exists, field.isHittable else { return false }
-                let softwareKey = keyboard.keys.matching(NSPredicate(format: "label ==[c] %@", suffix)).firstMatch
-                let bottom = softwareKey.exists && softwareKey.isHittable ? keyboard.frame.minY : viewport.maxY
-                return field.frame.height > 0 && field.frame.minY >= viewport.minY &&
-                    field.frame.maxY <= bottom + 1
-            }, object: nil)
-            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed)
-            typeOnKeyboard(suffix)
+                      key.isHittable, field.isHittable else { return false }
+                let editor = field.frame
+                return !editor.isEmpty && viewport.insetBy(dx: -1, dy: -1).contains(editor) &&
+                    !editor.intersects(keyboard.frame.insetBy(dx: 1, dy: 1))
+            }
+            if !ready {
+                let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+                attachment.name = "Bottom note after rotation"
+                add(attachment)
+            }
+            XCTAssertTrue(ready, "Expected Bottom note visible in \(orientation). App \(app.frame), field \(field.frame), keyboard \(keyboard.frame)")
+            type(key, expecting: text)
         }
         XCTAssertEqual((field.value as? String)?.lowercased(), "wwwxy")
         app.terminate()

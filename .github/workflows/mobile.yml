@@ -38,6 +38,7 @@ concurrency:
 jobs:
   iphone:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-tools
@@ -65,6 +66,7 @@ jobs:
 
   android:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -94,11 +96,26 @@ jobs:
         run: |
           rustup target add x86_64-linux-android
           cargo install --locked cargo-apk --version 0.10.0
-          sdkmanager 'platform-tools' 'emulator' 'build-tools;35.0.0' 'platforms;android-35' "$ANDROID_IMAGE"
-          echo no | avdmanager create avd -n kui -k "$ANDROID_IMAGE"
+          sdkmanager 'platform-tools' 'emulator' 'build-tools;35.0.0' 'platforms;android-35' "$ANDROID_IMAGE" < <(yes)
+          avdmanager create avd -n kui -k "$ANDROID_IMAGE" --device pixel_2
           sudo chmod a+rw /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd kui -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          timeout 300 bash -c 'until adb shell getprop sys.boot_completed 2>/dev/null | grep -q 1; do sleep 2; done'
+          emulator="$ANDROID_HOME/emulator/emulator"
+          "$emulator" -version
+          "$emulator" -accel-check
+          adb start-server
+          "$emulator" -avd kui -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader \
+            > "$RUNNER_TEMP/emulator.log" 2>&1 </dev/null &
+          emulator_pid=$!
+          deadline=$((SECONDS + 300))
+          until timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -qx 1; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null || (( SECONDS >= deadline )); then
+              adb devices -l
+              tail -100 "$RUNNER_TEMP/emulator.log"
+              exit 1
+            fi
+            sleep 2
+          done
+          test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "${{ matrix.api }}"
           adb shell input keyevent KEYCODE_WAKEUP
           adb shell wm dismiss-keyguard
       - name: Verify Android editing and accessibility actions
@@ -112,8 +129,10 @@ jobs:
       - name: Capture the emulator on failure
         if: failure()
         run: |
-          adb logcat -d > "$RUNNER_TEMP/logcat.txt" || true
-          adb exec-out screencap -p > "$RUNNER_TEMP/screen.png" || true
+          if test "$(timeout 5 adb get-state 2>/dev/null)" = device; then
+            timeout 15 adb logcat -d > "$RUNNER_TEMP/logcat.txt" || true
+            timeout 15 adb exec-out screencap -p > "$RUNNER_TEMP/screen.png" || true
+          fi
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
