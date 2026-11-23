@@ -4,13 +4,13 @@ use std::collections::VecDeque;
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject};
-use objc2::{class, declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
+use objc2::{class, declare_class, msg_send, msg_send_id, mutability, sel, ClassType, DeclaredClass};
 use objc2_foundation::{
     CGFloat, CGPoint, CGRect, CGSize, MainThreadBound, MainThreadMarker, NSObjectProtocol,
 };
 use objc2_ui_kit::{
     UIApplication, UICoordinateSpace, UIResponder, UIScreen, UIScreenOverscanCompensation,
-    UIViewController, UIWindow,
+    UIViewController, UIWindow, UIWindowScene,
 };
 use tracing::{debug, warn};
 
@@ -80,7 +80,28 @@ impl WinitUIWindow {
         frame: CGRect,
         view_controller: &UIViewController,
     ) -> Retained<Self> {
-        let this: Retained<Self> = unsafe { msg_send_id![mtm.alloc(), initWithFrame: frame] };
+        let app = UIApplication::sharedApplication(mtm);
+        let scene_window: Option<Retained<Self>> =
+            if !window_attributes.visible && app.respondsToSelector(sel!(connectedScenes)) {
+                // Use UIKit's matching scene geometry before it builds a keyboard window.
+                let scenes = unsafe { app.connectedScenes() };
+                match scenes.to_vec().as_slice() {
+                    [scene] if scene.isKindOfClass(UIWindowScene::class()) => {
+                        Some(unsafe { msg_send_id![mtm.alloc(), initWithWindowScene: *scene] })
+                    },
+                    _ => None,
+                }
+            } else {
+                None
+            };
+        let this: Retained<Self> = if let Some(window) = scene_window {
+            if window_attributes.inner_size.is_some() {
+                window.setFrame(frame);
+            }
+            window
+        } else {
+            unsafe { msg_send_id![mtm.alloc(), initWithFrame: frame] }
+        };
 
         this.setRootViewController(Some(view_controller));
 
@@ -495,7 +516,7 @@ impl Window {
             warn!("`WindowAttributes::max_inner_size` is ignored on iOS");
         }
 
-        // TODO: transparency, visible
+        // TODO: transparency
 
         #[allow(deprecated)]
         let main_screen = UIScreen::mainScreen(mtm);
@@ -528,7 +549,9 @@ impl Window {
         let view_controller = WinitViewController::new(mtm, &window_attributes, &view);
         let window = WinitUIWindow::new(mtm, &window_attributes, frame, &view_controller);
 
-        app_state::set_key_window(mtm, &window);
+        if window_attributes.visible {
+            app_state::set_key_window(mtm, &window);
+        }
 
         // Like the Windows and macOS backends, we send a `ScaleFactorChanged` and `Resized`
         // event on window creation if the DPI factor != 1.0

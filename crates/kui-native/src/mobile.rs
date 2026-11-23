@@ -447,10 +447,12 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
         let opened = (|| -> Result<_, Box<dyn std::error::Error>> {
             let window = match &self.window {
                 Some(window) => window.clone(),
-                None => Arc::new(
-                    event_loop
-                        .create_window(Window::default_attributes().with_title("KUI Mobile"))?,
-                ),
+                None => {
+                    let attributes = Window::default_attributes().with_title("KUI Mobile");
+                    #[cfg(target_os = "ios")]
+                    let attributes = attributes.with_visible(false);
+                    Arc::new(event_loop.create_window(attributes)?)
+                }
             };
             #[cfg(target_os = "ios")]
             attach_scene(&window, self.scene_id.as_deref())?;
@@ -736,8 +738,7 @@ fn view_layout(window: &Window, full: f32) -> (f32, Edges) {
     (full, edges)
 }
 
-/// winit 0.30 creates a UIWindow with initWithFrame:. UIKit scene-based apps
-/// must associate that window with the scene before presenting its surface.
+/// Associate the window with its UIKit scene before making it key.
 #[cfg(target_os = "ios")]
 fn attach_scene(window: &Window, session: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     use objc2::MainThreadMarker;
@@ -755,7 +756,10 @@ fn attach_scene(window: &Window, session: Option<&str>) -> Result<(), Box<dyn st
         if let Some(scene) = scene.downcast_ref::<UIWindowScene>()
             && session.is_none_or(|id| scene.session().persistentIdentifier().to_string() == id)
         {
-            native.setWindowScene(Some(scene));
+            if native.windowScene().as_deref() != Some(scene) {
+                native.setHidden(true);
+                native.setWindowScene(Some(scene));
+            }
             native.makeKeyAndVisible();
             return Ok(());
         }
