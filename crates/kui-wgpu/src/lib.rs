@@ -427,16 +427,27 @@ impl Gpu {
         let mut required_features = wgpu::Features::empty();
         required_features.set(wgpu::Features::DUAL_SOURCE_BLENDING, dual_source);
         required_features.set(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS, mapped_frames);
+        let mut required_limits = wgpu::Limits::default();
+        if cfg!(target_os = "android")
+            && adapter.get_info().backend == wgpu::Backend::Gl
+            && !adapter
+                .get_downlevel_capabilities()
+                .flags
+                .contains(wgpu::DownlevelFlags::COMPUTE_SHADERS)
+        {
+            // GLES 3.0 can draw the quad pipelines with the WebGL 2 limits.
+            required_limits =
+                wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        }
+        if cfg!(any(target_os = "ios", target_os = "android")) {
+            // The quad shader uses locations 0..=13. iOS Metal can expose
+            // 15 varyings, below wgpu's default request of 16.
+            required_limits.max_inter_stage_shader_variables = 14;
+        }
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 required_features,
-                // The quad shader uses locations 0..=13. iOS Metal can
-                // expose 15 varyings, below wgpu's default request of 16.
-                #[cfg(any(target_os = "ios", target_os = "android"))]
-                required_limits: wgpu::Limits {
-                    max_inter_stage_shader_variables: 14,
-                    ..Default::default()
-                },
+                required_limits,
                 ..Default::default()
             })
             .await?;

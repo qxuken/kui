@@ -110,7 +110,8 @@ jobs:
           "$emulator" -accel-check
           "$emulator" -list-avds | grep -Fx kui
           adb start-server
-          "$emulator" -avd kui -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader \
+          # SwiftShader Vulkan in this emulator rejects wgpu's shader metadata.
+          "$emulator" -avd kui -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -feature -Vulkan \
             > "$RUNNER_TEMP/emulator.log" 2>&1 </dev/null &
           emulator_pid=$!
           deadline=$((SECONDS + 300))
