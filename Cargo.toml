@@ -39,7 +39,7 @@ members = [
 
 [patch.crates-io]
 # Let Android's view hierarchy handle touch exploration on NativeActivity.
-# Initialize hidden iOS windows in their UIKit scene before presenting them.
+# Initialize iOS windows with the sole connected UIKit scene when available.
 winit = { path = "third_party/winit" }
 
 [workspace.package]

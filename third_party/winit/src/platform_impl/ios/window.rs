@@ -82,7 +82,7 @@ impl WinitUIWindow {
     ) -> Retained<Self> {
         let app = UIApplication::sharedApplication(mtm);
         let scene_window: Option<Retained<Self>> =
-            if !window_attributes.visible && app.respondsToSelector(sel!(connectedScenes)) {
+            if app.respondsToSelector(sel!(connectedScenes)) {
                 // Use UIKit's matching scene geometry before it builds a keyboard window.
                 let scenes = unsafe { app.connectedScenes() };
                 match scenes.to_vec().as_slice() {
@@ -516,7 +516,7 @@ impl Window {
             warn!("`WindowAttributes::max_inner_size` is ignored on iOS");
         }
 
-        // TODO: transparency
+        // TODO: transparency, visible
 
         #[allow(deprecated)]
         let main_screen = UIScreen::mainScreen(mtm);
@@ -549,9 +549,7 @@ impl Window {
         let view_controller = WinitViewController::new(mtm, &window_attributes, &view);
         let window = WinitUIWindow::new(mtm, &window_attributes, frame, &view_controller);
 
-        if window_attributes.visible {
-            app_state::set_key_window(mtm, &window);
-        }
+        app_state::set_key_window(mtm, &window);
 
         // Like the Windows and macOS backends, we send a `ScaleFactorChanged` and `Resized`
         // event on window creation if the DPI factor != 1.0

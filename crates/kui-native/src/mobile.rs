@@ -447,12 +447,10 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
         let opened = (|| -> Result<_, Box<dyn std::error::Error>> {
             let window = match &self.window {
                 Some(window) => window.clone(),
-                None => {
-                    let attributes = Window::default_attributes().with_title("KUI Mobile");
-                    #[cfg(target_os = "ios")]
-                    let attributes = attributes.with_visible(false);
-                    Arc::new(event_loop.create_window(attributes)?)
-                }
+                None => Arc::new(
+                    event_loop
+                        .create_window(Window::default_attributes().with_title("KUI Mobile"))?,
+                ),
             };
             #[cfg(target_os = "ios")]
             attach_scene(&window, self.scene_id.as_deref())?;
