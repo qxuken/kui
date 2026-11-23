@@ -38,7 +38,7 @@ The first release target is a single-window Rust app that someone can install on
 - A slider drag changed the value while both scroll offsets stayed at zero. The first swipe inside the inner list moved it to its limit while the outer list stayed fixed. The next swipe from inside that list moved the outer list.
 - Backgrounding during a pending press produced zero taps, and a fresh tap produced one. On iPhone, the native trace recorded the touch start followed by suspension before release. An interrupted slider drag settled at 43 on iPhone and 57 on Galaxy, and both values stayed stable until the next drag.
 
-The phone preview, navigation and gesture-interruption hardware checks and the iPad window-restoration checks are complete. The support matrix sets iOS 17.0 and Android 9 / API 28 as the phone floors. The release gate still needs exact iOS 17 runtime coverage, floor hardware checks, signed release builds and hosted CI results. The iPad rename and independent navigation scenario still needs an implementation and a device run. [Support matrix and packaged runner plan](mobile-support-matrix.md)
+The phone preview, navigation and gesture-interruption hardware checks and the iPad window-restoration checks are complete. The support matrix sets iOS 17.0 and Android 9 / API 28 as the phone floors. Release qualification still needs the exact iOS 17.0 runtime, the oldest supported physical devices and signed release builds. The iPad rename and independent navigation scenario still needs an implementation and a device run. [Support matrix and packaged runner plan](mobile-support-matrix.md)
 
 The early `か` commit came from the test setup. With a deliberate 600 ms delay before the focus switch, the Galaxy trace showed the bridge publish the marked range and Gboard call `finishComposingText` on the active connection about 210 ms later. The same delayed build failed four times with Gboard and passed four times with the test keyboard. The updated runner gives the probe control of composition on Android's real input connection. The production bridge and its assertions are unchanged. The Android 15 emulator also passed five cold launches. The 11 native touch unit tests passed locally.
 
@@ -68,7 +68,7 @@ On a Galaxy S24 Ultra running Android 17 (API 37), ADB drove 12 flicks from the 
 
 In Safari on the iPhone simulator, tapping Note 02 opened the second note. Tapping in its first word opened the software keyboard, and a tap on W produced `Thisw is note 02.` in the accessible text field.
 
-The mobile CI workflow builds the ARM64 Android target, runs the editing and accessibility checks on API 28 and 35 x86_64 emulators and runs the editing and rotation checks on an iPhone simulator. These checks have been exercised locally on ARM64. The hosted jobs await their first run. [Mobile CI](../.github/workflows/mobile.yml)
+Hosted mobile CI built the ARM64 Android target and passed the editing and accessibility probes on API 28 and 35 x86_64 emulators. The iPhone 16 Pro simulator on iOS 18.5 passed composition, field switching, software-keyboard typing through rotation and draft restoration after a cold relaunch. [Mobile CI workflow](../.github/workflows/mobile.yml) · [Passing GitHub Actions run](https://github.com/qxuken/kui/actions/runs/45145359492)
 
 ## 6. Open two notes side by side on iPad
 
