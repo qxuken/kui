@@ -293,7 +293,46 @@ impl Gpu {
         options: GpuOptions,
     ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
         report_faults();
-        let instance = Self::new_instance(options);
+        let desc = Self::instance_descriptor(options);
+        let target = target.into();
+        #[cfg(target_os = "android")]
+        let target = match target {
+            wgpu::SurfaceTarget::DisplayAndWindow(window)
+                if desc
+                    .backends
+                    .contains(wgpu::Backends::VULKAN | wgpu::Backends::GL) =>
+            {
+                // Android's Vulkan loader connects the native window when it
+                // creates a surface, before an adapter has been selected. Drop
+                // that surface before EGL tries to connect to the same window.
+                let window: std::sync::Arc<dyn wgpu::DisplayAndWindowHandle> = window.into();
+                let vulkan = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::VULKAN,
+                    ..Self::instance_descriptor(options)
+                });
+                let vulkan_error =
+                    match Self::open_surface(vulkan, window.clone().into(), options).await {
+                        Ok(opened) => return Ok(opened),
+                        Err(error) => error,
+                    };
+                let gl = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::GL,
+                    ..desc
+                });
+                return Self::open_surface(gl, window.into(), options)
+                    .await
+                    .map_err(|error| format!("Vulkan: {vulkan_error}; GLES: {error}").into());
+            }
+            target => target,
+        };
+        Self::open_surface(wgpu::Instance::new(desc), target, options).await
+    }
+
+    async fn open_surface(
+        instance: wgpu::Instance,
+        target: wgpu::SurfaceTarget<'static>,
+        options: GpuOptions,
+    ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
         let surface = instance.create_surface(target)?;
         let gpu = Self::open(instance, Some(&surface), options).await?;
         Ok((gpu, surface))
@@ -311,7 +350,8 @@ impl Gpu {
     pub async fn windowless() -> Result<Self, Box<dyn std::error::Error>> {
         report_faults();
         let options = GpuOptions::default();
-        Self::open(Self::new_instance(options), None, options).await
+        let instance = wgpu::Instance::new(Self::instance_descriptor(options));
+        Self::open(instance, None, options).await
     }
 
     /// A `Gpu` over a device the host opened itself — a game engine's —
@@ -356,8 +396,8 @@ impl Gpu {
         cfg!(windows) && options.transparent && see_through_by_visual()
     }
 
-    /// The instance a device opened with `options` lives on.
-    fn new_instance(options: GpuOptions) -> wgpu::Instance {
+    /// The descriptor for the instance a device opened with `options` lives on.
+    fn instance_descriptor(options: GpuOptions) -> wgpu::InstanceDescriptor {
         // Every backend the build has, as wgpu defaults — but on Windows
         // D3D12 alone unless `WGPU_BACKEND` names another. An instance
         // keeps every backend it enumerated alive for as long as it lives,
@@ -389,7 +429,7 @@ impl Gpu {
         if by_visual {
             desc.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
         }
-        wgpu::Instance::new(desc)
+        desc
     }
 
     /// The adapter and device on `instance`, able to present to `surface`
