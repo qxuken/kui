@@ -275,15 +275,11 @@ token that lives 30 minutes and is revoked when the job ends, then
   `publish-crates.nu`; subsequent tagged releases publish it through
   OIDC.
 - `kui-native`'s mobile feature depends on the independently versioned
-  `kui-winit` fork. Publish its pinned version before tagging the first KUI
-  release that uses it, and whenever the pin changes. A regular KUI version
-  bump reuses the published backend. Cargo resolves the optional dependency
-  when it verifies the `kui-native` package.
-
-  ```sh
-  cargo publish --manifest-path third_party/winit/Cargo.toml --registry crates-io
-  ```
-
+  `kui-winit` fork. [Version 0.30.13-kui.1](https://crates.io/crates/kui-winit/0.30.13-kui.1)
+  was published manually and trusts `qxuken/kui`'s `release.yml` without
+  a GitHub environment. When its pin changes, the release script publishes
+  the backend before the workspace crates so Cargo can verify `kui-native`.
+  A regular KUI version bump reuses the published backend.
 - A field that does not match (another workflow file, an environment
   named on crates.io that the job does not use) shows only at the token
   step, as the action's error.

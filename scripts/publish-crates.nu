@@ -68,11 +68,17 @@ def main [
     if $registry not-in ($INDEX | columns) {
         error make {msg: $"unknown registry ($registry); one of ($INDEX | columns | str join ', ')"}
     }
+    let backend_manifest = "third_party/winit/Cargo.toml"
+    let backend = (open $backend_manifest | get package)
+    let publish_backend = not (crate-published $registry $backend.name $backend.version)
     let version = (open Cargo.toml | get workspace.package.version)
     let pending = if $dry_run { $CRATES } else {
         $CRATES | where {|c| not (crate-published $registry $c $version) }
     }
     if $trusted and not $dry_run {
+        if $publish_backend and not (crate-known $registry $backend.name) {
+            error make {msg: $"($registry) has never held ($backend.name), and trusted publishing cannot create it. First run `cargo publish --manifest-path ($backend_manifest) --registry ($registry)` with your own token and configure release.yml as its trusted publisher \(docs/releasing.md\)"}
+        }
         let new = ($pending | where {|c| not (crate-known $registry $c) })
         if ($new | is-not-empty) {
             # A new crate's verify build resolves its dependencies, optional
@@ -82,21 +88,24 @@ def main [
             error make {msg: $"($registry) has never held ($new | str join ', '), and a trusted-publishing token cannot create a crate: from this tag, `cargo publish ($flags) --registry ($registry)` with a token of your own, give each release.yml as its trusted publisher on crates.io, then re-run this job \(docs/releasing.md\)"}
         }
     }
+    let dry = if $dry_run { ["--dry-run"] } else { [] }
+    # The fork has its own version and lives outside the workspace. Cargo
+    # needs it in the registry before verifying kui-native's mobile feature.
+    if $publish_backend {
+        print $"($registry): publishing ($backend.name) at ($backend.version)"
+        ^cargo publish ...$dry --manifest-path $backend_manifest --registry $registry
+        if $env.LAST_EXIT_CODE != 0 {
+            error make {msg: $"cargo publish for ($backend.name) failed \(exit ($env.LAST_EXIT_CODE)\)"}
+        }
+    }
     if ($pending | is-empty) {
         print $"($registry): every crate is already at ($version)"
         return
-    }
-    # Cargo verifies optional dependencies against the registry too. Publish
-    # the independently versioned mobile backend before releasing kui-native.
-    let backend = (open third_party/winit/Cargo.toml | get package)
-    if not (crate-published $registry $backend.name $backend.version) {
-        error make {msg: $"($registry) needs ($backend.name) ($backend.version) before publishing kui-native. Publish it with `cargo publish --manifest-path third_party/winit/Cargo.toml --registry ($registry)` \(docs/releasing.md\)"}
     }
     print $"($registry): publishing ($pending | str join ', ') at ($version)"
     # One invocation: cargo publishes in dependency order and waits for each
     # crate to reach the index before verifying the next against it.
     let args = ($pending | each {|c| ["-p" $c] } | flatten)
-    let dry = if $dry_run { ["--dry-run"] } else { [] }
     ^cargo publish ...$dry ...$args --registry $registry
     if $env.LAST_EXIT_CODE != 0 {
         error make {msg: $"cargo publish to ($registry) failed \(exit ($env.LAST_EXIT_CODE)\); run this again to publish what is left"}
