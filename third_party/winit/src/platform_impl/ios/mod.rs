@@ -43,10 +43,14 @@ pub(crate) const DEVICE_ID: RootDeviceId = RootDeviceId(DeviceId);
 pub struct KeyEventExtra {}
 
 #[derive(Debug)]
-pub enum OsError {}
+pub enum OsError {
+    SceneUnavailable,
+}
 
 impl fmt::Display for OsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "os error")
+        match self {
+            Self::SceneUnavailable => f.write_str("requested UIKit window scene is not connected"),
+        }
     }
 }

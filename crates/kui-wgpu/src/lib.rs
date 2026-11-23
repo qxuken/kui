@@ -292,9 +292,30 @@ impl Gpu {
         target: impl Into<wgpu::SurfaceTarget<'static>>,
         options: GpuOptions,
     ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
+        Self::with_surface(target.into(), options, |gpu, surface| async {
+            Ok((gpu, surface))
+        })
+        .await
+    }
+
+    async fn with_surface<T, F>(
+        target: wgpu::SurfaceTarget<'static>,
+        options: GpuOptions,
+        finish: impl Fn(Self, wgpu::Surface<'static>) -> F,
+    ) -> Result<T, Box<dyn std::error::Error>>
+    where
+        F: Future<Output = Result<T, Box<dyn std::error::Error>>>,
+    {
         report_faults();
         let desc = Self::instance_descriptor(options);
-        let target = target.into();
+        let try_backend = |desc, target| {
+            let finish = &finish;
+            async move {
+                let (gpu, surface) =
+                    Self::open_surface(wgpu::Instance::new(desc), target, options).await?;
+                finish(gpu, surface).await
+            }
+        };
         #[cfg(target_os = "android")]
         let target = match target {
             wgpu::SurfaceTarget::DisplayAndWindow(window)
@@ -303,29 +324,28 @@ impl Gpu {
                     .contains(wgpu::Backends::VULKAN | wgpu::Backends::GL) =>
             {
                 // Android's Vulkan loader connects the native window when it
-                // creates a surface, before an adapter has been selected. Drop
-                // that surface before EGL tries to connect to the same window.
+                // creates a surface. Run renderer setup on it too, and drop
+                // it on failure before EGL connects to the same window.
                 let window: std::sync::Arc<dyn wgpu::DisplayAndWindowHandle> = window.into();
-                let vulkan = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                let vulkan = wgpu::InstanceDescriptor {
                     backends: wgpu::Backends::VULKAN,
                     ..Self::instance_descriptor(options)
-                });
-                let vulkan_error =
-                    match Self::open_surface(vulkan, window.clone().into(), options).await {
-                        Ok(opened) => return Ok(opened),
-                        Err(error) => error,
-                    };
-                let gl = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                };
+                let vulkan_error = match try_backend(vulkan, window.clone().into()).await {
+                    Ok(opened) => return Ok(opened),
+                    Err(error) => error,
+                };
+                let gl = wgpu::InstanceDescriptor {
                     backends: wgpu::Backends::GL,
                     ..desc
-                });
-                return Self::open_surface(gl, window.into(), options)
+                };
+                return try_backend(gl, window.into())
                     .await
                     .map_err(|error| format!("Vulkan: {vulkan_error}; GLES: {error}").into());
             }
             target => target,
         };
-        Self::open_surface(wgpu::Instance::new(desc), target, options).await
+        try_backend(desc, target).await
     }
 
     async fn open_surface(
@@ -1181,17 +1201,35 @@ impl Renderer {
         height: u32,
         options: GpuOptions,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let (gpu, surface) = Gpu::new_with(target, options).await?;
-        let config = Self::surface_config(&gpu, &surface, width, height, options.transparent)?;
+        Gpu::with_surface(target.into(), options, |gpu, surface| {
+            Self::for_surface(gpu, surface, width, height, options.transparent)
+        })
+        .await
+    }
+
+    async fn for_surface(
+        gpu: Gpu,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+        transparent: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let config = Self::surface_config(&gpu, &surface, width, height, transparent)?;
         if let Some(err) = Self::configure_surface(&gpu, &surface, &config).await {
             return Err(format!("configuring the surface: {err}").into());
         }
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(target_os = "android")]
+        let internal = gpu.device().push_error_scope(wgpu::ErrorFilter::Internal);
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
         let validation = gpu.device().push_error_scope(wgpu::ErrorFilter::Validation);
         let renderer = Self::assemble(gpu, Some(surface), config);
-        #[cfg(target_arch = "wasm32")]
-        if let Some(err) = validation.pop().await {
-            return Err(format!("creating WebGPU renderer resources: {err}").into());
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+        let error = validation.pop().await;
+        #[cfg(target_os = "android")]
+        let error = error.or(internal.pop().await);
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+        if let Some(err) = error {
+            return Err(format!("creating renderer resources: {err}").into());
         }
         Ok(renderer)
     }
@@ -1320,19 +1358,24 @@ impl Renderer {
         })
     }
 
-    fn configure_surface(
+    async fn configure_surface(
         gpu: &Gpu,
         surface: &wgpu::Surface<'static>,
         config: &wgpu::SurfaceConfiguration,
-    ) -> impl Future<Output = Option<wgpu::Error>> {
+    ) -> Option<wgpu::Error> {
         // A configure that fails only reports to the device's error
         // handler, and the first acquire on the unconfigured surface is a
         // panic inside wgpu; caught here, it is this constructor's error
         // — a window DXGI will not give a second swapchain, say.
         let device = gpu.device();
+        #[cfg(target_os = "android")]
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         surface.configure(device, config);
-        scope.pop()
+        let error = scope.pop().await;
+        #[cfg(target_os = "android")]
+        let error = error.or(internal.pop().await);
+        error
     }
 
     /// A renderer with no window: it draws into textures it is handed

@@ -205,13 +205,20 @@ pub(crate) fn install(lua: &Lua, app: Metadata<'_>, paths: &Paths) -> mlua::Resu
             globals.set(name, Value::Nil)?;
             loaded.set(name, Value::Nil)?;
         }
-        globals.set("dofile", Value::Nil)?;
-        globals.set("loadfile", Value::Nil)?;
     }
     package.set("path", path)?;
     package.set("cpath", "")?;
     package.get::<Table>("searchers")?.set(3, Value::Nil)?;
     package.get::<Table>("searchers")?.set(4, Value::Nil)?;
+    let paths = paths.clone();
+    let loadfile = lua.create_function(move |lua, (path, env): (String, Option<Table>)| {
+        let path = match paths.resolve(&path) {
+            Ok(path) => path,
+            Err(err) => return Ok((None, Some(format!("cannot open {path}: {err}")))),
+        };
+        Ok(crate::loader::load_file(lua, &path, env, false))
+    })?;
+    crate::loader::install(lua, loadfile, cfg!(target_os = "wasi"))?;
     lua.load(ARGS).set_name("@kui:args").exec()?;
     lua.load(include_str!("app.lua"))
         .set_name("@kui:app")
@@ -270,5 +277,46 @@ fn modify_file(
     match modify(&file) {
         Ok(()) => true.into_lua_multi(lua),
         Err(error) => file_failure(lua, &file, error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedded_apps_load_source_and_reject_lua_bytecode() -> mlua::Result<()> {
+        let dir = tempfile::tempdir().unwrap();
+        let lua = Lua::new();
+        let source = "return 42";
+        let bytecode = lua.load(source).into_function()?.dump(false);
+        std::fs::write(dir.path().join("source.lua"), source).unwrap();
+        std::fs::write(dir.path().join("compiled.lua"), &bytecode).unwrap();
+        install(
+            &lua,
+            Metadata {
+                name: "Test",
+                id: "dev.kui.test",
+                version: "1",
+                platform: "test",
+            },
+            &Paths::new(
+                dir.path(),
+                dir.path().join("data"),
+                dir.path().join("cache"),
+            ),
+        )?;
+        lua.globals()
+            .set("compiled", lua.create_string(bytecode)?)?;
+        lua.load(
+            r#"
+            assert(require("source") == 42)
+            assert(load("return value", "source", "t", {value = 42})() == 42)
+            assert(load(compiled, "compiled", "b") == nil)
+            assert(not pcall(require, "compiled"))
+            assert(loadfile == nil and dofile == nil)
+            "#,
+        )
+        .exec()
     }
 }

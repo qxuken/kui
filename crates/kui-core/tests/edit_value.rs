@@ -541,3 +541,29 @@ fn a_composition_over_a_selection_says_the_selection_went() {
     let heard = changes(core.handle_input(InputEvent::Preedit("か".into(), None)));
     assert!(heard.is_empty(), "{heard:?}");
 }
+
+#[test]
+fn recomposition_preserves_the_original_word_until_commit() {
+    let mut core = Core::new();
+    let key = frame(&mut core, "say rain now", &opts());
+    core.edit.set_selection(key, (0, 4), (0, 8));
+    core.preview_ime_replacement(key, "日本", None);
+    assert_eq!(core.edit.preedit(key), Some("日本"));
+    assert_eq!(text(&core, key), "say rain now");
+    assert_eq!(core.edit.history(key), (false, false));
+
+    core.set_focus(None);
+    assert_eq!(core.edit.preedit(key), None);
+    assert_eq!(text(&core, key), "say rain now");
+
+    core.set_focus(Some(key));
+    core.edit.set_selection(key, (0, 4), (0, 8));
+    core.preview_ime_replacement(key, "日本", None);
+    core.handle_input(InputEvent::Preedit(String::new(), None));
+    core.edit.set_selection(key, (0, 4), (0, 8));
+    core.handle_input(InputEvent::Commit("日本".into()));
+    assert_eq!(text(&core, key), "say 日本 now");
+    assert_eq!(caret(&core, key), (10, None));
+    press(&mut core, EditKey::Undo);
+    assert_eq!(text(&core, key), "say rain now");
+}

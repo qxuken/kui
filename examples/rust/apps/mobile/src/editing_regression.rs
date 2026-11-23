@@ -12,12 +12,25 @@ pub struct Regression {
     pub changes: [usize; 2],
     step: i32,
     since: Option<Instant>,
+    #[cfg(target_os = "ios")]
+    awaiting_teardown: bool,
     pub result: PathBuf,
     #[cfg(target_os = "android")]
     pub activity: Option<kui_native::mobile::AndroidApp>,
 }
 
 impl Regression {
+    pub fn ime_off(&self) -> bool {
+        self.step == 22
+    }
+
+    #[cfg(target_os = "ios")]
+    pub fn teardown(&mut self) {
+        if self.awaiting_teardown {
+            self.finish("PASS emoji replacement, caret and field switch; IME-off canceled composition and the editor reopened; UIKit termination called App::teardown".into());
+        }
+    }
+
     pub fn wake(&self, waker: Waker) {
         let result = self.result.clone();
         std::thread::spawn(move || {
@@ -66,8 +79,59 @@ impl Regression {
                 && core.focus() == Some(a)
                 && self.changes == [3, 0] =>
             {
-                self.finish("PASS replacement aéb at UTF-8 byte 3; final aé!Zb at byte 5; second unchanged; three changes".into());
-                return;
+                #[cfg(target_os = "ios")]
+                {
+                    self.step = 19;
+                    true
+                }
+                #[cfg(target_os = "android")]
+                {
+                    core.set_focus(Some(b));
+                    true
+                }
+            }
+            #[cfg(target_os = "android")]
+            9 => self.native(6),
+            #[cfg(target_os = "android")]
+            10 => second == "second" && marked == Some("sec") && self.native(7),
+            #[cfg(target_os = "android")]
+            11 if second == "second" && marked == Some("日本") && self.changes == [3, 0] => {
+                core.set_focus(Some(a));
+                true
+            }
+            #[cfg(target_os = "android")]
+            12 if second == "second" && marked.is_none() && self.native(8) => {
+                core.set_focus(Some(b));
+                true
+            }
+            #[cfg(target_os = "android")]
+            13 => self.native(9),
+            #[cfg(target_os = "android")]
+            14 => second == "second" && marked == Some("日本") && self.native(10),
+            #[cfg(target_os = "android")]
+            15 if second == "日本ond"
+                && core.edit.caret_and_selection(b) == Some((6, None))
+                && marked.is_none()
+                && self.changes == [3, 1] =>
+            {
+                core.set_focus(Some(a));
+                self.step = 19;
+                true
+            }
+            20 => self.native(11),
+            21 => first == "aé!Zb" && core.edit.preedit(a) == Some("か"),
+            22 => first == "aé!Zb" && core.edit.preedit(a).is_none() && self.native(12),
+            23 if self.native(13) && first == "aé!Zb" && self.changes[0] == 3 => {
+                #[cfg(target_os = "ios")]
+                {
+                    self.awaiting_teardown = true;
+                    self.native(14)
+                }
+                #[cfg(target_os = "android")]
+                {
+                    self.finish("PASS emoji replacement, caret and field switch; Android preserved the original word on blur and committed 日本 once before ond; IME-off canceled composition and the editor reopened".into());
+                    return;
+                }
             }
             _ => false,
         };

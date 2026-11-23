@@ -94,6 +94,12 @@ impl<A: App, F: FnMut(&str, &str) -> (Core, A)> ApplicationHandler<MobileEvent> 
         el.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
 
+    fn exiting(&mut self, el: &ActiveEventLoop) {
+        for (_, mut host) in self.hosts.drain() {
+            host.exiting(el);
+        }
+    }
+
     fn window_event(&mut self, el: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         if let Some(host) = self
             .hosts
@@ -116,7 +122,7 @@ impl<A: App, F: FnMut(&str, &str) -> (Core, A)> ApplicationHandler<MobileEvent> 
                     if note.is_none()
                         && let Some(mut host) = self.hosts.remove(&key)
                     {
-                        host.app.teardown();
+                        host.exiting(el);
                     }
                 } else if let Some(note) = note {
                     self.next += 1;

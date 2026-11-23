@@ -261,6 +261,9 @@ impl WindowExtIOS for Window {
 
 /// Additional methods on [`WindowAttributes`] that are specific to iOS.
 pub trait WindowAttributesExtIOS {
+    /// Create the window in the connected UIKit scene with this persistent session ID.
+    fn with_scene_session(self, persistent_identifier: String) -> Self;
+
     /// Sets the [`contentScaleFactor`] of the underlying [`UIWindow`] to `scale_factor`.
     ///
     /// The default value is device dependent, and it's recommended GLES or Metal applications set
@@ -315,6 +318,11 @@ pub trait WindowAttributesExtIOS {
 }
 
 impl WindowAttributesExtIOS for WindowAttributes {
+    fn with_scene_session(mut self, persistent_identifier: String) -> Self {
+        self.platform_specific.scene_session = Some(persistent_identifier);
+        self
+    }
+
     #[inline]
     fn with_scale_factor(mut self, scale_factor: f64) -> Self {
         self.platform_specific.scale_factor = Some(scale_factor);

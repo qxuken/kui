@@ -102,9 +102,9 @@ use the installed Japanese face. The Tasks host and the Rust example share
 this font setup.
 
 The workspace patches `winit` on both mobile platforms. On Android, the patch
-lets TalkBack receive touch exploration events. On iOS, it initializes the
-window in the sole connected UIKit scene before showing it, so the software
-keyboard rotates with the app. Apply the workspace patch when building in a
+lets TalkBack receive touch exploration events. On iOS, it initializes each
+window in its UIKit scene before showing it, so the software keyboard uses
+that scene's geometry. Apply the workspace patch when building in a
 separate mobile workspace until your `winit` version includes these fixes.
 [Workspace Cargo.toml](https://github.com/qxuken/kui/blob/main/Cargo.toml)
 
@@ -113,7 +113,9 @@ container for fields that may move above the keyboard. Continue using click
 and edit events. The host handles gesture recognition, scroll momentum and
 the docked keyboard's effect on the viewport. A confirmed tap on a button
 commits the focused field's marked text before delivering the click. Moving
-focus directly to another editor cancels the previous composition.
+focus directly to another editor cancels the previous composition. If an
+Android keyboard marks an existing word for replacement, the original
+word stays committed until the keyboard accepts a replacement.
 
 For an interactive check, run either simulator script with
 `KUI_TASKS_PACK=` to select the Rust touchscreen example. Flick over

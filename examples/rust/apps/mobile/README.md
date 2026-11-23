@@ -27,6 +27,12 @@ editor view with the Rust library built by cargo-apk, then installs and launches
 the debug APK. Set `ANDROID_SERIAL` if multiple devices are connected.
 For an x86_64 emulator, install the Rust target `x86_64-linux-android` and set `KUI_ANDROID_TARGET=x86_64-linux-android`. Android Studio is optional.
 
+When using SwiftShader on x86_64, boot the emulator with
+`emulator -avd YOUR_AVD -gpu swiftshader -feature -Vulkan`. Some SwiftShader
+versions terminate the emulator on Vulkan shader creation. The mobile CI uses
+these flags to test GLES on API 28 and 35. On devices, the host tries GLES
+when Vulkan returns an error during renderer startup.
+
 `dev.kui.KuiActivity` extends NativeActivity and gives Gboard a focused Android
 text editor. KUI still draws the field and owns its value and selection. The
 Android input connection forwards composition and committed text through the
@@ -142,7 +148,11 @@ cold launches with the same test keyboard. The probe selects UTF-16 offsets 1–
 It starts marked text `か` in the second field, moves focus back to the first,
 delivers a late commit to the old responder, and types `Z` through the new one.
 The assertions require `aé!Zb`, an unchanged second field, and exactly three
-model changes. The existing touch smoke covers tapping the software keys.
+model changes. On Android the probe then marks part of an existing word,
+checks that switching fields preserves it, and accepts `日本` in a fresh
+composition. Both probes switch to `ime_off` mid-composition and reopen
+the editor. The iOS probe also checks teardown on UIKit's termination
+notification. The touch smoke covers tapping the software keys.
 
 ### On-screen autocorrection and Japanese conversion
 

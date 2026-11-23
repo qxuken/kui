@@ -12,13 +12,16 @@ static UIView *responder(UIView *view) {
 bool kui_probe_step(int step) {
     static UITextView *previous;
     UITextView *field = nil;
+    UIView *keyView = nil;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
         for (UIWindow *window in ((UIWindowScene *)scene).windows) {
             UIView *view = responder(window);
             if ([view isKindOfClass:UITextView.class]) field = (UITextView *)view;
+            if ([view isKindOfClass:NSClassFromString(@"KUIKeyView")]) keyView = view;
         }
     }
+    if (step == 12) return field == nil && keyView != nil;
     if (!field) return false;
     switch (step) {
         case 1:
@@ -44,6 +47,18 @@ bool kui_probe_step(int step) {
             [previous insertText:@"漏"];
             previous = nil;
             [field insertText:@"Z"];
+            break;
+        case 11:
+            if (![field.text isEqualToString:@"aé!Zb"]) return false;
+            [field setMarkedText:@"か" selectedRange:NSMakeRange(1, 0)];
+            break;
+        case 13:
+            return [field.text isEqualToString:@"aé!Zb"];
+        case 14:
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillTerminateNotification
+                                                                   object:UIApplication.sharedApplication];
+            });
             break;
     }
     return true;

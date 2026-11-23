@@ -7,6 +7,8 @@ pub(super) struct NativeText {
     pub text: String,
     pub selection: (i32, i32),
     pub marked: (i32, i32),
+    // Android's setComposingRegion marks an existing part of the document.
+    pub original: Option<String>,
 }
 
 #[derive(Default, PartialEq)]
@@ -92,9 +94,13 @@ impl<A: App> Host<A> {
         let selection = (byte(text, state.selection.0), byte(text, state.selection.1));
         let marked = (state.marked.0 >= 0 && state.marked.1 >= state.marked.0)
             .then(|| byte(text, state.marked.0)..byte(text, state.marked.1));
+        if marked.is_some() && self.core.edit.is_secure(key) {
+            return;
+        }
+        let original = state.original.as_deref().unwrap_or_default();
         let mut committed = text.clone();
         if let Some(range) = &marked {
-            committed.replace_range(range.clone(), "");
+            committed.replace_range(range.clone(), original);
         }
         let (start, end, new_end) = replacement(&self.document, &committed);
         // A custom sink owns its document. Secure fields likewise never lend
@@ -120,31 +126,64 @@ impl<A: App> Host<A> {
         if self.editor_key() != Some(key) {
             return;
         }
-        if let Some(range) = marked {
-            if mirrors_field {
-                select(&mut self.core, key, &committed, range.start, range.start);
+        let mut native_selection = state.selection;
+        match marked {
+            Some(range) if mirrors_field && !original.is_empty() => {
+                let preview = &text[range.clone()];
+                // Merely marking a word can leave the IME's selection
+                // outside it. Keep that selection until a preview replaces it.
+                if preview == original
+                    && [selection.0, selection.1]
+                        .iter()
+                        .any(|i| *i < range.start || *i > range.end)
+                {
+                    select(&mut self.core, key, &committed, selection.0, selection.1);
+                } else {
+                    select(
+                        &mut self.core,
+                        key,
+                        &committed,
+                        range.start,
+                        range.start + original.len(),
+                    );
+                    let within = |i: usize| i.clamp(range.start, range.end) - range.start;
+                    self.core.preview_ime_replacement(
+                        key,
+                        preview,
+                        Some((within(selection.0), within(selection.1))),
+                    );
+                    native_selection = (state.marked.0, state.marked.0);
+                }
             }
-            let within = |i: usize| i.clamp(range.start, range.end) - range.start;
-            self.input(InputEvent::Preedit(
-                text[range.clone()].into(),
-                Some((within(selection.0), within(selection.1))),
-            ));
-        } else if mirrors_field {
-            select(&mut self.core, key, &committed, selection.0, selection.1);
+            Some(range) => {
+                if mirrors_field {
+                    select(&mut self.core, key, &committed, range.start, range.start);
+                }
+                let within = |i: usize| i.clamp(range.start, range.end) - range.start;
+                self.input(InputEvent::Preedit(
+                    text[range.clone()].into(),
+                    Some((within(selection.0), within(selection.1))),
+                ));
+                let (lo, hi) = state.marked;
+                let project = |offset: i32| {
+                    if offset > lo {
+                        lo.max(offset - (hi - lo))
+                    } else {
+                        offset
+                    }
+                };
+                native_selection = (project(state.selection.0), project(state.selection.1));
+            }
+            None if mirrors_field => {
+                select(&mut self.core, key, &committed, selection.0, selection.1);
+            }
+            None => {}
         }
-        // Save what the platform actually holds. If the app filters the edit,
-        // the next frame synchronizes its canonical value back to the responder.
-        let project = |offset: i32| {
-            let (lo, hi) = state.marked;
-            if lo >= 0 && hi >= lo && offset > lo {
-                lo.max(offset - (hi - lo))
-            } else {
-                offset
-            }
-        };
+        // An app can filter a committed edit. The next frame then
+        // synchronizes the canonical value back to the responder.
         self.document = Document {
             text: committed,
-            selection: (project(state.selection.0), project(state.selection.1)),
+            selection: native_selection,
         };
         self.editor_stamp = None;
     }

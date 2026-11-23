@@ -33,7 +33,7 @@ impl Editor {
             unsafe {
                 let method = NativeMethod::from_raw_parts(
                     jni_str!("updateText"),
-                    jni_str!("(JLjava/lang/String;IIII)V"),
+                    jni_str!("(JLjava/lang/String;IIIILjava/lang/String;)V"),
                     update_text as *mut _,
                 );
                 env.register_native_methods(&class, &[method])?;
@@ -91,9 +91,15 @@ extern "system" fn update_text(
     end: i32,
     mark_start: i32,
     mark_end: i32,
+    original: JString,
 ) {
     raw.with_env(|env| -> Result<()> {
         let value = text.try_to_string(env)?;
+        let original = if original.is_null() {
+            None
+        } else {
+            Some(original.try_to_string(env)?)
+        };
         if let Ok(proxy) =
             unsafe { env.get_rust_field::<_, _, Proxy>(&activity, jni_str!("kuiEvents")) }
         {
@@ -101,6 +107,7 @@ extern "system" fn update_text(
                 text: value,
                 selection: (start, end),
                 marked: (mark_start, mark_end),
+                original,
             };
             let _ = proxy.send_event(MobileEvent::Ime(session, event));
         }

@@ -80,6 +80,8 @@ enum Msg {
 #[cfg(not(any(feature = "candidate-trial", feature = "navigation-trial")))]
 impl App for Screen {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        #[cfg(feature = "editing-regression")]
+        ui.ime_off(self.regression.ime_off());
         let theme = ui.theme();
         ui.with(
             NodeSpec::column()
@@ -146,6 +148,11 @@ impl App for Screen {
     #[cfg(feature = "editing-regression")]
     fn before_frame(&mut self, core: &mut Core) {
         self.regression.advance(core, &self.note, &self.bottom_note);
+    }
+
+    #[cfg(all(feature = "editing-regression", target_os = "ios"))]
+    fn teardown(&mut self) {
+        self.regression.teardown();
     }
 
     fn on_event_with(&mut self, event: UiEvent, core: &mut Core) {

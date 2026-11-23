@@ -408,13 +408,12 @@ fn same_pos(a: Cursor, b: Cursor) -> bool {
 }
 
 /// IME composition state. The text is *in* the buffer starting at `start`
-/// — inserted without touching the undo history, replaced on every update,
-/// removed on commit or cancel — so the paragraph wraps and the following
-/// text shifts exactly as if it had been typed. The editor's own caret is
-/// parked at the IME-reported offset inside it.
+/// without touching the undo history. An IME can also mark existing text
+/// for replacement. Keep that original text while displaying the preview.
 struct Preedit {
     start: Cursor,
     text: String,
+    original: String,
 }
 
 /// Byte offset of `c` in the buffer's full text (lines joined by '\n').
@@ -755,7 +754,7 @@ impl EditState {
         let Some(pre) = self.preedit.take() else {
             return false;
         };
-        self.splice(pre.start, &pre.text, "");
+        self.splice(pre.start, &pre.text, &pre.original);
         self.editor.set_cursor(pre.start);
         self.editor.set_selection(Selection::None);
         true
@@ -1459,7 +1458,7 @@ impl EditStore {
             if let Some(pre) = &s.preedit {
                 let at = abs_offset(b, pre.start);
                 if text.is_char_boundary(at) && at + pre.text.len() <= text.len() {
-                    text.replace_range(at..at + pre.text.len(), "");
+                    text.replace_range(at..at + pre.text.len(), &pre.original);
                 }
             }
             text
@@ -1579,16 +1578,17 @@ impl EditStore {
     ///
     /// A composition sits in the buffer while it is under way, and it is
     /// not committed text: a place inside it reads as where it starts, and
-    /// one past it as the same place with the composition taken out.
+    /// one past it as the same place in the committed document.
     pub fn caret_and_selection(&self, key: Key) -> Option<(usize, Option<(usize, usize)>)> {
         let s = self.states.get(&key)?;
         Some(s.editor.with_buffer(|b| {
             let composing = s
                 .preedit
                 .as_ref()
-                .map(|p| (abs_offset(b, p.start), p.text.len()));
+                .map(|p| (abs_offset(b, p.start), p.text.len(), p.original.len()));
             let committed = |at: usize| match composing {
-                Some((start, len)) if at > start => start.max(at.saturating_sub(len)),
+                Some((start, len, original)) if at > start + len => at - len + original,
+                Some((start, _, _)) if at > start => start,
                 _ => at,
             };
             let caret = committed(abs_offset(b, s.editor.cursor()));
@@ -2094,6 +2094,27 @@ impl EditStore {
         cursor: Option<(usize, usize)>,
         fs: &mut FontSystem,
     ) -> bool {
+        self.update_preedit(key, text, cursor, false, fs)
+    }
+
+    pub(crate) fn preview_ime_replacement(
+        &mut self,
+        key: Key,
+        text: &str,
+        cursor: Option<(usize, usize)>,
+        fs: &mut FontSystem,
+    ) {
+        self.update_preedit(key, text, cursor, true, fs);
+    }
+
+    fn update_preedit(
+        &mut self,
+        key: Key,
+        text: &str,
+        cursor: Option<(usize, usize)>,
+        keep_original: bool,
+        fs: &mut FontSystem,
+    ) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
         };
@@ -2111,10 +2132,19 @@ impl EditStore {
                 return false;
             }
         } else {
-            let start = match s.preedit.take() {
+            let (start, original) = match s.preedit.take() {
                 Some(pre) => {
                     s.splice(pre.start, &pre.text, text);
-                    pre.start
+                    (pre.start, pre.original)
+                }
+                None if keep_original => {
+                    let original = s.editor.copy_selection().unwrap_or_default();
+                    let start = s
+                        .editor
+                        .selection_bounds()
+                        .map_or(s.editor.cursor(), |(a, _)| a);
+                    s.splice(start, &original, text);
+                    (start, original)
                 }
                 None => {
                     // Composing over a selection replaces it, as typing
@@ -2122,7 +2152,7 @@ impl EditStore {
                     committed = s.delete_selection_recorded();
                     let at = s.editor.cursor();
                     s.editor.insert_string(text, None);
-                    at
+                    (at, String::new())
                 }
             };
             // Caret at the IME's offset inside the composition (its end
@@ -2136,6 +2166,7 @@ impl EditStore {
             s.preedit = Some(Preedit {
                 start,
                 text: text.to_string(),
+                original,
             });
             s.break_coalesce();
         }

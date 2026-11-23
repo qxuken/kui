@@ -90,7 +90,73 @@ void kui_ios_editor(UIView *parent, uint64_t scene, int64_t owner, int kind, con
         if (![view.text isEqualToString:value]) view.text = value;
         view.selectedRange = NSMakeRange(MIN(anchor,caret), abs(caret-anchor));
     }
-    if (show && !view.isFirstResponder) [view becomeFirstResponder];
+    if (show && parent.window.isKeyWindow && !view.isFirstResponder) [view becomeFirstResponder];
+}
+
+extern void kui_ios_hardware_key(uint64_t scene, int64_t owner, uint32_t code,
+                                 const char *text, uint32_t modifiers, bool pressed);
+
+// A modal editor takes hardware presses without advertising UITextInput.
+@interface KUIKeyView : UIView
+@property(nonatomic) uint64_t scene;
+@property(nonatomic) int64_t owner;
+@end
+
+@implementation KUIKeyView
+- (BOOL)canBecomeFirstResponder { return YES; }
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event { return NO; }
+
+- (NSSet<UIPress *> *)sendKeys:(NSSet<UIPress *> *)presses down:(BOOL)down {
+    NSMutableSet<UIPress *> *unhandled = [NSMutableSet set];
+    for (UIPress *press in presses) {
+        UIKey *key = press.key;
+        if (!key) {
+            [unhandled addObject:press];
+            continue;
+        }
+        UIKeyModifierFlags flags = key.modifierFlags;
+        uint32_t mods = ((flags & UIKeyModifierShift) ? 1 : 0)
+                      | ((flags & UIKeyModifierControl) ? 2 : 0)
+                      | ((flags & UIKeyModifierAlternate) ? 4 : 0)
+                      | ((flags & UIKeyModifierCommand) ? 8 : 0);
+        kui_ios_hardware_key(self.scene, self.owner, (uint32_t)key.keyCode,
+                             key.characters.UTF8String, mods, down);
+    }
+    return unhandled;
+}
+
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    NSSet<UIPress *> *unhandled = [self sendKeys:presses down:YES];
+    if (unhandled.count) [super pressesBegan:unhandled withEvent:event];
+}
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    NSSet<UIPress *> *unhandled = [self sendKeys:presses down:NO];
+    if (unhandled.count) [super pressesEnded:unhandled withEvent:event];
+}
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    NSSet<UIPress *> *unhandled = [self sendKeys:presses down:NO];
+    if (unhandled.count) [super pressesCancelled:unhandled withEvent:event];
+}
+@end
+
+void kui_ios_key_mode(UIView *parent, uint64_t scene, int64_t owner, bool enabled) {
+    static char association;
+    KUIKeyView *view = objc_getAssociatedObject(parent, &association);
+    if (!enabled) {
+        [view resignFirstResponder];
+        [view removeFromSuperview];
+        objc_setAssociatedObject(parent, &association, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    if (!view) {
+        view = [[KUIKeyView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+        view.accessibilityElementsHidden = YES;
+        [parent addSubview:view];
+        objc_setAssociatedObject(parent, &association, view, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    view.scene = scene;
+    view.owner = owner;
+    if (parent.window.isKeyWindow) [view becomeFirstResponder];
 }
 
 // UISceneSession.persistentIdentifier outlives the scene's windows and views.

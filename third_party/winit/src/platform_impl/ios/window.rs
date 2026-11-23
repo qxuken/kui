@@ -9,7 +9,7 @@ use objc2_foundation::{
     CGFloat, CGPoint, CGRect, CGSize, MainThreadBound, MainThreadMarker, NSObjectProtocol,
 };
 use objc2_ui_kit::{
-    UIApplication, UICoordinateSpace, UIResponder, UIScreen, UIScreenOverscanCompensation,
+    UIApplication, UICoordinateSpace, UIResponder, UIScene, UIScreen, UIScreenOverscanCompensation,
     UIViewController, UIWindow, UIWindowScene,
 };
 use tracing::{debug, warn};
@@ -79,22 +79,12 @@ impl WinitUIWindow {
         window_attributes: &WindowAttributes,
         frame: CGRect,
         view_controller: &UIViewController,
+        scene: Option<&UIWindowScene>,
     ) -> Retained<Self> {
-        let app = UIApplication::sharedApplication(mtm);
-        let scene_window: Option<Retained<Self>> =
-            if app.respondsToSelector(sel!(connectedScenes)) {
-                // Use UIKit's matching scene geometry before it builds a keyboard window.
-                let scenes = unsafe { app.connectedScenes() };
-                match scenes.to_vec().as_slice() {
-                    [scene] if scene.isKindOfClass(UIWindowScene::class()) => {
-                        Some(unsafe { msg_send_id![mtm.alloc(), initWithWindowScene: *scene] })
-                    },
-                    _ => None,
-                }
-            } else {
-                None
-            };
-        let this: Retained<Self> = if let Some(window) = scene_window {
+        // Use the scene's geometry before UIKit builds an input window.
+        let this: Retained<Self> = if let Some(scene) = scene {
+            let window: Retained<Self> =
+                unsafe { msg_send_id![mtm.alloc(), initWithWindowScene: scene] };
             if window_attributes.inner_size.is_some() {
                 window.setFrame(frame);
             }
@@ -124,6 +114,30 @@ impl WinitUIWindow {
 
     pub(crate) fn id(&self) -> WindowId {
         (self as *const Self as usize as u64).into()
+    }
+}
+
+fn window_scene(mtm: MainThreadMarker, session: Option<&str>) -> Option<Retained<UIWindowScene>> {
+    let app = UIApplication::sharedApplication(mtm);
+    if !app.respondsToSelector(sel!(connectedScenes)) {
+        return None;
+    }
+    let scenes = unsafe { app.connectedScenes() };
+    let mut windows = scenes
+        .to_vec()
+        .into_iter()
+        .filter_map(|scene| {
+            if !scene.isKindOfClass(UIWindowScene::class()) {
+                return None;
+            }
+            // The class check above guarantees a UIWindowScene.
+            unsafe { Retained::retain((scene as *const UIScene).cast_mut().cast::<UIWindowScene>()) }
+        });
+    if let Some(id) = session {
+        windows.find(|scene| unsafe { scene.session().persistentIdentifier().to_string() == id })
+    } else {
+        let scene = windows.next()?;
+        windows.next().is_none().then_some(scene)
     }
 }
 
@@ -508,6 +522,11 @@ impl Window {
         window_attributes: WindowAttributes,
     ) -> Result<Window, RootOsError> {
         let mtm = event_loop.mtm;
+        let session = window_attributes.platform_specific.scene_session.as_deref();
+        let scene = window_scene(mtm, session);
+        if session.is_some() && scene.is_none() {
+            return Err(os_error!(super::OsError::SceneUnavailable));
+        }
 
         if window_attributes.min_inner_size.is_some() {
             warn!("`WindowAttributes::min_inner_size` is ignored on iOS");
@@ -527,7 +546,10 @@ impl Window {
             Some(Fullscreen::Borderless(None)) | None => &main_screen,
         };
 
-        let screen_bounds = screen.bounds();
+        let screen_bounds = match (&scene, &fullscreen) {
+            (Some(scene), None) => unsafe { scene.coordinateSpace().bounds() },
+            _ => screen.bounds(),
+        };
 
         let frame = match window_attributes.inner_size {
             Some(dim) => {
@@ -547,7 +569,8 @@ impl Window {
             view.isKindOfClass(class!(CAMetalLayer)) || view.isKindOfClass(class!(CAEAGLLayer));
 
         let view_controller = WinitViewController::new(mtm, &window_attributes, &view);
-        let window = WinitUIWindow::new(mtm, &window_attributes, frame, &view_controller);
+        let window =
+            WinitUIWindow::new(mtm, &window_attributes, frame, &view_controller, scene.as_deref());
 
         app_state::set_key_window(mtm, &window);
 
@@ -762,6 +785,7 @@ impl From<&AnyObject> for WindowId {
 
 #[derive(Clone, Debug, Default)]
 pub struct PlatformSpecificWindowAttributes {
+    pub scene_session: Option<String>,
     pub scale_factor: Option<f64>,
     pub valid_orientations: ValidOrientations,
     pub prefers_home_indicator_hidden: bool,

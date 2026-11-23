@@ -6,3 +6,4 @@ pub mod archive;
 #[cfg(all(feature = "embedded", any(target_os = "android", target_os = "ios")))]
 pub mod embedded;
 pub mod kit;
+pub mod loader;

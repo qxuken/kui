@@ -50,6 +50,8 @@ enum MobileEvent {
     Ime(i64, NativeText),
     #[cfg(target_os = "ios")]
     EditorKey(i64, KeyCode),
+    #[cfg(target_os = "ios")]
+    HardwareKey(i64, KeyPress, bool),
 }
 
 #[derive(Clone)]
@@ -126,7 +128,6 @@ pub fn run_with_extensions(
         proxy,
     )?;
     event_loop.run_app(&mut host)?;
-    host.app.teardown();
     if let Some(error) = host.error {
         return Err(error);
     }
@@ -159,6 +160,8 @@ impl<A: App> Host<A> {
             editor_stamp: None,
             editor_focus: None,
             session: 0,
+            ime_off: false,
+            key_mods: KeyMods::default(),
             #[cfg(target_os = "android")]
             ime: AndroidInsets::default(),
             core,
@@ -169,7 +172,7 @@ impl<A: App> Host<A> {
             contacts: Contacts::default(),
             keyboard: false,
             layout: (Size::ZERO, Edges::default()),
-            tapped: false,
+            show_editor: false,
             epoch: Instant::now(),
             next_draw: None,
             error: None,
@@ -195,6 +198,8 @@ struct Host<A> {
     editor_stamp: Option<(u64, u64)>,
     editor_focus: Option<(crate::Key, i32)>,
     session: i64,
+    ime_off: bool,
+    key_mods: KeyMods,
     core: Core,
     app: A,
     extensions: Extensions,
@@ -203,7 +208,7 @@ struct Host<A> {
     contacts: Contacts,
     keyboard: bool,
     layout: (Size, Edges),
-    tapped: bool,
+    show_editor: bool,
     epoch: Instant,
     next_draw: Option<Instant>,
     error: Option<Box<dyn std::error::Error>>,
@@ -246,7 +251,8 @@ impl<A: App> Host<A> {
     }
 
     fn owns_editor(&self, session: i64) -> bool {
-        self.session == session
+        !self.core.ime_off_requested()
+            && self.session == session
             && self
                 .editor_focus
                 .is_some_and(|(key, _)| Some(key) == self.editor_key())
@@ -261,6 +267,18 @@ impl<A: App> Host<A> {
             input,
             false,
         );
+    }
+
+    fn key(&mut self, key: KeyPress, pressed: bool) {
+        if pressed {
+            let edit = key.edit_event_on(self.core.platform());
+            self.input(InputEvent::KeyDown(key));
+            if let Some(edit) = edit {
+                self.input(edit);
+            }
+        } else {
+            self.input(InputEvent::KeyUp(key.released()));
+        }
     }
 
     fn draw(&mut self, window: &Window) -> Result<(), RenderError> {
@@ -317,10 +335,22 @@ impl<A: App> Host<A> {
                 &said,
             );
         }
-        let editing = self.core.ime_rect().is_some();
+        let ime_off = self.core.ime_off_requested();
+        let ime_changed = ime_off != self.ime_off;
+        let editing = !ime_off && self.core.ime_rect().is_some();
+        if ime_off && ime_changed {
+            // Dropping the native responder discards its marked buffer. End
+            // the preview in Core too, including for a custom keyboard sink.
+            if self.editor_focus.is_some() {
+                self.input(InputEvent::Preedit(String::new(), None));
+            } else if cfg!(target_os = "android") {
+                window.set_ime_allowed(false);
+            }
+        }
+        self.ime_off = ime_off;
         // System Back can dismiss the Android IME while the editor retains
         // focus. A fresh tap must be able to open it again.
-        let tapped = std::mem::take(&mut self.tapped);
+        let show = std::mem::take(&mut self.show_editor);
         {
             let focus = self.editor_key().filter(|_| editing).map(|key| {
                 // InputType.TYPE_CLASS_TEXT with password or auto-correction
@@ -336,12 +366,12 @@ impl<A: App> Host<A> {
                 (key, kind)
             });
             let changed = self.editor_focus != focus;
-            if changed {
+            if changed || ime_changed {
                 self.session = self.session.wrapping_add(1);
             }
             let stamp =
                 focus.map(|(key, _)| (self.core.edit.version(key), self.core.edit.caret_stamp()));
-            if changed || tapped || self.editor_stamp != stamp {
+            if changed || show || self.editor_stamp != stamp {
                 let mut refresh = changed;
                 if let Some((key, _)) = focus
                     && self.core.edit.contains(key)
@@ -350,33 +380,32 @@ impl<A: App> Host<A> {
                     let doc = Document::read(&self.core, key);
                     refresh |= self.document != doc;
                     self.document = doc;
-                } else if changed || tapped {
+                } else if changed || show {
                     self.document = Document::default();
                     refresh = true;
                 }
-                if refresh || (editing && tapped) {
+                if refresh || (editing && show) {
                     let kind = focus.map_or(0, |(_, ty)| ty);
                     #[cfg(target_os = "android")]
-                    self.editor.set(
-                        self.session,
-                        kind,
-                        &self.document,
-                        changed || tapped,
-                        refresh,
-                    );
+                    self.editor
+                        .set(self.session, kind, &self.document, changed || show, refresh);
                     #[cfg(target_os = "ios")]
                     self.editor.set(
                         window,
                         self.session,
                         kind,
                         &self.document,
-                        changed || tapped,
+                        changed || show,
                         refresh,
                     );
                 }
                 self.editor_stamp = stamp;
             }
             self.editor_focus = focus;
+        }
+        #[cfg(target_os = "ios")]
+        if ime_changed {
+            self.editor.key_mode(window, self.session, ime_off);
         }
         self.keyboard = editing;
         let events = self.core.take_pending_events();
@@ -447,13 +476,18 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
         let opened = (|| -> Result<_, Box<dyn std::error::Error>> {
             let window = match &self.window {
                 Some(window) => window.clone(),
-                None => Arc::new(
-                    event_loop
-                        .create_window(Window::default_attributes().with_title("KUI Mobile"))?,
-                ),
+                None => {
+                    let attrs = Window::default_attributes().with_title("KUI Mobile");
+                    #[cfg(target_os = "ios")]
+                    let attrs = if let Some(id) = &self.scene_id {
+                        use winit::platform::ios::WindowAttributesExtIOS;
+                        attrs.with_scene_session(id.clone())
+                    } else {
+                        attrs
+                    };
+                    Arc::new(event_loop.create_window(attrs)?)
+                }
             };
-            #[cfg(target_os = "ios")]
-            attach_scene(&window, self.scene_id.as_deref())?;
             if self.access.is_none() {
                 self.access = Some(access::attach(
                     #[cfg(target_os = "ios")]
@@ -507,6 +541,11 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
         self.next_draw = None;
     }
 
+    fn exiting(&mut self, _: &ActiveEventLoop) {
+        self.renderer = None;
+        self.app.teardown();
+    }
+
     fn user_event(&mut self, _: &ActiveEventLoop, event: MobileEvent) {
         match event {
             #[cfg(target_os = "ios")]
@@ -530,7 +569,7 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
                 ) && self.core.edit.contains(request.key)
                 {
                     self.core.reveal(request.key);
-                    self.tapped = true;
+                    self.show_editor = true;
                 }
                 self.input(InputEvent::Access(request));
             }
@@ -541,12 +580,15 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
                     return;
                 }
                 let key = KeyPress::new(code, KeyMods::default());
-                let edit = key.edit_event_on(self.core.platform());
-                self.input(InputEvent::KeyDown(key.clone()));
-                if let Some(edit) = edit {
-                    self.input(edit);
+                self.key(key.clone(), true);
+                self.key(key, false);
+            }
+            #[cfg(target_os = "ios")]
+            MobileEvent::HardwareKey(session, key, pressed) => {
+                if self.session != session || !self.core.ime_off_requested() {
+                    return;
                 }
-                self.input(InputEvent::KeyUp(key.released()));
+                self.key(key, pressed);
             }
             MobileEvent::Ime(session, input) => {
                 if !self.owns_editor(session) {
@@ -609,7 +651,7 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
                 };
                 let time = self.epoch.elapsed().as_secs_f64();
                 let mut dispatched = false;
-                self.tapped |= self.contacts.handle(
+                self.show_editor |= self.contacts.handle(
                     touch.phase,
                     touch.id,
                     at,
@@ -636,7 +678,18 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
             WindowEvent::Focused(focused) => {
                 if focused {
                     self.refresh_motion();
+                    #[cfg(target_os = "ios")]
+                    {
+                        if self.ime_off {
+                            self.editor.key_mode(&window, self.session, true);
+                        } else if self.scene_id.is_some() && self.editor_focus.is_some() {
+                            // A restored field may have asked to become
+                            // first responder before its window was key.
+                            self.show_editor = true;
+                        }
+                    }
                 } else {
+                    self.key_mods = KeyMods::default();
                     let time = self.epoch.elapsed().as_secs_f64();
                     self.contacts.reset(|input| {
                         dispatch_input(
@@ -652,32 +705,48 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
                 self.core.set_focused(focused);
                 self.app.after_input(&mut self.core);
             }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                let state = modifiers.state();
+                self.key_mods = KeyMods {
+                    shift: state.shift_key(),
+                    ctrl: state.control_key(),
+                    alt: state.alt_key(),
+                    super_key: state.super_key(),
+                };
+            }
             WindowEvent::KeyboardInput { event, .. } => {
-                let code = match event.logical_key {
+                let code = match &event.logical_key {
                     Key::Named(NamedKey::Backspace) => Some(KeyCode::Backspace),
                     Key::Named(NamedKey::Enter) => Some(KeyCode::Enter),
                     Key::Named(NamedKey::BrowserBack | NamedKey::Escape) => Some(KeyCode::Escape),
+                    Key::Named(NamedKey::ArrowLeft) => Some(KeyCode::Left),
+                    Key::Named(NamedKey::ArrowRight) => Some(KeyCode::Right),
+                    Key::Named(NamedKey::ArrowUp) => Some(KeyCode::Up),
+                    Key::Named(NamedKey::ArrowDown) => Some(KeyCode::Down),
+                    Key::Named(NamedKey::Tab) => Some(KeyCode::Tab),
+                    Key::Named(NamedKey::Delete) => Some(KeyCode::Delete),
+                    Key::Named(NamedKey::Home) => Some(KeyCode::Home),
+                    Key::Named(NamedKey::End) => Some(KeyCode::End),
+                    Key::Named(NamedKey::PageUp) => Some(KeyCode::PageUp),
+                    Key::Named(NamedKey::PageDown) => Some(KeyCode::PageDown),
+                    Key::Character(text) if self.ime_off => KeyCode::from_name(text),
                     _ => None,
                 };
                 if let Some(code) = code {
-                    let key = KeyPress::new(code, KeyMods::default());
-                    if event.state == ElementState::Pressed {
-                        let edit = key.edit_event_on(self.core.platform());
-                        self.input(InputEvent::KeyDown(key));
-                        if let Some(edit) = edit {
-                            self.input(edit);
-                        }
-                    } else {
-                        self.input(InputEvent::KeyUp(key.released()));
-                    }
+                    let mut key = KeyPress::new(code, self.key_mods);
+                    key.repeat = event.repeat;
+                    key.text = event.text.map(|s| s.to_string());
+                    self.key(key, event.state == ElementState::Pressed);
                 } else if event.state == ElementState::Pressed
                     && let Some(text) = event.text
                 {
                     self.input(InputEvent::Text(text.to_string()));
                 }
             }
-            WindowEvent::Ime(Ime::Commit(text)) => self.input(InputEvent::Commit(text)),
-            WindowEvent::Ime(Ime::Preedit(text, range)) => {
+            WindowEvent::Ime(Ime::Commit(text)) if !self.core.ime_off() => {
+                self.input(InputEvent::Commit(text))
+            }
+            WindowEvent::Ime(Ime::Preedit(text, range)) if !self.core.ime_off() => {
                 self.input(InputEvent::Preedit(text, range))
             }
             WindowEvent::CloseRequested => event_loop.exit(),
@@ -734,35 +803,6 @@ fn view_layout(window: &Window, full: f32) -> (f32, Edges) {
         }
     }
     (full, edges)
-}
-
-/// Associate the window with its UIKit scene before making it key.
-#[cfg(target_os = "ios")]
-fn attach_scene(window: &Window, session: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-    use objc2::MainThreadMarker;
-    use objc2_ui_kit::{UIApplication, UIView, UIWindowScene};
-    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    let RawWindowHandle::UiKit(handle) = window.window_handle()?.as_raw() else {
-        return Err("missing UIKit view".into());
-    };
-    let mtm = MainThreadMarker::new().ok_or("UIKit window requires the main thread")?;
-    // SAFETY: winit owns this UIView for at least the lifetime of window.
-    let view = unsafe { handle.ui_view.cast::<UIView>().as_ref() };
-    let native = view.window().ok_or("view has no UIWindow")?;
-    let app = UIApplication::sharedApplication(mtm);
-    for scene in app.connectedScenes().to_vec() {
-        if let Some(scene) = scene.downcast_ref::<UIWindowScene>()
-            && session.is_none_or(|id| scene.session().persistentIdentifier().to_string() == id)
-        {
-            if native.windowScene().as_deref() != Some(scene) {
-                native.setHidden(true);
-                native.setWindowScene(Some(scene));
-            }
-            native.makeKeyAndVisible();
-            return Ok(());
-        }
-    }
-    Err("no connected UIWindowScene".into())
 }
 
 fn dispatch_input(

@@ -2303,6 +2303,18 @@ impl Core {
         f(&mut self.edit, &mut sess.fonts)
     }
 
+    /// Show an IME preview over an existing range selected by the host.
+    /// The selection's original text stays committed until the host
+    /// applies the final replacement. Blur or empty preedit restores it.
+    pub fn preview_ime_replacement(
+        &mut self,
+        key: Key,
+        text: &str,
+        cursor: Option<(usize, usize)>,
+    ) {
+        self.edit_with_fonts(|edit, fs| edit.preview_ime_replacement(key, text, cursor, fs));
+    }
+
     /// The viewport (logical px) the current frame was begun with — the
     /// window, less the devtools' dock while the panel is docked:
     /// what the host lays out into. Changes to it

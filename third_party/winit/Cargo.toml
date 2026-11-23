@@ -447,6 +447,7 @@ features = [
     "UIResponder",
     "UIRotationGestureRecognizer",
     "UIScene",
+    "UISceneSession",
     "UIScreen",
     "UIScreenMode",
     "UITapGestureRecognizer",

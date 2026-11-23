@@ -47,7 +47,8 @@ public final class KuiActivity extends NativeActivity {
     private long session;
     private int type, start, end;
     private String text = "";
-    private native void updateText(long session, String text, int start, int end, int markStart, int markEnd);
+    private native void updateText(long session, String text, int start, int end, int markStart, int markEnd,
+                                   String original);
 
     public void setKuiEditor(long owner, int kind, String value, int anchor, int caret, boolean show, boolean refresh) {
         runOnUiThread(() -> {
@@ -58,6 +59,7 @@ public final class KuiActivity extends NativeActivity {
             if (refresh) { text = value; start = anchor; end = caret; }
             if (kind == 0) {
                 if (editor != null) {
+                    editor.active = null;
                     ime.hideSoftInputFromWindow(editor.getWindowToken(), 0);
                     editor.clearFocus();
                 }
@@ -76,6 +78,7 @@ public final class KuiActivity extends NativeActivity {
                 // this connection, preserving the IME and its keyboard view.
                 Editable buffer = editor.active.getEditable();
                 BaseInputConnection.removeComposingSpans(buffer);
+                editor.active.original = null;
                 if (!value.contentEquals(buffer)) buffer.replace(0, buffer.length(), value);
                 Selection.setSelection(buffer, anchor, caret);
                 ime.invalidateInput(editor);
@@ -110,6 +113,7 @@ public final class KuiActivity extends NativeActivity {
         final long owner = session;
         int batch;
         boolean dirty;
+        String original;
         Connection(Editor view) {
             super(view, true);
             getEditable().replace(0, getEditable().length(), text);
@@ -128,7 +132,8 @@ public final class KuiActivity extends NativeActivity {
             start = Selection.getSelectionStart(buffer);
             end = Selection.getSelectionEnd(buffer);
             int lo = getComposingSpanStart(buffer), hi = getComposingSpanEnd(buffer);
-            updateText(owner, text, start, end, lo, hi);
+            if (lo < 0 || hi <= lo) original = null;
+            updateText(owner, text, start, end, lo, hi, original);
             getSystemService(InputMethodManager.class).updateSelection(editor, start, end, lo, hi);
         }
         @Override public boolean beginBatchEdit() { batch++; return true; }
@@ -137,10 +142,27 @@ public final class KuiActivity extends NativeActivity {
             return batch > 0;
         }
         @Override public boolean setSelection(int a, int b) { return changed(super.setSelection(a,b)); }
-        @Override public boolean setComposingRegion(int a, int b) { return changed(super.setComposingRegion(a,b)); }
+        @Override public boolean setComposingRegion(int a, int b) {
+            Editable buffer = getEditable();
+            int oldLo = getComposingSpanStart(buffer), oldHi = getComposingSpanEnd(buffer);
+            boolean ok = super.setComposingRegion(a, b);
+            int lo = getComposingSpanStart(buffer), hi = getComposingSpanEnd(buffer);
+            if (ok && (lo != oldLo || hi != oldHi)) {
+                // Marking existing text only prepares a replacement. Keep
+                // the original through later updates, even in an IME batch.
+                original = lo >= 0 && hi > lo ? buffer.subSequence(lo, hi).toString() : null;
+            }
+            return changed(ok);
+        }
         @Override public boolean setComposingText(CharSequence s,int c) { return changed(super.setComposingText(s,c)); }
-        @Override public boolean commitText(CharSequence s,int c) { return changed(super.commitText(s,c)); }
-        @Override public boolean finishComposingText() { return changed(super.finishComposingText()); }
+        @Override public boolean commitText(CharSequence s,int c) {
+            original = null;
+            return changed(super.commitText(s,c));
+        }
+        @Override public boolean finishComposingText() {
+            original = null;
+            return changed(super.finishComposingText());
+        }
         @Override public boolean deleteSurroundingText(int a,int b) { if (a == 1 && b == 0 && getEditable().length() == 0) {
                 int key = android.view.KeyEvent.KEYCODE_DEL;
                 sendKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, key));
