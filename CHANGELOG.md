@@ -21,6 +21,43 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.85 (2026-11-24)
+
+**What breaks.** None.
+
+### Added
+
+- `kui-native` has an opt-in `mobile` feature for iOS and Android. The
+  examples target iOS 17.0 and Android API 28. The host handles safe areas,
+  keyboard insets, inertial scrolling, and the platform input methods and
+  screen readers. A confirmed tap uses the existing click event.
+- iPad apps can open several UIKit scenes. Each scene has its own core,
+  focus and viewport. The notes example shows how to restore an open note,
+  caret and scroll position per scene.
+- The Tasks tutorial uses the same Lua project and Kit components on iOS,
+  Android and the web. Mobile builds embed its source `.kui` pack, which
+  carries the resolved Lua entry and exposes its content hash through
+  `kui.packed.hash`.
+
+### What you can delete
+
+- A downstream Cargo patch for the mobile window backend. The mobile
+  feature resolves `kui-winit` from crates.io.
+- App-side padding and focus adjustments for the docked keyboard and system
+  safe areas handled by the mobile host.
+
+### Native verification
+
+On macOS arm64, the release-version workspace and Node round passed 3,683
+tests. All 59 windowed examples drew 120 frames in each theme and exited
+cleanly. The accessibility audit passed all 106 checks.
+
+The mobile regression covers committing `日本` before an Add click and
+undoing the replacement in one step. The iPhone simulator and Android
+API 28 emulator loaded a Teal-configured pack at its Lua entry and
+reported its exact manifest hash. See the [mobile support matrix](docs/mobile-support-matrix.md)
+for the tested devices and remaining hardware qualification.
+
 ## 0.1.0-alpha.84 (2026-11-19)
 
 **What breaks.** No public API changes.
