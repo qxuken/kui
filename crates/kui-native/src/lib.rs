@@ -6,6 +6,15 @@
 pub use kui_core::widgets;
 pub use kui_core::*;
 
+// Desktop AccessKit shares upstream winit's types. The standalone mobile
+// host uses the packaged backend for scene creation and touch exploration.
+#[cfg(all(
+    feature = "mobile",
+    not(feature = "gui"),
+    any(target_os = "android", target_os = "ios")
+))]
+extern crate mobile_winit as winit;
+
 pub mod spawn;
 pub mod system;
 pub use spawn::set_spawner;
@@ -24,6 +33,39 @@ mod encode;
 
 #[cfg(feature = "image-codecs")]
 pub use encode::{AnimationEncoder, AnimationEncoding, ImageEncoding, encode_image};
+
+#[cfg(any(
+    feature = "gui",
+    all(feature = "mobile", any(target_os = "android", target_os = "ios"))
+))]
+mod app;
+#[cfg(any(
+    feature = "gui",
+    all(feature = "mobile", any(target_os = "android", target_os = "ios"))
+))]
+pub use app::App;
+
+#[cfg(all(
+    feature = "mobile",
+    not(feature = "gui"),
+    any(target_os = "android", target_os = "ios")
+))]
+pub mod mobile;
+#[cfg(any(
+    all(
+        feature = "mobile",
+        not(feature = "gui"),
+        any(target_os = "android", target_os = "ios")
+    ),
+    all(test, feature = "gui")
+))]
+mod mobile_touch;
+#[cfg(all(
+    feature = "mobile",
+    not(feature = "gui"),
+    any(target_os = "android", target_os = "ios")
+))]
+pub use mobile::Waker;
 
 #[cfg(feature = "gui")]
 #[path = "gui.rs"]

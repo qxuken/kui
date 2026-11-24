@@ -292,8 +292,67 @@ impl Gpu {
         target: impl Into<wgpu::SurfaceTarget<'static>>,
         options: GpuOptions,
     ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
+        Self::with_surface(target.into(), options, |gpu, surface| async {
+            Ok((gpu, surface))
+        })
+        .await
+    }
+
+    async fn with_surface<T, F>(
+        target: wgpu::SurfaceTarget<'static>,
+        options: GpuOptions,
+        finish: impl Fn(Self, wgpu::Surface<'static>) -> F,
+    ) -> Result<T, Box<dyn std::error::Error>>
+    where
+        F: Future<Output = Result<T, Box<dyn std::error::Error>>>,
+    {
         report_faults();
-        let instance = Self::new_instance(options);
+        let desc = Self::instance_descriptor(options);
+        let try_backend = |desc, target| {
+            let finish = &finish;
+            async move {
+                let (gpu, surface) =
+                    Self::open_surface(wgpu::Instance::new(desc), target, options).await?;
+                finish(gpu, surface).await
+            }
+        };
+        #[cfg(target_os = "android")]
+        let target = match target {
+            wgpu::SurfaceTarget::DisplayAndWindow(window)
+                if desc
+                    .backends
+                    .contains(wgpu::Backends::VULKAN | wgpu::Backends::GL) =>
+            {
+                // Android's Vulkan loader connects the native window when it
+                // creates a surface. Run renderer setup on it too, and drop
+                // it on failure before EGL connects to the same window.
+                let window: std::sync::Arc<dyn wgpu::DisplayAndWindowHandle> = window.into();
+                let vulkan = wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::VULKAN,
+                    ..Self::instance_descriptor(options)
+                };
+                let vulkan_error = match try_backend(vulkan, window.clone().into()).await {
+                    Ok(opened) => return Ok(opened),
+                    Err(error) => error,
+                };
+                let gl = wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::GL,
+                    ..desc
+                };
+                return try_backend(gl, window.into())
+                    .await
+                    .map_err(|error| format!("Vulkan: {vulkan_error}; GLES: {error}").into());
+            }
+            target => target,
+        };
+        try_backend(desc, target).await
+    }
+
+    async fn open_surface(
+        instance: wgpu::Instance,
+        target: wgpu::SurfaceTarget<'static>,
+        options: GpuOptions,
+    ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
         let surface = instance.create_surface(target)?;
         let gpu = Self::open(instance, Some(&surface), options).await?;
         Ok((gpu, surface))
@@ -311,7 +370,8 @@ impl Gpu {
     pub async fn windowless() -> Result<Self, Box<dyn std::error::Error>> {
         report_faults();
         let options = GpuOptions::default();
-        Self::open(Self::new_instance(options), None, options).await
+        let instance = wgpu::Instance::new(Self::instance_descriptor(options));
+        Self::open(instance, None, options).await
     }
 
     /// A `Gpu` over a device the host opened itself — a game engine's —
@@ -356,8 +416,8 @@ impl Gpu {
         cfg!(windows) && options.transparent && see_through_by_visual()
     }
 
-    /// The instance a device opened with `options` lives on.
-    fn new_instance(options: GpuOptions) -> wgpu::Instance {
+    /// The descriptor for the instance a device opened with `options` lives on.
+    fn instance_descriptor(options: GpuOptions) -> wgpu::InstanceDescriptor {
         // Every backend the build has, as wgpu defaults — but on Windows
         // D3D12 alone unless `WGPU_BACKEND` names another. An instance
         // keeps every backend it enumerated alive for as long as it lives,
@@ -389,7 +449,7 @@ impl Gpu {
         if by_visual {
             desc.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
         }
-        wgpu::Instance::new(desc)
+        desc
     }
 
     /// The adapter and device on `instance`, able to present to `surface`
@@ -427,9 +487,27 @@ impl Gpu {
         let mut required_features = wgpu::Features::empty();
         required_features.set(wgpu::Features::DUAL_SOURCE_BLENDING, dual_source);
         required_features.set(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS, mapped_frames);
+        let mut required_limits = wgpu::Limits::default();
+        if cfg!(target_os = "android")
+            && adapter.get_info().backend == wgpu::Backend::Gl
+            && !adapter
+                .get_downlevel_capabilities()
+                .flags
+                .contains(wgpu::DownlevelFlags::COMPUTE_SHADERS)
+        {
+            // GLES 3.0 can draw the quad pipelines with the WebGL 2 limits.
+            required_limits =
+                wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        }
+        if cfg!(any(target_os = "ios", target_os = "android")) {
+            // The quad shader uses locations 0..=13. iOS Metal can expose
+            // 15 varyings, below wgpu's default request of 16.
+            required_limits.max_inter_stage_shader_variables = 14;
+        }
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 required_features,
+                required_limits,
                 ..Default::default()
             })
             .await?;
@@ -1123,17 +1201,35 @@ impl Renderer {
         height: u32,
         options: GpuOptions,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let (gpu, surface) = Gpu::new_with(target, options).await?;
-        let config = Self::surface_config(&gpu, &surface, width, height, options.transparent)?;
+        Gpu::with_surface(target.into(), options, |gpu, surface| {
+            Self::for_surface(gpu, surface, width, height, options.transparent)
+        })
+        .await
+    }
+
+    async fn for_surface(
+        gpu: Gpu,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+        transparent: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let config = Self::surface_config(&gpu, &surface, width, height, transparent)?;
         if let Some(err) = Self::configure_surface(&gpu, &surface, &config).await {
             return Err(format!("configuring the surface: {err}").into());
         }
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(target_os = "android")]
+        let internal = gpu.device().push_error_scope(wgpu::ErrorFilter::Internal);
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
         let validation = gpu.device().push_error_scope(wgpu::ErrorFilter::Validation);
         let renderer = Self::assemble(gpu, Some(surface), config);
-        #[cfg(target_arch = "wasm32")]
-        if let Some(err) = validation.pop().await {
-            return Err(format!("creating WebGPU renderer resources: {err}").into());
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+        let error = validation.pop().await;
+        #[cfg(target_os = "android")]
+        let error = error.or(internal.pop().await);
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+        if let Some(err) = error {
+            return Err(format!("creating renderer resources: {err}").into());
         }
         Ok(renderer)
     }
@@ -1262,19 +1358,24 @@ impl Renderer {
         })
     }
 
-    fn configure_surface(
+    async fn configure_surface(
         gpu: &Gpu,
         surface: &wgpu::Surface<'static>,
         config: &wgpu::SurfaceConfiguration,
-    ) -> impl Future<Output = Option<wgpu::Error>> {
+    ) -> Option<wgpu::Error> {
         // A configure that fails only reports to the device's error
         // handler, and the first acquire on the unconfigured surface is a
         // panic inside wgpu; caught here, it is this constructor's error
         // — a window DXGI will not give a second swapchain, say.
         let device = gpu.device();
+        #[cfg(target_os = "android")]
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         surface.configure(device, config);
-        scope.pop()
+        let error = scope.pop().await;
+        #[cfg(target_os = "android")]
+        let error = error.or(internal.pop().await);
+        error
     }
 
     /// A renderer with no window: it draws into textures it is handed

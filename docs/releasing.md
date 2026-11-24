@@ -232,6 +232,10 @@ own final bundle signing and notarization. This step covers the CLI runner,
 not the Node addon or FFI libraries. See [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
 and [GitHub's certificate setup guide](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications).
 
+To release an app assembled by `kui pack`, follow the
+[Linux Docker signing guide](book/src/pack-macos.md). It uses `rcodesign`
+on the finished bundle and verifies the distribution ZIP on macOS.
+
 ## Registry trusted publishing
 
 The crates.io half goes through trusted publishing too, since alpha.70
@@ -270,6 +274,12 @@ token that lives 30 minutes and is revoked when the job ends, then
   workflow `release.yml`, with no environment. It follows `kui-lua` in
   `publish-crates.nu`; subsequent tagged releases publish it through
   OIDC.
+- `kui-native`'s mobile feature depends on the independently versioned
+  `kui-winit` fork. [Version 0.30.13-kui.1](https://crates.io/crates/kui-winit/0.30.13-kui.1)
+  was published manually and trusts `qxuken/kui`'s `release.yml` without
+  a GitHub environment. When its pin changes, the release script publishes
+  the backend before the workspace crates so Cargo can verify `kui-native`.
+  A regular KUI version bump reuses the published backend.
 - A field that does not match (another workflow file, an environment
   named on crates.io that the job does not use) shows only at the token
   step, as the action's error.

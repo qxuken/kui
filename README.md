@@ -133,8 +133,11 @@ CI uses the same files in locked mode.
   [kui-derive](https://docs.rs/kui-derive),
   [kui-lua](https://docs.rs/kui-lua),
   [kui-ffi](https://docs.rs/kui-ffi).
-- **[docs/howto.md](docs/howto.md)**: "How do I…", about twenty
-  questions a developer arrives with, two sentences each and a pointer.
+- **[How do I…](docs/howto.md)** answers common questions and points to
+  the reference or an example. Search it with `kui docs`.
+- **[Mobile and packaging guides](docs/book/src/SUMMARY.md#how-to-guides)**
+  cover running the Tasks pack on iOS and Android and signing a macOS app
+  from Linux Docker.
 - **[docs/props.md](docs/props.md)**: every prop, element, event,
   warning, theme role and metric, with its JSX, Lua, C and Odin spelling in
   the same row. Generated from the schema, so it cannot drift.

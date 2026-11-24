@@ -196,57 +196,12 @@ pub fn app() -> Option<&'static AppInfo> {
 /// Installed before the `.tl` searcher, which goes in ahead of it.
 pub fn install_loader(lua: &Lua) -> mlua::Result<()> {
     let loadfile = lua.create_function(|lua, (path, env): (String, Option<Table>)| {
-        let bytes = match std::fs::read(&path) {
-            Ok(b) => b,
-            Err(e) => return Ok((None, Some(format!("cannot open {path}: {e}")))),
-        };
-        let packed =
-            crate::packed::dir().is_some_and(|d| std::path::Path::new(&path).starts_with(d));
-        let mut chunk = lua.load(bytes).set_name(format!("@{path}"));
-        if !packed {
-            chunk = chunk.set_mode(mlua::chunk::ChunkMode::Text);
-        }
-        if let Some(env) = env {
-            chunk = chunk.set_environment(env);
-        }
-        match chunk.into_function() {
-            Ok(f) => Ok((Some(f), None)),
-            Err(e) => Ok((None, Some(e.to_string()))),
-        }
+        let path = std::path::Path::new(&path);
+        let packed = crate::packed::dir().is_some_and(|dir| path.starts_with(dir));
+        Ok(kui_runner::loader::load_file(lua, path, env, packed))
     })?;
-    lua.load(LOADER_LUA)
-        .set_name("@kui:loader")
-        .call::<()>(loadfile)
+    kui_runner::loader::install(lua, loadfile, true)
 }
-
-const LOADER_LUA: &str = r##"
-local loadfile_ = ...
-local load_ = load
--- An `env` given, even nil, is the chunk's `_ENV`; one left out is the
--- globals. So the arguments are passed on as many as they came.
-function load(...)
-  local chunk, name, _, env = ...
-  if select("#", ...) >= 4 then return load_(chunk, name, "t", env) end
-  return load_(chunk, name, "t")
-end
-function loadfile(path, _mode, env)
-  return loadfile_(path, env)
-end
-function dofile(path)
-  local f, err = loadfile_(path)
-  if not f then error(err, 2) end
-  return f()
-end
--- `require`'s searcher for Lua files, the same as Lua's own but through
--- the loader above.
-package.searchers[2] = function(name)
-  local path, err = package.searchpath(name, package.path)
-  if not path then return "\n\t" .. err end
-  local f, lerr = loadfile_(path)
-  if not f then error(("error loading module '%s' from file '%s':\n\t%s"):format(name, path, lerr), 2) end
-  return f, path
-end
-"##;
 
 /// What `kui.parse_args` raises to stop the script once it has printed
 /// help or a mistake and set the exit: no failure to report.

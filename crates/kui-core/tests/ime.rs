@@ -405,3 +405,112 @@ fn a_composition_moves_no_caret_in_the_committed_text() {
     assert_eq!(core.edit_text(key).as_deref(), Some("ab日本"));
     assert_eq!(core.edit.caret_and_selection(key), Some((8, None)));
 }
+
+#[test]
+fn a_touch_button_accepts_marked_text_before_it_clicks() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(300.0, 120.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let note = ui.text_edit(
+        "note",
+        "",
+        &kui_core::EditOptions {
+            autofocus: true,
+            ..Default::default()
+        },
+        NodeSpec::row().height(30.0).grow_width().on_change("draft"),
+    );
+    let second = ui.text_edit(
+        "second",
+        "",
+        &Default::default(),
+        NodeSpec::row().height(30.0).grow_width(),
+    );
+    let add = ui.with_keyed(
+        "add",
+        NodeSpec::row().height(30.0).grow_width().on_click("add"),
+        |_| {},
+    );
+    ui.finish();
+
+    let move_to = |core: &mut Core, key| {
+        let rect = core
+            .interaction
+            .hits()
+            .iter()
+            .find(|hit| hit.key == key)
+            .unwrap()
+            .rect;
+        core.handle_input(InputEvent::CursorMoved(kui_core::Vec2::new(
+            rect.x + 8.0,
+            rect.y + 8.0,
+        )));
+    };
+    core.handle_input(InputEvent::Preedit("か".into(), None));
+    move_to(&mut core, second);
+    assert!(core.handle_tap_press().is_empty());
+    core.handle_input(InputEvent::mouse_up());
+    assert_eq!(core.edit_text(note).as_deref(), Some(""));
+    assert_eq!(core.edit.focused(), Some(second));
+
+    core.set_focus(Some(note));
+    core.handle_input(InputEvent::Preedit("sun".into(), None));
+    move_to(&mut core, add);
+    let events = core.handle_tap_press();
+    assert_eq!(kinds(&events), ["change"]);
+    assert_eq!(core.edit_text(note).as_deref(), Some("sun"));
+    assert_eq!(kinds(&core.handle_input(InputEvent::mouse_up())), ["click"]);
+}
+
+#[test]
+fn tapping_add_commits_a_marked_replacement_before_the_click() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(300.0, 120.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let note = ui.text_edit(
+        "note",
+        "say rain now",
+        &kui_core::EditOptions {
+            autofocus: true,
+            ..Default::default()
+        },
+        NodeSpec::row().height(30.0).grow_width().on_change("draft"),
+    );
+    let add = ui.with_keyed(
+        "add",
+        NodeSpec::row().height(30.0).grow_width().on_click("add"),
+        |_| {},
+    );
+    ui.finish();
+
+    core.edit.set_selection(note, (0, 4), (0, 8));
+    core.preview_ime_replacement(note, "日本", None);
+    assert_eq!(core.edit_text(note).as_deref(), Some("say rain now"));
+
+    let rect = core
+        .interaction
+        .hits()
+        .iter()
+        .find(|hit| hit.key == add)
+        .unwrap()
+        .rect;
+    core.handle_input(InputEvent::CursorMoved(kui_core::Vec2::new(
+        rect.x + 8.0,
+        rect.y + 8.0,
+    )));
+    let events = core.handle_tap_press();
+    assert_eq!(kinds(&events), ["change"]);
+    let kui_core::Event::EditChange(change) = events[0].read() else {
+        panic!("Add should see the committed draft before its click");
+    };
+    assert_eq!(change.text, "say 日本 now");
+    assert_eq!(core.edit.caret_and_selection(note), Some((10, None)));
+    assert_eq!(kinds(&core.handle_input(InputEvent::mouse_up())), ["click"]);
+
+    core.set_focus(Some(note));
+    core.handle_input(InputEvent::Key(
+        kui_core::EditKey::Undo,
+        kui_core::Mods::NONE,
+    ));
+    assert_eq!(core.edit_text(note).as_deref(), Some("say rain now"));
+}

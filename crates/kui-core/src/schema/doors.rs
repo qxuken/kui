@@ -2499,7 +2499,8 @@ mod tests {
             + &read(root.join("../../kui-native/src/system.rs"));
         // The `App` trait's body: a method of it is a callback the app
         // writes, spelled `fn name(` and public by being the trait's.
-        let app_trait = launcher
+        let app_source = read(root.join("../../kui-native/src/app.rs"));
+        let app_trait = app_source
             .split_once("pub trait App {")
             .map(|(_, rest)| rest.split_once("\n}\n").map_or(rest, |(body, _)| body))
             .unwrap_or_default();

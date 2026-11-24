@@ -20,6 +20,11 @@
 - [Presentations as code](presentations.md)
 - [Where next](where-next.md)
 
+# How-to guides
+
+- [Run a KUI app on iOS and Android](mobile.md)
+- [Package a macOS app from Linux](pack-macos.md)
+
 # Examples
 
 - [Overview](examples/index.md)

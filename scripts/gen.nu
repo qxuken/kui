@@ -87,6 +87,7 @@ def rustdoc-page [text: string]: nothing -> string {
     | str replace --all "](props.md" "](crate::docs::props"
     | str replace --all "](howto.md" "](crate::docs::howto"
     | str replace --all "](book/src/SUMMARY.md)" $"]\(($BOOK))"
+    | str replace --all "](book/src/" $"]\(($GITHUB)/docs/book/src/"
     | str replace --all "](adr/" $"]\(($GITHUB)/docs/adr/"
     | str replace --all "](../" $"]\(($GITHUB)/"
     | $in + "\n"

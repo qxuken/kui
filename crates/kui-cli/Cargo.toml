@@ -16,7 +16,7 @@ path = "src/main.rs"
 kui-core.workspace = true
 kui-native = { workspace = true, features = ["default"] }
 kui-lua.workspace = true
-kui-kit.workspace = true
+kui-runner = { workspace = true, features = ["archive"] }
 kui-trace = { workspace = true, features = ["lua"] }
 mlua.workspace = true
 toml = "0.9"
@@ -33,7 +33,6 @@ argon2 = "0.5"
 # `kui.secrets`: the OS's store, one crate per platform under keyring-core.
 keyring-core = "1"
 flate2 = "1.1"
-crc32fast = "1.5"
 png = "0.18"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

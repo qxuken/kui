@@ -486,6 +486,12 @@ impl Core {
     /// a password field takes keys, not compositions (backlog F167).
     /// False for a frame that never said and has none.
     pub fn ime_off(&self) -> bool {
-        self.ime_off || self.secure_editor_focused()
+        self.ime_off_requested() || self.secure_editor_focused()
+    }
+
+    /// Whether the app explicitly requested key-only input. Mobile hosts
+    /// still need to offer a password keyboard for a focused secure field.
+    pub fn ime_off_requested(&self) -> bool {
+        self.ime_off
     }
 }

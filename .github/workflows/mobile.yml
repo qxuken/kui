@@ -1,0 +1,154 @@
+name: mobile
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/kui-core/**'
+      - 'crates/kui-native/**'
+      - 'crates/kui-runner/**'
+      - 'crates/kui-wgpu/**'
+      - 'crates/kui-access/**'
+      - 'examples/rust/apps/mobile/**'
+      - 'third_party/winit/**'
+      - '.github/workflows/mobile.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/kui-core/**'
+      - 'crates/kui-native/**'
+      - 'crates/kui-runner/**'
+      - 'crates/kui-wgpu/**'
+      - 'crates/kui-access/**'
+      - 'examples/rust/apps/mobile/**'
+      - 'third_party/winit/**'
+      - '.github/workflows/mobile.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iphone:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-tools
+        with:
+          tools: rust
+      - name: Boot an iPhone and install the simulator toolchain
+        run: |
+          rustup target add aarch64-apple-ios-sim
+          udid=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for runtime, devices in json.load(sys.stdin)["devices"].items() if ".iOS-" in runtime for d in devices if d["name"].startswith("iPhone")))')
+          xcrun simctl bootstatus "$udid" -b
+          echo "UDID=$udid" >> "$GITHUB_ENV"
+      - name: Check composition and field switching
+        run: KUI_EDITING_REGRESSION=1 examples/rust/apps/mobile/run-ios-sim.sh "$UDID"
+      - name: Check a standalone iOS project
+        run: python3 examples/rust/apps/mobile/regression/downstream.py aarch64-apple-ios-sim
+      - name: Check the bottom editor, rotation and draft restoration
+        run: |
+          examples/rust/apps/mobile/run-ios-sim.sh "$UDID"
+          xcodebuild test -project examples/rust/apps/mobile/regression/ios/MobileChecks.xcodeproj \
+            -scheme MobileChecks -destination "platform=iOS Simulator,id=$UDID" \
+            -resultBundlePath "$RUNNER_TEMP/mobile.xcresult" -parallel-testing-enabled NO
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: iphone-test-results
+          path: ${{ runner.temp }}/mobile.xcresult
+
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 28
+            image: 'system-images;android-28;default;x86_64'
+          - api: 35
+            image: 'system-images;android-35;google_apis;x86_64'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-tools
+        with:
+          tools: rust
+      - name: Check the Android app and editing probe against the NDK
+        run: |
+          rustup target add aarch64-linux-android
+          export CC_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang"
+          export AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+          cargo check --locked -p kui-mobile-spike --target aarch64-linux-android --features editing-regression
+          python3 examples/rust/apps/mobile/regression/downstream.py aarch64-linux-android
+      - name: Add Android SDK commands to PATH
+        run: |
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+      - name: Install the Android emulator's PulseAudio library
+        run: |
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends libpulse0
+      - name: Prepare the x86_64 emulator
+        env:
+          ANDROID_IMAGE: ${{ matrix.image }}
+        run: |
+          rustup target add x86_64-linux-android
+          cargo install --locked cargo-apk --version 0.10.0
+          sdkmanager 'platform-tools' 'emulator' 'build-tools;35.0.0' 'platforms;android-35' "$ANDROID_IMAGE" < <(yes)
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avdmanager create avd -n kui -k "$ANDROID_IMAGE" --device pixel_2 --path "$ANDROID_AVD_HOME/kui.avd"
+          sudo chmod a+rw /dev/kvm
+          emulator="$ANDROID_HOME/emulator/emulator"
+          "$emulator" -version
+          "$emulator" -accel-check
+          "$emulator" -list-avds | grep -Fx kui
+          adb start-server
+          # SwiftShader Vulkan in this emulator rejects wgpu's shader metadata.
+          "$emulator" -avd kui -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -feature -Vulkan \
+            > "$RUNNER_TEMP/emulator.log" 2>&1 </dev/null &
+          emulator_pid=$!
+          deadline=$((SECONDS + 300))
+          until timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -qx 1; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null || (( SECONDS >= deadline )); then
+              adb devices -l
+              tail -100 "$RUNNER_TEMP/emulator.log"
+              exit 1
+            fi
+            sleep 2
+          done
+          test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "${{ matrix.api }}"
+          adb shell input keyevent KEYCODE_WAKEUP
+          adb shell wm dismiss-keyguard
+      - name: Verify Android editing and accessibility actions
+        env:
+          KUI_ANDROID_TARGET: x86_64-linux-android
+        run: |
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
+          KUI_EDITING_REGRESSION=1 examples/rust/apps/mobile/run-android-emulator.sh
+          examples/rust/apps/mobile/run-android-emulator.sh
+          examples/rust/apps/mobile/regression/android/run.sh
+      - name: Capture the emulator on failure
+        if: failure()
+        run: |
+          if test "$(timeout 5 adb get-state 2>/dev/null)" = device; then
+            timeout 15 adb logcat -d > "$RUNNER_TEMP/logcat.txt" || true
+            timeout 15 adb exec-out screencap -p > "$RUNNER_TEMP/screen.png" || true
+          fi
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: android-api-${{ matrix.api }}-test-results
+          path: |
+            ${{ runner.temp }}/emulator.log
+            ${{ runner.temp }}/logcat.txt
+            ${{ runner.temp }}/screen.png

@@ -7,6 +7,8 @@ Rust of your own, drawn by Kit — and a test checks it without a window.
 
 To write a view directly in the book, open the [Lua playground](playground.md).
 
+## Build for the browser
+
 The browser example was built by `kui pack --format web` from the Lua
 project below. Its data file is stored in this browser.
 
@@ -17,6 +19,9 @@ kui pack tasks --format web --out dist
 Serve `dist` over HTTP during development or deploy its contents to a
 static HTTPS host. Apps on the same site store data separately by
 their project ID.
+
+The checkout also embeds this project on
+[iOS and Android](mobile.md). Each mobile app keeps its own data.
 
 ## The host you do not write
 
@@ -188,10 +193,11 @@ in the danger colour and reads after its name.
 
 ## A task, so the window keeps drawing
 
-Saving writes a file. A call that waits, made from `update`, would stop
-the frame until it returned; inside `kui.spawn` it yields instead, and
-the window keeps drawing. When it is done, the task hands a message back
-with `kui.dispatch`:
+Saving writes a file. On desktop, a file write in `update` blocks the frame.
+In `kui.spawn`, the task yields while the runner writes the file. The mobile
+and browser hosts run short task callbacks between frames. Keep a portable
+callback small enough to finish in one turn. When the save finishes, it hands
+a message back with `kui.dispatch`.
 
 ```lua
 {{#include ../../../examples/lua/tutorial/tasks/main.lua:save}}
@@ -230,9 +236,8 @@ the next frame, so a timer step that presses Tab and a view that prints
 
 ## Shipping it
 
-Your users should not need `kui`. `kui pack` builds the app for them —
-for every platform, from your machine, because the app is Lua and only
-the runner differs, and the release has a runner for each:
+Each desktop package bundles the native runner and your Lua project.
+`kui pack` can assemble all the desktop targets from one machine.
 
 ```bash
 kui pack tasks --target all --installer https://example.com/tasks/
@@ -248,6 +253,10 @@ Node and a registry of its own.
 The `id` is what names the app's own folder, `kui.data_dir` — which is
 why the task list keeps its file there: a packed app's own files are
 read-only.
+
+For direct macOS distribution, sign and notarize the assembled bundle.
+The [Linux packaging guide](pack-macos.md) shows the Docker workflow and
+the checks to run on the receiving Mac.
 
 ## Where the runner goes from here
 

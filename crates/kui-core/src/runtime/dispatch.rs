@@ -10,6 +10,28 @@ use crate::input::Target;
 use crate::window::DismissReason;
 
 impl Core {
+    /// Starts a primary press from a completed tap at the current cursor.
+    /// A button can use what was typed into the focused editor, so it sees
+    /// the marked text as a committed change before it gets the click.
+    /// Tapping another editor uses the ordinary focus and cancellation path.
+    pub fn handle_tap_press(&mut self) -> Vec<UiEvent> {
+        let mut events = Vec::new();
+        if let Some(note) = self.edit.focused()
+            && let Some(text) = self.edit.preedit(note)
+            && let Some(point) = self.interaction.cursor()
+            && !matches!(self.interaction.target_at(point), Some(Target::Bar(_)))
+            && let Some(hit) = self.interaction.press_hit_at(point)
+            && hit.payload.is_some()
+            && self.within_modal(hit.key)
+            && let Some(i) = self.tree.index_of(hit.key)
+            && crate::access::derived_role(&self.tree, i) == Some(crate::access::Role::Button)
+        {
+            events = self.handle_input(InputEvent::Commit(text.to_owned()));
+        }
+        events.extend(self.handle_input(InputEvent::mouse_down(1)));
+        events
+    }
+
     /// Feeds one input event; returns any UI events it resolved to,
     /// hit-tested against the previous frame's layout.
     pub fn handle_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
@@ -484,7 +506,7 @@ impl Core {
                 // Typing is another key: an Escape's arming is spent.
                 self.tab_armed = None;
                 if let Some(key) = self.edit.focused() {
-                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
+                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, false, fs)) {
                         self.push_edit_event(key, EventKind::Change, &mut out);
                     }
                 } else if let Some(i) = self.focused_control() {
@@ -546,7 +568,7 @@ impl Core {
                 let pasted = std::mem::replace(&mut self.awaiting_paste, false) || paste;
                 self.tab_armed = None;
                 if let Some(key) = self.edit.focused() {
-                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
+                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, !pasted, fs)) {
                         self.push_edit_event(key, EventKind::Change, &mut out);
                     }
                 } else {

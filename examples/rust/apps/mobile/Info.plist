@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleIdentifier</key><string>dev.kui.mobile.spike</string>
+    <key>CFBundleName</key><string>KUI Mobile</string>
+    <key>CFBundleExecutable</key><string>kui-mobile-spike</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>0.1</string>
+    <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+    <key>LSRequiresIPhoneOS</key><true/>
+    <key>MinimumOSVersion</key><string>17.0</string>
+    <key>UIApplicationSceneManifest</key><dict>
+        <key>UIApplicationSupportsMultipleScenes</key><false/>
+        <key>UISceneConfigurations</key><dict>
+            <key>UIWindowSceneSessionRoleApplication</key><array><dict>
+                <key>UISceneConfigurationName</key><string>KUI</string>
+                <key>UISceneClassName</key><string>UIWindowScene</string>
+            </dict></array>
+        </dict>
+    </dict>
+    <key>UISupportedInterfaceOrientations</key><array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UILaunchScreen</key><dict/>
+</dict></plist>

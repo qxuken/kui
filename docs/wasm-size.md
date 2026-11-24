@@ -706,8 +706,8 @@ already-linked decoder, bounded output/dictionary sizes, a one-time source
 cache, and generated slice ranges. It preserves each original UTF-8 source
 byte, `package.preload`/`require` execution, and existing chunk names; it does
 not minify or precompile Lua, so source line numbering is preserved.
-[Current Kit loader](../crates/kui-cli/src/kit.rs),
-[browser inclusion](../crates/kui-web-lua/src/app.rs)
+[Current Kit loader](../crates/kui-runner/src/kit.rs),
+[browser inclusion](../crates/kui-runner/src/app.rs)
 
 | Packaged runner | Before | Kit prototype |
 | --- | ---: | ---: |

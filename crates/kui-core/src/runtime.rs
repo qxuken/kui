@@ -516,6 +516,7 @@ pub struct Core {
     no_system_fonts: bool,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
+    pub(crate) safe_area: crate::Edges,
     pub(crate) scale: f32,
     // Frame-builder state.
     stack: Vec<u32>,
@@ -1561,6 +1562,7 @@ impl Core {
             no_system_fonts: session.state().system.last_resort,
             display: DisplayList::default(),
             viewport: Size::ZERO,
+            safe_area: crate::Edges::default(),
             scale: 1.0,
             stack: Vec::new(),
             counters: Vec::new(),
@@ -2301,6 +2303,18 @@ impl Core {
         f(&mut self.edit, &mut sess.fonts)
     }
 
+    /// Show an IME preview over an existing range selected by the host.
+    /// The selection's original text stays committed until the host
+    /// applies the final replacement. Blur or empty preedit restores it.
+    pub fn preview_ime_replacement(
+        &mut self,
+        key: Key,
+        text: &str,
+        cursor: Option<(usize, usize)>,
+    ) {
+        self.edit_with_fonts(|edit, fs| edit.preview_ime_replacement(key, text, cursor, fs));
+    }
+
     /// The viewport (logical px) the current frame was begun with — the
     /// window, less the devtools' dock while the panel is docked:
     /// what the host lays out into. Changes to it
@@ -2308,6 +2322,13 @@ impl Core {
     /// coming, going or resizing among them.
     pub fn viewport(&self) -> Size {
         Size::new(self.dt_area.w, self.dt_area.h)
+    }
+
+    /// Unobstructed layout can use these edge distances within the frame's
+    /// viewport. Hosts supply logical pixels after accounting for any viewport
+    /// reduction (such as a keyboard). Hosts without insets default to zero.
+    pub fn set_safe_area(&mut self, edges: crate::Edges) {
+        self.safe_area = edges;
     }
 
     /// The device pixel ratio the current frame was begun with.
@@ -2327,6 +2348,14 @@ impl Core {
     pub fn output(&mut self) -> (&DisplayList, &mut GlyphAtlas) {
         self.output_read = true;
         (&self.display, &mut self.atlas)
+    }
+
+    /// Presents a layout that occupies the top portion of a larger drawable
+    /// (for example, a phone surface covered by a docked keyboard). Geometry
+    /// and hit testing retain the layout size. Projection uses physical pixels.
+    pub fn output_for_surface(&mut self, physical: Size) -> (&DisplayList, &mut GlyphAtlas) {
+        self.display.viewport = physical;
+        self.output()
     }
 
     /// The finished frame's draw data for a reader that is not the core's

@@ -15,6 +15,7 @@ are JSX; the Lua and C spellings of every row named here are in the same
 - [Draw and animate](#draw-and-animate)
 - [Interaction, focus and reading](#interaction-focus-and-reading)
 - [Sound and effects](#sound-and-effects)
+- [Run on mobile](#run-on-mobile)
 - [Test it](#test-it)
 - [Ship and upgrade](#ship-and-upgrade)
 
@@ -2608,6 +2609,45 @@ as `render` does on a window.
 [ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
 [alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-2026-10-24)
 
+## Run on mobile
+
+### How do I run a Lua and Kit app on iOS and Android?
+
+Use `kui pack examples/lua/tutorial/tasks --format kui` to build the Tasks
+source archive. Set `KUI_TASKS_PACK` to the archive path and run the mobile
+launcher for the booted simulator or emulator. The browser version uses
+`--format web` with the same project.
+
+[Pack Tasks and run it on both platforms](book/src/mobile.md#build-the-tasks-pack)
+
+### How do I handle taps, swipes and the software keyboard in a Rust app?
+
+Use `kui-native` with the `mobile` feature, then pass your `App` and `Core` to
+`mobile::run`. Use existing click and edit events, put overflow content in
+a scroll container, and pad the root with `ui.safe_area()`. The host handles
+touch recognition and resizes the viewport for the docked keyboard.
+
+[Use the mobile host from Rust](book/src/mobile.md#use-the-mobile-host-from-rust)
+
+### How do I test mobile typing and saved data after a cold launch?
+
+Add a task using the on-screen keyboard, check its checkbox and swipe the
+list. Terminate the process and relaunch it to verify the checked task returns
+from `kui.data_dir`. Use the Rust touchscreen example to check keyboard
+insets, rotation, VoiceOver, TalkBack and switching fields mid-composition.
+
+[Tasks smoke test](book/src/mobile.md#check-typing-scrolling-and-saved-data) ·
+[Mobile support matrix](https://github.com/qxuken/kui/blob/main/docs/mobile-support-matrix.md)
+
+### How do I open and restore two windows on iPad?
+
+Use `mobile::run_scenes` with a factory that creates a core and view for each
+UIKit session. Share the note store across scenes and save navigation, scroll
+and caret per session. Start the iPad example with `KUI_IPAD_SCENES=1` and
+choose **Open B in New Window** to try two notes side by side.
+
+[Open two notes on iPad](book/src/mobile.md#open-two-notes-on-ipad)
+
 ## Test it
 
 ### How do I get the settled frame instead of frame 0 of a transition?
@@ -3086,6 +3126,16 @@ label no longer needs it: that is
 [alpha.5](../CHANGELOG.md#010-alpha5-2026-09-03)
 
 ## Ship and upgrade
+
+### How do I sign and notarize a macOS app from Linux Docker?
+
+Use a matching ARM64 macOS runner binary with
+`kui pack --format app --target darwin-arm64 --runner PATH`. Sign the assembled
+`.app` in Docker with `rcodesign` and a Developer ID Application identity.
+Submit it for notarization and attach the ticket before creating the release
+ZIP. Running `rcodesign sign` again replaces the bundle's existing signature.
+
+[Package, sign and verify a macOS app from Linux](book/src/pack-macos.md)
 
 ### How do I get completion for the Lua views in my editor?
 

@@ -8,10 +8,10 @@ use std::{
 
 use kui_core::{DevtoolsDock as Dock, Extensions, Session, SvgFileUpdate, Ui};
 use kui_lua::LuaExtension;
+use kui_runner::{app, kit};
 use kui_web::{App, Runner};
 use serde_json::Value;
 
-mod app;
 #[path = "../../../examples/web/host.rs"]
 mod host;
 mod playground;
@@ -33,8 +33,8 @@ fn make_runner() -> Runner<AppModel> {
     let session = Session::with_fonts("en-US", fonts);
     session.set_svg_file_resolver(|path, previous| {
         // A packed asset has one revision for the lifetime of this instance.
-        let path = Path::new(app::APP_DIR).join(path);
-        if !path.starts_with(app::APP_DIR) {
+        let path = Path::new(app::WEB_APP_DIR).join(path);
+        if !path.starts_with(app::WEB_APP_DIR) {
             return SvgFileUpdate::Changed {
                 stamp: None,
                 data: Err(format!(
@@ -82,7 +82,7 @@ fn load() -> Result<(), Box<dyn std::error::Error>> {
     let version = manifest["version"]
         .as_str()
         .ok_or("web bundle has no version")?;
-    let root = Path::new(app::APP_DIR);
+    let root = Path::new(app::WEB_APP_DIR);
     let entry = root.join(entry);
     let source =
         std::fs::read_to_string(&entry).map_err(|e| format!("{}: {e}", entry.display()))?;
@@ -94,16 +94,15 @@ fn load() -> Result<(), Box<dyn std::error::Error>> {
         if editable {
             playground::install(lua)?;
         }
-        kui_lua::set_script_dir(lua, root)?;
-        app::install(lua, name, id, version)
+        app::install_web(lua, name, id, version)
     })?;
     let drain = app::initialize(&app)?;
     let mut extensions = Extensions::new();
-    let kit = app::kit::extension()?;
+    let kit = kit::extension()?;
     if editable {
         playground::install(kit.lua())?;
     }
-    extensions.push_as(app::kit::NAMESPACE, Box::new(kit))?;
+    extensions.push_as(kit::NAMESPACE, Box::new(kit))?;
     extensions.push_as("app", Box::new(app))?;
     TASKS.with(|tasks| {
         tasks
