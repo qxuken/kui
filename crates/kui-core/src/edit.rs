@@ -1795,23 +1795,51 @@ impl EditStore {
 
     // -- Input application (focused editor). Returns true if content changed.
 
-    pub(crate) fn apply_text(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
+    pub(crate) fn apply_text(
+        &mut self,
+        key: Key,
+        text: &str,
+        commit: bool,
+        fs: &mut FontSystem,
+    ) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
         };
-        // A commit ends the composition (winit also clears preedit first);
-        // the committed text goes in where the composition began.
-        s.abandon_preedit();
         let filtered: String = text.chars().filter_map(|c| typed(c, s.multiline)).collect();
+        // Restore a preview's original text and select it for the commit
+        // so the replacement is recorded as a single edit.
+        let replacement = s
+            .preedit
+            .as_ref()
+            .filter(|pre| commit && !pre.original.is_empty())
+            .map(|pre| {
+                (
+                    pre.start,
+                    end_cursor(pre.start, &pre.original),
+                    pre.original != filtered,
+                )
+            });
+        s.abandon_preedit();
         if filtered.is_empty() {
             return false;
         }
-        s.insert_recorded(&filtered);
+        let changed = if let Some((start, end, changed)) = replacement {
+            s.editor.set_cursor(end);
+            if changed {
+                s.editor.set_selection(Selection::Normal(start));
+            }
+            changed
+        } else {
+            true
+        };
+        if changed {
+            s.insert_recorded(&filtered);
+        }
         s.editor.shape_as_needed(fs, false);
         s.version += 1;
         s.invalidate_measurements();
         self.touch_caret(key);
-        true
+        changed
     }
 
     /// Returns (content_changed, submit) — submit is Enter in single-line.

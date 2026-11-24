@@ -506,7 +506,7 @@ impl Core {
                 // Typing is another key: an Escape's arming is spent.
                 self.tab_armed = None;
                 if let Some(key) = self.edit.focused() {
-                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
+                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, false, fs)) {
                         self.push_edit_event(key, EventKind::Change, &mut out);
                     }
                 } else if let Some(i) = self.focused_control() {
@@ -568,7 +568,7 @@ impl Core {
                 let pasted = std::mem::replace(&mut self.awaiting_paste, false) || paste;
                 self.tab_armed = None;
                 if let Some(key) = self.edit.focused() {
-                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
+                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, !pasted, fs)) {
                         self.push_edit_event(key, EventKind::Change, &mut out);
                     }
                 } else {

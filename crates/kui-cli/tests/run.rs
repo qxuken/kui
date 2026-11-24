@@ -3056,6 +3056,35 @@ fn a_packed_archive_runs_from_itself_read_only_with_its_arguments() {
 }
 
 #[test]
+fn a_source_archive_records_the_lua_entry_resolved_from_teal_config() {
+    let dir = app(
+        "pack-teal-config",
+        &[
+            (
+                "kui.config.tl",
+                r#"
+                local entry: string = "screens/start.lua"
+                return { name = "Start", id = "dev.kui.test.start", entry = entry }
+                "#,
+            ),
+            ("main.lua", "-- default entry"),
+            ("screens/start.lua", "-- configured entry"),
+        ],
+    );
+    let output = kui(&dir, &["pack", "--format", "kui", "--out", "dist"], 60);
+    assert!(output.status.success(), "{}", out(&output));
+
+    let archive =
+        kui_runner::archive::ZipReader::open_file(&dir.join("dist/start-0.0.0.kui")).unwrap();
+    let source = archive.get("kui.pack.lua").unwrap().read().unwrap();
+    let lua = mlua::Lua::new();
+    let manifest: mlua::Table = lua.load(&source).eval().unwrap();
+    let entry: String = manifest.get("entry").unwrap();
+    assert_eq!(entry, "screens/start.lua");
+    assert!(archive.get(&format!("app/{entry}")).is_some());
+}
+
+#[test]
 fn a_bytecode_archive_runs_and_bytecode_loads_nowhere_else() {
     let dir = packer("pack-bytecode");
     let cache = dir.join(".cache");

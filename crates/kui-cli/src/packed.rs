@@ -23,7 +23,7 @@ pub struct Packed {
     pub runner: String,
     pub bytecode: bool,
     pub hash: String,
-    /// The entry `kui pack --bytecode` wrote, when it did.
+    /// The resolved source entry or the stub generated for bytecode.
     pub entry: Option<String>,
 }
 

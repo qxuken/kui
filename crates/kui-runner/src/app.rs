@@ -16,6 +16,7 @@ pub(crate) struct Metadata<'a> {
     pub id: &'a str,
     pub version: &'a str,
     pub platform: &'a str,
+    pub packed_hash: Option<&'a str>,
 }
 
 #[derive(Clone)]
@@ -75,6 +76,7 @@ pub fn install_web(lua: &Lua, name: &str, id: &str, version: &str) -> mlua::Resu
             id,
             version,
             platform: "web",
+            packed_hash: None,
         },
         &Paths::new(WEB_APP_DIR, "/data", "/cache"),
     )
@@ -186,6 +188,7 @@ pub(crate) fn install(lua: &Lua, app: Metadata<'_>, paths: &Paths) -> mlua::Resu
     let packed = lua.create_table()?;
     packed.set("runner", env!("CARGO_PKG_VERSION"))?;
     packed.set("bytecode", false)?;
+    packed.set("hash", app.packed_hash)?;
     kui.set("packed", packed)?;
     kui.set("fs", fs)?;
     kui.set("json", json)?;
@@ -299,6 +302,7 @@ mod tests {
                 id: "dev.kui.test",
                 version: "1",
                 platform: "test",
+                packed_hash: Some("app-content-hash"),
             },
             &Paths::new(
                 dir.path(),
@@ -311,6 +315,7 @@ mod tests {
         lua.load(
             r#"
             assert(require("source") == 42)
+            assert(kui.packed.hash == "app-content-hash")
             assert(load("return value", "source", "t", {value = 42})() == 42)
             assert(load(compiled, "compiled", "b") == nil)
             assert(not pcall(require, "compiled"))

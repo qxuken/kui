@@ -259,15 +259,24 @@ fn mode_of(_: &Path) -> u32 {
     0o644
 }
 
-/// The app's files as they go into the archive: as written, or — with
-/// `--bytecode` — each `.lua` and `.tl` compiled (the manifest stays
-/// source), plus a source entry that requires the compiled one.
+/// The files and entry as they go into the archive. With `--bytecode`,
+/// each `.lua` and `.tl` is compiled and a source stub loads the entry.
 fn prepared(
     project: &Project,
     files: &[File],
     opts: &Opts,
 ) -> Result<(Vec<File>, Option<String>), String> {
     if !opts.bytecode {
+        // An embedded runner can load the resolved Lua entry even when
+        // the app declares it in a Teal configuration.
+        let entry = crate::paths::canonical(&project.entry)
+            .ok()
+            .and_then(|path| {
+                path.strip_prefix(&project.dir)
+                    .ok()
+                    .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+            })
+            .filter(|entry| files.iter().any(|file| file.name == *entry));
         return Ok((
             files
                 .iter()
@@ -277,7 +286,7 @@ fn prepared(
                     mode: f.mode,
                 })
                 .collect(),
-            None,
+            entry,
         ));
     }
     let lua = mlua::Lua::new();

@@ -59,6 +59,7 @@ impl EmbeddedApp {
         }
         let name: String = manifest.get("name")?;
         let version: String = manifest.get("version")?;
+        let hash: Option<String> = manifest.get("hash")?;
 
         let root = unpack(&zip, &cache.join("packs"), &sha256_hex(bytes))?;
         let entry = entry(&lua, &root, &manifest)?;
@@ -73,6 +74,7 @@ impl EmbeddedApp {
                         id: &id,
                         version: &version,
                         platform: std::env::consts::OS,
+                        packed_hash: hash.as_deref(),
                     },
                     &paths,
                 )
