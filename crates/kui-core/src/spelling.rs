@@ -29,24 +29,26 @@ pub trait Spellchecker {
 
 #[derive(Default)]
 pub struct Spelling {
-    factory: Option<fn() -> Box<dyn Spellchecker>>,
+    factory: Option<Box<dyn FnOnce() -> Box<dyn Spellchecker>>>,
     provider: Option<Box<dyn Spellchecker>>,
     revision: u64,
 }
 
 impl Spelling {
     /// Construct a host dictionary only when an editor first requests a check.
-    pub fn with_provider(factory: fn() -> Box<dyn Spellchecker>) -> Self {
+    pub fn with_provider(factory: impl FnOnce() -> Box<dyn Spellchecker> + 'static) -> Self {
         Self {
-            factory: Some(factory),
+            factory: Some(Box::new(factory)),
             ..Self::default()
         }
     }
 
     /// A launcher installs a default on a handed-in core only if the embedder
     /// has supplied none. An already running checker keeps its cached answers.
-    pub fn install_default(&mut self, factory: fn() -> Box<dyn Spellchecker>) {
-        self.factory.get_or_insert(factory);
+    pub fn install_default(&mut self, factory: impl FnOnce() -> Box<dyn Spellchecker> + 'static) {
+        if self.provider.is_none() && self.factory.is_none() {
+            self.factory = Some(Box::new(factory));
+        }
     }
 
     /// Ranges for exactly this text, or None while the result is pending.
@@ -55,10 +57,13 @@ impl Spelling {
         if text.is_empty() {
             return Some(&[]);
         }
-        let Some(factory) = self.factory else {
-            return Some(&[]);
-        };
-        self.provider.get_or_insert_with(factory).check(text)
+        if self.provider.is_none() {
+            self.provider = self.factory.take().map(|open| open());
+        }
+        match &mut self.provider {
+            Some(provider) => provider.check(text),
+            None => Some(&[]),
+        }
     }
 
     /// Include this in memoized paint dependencies when spelling is enabled.
