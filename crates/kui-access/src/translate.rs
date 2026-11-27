@@ -24,9 +24,13 @@ use kui_core::{
 pub struct Feed {
     /// Assistive technology asked for the tree and has not gone away.
     active: bool,
-    /// Hash of the tree last pushed, and the announcement generation
-    /// that went with it; a frame matching both is silent.
-    sent: Option<(u64, u64)>,
+    /// Tree hash, announcement generation and window scale last pushed.
+    sent: Option<(u64, u64, u32)>,
+    // Run fingerprints and semantic nodes in the last adapter update.
+    // Forget removed IDs so reappearing children are sent in full.
+    runs: rustc_hash::FxHashMap<Key, u64>,
+    nodes: rustc_hash::FxHashMap<NodeId, Node>,
+    next_runs: rustc_hash::FxHashMap<Key, u64>,
     /// The nodes standing in for the most recent announcing frame, and
     /// the generation counter that numbers them. AccessKit has no
     /// announcement API — its whole event surface is a tree update —
@@ -55,6 +59,9 @@ impl Feed {
         Feed {
             active: false,
             sent: None,
+            runs: Default::default(),
+            nodes: Default::default(),
+            next_runs: Default::default(),
             announced: Vec::new(),
             announce_gen: 0,
             next_id: u64::MAX,
@@ -66,6 +73,8 @@ impl Feed {
     pub fn activate(&mut self) {
         self.active = true;
         self.sent = None;
+        self.runs.clear();
+        self.nodes.clear();
     }
 
     /// The platform said the client left. Only `accesskit_unix` ever
@@ -73,6 +82,9 @@ impl Feed {
     /// (or never call it), so there the reading rises once and stays.
     pub fn deactivate(&mut self) {
         self.active = false;
+        self.runs.clear();
+        self.next_runs.clear();
+        self.nodes.clear();
     }
 
     pub fn active(&self) -> bool {
@@ -123,11 +135,38 @@ impl Feed {
                     .push((NodeId(self.next_id), a.text.clone(), a.live));
             }
         }
-        let stamp = (tree.hash, self.announce_gen);
+        let stamp = (tree.hash, self.announce_gen, scale.to_bits());
         if self.sent == Some(stamp) {
             return;
         }
-        push(tree_update(tree, scale, &self.announced));
+        self.next_runs.clear();
+        let mut update = translate_tree(tree, scale, &self.announced, |n, children, nodes| {
+            for r in &n.runs {
+                let id = NodeId(r.key.0);
+                children.push(id);
+                let hash = r.platform_hash();
+                self.next_runs.insert(r.key, hash);
+                if self.runs.get(&r.key) != Some(&hash) {
+                    nodes.push((id, text_run(r)));
+                }
+            }
+        });
+        std::mem::swap(&mut self.runs, &mut self.next_runs);
+        let mut previous = std::mem::take(&mut self.nodes);
+        update.nodes.retain(|(id, node)| {
+            if node.role() == AkRole::TextRun {
+                return true;
+            }
+            if let Some(old) = previous.remove(id)
+                && &old == node
+            {
+                self.nodes.insert(*id, old);
+                return false;
+            }
+            self.nodes.insert(*id, node.clone());
+            true
+        });
+        push(update);
         self.sent = Some(stamp);
     }
 }
@@ -276,6 +315,37 @@ fn rect_of(r: kui_core::Rect) -> Rect {
 /// its semantic children. `said` are the standing announcement nodes
 /// ([`Feed`] keeps them), hung off the root.
 pub fn tree_update(tree: &AccessTree, scale: f32, said: &[(NodeId, String, Live)]) -> TreeUpdate {
+    translate_tree(tree, scale, said, |n, children, nodes| {
+        for r in &n.runs {
+            let id = NodeId(r.key.0);
+            children.push(id);
+            nodes.push((id, text_run(r)));
+        }
+    })
+}
+
+fn text_run(r: &kui_core::AccessRun) -> Node {
+    let mut run = Node::new(AkRole::TextRun);
+    run.set_value(r.text.as_str());
+    run.set_bounds(rect_of(r.rect));
+    run.set_character_lengths(r.char_lengths.clone());
+    run.set_character_positions(r.char_positions.clone());
+    run.set_character_widths(r.char_widths.clone());
+    run.set_word_starts(r.word_starts.clone());
+    run.set_text_direction(if r.rtl {
+        TextDirection::RightToLeft
+    } else {
+        TextDirection::LeftToRight
+    });
+    run
+}
+
+fn translate_tree(
+    tree: &AccessTree,
+    scale: f32,
+    said: &[(NodeId, String, Live)],
+    mut runs: impl FnMut(&AccessNode, &mut Vec<NodeId>, &mut Vec<(NodeId, Node)>),
+) -> TreeUpdate {
     let root_key = tree.root().map_or(Key::ROOT, |r| r.key);
     let root = NodeId(root_key.0);
     let mut nodes = Vec::with_capacity(tree.nodes.len().max(1));
@@ -301,22 +371,27 @@ pub fn tree_update(tree: &AccessTree, scale: f32, said: &[(NodeId, String, Live)
             node.set_transform(Affine::scale(scale as f64));
         }
         let mut children: Vec<NodeId> = Vec::with_capacity(n.runs.len());
-        for r in &n.runs {
-            let mut run = Node::new(AkRole::TextRun);
-            run.set_value(r.text.as_str());
-            run.set_bounds(rect_of(r.rect));
-            run.set_character_lengths(r.char_lengths.clone());
-            run.set_character_positions(r.char_positions.clone());
-            run.set_character_widths(r.char_widths.clone());
-            run.set_word_starts(r.word_starts.clone());
-            run.set_text_direction(if r.rtl {
-                TextDirection::RightToLeft
-            } else {
-                TextDirection::LeftToRight
-            });
-            let id = NodeId(r.key.0);
-            children.push(id);
-            nodes.push((id, run));
+        runs(n, &mut children, &mut nodes);
+        // A child index change is an update to that child in AccessKit.
+        // Keep an early line rewrapping from moving thousands of later
+        // siblings. Generic containers are transparent to text ranges.
+        if n.runs.len() > 256 {
+            let mut groups = Vec::new();
+            let mut start = 0;
+            while start < n.runs.len() {
+                let bucket = n.runs[start].line / 32;
+                let count = n.runs[start..]
+                    .iter()
+                    .take_while(|r| r.line / 32 <= bucket)
+                    .count();
+                let group = NodeId(n.key.str("\u{1}text-block").index(bucket as u64).0);
+                let mut container = Node::new(AkRole::GenericContainer);
+                container.set_children(children[start..start + count].to_vec());
+                nodes.push((group, container));
+                groups.push(group);
+                start += count;
+            }
+            children = groups;
         }
         children.extend(tree.children(n.key).map(|c| NodeId(c.key.0)));
         if n.key == root_key {
@@ -544,6 +619,95 @@ mod tests {
             );
         }
         assert!(request_of(req(Action::ShowContextMenu)).is_none());
+    }
+
+    #[test]
+    fn a_virtual_editor_survives_sparse_updates_and_reactivation() {
+        use accesskit_consumer::{NodeRef, Tree, TreeChangeHandler};
+        use std::sync::Arc;
+
+        struct Changes;
+        impl TreeChangeHandler for Changes {
+            fn node_added(&mut self, _: &NodeRef) {}
+            fn node_updated(&mut self, _: &NodeRef, _: &NodeRef) {}
+            fn focus_moved(&mut self, _: Option<&NodeRef>, _: Option<&NodeRef>) {}
+            fn node_removed(&mut self, _: &NodeRef) {}
+        }
+
+        let mut core = Core::new();
+        let mut feed = Feed::new();
+        feed.activate();
+        let tail: Arc<[Arc<str>]> = (0..320)
+            .map(|i| Arc::from(format!("Строка {i} 🐈")))
+            .collect();
+        let mut platform: Option<Tree> = None;
+        for (index, (text, include_tail)) in [
+            ("a", true),
+            ("abcd", true),
+            ("b", false),
+            ("c", true),
+            ("c", true),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if index == 4 {
+                feed.activate();
+                platform = None;
+            }
+            let mut ui = core.frame(Size::new(400.0, 240.0), 1.0);
+            let key = ui.with_keyed(
+                "editor",
+                NodeSpec::column()
+                    .role(Role::MultilineTextInput)
+                    .on_key("edit"),
+                |ui| {
+                    ui.text_in(
+                        NodeSpec::row().role(Role::Line).caret(1),
+                        text,
+                        TextStyle::new(14.0),
+                    );
+                    if include_tail {
+                        ui.virtual_editor_lines(tail.clone());
+                    }
+                },
+            );
+            ui.finish();
+            let tree = core.access_tree();
+            let editor = tree.get(key).unwrap();
+            let full_text = editor.value.as_ref().unwrap();
+            let mut pushed = false;
+            feed.publish(tree, 1.0, &[], |update| {
+                pushed = true;
+                if index == 1 {
+                    assert_eq!(
+                        update
+                            .nodes
+                            .iter()
+                            .filter(|(_, n)| n.role() == AkRole::TextRun)
+                            .count(),
+                        1
+                    );
+                }
+                if let Some(platform) = &mut platform {
+                    platform.update_and_process_changes(update, &mut Changes);
+                } else {
+                    platform = Some(Tree::new(update, true));
+                }
+            });
+            assert!(pushed);
+            let node = platform
+                .as_ref()
+                .unwrap()
+                .state()
+                .node_by_tree_local_id(NodeId(key.0), TreeId::ROOT)
+                .unwrap();
+            assert_eq!(&node.document_range().text(), full_text);
+            assert_eq!(
+                node.text_selection().unwrap().to_text_selection().focus,
+                ak_pos(editor.focus.unwrap())
+            );
+        }
     }
 
     /// The feed is silent until a client asks, sends the whole tree on

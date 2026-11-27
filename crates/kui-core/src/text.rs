@@ -294,6 +294,7 @@ const EVICT_TO_NUMERATOR: usize = 3;
 const EVICT_TO_DENOMINATOR: usize = 4;
 
 pub(crate) struct CachedText {
+    access: std::sync::OnceLock<u64>,
     buffer: Buffer,
     /// The text itself (spans concatenated, for rich text): what the
     /// access tree names a control by.
@@ -2132,6 +2133,21 @@ impl TextSystem {
     pub(crate) fn content(&self, id: TextId) -> &str {
         let key = self.frame[id.0 as usize].cache_key;
         self.entries.get(&key).map_or("", |e| e.content())
+    }
+
+    /// Identity of this exact shaped layout. Rewrapping, eviction and a
+    /// font change all retire it. Long lines can shape chunks on demand
+    /// and have no single stable layout, so are always read afresh.
+    pub(crate) fn access_layout(&self, id: TextId) -> Option<u64> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let frame = self.frame.get(id.0 as usize)?;
+        let Entry::Run(e) = self.entries.get(&frame.cache_key)? else {
+            return None;
+        };
+        Some(
+            *e.access
+                .get_or_init(|| NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)),
+        )
     }
 
     /// Appends the access runs of one of this frame's texts, as `src`
@@ -5408,6 +5424,7 @@ fn wrap_entry(entry: &mut CachedText, fs: &mut FontSystem, target: Option<f32>) 
         if let Some(i) = &mut entry.initial {
             i.uncut(&mut entry.buffer);
         }
+        entry.access.take();
         entry.buffer.set_size(target, None);
         entry.buffer.shape_until_scroll(fs, false);
         entry.wrap = target;
@@ -5534,6 +5551,7 @@ impl CachedText {
             glyphs: Vec::new(),
             deco: Vec::new(),
             span_deco,
+            access: Default::default(),
             glyphs_built_for: None,
             claimed: u64::MAX,
             claimed_wrap: None,
@@ -5559,6 +5577,7 @@ impl CachedText {
             glyphs: Vec::new(),
             deco: Vec::new(),
             span_deco: self.span_deco.clone(),
+            access: Default::default(),
             glyphs_built_for: None,
             claimed: u64::MAX,
             claimed_wrap: None,

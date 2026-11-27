@@ -267,10 +267,18 @@ impl Core {
                 let y = at(l).y;
                 (top - y).max(y - (top + h)).max(0.0)
             };
+            let mut next_line = 0;
             let Some((line, l)) = lines
                 .iter()
-                .enumerate()
-                .map(|(n, &l)| (n, l))
+                .filter_map(|&l| {
+                    let ordinal = next_line;
+                    if let Some(lines) = &self.tree.specs[l].access().virtual_lines {
+                        next_line += lines.len();
+                        return None;
+                    }
+                    next_line += 1;
+                    Some((ordinal, l))
+                })
                 .min_by(|a, b| {
                     gap(a.1)
                         .partial_cmp(&gap(b.1))
@@ -1544,7 +1552,12 @@ impl Core {
             // the one thing in the frame that gets cached.
             let hash = crate::access::inputs_hash(&self.tree, &src);
             if hash.is_none() || self.access_inputs != hash {
-                self.access = crate::access::build(&self.tree, &src);
+                self.access = crate::access::build(
+                    &self.tree,
+                    &src,
+                    &mut self.access,
+                    &mut self.access_groups,
+                );
                 self.access_rebuilds += 1;
             }
             self.access_inputs = hash;

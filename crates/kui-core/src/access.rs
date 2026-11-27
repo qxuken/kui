@@ -556,6 +556,23 @@ pub struct AccessRun {
 }
 
 impl AccessRun {
+    /// Fingerprint of the fields a platform text run exposes. The run ID
+    /// and its editor-relative byte offsets belong to the enclosing tree.
+    pub fn platform_hash(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = rustc_hash::FxHasher::default();
+        self.text.hash(&mut h);
+        for v in [self.rect.x, self.rect.y, self.rect.w, self.rect.h] {
+            h.write_u32(v.to_bits());
+        }
+        self.char_lengths.hash(&mut h);
+        h.write(bytemuck::cast_slice(&self.char_positions));
+        h.write(bytemuck::cast_slice(&self.char_widths));
+        self.word_starts.hash(&mut h);
+        h.write_u8(self.rtl as u8);
+        h.finish()
+    }
+
     /// The run as plain data, its key spelled by `h`.
     pub fn to_value(&self, h: Handles) -> Value {
         let bytes = |v: &[u8]| Value::list(v.iter().map(|b| Value::Int(*b as i64)));
@@ -1349,7 +1366,13 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
 }
 
 /// Derives the access tree of a laid-out frame.
-pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
+pub(crate) fn build(
+    tree: &Tree,
+    src: &Sources<'_>,
+    previous: &mut AccessTree,
+    groups: &mut EditorGroups,
+) -> AccessTree {
+    let mut previous_groups = std::mem::take(groups);
     let mut out = AccessTree::default();
     if tree.is_empty() {
         return out;
@@ -1478,7 +1501,22 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                     | AccessAction::ReplaceSelectedText.bit();
             }
         } else if is_custom_editor(tree, i) {
-            custom_editor(tree, src, i, &mut node);
+            let old = previous
+                .nodes
+                .iter_mut()
+                .find(|n| n.key == key)
+                .map(|n| std::mem::take(&mut n.runs))
+                .unwrap_or_default();
+            let mut reuse = EditorReuse {
+                runs: old.into_iter(),
+                previous: previous_groups
+                    .remove(&key)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .peekable(),
+                current: groups.entry(key).or_default(),
+            };
+            custom_editor(tree, src, i, &mut node, &mut reuse);
             if !spec.disabled {
                 actions |= AccessAction::SetValue.bit()
                     | AccessAction::SetTextSelection.bit()
@@ -1738,20 +1776,130 @@ pub(crate) fn lines_under(tree: &Tree, i: usize) -> Vec<usize> {
     lines
 }
 
+/// Inputs to one shaped text or batch of undrawn lines in a custom editor.
+#[derive(PartialEq)]
+enum GroupInputs {
+    Shaped {
+        layout: u64,
+        origin: Vec2,
+        clip: Rect,
+        scale: f32,
+        newline: bool,
+        byte_base: usize,
+        first_run: usize,
+    },
+    Virtual {
+        lines: VirtualLines,
+        newline: bool,
+    },
+}
+
+struct VirtualLines(Arc<[Label]>);
+
+impl PartialEq for VirtualLines {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+pub(crate) struct RunGroup {
+    address: (usize, usize),
+    inputs: Option<GroupInputs>,
+    count: usize,
+}
+
+pub(crate) type EditorGroups = rustc_hash::FxHashMap<Key, Vec<RunGroup>>;
+
+struct EditorReuse<'a> {
+    runs: std::vec::IntoIter<AccessRun>,
+    previous: std::iter::Peekable<std::vec::IntoIter<RunGroup>>,
+    current: &'a mut Vec<RunGroup>,
+}
+
+impl EditorReuse<'_> {
+    fn take(
+        &mut self,
+        address: (usize, usize),
+        inputs: Option<&GroupInputs>,
+        out: &mut Vec<AccessRun>,
+    ) -> bool {
+        while let Some(old) = self.previous.next_if(|g| g.address <= address) {
+            let runs = self.runs.by_ref().take(old.count);
+            if old.address == address && inputs.is_some() && inputs == old.inputs.as_ref() {
+                out.extend(runs);
+                self.current.push(old);
+                return true;
+            }
+            runs.for_each(drop);
+        }
+        false
+    }
+}
+
 /// A custom editor's text: its `role="line"` descendants in order, each
 /// line the text nodes inside it concatenated, runs from their buffers,
 /// caret and anchor from the lines that declare them. Subtrees under
 /// `role="none"` (a gutter) do not count.
-fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode) {
+fn custom_editor(
+    tree: &Tree,
+    src: &Sources<'_>,
+    i: usize,
+    node: &mut AccessNode,
+    reuse: &mut EditorReuse<'_>,
+) {
     let lines = lines_under(tree, i);
     let mut value = String::new();
-    let mut run_no = 0usize;
-    let mut caret: Option<(usize, usize)> = None;
-    let mut anchor: Option<(usize, usize)> = None;
-    for (ln, &l) in lines.iter().enumerate() {
-        let last = ln + 1 == lines.len();
-        let mut line_text = String::new();
-        let mut texts: Vec<usize> = Vec::new();
+    node.runs.reserve(reuse.runs.len());
+    reuse.current.reserve(reuse.previous.len());
+    let mut texts = Vec::new();
+    let mut caret = None;
+    let mut anchor = None;
+    let mut next_line = 0;
+    let editor_lines = node.key.str("\u{1}line");
+    for (index, &l) in lines.iter().enumerate() {
+        let last = index + 1 == lines.len();
+        let ln = next_line;
+        if let Some(lines) = &tree.specs[l].access().virtual_lines {
+            next_line += lines.len();
+            let inputs = GroupInputs::Virtual {
+                lines: VirtualLines(Arc::clone(lines)),
+                newline: !last,
+            };
+            let first = node.runs.len();
+            let kept = reuse.take((ln, 0), Some(&inputs), &mut node.runs);
+            for (i, text) in lines.iter().enumerate() {
+                let line = ln + i;
+                if line > 0 {
+                    value.push('\n');
+                }
+                value.push_str(text);
+                if !kept {
+                    virtual_runs(
+                        text,
+                        editor_lines.index(line as u64),
+                        line,
+                        !last || i + 1 < lines.len(),
+                        &mut node.runs,
+                    );
+                }
+            }
+            if !kept {
+                reuse.current.push(RunGroup {
+                    address: (ln, 0),
+                    inputs: Some(inputs),
+                    count: node.runs.len() - first,
+                });
+            }
+            continue;
+        }
+        next_line += 1;
+        let line_key = editor_lines.index(ln as u64);
+        let mut run_no = 0;
+        if ln > 0 {
+            value.push('\n');
+        }
+        let line_start = value.len();
+        texts.clear();
         let lend = tree.subtree_end(l);
         let mut t = l;
         while t < lend {
@@ -1768,14 +1916,32 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
             let NodeContent::Text(id) = tree.content[t] else {
                 continue;
             };
-            let base = line_text.len();
-            line_text.push_str(src.text.content(id));
+            let base = value.len() - line_start;
+            value.push_str(src.text.content(id));
             let newline = !last && k + 1 == texts.len();
             let first = node.runs.len();
+            let clip = clip_of(src, t);
+            let origin = tree.pos[t];
+            let inputs = src
+                .text
+                .access_layout(id)
+                .map(|layout| GroupInputs::Shaped {
+                    layout,
+                    clip,
+                    scale: src.scale,
+                    newline,
+                    byte_base: base,
+                    first_run: run_no,
+                    origin,
+                });
+            if reuse.take((ln, k), inputs.as_ref(), &mut node.runs) {
+                run_no += node.runs.len() - first;
+                continue;
+            }
             src.text.access_runs(
                 id,
                 RunSource {
-                    key: node.key,
+                    key: line_key,
                     line: ln,
                     byte_base: base,
                     origin: tree.pos[t],
@@ -1785,12 +1951,45 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
                 &mut run_no,
                 &mut node.runs,
             );
-            clip_runs(&mut node.runs[first..], clip_of(src, t));
+            let runs = &mut node.runs[first..];
+            if runs.last().is_some_and(|r| r.line > ln) {
+                // A source node can contain hard breaks inside one declared
+                // editor line. Selection events use bytes in that whole line.
+                let text = src.text.content(id);
+                let paragraphs: Vec<_> = cosmic_text::LineIter::new(text)
+                    .map(|(range, _)| range)
+                    .collect();
+                for run in runs.iter_mut() {
+                    let paragraph = run.line - ln;
+                    let start = paragraphs.get(paragraph).map_or(text.len(), |p| p.start);
+                    run.start += start;
+                    run.end += start;
+                    if run.text.ends_with('\n') && run.end - base < text.len() {
+                        run.end = base
+                            + paragraphs
+                                .get(paragraph + 1)
+                                .map_or(text.len(), |p| p.start);
+                    }
+                    run.line = ln;
+                }
+            }
+            clip_runs(runs, clip);
+            reuse.current.push(RunGroup {
+                address: (ln, k),
+                inputs,
+                count: node.runs.len() - first,
+            });
         }
         if texts.is_empty() {
+            reuse.take((ln, 0), None, &mut node.runs);
+            reuse.current.push(RunGroup {
+                address: (ln, 0),
+                inputs: None,
+                count: 1,
+            });
             // An empty line still has a place for the caret.
             node.runs.push(empty_run(
-                node.key,
+                line_key,
                 run_no,
                 ln,
                 Rect::from_pos_size(tree.pos[l], tree.size[l]),
@@ -1798,40 +1997,73 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
             ));
             let at = node.runs.len() - 1;
             clip_runs(&mut node.runs[at..], clip_of(src, l));
-            run_no += 1;
         }
         // The app's byte offsets, each a place in the line: one inside a
         // character is the character's start, as `text_pos` reads it (RG135),
         // so the flat `caret` and `selection` below are places in `value`
         // too — a host slicing `value` at them panicked (backlog RG145).
+        let line_text = &value[line_start..];
         let place = |b: u32| line_text.floor_char_boundary((b as usize).min(line_text.len()));
         if let Some(c) = tree.specs[l].access().caret {
-            caret = Some((ln, place(c)));
+            let byte = place(c);
+            caret = Some((ln, byte, line_start + byte));
         }
         if let Some(a) = tree.specs[l].access().selection_anchor {
-            anchor = Some((ln, place(a)));
+            let byte = place(a);
+            anchor = Some((ln, byte, line_start + byte));
         }
-        if ln > 0 {
-            value.push('\n');
-        }
-        value.push_str(&line_text);
     }
     node.value = Some(value);
-    if let Some((line, offset)) = caret {
-        node.focus = node.text_pos(line, offset);
-        let anchor = anchor.unwrap_or((line, offset));
-        node.anchor = node.text_pos(anchor.0, anchor.1);
-        // Byte offsets into the joined value, for the flat view of it.
-        let flat = |(line, offset): (usize, usize)| {
-            node.value
-                .as_ref()
-                .map(|v| v.split('\n').take(line).map(|l| l.len() + 1).sum::<usize>() + offset)
-        };
-        node.caret = flat((line, offset));
-        if anchor != (line, offset)
-            && let (Some(a), Some(c)) = (flat(anchor), node.caret)
-        {
-            node.selection = Some((a.min(c), a.max(c)));
+    if let Some((line, byte, flat)) = caret {
+        node.focus = node.text_pos(line, byte);
+        let (ln, offset, anchor_flat) = anchor.unwrap_or((line, byte, flat));
+        node.anchor = node.text_pos(ln, offset);
+        node.caret = Some(flat);
+        if anchor_flat != flat {
+            node.selection = Some((anchor_flat.min(flat), anchor_flat.max(flat)));
+        }
+    }
+}
+
+/// A logical line without screen geometry. Keep byte offsets in the
+/// whole line, including embedded newlines, and word starts across chunks.
+fn virtual_runs(text: &str, key: Key, line: usize, newline: bool, out: &mut Vec<AccessRun>) {
+    let mut byte = 0;
+    let mut run_no = 0;
+    let mut rtl = unicode_bidi::get_base_direction(text) == unicode_bidi::Direction::Rtl;
+    let mut words = text
+        .split_word_bound_indices()
+        .filter(|(_, w)| !w.chars().all(char::is_whitespace))
+        .map(|(i, _)| i)
+        .peekable();
+    let mut chars = text.chars().chain(newline.then_some('\n')).peekable();
+    loop {
+        let start = byte;
+        let mut run = empty_run(key, run_no, line, Rect::default(), false);
+        run.start = start;
+        while run.char_lengths.len() < RUN_CHARS {
+            let Some(c) = chars.next() else { break };
+            if words.next_if_eq(&byte).is_some() {
+                run.word_starts.push(run.char_lengths.len() as u8);
+            }
+            run.text.push(c);
+            run.char_lengths.push(c.len_utf8() as u8);
+            byte += c.len_utf8();
+            if c == '\n' {
+                break;
+            }
+        }
+        run.end = byte.min(text.len());
+        run.rtl = rtl;
+        if run.text.ends_with('\n') && byte < text.len() {
+            rtl = unicode_bidi::get_base_direction(&text[byte..]) == unicode_bidi::Direction::Rtl;
+        }
+        run.char_positions.resize(run.char_lengths.len(), 0.0);
+        run.char_widths.resize(run.char_lengths.len(), 0.0);
+        out.push(run);
+        run_no += 1;
+        if chars.peek().is_none() {
+            break;
         }
     }
 }
@@ -2065,8 +2297,7 @@ fn hash_of(tree: &AccessTree) -> u64 {
     let mix_str = |mix: &mut dyn FnMut(&[u8]), s: &Option<String>| match s {
         Some(s) => {
             mix(&[1]);
-            mix(s.as_bytes());
-            mix(&[0]);
+            mix(&crate::key::hash_bulk(s.as_bytes()).to_le_bytes());
         }
         None => mix(&[0]),
     };
@@ -2100,14 +2331,7 @@ fn hash_of(tree: &AccessTree) -> u64 {
         mix(&b.to_le_bytes());
         for r in &n.runs {
             mix(&r.key.0.to_le_bytes());
-            mix(r.text.as_bytes());
-            mix(&[0]);
-            for v in [r.rect.x, r.rect.y, r.rect.w, r.rect.h] {
-                mix(&v.to_bits().to_le_bytes());
-            }
-            for v in &r.char_positions {
-                mix(&v.to_bits().to_le_bytes());
-            }
+            mix(&r.platform_hash().to_le_bytes());
         }
         mix_pos(&mut mix, n.anchor);
         mix_pos(&mut mix, n.focus);

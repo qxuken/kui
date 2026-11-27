@@ -71,6 +71,18 @@ pub struct Ui<'a> {
 }
 
 impl<'a> Ui<'a> {
+    /// Declare consecutive offscreen lines of a custom editor in reading
+    /// order. Each entry occupies one line in selection events. Their
+    /// characters and words can be navigated without laying out glyphs.
+    /// Replace them with drawn Role::Line nodes when they enter the viewport.
+    pub fn virtual_editor_lines(&mut self, lines: std::sync::Arc<[std::sync::Arc<str>]>) {
+        if !lines.is_empty() {
+            let mut spec = NodeSpec::row().size(0.0, 0.0).role(crate::Role::Line);
+            spec.access_mut().virtual_lines = Some(lines);
+            self.leaf(spec);
+        }
+    }
+
     pub(crate) fn new(core: &'a mut Core) -> Self {
         Self {
             core,
