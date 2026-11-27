@@ -160,8 +160,6 @@ impl Regression {
                         + &(0..8)
                             .map(|i| (b'a' + ((seed >> (i * 5)) % 26) as u8) as char)
                             .collect::<String>();
-                    self.expected_spelling =
-                        native_spelling_ranges(&format!("🙂 {}.", self.spelling_word));
                     true
                 }
                 #[cfg(target_os = "android")]
@@ -171,6 +169,7 @@ impl Regression {
             }
             #[cfg(target_os = "ios")]
             24 => core.edit.spelling.check(&sample).is_some_and(|ranges| {
+                self.expected_spelling = native_spelling_ranges(&sample);
                 ranges == self.expected_spelling
                     && ranges
                         .iter()

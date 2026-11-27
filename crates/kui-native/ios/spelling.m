@@ -42,6 +42,53 @@ NSArray<NSString *> *kui_ios_spell_languages(void) {
     return languages.array;
 }
 
+// UITextChecker can temporarily accept everything while a keyboard lexicon
+// loads, even when it is already listed in availableLanguages. A clean result
+// at that point must not seed the window's paragraph cache. Probe the actual
+// spell-check operation in each language's own script on this worker.
+static NSString *readinessSample(NSString *language) {
+    NSLocale *locale = [NSLocale localeWithLocaleIdentifier:language];
+    NSString *name = [[locale localizedStringForLanguageCode:locale.languageCode]
+                            lowercaseStringWithLocale:locale];
+    NSMutableString *sample = [NSMutableString string];
+    [name enumerateSubstringsInRange:NSMakeRange(0, name.length)
+                            options:NSStringEnumerationByComposedCharacterSequences
+                         usingBlock:^(NSString *part, NSRange range __unused,
+                                      NSRange enclosing __unused, BOOL *stop __unused) {
+        if ([part rangeOfCharacterFromSet:NSCharacterSet.letterCharacterSet].location != NSNotFound) {
+            for (int repeat = 0; repeat < 3; repeat++) [sample appendString:part];
+        }
+    }];
+    return sample;
+}
+
+static void awaitLexicons(KUISpelling *dictionary) {
+    NSMutableDictionary<NSString *, NSString *> *pending = [NSMutableDictionary dictionary];
+    for (NSString *language in dictionary.languages) {
+        NSString *sample = readinessSample(language);
+        if (sample.length) pending[language] = sample;
+    }
+    // Some writing systems need no spelling dictionaries, and a device may
+    // have no usable asset. Neither condition can hold up the worker forever.
+    NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 5.0;
+    NSTimeInterval delay = 0.05;
+    while (pending.count) {
+        for (NSString *language in pending.allKeys) {
+            NSString *sample = pending[language];
+            __block NSRange miss;
+            onMain(^{
+                miss = [dictionary.checker rangeOfMisspelledWordInString:sample
+                    range:NSMakeRange(0, sample.length) startingAt:0 wrap:NO language:language];
+            });
+            if (miss.location != NSNotFound) [pending removeObjectForKey:language];
+        }
+        NSTimeInterval remaining = deadline - NSProcessInfo.processInfo.systemUptime;
+        if (!pending.count || remaining <= 0) break;
+        [NSThread sleepForTimeInterval:MIN(delay, remaining)];
+        delay = MIN(delay * 2, 0.5);
+    }
+}
+
 void *kui_ios_spell_open(void) {
     __block void *result = NULL;
     onMain(^{
@@ -52,6 +99,9 @@ void *kui_ios_spell_open(void) {
         dictionary.languages = languages;
         result = (__bridge_retained void *)dictionary;
     });
+    if (result) {
+        @autoreleasepool { awaitLexicons((__bridge KUISpelling *)result); }
+    }
     return result;
 }
 
