@@ -367,7 +367,8 @@ mod tests {
                 w.collect();
                 w.check("abc").map(<[_]>::to_vec)
             });
-            assert_eq!(result, [0..3]);
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0], 0..3);
         }
         assert_eq!(
             wait(|| {

@@ -147,7 +147,7 @@ impl Regression {
                 .edit
                 .spelling
                 .check("🙂 speling")
-                .is_some_and(|r| r == [5..12]),
+                .is_some_and(|r| r.len() == 1 && r[0] == (5..12)),
             #[cfg(target_os = "ios")]
             25 => core
                 .edit
