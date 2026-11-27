@@ -65,23 +65,23 @@ impl Dictionary for AndroidDictionary {
                 Ok(offsets)
             })
             .unwrap_or_default();
-        if offsets.is_empty() {
-            return Vec::new();
-        }
-        let mut boundaries = Vec::with_capacity(text.len() + 1);
-        for (byte, ch) in text.char_indices() {
-            boundaries.push(byte);
-            if ch.len_utf16() == 2 {
-                boundaries.push(usize::MAX);
+        // The platform adapter orders the ranges. Walk the source once, without
+        // allocating a second index for a potentially long paragraph.
+        let mut chars = text.char_indices().peekable();
+        let mut units = 0;
+        let mut byte_at = |offset: i32| {
+            let offset = usize::try_from(offset).ok()?;
+            while units < offset {
+                units += chars.next()?.1.len_utf16();
             }
-        }
-        boundaries.push(text.len());
+            (units == offset).then(|| chars.peek().map_or(text.len(), |(byte, _)| *byte))
+        };
         offsets
             .chunks_exact(2)
             .filter_map(|pair| {
-                let &start = boundaries.get(pair[0] as usize)?;
-                let &end = boundaries.get(pair[1] as usize)?;
-                (start < end && end <= text.len()).then_some(start..end)
+                let start = byte_at(pair[0])?;
+                let end = byte_at(pair[1])?;
+                (start < end).then_some(start..end)
             })
             .collect()
     }

@@ -59,7 +59,7 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
 mkdir "$out/classes"
-javac --release 8 -classpath "$platform" -d "$out/classes" EditingIme.java EditingSpellChecker.java
+javac -encoding UTF-8 --release 8 -classpath "$platform" -d "$out/classes" EditingIme.java EditingSpellChecker.java
 jar cf "$out/ime.jar" -C "$out/classes" .
 "$tools/d8" --min-api 28 --lib "$platform" --output "$out" "$out/ime.jar"
 "$tools/aapt2" compile --dir res -o "$out/resources.zip"
