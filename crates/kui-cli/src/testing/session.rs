@@ -76,10 +76,9 @@ impl AppSession {
         if !w.is_finite() || !h.is_finite() || w <= 0.0 || h <= 0.0 {
             return Err("test.start size needs positive finite dimensions".into());
         }
-        let mut runner = kui_native::app(&project.name)
+        let mut runner = project
+            .launcher()
             .core(core)
-            .chrome(project.chrome)
-            .titlebar(project.titlebar)
             .platform(kui_native::Platform::Linux)
             .system(kui_native::SystemEnv {
                 appearance: kui_native::Appearance::Light,

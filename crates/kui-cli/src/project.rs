@@ -62,6 +62,17 @@ pub struct Project {
     pub tooling: Tooling,
 }
 
+impl Project {
+    /// Window configuration shared by the app runner and test.start.
+    pub fn launcher(&self) -> kui_native::Launcher {
+        kui_native::app(&self.name)
+            .chrome(self.chrome)
+            .titlebar(self.titlebar)
+            .wheel_acceleration(self.wheel_acceleration)
+            .max_wheel_acceleration(self.max_wheel_acceleration)
+    }
+}
+
 /// The manifest's `tooling`: `.kui/docs` and the agent block, written by
 /// `kui new` / `kui types` with `--docs` / `--agents` and kept fresh by
 /// `kui run` and `kui check` (ADR 0071).
@@ -496,16 +507,23 @@ mod tests {
 
     #[test]
     fn wheel_acceleration_is_opt_in() {
-        assert!(
-            !with_config("wheel-default", "return {}")
-                .unwrap()
-                .wheel_acceleration
-        );
-        assert!(
-            with_config("wheel-on", "return { wheel_acceleration = true }")
-                .unwrap()
-                .wheel_acceleration
-        );
+        let defaults = with_config("wheel-default", "return {}").unwrap();
+        assert!(!defaults.wheel_acceleration);
+        assert_eq!(defaults.max_wheel_acceleration, 2.0);
+        let configured = with_config(
+            "wheel-on",
+            "return { wheel_acceleration = true, max_wheel_acceleration = 3 }",
+        )
+        .unwrap();
+        struct Empty;
+        impl kui_native::App for Empty {
+            fn view(&mut self, _: &mut kui_native::Ui<'_>) {}
+        }
+        let mut runner = configured
+            .launcher()
+            .open_headless(Empty, 100.0, 100.0, 1.0);
+        assert!(runner.core_mut().wheel_acceleration());
+        assert_eq!(runner.core_mut().max_wheel_acceleration(), 3.0);
         assert!(with_config("wheel-invalid", "return { wheel_acceleration = 1 }").is_err());
     }
 
