@@ -1,6 +1,8 @@
 package dev.kui;
 
 import android.app.NativeActivity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.text.Editable;
 import android.text.InputType;
@@ -16,6 +18,20 @@ import android.view.inputmethod.InputMethodManager;
 public final class KuiActivity extends NativeActivity {
     private KuiSpelling createKuiSpelling() {
         return new KuiSpelling(getApplicationContext());
+    }
+
+    private void copyKuiText(String text) {
+        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+        if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("", text));
+    }
+
+    private String pasteKuiText() {
+        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+        ClipData clip = clipboard == null ? null : clipboard.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return "";
+        ClipData.Item item = clip.getItemAt(0);
+        if (item.getText() != null) return item.getText().toString();
+        return item.getUri() == null ? "" : item.getUri().toString();
     }
 
     private View kuiAccessView;
