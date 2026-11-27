@@ -6,6 +6,20 @@ use std::{
     time::{Duration, Instant},
 };
 
+// UIKit decides which words are misspelled and which corrections it supports.
+// Complete sentences also distinguish a later-word offset from a UTF-16 offset.
+#[cfg(target_os = "ios")]
+const SPELLING_SAMPLE: &str = "🙂 Please check the speling in this sentance. I recieved a mesage from my freind becuase the adress was definately wrong. We should accomodate their seperate requests tommorow and fix the erorrs.";
+
+#[cfg(target_os = "ios")]
+#[derive(Default)]
+struct SpellingFixture {
+    word: String,
+    guess: String,
+    learn: String,
+    revision: u64,
+}
+
 #[derive(Default)]
 pub struct Regression {
     pub fields: [Option<Key>; 2],
@@ -15,9 +29,7 @@ pub struct Regression {
     #[cfg(target_os = "ios")]
     awaiting_teardown: bool,
     #[cfg(target_os = "ios")]
-    spelling_word: String,
-    #[cfg(target_os = "ios")]
-    expected_spelling: Vec<std::ops::Range<usize>>,
+    spelling: SpellingFixture,
     pub result: PathBuf,
     #[cfg(target_os = "android")]
     pub activity: Option<kui_native::mobile::AndroidApp>,
@@ -52,8 +64,6 @@ impl Regression {
         if self.step < 0 {
             return;
         }
-        #[cfg(target_os = "ios")]
-        let sample = format!("🙂 {}.", self.spelling_word);
         let caret = core.edit.caret_and_selection(a);
         let marked = core.edit.preedit(b);
         if self.since.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(12) {
@@ -72,10 +82,10 @@ impl Regression {
             }
             #[cfg(target_os = "ios")]
             if (24..=27).contains(&self.step) {
-                let ranges = core.edit.spelling.check(&sample).map(<[_]>::to_vec);
-                let choices = core.edit.spelling.choices("speling");
-                self.finish(format!("FAIL spelling step {} for {sample:?}: worker ranges {ranges:?}, direct UIKit {:?}, choices {choices:?}, generation {}, {}", self.step, self.expected_spelling,
-                    core.edit.spelling.dictionary_revision(), spelling_diagnostics(&sample)));
+                let ranges = core.edit.spelling.check(SPELLING_SAMPLE).map(<[_]>::to_vec);
+                let choices = core.edit.spelling.choices(&self.spelling.word);
+                self.finish(format!("FAIL spelling step {} for {SPELLING_SAMPLE:?}: worker ranges {ranges:?}, direct UIKit {:?}, choices for {:?} {choices:?}, learned {:?}, generation {}, {}", self.step, native_spelling_ranges(SPELLING_SAMPLE),
+                    self.spelling.word, self.spelling.learn, core.edit.spelling.dictionary_revision(), spelling_diagnostics(SPELLING_SAMPLE)));
                 return;
             }
             self.finish(format!("FAIL step {} model {first:?}, {second:?}, caret {caret:?}, marked {marked:?}, focus {:?}, changes {:?}", self.step, core.focus(), self.changes));
@@ -160,15 +170,6 @@ impl Regression {
                         );
                         return;
                     }
-                    // Use a fresh word so a previous test or user dictionary cannot mask a failure.
-                    let seed = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos();
-                    self.spelling_word = "kuizz".to_owned()
-                        + &(0..8)
-                            .map(|i| (b'a' + ((seed >> (i * 5)) % 26) as u8) as char)
-                            .collect::<String>();
                     true
                 }
                 #[cfg(target_os = "android")]
@@ -177,45 +178,55 @@ impl Regression {
                 }
             }
             #[cfg(target_os = "ios")]
-            24 => core.edit.spelling.check(&sample).is_some_and(|ranges| {
-                self.expected_spelling = native_spelling_ranges(&sample);
-                ranges == self.expected_spelling
-                    && ranges
-                        .iter()
-                        .any(|r| sample.get(r.clone()) == Some(self.spelling_word.as_str()))
-            }),
+            24 => {
+                let native = native_spelling_ranges(SPELLING_SAMPLE);
+                let matches = core
+                    .edit
+                    .spelling
+                    .check(SPELLING_SAMPLE)
+                    .is_some_and(|ranges| !ranges.is_empty() && *ranges == native);
+                matches && self.spelling.select(&native)
+            }
             #[cfg(target_os = "ios")]
             25 => core
                 .edit
                 .spelling
-                .choices("speling")
-                .is_some_and(|c| c.can_learn && !c.suggestions.is_empty()),
+                .choices(&self.spelling.word)
+                .is_some_and(|c| c.can_learn && c.suggestions.contains(&self.spelling.guess)),
             #[cfg(target_os = "ios")]
             26 => {
-                let word = &self.spelling_word;
-                if core
-                    .edit
-                    .spelling
-                    .check(&sample)
-                    .is_some_and(|r| !r.is_empty())
-                {
-                    core.edit.spelling.learn(word);
-                    true
-                } else {
-                    false
-                }
+                self.spelling.revision = core.edit.spelling.dictionary_revision();
+                core.edit.spelling.learn(&self.spelling.learn);
+                true
             }
             #[cfg(target_os = "ios")]
-            27 if core.edit.spelling.dictionary_revision() > 0
-                && core.edit.spelling.check(&sample).is_some_and(|r| {
-                    r.iter()
-                        .all(|range| sample.get(range.clone()) != Some(self.spelling_word.as_str()))
-                }) =>
+            27 if core.edit.spelling.dictionary_revision() != self.spelling.revision
+                && core
+                    .edit
+                    .spelling
+                    .check(SPELLING_SAMPLE)
+                    .is_some_and(|ranges| {
+                        *ranges == native_spelling_ranges(SPELLING_SAMPLE)
+                            && ranges.iter().all(|r| {
+                                SPELLING_SAMPLE.get(r.clone()) != Some(self.spelling.learn.as_str())
+                            })
+                            && ranges.iter().any(|r| {
+                                SPELLING_SAMPLE.get(r.clone()) == Some(self.spelling.word.as_str())
+                            })
+                    }) =>
             {
                 unsafe extern "C" {
-                    fn kui_probe_unlearn(bytes: *const u8, len: usize);
+                    fn kui_probe_unlearn(bytes: *const u8, len: usize) -> bool;
                 }
-                unsafe { kui_probe_unlearn(self.spelling_word.as_ptr(), self.spelling_word.len()) };
+                // Restore only the word confirmed unlearned during fixture selection.
+                if !unsafe {
+                    kui_probe_unlearn(self.spelling.learn.as_ptr(), self.spelling.learn.len())
+                } {
+                    self.finish(
+                        "FAIL UIKit personal dictionary did not learn the selected word".into(),
+                    );
+                    return;
+                }
                 self.awaiting_teardown = true;
                 self.native(14)
             }
@@ -346,4 +357,46 @@ fn native_spelling_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
     let mut ranges = Vec::new();
     unsafe { kui_probe_expected_ranges(text.as_ptr(), text.len(), (&raw mut ranges).cast(), emit) }
     ranges
+}
+
+#[cfg(target_os = "ios")]
+impl SpellingFixture {
+    fn select(&mut self, ranges: &[std::ops::Range<usize>]) -> bool {
+        use std::ffi::{CStr, c_char, c_void};
+        unsafe extern "C" {
+            fn kui_probe_guess(
+                bytes: *const u8,
+                len: usize,
+                ctx: *mut c_void,
+                emit: extern "C" fn(*mut c_void, *const c_char),
+            ) -> bool;
+        }
+        extern "C" fn emit(ctx: *mut c_void, text: *const c_char) {
+            let value = unsafe { CStr::from_ptr(text) }.to_string_lossy();
+            unsafe { &mut *ctx.cast::<String>() }.push_str(&value);
+        }
+        for range in ranges {
+            let Some(word) = SPELLING_SAMPLE.get(range.clone()) else {
+                continue;
+            };
+            if !word.chars().all(char::is_alphabetic) || word == self.word {
+                continue;
+            }
+            let mut guess = String::new();
+            let can_learn = unsafe {
+                kui_probe_guess(word.as_ptr(), word.len(), (&raw mut guess).cast(), emit)
+            };
+            if !can_learn {
+                continue;
+            }
+            if self.word.is_empty() && !guess.is_empty() {
+                self.word = word.to_owned();
+                self.guess = guess;
+            } else if !self.word.is_empty() {
+                self.learn = word.to_owned();
+                return true;
+            }
+        }
+        false
+    }
 }

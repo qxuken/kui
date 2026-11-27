@@ -13,9 +13,10 @@ extern void kui_ios_spell_readiness_changed(void);
 @property(nonatomic, strong) UITextChecker *checker;
 @property(nonatomic, copy) NSArray<NSString *> *languages;
 @property(nonatomic, copy) NSDictionary<NSString *, NSCharacterSet *> *letters;
-@property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *pending;
+@property(nonatomic, strong) NSMutableArray<NSString *> *samples;
+@property(nonatomic) BOOL scheduled;
 @property(nonatomic) NSTimeInterval lastProbe;
-- (BOOL)probePending;
+- (void)observe:(NSSet<NSString *> *)answered text:(NSString *)text;
 - (void)refresh;
 @end
 
@@ -47,81 +48,88 @@ NSArray<NSString *> *kui_ios_spell_languages(void) {
     return languages.array;
 }
 
-// UITextChecker can temporarily accept everything while a keyboard lexicon
-// loads, even when it is already listed in availableLanguages. A clean result
-// at that point must not seed the window's paragraph cache. Probe the actual
-// spell-check operation in each language's own script on this worker.
-static NSString *readinessSample(NSString *language) {
-    NSLocale *locale = [NSLocale localeWithLocaleIdentifier:language];
-    NSString *name = [[locale localizedStringForLanguageCode:locale.languageCode]
-                            lowercaseStringWithLocale:locale];
-    NSMutableString *sample = [NSMutableString string];
-    [name enumerateSubstringsInRange:NSMakeRange(0, name.length)
-                            options:NSStringEnumerationByComposedCharacterSequences
-                         usingBlock:^(NSString *part, NSRange range __unused,
-                                      NSRange enclosing __unused, BOOL *stop __unused) {
-        if ([part rangeOfCharacterFromSet:NSCharacterSet.letterCharacterSet].location != NSNotFound) {
-            for (int repeat = 0; repeat < 3; repeat++) [sample appendString:part];
-        }
-    }];
-    return sample;
+// UIKit can list a cold keyboard lexicon and temporarily accept all text.
+// Keep that uncertainty local to this process, across worker cache reopens.
+// Both sets are accessed only on UIKit's main thread.
+static NSMutableSet<NSString *> *confirmed;
+static NSMutableSet<NSString *> *provisional;
+
+static NSIndexSet *nativeErrors(KUISpelling *dictionary, NSString *text, NSString *language) {
+    NSMutableIndexSet *errors = [NSMutableIndexSet indexSet];
+    NSRange full = NSMakeRange(0, text.length);
+    NSUInteger cursor = 0;
+    while (cursor < full.length) {
+        __block NSRange miss;
+        onMain(^{
+            miss = [dictionary.checker rangeOfMisspelledWordInString:text
+                range:full startingAt:cursor wrap:NO language:language];
+        });
+        if (miss.location == NSNotFound || miss.location < cursor || !miss.length ||
+            miss.length > full.length || miss.location > full.length - miss.length) break;
+        [errors addIndexesInRange:miss];
+        cursor = NSMaxRange(miss);
+    }
+    return errors;
 }
 
 @implementation KUISpelling
-// All changes to pending are on the main thread. Remove a language exactly
-// once when UIKit begins returning real results for its writing system.
-- (BOOL)probePending {
-    self.lastProbe = NSProcessInfo.processInfo.systemUptime;
-    NSUInteger before = self.pending.count;
-    for (NSString *language in self.pending.allKeys) {
-        NSString *sample = self.pending[language];
-        NSRange miss = [self.checker rangeOfMisspelledWordInString:sample
-            range:NSMakeRange(0, sample.length) startingAt:0 wrap:NO language:language];
-        if (miss.location != NSNotFound) [self.pending removeObjectForKey:language];
+- (void)observe:(NSSet<NSString *> *)answered text:(NSString *)text {
+    BOOL changed = NO;
+    for (NSString *language in answered) {
+        if ([confirmed containsObject:language]) continue;
+        changed |= [provisional containsObject:language];
+        [confirmed addObject:language];
     }
-    return self.pending.count != before;
+    BOOL pending = NO;
+    for (NSString *language in self.languages) {
+        if (![confirmed containsObject:language]) {
+            [provisional addObject:language];
+            pending = YES;
+        }
+    }
+    if (!pending) [self.samples removeAllObjects];
+    if (text.length && pending) {
+        // Keep at most four short excerpts on the window, never in the
+        // process-wide readiness state. A full paragraph is always checked
+        // by the normal worker.
+        NSRange prefix = [text rangeOfComposedCharacterSequencesForRange:
+                              NSMakeRange(0, MIN(text.length, 256))];
+        NSString *sample = [text substringWithRange:prefix];
+        if (![self.samples containsObject:sample]) {
+            if (self.samples.count == 4) [self.samples removeObjectAtIndex:0];
+            [self.samples addObject:sample];
+        }
+        if (!self.scheduled) {
+            self.scheduled = YES;
+            __weak KUISpelling *weak = self;
+            for (NSNumber *seconds in @[@1, @4, @16]) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, seconds.longLongValue * NSEC_PER_SEC),
+                               dispatch_get_main_queue(), ^{ [weak refresh]; });
+            }
+        }
+    }
+    if (changed) kui_ios_spell_readiness_changed();
 }
 - (void)refresh {
-    if (self.pending.count && [self probePending]) kui_ios_spell_readiness_changed();
+    self.lastProbe = NSProcessInfo.processInfo.systemUptime;
+    if (!self.samples.count) return;
+    NSMutableSet *answered = [NSMutableSet set];
+    for (NSString *language in self.languages) {
+        if ([confirmed containsObject:language]) continue;
+        for (NSString *text in self.samples) {
+            if (nativeErrors(self, text, language).count) {
+                [answered addObject:language];
+                break;
+            }
+        }
+    }
+    [self observe:answered text:nil];
 }
 - (void)activated:(NSNotification *)note {
     if (![self.languages isEqualToArray:kui_ios_spell_languages()]) kui_ios_spell_readiness_changed();
     else [self refresh];
 }
 @end
-
-static void awaitLexicons(KUISpelling *dictionary) {
-    // Start serving as soon as one dictionary responds. A missing secondary
-    // dictionary cannot hold up words in another writing system.
-    NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 5.0;
-    NSTimeInterval delay = 0.05;
-    for (;;) {
-        __block BOOL ready;
-        onMain(^{
-            [dictionary probePending];
-            ready = dictionary.pending.count < dictionary.languages.count;
-        });
-        NSTimeInterval remaining = deadline - NSProcessInfo.processInfo.systemUptime;
-        if (ready || remaining <= 0) break;
-        [NSThread sleepForTimeInterval:MIN(delay, remaining)];
-        delay = MIN(delay * 2, 0.5);
-    }
-    onMain(^{
-        if (dictionary.pending.count) {
-            // Bounded follow-ups even if the document is idle. Later checks
-            // and foreground changes give newly available assets another turn.
-            __weak KUISpelling *weak = dictionary;
-            for (NSNumber *seconds in @[@1, @4, @16]) {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, seconds.longLongValue * NSEC_PER_SEC),
-                               dispatch_get_main_queue(), ^{ [weak refresh]; });
-            }
-        }
-        [NSNotificationCenter.defaultCenter addObserver:dictionary selector:@selector(activated:)
-            name:UIApplicationDidBecomeActiveNotification object:nil];
-        [NSNotificationCenter.defaultCenter addObserver:dictionary selector:@selector(activated:)
-            name:UITextInputCurrentInputModeDidChangeNotification object:nil];
-    });
-}
 
 void *kui_ios_spell_open(void) {
     __block void *result = NULL;
@@ -131,22 +139,26 @@ void *kui_ios_spell_open(void) {
         KUISpelling *dictionary = [KUISpelling new];
         dictionary.checker = [UITextChecker new];
         dictionary.languages = languages;
-        dictionary.pending = [NSMutableDictionary dictionary];
+        if (!confirmed) {
+            confirmed = [NSMutableSet set];
+            provisional = [NSMutableSet set];
+        }
+        dictionary.samples = [NSMutableArray array];
+        dictionary.lastProbe = NSProcessInfo.processInfo.systemUptime;
         NSMutableDictionary *letters = [NSMutableDictionary dictionary];
         for (NSString *language in languages) {
             NSLocale *locale = [NSLocale localeWithLocaleIdentifier:language];
             NSMutableCharacterSet *alphabet = [locale.exemplarCharacterSet mutableCopy];
             [alphabet formIntersectionWithCharacterSet:NSCharacterSet.letterCharacterSet];
             letters[language] = alphabet ?: NSCharacterSet.letterCharacterSet;
-            NSString *sample = readinessSample(language);
-            if (sample.length) dictionary.pending[language] = sample;
         }
         dictionary.letters = letters;
+        [NSNotificationCenter.defaultCenter addObserver:dictionary selector:@selector(activated:)
+            name:UIApplicationDidBecomeActiveNotification object:nil];
+        [NSNotificationCenter.defaultCenter addObserver:dictionary selector:@selector(activated:)
+            name:UITextInputCurrentInputModeDidChangeNotification object:nil];
         result = (__bridge_retained void *)dictionary;
     });
-    if (result) {
-        @autoreleasepool { awaitLexicons((__bridge KUISpelling *)result); }
-    }
     return result;
 }
 
@@ -191,31 +203,20 @@ void kui_ios_spell_check(void *handle, const uint8_t *bytes, size_t len, void *c
         NSString *text = string(bytes, len);
         if (!text.length) return;
         KUISpelling *dictionary = (__bridge KUISpelling *)handle;
-        __block NSSet *pending;
-        onMain(^{
-            if (NSProcessInfo.processInfo.systemUptime - dictionary.lastProbe >= 30)
-                [dictionary refresh];
-            pending = [NSSet setWithArray:dictionary.pending.allKeys];
-        });
-        NSRange full = NSMakeRange(0, text.length);
         NSMutableDictionary *checked = [NSMutableDictionary dictionary];
+        NSMutableSet *answered = [NSMutableSet set];
+        NSString *lowercase = text.lowercaseString;
         for (NSString *language in dictionary.languages) {
-            if ([pending containsObject:language]) continue;
-            NSMutableIndexSet *errors = [NSMutableIndexSet indexSet];
-            NSUInteger cursor = 0;
-            while (cursor < full.length) {
-                __block NSRange miss;
-                onMain(^{
-                    miss = [dictionary.checker rangeOfMisspelledWordInString:text
-                        range:full startingAt:cursor wrap:NO language:language];
-                });
-                if (miss.location == NSNotFound || miss.location < cursor || !miss.length ||
-                    miss.length > full.length || miss.location > full.length - miss.length) break;
-                [errors addIndexesInRange:miss];
-                cursor = NSMaxRange(miss);
-            }
+            if ([lowercase rangeOfCharacterFromSet:dictionary.letters[language]].location == NSNotFound)
+                continue;
+            NSIndexSet *errors = nativeErrors(dictionary, text, language);
             checked[language] = errors;
+            if (errors.count) [answered addObject:language];
         }
+        onMain(^{
+            [dictionary observe:answered text:text];
+            if (NSProcessInfo.processInfo.systemUptime - dictionary.lastProbe >= 30) [dictionary refresh];
+        });
         NSIndexSet *errors = kui_ios_spell_consensus(text, dictionary.letters, checked);
         [errors enumerateRangesUsingBlock:^(NSRange range, BOOL * __unused stop) {
             emit(context, range.location, NSMaxRange(range));
@@ -233,8 +234,7 @@ bool kui_ios_spell_choices(void *handle, const uint8_t *bytes, size_t len, void 
         KUISpelling *dictionary = (__bridge KUISpelling *)handle;
         NSMutableSet *seen = [NSMutableSet setWithObject:word];
         for (NSString *language in dictionary.languages) {
-            if (dictionary.pending[language] ||
-                [word.lowercaseString rangeOfCharacterFromSet:dictionary.letters[language]].location == NSNotFound)
+            if ([word.lowercaseString rangeOfCharacterFromSet:dictionary.letters[language]].location == NSNotFound)
                 continue;
             for (NSString *guess in [dictionary.checker guessesForWordRange:NSMakeRange(0, word.length)
                              inString:word language:language]) {

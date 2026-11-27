@@ -91,9 +91,27 @@ void kui_probe_spelling(const uint8_t *bytes, size_t len, void *ctx,
     report(ctx, summary.UTF8String);
 }
 
-void kui_probe_unlearn(const uint8_t *bytes, size_t len) {
+bool kui_probe_guess(const uint8_t *bytes, size_t len, void *ctx, void (*emit)(void *, const char *)) {
     NSString *word = [[NSString alloc] initWithBytes:bytes length:len encoding:NSUTF8StringEncoding];
+    if ([UITextChecker hasLearnedWord:word]) return false;
+    UITextChecker *checker = [UITextChecker new];
+    for (NSString *language in kui_ios_spell_languages()) {
+        for (NSString *guess in [checker guessesForWordRange:NSMakeRange(0, word.length)
+                                                   inString:word language:language]) {
+            if (guess.length && ![guess isEqualToString:word]) {
+                emit(ctx, guess.UTF8String);
+                return true;
+            }
+        }
+    }
+    return true;
+}
+
+bool kui_probe_unlearn(const uint8_t *bytes, size_t len) {
+    NSString *word = [[NSString alloc] initWithBytes:bytes length:len encoding:NSUTF8StringEncoding];
+    if (![UITextChecker hasLearnedWord:word]) return false;
     [UITextChecker unlearnWord:word];
+    return ![UITextChecker hasLearnedWord:word];
 }
 
 bool kui_probe_step(int step) {
