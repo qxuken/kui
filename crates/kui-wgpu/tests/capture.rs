@@ -484,13 +484,21 @@ fn opacity_groups_keep_lcd_text_gray_and_leave_frame_text_subpixel() {
             .any(|q| q.kind == kui_core::QuadKind::GlyphSubpixel)
     );
     let capture = renderer.capture(dl, atlas).unwrap();
-    for (row, band) in capture.rgba.chunks_exact(200 * 40 * 4).enumerate() {
+    for (row, band) in capture
+        .rgba
+        .as_chunks::<{ 200 * 40 * 4 }>()
+        .0
+        .iter()
+        .enumerate()
+    {
         assert!(
-            band.chunks_exact(4).any(|p| p[0] > 10),
+            band.as_chunks::<4>().0.iter().any(|p| p[0] > 10),
             "visible text in band {row}"
         );
         let colored = band
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|p| p[0].abs_diff(p[1]) > 2 || p[1].abs_diff(p[2]) > 2);
         assert_eq!(colored, row != 1, "subpixel coverage in band {row}");
     }
