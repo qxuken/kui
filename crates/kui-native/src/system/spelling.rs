@@ -24,8 +24,8 @@ const CACHE_SIZE: usize = 2048;
 const QUEUE_SIZE: usize = 64;
 const CACHE_BYTES: usize = 8 * 1024 * 1024;
 static GENERATION: AtomicU64 = AtomicU64::new(0);
-// Hunspell rewrites its personal list from the handle's in-memory copy.
-// Two windows learning simultaneously must reload and write in that order.
+// Personal dictionaries can retain an in-memory word list. Serialize the
+// reload and write so concurrent additions use the latest dictionary.
 static LEARN_LOCK: Mutex<()> = Mutex::new(());
 
 enum Request {
