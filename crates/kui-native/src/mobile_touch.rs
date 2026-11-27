@@ -1,7 +1,7 @@
 //! Translate one finger into existing core inputs. Defer a press until lift
 //! or until movement distinguishes a drag from panning a scroll region.
 use kui_core::touch::{Glide, PanSamples, TOUCH_SLOP};
-use kui_core::{InputEvent, Vec2, input::Interaction};
+use kui_core::{InputEvent, MouseButton, Vec2, input::Interaction};
 use std::collections::HashSet;
 use winit::event::TouchPhase;
 
@@ -24,7 +24,10 @@ impl GestureAction {
     }
 }
 
+const LONG_PRESS_SECONDS: f64 = 0.5;
+
 struct Gesture {
+    hold_until: Option<f64>,
     start: Vec2,
     last: Vec2,
     action: GestureAction,
@@ -61,6 +64,7 @@ impl Gesture {
             GestureAction::TapOnly => {}
         }
         self.moved = true;
+        self.hold_until = None;
         self.last = at;
     }
 
@@ -80,6 +84,35 @@ pub(crate) struct Contacts {
 }
 
 impl Contacts {
+    pub(super) fn arm_context_menu(&mut self, time: f64) {
+        if let Some(gesture) = &mut self.gesture
+            && !gesture.moved
+        {
+            gesture.hold_until.get_or_insert(time + LONG_PRESS_SECONDS);
+        }
+    }
+
+    pub(super) fn deadline(&self) -> Option<f64> {
+        self.gesture.as_ref()?.hold_until
+    }
+
+    fn fire_hold(&mut self, time: f64, send: &mut impl FnMut(InputEvent) -> bool) -> bool {
+        if !self.deadline().is_some_and(|deadline| time >= deadline) {
+            return false;
+        }
+        let point = self.gesture.take().unwrap().start;
+        send(InputEvent::CursorMoved(point));
+        send(InputEvent::MouseDown {
+            button: MouseButton::Secondary,
+            clicks: 1,
+        });
+        send(InputEvent::MouseUp {
+            button: MouseButton::Secondary,
+        });
+        send(InputEvent::CursorLeft);
+        true
+    }
+
     pub(super) fn handle(
         &mut self,
         phase: TouchPhase,
@@ -101,6 +134,7 @@ impl Contacts {
                     let mut samples = PanSamples::default();
                     samples.record(time, at);
                     self.gesture = Some(Gesture {
+                        hold_until: None,
                         start: at,
                         last: at,
                         moved: false,
@@ -118,8 +152,11 @@ impl Contacts {
                 }
             }
             TouchPhase::Ended if self.down.remove(&id) => {
-                if let Some(mut g) = self.gesture.take() {
+                if let Some(g) = self.gesture.as_mut() {
                     g.motion(at, time, &mut |input| send(input, false));
+                }
+                self.fire_hold(time, &mut |input| send(input, false));
+                if let Some(g) = self.gesture.take() {
                     self.glide = g.glide(time);
                     if !g.moved {
                         tapped = true;
@@ -157,6 +194,7 @@ impl Contacts {
     /// touch stops the glide before the next frame. A stalled frame cannot
     /// accumulate a jump when the app returns from the background.
     pub fn advance(&mut self, time: f64, mut send: impl FnMut(InputEvent) -> bool) -> bool {
+        self.fire_hold(time, &mut send);
         let Some(glide) = &mut self.glide else {
             return false;
         };
@@ -186,6 +224,81 @@ impl Contacts {
 mod tests {
     use super::*;
     use kui_core::{Core, NodeSpec, Size};
+
+    #[test]
+    fn stationary_hold_opens_one_context_menu_and_swallows_the_tap() {
+        for timer_fired in [false, true] {
+            let mut contacts = Contacts::default();
+            let at = Vec2::new(30., 10.);
+            let mut events = Vec::new();
+            contacts.handle(
+                TouchPhase::Started,
+                1,
+                at,
+                GestureAction::Drag,
+                2.,
+                |_, _| false,
+            );
+            contacts.arm_context_menu(2.);
+            assert_eq!(contacts.deadline(), Some(2.5));
+            if timer_fired {
+                contacts.advance(2.5, |e| {
+                    events.push(e);
+                    true
+                });
+            }
+            assert!(!contacts.handle(
+                TouchPhase::Ended,
+                1,
+                at,
+                GestureAction::Drag,
+                2.6,
+                |e, _| {
+                    events.push(e);
+                    true
+                }
+            ));
+            assert_eq!(
+                events,
+                [
+                    InputEvent::CursorMoved(at),
+                    InputEvent::MouseDown {
+                        button: MouseButton::Secondary,
+                        clicks: 1
+                    },
+                    InputEvent::MouseUp {
+                        button: MouseButton::Secondary
+                    },
+                    InputEvent::CursorLeft
+                ]
+            );
+            assert!(contacts.deadline().is_none());
+        }
+    }
+
+    #[test]
+    fn moving_or_multitouch_cancels_the_context_hold() {
+        let at = Vec2::new(10., 10.);
+        for (phase, id, pos) in [
+            (TouchPhase::Moved, 1, Vec2::new(50., 20.)),
+            (TouchPhase::Started, 2, at),
+            (TouchPhase::Cancelled, 1, at),
+        ] {
+            let mut contacts = Contacts::default();
+            contacts.handle(
+                TouchPhase::Started,
+                1,
+                at,
+                GestureAction::Drag,
+                0.,
+                |_, _| true,
+            );
+            contacts.arm_context_menu(0.);
+            contacts.handle(phase, id, pos, GestureAction::Drag, 0.1, |_, _| true);
+            assert!(contacts.deadline().is_none());
+            contacts.advance(0.6, |_| panic!("canceled hold fired"));
+        }
+    }
 
     fn flick(release: f64, claimed: bool) -> Contacts {
         let mut contacts = Contacts::default();

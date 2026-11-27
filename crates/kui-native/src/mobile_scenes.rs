@@ -90,7 +90,7 @@ impl<A: App, F: FnMut(&str, &str) -> (Core, A)> ApplicationHandler<MobileEvent> 
         for host in self.hosts.values_mut() {
             host.about_to_wait(el);
         }
-        let next = self.hosts.values().filter_map(|h| h.next_draw).min();
+        let next = self.hosts.values().filter_map(Host::next_deadline).min();
         el.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
 

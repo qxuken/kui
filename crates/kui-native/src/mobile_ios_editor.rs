@@ -25,6 +25,8 @@ unsafe extern "C" {
         show: bool,
         refresh: bool,
     );
+    fn kui_ios_copy_text(bytes: *const u8, len: usize);
+    fn kui_ios_paste_text(context: *mut c_void, emit: extern "C" fn(*mut c_void, *const u8, usize));
     fn kui_ios_key_mode(view: *mut c_void, scene: u64, session: i64, enabled: bool);
 }
 
@@ -68,6 +70,23 @@ impl Editor {
                 )
             };
         }
+    }
+
+    pub(super) fn copy(&self, text: &str) {
+        unsafe { kui_ios_copy_text(text.as_ptr(), text.len()) }
+    }
+
+    pub(super) fn paste(&self) -> String {
+        extern "C" fn receive(context: *mut c_void, bytes: *const u8, len: usize) {
+            // UIKit lends valid UTF-8 for this synchronous callback.
+            let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+            if let Ok(value) = str::from_utf8(bytes) {
+                unsafe { &mut *context.cast::<String>() }.push_str(value);
+            }
+        }
+        let mut value = String::new();
+        unsafe { kui_ios_paste_text((&raw mut value).cast(), receive) }
+        value
     }
 
     pub fn key_mode(&self, window: &Window, session: i64, enabled: bool) {

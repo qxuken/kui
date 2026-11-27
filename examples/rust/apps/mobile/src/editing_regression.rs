@@ -14,6 +14,8 @@ pub struct Regression {
     since: Option<Instant>,
     #[cfg(target_os = "ios")]
     awaiting_teardown: bool,
+    #[cfg(target_os = "ios")]
+    spelling_word: String,
     pub result: PathBuf,
     #[cfg(target_os = "android")]
     pub activity: Option<kui_native::mobile::AndroidApp>,
@@ -27,7 +29,7 @@ impl Regression {
     #[cfg(target_os = "ios")]
     pub fn teardown(&mut self) {
         if self.awaiting_teardown {
-            self.finish("PASS emoji replacement, caret and field switch; IME-off canceled composition and the editor reopened; UIKit termination called App::teardown".into());
+            self.finish("PASS emoji replacement, caret and field switch; IME-off canceled composition and the editor reopened; native spelling ranges, suggestions and learning; UIKit termination called App::teardown".into());
         }
     }
 
@@ -124,14 +126,64 @@ impl Regression {
             23 if self.native(13) && first == "aé!Zb" && self.changes[0] == 3 => {
                 #[cfg(target_os = "ios")]
                 {
-                    self.awaiting_teardown = true;
-                    self.native(14)
+                    // Use a fresh word so a previous test or user dictionary cannot mask a failure.
+                    let seed = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos();
+                    self.spelling_word = "kuizz".to_owned()
+                        + &(0..8)
+                            .map(|i| (b'a' + ((seed >> (i * 5)) % 26) as u8) as char)
+                            .collect::<String>();
+                    true
                 }
                 #[cfg(target_os = "android")]
                 {
                     self.finish("PASS emoji replacement, caret and field switch; Android preserved the original word on blur and committed 日本 once before ond; IME-off canceled composition and the editor reopened".into());
                     return;
                 }
+            }
+            #[cfg(target_os = "ios")]
+            24 => core
+                .edit
+                .spelling
+                .check("🙂 speling")
+                .is_some_and(|r| r == [5..12]),
+            #[cfg(target_os = "ios")]
+            25 => core
+                .edit
+                .spelling
+                .choices("speling")
+                .is_some_and(|c| c.can_learn && !c.suggestions.is_empty()),
+            #[cfg(target_os = "ios")]
+            26 => {
+                let word = &self.spelling_word;
+                if core
+                    .edit
+                    .spelling
+                    .check(word)
+                    .is_some_and(|r| !r.is_empty())
+                {
+                    core.edit.spelling.learn(word);
+                    true
+                } else {
+                    false
+                }
+            }
+            #[cfg(target_os = "ios")]
+            27 if core.edit.spelling.dictionary_revision() > 0
+                && core
+                    .edit
+                    .spelling
+                    .check(&self.spelling_word)
+                    .is_some_and(|r| r.is_empty()) =>
+            {
+                unsafe extern "C" {
+                    fn kui_probe_unlearn(bytes: *const u8, len: usize);
+                }
+                unsafe { kui_probe_unlearn(self.spelling_word.as_ptr(), self.spelling_word.len()) };
+                self.awaiting_teardown = true;
+                self.native(14)
             }
             _ => false,
         };

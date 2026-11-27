@@ -9,6 +9,11 @@ static UIView *responder(UIView *view) {
     return nil;
 }
 
+void kui_probe_unlearn(const uint8_t *bytes, size_t len) {
+    NSString *word = [[NSString alloc] initWithBytes:bytes length:len encoding:NSUTF8StringEncoding];
+    [UITextChecker unlearnWord:word];
+}
+
 bool kui_probe_step(int step) {
     static UITextView *previous;
     UITextView *field = nil;

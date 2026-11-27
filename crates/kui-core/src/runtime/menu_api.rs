@@ -282,6 +282,16 @@ impl Core {
         std::mem::take(&mut self.menu_actions)
     }
 
+    /// Drain actions handled by this host, leaving the rest for the embedder.
+    pub fn take_matching_menu_actions(
+        &mut self,
+        mut handles: impl FnMut(&MenuAction) -> bool,
+    ) -> Vec<MenuAction> {
+        self.menu_actions
+            .extract_if(.., |action| handles(action))
+            .collect()
+    }
+
     /// Draws the open menu into the frame being built, if there is one.
     /// Called by `Ui::finish` after the extensions have filled their
     /// slots, so the menu is the last thing declared and therefore the

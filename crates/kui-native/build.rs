@@ -4,12 +4,14 @@ fn main() {
     }
     match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
         Ok("ios") => {
+            println!("cargo:rerun-if-changed=ios/spelling.m");
             println!("cargo:rerun-if-changed=ios/editor.m");
             println!("cargo:rerun-if-changed=ios/accessibility.m");
             println!("cargo:rerun-if-changed=ios/japanese_font.m");
             println!("cargo:rustc-link-lib=framework=CoreText");
             cc::Build::new()
                 .file("ios/editor.m")
+                .file("ios/spelling.m")
                 .file("ios/accessibility.m")
                 .file("ios/japanese_font.m")
                 .flag("-fobjc-arc")

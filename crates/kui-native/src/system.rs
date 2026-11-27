@@ -47,7 +47,12 @@ pub fn new_core() -> kui_core::Core {
     core_in(&new_session())
 }
 
-#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+#[cfg(any(
+    target_os = "windows",
+    target_os = "macos",
+    target_os = "linux",
+    all(target_os = "ios", feature = "mobile")
+))]
 mod spelling;
 
 /// Creates another native core in this font and resource session.
@@ -58,7 +63,12 @@ pub fn core_in(session: &kui_core::Session) -> kui_core::Core {
 }
 
 pub(crate) fn configure_spelling(_core: &mut kui_core::Core) {
-    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+    #[cfg(any(
+        target_os = "windows",
+        target_os = "macos",
+        target_os = "linux",
+        all(target_os = "ios", feature = "mobile")
+    ))]
     {
         _core.edit.spelling.install_default(spelling::provider);
     }
