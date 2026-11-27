@@ -1557,6 +1557,7 @@ impl Core {
                     &src,
                     &mut self.access,
                     &mut self.access_groups,
+                    &mut self.access_run_hashes,
                 );
                 self.access_rebuilds += 1;
             }
@@ -1564,6 +1565,15 @@ impl Core {
             self.access_built = self.frame_no;
         }
         &self.access
+    }
+
+    /// The finished accessibility tree with the text-run fingerprints used by native adapters.
+    pub fn access_snapshot(&mut self) -> crate::access::AccessSnapshot<'_> {
+        self.access_tree();
+        crate::access::AccessSnapshot {
+            tree: &self.access,
+            hashes: &self.access_run_hashes.current,
+        }
     }
 
     /// Delivers one key event to the sink it resolves to, as that sink's

@@ -118,6 +118,35 @@ impl Feed {
         said: &[Announcement],
         push: impl FnOnce(TreeUpdate),
     ) {
+        self.publish_tree(tree, None, scale, said, push);
+    }
+
+    /// Publish a core-built snapshot using its immutable run fingerprints.
+    pub fn publish_snapshot(
+        &mut self,
+        snapshot: kui_core::access::AccessSnapshot<'_>,
+        scale: f32,
+        said: &[Announcement],
+        push: impl FnOnce(TreeUpdate),
+    ) {
+        self.publish_tree(
+            snapshot.tree(),
+            Some(snapshot.run_hashes()),
+            scale,
+            said,
+            push,
+        );
+    }
+
+    fn publish_tree(
+        &mut self,
+        tree: &AccessTree,
+        hashes: Option<&[u64]>,
+        scale: f32,
+        said: &[Announcement],
+        push: impl FnOnce(TreeUpdate),
+    ) {
+        let mut hashes = hashes.map(|h| h.iter());
         if !self.active {
             return;
         }
@@ -144,7 +173,10 @@ impl Feed {
             for r in &n.runs {
                 let id = NodeId(r.key.0);
                 children.push(id);
-                let hash = r.platform_hash();
+                let hash = hashes.as_mut().map_or_else(
+                    || r.platform_hash(),
+                    |h| *h.next().expect("one fingerprint per run"),
+                );
                 self.next_runs.insert(r.key, hash);
                 if self.runs.get(&r.key) != Some(&hash) {
                     nodes.push((id, text_run(r)));
@@ -673,11 +705,18 @@ mod tests {
                 },
             );
             ui.finish();
-            let tree = core.access_tree();
+            let snapshot = core.access_snapshot();
+            let tree = snapshot.tree();
+            let expected: Vec<_> = tree
+                .nodes
+                .iter()
+                .flat_map(|n| n.runs.iter().map(|r| r.platform_hash()))
+                .collect();
+            assert_eq!(snapshot.run_hashes(), expected);
             let editor = tree.get(key).unwrap();
             let full_text = editor.value.as_ref().unwrap();
             let mut pushed = false;
-            feed.publish(tree, 1.0, &[], |update| {
+            feed.publish_snapshot(snapshot, 1.0, &[], |update| {
                 pushed = true;
                 if index == 1 {
                     assert_eq!(

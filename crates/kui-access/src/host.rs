@@ -182,7 +182,7 @@ impl HostBridge {
         let scale = core.scale();
         let adapter = &mut self.adapter;
         self.feed
-            .publish(core.access_tree(), scale, &said, |u| adapter.update(u));
+            .publish_snapshot(core.access_snapshot(), scale, &said, |u| adapter.update(u));
     }
 
     /// Whether the host owes a turn for the bridge's sake: something the
