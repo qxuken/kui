@@ -14,6 +14,10 @@ import android.view.inputmethod.InputMethodManager;
 
 /** Android mirrors the focused KUI document and reports edits in UTF-16. */
 public final class KuiActivity extends NativeActivity {
+    private KuiSpelling createKuiSpelling() {
+        return new KuiSpelling(getApplicationContext());
+    }
+
     private View kuiAccessView;
     private native void attachKuiAccess(long request, View host);
 

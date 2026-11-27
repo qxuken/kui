@@ -30,7 +30,7 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir "$tmp/classes"
 # Compile the delegate from the exact AccessKit version in Cargo.lock.
 accesskit=$(cargo metadata --locked --format-version 1 | python3 -c 'import json, pathlib, sys; print(next(pathlib.Path(p["manifest_path"]).parent for p in json.load(sys.stdin)["packages"] if p["name"] == "accesskit_android"))')
-set -- crates/kui-native/android/dev/kui/KuiActivity.java "$accesskit/java/dev/accesskit/android/Delegate.java"
+set -- crates/kui-native/android/dev/kui/*.java "$accesskit/java/dev/accesskit/android/Delegate.java"
 if [ "$editing" = 1 ]; then set -- "$@" examples/rust/apps/mobile/regression/EditingProbe.java; fi
 javac --release 8 -classpath "$platform" -d "$tmp/classes" "$@"
 jar cf "$tmp/editor.jar" -C "$tmp/classes" .

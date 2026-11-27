@@ -23,6 +23,9 @@ pub use winit::platform::android::activity::AndroidApp;
 #[cfg(target_os = "android")]
 #[path = "mobile_android_editor.rs"]
 mod android_editor;
+#[cfg(target_os = "android")]
+#[path = "mobile_android_spelling.rs"]
+mod android_spelling;
 
 #[path = "mobile_access.rs"]
 mod access;
@@ -137,13 +140,15 @@ pub fn run_with_extensions(
 impl<A: App> Host<A> {
     fn new(
         #[cfg(target_os = "android")] activity: AndroidApp,
-        core: Core,
+        mut core: Core,
         mut app: A,
         extensions: Extensions,
         proxy: Proxy,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         #[cfg(target_os = "android")]
         let editor = android_editor::Editor::new(&activity, proxy.clone())?;
+        #[cfg(target_os = "android")]
+        android_spelling::install(&mut core, activity.clone());
         #[cfg(target_os = "ios")]
         let editor = ios_editor::Editor::new(proxy.clone());
         app.setup(Waker(proxy.clone()));
