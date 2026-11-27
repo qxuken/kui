@@ -51,16 +51,20 @@ impl Spelling {
         }
     }
 
+    fn provider(&mut self) -> Option<&mut (dyn Spellchecker + 'static)> {
+        if self.provider.is_none() {
+            self.provider = self.factory.take().map(|open| open());
+        }
+        self.provider.as_deref_mut()
+    }
+
     /// Ranges for exactly this text, or None while the result is pending.
     /// A missing dictionary supplies an empty result.
     pub fn check(&mut self, text: &str) -> Option<&[Range<usize>]> {
         if text.is_empty() {
             return Some(&[]);
         }
-        if self.provider.is_none() {
-            self.provider = self.factory.take().map(|open| open());
-        }
-        match &mut self.provider {
+        match self.provider() {
             Some(provider) => provider.check(text),
             None => Some(&[]),
         }
@@ -81,7 +85,10 @@ impl Spelling {
 
     /// Ask for the menu actions available for this word.
     pub fn choices(&mut self, word: &str) -> Option<SpellingChoices> {
-        match &mut self.provider {
+        if word.is_empty() {
+            return Some(SpellingChoices::default());
+        }
+        match self.provider() {
             Some(p) => p.choices(word),
             None => Some(SpellingChoices::default()),
         }
@@ -89,7 +96,9 @@ impl Spelling {
 
     /// Called only after the user chooses to learn the word.
     pub fn learn(&mut self, word: &str) {
-        if let Some(p) = &mut self.provider {
+        if !word.is_empty()
+            && let Some(p) = self.provider()
+        {
             p.learn(word);
         }
     }

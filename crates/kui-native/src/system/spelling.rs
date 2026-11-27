@@ -34,6 +34,26 @@ enum Request {
     Learn(String),
 }
 
+// A menu should wait for at most the check already in progress, even when a
+// newly opened document has queued dozens of paragraphs. Only the current
+// menu can receive suggestions. Explicit dictionary additions are all kept.
+fn next_request(inbox: &Receiver<Request>, queue: &mut VecDeque<Request>) -> Option<Request> {
+    if queue.is_empty() {
+        queue.push_back(inbox.recv().ok()?);
+    }
+    for request in inbox.try_iter() {
+        if matches!(request, Request::Choices(_)) {
+            queue.retain(|r| !matches!(r, Request::Choices(_)));
+        }
+        queue.push_back(request);
+    }
+    let index = queue
+        .iter()
+        .position(|r| !matches!(r, Request::Check(_)))
+        .unwrap_or(0);
+    queue.remove(index)
+}
+
 enum Answer {
     Checked(u64, Arc<str>, Vec<Range<usize>>),
     Choices(u64, Arc<str>, SpellingChoices),
@@ -77,7 +97,8 @@ pub(crate) fn worker<D: Dictionary>(
             let Some(mut dictionary) = dictionary_call(&open) else {
                 return;
             };
-            for request in inbox {
+            let mut queue = VecDeque::new();
+            while let Some(request) = next_request(&inbox, &mut queue) {
                 let _learn_lock = matches!(request, Request::Learn(_))
                     .then(|| LEARN_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
                 let latest = GENERATION.load(Ordering::Acquire);
@@ -135,7 +156,8 @@ impl Spellchecker for Worker {
     }
 
     fn pending(&self) -> bool {
-        !self.pending.is_empty()
+        self.generation != GENERATION.load(Ordering::Acquire)
+            || !self.pending.is_empty()
             || self.learning != 0
             || self
                 .menu
@@ -280,6 +302,27 @@ mod tests {
             assert!(Instant::now() < deadline, "dictionary timed out");
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+
+    #[test]
+    fn the_current_menu_overtakes_queued_paragraphs() {
+        let (tx, rx) = mpsc::channel();
+        let mut queue = VecDeque::new();
+        tx.send(Request::Check("long paragraph".into())).unwrap();
+        tx.send(Request::Choices("old".into())).unwrap();
+        tx.send(Request::Learn("word".into())).unwrap();
+        tx.send(Request::Choices("current".into())).unwrap();
+        assert!(matches!(
+            next_request(&rx, &mut queue),
+            Some(Request::Learn(_))
+        ));
+        assert!(
+            matches!(next_request(&rx, &mut queue), Some(Request::Choices(w)) if &*w == "current")
+        );
+        assert!(matches!(
+            next_request(&rx, &mut queue),
+            Some(Request::Check(_))
+        ));
     }
 
     #[test]
