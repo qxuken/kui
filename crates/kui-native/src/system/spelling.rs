@@ -121,7 +121,9 @@ pub(crate) fn worker<D: Dictionary>(
                     }
                     Request::Learn(word) => {
                         if dictionary.learn(&word) {
-                            GENERATION.fetch_add(1, Ordering::AcqRel);
+                            // This handle just learned the word. Other workers must
+                            // reopen, but this one already has the new dictionary.
+                            seen = GENERATION.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
                         } else {
                             // A backend may have changed its in-memory word list before
                             // discovering a write failure. Reopen before its next use.
