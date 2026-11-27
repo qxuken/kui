@@ -8,6 +8,9 @@ static void onMain(dispatch_block_t block) {
 }
 
 extern void kui_ios_spell_readiness_changed(void);
+// The simulator regression supplies this optional sink. Only request/result
+// counts cross the probe; release apps have no sink or diagnostic storage.
+extern void kui_probe_backend_counts(int stage, size_t a, size_t b, size_t c) __attribute__((weak_import));
 
 @interface KUISpelling : NSObject
 @property(nonatomic, strong) UITextChecker *checker;
@@ -15,6 +18,7 @@ extern void kui_ios_spell_readiness_changed(void);
 @property(nonatomic, copy) NSDictionary<NSString *, NSCharacterSet *> *letters;
 @property(nonatomic, strong) NSMutableArray<NSString *> *samples;
 @property(nonatomic) BOOL scheduled;
+@property(nonatomic) BOOL languagesChanged;
 @property(nonatomic) NSTimeInterval lastProbe;
 - (void)observe:(NSSet<NSString *> *)answered text:(NSString *)text;
 - (void)refresh;
@@ -54,14 +58,14 @@ NSArray<NSString *> *kui_ios_spell_languages(void) {
 static NSMutableSet<NSString *> *confirmed;
 static NSMutableSet<NSString *> *provisional;
 
-static NSIndexSet *nativeErrors(KUISpelling *dictionary, NSString *text, NSString *language) {
+static NSIndexSet *nativeErrors(UITextChecker *checker, NSString *text, NSString *language) {
     NSMutableIndexSet *errors = [NSMutableIndexSet indexSet];
     NSRange full = NSMakeRange(0, text.length);
     NSUInteger cursor = 0;
     while (cursor < full.length) {
         __block NSRange miss;
         onMain(^{
-            miss = [dictionary.checker rangeOfMisspelledWordInString:text
+            miss = [checker rangeOfMisspelledWordInString:text
                 range:full startingAt:cursor wrap:NO language:language];
         });
         if (miss.location == NSNotFound || miss.location < cursor || !miss.length ||
@@ -80,7 +84,7 @@ static NSIndexSet *nativeErrors(KUISpelling *dictionary, NSString *text, NSStrin
         changed |= [provisional containsObject:language];
         [confirmed addObject:language];
     }
-    BOOL pending = NO;
+    BOOL pending = self.languages.count == 0;
     for (NSString *language in self.languages) {
         if (![confirmed containsObject:language]) {
             [provisional addObject:language];
@@ -112,30 +116,40 @@ static NSIndexSet *nativeErrors(KUISpelling *dictionary, NSString *text, NSStrin
 }
 - (void)refresh {
     self.lastProbe = NSProcessInfo.processInfo.systemUptime;
+    if (self.languagesChanged) return;
+    if (![self.languages isEqualToArray:kui_ios_spell_languages()]) {
+        self.languagesChanged = YES;
+        kui_ios_spell_readiness_changed();
+        return;
+    }
     if (!self.samples.count) return;
+    // A checker created while keyboard assets are loading can keep returning
+    // an empty result. Compare the actual saved sample on a fresh instance.
+    UITextChecker *fresh = [UITextChecker new];
     NSMutableSet *answered = [NSMutableSet set];
     for (NSString *language in self.languages) {
         if ([confirmed containsObject:language]) continue;
         for (NSString *text in self.samples) {
-            if (nativeErrors(self, text, language).count) {
+            if (nativeErrors(fresh, text, language).count) {
                 [answered addObject:language];
                 break;
             }
         }
     }
+    if (kui_probe_backend_counts) kui_probe_backend_counts(2, self.languages.count, self.samples.count, answered.count);
+    if (answered.count) self.checker = fresh;
     [self observe:answered text:nil];
 }
-- (void)activated:(NSNotification *)note {
-    if (![self.languages isEqualToArray:kui_ios_spell_languages()]) kui_ios_spell_readiness_changed();
-    else [self refresh];
-}
+- (void)activated:(NSNotification *)note { [self refresh]; }
 @end
 
 void *kui_ios_spell_open(void) {
     __block void *result = NULL;
     onMain(^{
         NSArray *languages = kui_ios_spell_languages();
-        if (!languages.count) return;
+        // Keyboard languages can be empty on the first UIKit query. Keep
+        // the worker alive so an activation or provisional check can retry.
+        if (kui_probe_backend_counts) kui_probe_backend_counts(0, languages.count, 0, 0);
         KUISpelling *dictionary = [KUISpelling new];
         dictionary.checker = [UITextChecker new];
         dictionary.languages = languages;
@@ -206,10 +220,20 @@ void kui_ios_spell_check(void *handle, const uint8_t *bytes, size_t len, void *c
         NSMutableDictionary *checked = [NSMutableDictionary dictionary];
         NSMutableSet *answered = [NSMutableSet set];
         NSString *lowercase = text.lowercaseString;
+        __block UITextChecker *checker;
+        onMain(^{
+            checker = dictionary.checker;
+            if (![[NSSet setWithArray:dictionary.languages] isSubsetOfSet:confirmed]) {
+                checker = [UITextChecker new];
+                dictionary.checker = checker;
+            }
+        });
+        NSUInteger rawUnits = 0;
         for (NSString *language in dictionary.languages) {
             if ([lowercase rangeOfCharacterFromSet:dictionary.letters[language]].location == NSNotFound)
                 continue;
-            NSIndexSet *errors = nativeErrors(dictionary, text, language);
+            NSIndexSet *errors = nativeErrors(checker, text, language);
+            rawUnits += errors.count;
             checked[language] = errors;
             if (errors.count) [answered addObject:language];
         }
@@ -218,6 +242,7 @@ void kui_ios_spell_check(void *handle, const uint8_t *bytes, size_t len, void *c
             if (NSProcessInfo.processInfo.systemUptime - dictionary.lastProbe >= 30) [dictionary refresh];
         });
         NSIndexSet *errors = kui_ios_spell_consensus(text, dictionary.letters, checked);
+        if (kui_probe_backend_counts) kui_probe_backend_counts(1, checked.count, rawUnits, errors.count);
         [errors enumerateRangesUsingBlock:^(NSRange range, BOOL * __unused stop) {
             emit(context, range.location, NSMaxRange(range));
         }];

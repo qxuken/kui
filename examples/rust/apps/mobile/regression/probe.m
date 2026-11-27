@@ -9,6 +9,32 @@ static UIView *responder(UIView *view) {
     return nil;
 }
 
+#include <stdatomic.h>
+static atomic_size_t openCalls, firstLanguages, lastLanguages, checkCalls, lastChecked, lastRaw, lastEmitted;
+static atomic_size_t refreshCalls, lastSamples, lastReady;
+
+void kui_probe_backend_counts(int stage, size_t a, size_t b, size_t c) {
+    if (stage == 0) {
+        if (atomic_fetch_add(&openCalls, 1) == 0) atomic_store(&firstLanguages, a);
+        atomic_store(&lastLanguages, a);
+    } else if (stage == 1) {
+        atomic_fetch_add(&checkCalls, 1);
+        atomic_store(&lastChecked, a);
+        atomic_store(&lastRaw, b);
+        atomic_store(&lastEmitted, c);
+    } else {
+        atomic_fetch_add(&refreshCalls, 1);
+        atomic_store(&lastSamples, b);
+        atomic_store(&lastReady, c);
+    }
+}
+
+extern void *kui_ios_spell_open(void);
+extern void kui_ios_spell_close(void *);
+extern void kui_ios_spell_check(void *, const uint8_t *, size_t, void *, void (*)(void *,size_t,size_t));
+static void probeUTF16(void *ctx, size_t start, size_t end) {
+    [(__bridge NSMutableArray *)ctx addObject:NSStringFromRange(NSMakeRange(start, end - start))];
+}
 extern NSArray<NSString *> *kui_ios_spell_languages(void);
 
 extern NSIndexSet *kui_ios_spell_consensus(NSString *, NSDictionary *, NSDictionary *);
@@ -86,8 +112,19 @@ void kui_probe_spelling(const uint8_t *bytes, size_t len, void *ctx,
         }
         ranges[language] = answer;
     }
-    NSString *summary = [NSString stringWithFormat:@"UIKit preferred=%@ keyboards=%@ configured=%@ nativeUTF16Ranges=%@",
-                         NSLocale.preferredLanguages, keyboards, kui_ios_spell_languages(), ranges];
+    NSString *worker = [NSString stringWithFormat:
+        @"open=%zu first/last languages=%zu/%zu checks=%zu last checked/raw/emitted=%zu/%zu/%zu refreshes=%zu last samples/ready=%zu/%zu",
+        atomic_load(&openCalls), atomic_load(&firstLanguages), atomic_load(&lastLanguages), atomic_load(&checkCalls),
+        atomic_load(&lastChecked), atomic_load(&lastRaw), atomic_load(&lastEmitted),
+        atomic_load(&refreshCalls), atomic_load(&lastSamples), atomic_load(&lastReady)];
+    NSMutableArray *fresh = [NSMutableArray array];
+    void *handle = kui_ios_spell_open();
+    if (handle) {
+        kui_ios_spell_check(handle, bytes, len, (__bridge void *)fresh, probeUTF16);
+        kui_ios_spell_close(handle);
+    }
+    NSString *summary = [NSString stringWithFormat:@"Production worker %@ fresh bridge UTF16=%@ UIKit preferred=%@ keyboards=%@ configured=%@ nativeUTF16Ranges=%@",
+                         worker, fresh, NSLocale.preferredLanguages, keyboards, kui_ios_spell_languages(), ranges];
     report(ctx, summary.UTF8String);
 }
 

@@ -18,6 +18,7 @@ struct SpellingFixture {
     guess: String,
     learn: String,
     revision: u64,
+    initial_pending: bool,
 }
 
 #[derive(Default)]
@@ -66,7 +67,12 @@ impl Regression {
         }
         let caret = core.edit.caret_and_selection(a);
         let marked = core.edit.preedit(b);
-        if self.since.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(12) {
+        let timeout = if cfg!(target_os = "ios") && self.step == 24 {
+            24
+        } else {
+            12
+        };
+        if self.since.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(timeout) {
             #[cfg(target_os = "android")]
             if (24..=26).contains(&self.step) {
                 self.finish(format!(
@@ -84,8 +90,8 @@ impl Regression {
             if (24..=27).contains(&self.step) {
                 let ranges = core.edit.spelling.check(SPELLING_SAMPLE).map(<[_]>::to_vec);
                 let choices = core.edit.spelling.choices(&self.spelling.word);
-                self.finish(format!("FAIL spelling step {} for {SPELLING_SAMPLE:?}: worker ranges {ranges:?}, direct UIKit {:?}, choices for {:?} {choices:?}, learned {:?}, generation {}, {}", self.step, native_spelling_ranges(SPELLING_SAMPLE),
-                    self.spelling.word, self.spelling.learn, core.edit.spelling.dictionary_revision(), spelling_diagnostics(SPELLING_SAMPLE)));
+                self.finish(format!("FAIL spelling step {} for {SPELLING_SAMPLE:?}: worker ranges {ranges:?}, direct UIKit {:?}, choices for {:?} {choices:?}, learned {:?}, generation {}, initial pending {}, result revision {}, {}", self.step, native_spelling_ranges(SPELLING_SAMPLE),
+                    self.spelling.word, self.spelling.learn, core.edit.spelling.dictionary_revision(), self.spelling.initial_pending, core.edit.spelling.revision(), spelling_diagnostics(SPELLING_SAMPLE)));
                 return;
             }
             self.finish(format!("FAIL step {} model {first:?}, {second:?}, caret {caret:?}, marked {marked:?}, focus {:?}, changes {:?}", self.step, core.focus(), self.changes));
@@ -170,6 +176,11 @@ impl Regression {
                         );
                         return;
                     }
+                    self.spelling.initial_pending = core
+                        .edit
+                        .spelling
+                        .check("🙂 This has a speling mistake.")
+                        .is_none();
                     true
                 }
                 #[cfg(target_os = "android")]
@@ -180,12 +191,13 @@ impl Regression {
             #[cfg(target_os = "ios")]
             24 => {
                 let native = native_spelling_ranges(SPELLING_SAMPLE);
-                let matches = core
-                    .edit
-                    .spelling
-                    .check(SPELLING_SAMPLE)
-                    .is_some_and(|ranges| !ranges.is_empty() && *ranges == native);
-                matches && self.spelling.select(&native)
+                !native.is_empty()
+                    && core
+                        .edit
+                        .spelling
+                        .check(SPELLING_SAMPLE)
+                        .is_some_and(|ranges| *ranges == native)
+                    && self.spelling.select(&native)
             }
             #[cfg(target_os = "ios")]
             25 => core
