@@ -6,6 +6,8 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.LocaleList;
 import android.os.SystemClock;
+import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.InputMethodSubtype;
 import android.view.textservice.SentenceSuggestionsInfo;
 import android.view.textservice.SpellCheckerSession;
 import android.view.textservice.SuggestionsInfo;
@@ -65,23 +67,39 @@ final class KuiSpelling {
         return true;
     }
 
+    @SuppressWarnings("deprecation") // Older IMEs can publish a locale without a BCP 47 tag.
+    private Set<Locale> writingLocales() {
+        Set<Locale> locales = new LinkedHashSet<>();
+        LocaleList display = context.getResources().getConfiguration().getLocales();
+        for (int i = 0; i < display.size(); i++) locales.add(display.get(i));
+        InputMethodManager ime = context.getSystemService(InputMethodManager.class);
+        if (ime != null) {
+            for (InputMethodSubtype subtype : ime.getEnabledInputMethodSubtypeList(null, true)) {
+                if (!"keyboard".equals(subtype.getMode())) continue;
+                String tag = subtype.getLanguageTag();
+                if (tag.isEmpty()) tag = subtype.getLocale().replace('_', '-');
+                Locale locale = Locale.forLanguageTag(tag);
+                if (!locale.getLanguage().isEmpty()) locales.add(locale);
+            }
+        }
+        return locales;
+    }
+
     private void open() {
         opened = true;
         TextServicesManager manager = context.getSystemService(TextServicesManager.class);
         if (manager == null) return;
-        LocaleList preferred = context.getResources().getConfiguration().getLocales();
+        Set<Locale> preferred = writingLocales();
         Set<String> languages = new HashSet<>();
         // The settings-aware request also respects the user's system spelling switch.
-        for (int i = 0; i < preferred.size(); i++) {
-            Locale locale = preferred.get(i);
+        for (Locale locale : preferred) {
             if (add(manager, locale, true)) {
                 languages.add(locale.getLanguage());
                 break;
             }
         }
         if (channels.isEmpty() && !add(manager, null, true)) return;
-        for (int i = 0; i < preferred.size(); i++) {
-            Locale locale = preferred.get(i);
+        for (Locale locale : preferred) {
             if (!languages.contains(locale.getLanguage()) && add(manager, locale, false)) {
                 languages.add(locale.getLanguage());
             }

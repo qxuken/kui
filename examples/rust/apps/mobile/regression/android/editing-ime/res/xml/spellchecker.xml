@@ -1,3 +1,4 @@
 <spell-checker xmlns:android="http://schemas.android.com/apk/res/android">
     <subtype android:subtypeLocale="en_US" android:languageTag="en-US" android:subtypeId="2026"/>
+    <subtype android:subtypeLocale="ru_RU" android:languageTag="ru-RU" android:subtypeId="2027"/>
 </spell-checker>

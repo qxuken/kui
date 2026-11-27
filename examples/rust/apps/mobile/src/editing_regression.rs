@@ -188,7 +188,7 @@ impl Regression {
             24 => core
                 .edit
                 .spelling
-                .check("🙂 kuizzzword")
+                .check("🙂 kuizzzword кошка")
                 .is_some_and(|ranges| ranges.len() == 1 && ranges[0] == (5..15)),
             #[cfg(target_os = "android")]
             25 if core
@@ -205,7 +205,7 @@ impl Regression {
                 && core
                     .edit
                     .spelling
-                    .check("🙂 kuizzzword")
+                    .check("🙂 kuizzzword кошка")
                     .is_some_and(|ranges| ranges.is_empty()) =>
             {
                 self.finish("PASS emoji replacement, caret and field switch, composition, IME-off and reopen, Android native spelling offsets, suggestions and learning".into());
