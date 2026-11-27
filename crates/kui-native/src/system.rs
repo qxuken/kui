@@ -51,9 +51,9 @@ pub fn new_core() -> kui_core::Core {
     target_os = "windows",
     target_os = "macos",
     target_os = "linux",
-    all(target_os = "ios", feature = "mobile")
+    all(any(target_os = "ios", target_os = "android"), feature = "mobile")
 ))]
-mod spelling;
+pub(crate) mod spelling;
 
 /// Creates another native core in this font and resource session.
 pub fn core_in(session: &kui_core::Session) -> kui_core::Core {

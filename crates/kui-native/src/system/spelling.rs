@@ -3,12 +3,15 @@
 use kui_core::spelling::{Spellchecker, SpellingChoices};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Mutex};
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 #[path = "spelling/desktop.rs"]
+mod backend;
+#[cfg(all(target_os = "ios", feature = "mobile"))]
+#[path = "spelling/ios.rs"]
 mod backend;
 
 pub(crate) trait Dictionary {
@@ -21,6 +24,9 @@ const CACHE_SIZE: usize = 2048;
 const QUEUE_SIZE: usize = 64;
 const CACHE_BYTES: usize = 8 * 1024 * 1024;
 static GENERATION: AtomicU64 = AtomicU64::new(0);
+// Hunspell rewrites its personal list from the handle's in-memory copy.
+// Two windows learning simultaneously must reload and write in that order.
+static LEARN_LOCK: Mutex<()> = Mutex::new(());
 
 enum Request {
     Check(Arc<str>),
@@ -48,11 +54,11 @@ struct Worker {
 }
 
 fn dictionary_call<T>(f: impl FnOnce() -> T) -> T {
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(target_os = "macos")]
     {
         objc2::rc::autoreleasepool(|_| f())
     }
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    #[cfg(not(target_os = "macos"))]
     {
         f()
     }
@@ -72,6 +78,8 @@ pub(crate) fn worker<D: Dictionary>(
                 return;
             };
             for request in inbox {
+                let _learn_lock = matches!(request, Request::Learn(_))
+                    .then(|| LEARN_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
                 let latest = GENERATION.load(Ordering::Acquire);
                 if seen != latest {
                     // In particular, Hunspell loads its personal list when opened.
@@ -93,6 +101,10 @@ pub(crate) fn worker<D: Dictionary>(
                     Request::Learn(word) => {
                         if dictionary.learn(&word) {
                             GENERATION.fetch_add(1, Ordering::AcqRel);
+                        } else {
+                            // A backend may have changed its in-memory word list before
+                            // discovering a write failure. Reopen before its next use.
+                            seen = latest.wrapping_sub(1);
                         }
                         Answer::Learned
                     }
@@ -248,8 +260,98 @@ impl Spellchecker for Worker {
     target_os = "windows",
     target_os = "macos",
     target_os = "linux",
-    target_os = "ios"
+    all(target_os = "ios", feature = "mobile")
 ))]
 pub(super) fn provider() -> Box<dyn Spellchecker> {
     worker(backend::Dictionary::open)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn wait<T>(mut poll: impl FnMut() -> Option<T>) -> T {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(value) = poll() {
+                return value;
+            }
+            assert!(Instant::now() < deadline, "dictionary timed out");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn learning_in_two_windows_refreshes_shared_words_without_losing_either() {
+        #[derive(Clone, Default)]
+        struct PersonalList {
+            disk: Arc<Mutex<Vec<String>>>,
+            loaded: Vec<String>,
+        }
+        impl Dictionary for PersonalList {
+            fn check(&self, text: &str) -> Vec<Range<usize>> {
+                if self.loaded.iter().any(|s| s == text) {
+                    vec![]
+                } else {
+                    std::iter::once(0..text.len()).collect()
+                }
+            }
+            fn choices(&self, _: &str) -> SpellingChoices {
+                SpellingChoices {
+                    suggestions: vec!["suggestion".into()],
+                    can_learn: true,
+                }
+            }
+            fn learn(&mut self, word: &str) -> bool {
+                self.loaded.push(word.into());
+                self.disk.lock().unwrap().clone_from(&self.loaded);
+                true
+            }
+        }
+        let list = PersonalList::default();
+        let window = || {
+            let seed = list.clone();
+            worker(move || {
+                let mut opened = seed.clone();
+                opened.loaded = seed.disk.lock().unwrap().clone();
+                Some(opened)
+            })
+        };
+        let (mut a, mut b) = (window(), window());
+        for w in [&mut a, &mut b] {
+            let result = wait(|| {
+                w.collect();
+                w.check("abc").map(<[_]>::to_vec)
+            });
+            assert_eq!(result, [0..3]);
+        }
+        assert_eq!(
+            wait(|| {
+                a.collect();
+                a.choices("abc")
+            })
+            .suggestions,
+            ["suggestion"]
+        );
+        a.learn("abc");
+        b.learn("xyz");
+        wait(|| {
+            a.collect();
+            b.collect();
+            (!a.pending() && !b.pending()).then_some(())
+        });
+        let mut disk = list.disk.lock().unwrap().clone();
+        disk.sort();
+        assert_eq!(disk, ["abc", "xyz"]);
+        for w in [&mut a, &mut b] {
+            for word in ["abc", "xyz"] {
+                let ranges = wait(|| {
+                    w.collect();
+                    w.check(word).map(<[_]>::to_vec)
+                });
+                assert!(ranges.is_empty());
+            }
+        }
+    }
 }

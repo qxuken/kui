@@ -57,7 +57,7 @@ use crate::tree::OriginId;
 #[derive(Clone, Debug, Default)]
 pub struct EditOptions {
     pub style: TextStyle,
-    /// Underline misspellings using the desktop dictionary. Ignored for secure fields.
+    /// Underline misspellings and offer spelling actions in the editor menu. Ignored for secure fields.
     pub spellcheck: bool,
     /// A document rather than a field: Enter inserts a newline, the text
     /// wraps to the box, and the caret opens at the top.

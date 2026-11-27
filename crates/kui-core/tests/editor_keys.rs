@@ -107,6 +107,93 @@ fn spelling_underlines_follow_the_buffer_and_skip_secure_editors() {
     }
 }
 
+#[test]
+fn spelling_menu_checks_the_clicked_word_and_current_editor_state() {
+    use kui_core::spelling::{Spellchecker, Spelling, SpellingChoices};
+    use std::{cell::Cell, ops::Range, rc::Rc};
+    struct Dictionary(Rc<Cell<bool>>);
+    impl Spellchecker for Dictionary {
+        fn check(&mut self, text: &str) -> Option<&[Range<usize>]> {
+            const TYPO: Range<usize> = 0..2;
+            Some(if text == "ab" && !self.0.get() {
+                std::slice::from_ref(&TYPO)
+            } else {
+                &[]
+            })
+        }
+        fn choices(&mut self, word: &str) -> Option<SpellingChoices> {
+            assert_eq!(word, "ab");
+            Some(SpellingChoices {
+                suggestions: vec!["about".into()],
+                can_learn: true,
+            })
+        }
+        fn learn(&mut self, word: &str) {
+            assert_eq!(word, "ab");
+            self.0.set(true);
+        }
+        fn pending(&self) -> bool {
+            false
+        }
+        fn collect(&mut self) -> bool {
+            false
+        }
+    }
+    let mut core = support::desktop();
+    let learned = Rc::new(Cell::new(false));
+    let dictionary = Dictionary(learned.clone());
+    core.edit.spelling = Spelling::with_provider(move || Box::new(dictionary));
+    let mut opts = EditOptions {
+        spellcheck: true,
+        ..EditOptions::default()
+    };
+    let (_, field) = frame(&mut core, &opts, false);
+    let open = |core: &mut Core, x| {
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(x, 8.0)));
+        core.handle_input(InputEvent::MouseDown {
+            button: kui_core::MouseButton::Secondary,
+            clicks: 1,
+        });
+        core.handle_input(InputEvent::MouseUp {
+            button: kui_core::MouseButton::Secondary,
+        });
+    };
+    let first = |core: &Core| core.menu().expect("editor menu").items[0].label.clone();
+
+    open(&mut core, 160.0);
+    assert_ne!(first(&core), "about", "trailing whitespace");
+    core.close_menu();
+    open(&mut core, 5.0);
+    assert_eq!(first(&core), "about");
+    assert_eq!(core.menu().unwrap().items[1].label, "Add to dictionary");
+    core.activate_menu_item(0).unwrap();
+    assert_eq!(core.edit.text(field).as_deref(), Some("about"));
+    core.handle_input(InputEvent::Key(EditKey::Undo, Mods::default()));
+    assert_eq!(core.edit.text(field).as_deref(), Some("ab"));
+
+    open(&mut core, 5.0);
+    // Opting out while the native menu is up must invalidate its action.
+    opts.spellcheck = false;
+    frame(&mut core, &opts, false);
+    core.activate_menu_item(1).unwrap();
+    assert!(!learned.get());
+    frame(&mut core, &opts, false);
+    open(&mut core, 5.0);
+    assert_ne!(first(&core), "about");
+    core.close_menu();
+    opts.spellcheck = true;
+    opts.secure = true;
+    frame(&mut core, &opts, false);
+    open(&mut core, 5.0);
+    assert_ne!(first(&core), "about");
+    core.close_menu();
+    opts.secure = false;
+    frame(&mut core, &opts, false);
+    open(&mut core, 5.0);
+    core.activate_menu_item(1).unwrap();
+    assert!(learned.get());
+}
+
 fn primary() -> KeyMods {
     if cfg!(target_os = "macos") {
         KeyMods {

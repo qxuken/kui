@@ -3165,7 +3165,7 @@ pub struct TextField {
     pub hide_label: Option<bool>,
     /// Shown while it is empty.
     pub placeholder: Option<String>,
-    /// Underline misspelled words using the desktop dictionary.
+    /// Underline misspellings and offer spelling actions in the editor menu.
     pub spellcheck: Option<bool>,
     /// In the data face.
     pub mono: Option<bool>,
@@ -3248,7 +3248,7 @@ impl TextField {
         self
     }
 
-    /// Underline misspelled words using the desktop dictionary.
+    /// Underline misspellings and offer spelling actions in the editor menu.
     pub fn spellcheck(mut self, v: bool) -> Self {
         self.spellcheck = Some(v);
         self
@@ -3691,7 +3691,7 @@ pub struct TextArea {
     pub autofocus: Option<bool>,
     /// What is wrong with the text, under it in the danger colour.
     pub error: Option<String>,
-    /// Underline misspelled words using the desktop dictionary.
+    /// Underline misspellings and offer spelling actions in the editor menu.
     pub spellcheck: Option<bool>,
     /// Tab and Shift+Tab move the keyboard to the next or the last control, as
     /// from a one-line field: a note, a comment. Left out, Tab types
@@ -3805,7 +3805,7 @@ impl TextArea {
         self
     }
 
-    /// Underline misspelled words using the desktop dictionary.
+    /// Underline misspellings and offer spelling actions in the editor menu.
     pub fn spellcheck(mut self, v: bool) -> Self {
         self.spellcheck = Some(v);
         self

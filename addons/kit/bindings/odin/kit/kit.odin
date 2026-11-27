@@ -1491,7 +1491,7 @@ TextField :: struct {
 	hide_label: Maybe(bool),
 	// Shown while it is empty.
 	placeholder: string,
-	// Underline misspelled words using the desktop dictionary.
+	// Underline misspellings and offer spelling actions in the editor menu.
 	spellcheck: Maybe(bool),
 	// In the data face.
 	mono: Maybe(bool),
@@ -1701,7 +1701,7 @@ TextArea :: struct {
 	autofocus: Maybe(bool),
 	// What is wrong with the text, under it in the danger colour.
 	error: string,
-	// Underline misspelled words using the desktop dictionary.
+	// Underline misspellings and offer spelling actions in the editor menu.
 	spellcheck: Maybe(bool),
 	// Tab and Shift+Tab move the keyboard to the next or the last control, as from
 	// a one-line field: a note, a comment. Left out, Tab types indentation as a

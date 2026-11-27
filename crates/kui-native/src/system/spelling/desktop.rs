@@ -155,6 +155,7 @@ mod tests {
             return;
         };
         let text = "Книги и заметки. The books and notes. Превед wrldd.";
+        use super::super::Dictionary as _;
         let sample = [en, ru];
         let errors = check_text(&sample, text);
         let preferred = preferred_languages();
@@ -168,6 +169,50 @@ mod tests {
         assert_eq!(
             errors.iter().map(|r| &text[r.clone()]).collect::<Vec<_>>(),
             ["Превед", "wrldd"]
+        );
+        let choices = Dictionary(sample.into_iter().collect()).choices("wrldd");
+        assert!(choices.can_learn && !choices.suggestions.is_empty());
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn hunspell_suggests_and_persists_a_word_in_an_isolated_dictionary() {
+        use super::super::Dictionary as _;
+        const CHILD: &str = "KUI_SPELLING_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let open = || Dictionary(vec![spellkit::Checker::with_locale("en-US").unwrap()]);
+            let mut dictionary = open();
+            assert!(!dictionary.check("helo").is_empty());
+            assert!(
+                dictionary
+                    .choices("helo")
+                    .suggestions
+                    .iter()
+                    .any(|s| s == "hello")
+            );
+            assert!(!dictionary.check("kuizzz").is_empty());
+            assert!(dictionary.learn("kuizzz"));
+            assert!(
+                open().check("kuizzz").is_empty(),
+                "fresh handle reloaded the personal word list"
+            );
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("en_US.aff"),
+            "SET UTF-8\nTRY abcdefghijklmnopqrstuvwxyz\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("en_US.dic"), "2\nhello\nworld\n").unwrap();
+        let status=std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact").arg("system::spelling::backend::tests::hunspell_suggests_and_persists_a_word_in_an_isolated_dictionary")
+            .env("DICPATH",dir.path()).env("XDG_DATA_HOME",dir.path()).env(CHILD,"1").status().unwrap();
+        assert!(status.success());
+        assert!(
+            std::fs::read_dir(dir.path().join("spellkit"))
+                .unwrap()
+                .next()
+                .is_some()
         );
     }
 }
