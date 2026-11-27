@@ -448,6 +448,10 @@ surface :: proc() -> bool {
 	kui.env_set_always_on_top(ui, true)
 	// What is behind the window, as the host got it (backlog F126), read back
 	// as a view reads it.
+	check(kui.max_wheel_acceleration(ui) == 2, "the wheel cap defaults to twice base travel")
+	kui.set_max_wheel_acceleration(ui, 3)
+	check(kui.max_wheel_acceleration(ui) == 3, "the wheel cap reads back")
+	check(!kui.wheel_acceleration(ui), "setting a wheel cap leaves acceleration opt-in")
 	check(kui.ctx_backdrop(ui) == .Opaque, "a window is opaque until told")
 	kui.env_set_backdrop(ui, .Blur)
 	check(kui.ctx_backdrop(ui) == .Blur, "ctx_backdrop reads the blur back")

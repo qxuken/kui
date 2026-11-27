@@ -4889,6 +4889,9 @@ bool kui_smooth_wheel(KuiCtx *ctx);
  * Off by default. Pixel scrolling and scroll handlers are unaffected. */
 void kui_set_wheel_acceleration(KuiCtx *ctx, bool on);
 bool kui_wheel_acceleration(KuiCtx *ctx);
+/* Maximum travel multiplier for rapid notches. Defaults to 2. */
+void kui_set_max_wheel_acceleration(KuiCtx *ctx, float limit);
+float kui_max_wheel_acceleration(KuiCtx *ctx);
 /* How a wheel's notch scrolls: base travel per line (logical px, 48 by
  * default), the glide's response (seconds, 0.27) and its kick (0..1, 0.6).
  * Clamped into what the glide can use; a number that is not finite takes

@@ -1269,6 +1269,24 @@ pub extern "C" fn kui_wheel_acceleration(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Maximum multiplier for rapid wheel notches.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_max_wheel_acceleration(ptr: *mut KuiCtx, limit: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_max_wheel_acceleration(limit);
+        }
+    });
+}
+
+/// The maximum multiplier, or the default (2) for a null context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_max_wheel_acceleration(ptr: *mut KuiCtx) -> f32 {
+    guard(2.0, || {
+        unsafe { ctx(ptr) }.map_or(2.0, |c| c.core().max_wheel_acceleration())
+    })
+}
+
 /// How a wheel's notch scrolls (`WheelFeel`): how far a line goes in
 /// logical px, the glide's response in seconds and its kick, from 0 to 1.
 /// Clamped into what the glide can use; a number that is not finite takes

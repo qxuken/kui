@@ -538,10 +538,8 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
         shot,
     );
     let (w, h) = args.size.unwrap_or(project.size);
-    let mut launcher = kui_native::app(&project.name)
-        .chrome(project.chrome)
-        .titlebar(project.titlebar)
-        .wheel_acceleration(project.wheel_acceleration)
+    let mut launcher = project
+        .launcher()
         .extension_as("app", ext)
         .extension_as(kit::NAMESPACE, kit);
     if let Some(media) = testing::ui::media() {

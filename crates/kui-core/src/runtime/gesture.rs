@@ -31,7 +31,7 @@ use crate::tree::NIL;
 const AT_LIMIT: f32 = 0.5;
 
 /// The last whole-notch delta on one axis. Each rapid follow-up adds a
-/// quarter of the usual travel, capped at twice the usual travel.
+/// quarter of the usual travel, up to the configured multiplier.
 #[derive(Clone, Copy)]
 pub(super) struct WheelTurn {
     key: Key,
@@ -47,6 +47,7 @@ impl WheelTurn {
         delta: f32,
         line_px: f32,
         time: Option<f64>,
+        limit: f32,
     ) -> f32 {
         const RAPID_GAP: f64 = 0.12;
         if delta == 0.0 {
@@ -66,7 +67,7 @@ impl WheelTurn {
                 let gap = time - p.time;
                 p.key == target.key && p.positive == positive && gap > 0.0 && gap <= RAPID_GAP
             })
-            .map_or(1.0, |p| (p.multiplier + 0.25).min(2.0));
+            .map_or(1.0, |p| (p.multiplier + 0.25).min(limit));
         *previous = Some(Self {
             key: target.key,
             positive,
@@ -196,8 +197,22 @@ impl Core {
             if wheel.is_some() {
                 let time = self.anim.time().filter(|t| t.is_finite());
                 let line = self.wheel_feel().line_px;
-                delta.x = WheelTurn::accelerate(&mut self.wheel_turns[0], tx, delta.x, line, time);
-                delta.y = WheelTurn::accelerate(&mut self.wheel_turns[1], ty, delta.y, line, time);
+                delta.x = WheelTurn::accelerate(
+                    &mut self.wheel_turns[0],
+                    tx,
+                    delta.x,
+                    line,
+                    time,
+                    self.max_wheel_acceleration,
+                );
+                delta.y = WheelTurn::accelerate(
+                    &mut self.wheel_turns[1],
+                    ty,
+                    delta.y,
+                    line,
+                    time,
+                    self.max_wheel_acceleration,
+                );
             }
         }
         let turned = ty.is_some() && self.scroll_latch.y_sideways;

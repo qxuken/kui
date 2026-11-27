@@ -2532,6 +2532,8 @@ export interface WindowOptions {
   smoothWheel?: boolean;
   /** Accelerate rapid wheel notches on scroll containers. Off by default. */
   wheelAcceleration?: boolean;
+  /** Maximum travel multiplier for rapid notches. Defaults to 2. */
+  maxWheelAcceleration?: number;
   /** How a mouse wheel's notch scrolls, in every window of the app: a
    *  preset's name (`'brisk'` is a touch faster than the default) or the
    *  numbers to change from the standard feel. Taken as the window opens,
@@ -3913,6 +3915,10 @@ export declare class Ctx {
   setWheelAcceleration(on: boolean): void
   /** Whether wheel acceleration is enabled. Off by default. */
   wheelAcceleration(): boolean
+  /** Sets the maximum travel multiplier for rapid wheel notches. */
+  setMaxWheelAcceleration(limit: number): void
+  /** The maximum wheel travel multiplier. */
+  maxWheelAcceleration(): number
   /**
    * How a wheel's notch scrolls: a preset's name, slow to
    * fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
@@ -5680,6 +5686,10 @@ export declare class KuiWindow {
   setWheelAcceleration(on: boolean): void
   /** Whether wheel acceleration is enabled. Off by default. */
   wheelAcceleration(): boolean
+  /** Sets the maximum travel multiplier for rapid wheel notches. */
+  setMaxWheelAcceleration(limit: number): void
+  /** The maximum wheel travel multiplier. */
+  maxWheelAcceleration(): number
   /**
    * How a wheel's notch scrolls: a preset's name, slow to
    * fast `'gentle'`, `'relaxed'`, `'standard'` (the default), `'brisk'` (an
@@ -7210,6 +7220,8 @@ export declare function createApp<M, A = AppMsg, E = never>(
     smoothWheel?: boolean;
     /** Accelerate rapid wheel notches on scroll containers. Off by default. */
     wheelAcceleration?: boolean;
+    /** Maximum travel multiplier for rapid notches. Defaults to 2. */
+    maxWheelAcceleration?: number;
     /** How a wheel's notch scrolls: a preset's name or the numbers to
      *  change (`app.ctx.setWheelFeel`). Default `'standard'`. */
     wheelFeel?: WheelPreset | Partial<WheelFeel>;

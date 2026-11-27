@@ -365,6 +365,9 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // it opens after the main.
   if (opts.smoothWheel !== undefined) surface.setSmoothWheel(opts.smoothWheel);
   // A window created by runWindowed already took this from windowOptions.
+  if (opts.maxWheelAcceleration != null && (opts.surface != null || !(surface instanceof KuiWindow))) {
+    surface.setMaxWheelAcceleration(opts.maxWheelAcceleration);
+  }
   if (opts.wheelAcceleration != null && (opts.surface != null || !(surface instanceof KuiWindow))) {
     surface.setWheelAcceleration(opts.wheelAcceleration);
   }
@@ -1149,8 +1152,8 @@ runWindowed[PACE] = pacer;
  * is opened as a user who asked for less motion would see it.
  */
 export function windowOptions(opts = {}) {
-  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelAcceleration, wheelFeel, edgeScrollFeel, extensions } = opts;
-  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelAcceleration, wheelFeel, edgeScrollFeel, extensions };
+  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelAcceleration, maxWheelAcceleration, wheelFeel, edgeScrollFeel, extensions } = opts;
+  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelAcceleration, maxWheelAcceleration, wheelFeel, edgeScrollFeel, extensions };
 }
 
 /**

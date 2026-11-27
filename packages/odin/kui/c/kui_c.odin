@@ -1499,6 +1499,8 @@ foreign lib {
 	smooth_wheel :: proc(ctx: ^Ctx) -> bool ---
 	set_wheel_acceleration :: proc(ctx: ^Ctx, on: bool) ---
 	wheel_acceleration :: proc(ctx: ^Ctx) -> bool ---
+	set_max_wheel_acceleration :: proc(ctx: ^Ctx, limit: f32) ---
+	max_wheel_acceleration :: proc(ctx: ^Ctx) -> f32 ---
 	set_wheel_feel :: proc(ctx: ^Ctx, line_px: f32, response: f32, kick: f32) ---
 	set_wheel_preset :: proc(ctx: ^Ctx, name: string) -> bool ---
 	wheel_feel :: proc(ctx: ^Ctx, line_px: ^f32, response: ^f32, kick: ^f32) ---

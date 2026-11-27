@@ -24,6 +24,7 @@ pub struct Project {
     pub titlebar: kui_native::Titlebar,
     /// Opt in to acceleration for rapid wheel notches on scroll containers.
     pub wheel_acceleration: bool,
+    pub max_wheel_acceleration: f32,
     /// A PNG for the Dock, the taskbar and the window, against the app's
     /// folder.
     pub icon: Option<PathBuf>,
@@ -59,6 +60,17 @@ pub struct Project {
     /// `tooling = { docs = true, agents = true }`: what the app opted into
     /// beside its types (ADR 0071, decision 4).
     pub tooling: Tooling,
+}
+
+impl Project {
+    /// Window configuration shared by the app runner and test.start.
+    pub fn launcher(&self) -> kui_native::Launcher {
+        kui_native::app(&self.name)
+            .chrome(self.chrome)
+            .titlebar(self.titlebar)
+            .wheel_acceleration(self.wheel_acceleration)
+            .max_wheel_acceleration(self.max_wheel_acceleration)
+    }
 }
 
 /// The manifest's `tooling`: `.kui/docs` and the agent block, written by
@@ -149,6 +161,7 @@ pub fn find(path: &Path) -> Result<Project, String> {
         chrome: kui_native::Chrome::Native,
         titlebar: kui_native::Titlebar::Standard,
         wheel_acceleration: false,
+        max_wheel_acceleration: 2.0,
         icon: None,
         devtools: false,
         rename: true,
@@ -304,6 +317,9 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
             mlua::Value::Boolean(on) => on,
             _ => return Err(mlua::Error::runtime("wheel_acceleration must be a boolean")),
         };
+        p.max_wheel_acceleration = t
+            .get::<Option<f32>>("max_wheel_acceleration")?
+            .unwrap_or(2.0);
         p.devtools_key = match t.get::<mlua::Value>("devtools_key")? {
             mlua::Value::Nil | mlua::Value::Boolean(true) => DevtoolsKey::F12,
             mlua::Value::Boolean(false) => DevtoolsKey::Core,
@@ -491,16 +507,23 @@ mod tests {
 
     #[test]
     fn wheel_acceleration_is_opt_in() {
-        assert!(
-            !with_config("wheel-default", "return {}")
-                .unwrap()
-                .wheel_acceleration
-        );
-        assert!(
-            with_config("wheel-on", "return { wheel_acceleration = true }")
-                .unwrap()
-                .wheel_acceleration
-        );
+        let defaults = with_config("wheel-default", "return {}").unwrap();
+        assert!(!defaults.wheel_acceleration);
+        assert_eq!(defaults.max_wheel_acceleration, 2.0);
+        let configured = with_config(
+            "wheel-on",
+            "return { wheel_acceleration = true, max_wheel_acceleration = 3 }",
+        )
+        .unwrap();
+        struct Empty;
+        impl kui_native::App for Empty {
+            fn view(&mut self, _: &mut kui_native::Ui<'_>) {}
+        }
+        let mut runner = configured
+            .launcher()
+            .open_headless(Empty, 100.0, 100.0, 1.0);
+        assert!(runner.core_mut().wheel_acceleration());
+        assert_eq!(runner.core_mut().max_wheel_acceleration(), 3.0);
         assert!(with_config("wheel-invalid", "return { wheel_acceleration = 1 }").is_err());
     }
 
