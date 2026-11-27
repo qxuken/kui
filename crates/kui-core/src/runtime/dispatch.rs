@@ -35,6 +35,20 @@ impl Core {
     /// Feeds one input event; returns any UI events it resolved to,
     /// hit-tested against the previous frame's layout.
     pub fn handle_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
+        if self.menu.is_none()
+            && matches!(
+                &ev,
+                InputEvent::MouseDown { .. }
+                    | InputEvent::KeyDown(_)
+                    | InputEvent::Key(..)
+                    | InputEvent::Commit(_)
+                    | InputEvent::Scroll(_)
+                    | InputEvent::ScrollGesture { .. }
+                    | InputEvent::Wheel { .. }
+            )
+        {
+            self.spelling_menu = None;
+        }
         // The next frame's reason (backlog F111).
         self.trace_input(&ev);
         self.perf_input(&ev);

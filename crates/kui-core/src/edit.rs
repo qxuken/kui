@@ -1078,7 +1078,65 @@ fn attrs_for<'a>(style: &TextStyle, res: &'a Resources) -> Attrs<'a> {
     )
 }
 
+#[derive(Debug)]
+pub(crate) struct Misspelling {
+    pub key: Key,
+    pub line: usize,
+    pub range: std::ops::Range<usize>,
+    pub word: String,
+    version: u64,
+}
+
 impl EditStore {
+    /// Hit an actual glyph cluster without moving focus, selection or IME.
+    pub(crate) fn misspelling_at(&mut self, key: Key, local: Vec2) -> Option<Misspelling> {
+        let s = self.states.get(&key)?;
+        if !s.spellcheck || s.preedit.is_some() {
+            return None;
+        }
+        let p = Vec2::new(local.x * s.scale, local.y * s.scale);
+        s.editor.with_buffer(|b| {
+            let run = b
+                .layout_runs()
+                .find(|r| p.y >= r.line_top && p.y < r.line_top + r.line_height)?;
+            let glyph = run.glyphs.iter().find(|g| p.x >= g.x && p.x < g.x + g.w)?;
+            let text = b.lines[run.line_i].text();
+            let range = self
+                .spelling
+                .check(text)?
+                .iter()
+                .find(|r| r.contains(&glyph.start))?
+                .clone();
+            Some(Misspelling {
+                key,
+                line: run.line_i,
+                word: text.get(range.clone())?.to_owned(),
+                range,
+                version: s.version,
+            })
+        })
+    }
+
+    pub(crate) fn still_misspelled(&mut self, target: &Misspelling) -> bool {
+        let Some(s) = self.states.get(&target.key) else {
+            return false;
+        };
+        s.spellcheck
+            && s.preedit.is_none()
+            && s.version == target.version
+            && s.editor.with_buffer(|b| {
+                let Some(line) = b.lines.get(target.line) else {
+                    return false;
+                };
+                let text = line.text();
+                text.get(target.range.clone()) == Some(target.word.as_str())
+                    && self
+                        .spelling
+                        .check(text)
+                        .is_some_and(|ranges| ranges.contains(&target.range))
+            })
+    }
+
     /// Gives every editor's text the weights its family is asked at now:
     /// a face of a registered family came or went. The text,
     /// caret and history stay; every line shapes again, and every
