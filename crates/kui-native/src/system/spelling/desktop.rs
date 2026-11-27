@@ -215,4 +215,33 @@ mod tests {
                 .is_some()
         );
     }
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "exercises the personal dictionary of a disposable macOS test account"]
+    fn appkit_suggestions_and_learning() {
+        use super::super::Dictionary as _;
+        // Run on the same background thread and with the same autorelease pool
+        // used by the host. The CI account is disposable; clean up its word too.
+        std::thread::spawn(|| {
+            objc2::rc::autoreleasepool(|_| {
+                let open = || Dictionary(vec![spellkit::Checker::with_locale("en-US").unwrap()]);
+                let mut dictionary = open();
+                assert!(
+                    dictionary
+                        .choices("speling")
+                        .suggestions
+                        .iter()
+                        .any(|s| s == "spelling")
+                );
+                let fresh = "kuizzzspellingregression";
+                assert!(!dictionary.check(fresh).is_empty());
+                assert!(dictionary.learn(fresh));
+                let accepted = open().check(fresh).is_empty();
+                dictionary.0[0].unlearn(fresh).unwrap();
+                assert!(accepted);
+            })
+        })
+        .join()
+        .unwrap();
+    }
 }
