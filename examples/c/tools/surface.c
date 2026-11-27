@@ -1385,6 +1385,9 @@ static int surface(void) {
         kui_set_smooth_wheel(ui, false);
         check(!kui_smooth_wheel(ui), "kui_set_smooth_wheel turns it off");
         check(!kui_wheel_acceleration(ui), "wheel acceleration is off by default");
+        check(kui_max_wheel_acceleration(ui) == 2.0f, "wheel cap defaults to twice base travel");
+        kui_set_max_wheel_acceleration(ui, 3.0f);
+        check(kui_max_wheel_acceleration(ui) == 3.0f, "wheel cap can be raised");
         kui_set_wheel_acceleration(ui, true);
         check(kui_wheel_acceleration(ui), "kui_set_wheel_acceleration opts in");
         kui_set_wheel_acceleration(ui, false);
