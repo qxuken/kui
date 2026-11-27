@@ -139,8 +139,7 @@ impl Regression {
                 }
                 #[cfg(target_os = "android")]
                 {
-                    self.finish("PASS emoji replacement, caret and field switch; Android preserved the original word on blur and committed 日本 once before ond; IME-off canceled composition and the editor reopened".into());
-                    return;
+                    self.native(14)
                 }
             }
             #[cfg(target_os = "ios")]
@@ -184,6 +183,33 @@ impl Regression {
                 unsafe { kui_probe_unlearn(self.spelling_word.as_ptr(), self.spelling_word.len()) };
                 self.awaiting_teardown = true;
                 self.native(14)
+            }
+            #[cfg(target_os = "android")]
+            24 => core
+                .edit
+                .spelling
+                .check("🙂 kuizzzword")
+                .is_some_and(|ranges| ranges.len() == 1 && ranges[0] == (5..15)),
+            #[cfg(target_os = "android")]
+            25 if core
+                .edit
+                .spelling
+                .choices("kuizzzword")
+                .is_some_and(|actions| actions.can_learn && actions.suggestions == ["quiz"]) =>
+            {
+                core.edit.spelling.learn("kuizzzword");
+                true
+            }
+            #[cfg(target_os = "android")]
+            26 if core.edit.spelling.dictionary_revision() > 0
+                && core
+                    .edit
+                    .spelling
+                    .check("🙂 kuizzzword")
+                    .is_some_and(|ranges| ranges.is_empty()) =>
+            {
+                self.finish("PASS emoji replacement, caret and field switch, composition, IME-off and reopen, Android native spelling offsets, suggestions and learning".into());
+                return;
             }
             _ => false,
         };
