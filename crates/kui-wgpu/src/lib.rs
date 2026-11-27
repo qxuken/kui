@@ -950,11 +950,6 @@ pub struct Renderer {
     group_kids: Vec<u32>,
     group_kids_at: Vec<u32>,
     group_targets: groups::Targets,
-    /// The pipeline a group is drawn with on a device that blends per
-    /// channel: the single-source one, since a picture over nothing has
-    /// no colour behind a glyph to split coverage against. Made the first
-    /// time a frame draws a group; elsewhere `pipeline` is that already.
-    group_pipeline: Option<wgpu::RenderPipeline>,
 }
 
 /// The picture under a frame: its texture, the part of it the window
@@ -1617,7 +1612,6 @@ impl Renderer {
             group_kids: Vec::new(),
             group_kids_at: Vec::new(),
             group_targets: groups::Targets::default(),
-            group_pipeline: None,
             blurs: Vec::new(),
         }
     }
@@ -2090,8 +2084,8 @@ impl Renderer {
 
     /// Plans the frame's groups (ADR 0056): each placed in one of the two
     /// textures, its picture's place written into its end marker's
-    /// instance, the textures fitted, and the group pipeline made the
-    /// first time a device that blends per channel draws one. `any` is
+    /// instance, the textures fitted, and LCD coverage marked for drawing
+    /// onto a transparent picture. `any` is
     /// whether the list has a begin marker, noticed while the instances
     /// were written, so a frame without one scans nothing and drops the
     /// textures.
@@ -2120,6 +2114,13 @@ impl Renderer {
         for p in &self.groups {
             let at = p.offset();
             self.instances[p.end as usize].uv = [at[0], at[1], 0.0, 0.0];
+            if p.parent == groups::FRAME && self.gpu.dual_source() {
+                // Top-level ranges are disjoint and include all nested pictures.
+                // LCD glyphs need a single coverage inside these RGBA targets.
+                for instance in &mut self.instances[p.begin as usize + 1..p.end as usize] {
+                    instance.params[3] = 1.0;
+                }
+            }
         }
         // Each group's children, then the frame's, as runs of one list.
         let n = self.groups.len();
@@ -2138,26 +2139,6 @@ impl Renderer {
             self.group_kids_at[k] += self.group_kids_at[k - 1];
         }
         self.group_kids = order;
-        if self.gpu.dual_source() && self.group_pipeline.is_none() {
-            let device = self.gpu.device();
-            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("kui.groups"),
-                source: wgpu::ShaderSource::Wgsl(preprocess_shader(false).into()),
-            });
-            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("kui.groups"),
-                bind_group_layouts: &[Some(&self.bind_layout)],
-                immediate_size: 0,
-            });
-            self.group_pipeline = Some(quad_pipeline(
-                device,
-                &layout,
-                &shader,
-                self.config.format,
-                wgpu::BlendState::ALPHA_BLENDING,
-                -1,
-            ));
-        }
     }
 
     /// The groups drawn into plan `p`'s picture, or the frame's for
@@ -2178,14 +2159,12 @@ impl Renderer {
     /// Draws `range` into `pass` as [`Self::draw_quads`] does, except that
     /// each group of `parent`'s inside it is its picture, drawn at its end
     /// marker in place of its run.
-    #[allow(clippy::too_many_arguments)]
     fn draw_span(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         dl: &DisplayList,
         range: std::ops::Range<u32>,
         parent: u32,
-        pipeline: &wgpu::RenderPipeline,
         prep: &Prepared,
         pictures: &[Option<wgpu::BindGroup>; 2],
     ) {
@@ -2195,17 +2174,17 @@ impl Renderer {
             if g.begin < range.start || g.end >= range.end {
                 continue;
             }
-            self.draw_primitives(pass, dl, at..g.begin, pipeline, parent, prep);
+            self.draw_primitives(pass, dl, at..g.begin, parent, prep);
             if let Some(bind) = &pictures[g.tex()] {
                 let frame = &self.slots[self.slot];
                 pass.set_vertex_buffer(0, frame.buf.slice(frame.instances_at..));
-                pass.set_pipeline(pipeline);
+                pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, bind, &[]);
                 pass.draw(0..6, g.end..g.end + 1);
             }
             at = g.end + 1;
         }
-        self.draw_primitives(pass, dl, at..range.end, pipeline, parent, prep);
+        self.draw_primitives(pass, dl, at..range.end, parent, prep);
     }
 
     fn draw_primitives(
@@ -2213,7 +2192,6 @@ impl Renderer {
         pass: &mut wgpu::RenderPass<'_>,
         dl: &DisplayList,
         range: std::ops::Range<u32>,
-        pipeline: &wgpu::RenderPipeline,
         parent: u32,
         prep: &Prepared,
     ) {
@@ -2224,7 +2202,6 @@ impl Renderer {
                     pass,
                     dl,
                     at..plan.quad,
-                    pipeline,
                     &prep.fragment_pipelines,
                     &prep.texture_binds,
                 );
@@ -2237,7 +2214,6 @@ impl Renderer {
                         pass,
                         dl,
                         plan.quad..plan.quad + 1,
-                        pipeline,
                         &prep.fragment_pipelines,
                         &prep.texture_binds,
                     );
@@ -2255,7 +2231,6 @@ impl Renderer {
             pass,
             dl,
             at..range.end,
-            pipeline,
             &prep.fragment_pipelines,
             &prep.texture_binds,
         );
@@ -2274,7 +2249,6 @@ impl Renderer {
         let Some(deepest) = self.groups.iter().map(|g| g.depth).max() else {
             return;
         };
-        let pipeline = self.group_pipeline.as_ref().unwrap_or(&self.pipeline);
         let (vw, vh) = (dl.viewport.w.max(1.0), dl.viewport.h.max(1.0));
         let mut cleared = [false; 2];
         for depth in (0..=deepest).rev() {
@@ -2312,15 +2286,7 @@ impl Renderer {
                 let [ox, oy] = g.offset();
                 pass.set_viewport(ox, oy, vw, vh, 0.0, 1.0);
                 pass.set_scissor_rect(g.at.0, g.at.1, g.w, g.h);
-                self.draw_span(
-                    &mut pass,
-                    dl,
-                    g.begin + 1..g.end,
-                    i as u32,
-                    pipeline,
-                    prep,
-                    pictures,
-                );
+                self.draw_span(&mut pass, dl, g.begin + 1..g.end, i as u32, prep, pictures);
             }
         }
     }
@@ -2336,14 +2302,9 @@ impl Renderer {
         pass: &mut wgpu::RenderPass<'_>,
         dl: &DisplayList,
         range: std::ops::Range<u32>,
-        pipeline: &wgpu::RenderPipeline,
     ) {
-        let Some(specialized) = self
-            .specialized
-            .as_ref()
-            .filter(|_| std::ptr::eq(pipeline, &self.pipeline))
-        else {
-            pass.set_pipeline(pipeline);
+        let Some(specialized) = &self.specialized else {
+            pass.set_pipeline(&self.pipeline);
             pass.draw(0..6, range);
             return;
         };
@@ -2362,7 +2323,7 @@ impl Renderer {
             pass.set_pipeline(if kind < 2 {
                 &specialized[kind]
             } else {
-                pipeline
+                &self.pipeline
             });
             pass.draw(0..6, at..end);
             at = end;
@@ -2374,7 +2335,6 @@ impl Renderer {
         pass: &mut wgpu::RenderPass<'_>,
         dl: &DisplayList,
         range: std::ops::Range<u32>,
-        pipeline: &wgpu::RenderPipeline,
         fragment_pipelines: &[wgpu::RenderPipeline],
         texture_binds: &[Option<u64>],
     ) {
@@ -2386,7 +2346,7 @@ impl Renderer {
         if fragment_pipelines.is_empty() && texture_binds.is_empty() {
             // Ordinary quads need no texture/fragment binding changes.
             pass.set_bind_group(0, &frame.bind, &[]);
-            self.draw_plain(pass, dl, range, pipeline);
+            self.draw_plain(pass, dl, range);
             return;
         }
         let mut run_start = range.start;
@@ -2401,7 +2361,7 @@ impl Renderer {
                     pass.set_bind_group(0, &frame.bind, &[]);
                     on_quads = true;
                 }
-                self.draw_plain(pass, dl, run_start..i, pipeline);
+                self.draw_plain(pass, dl, run_start..i);
             }
             // `uv[0]` is the index into the side list, which is also this
             // fragment's parameter slot, or this texture's bind.
@@ -2410,7 +2370,7 @@ impl Renderer {
                 if let Some(Some(id)) = texture_binds.get(slot)
                     && let Some(b) = self.texture_binds.get(id)
                 {
-                    pass.set_pipeline(pipeline);
+                    pass.set_pipeline(&self.pipeline);
                     pass.set_bind_group(0, &b.bind, &[]);
                     on_quads = false;
                     pass.draw(0..6, i..i + 1);
@@ -2444,7 +2404,7 @@ impl Renderer {
             if !on_quads {
                 pass.set_bind_group(0, &frame.bind, &[]);
             }
-            self.draw_plain(pass, dl, run_start..range.end, pipeline);
+            self.draw_plain(pass, dl, run_start..range.end);
         }
     }
 
@@ -3007,15 +2967,7 @@ impl Renderer {
                     backdrop::composite(&mut pass, pipes, scratch, b, slot);
                     pass.set_scissor_rect(0, 0, frame.size.0, frame.size.1);
                 }
-                self.draw_span(
-                    &mut pass,
-                    dl,
-                    start..stop,
-                    groups::FRAME,
-                    &self.pipeline,
-                    prep,
-                    &pictures,
-                );
+                self.draw_span(&mut pass, dl, start..stop, groups::FRAME, prep, &pictures);
             }
             let (Some(b), Some((pipes, frame, scratch))) = (self.blurs.get(next), offscreen) else {
                 break;

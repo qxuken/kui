@@ -91,9 +91,9 @@ picture drawn before the frame's own pass at about 5–12 µs of GPU and
 
 7. **Glyphs in a group are alpha masks.** LCD coverage blends each
    channel against the colour behind it, and a picture over nothing has
-   none. A device that blends per channel draws groups with the
-   single-source variant of the quad pipeline, made the first time it
-   draws one; elsewhere that is the frame's own pipeline already.
+   none. The group uses the frame's quad pipeline. Its LCD glyphs take the
+   maximum sampled channel as a common coverage, so the RGBA group picture
+   can be composited against any background.
 
 8. **Groups too many for the device's textures** are drawn as they would
    be with the switch off: each group's fade folded into the instances

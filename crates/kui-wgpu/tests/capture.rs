@@ -445,6 +445,65 @@ fn a_new_glyph_is_uploaded_as_its_rect_and_draws_as_a_whole_upload_does() {
     );
 }
 
+/// The frame can blend LCD channels separately. Intermediate RGBA pictures
+/// must retain one coverage even inside nested opacity groups.
+#[test]
+fn opacity_groups_keep_lcd_text_gray_and_leave_frame_text_subpixel() {
+    let Some(gpu) = gpu() else { return };
+    if !gpu.dual_source() {
+        eprintln!("no dual-source blending on this adapter");
+        return;
+    }
+    let mut core = font_fixture::fonts();
+    core.set_subpixel_text(true);
+    core.set_opacity_groups(true);
+    let mut ui = core.frame(Size::new(200.0, 120.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().bg(Color::BLACK));
+    for dim in [false, true, false] {
+        let row = NodeSpec::column().size(200.0, 40.0).bg(Color::BLACK);
+        let opacity = if dim { 0.7 } else { 1.0 };
+        ui.with(row.opacity(opacity), |ui| {
+            ui.with(NodeSpec::column().fill().opacity(opacity), |ui| {
+                ui.text("Reading text", TextStyle::new(23.0).color(Color::WHITE));
+            });
+        });
+    }
+    ui.finish();
+    let mut renderer = Renderer::windowless(&gpu, wgpu::TextureFormat::Rgba8Unorm).unwrap();
+    let (dl, atlas) = core.output();
+    assert!(
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::GroupBegin)
+            .count()
+            >= 2
+    );
+    assert!(
+        dl.quads
+            .iter()
+            .any(|q| q.kind == kui_core::QuadKind::GlyphSubpixel)
+    );
+    let capture = renderer.capture(dl, atlas).unwrap();
+    for (row, band) in capture
+        .rgba
+        .as_chunks::<{ 200 * 40 * 4 }>()
+        .0
+        .iter()
+        .enumerate()
+    {
+        assert!(
+            band.as_chunks::<4>().0.iter().any(|p| p[0] > 10),
+            "visible text in band {row}"
+        );
+        let colored = band
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p[0].abs_diff(p[1]) > 2 || p[1].abs_diff(p[2]) > 2);
+        assert_eq!(colored, row != 1, "subpixel coverage in band {row}");
+    }
+}
+
 /// The reference has an imperceptible fill, which prevents hollow-outline
 /// optimization. It exercises the unchanged full-quad shader and blend.
 #[test]

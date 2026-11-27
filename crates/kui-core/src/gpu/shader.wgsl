@@ -36,7 +36,7 @@ struct Instance {
     // sampling flag of an image: 1 = nearest), kind (0 solid / 1 mask
     // glyph / 2 color glyph / 3 image / 4 subpixel glyph / 5 shadow /
     // 6 segment / 8 a group's picture; a texture quad arrives as 3 with
-    // its own texture bound), unused
+    // its own texture bound), grayscale LCD coverage in an opacity group
     @location(4) params: vec4<f32>,
     // atlas texels: x, y, w, h — or, for a segment, its two endpoints in
     // physical px: x0, y0, x1, y1 (the Rust side decodes the bits)
@@ -266,7 +266,12 @@ fn shade(in: VsOut) -> Shaded {
     if kind == 4u {
         // LCD subpixel glyph: the atlas holds one coverage per channel.
         let t = textureSampleLevel(atlas_tex, atlas_smp, in.uv, 0.0);
-        return Shaded(in.color.rgb, t.rgb * in.color.a * inside);
+        var mask = t.rgb;
+        if in.params.w != 0.0 {
+            // A transparent group cannot retain three independent coverages.
+            mask = vec3<f32>(max(t.r, max(t.g, t.b)));
+        }
+        return Shaded(in.color.rgb, mask * in.color.a * inside);
     }
 
     if kind == 8u {
