@@ -123,7 +123,10 @@ pub(crate) fn worker<D: Dictionary>(
                         if dictionary.learn(&word) {
                             // This handle just learned the word. Other workers must
                             // reopen, but this one already has the new dictionary.
-                            seen = GENERATION.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
+                            let previous = GENERATION.fetch_add(1, Ordering::AcqRel);
+                            if previous == seen {
+                                seen = seen.wrapping_add(1);
+                            } // Otherwise a platform lexicon also changed during the write.
                         } else {
                             // A backend may have changed its in-memory word list before
                             // discovering a write failure. Reopen before its next use.
