@@ -601,6 +601,7 @@ impl DynShell<'_> {
         core.set_opacity_groups(true);
         core.set_smooth_wheel(from.smooth_wheel());
         core.set_wheel_acceleration(from.wheel_acceleration());
+        core.set_max_wheel_acceleration(from.max_wheel_acceleration());
         core.set_wheel_feel(from.wheel_feel());
         core.set_edge_scroll_feel(from.edge_scroll_feel());
         core.set_theme(*from.theme());

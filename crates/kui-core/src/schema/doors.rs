@@ -1517,6 +1517,22 @@ pub const DOORS: &[Door] = &[
         doc: "That switch, read back.",
     },
     Door {
+        rust: "Core::set_max_wheel_acceleration",
+        c: Is("kui_set_max_wheel_acceleration"),
+        odin: Is("set_max_wheel_acceleration"),
+        node: Is("setMaxWheelAcceleration"),
+        lua: No(GUEST),
+        doc: "Maximum travel multiplier for rapid wheel notches. Defaults to 2.",
+    },
+    Door {
+        rust: "Core::max_wheel_acceleration",
+        c: Is("kui_max_wheel_acceleration"),
+        odin: Is("max_wheel_acceleration"),
+        node: Is("maxWheelAcceleration"),
+        lua: No(GUEST),
+        doc: "The maximum wheel travel multiplier.",
+    },
+    Door {
         rust: "Core::set_wheel_feel",
         c: Is("kui_set_wheel_feel"),
         odin: Is("set_wheel_feel"),

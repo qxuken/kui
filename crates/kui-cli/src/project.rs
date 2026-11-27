@@ -24,6 +24,7 @@ pub struct Project {
     pub titlebar: kui_native::Titlebar,
     /// Opt in to acceleration for rapid wheel notches on scroll containers.
     pub wheel_acceleration: bool,
+    pub max_wheel_acceleration: f32,
     /// A PNG for the Dock, the taskbar and the window, against the app's
     /// folder.
     pub icon: Option<PathBuf>,
@@ -149,6 +150,7 @@ pub fn find(path: &Path) -> Result<Project, String> {
         chrome: kui_native::Chrome::Native,
         titlebar: kui_native::Titlebar::Standard,
         wheel_acceleration: false,
+        max_wheel_acceleration: 2.0,
         icon: None,
         devtools: false,
         rename: true,
@@ -304,6 +306,9 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
             mlua::Value::Boolean(on) => on,
             _ => return Err(mlua::Error::runtime("wheel_acceleration must be a boolean")),
         };
+        p.max_wheel_acceleration = t
+            .get::<Option<f32>>("max_wheel_acceleration")?
+            .unwrap_or(2.0);
         p.devtools_key = match t.get::<mlua::Value>("devtools_key")? {
             mlua::Value::Nil | mlua::Value::Boolean(true) => DevtoolsKey::F12,
             mlua::Value::Boolean(false) => DevtoolsKey::Core,

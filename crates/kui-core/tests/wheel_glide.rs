@@ -117,6 +117,27 @@ fn rapid_wheel_turns_accelerate_only_when_enabled() {
 }
 
 #[test]
+fn the_configured_wheel_cap_limits_a_burst() {
+    let (mut core, key) = setup();
+    assert_eq!(core.max_wheel_acceleration(), 2.0);
+    core.set_wheel_acceleration(true);
+    core.set_max_wheel_acceleration(3.0);
+    for i in 0..12 {
+        core.set_time(f64::from(i) * 0.01);
+        let before = core.scroll_offset(key).y;
+        wheel(&mut core, 0.0, -1.0, i == 0);
+        assert_eq!(
+            core.scroll_offset(key).y - before,
+            40.0 * (1.0 + i as f32 * 0.25).min(3.0)
+        );
+    }
+    core.set_max_wheel_acceleration(0.0);
+    assert_eq!(core.max_wheel_acceleration(), 1.0);
+    core.set_max_wheel_acceleration(f32::NAN);
+    assert_eq!(core.max_wheel_acceleration(), 2.0);
+}
+
+#[test]
 fn a_wheel_burst_resets_after_a_pause_reversal_or_other_scroll_input() {
     let (mut core, key) = setup();
     core.set_wheel_acceleration(true);

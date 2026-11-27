@@ -2798,6 +2798,9 @@ test('wheel: a notch glides to its place, and jumps with smoothWheel off', () =>
   const app = createApp({ init: () => 0, update: (m) => m, view: () => box({}) }, { wheelFeel: 'swift' });
   assert.equal(app.ctx.wheelFeel().linePx, 64);
 
+  assert.equal(ctx.maxWheelAcceleration(), 2);
+  ctx.setMaxWheelAcceleration(3);
+  assert.equal(ctx.maxWheelAcceleration(), 3);
   assert.equal(ctx.wheelAcceleration(), false);
   ctx.setWheelAcceleration(true);
   assert.equal(ctx.wheelAcceleration(), true);

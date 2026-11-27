@@ -480,6 +480,11 @@ impl Launcher {
         self.setup_core(move |core| core.set_wheel_acceleration(on))
     }
 
+    /// Maximum travel multiplier when wheel acceleration is enabled. Defaults to 2.
+    pub fn max_wheel_acceleration(self, limit: f32) -> Self {
+        self.setup_core(move |core| core.set_max_wheel_acceleration(limit))
+    }
+
     /// How a mouse wheel's notch scrolls: how far a line goes and how its
     /// glide eases there ([`kui_core::WheelFeel`], `WheelFeel::BRISK` and
     /// the other presets), in every window the app opens. `KUI_WHEEL` in

@@ -4157,6 +4157,18 @@ wheel_acceleration :: proc(ui: ^Ui) -> bool {
 	return c.wheel_acceleration(ui)
 }
 
+// Maximum travel multiplier for rapid wheel notches.
+// Rust: Core::set_max_wheel_acceleration.
+set_max_wheel_acceleration :: proc(ui: ^Ui, limit: f32) {
+	c.set_max_wheel_acceleration(ui, limit)
+}
+
+// The maximum wheel travel multiplier.
+// Rust: Core::max_wheel_acceleration.
+max_wheel_acceleration :: proc(ui: ^Ui) -> f32 {
+	return c.max_wheel_acceleration(ui)
+}
+
 // How a wheel's notch scrolls (`WheelFeel`): the base travel per line (48 px
 // by default), the glide's response (0.27 s) and its kick (0.6).
 // Rust: Core::set_wheel_feel.

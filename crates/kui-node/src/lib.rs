@@ -2508,6 +2508,12 @@ impl KuiWindow {
             Some(Json::Bool(on)) => launcher = launcher.wheel_acceleration(*on),
             Some(_) => return Err(err("window options: wheelAcceleration must be a boolean")),
         }
+        if let Some(v) = o.get("maxWheelAcceleration").filter(|v| !v.is_null()) {
+            let limit = v
+                .as_f64()
+                .ok_or_else(|| err("window options: maxWheelAcceleration must be a number"))?;
+            launcher = launcher.max_wheel_acceleration(limit as f32);
+        }
         // The wheel feel, the launcher's `wheel_feel`, so `KUI_WHEEL` in
         // the environment still wins: a user's override over the app's.
         if let Some(v) = o.get("wheelFeel").filter(|v| !v.is_null()) {
@@ -3827,6 +3833,18 @@ macro_rules! core_methods {
             #[napi]
             pub fn wheel_acceleration(&mut self) -> bool {
                 self.$core().wheel_acceleration()
+            }
+
+            /// Sets the maximum travel multiplier for rapid wheel notches.
+            #[napi]
+            pub fn set_max_wheel_acceleration(&mut self, limit: f64) {
+                self.$core().set_max_wheel_acceleration(limit as f32);
+            }
+
+            /// The maximum wheel travel multiplier.
+            #[napi]
+            pub fn max_wheel_acceleration(&mut self) -> f64 {
+                self.$core().max_wheel_acceleration() as f64
             }
 
             /// How a wheel's notch scrolls: a preset's name, slow to

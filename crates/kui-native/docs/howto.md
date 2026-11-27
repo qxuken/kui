@@ -1554,8 +1554,9 @@ Desktop apps can opt in to wheel acceleration with
 `Launcher::wheel_acceleration(true)`, `wheelAcceleration: true` in
 `runWindowed`, `wheel_acceleration = true` in `kui.config.lua`, or
 `kui_set_wheel_acceleration(ctx, true)` in a C host. Rapid wheel notches
-in the same direction build up to twice the usual distance on a scroll
-container. A pause or reversal returns to the usual distance. Pixel
+in the same direction build up to twice the usual distance by default. Set
+`Launcher::max_wheel_acceleration(3.0)`, `maxWheelAcceleration: 3`, or
+`max_wheel_acceleration = 3` for up to three times the base travel. A pause or reversal returns to the usual distance. Pixel
 scrolling and deltas delivered to app scroll handlers are unaffected.
 
 For the app's own moves, declare a `transition` on the scroll

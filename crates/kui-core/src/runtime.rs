@@ -690,6 +690,7 @@ pub struct Core {
     /// Whether a wheel's notch glides on a scroll container (ADR 0050).
     smooth_wheel: bool,
     wheel_acceleration: bool,
+    max_wheel_acceleration: f32,
     /// The current burst of wheel notches on each input axis.
     wheel_turns: [Option<gesture::WheelTurn>; 2],
     /// How a held drag scrolls a container at its edge (ADR 0029,
@@ -1615,6 +1616,7 @@ impl Core {
             pinch_latch: Default::default(),
             smooth_wheel: true,
             wheel_acceleration: false,
+            max_wheel_acceleration: 2.0,
             wheel_turns: [None; 2],
             edge_feel: crate::edge_scroll::EdgeScrollFeel::STANDARD,
             edge_ramps: Vec::new(),
@@ -2034,6 +2036,25 @@ impl Core {
     /// Whether wheel acceleration is enabled. Off by default.
     pub fn wheel_acceleration(&self) -> bool {
         self.wheel_acceleration
+    }
+
+    /// Cap on the travel multiplier for rapid wheel notches (default 2).
+    /// One keeps all notches at their base travel. Non-finite values restore the default.
+    pub fn set_max_wheel_acceleration(&mut self, limit: f32) {
+        let limit = if limit.is_finite() {
+            limit.max(1.0)
+        } else {
+            2.0
+        };
+        if self.max_wheel_acceleration != limit {
+            self.max_wheel_acceleration = limit;
+            self.wheel_turns = [None; 2];
+        }
+    }
+
+    /// The maximum wheel travel multiplier.
+    pub fn max_wheel_acceleration(&self) -> f32 {
+        self.max_wheel_acceleration
     }
 
     /// Whether a notch glides now: the switch, and no reduced motion —
