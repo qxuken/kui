@@ -53,6 +53,19 @@ impl Regression {
         let caret = core.edit.caret_and_selection(a);
         let marked = core.edit.preedit(b);
         if self.since.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(12) {
+            #[cfg(target_os = "android")]
+            if (24..=26).contains(&self.step) {
+                self.finish(format!(
+                    "FAIL spelling step {}: ranges {:?}, dictionary revision {}",
+                    self.step,
+                    core.edit
+                        .spelling
+                        .check("🙂 kuizzzword кошка")
+                        .map(<[_]>::to_vec),
+                    core.edit.spelling.dictionary_revision()
+                ));
+                return;
+            }
             self.finish(format!("FAIL step {} model {first:?}, {second:?}, caret {caret:?}, marked {marked:?}, focus {:?}, changes {:?}", self.step, core.focus(), self.changes));
             return;
         }

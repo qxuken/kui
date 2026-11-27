@@ -8,7 +8,9 @@ import android.view.textservice.TextInfo;
 public final class EditingSpellChecker extends SpellCheckerService {
     @Override public Session createSession() {
         return new Session() {
-            @Override public void onCreate() {}
+            @Override public void onCreate() {
+                android.util.Log.i("KuiEditingProbe", "Opened spelling session for " + getLocale());
+            }
             @Override public SuggestionsInfo onGetSuggestions(TextInfo input, int limit) {
                 if (input.getText().startsWith("kuizzz")
                     || ("кошка".equals(input.getText()) && !getLocale().startsWith("ru"))) {

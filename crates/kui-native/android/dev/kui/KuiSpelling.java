@@ -2,10 +2,12 @@ package dev.kui;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.LocaleList;
 import android.os.SystemClock;
+import android.view.inputmethod.InputMethodInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.view.inputmethod.InputMethodSubtype;
 import android.view.textservice.SentenceSuggestionsInfo;
@@ -74,7 +76,10 @@ final class KuiSpelling {
         for (int i = 0; i < display.size(); i++) locales.add(display.get(i));
         InputMethodManager ime = context.getSystemService(InputMethodManager.class);
         if (ime != null) {
-            for (InputMethodSubtype subtype : ime.getEnabledInputMethodSubtypeList(null, true)) {
+            // Newer framework versions look up the passed ID literally and return
+            // no subtypes for null, even when a keyboard is currently selected.
+            InputMethodInfo selected = Build.VERSION.SDK_INT >= 34 ? ime.getCurrentInputMethodInfo() : null;
+            for (InputMethodSubtype subtype : ime.getEnabledInputMethodSubtypeList(selected, true)) {
                 if (!"keyboard".equals(subtype.getMode())) continue;
                 String tag = subtype.getLanguageTag();
                 if (tag.isEmpty()) tag = subtype.getLocale().replace('_', '-');
