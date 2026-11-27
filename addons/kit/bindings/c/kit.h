@@ -1742,6 +1742,11 @@ typedef struct KitTextField {
      */
     KuiStr placeholder;
     /*
+     * Underline misspelled words using the desktop dictionary.
+     */
+    bool spellcheck;
+    bool spellcheck_set;
+    /*
      * In the data face.
      */
     bool mono;
@@ -1809,6 +1814,7 @@ static inline KuiValue *kit_text_field_props(const KitTextField *p) {
     if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->hide_label_set) kui_value_map_set(m, KUI_STR("hide_label"), kui_value_bool(p->hide_label));
     if (p->placeholder.len > 0) kui_value_map_set(m, KUI_STR("placeholder"), kui_value_str(p->placeholder));
+    if (p->spellcheck_set) kui_value_map_set(m, KUI_STR("spellcheck"), kui_value_bool(p->spellcheck));
     if (p->mono_set) kui_value_map_set(m, KUI_STR("mono"), kui_value_bool(p->mono));
     if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
     if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
@@ -1992,6 +1998,11 @@ typedef struct KitTextArea {
      */
     KuiStr error;
     /*
+     * Underline misspelled words using the desktop dictionary.
+     */
+    bool spellcheck;
+    bool spellcheck_set;
+    /*
      * Tab and Shift+Tab move the keyboard to the next or the last control, as
      * from a one-line field: a note, a comment. Left out, Tab types indentation
      * as a code editor's does, and the ways out are Escape then Tab, or Ctrl+M
@@ -2025,6 +2036,7 @@ static inline KuiValue *kit_text_area_props(const KitTextArea *p) {
     if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
     if (p->autofocus_set) kui_value_map_set(m, KUI_STR("autofocus"), kui_value_bool(p->autofocus));
     if (p->error.len > 0) kui_value_map_set(m, KUI_STR("error"), kui_value_str(p->error));
+    if (p->spellcheck_set) kui_value_map_set(m, KUI_STR("spellcheck"), kui_value_bool(p->spellcheck));
     if (p->tab_moves_focus_set) kui_value_map_set(m, KUI_STR("tab_moves_focus"), kui_value_bool(p->tab_moves_focus));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));

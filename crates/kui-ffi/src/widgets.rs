@@ -688,6 +688,7 @@ fn text_edit(
             wrap: flags & KUI_EDIT_WRAP != 0,
             keep_tab: flags & KUI_EDIT_KEEP_TAB != 0,
             tab_moves_focus: flags & KUI_EDIT_TAB_MOVES_FOCUS != 0,
+            spellcheck: flags & KUI_EDIT_SPELLCHECK != 0,
             secure: flags & KUI_EDIT_SECURE != 0,
             value: flags & KUI_EDIT_VALUE != 0,
             placeholder: opt_str(placeholder).map(|p| p.into_owned()),

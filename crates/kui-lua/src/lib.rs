@@ -3841,6 +3841,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 style: p.style,
                 multiline: t.get::<Option<bool>>("multiline")?.unwrap_or(false),
                 autofocus: t.get::<Option<bool>>("autofocus")?.unwrap_or(false),
+                spellcheck: t.get::<Option<bool>>("spellcheck")?.unwrap_or(false),
                 keep_tab: t.get::<Option<bool>>("keep_tab")?.unwrap_or(false),
                 tab_moves_focus: t.get::<Option<bool>>("tab_moves_focus")?.unwrap_or(false),
                 secure: t.get::<Option<bool>>("secure")?.unwrap_or(false),

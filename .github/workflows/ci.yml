@@ -136,7 +136,7 @@ jobs:
         run: |
           set -eu
           missing=()
-          for pkg in fonts-dejavu-core pkg-config libasound2-dev mesa-vulkan-drivers libvulkan1 clang libglfw3-dev libx11-dev; do
+          for pkg in fonts-dejavu-core pkg-config libhunspell-dev libasound2-dev mesa-vulkan-drivers libvulkan1 clang libglfw3-dev libx11-dev; do
             if [[ "$(dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null)" != 'install ok installed' ]]; then
               missing+=("$pkg")
             fi

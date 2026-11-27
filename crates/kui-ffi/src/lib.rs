@@ -278,7 +278,7 @@ pub extern "C" fn kui_ctx_new_in(other: *mut KuiCtx) -> *mut KuiCtx {
             return std::ptr::null_mut();
         };
         let session = o.core().session().clone();
-        ctx_around(Box::new(Core::new_in(&session)))
+        ctx_around(Box::new(kui_native::system::core_in(&session)))
     })
 }
 

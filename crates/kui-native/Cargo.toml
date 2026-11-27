@@ -55,6 +55,9 @@ gif = { version = "0.14", optional = true }
 [dev-dependencies]
 kui-devtools.workspace = true
 
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
+spellkit = "0.5"
+
 [features]
 default = ["gui", "audio", "accesskit", "derive", "dialogs"]
 # The windowed runner and GPU-backed headless driver. Hosts that supply

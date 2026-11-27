@@ -200,7 +200,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libhunspell-dev
 
       # Not target/pack: its archives are each run's own to make. Cached,
       # alpha.68's and alpha.70's runner archives rode into alpha.71's
@@ -392,7 +392,7 @@ jobs:
       - name: Install ALSA
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev
+          sudo apt-get install -y --no-install-recommends libasound2-dev libhunspell-dev
 
       - uses: actions/download-artifact@v8
         with:
@@ -530,7 +530,7 @@ jobs:
       - name: Install ALSA
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev
+          sudo apt-get install -y --no-install-recommends libasound2-dev libhunspell-dev
 
       - uses: actions/download-artifact@v8
         with:
@@ -609,7 +609,7 @@ jobs:
       - name: Install publishing system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev \
+          sudo apt-get install -y --no-install-recommends pkg-config libhunspell-dev libasound2-dev \
             fonts-dejavu-core mesa-vulkan-drivers libvulkan1
           mkdir -p -m 700 "$RUNNER_TEMP/xdg"
           echo "XDG_RUNTIME_DIR=$RUNNER_TEMP/xdg" >> "$GITHUB_ENV"

@@ -57,6 +57,8 @@ use crate::tree::OriginId;
 #[derive(Clone, Debug, Default)]
 pub struct EditOptions {
     pub style: TextStyle,
+    /// Underline misspellings using the desktop dictionary. Ignored for secure fields.
+    pub spellcheck: bool,
     /// A document rather than a field: Enter inserts a newline, the text
     /// wraps to the box, and the caret opens at the top.
     pub multiline: bool,
@@ -208,6 +210,7 @@ pub(crate) struct EditState {
     pub(crate) style: TextStyle,
     pub(crate) accent: Color,
     pub(crate) multiline: bool,
+    spellcheck: bool,
     /// `EditOptions::keep_tab`, as last declared.
     keep_tab: bool,
     /// `EditOptions::tab_moves_focus`, as last declared.
@@ -936,6 +939,8 @@ pub(crate) enum Unclaimed {
 /// `Ui::text_edit`, `Core::edit_text` and `Core::set_edit_text` rather
 /// than directly.
 pub struct EditStore {
+    /// The same paragraph checker used by stock and custom editors.
+    pub spelling: crate::spelling::Spelling,
     states: FxHashMap<Key, EditState>,
     /// Text set for a key nothing has declared yet: `set_text` holds it
     /// here and the next `declare` under that key seeds with it instead of
@@ -979,6 +984,7 @@ impl Default for EditStore {
     fn default() -> Self {
         Self {
             states: FxHashMap::default(),
+            spelling: Default::default(),
             pending: FxHashMap::default(),
             pending_labels: FxHashMap::default(),
             focused: None,
@@ -1302,6 +1308,7 @@ impl EditStore {
                 style: opts.style,
                 accent: opts.accent.unwrap_or(crate::select::TINT),
                 multiline,
+                spellcheck: false,
                 keep_tab: opts.keep_tab,
                 tab_moves_focus: opts.tab_moves_focus,
                 was_secure: secret.is_some(),
@@ -1330,6 +1337,7 @@ impl EditStore {
         state.autofocus = opts.autofocus;
         state.origin = origin;
         state.multiline = multiline;
+        state.spellcheck = opts.spellcheck && !opts.secure;
         state.keep_tab = opts.keep_tab;
         state.tab_moves_focus = opts.tab_moves_focus;
         // Masked or shown again: a "show password" toggle on the same
@@ -2457,6 +2465,7 @@ impl EditStore {
         focused: bool,
         selected: bool,
         faint: Color,
+        danger: Color,
         clip: Clip,
         clip_id: ClipId,
         fs: &mut FontSystem,
@@ -2580,6 +2589,43 @@ impl EditStore {
                             uv: [0; 4],
                             clip: clip_id,
                         });
+                    }
+                }
+                if s.spellcheck && s.preedit.is_none() {
+                    let line = run.line_i;
+                    let ranges = self
+                        .spelling
+                        .check(b.lines[line].text())
+                        .unwrap_or_default();
+                    // A long logical line can wrap to hundreds of visual runs.
+                    // Test only errors that touch a visible cluster in this run.
+                    let (start, end) = run
+                        .glyphs
+                        .iter()
+                        .filter(|g| {
+                            origin.x + g.x + g.w >= vis.x && origin.x + g.x <= vis.x + vis.w
+                        })
+                        .fold((usize::MAX, 0), |(lo, hi), g| {
+                            (lo.min(g.start), hi.max(g.end))
+                        });
+                    let first = ranges.partition_point(|r| r.end <= start);
+                    for range in ranges[first..].iter().take_while(|r| r.start < end) {
+                        for (x, width) in run
+                            .highlight(Cursor::new(line, range.start), Cursor::new(line, range.end))
+                        {
+                            let start = (origin.x + x).max(vis.x);
+                            let end = (origin.x + x + width).min(vis.x + vis.w);
+                            crate::deco::push_line(
+                                out,
+                                crate::UnderlineStyle::Wavy,
+                                start,
+                                origin.y + run.line_top + line_height - 2.0 * scale,
+                                end - start,
+                                scale,
+                                danger,
+                                clip_id,
+                            );
+                        }
                     }
                 }
                 // Composition backdrop + underline under its glyphs.

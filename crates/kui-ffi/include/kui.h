@@ -802,7 +802,8 @@ enum {
      * Declare on_change with it, or the field reverts every keystroke
      * (edit-value-without-handler). ABI 33. */
     KUI_EDIT_VALUE = 1u << 5,
-    KUI_EDIT_TAB_MOVES_FOCUS = 1u << 6
+    KUI_EDIT_TAB_MOVES_FOCUS = 1u << 6,
+    KUI_EDIT_SPELLCHECK = 1u << 7
 };
 /* Float modes (KuiSpec.float_mode). For the named presets the other
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */

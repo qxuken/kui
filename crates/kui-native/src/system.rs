@@ -44,7 +44,24 @@ pub fn new_session() -> kui_core::Session {
 
 /// Creates a standalone core for a native host using its installed fonts.
 pub fn new_core() -> kui_core::Core {
-    kui_core::Core::new_in(&new_session())
+    core_in(&new_session())
+}
+
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+mod spelling;
+
+/// Creates another native core in this font and resource session.
+pub fn core_in(session: &kui_core::Session) -> kui_core::Core {
+    let mut core = kui_core::Core::new_in(session);
+    configure_spelling(&mut core);
+    core
+}
+
+pub(crate) fn configure_spelling(_core: &mut kui_core::Core) {
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+    {
+        _core.edit.spelling.install_default(spelling::provider);
+    }
 }
 
 /// Reads a font into an existing core without changing its font catalog.

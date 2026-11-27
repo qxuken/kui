@@ -46,7 +46,7 @@ is a floor that admits every later alpha; `Cargo.lock` keeps the version
 you tested, and `"=0.1.0-alpha.34"` pins it in the manifest.
 
 macOS and Windows need nothing beyond a Rust toolchain. On Linux the build
-wants `pkg-config` and ALSA's headers (`libasound2-dev` on Debian and
+wants `pkg-config` and the ALSA and Hunspell headers (`libasound2-dev` and `libhunspell-dev` on Debian and
 Ubuntu). A window loads the rest at run time: `libxkbcommon` (plus
 `libxkbcommon-x11` on X11), the X11 client libraries (`libX11`,
 `libXcursor`, `libXrandr`, `libXi`) or `libwayland-client`, and

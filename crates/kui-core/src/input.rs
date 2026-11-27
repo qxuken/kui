@@ -2768,7 +2768,7 @@ impl Interaction {
     /// Every scroll region under the cursor — containers and `on_scroll`
     /// handlers — topmost by paint order first: what a notch walks when
     /// the innermost scroller moves on one axis only.
-    pub(crate) fn scroll_regions_at(&self) -> impl Iterator<Item = &ScrollRegion> {
+    pub fn scroll_regions_at(&self) -> impl Iterator<Item = &ScrollRegion> {
         self.scroll_regions_under(self.cursor)
     }
 

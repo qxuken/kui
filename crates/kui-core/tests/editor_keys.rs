@@ -60,6 +60,53 @@ fn rig(opts: EditOptions, shell: bool) -> (Core, Key, Key) {
     (core, s, f)
 }
 
+#[test]
+fn spelling_underlines_follow_the_buffer_and_skip_secure_editors() {
+    use kui_core::spelling::{Spellchecker, Spelling};
+    use std::ops::Range;
+    struct TestDictionary;
+    impl Spellchecker for TestDictionary {
+        fn check(&mut self, text: &str) -> Option<&[Range<usize>]> {
+            assert_eq!(text, "ab", "secure text must never reach the provider");
+            Some(std::slice::from_ref(&ERROR))
+        }
+        fn pending(&self) -> bool {
+            false
+        }
+        fn collect(&mut self) -> bool {
+            false
+        }
+    }
+    const ERROR: Range<usize> = 0..2;
+    let mut core = support::desktop();
+    core.edit.spelling = Spelling::with_provider(|| Box::new(TestDictionary));
+    for (enabled, secure, expected) in [
+        (false, false, false),
+        (true, false, true),
+        (false, false, false),
+        (true, true, false),
+    ] {
+        frame(
+            &mut core,
+            &EditOptions {
+                spellcheck: enabled,
+                secure,
+                ..Default::default()
+            },
+            false,
+        );
+        let danger = core.theme().danger;
+        assert_eq!(
+            core.output()
+                .0
+                .quads
+                .iter()
+                .any(|q| q.kind == kui_core::QuadKind::Segment && q.color == danger),
+            expected
+        );
+    }
+}
+
 fn primary() -> KeyMods {
     if cfg!(target_os = "macos") {
         KeyMods {

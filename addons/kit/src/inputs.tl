@@ -372,6 +372,7 @@ local function line_field(c: Ctx, p: P, password: boolean): kui.Node
       key = "edit",
       value = value,
       secure = password and not visible or nil,
+      spellcheck = not password and p.spellcheck == true or nil,
       placeholder = str(p.placeholder),
       label = str(p.label) or str(p.placeholder),
       width = "grow",
@@ -470,6 +471,7 @@ function M.text_area(c: Ctx, p: P): kui.Node
       multiline = true,
       -- The core's multiline editor takes Tab by default now (backlog
       -- C99); Kit's prop keeps its meaning until Kit adopts the default.
+      spellcheck = p.spellcheck == true or nil,
       tab_moves_focus = p.tab_moves_focus == true or nil,
       width = "grow",
       height = grow and "grow" or nil,

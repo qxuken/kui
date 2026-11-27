@@ -271,6 +271,7 @@ Edit_Flag :: enum u32 {
 	Secure = 4, // KUI_EDIT_SECURE
 	Value = 5, // KUI_EDIT_VALUE
 	Tab_Moves_Focus = 6, // KUI_EDIT_TAB_MOVES_FOCUS
+	Spellcheck = 7, // KUI_EDIT_SPELLCHECK
 }
 Edit_Flags :: bit_set[Edit_Flag;u32]
 

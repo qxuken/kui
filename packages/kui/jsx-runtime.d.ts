@@ -1023,6 +1023,8 @@ export interface EditProps extends TextProps, Omit<GeneratedSpecProps, 'onChange
    *  ring from it, and the press goes to the `onKey` sink above it — so a
    *  list built from fields indents on Tab. */
   keepTab?: boolean;
+  /** Underline misspelled words using the desktop dictionary. */
+  spellcheck?: boolean;
   /** A `multiline` editor's Tab and Shift-Tab walk the focus ring, as a
    *  browser's textarea does. Without it a multiline editor takes Tab as a
    *  code editor does — Tab types four spaces, Shift-Tab takes them back —

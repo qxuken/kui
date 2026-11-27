@@ -1353,6 +1353,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                     // Bit 128: `tabMovesFocus`, a multiline editor's Tab
                     // walks the ring instead of typing (backlog C99).
                     tab_moves_focus: flags & 128 != 0,
+                    spellcheck: flags & 256 != 0,
                     value,
                     placeholder: placeholder.map(str::to_string),
                     wrap: p.wrap,

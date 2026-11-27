@@ -51,7 +51,7 @@ jobs:
           wasi: 'true'
 
       - name: Install ALSA for the CLI packer
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libhunspell-dev
 
       - name: Build
         run: nu scripts/book-build.nu --install-tools --out-dir "$RUNNER_TEMP/book"
