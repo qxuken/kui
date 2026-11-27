@@ -2320,6 +2320,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-plasma",
+ "windows",
  "windows-sys 0.52.0",
  "winit",
  "x11rb",

@@ -109,6 +109,7 @@ host-pass = ["accesskit", "kui-access/platform", "dep:bytemuck"]
 libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = ["System_UserProfile", "Win32_Globalization"] }
 windows-sys = { version = "0.52", optional = true, features = [
     "Win32_Foundation",
     "Win32_Globalization",
