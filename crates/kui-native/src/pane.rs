@@ -733,7 +733,7 @@ impl Pane {
             return;
         }
         let scale = self.window.scale_factor() as f32;
-        bridge.publish(self.core.access_tree(), scale, &said);
+        bridge.publish(self.core.access_snapshot(), scale, &said);
     }
 
     /// The platform primary shortcut modifier (Cmd on macOS, Ctrl elsewhere).

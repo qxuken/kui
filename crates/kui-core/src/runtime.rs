@@ -962,6 +962,7 @@ pub struct Core {
     /// forces the next derivation.
     access_inputs: Option<u64>,
     access_groups: crate::access::EditorGroups,
+    access_run_hashes: crate::access::RunHashes,
     /// How many times the access tree has actually been derived, as against
     /// asked for. Tests read it to tell a cache hit from a miss; nothing in
     /// the library acts on it.
@@ -1541,6 +1542,7 @@ impl Core {
             access_built: 0,
             access_inputs: None,
             access_groups: Default::default(),
+            access_run_hashes: Default::default(),
             access_rebuilds: 0,
             tree: Tree::new(),
             inspect: false,

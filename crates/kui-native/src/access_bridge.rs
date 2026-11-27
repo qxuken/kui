@@ -18,7 +18,8 @@
 mod imp {
     use accesskit_winit::{Adapter, Event, WindowEvent as AkWindowEvent};
     use kui_access::{Feed, request_of};
-    use kui_core::{AccessRequest, AccessTree, Announcement, Assistive};
+    use kui_core::access::AccessSnapshot;
+    use kui_core::{AccessRequest, Announcement, Assistive};
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
@@ -126,17 +127,18 @@ mod imp {
 
         /// Pushes the tree when assistive technology is attached and the
         /// tree differs from the last one sent.
-        pub fn publish(&mut self, tree: &AccessTree, scale: f32, said: &[Announcement]) {
+        pub fn publish(&mut self, tree: AccessSnapshot<'_>, scale: f32, said: &[Announcement]) {
             let adapter = &mut self.adapter;
             self.feed
-                .publish(tree, scale, said, |u| adapter.update_if_active(|| u));
+                .publish_snapshot(tree, scale, said, |u| adapter.update_if_active(|| u));
         }
     }
 }
 
 #[cfg(not(feature = "accesskit"))]
 mod imp {
-    use kui_core::{AccessRequest, AccessTree, Announcement, Assistive};
+    use kui_core::access::AccessSnapshot;
+    use kui_core::{AccessRequest, Announcement, Assistive};
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
@@ -208,7 +210,7 @@ mod imp {
             }
         }
 
-        pub fn publish(&mut self, _tree: &AccessTree, _scale: f32, _said: &[Announcement]) {}
+        pub fn publish(&mut self, _tree: AccessSnapshot<'_>, _scale: f32, _said: &[Announcement]) {}
     }
 }
 
