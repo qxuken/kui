@@ -35,6 +35,8 @@ pub use fonts::session_with_japanese_fallback;
 #[cfg(target_os = "ios")]
 #[path = "mobile_ios_editor.rs"]
 mod ios_editor;
+#[cfg(target_os = "ios")]
+pub(crate) use ios_editor::wake_spelling_windows;
 #[path = "mobile_text.rs"]
 mod mobile_text;
 use mobile_text::{Document, NativeText};

@@ -101,3 +101,12 @@ impl super::Dictionary for Dictionary {
         unsafe { kui_ios_spell_learn(word.as_ptr(), word.len()) }
     }
 }
+
+// UIKit delivers this on the main thread, once a pending lexicon starts
+// answering or the user's writing languages change. Recheck cached ranges.
+#[unsafe(no_mangle)]
+extern "C" fn kui_ios_spell_readiness_changed() {
+    super::GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    #[cfg(not(feature = "gui"))]
+    crate::mobile::wake_spelling_windows();
+}

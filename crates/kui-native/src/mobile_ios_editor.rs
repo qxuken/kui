@@ -12,6 +12,14 @@ thread_local! {
     static EVENTS: RefCell<HashMap<u64, Proxy>> = RefCell::default();
 }
 
+pub(crate) fn wake_spelling_windows() {
+    EVENTS.with_borrow(|windows| {
+        for proxy in windows.values() {
+            let _ = proxy.send_event(MobileEvent::Wake);
+        }
+    });
+}
+
 unsafe extern "C" {
     fn kui_ios_editor(
         view: *mut c_void,

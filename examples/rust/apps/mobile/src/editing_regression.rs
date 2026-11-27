@@ -151,6 +151,15 @@ impl Regression {
             23 if self.native(13) && first == "aé!Zb" && self.changes[0] == 3 => {
                 #[cfg(target_os = "ios")]
                 {
+                    unsafe extern "C" {
+                        fn kui_probe_spelling_scripts() -> bool;
+                    }
+                    if !unsafe { kui_probe_spelling_scripts() } {
+                        self.finish(
+                            "FAIL mixed-script spelling with an unavailable dictionary".into(),
+                        );
+                        return;
+                    }
                     // Use a fresh word so a previous test or user dictionary cannot mask a failure.
                     let seed = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)

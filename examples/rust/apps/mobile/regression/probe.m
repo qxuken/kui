@@ -11,6 +11,28 @@ static UIView *responder(UIView *view) {
 
 extern NSArray<NSString *> *kui_ios_spell_languages(void);
 
+extern NSIndexSet *kui_ios_spell_consensus(NSString *, NSDictionary *, NSDictionary *);
+
+// Exercise missing and late-arriving assets without changing the user's
+// keyboards. UIKit supplies the real alphabets for these writing systems.
+bool kui_probe_spelling_scripts(void) {
+    NSString *text = @"wrng خطأ";
+    NSIndexSet *englishError = [NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, 4)];
+    NSIndexSet *both = [NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, text.length)];
+    NSMutableIndexSet *reported = [both mutableCopy];
+    [reported removeIndex:4];
+    NSCharacterSet *latin = [NSLocale localeWithLocaleIdentifier:@"en_US"].exemplarCharacterSet;
+    NSCharacterSet *arabic = [NSLocale localeWithLocaleIdentifier:@"ar"].exemplarCharacterSet;
+    NSDictionary *mixed = @{@"en":latin, @"ar":arabic}, *related = @{@"en":latin, @"fr":latin};
+    NSDictionary *onlyEnglish = @{@"en":reported};
+    return [kui_ios_spell_consensus(text, mixed, onlyEnglish) isEqual:englishError]
+        && [kui_ios_spell_consensus(text, mixed, @{@"en":reported, @"ar":[NSIndexSet indexSet]})
+               isEqual:englishError]
+        && !kui_ios_spell_consensus(text, related, onlyEnglish).count
+        && [kui_ios_spell_consensus(text, related, @{@"en":reported, @"fr":englishError})
+               isEqual:englishError];
+}
+
 // This fixture is short. Mark each UTF-16 unit rejected by each configured
 // UIKit dictionary, then convert the common runs using NSString itself.
 void kui_probe_expected_ranges(const uint8_t *bytes, size_t len, void *ctx,
