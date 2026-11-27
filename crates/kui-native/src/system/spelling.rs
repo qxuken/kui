@@ -20,6 +20,19 @@ struct Worker {
     stopped: bool,
 }
 
+// A native worker lives for the lifetime of the window. Drain AppKit's
+// temporary objects after each dictionary operation on its background thread.
+fn dictionary_call<T>(f: impl FnOnce() -> T) -> T {
+    #[cfg(target_os = "macos")]
+    {
+        objc2::rc::autoreleasepool(|_| f())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        f()
+    }
+}
+
 impl Worker {
     pub fn new() -> Self {
         let (requests, inbox) = mpsc::sync_channel::<Arc<str>>(QUEUE_SIZE);
@@ -27,17 +40,19 @@ impl Worker {
         let thread = std::thread::Builder::new()
             .name("kui-spelling".into())
             .spawn(move || {
-                let Ok(checker) = spellkit::Checker::new() else {
+                let Ok(checker) = dictionary_call(spellkit::Checker::new) else {
                     return;
                 };
                 for text in inbox {
-                    let mut ranges: Vec<_> =
-                        checker.check(&text).map(|error| error.range()).collect();
+                    let mut ranges: Vec<_> = dictionary_call(|| {
+                        checker.check(&text).map(|error| error.range()).collect()
+                    });
                     ranges.sort_unstable_by_key(|r| r.start);
                     if outbox.send((text, ranges)).is_err() {
                         break;
                     }
                 }
+                dictionary_call(|| drop(checker));
             });
         Self {
             requests,

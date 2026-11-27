@@ -2591,12 +2591,12 @@ impl EditStore {
                         });
                     }
                 }
-                if s.spellcheck && s.preedit.is_none() {
-                    let line = run.line_i;
-                    let ranges = self
-                        .spelling
-                        .check(b.lines[line].text())
-                        .unwrap_or_default();
+                let line = run.line_i;
+                if s.spellcheck
+                    && s.preedit.is_none()
+                    && let Some(ranges) = self.spelling.check(b.lines[line].text())
+                    && !ranges.is_empty()
+                {
                     // A long logical line can wrap to hundreds of visual runs.
                     // Test only errors that touch a visible cluster in this run.
                     let (start, end) = run

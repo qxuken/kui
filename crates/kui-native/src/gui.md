@@ -138,8 +138,8 @@ which (`"main"` for the launcher's), and every event carries its window's
 
 # Linux
 
-Building needs `pkg-config` and ALSA's headers (`libasound2-dev` on
-Debian and Ubuntu). A window loads the rest at run time: `libxkbcommon`
+Building needs `pkg-config` and the ALSA and Hunspell headers
+(`libasound2-dev` and `libhunspell-dev` on Debian and Ubuntu). A window loads the rest at run time: `libxkbcommon`
 (and `libxkbcommon-x11` on X11); `libX11`, `libXcursor`, `libXrandr` and
 `libXi` on X11 or `libwayland-client` on Wayland; `libvulkan` with a
 driver, or `libEGL`. A missing one fails when the window opens, naming

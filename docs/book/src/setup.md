@@ -51,8 +51,8 @@ chapter's program carries its tests, and `cargo test` runs them.
 
 ## Linux
 
-The build wants `pkg-config` and ALSA's headers (`libasound2-dev` on
-Debian and Ubuntu). A window loads the rest at run time: `libxkbcommon`
+The build wants `pkg-config` and the ALSA and Hunspell headers
+(`libasound2-dev` and `libhunspell-dev` on Debian and Ubuntu). A window loads the rest at run time: `libxkbcommon`
 for the keyboard, the X11 or Wayland client libraries, and Vulkan or
 EGL for the GPU. A missing one fails when the window opens, with the
 library's name in the error.
