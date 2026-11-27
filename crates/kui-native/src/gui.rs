@@ -57,6 +57,8 @@ mod secure_input;
 pub mod testing;
 mod unseen;
 mod windows;
+#[cfg(windows)]
+mod windows_wheel;
 
 use pane::{
     Pane, appearance_of, apply_ime_off, ime_off_change, level_change, level_supported,
@@ -984,6 +986,7 @@ impl Launcher {
             session.set_platform(platform);
             core.set_platform(platform);
         }
+        system::configure_spelling(&mut core);
         system::configure_assets(&session);
         core.set_diagnostics(diagnostics);
         // `KUI_DEVTOOLS=1` opens the panel for a program that never asked
@@ -2423,7 +2426,16 @@ impl DynShell<'_> {
         let completes = input_completes(&ev);
         let here = self.panes[i].id;
         self.stamp_clock();
-        let mut events = self.panes[i].core.handle_input(ev);
+        let pane = &mut self.panes[i];
+        #[cfg(windows)]
+        let mut events = match ev {
+            InputEvent::Wheel { lines, begins } if pane.modifiers.is_empty() => {
+                windows_wheel::dispatch(&mut pane.core, lines, begins)
+            }
+            ev => pane.core.handle_input(ev),
+        };
+        #[cfg(not(windows))]
+        let mut events = pane.core.handle_input(ev);
         // A menu's popup has no view to hear its core: what its rows said
         // is its answer (`pump_menu_popups`), and nothing else is the app's.
         if self.panes[i].menu_pane.is_some() {

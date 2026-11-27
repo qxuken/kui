@@ -373,6 +373,7 @@ local function line_field(c, p, password)
          key = "edit",
          value = value,
          secure = password and not visible or nil,
+         spellcheck = not password and p.spellcheck == true or nil,
          placeholder = str(p.placeholder),
          label = str(p.label) or str(p.placeholder),
          width = "grow",
@@ -471,6 +472,7 @@ function M.text_area(c, p)
          multiline = true,
 
 
+         spellcheck = p.spellcheck == true or nil,
          tab_moves_focus = p.tab_moves_focus == true or nil,
          width = "grow",
          height = grow and "grow" or nil,

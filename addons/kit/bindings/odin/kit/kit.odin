@@ -1491,6 +1491,8 @@ TextField :: struct {
 	hide_label: Maybe(bool),
 	// Shown while it is empty.
 	placeholder: string,
+	// Underline misspelled words using the desktop dictionary.
+	spellcheck: Maybe(bool),
 	// In the data face.
 	mono: Maybe(bool),
 	// Unavailable.
@@ -1555,6 +1557,7 @@ text_field_props :: proc(p: TextField) -> ^c.Value {
 	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.hide_label.?; ok do c.value_map_set(m, "hide_label", c.value_bool(x))
 	if p.placeholder != "" do c.value_map_set(m, "placeholder", c.value_str(p.placeholder))
+	if x, ok := p.spellcheck.?; ok do c.value_map_set(m, "spellcheck", c.value_bool(x))
 	if x, ok := p.mono.?; ok do c.value_map_set(m, "mono", c.value_bool(x))
 	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
 	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
@@ -1698,6 +1701,8 @@ TextArea :: struct {
 	autofocus: Maybe(bool),
 	// What is wrong with the text, under it in the danger colour.
 	error: string,
+	// Underline misspelled words using the desktop dictionary.
+	spellcheck: Maybe(bool),
 	// Tab and Shift+Tab move the keyboard to the next or the last control, as from
 	// a one-line field: a note, a comment. Left out, Tab types indentation as a
 	// code editor's does, and the ways out are Escape then Tab, or Ctrl+M
@@ -1737,6 +1742,7 @@ text_area_props :: proc(p: TextArea) -> ^c.Value {
 	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
 	if x, ok := p.autofocus.?; ok do c.value_map_set(m, "autofocus", c.value_bool(x))
 	if p.error != "" do c.value_map_set(m, "error", c.value_str(p.error))
+	if x, ok := p.spellcheck.?; ok do c.value_map_set(m, "spellcheck", c.value_bool(x))
 	if x, ok := p.tab_moves_focus.?; ok do c.value_map_set(m, "tab_moves_focus", c.value_bool(x))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))

@@ -595,7 +595,7 @@ impl DynShell<'_> {
     /// images, and the window's palette, sizes and feel.
     fn menu_core(&self, host: usize) -> Core {
         let from = &self.panes[host].core;
-        let mut core = Core::new_in(&self.session);
+        let mut core = system::core_in(&self.session);
         core.set_diagnostics(self.diagnostics);
         core.set_subpixel_text(self.subpixel);
         core.set_opacity_groups(true);

@@ -3165,6 +3165,8 @@ pub struct TextField {
     pub hide_label: Option<bool>,
     /// Shown while it is empty.
     pub placeholder: Option<String>,
+    /// Underline misspelled words using the desktop dictionary.
+    pub spellcheck: Option<bool>,
     /// In the data face.
     pub mono: Option<bool>,
     /// Unavailable.
@@ -3211,6 +3213,7 @@ impl TextField {
             label: None,
             hide_label: None,
             placeholder: None,
+            spellcheck: None,
             mono: None,
             disabled: None,
             width: None,
@@ -3242,6 +3245,12 @@ impl TextField {
     /// Shown while it is empty.
     pub fn placeholder(mut self, v: impl Into<String>) -> Self {
         self.placeholder = Some(v.into());
+        self
+    }
+
+    /// Underline misspelled words using the desktop dictionary.
+    pub fn spellcheck(mut self, v: bool) -> Self {
+        self.spellcheck = Some(v);
         self
     }
 
@@ -3339,6 +3348,9 @@ impl TextField {
         }
         if let Some(v) = &self.placeholder {
             m.push(("placeholder".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.spellcheck {
+            m.push(("spellcheck".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.mono {
             m.push(("mono".into(), Value::Bool(*v)));
@@ -3679,6 +3691,8 @@ pub struct TextArea {
     pub autofocus: Option<bool>,
     /// What is wrong with the text, under it in the danger colour.
     pub error: Option<String>,
+    /// Underline misspelled words using the desktop dictionary.
+    pub spellcheck: Option<bool>,
     /// Tab and Shift+Tab move the keyboard to the next or the last control, as
     /// from a one-line field: a note, a comment. Left out, Tab types
     /// indentation as a code editor's does, and the ways out are Escape then
@@ -3710,6 +3724,7 @@ impl TextArea {
             focus: None,
             autofocus: None,
             error: None,
+            spellcheck: None,
             tab_moves_focus: None,
             on_change: None,
             key: None,
@@ -3790,6 +3805,12 @@ impl TextArea {
         self
     }
 
+    /// Underline misspelled words using the desktop dictionary.
+    pub fn spellcheck(mut self, v: bool) -> Self {
+        self.spellcheck = Some(v);
+        self
+    }
+
     /// Tab and Shift+Tab move the keyboard to the next or the last control, as
     /// from a one-line field: a note, a comment. Left out, Tab types
     /// indentation as a code editor's does, and the ways out are Escape then
@@ -3856,6 +3877,9 @@ impl TextArea {
         }
         if let Some(v) = &self.error {
             m.push(("error".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.spellcheck {
+            m.push(("spellcheck".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.tab_moves_focus {
             m.push(("tab_moves_focus".into(), Value::Bool(*v)));

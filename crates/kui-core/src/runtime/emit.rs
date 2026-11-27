@@ -505,6 +505,7 @@ impl Core {
                     || ((self.menu.is_some() || self.menu_bar_open.is_some())
                         && self.menu_editor == Some(key)),
                 faint: self.theme.faint,
+                danger: self.theme.danger,
                 pad: self.tree.specs[i].layout.padding,
             },
             NodeContent::Image(id, opts) => Leaf::Image(id, opts),
@@ -726,6 +727,9 @@ impl Core {
         let span = self.span_begin_as(analysis::EMIT, Origin::Kui);
         self.emit_frame();
         self.span_end(span);
+        if self.edit.spelling.pending() {
+            self.request_frame_at(self.now() + 0.04);
+        }
         // A cycle whose node the frame culled owes no frame (backlog C137).
         self.settle_cycles();
         // Text in boxes says why, once (the diag dedups by code and key).
@@ -2205,6 +2209,7 @@ impl Core {
                     focused: false,
                     selected: false,
                     faint: self.theme.faint,
+                    danger: self.theme.danger,
                     pad: node.spec.layout.padding,
                 },
                 GhostContent::Image(id, opts) => Leaf::Image(id, opts),
@@ -3336,6 +3341,7 @@ enum Leaf<'a> {
         selected: bool,
         /// The theme's `faint`, which a placeholder is drawn in.
         faint: Color,
+        danger: Color,
         /// The box's padding: the text starts inside it.
         pad: crate::geom::Edges,
     },
@@ -3625,6 +3631,7 @@ impl Painter<'_> {
                 focused,
                 selected,
                 faint,
+                danger,
                 pad,
             } => {
                 let origin = Vec2::new(
@@ -3661,6 +3668,7 @@ impl Painter<'_> {
                     focused,
                     selected,
                     faint,
+                    danger,
                     edit_clip,
                     edit_clip_id,
                     &mut sess.fonts,

@@ -332,6 +332,7 @@ Lua `kit.text_field(props)` · Node `<TextField />`
 | `label` | `label` | string? | Its label, above it; its name. |
 | `hide_label` | `hideLabel` | boolean? | The label names the field but is not drawn: a field whose place says what it is. |
 | `placeholder` | `placeholder` | string? | Shown while it is empty. |
+| `spellcheck` | `spellcheck` | boolean? | Underline misspelled words using the desktop dictionary. |
 | `mono` | `mono` | boolean? | In the data face. |
 | `disabled` | `disabled` | boolean? | Unavailable. |
 | `width` | `width` | number? | Its width in px; grows when left out. |
@@ -390,6 +391,7 @@ Lua `kit.text_area(props)` · Node `<TextArea />`
 | `focus` | `focus` | integer? | Takes the keyboard each time this number changes while it is on screen. |
 | `autofocus` | `autofocus` | boolean? | Takes the keyboard as it first shows. |
 | `error` | `error` | string? | What is wrong with the text, under it in the danger colour. |
+| `spellcheck` | `spellcheck` | boolean? | Underline misspelled words using the desktop dictionary. |
 | `tab_moves_focus` | `tabMovesFocus` | boolean? | Tab and Shift+Tab move the keyboard to the next or the last control, as from a one-line field: a note, a comment. Left out, Tab types indentation as a code editor's does, and the ways out are Escape then Tab, or Ctrl+M (Ctrl+Shift+M on macOS). |
 
 | event | Node | carries | description |

@@ -2395,6 +2395,7 @@ impl Core {
     /// calls first. A binding that drives the builder methods on the core
     /// directly starts here and ends with `Ui::wrap(core).finish()`.
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
+        self.edit.spelling.begin_frame();
         // A frame at or past the time asked for is that frame.
         if let (Some(due), Some(now)) = (self.frame_due, self.anim.time())
             && due <= now

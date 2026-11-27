@@ -284,7 +284,7 @@ def build-image [] {
 RUN dpkg --add-architecture amd64 && dpkg --add-architecture arm64 \\
  && apt-get update \\
  && apt-get install -y --no-install-recommends python3-pip pkg-config clang lld llvm \\
-      libasound2-dev:amd64 libasound2-dev:arm64 \\
+      libasound2-dev:amd64 libasound2-dev:arm64 libhunspell-dev:amd64 libhunspell-dev:arm64 \\
  && rm -rf /var/lib/apt/lists/*
 RUN rustup toolchain install ((rustc --version | split row ' ' | get 1)) --profile minimal && rustup default ((rustc --version | split row ' ' | get 1))
 RUN pip3 install --break-system-packages cargo-zigbuild==($CARGO_ZIGBUILD_VERSION) ziglang==($ZIGLANG_VERSION)

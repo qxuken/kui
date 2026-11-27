@@ -73,7 +73,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config libasound2-dev
+          sudo apt-get install -y --no-install-recommends fonts-dejavu-core pkg-config libasound2-dev libhunspell-dev
 
       - name: Install the pinned fuzz nightly
         run: nu scripts/toolchain.nu fuzz --github-env "$GITHUB_ENV"

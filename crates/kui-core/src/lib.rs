@@ -159,6 +159,7 @@ pub mod slider;
 pub mod slot;
 pub mod slots;
 pub mod spec;
+pub mod spelling;
 pub mod stats;
 mod stock_face;
 pub mod svg;

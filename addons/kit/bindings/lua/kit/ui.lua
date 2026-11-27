@@ -329,6 +329,7 @@
 ---@field label? string Its label, above it; its name.
 ---@field hide_label? boolean The label names the field but is not drawn: a field whose place says what it is.
 ---@field placeholder? string Shown while it is empty.
+---@field spellcheck? boolean Underline misspelled words using the desktop dictionary.
 ---@field mono? boolean In the data face.
 ---@field disabled? boolean Unavailable.
 ---@field width? number Its width in px; grows when left out.
@@ -389,6 +390,7 @@
 ---@field focus? integer Takes the keyboard each time this number changes while it is on screen.
 ---@field autofocus? boolean Takes the keyboard as it first shows.
 ---@field error? string What is wrong with the text, under it in the danger colour.
+---@field spellcheck? boolean Underline misspelled words using the desktop dictionary.
 ---@field tab_moves_focus? boolean Tab and Shift+Tab move the keyboard to the next or the last control, as from a one-line field: a note, a comment. Left out, Tab types indentation as a code editor's does, and the ways out are Escape then Tab, or Ctrl+M (Ctrl+Shift+M on macOS).
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.TextAreaChange). The text changed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
