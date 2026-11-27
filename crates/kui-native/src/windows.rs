@@ -5,6 +5,15 @@
 
 use super::*;
 
+/// A new pane or menu starts with its host's scroll settings and its own gesture state.
+pub(super) fn inherit_scroll_settings(core: &mut Core, host: &Core) {
+    core.set_smooth_wheel(host.smooth_wheel());
+    core.set_wheel_acceleration(host.wheel_acceleration());
+    core.set_max_wheel_acceleration(host.max_wheel_acceleration());
+    core.set_wheel_feel(host.wheel_feel());
+    core.set_edge_scroll_feel(host.edge_scroll_feel());
+}
+
 impl DynShell<'_> {
     pub(super) fn pane_index(&self, id: WinitWindowId) -> Option<usize> {
         self.panes.iter().position(|p| p.window.id() == id)
@@ -297,12 +306,8 @@ impl DynShell<'_> {
         core.set_opacity_groups(true);
         // The app's input feel, not one window's (ADR 0050): as the main
         // window has it.
-        core.set_smooth_wheel(self.panes.first().is_none_or(|p| p.core.smooth_wheel()));
         if let Some(main) = self.panes.first() {
-            core.set_wheel_acceleration(main.core.wheel_acceleration());
-            core.set_max_wheel_acceleration(main.core.max_wheel_acceleration());
-            core.set_wheel_feel(main.core.wheel_feel());
-            core.set_edge_scroll_feel(main.core.edge_scroll_feel());
+            inherit_scroll_settings(&mut core, &main.core);
         }
         core.env.window.id = id;
         self.push_pane(
