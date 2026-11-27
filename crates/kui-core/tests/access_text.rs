@@ -553,3 +553,109 @@ fn a_key_sink_is_a_focusable_group() {
     )));
     assert_eq!(core.key_focus(), Some(sink));
 }
+
+#[test]
+fn virtual_lines_keep_utf8_ranges_word_boundaries_and_visible_line_ordinals() {
+    use std::sync::Arc;
+    let mut core = Core::new();
+    let long = format!("{} слово", "猫".repeat(200));
+    let lines: Arc<[Arc<str>]> = [
+        Arc::from(long.as_str()),
+        Arc::from("אבג"),
+        Arc::from("a\nb"),
+        Arc::from(""),
+    ]
+    .into();
+    let frame = |core: &mut Core, prefix: Arc<[Arc<str>]>| {
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        let editor = ui.with_keyed(
+            "editor",
+            NodeSpec::column()
+                .on_key("edit")
+                .role(Role::MultilineTextInput),
+            |ui| {
+                ui.virtual_editor_lines(prefix);
+                ui.text_in(
+                    NodeSpec::row().role(Role::Line).caret(2),
+                    "ok",
+                    TextStyle::new(14.0),
+                );
+            },
+        );
+        ui.finish();
+        core.access_tree().get(editor).unwrap().clone()
+    };
+    let node = frame(&mut core, lines.clone());
+    assert_eq!(
+        node.value.as_deref(),
+        Some(format!("{long}\nאבג\na\nb\n\nok").as_str())
+    );
+    assert_eq!(node.caret, Some(node.value.as_ref().unwrap().len()));
+    assert_eq!(node.line_offset(node.focus.unwrap()), Some((4, 2)));
+    assert_eq!(
+        node.line_offset(node.text_pos(0, 601).unwrap()),
+        Some((0, 601))
+    );
+    assert_eq!(node.line_offset(node.text_pos(2, 2).unwrap()), Some((2, 2)));
+    assert!(node.runs.iter().find(|r| r.line == 1).unwrap().rtl);
+    let word = node.runs.iter().find(|r| r.text.contains("слово")).unwrap();
+    assert!(word.word_starts.contains(&1));
+    for run in node.runs.iter().filter(|r| r.line < 4) {
+        assert_eq!(run.rect, kui_core::Rect::default());
+        assert_eq!(run.char_lengths.len(), run.char_widths.len());
+        assert_eq!(run.char_lengths.len(), run.char_positions.len());
+        assert_eq!(
+            run.char_lengths.iter().map(|b| *b as usize).sum::<usize>(),
+            run.text.len()
+        );
+    }
+    assert_eq!(node, frame(&mut core, lines));
+    let changed = frame(&mut core, [Arc::from("новый")].into());
+    assert_eq!(changed.value.as_deref(), Some("новый\nok"));
+    assert_eq!(changed.line_offset(changed.focus.unwrap()), Some((1, 2)));
+}
+
+#[test]
+fn materializing_a_virtual_line_preserves_selection_offsets_after_hard_breaks() {
+    use std::sync::Arc;
+    let mut core = Core::new();
+    let text = "a\nאב";
+    for drawn in [false, true, false] {
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        let editor = ui.with_keyed(
+            "editor",
+            NodeSpec::column()
+                .on_key("ed")
+                .role(Role::MultilineTextInput),
+            |ui| {
+                if drawn {
+                    ui.text_in(NodeSpec::row().role(Role::Line), text, TextStyle::new(14.0));
+                } else {
+                    ui.virtual_editor_lines([Arc::from(text)].into());
+                }
+                ui.text_in(
+                    NodeSpec::row().role(Role::Line).caret(1),
+                    "z",
+                    TextStyle::new(14.0),
+                );
+            },
+        );
+        ui.finish();
+        let node = core.access_tree().get(editor).unwrap();
+        for byte in [0, 1, 2, 4, 6] {
+            assert_eq!(
+                node.line_offset(node.text_pos(0, byte).unwrap()),
+                Some((0, byte))
+            );
+        }
+        assert_eq!(node.caret, Some(text.len() + 2));
+        assert_eq!(node.line_offset(node.focus.unwrap()), Some((1, 1)));
+        assert!(
+            node.runs
+                .iter()
+                .find(|r| r.text.starts_with('א'))
+                .unwrap()
+                .rtl
+        );
+    }
+}

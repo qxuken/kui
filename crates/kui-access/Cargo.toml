@@ -22,6 +22,7 @@ publish = ["crates-io"]
 # The versions are the ones `accesskit_winit` 0.34 resolves to, so a build
 # with the runner and the host bridge links one AccessKit.
 [dependencies]
+rustc-hash.workspace = true
 kui-core.workspace = true
 accesskit = "0.25"
 
@@ -60,3 +61,6 @@ platform = [
     "dep:accesskit_windows",
     "dep:accesskit_unix",
 ]
+
+[dev-dependencies]
+accesskit_consumer = "0.39"

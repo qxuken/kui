@@ -1585,6 +1585,8 @@ impl AnimSpec {
 /// every node.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AccessSpec {
+    /// Undrawn logical lines of a virtualized custom editor.
+    pub virtual_lines: Option<std::sync::Arc<[Label]>>,
     /// What this node is to assistive technology (see [`crate::access`]).
     /// Unset, the core derives one: a node with `on_click` is a button,
     /// an editor a text input, a scrolling container a scroll view, and
@@ -1671,6 +1673,7 @@ impl AccessSpec {
     /// The group as a node that declares none of it — what
     /// `NodeSpec`'s accessor hands back when the box is `None`.
     pub const EMPTY: Self = Self {
+        virtual_lines: None,
         role: None,
         label: None,
         description: None,
