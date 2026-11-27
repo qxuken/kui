@@ -827,6 +827,22 @@ pub struct AccessTree {
     pub hash: u64,
 }
 
+/// A core-built tree and the fingerprints of its text runs, in tree order.
+/// Both borrow the same finished frame, including its text layout and clipping.
+pub struct AccessSnapshot<'a> {
+    pub(crate) tree: &'a AccessTree,
+    pub(crate) hashes: &'a [u64],
+}
+
+impl<'a> AccessSnapshot<'a> {
+    pub fn tree(&self) -> &'a AccessTree {
+        self.tree
+    }
+    pub fn run_hashes(&self) -> &'a [u64] {
+        self.hashes
+    }
+}
+
 impl AccessTree {
     /// `{nodes, focus, hash}`, every node by [`AccessNode::to_value`],
     /// the focus key spelled by `h` and the hash as sixteen hex digits.
@@ -1371,9 +1387,11 @@ pub(crate) fn build(
     src: &Sources<'_>,
     previous: &mut AccessTree,
     groups: &mut EditorGroups,
+    hashes: &mut RunHashes,
 ) -> AccessTree {
     let mut previous_groups = std::mem::take(groups);
     let mut out = AccessTree::default();
+    hashes.begin();
     if tree.is_empty() {
         return out;
     }
@@ -1609,7 +1627,8 @@ pub(crate) fn build(
     }
     set_positions(tree, &mut out);
     table_positions(tree, &mut out);
-    out.hash = hash_of(&out);
+    hashes.collect(&out, groups);
+    out.hash = hash_of(&out, &hashes.current);
     out
 }
 
@@ -1802,7 +1821,44 @@ impl PartialEq for VirtualLines {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct RunHashes {
+    pub(crate) current: Vec<u64>,
+    previous: Vec<u64>,
+}
+impl RunHashes {
+    fn begin(&mut self) {
+        std::mem::swap(&mut self.current, &mut self.previous);
+        self.current.clear();
+    }
+    fn collect(&mut self, tree: &AccessTree, groups: &mut EditorGroups) {
+        for node in &tree.nodes {
+            let Some(groups) = groups.get_mut(&node.key) else {
+                self.current
+                    .extend(node.runs.iter().map(AccessRun::platform_hash));
+                continue;
+            };
+            let mut runs = node.runs.as_slice();
+            for group in groups {
+                let (part, rest) = runs.split_at(group.count);
+                runs = rest;
+                if let Some(start) = group.hash_start.replace(self.current.len()) {
+                    // EditorReuse moved these exact finished runs into this
+                    // frame. Their original text and geometry are immutable.
+                    self.current
+                        .extend_from_slice(&self.previous[start..start + group.count]);
+                } else {
+                    self.current
+                        .extend(part.iter().map(AccessRun::platform_hash));
+                }
+            }
+            debug_assert!(runs.is_empty());
+        }
+    }
+}
+
 pub(crate) struct RunGroup {
+    hash_start: Option<usize>,
     address: (usize, usize),
     inputs: Option<GroupInputs>,
     count: usize,
@@ -1885,6 +1941,7 @@ fn custom_editor(
             }
             if !kept {
                 reuse.current.push(RunGroup {
+                    hash_start: None,
                     address: (ln, 0),
                     inputs: Some(inputs),
                     count: node.runs.len() - first,
@@ -1975,6 +2032,7 @@ fn custom_editor(
             }
             clip_runs(runs, clip);
             reuse.current.push(RunGroup {
+                hash_start: None,
                 address: (ln, k),
                 inputs,
                 count: node.runs.len() - first,
@@ -1983,6 +2041,7 @@ fn custom_editor(
         if texts.is_empty() {
             reuse.take((ln, 0), None, &mut node.runs);
             reuse.current.push(RunGroup {
+                hash_start: None,
                 address: (ln, 0),
                 inputs: None,
                 count: 1,
@@ -2291,7 +2350,8 @@ pub(crate) fn push_row_runs(
     }
 }
 
-fn hash_of(tree: &AccessTree) -> u64 {
+fn hash_of(tree: &AccessTree, run_hashes: &[u64]) -> u64 {
+    let mut fingerprints = run_hashes.iter();
     let mut h = crate::key::FNV_OFFSET;
     let mut mix = |bytes: &[u8]| h = crate::key::fnv(h, bytes);
     let mix_str = |mix: &mut dyn FnMut(&[u8]), s: &Option<String>| match s {
@@ -2331,7 +2391,10 @@ fn hash_of(tree: &AccessTree) -> u64 {
         mix(&b.to_le_bytes());
         for r in &n.runs {
             mix(&r.key.0.to_le_bytes());
-            mix(&r.platform_hash().to_le_bytes());
+            mix(&fingerprints
+                .next()
+                .expect("one fingerprint per run")
+                .to_le_bytes());
         }
         mix_pos(&mut mix, n.anchor);
         mix_pos(&mut mix, n.focus);

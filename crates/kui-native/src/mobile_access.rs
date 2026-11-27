@@ -2,7 +2,7 @@
 use super::MobileEvent;
 use super::Proxy;
 use kui_access::accesskit::{ActionHandler, ActionRequest, ActivationHandler, TreeUpdate};
-use kui_core::access::{AccessTree, Announcement};
+use kui_core::access::{AccessSnapshot, Announcement};
 
 #[derive(Clone)]
 struct Handler(Proxy);
@@ -111,7 +111,7 @@ pub(super) fn attach(
 pub(super) fn publish(
     feed: &mut kui_access::Feed,
     adapter: &mut Adapter,
-    tree: &AccessTree,
+    tree: AccessSnapshot<'_>,
     scale: f32,
     announcements: &[Announcement],
 ) {
@@ -119,7 +119,7 @@ pub(super) fn publish(
         fn kui_ios_announce(bytes: *const u8, length: usize, assertive: bool);
     }
 
-    feed.publish(tree, scale, &[], |update| {
+    feed.publish_snapshot(tree, scale, &[], |update| {
         if let Some(events) = adapter.update_if_active(|| update) {
             events.raise();
         }
@@ -142,11 +142,11 @@ pub(super) fn publish(
 pub(super) fn publish(
     feed: &mut kui_access::Feed,
     adapter: &mut Adapter,
-    tree: &AccessTree,
+    tree: AccessSnapshot<'_>,
     scale: f32,
     announcements: &[Announcement],
 ) {
-    feed.publish(tree, scale, announcements, |update| {
+    feed.publish_snapshot(tree, scale, announcements, |update| {
         adapter.update_if_active(|| update);
     });
 }

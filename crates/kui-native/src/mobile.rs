@@ -365,7 +365,7 @@ impl<A: App> Host<A> {
             access::publish(
                 &mut self.access_feed,
                 adapter,
-                self.core.access_tree(),
+                self.core.access_snapshot(),
                 scale as f32,
                 &said,
             );
