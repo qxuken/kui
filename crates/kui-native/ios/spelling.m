@@ -18,33 +18,38 @@ static NSString *string(const uint8_t *bytes, size_t len) {
     return [[NSString alloc] initWithBytes:bytes length:len encoding:NSUTF8StringEncoding];
 }
 
+// Snapshot the active writing languages on the UIKit thread.
+NSArray<NSString *> *kui_ios_spell_languages(void) {
+    NSArray<NSString *> *available = UITextChecker.availableLanguages;
+    NSMutableOrderedSet<NSString *> *languages = [NSMutableOrderedSet orderedSet];
+    NSMutableOrderedSet<NSString *> *preferences =
+        [NSMutableOrderedSet orderedSetWithArray:NSLocale.preferredLanguages];
+    for (UITextInputMode *keyboard in UITextInputMode.activeInputModes) {
+        if (keyboard.primaryLanguage.length) [preferences addObject:keyboard.primaryLanguage];
+    }
+    for (NSString *preferred in preferences) {
+        NSString *code = [NSLocale localeWithLocaleIdentifier:preferred].languageCode;
+        NSMutableArray<NSString *> *related = [NSMutableArray array];
+        for (NSString *candidate in available) {
+            if ([[NSLocale localeWithLocaleIdentifier:candidate].languageCode isEqual:code])
+                [related addObject:candidate];
+        }
+        if (!related.count) continue;
+        NSArray *matches = [NSBundle preferredLocalizationsFromArray:related
+                                                      forPreferences:@[preferred]];
+        [languages addObject:matches.firstObject ?: related.firstObject];
+    }
+    return languages.array;
+}
+
 void *kui_ios_spell_open(void) {
     __block void *result = NULL;
     onMain(^{
-        NSArray<NSString *> *available = UITextChecker.availableLanguages;
-        if (!available.count) return;
-        NSMutableOrderedSet<NSString *> *languages = [NSMutableOrderedSet orderedSet];
-        NSMutableOrderedSet<NSString *> *preferences =
-            [NSMutableOrderedSet orderedSetWithArray:NSLocale.preferredLanguages];
-        for (UITextInputMode *keyboard in UITextInputMode.activeInputModes) {
-            if (keyboard.primaryLanguage.length) [preferences addObject:keyboard.primaryLanguage];
-        }
-        for (NSString *preferred in preferences) {
-            NSString *code = [NSLocale localeWithLocaleIdentifier:preferred].languageCode;
-            NSMutableArray<NSString *> *related = [NSMutableArray array];
-            for (NSString *candidate in available) {
-                if ([[NSLocale localeWithLocaleIdentifier:candidate].languageCode isEqual:code])
-                    [related addObject:candidate];
-            }
-            if (!related.count) continue;
-            NSArray *matches = [NSBundle preferredLocalizationsFromArray:related
-                                                          forPreferences:@[preferred]];
-            [languages addObject:matches.firstObject ?: related.firstObject];
-        }
+        NSArray *languages = kui_ios_spell_languages();
         if (!languages.count) return;
         KUISpelling *dictionary = [KUISpelling new];
         dictionary.checker = [UITextChecker new];
-        dictionary.languages = languages.array;
+        dictionary.languages = languages;
         result = (__bridge_retained void *)dictionary;
     });
     return result;
@@ -81,7 +86,7 @@ void kui_ios_spell_check(void *handle, const uint8_t *bytes, size_t len, void *c
                 cursor = NSMaxRange(miss);
             }
         }
-        [errors enumerateRangesUsingBlock:^(NSRange range, BOOL *stop) {
+        [errors enumerateRangesUsingBlock:^(NSRange range, BOOL * __unused stop) {
             emit(context, range.location, NSMaxRange(range));
         }];
     }

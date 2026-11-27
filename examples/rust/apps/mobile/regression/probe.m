@@ -9,6 +9,66 @@ static UIView *responder(UIView *view) {
     return nil;
 }
 
+extern NSArray<NSString *> *kui_ios_spell_languages(void);
+
+// This fixture is short. Mark each UTF-16 unit rejected by each configured
+// UIKit dictionary, then convert the common runs using NSString itself.
+void kui_probe_expected_ranges(const uint8_t *bytes, size_t len, void *ctx,
+                               void (*emit)(void *, size_t, size_t)) {
+    NSString *text = [[NSString alloc] initWithBytes:bytes length:len encoding:NSUTF8StringEncoding];
+    NSArray *languages = kui_ios_spell_languages();
+    if (!languages.count || !text.length) return;
+    UITextChecker *checker = [UITextChecker new];
+    NSMutableData *votes = [NSMutableData dataWithLength:text.length * sizeof(NSUInteger)];
+    NSUInteger *rejected = votes.mutableBytes;
+    NSRange full = NSMakeRange(0, text.length);
+    for (NSString *language in languages) {
+        NSUInteger cursor = 0;
+        while (cursor < full.length) {
+            NSRange error = [checker rangeOfMisspelledWordInString:text range:full startingAt:cursor
+                                                              wrap:NO language:language];
+            if (error.location == NSNotFound || error.location < cursor || !error.length ||
+                NSMaxRange(error) > full.length) break;
+            for (NSUInteger i = error.location; i < NSMaxRange(error); i++) rejected[i]++;
+            cursor = NSMaxRange(error);
+        }
+    }
+    for (NSUInteger i = 0; i < full.length;) {
+        if (rejected[i] != languages.count) { i++; continue; }
+        NSUInteger start = i++;
+        while (i < full.length && rejected[i] == languages.count) i++;
+        emit(ctx, [[text substringToIndex:start] lengthOfBytesUsingEncoding:NSUTF8StringEncoding],
+                  [[text substringToIndex:i] lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
+    }
+}
+
+// Read UIKit independently of the KUI worker when a spelling assertion fails.
+// Installed keyboard and spelling languages vary between simulator images.
+void kui_probe_spelling(const uint8_t *bytes, size_t len, void *ctx,
+                        void (*report)(void *, const char *)) {
+    NSString *text = [[NSString alloc] initWithBytes:bytes length:len encoding:NSUTF8StringEncoding];
+    UITextChecker *checker = [UITextChecker new];
+    NSMutableArray *keyboards = [NSMutableArray array];
+    for (UITextInputMode *keyboard in UITextInputMode.activeInputModes)
+        if (keyboard.primaryLanguage) [keyboards addObject:keyboard.primaryLanguage];
+    NSMutableDictionary *ranges = [NSMutableDictionary dictionary];
+    for (NSString *language in UITextChecker.availableLanguages) {
+        NSMutableArray *answer = [NSMutableArray array];
+        NSUInteger cursor = 0;
+        while (cursor < text.length) {
+            NSRange miss = [checker rangeOfMisspelledWordInString:text range:NSMakeRange(0,text.length)
+                     startingAt:cursor wrap:NO language:language];
+            if (miss.location == NSNotFound || NSMaxRange(miss) <= cursor) break;
+            [answer addObject:NSStringFromRange(miss)];
+            cursor = NSMaxRange(miss);
+        }
+        ranges[language] = answer;
+    }
+    NSString *summary = [NSString stringWithFormat:@"UIKit preferred=%@ keyboards=%@ configured=%@ nativeUTF16Ranges=%@",
+                         NSLocale.preferredLanguages, keyboards, kui_ios_spell_languages(), ranges];
+    report(ctx, summary.UTF8String);
+}
+
 void kui_probe_unlearn(const uint8_t *bytes, size_t len) {
     NSString *word = [[NSString alloc] initWithBytes:bytes length:len encoding:NSUTF8StringEncoding];
     [UITextChecker unlearnWord:word];

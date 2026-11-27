@@ -16,6 +16,8 @@ pub struct Regression {
     awaiting_teardown: bool,
     #[cfg(target_os = "ios")]
     spelling_word: String,
+    #[cfg(target_os = "ios")]
+    expected_spelling: Vec<std::ops::Range<usize>>,
     pub result: PathBuf,
     #[cfg(target_os = "android")]
     pub activity: Option<kui_native::mobile::AndroidApp>,
@@ -50,6 +52,8 @@ impl Regression {
         if self.step < 0 {
             return;
         }
+        #[cfg(target_os = "ios")]
+        let sample = format!("🙂 {}.", self.spelling_word);
         let caret = core.edit.caret_and_selection(a);
         let marked = core.edit.preedit(b);
         if self.since.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(12) {
@@ -64,6 +68,14 @@ impl Regression {
                         .map(<[_]>::to_vec),
                     core.edit.spelling.dictionary_revision()
                 ));
+                return;
+            }
+            #[cfg(target_os = "ios")]
+            if (24..=27).contains(&self.step) {
+                let ranges = core.edit.spelling.check(&sample).map(<[_]>::to_vec);
+                let choices = core.edit.spelling.choices("speling");
+                self.finish(format!("FAIL spelling step {} for {sample:?}: worker ranges {ranges:?}, direct UIKit {:?}, choices {choices:?}, generation {}, {}", self.step, self.expected_spelling,
+                    core.edit.spelling.dictionary_revision(), spelling_diagnostics(&sample)));
                 return;
             }
             self.finish(format!("FAIL step {} model {first:?}, {second:?}, caret {caret:?}, marked {marked:?}, focus {:?}, changes {:?}", self.step, core.focus(), self.changes));
@@ -148,6 +160,8 @@ impl Regression {
                         + &(0..8)
                             .map(|i| (b'a' + ((seed >> (i * 5)) % 26) as u8) as char)
                             .collect::<String>();
+                    self.expected_spelling =
+                        native_spelling_ranges(&format!("🙂 {}.", self.spelling_word));
                     true
                 }
                 #[cfg(target_os = "android")]
@@ -156,11 +170,12 @@ impl Regression {
                 }
             }
             #[cfg(target_os = "ios")]
-            24 => core
-                .edit
-                .spelling
-                .check("🙂 speling")
-                .is_some_and(|r| r.len() == 1 && r[0] == (5..12)),
+            24 => core.edit.spelling.check(&sample).is_some_and(|ranges| {
+                ranges == self.expected_spelling
+                    && ranges
+                        .iter()
+                        .any(|r| sample.get(r.clone()) == Some(self.spelling_word.as_str()))
+            }),
             #[cfg(target_os = "ios")]
             25 => core
                 .edit
@@ -173,7 +188,7 @@ impl Regression {
                 if core
                     .edit
                     .spelling
-                    .check(word)
+                    .check(&sample)
                     .is_some_and(|r| !r.is_empty())
                 {
                     core.edit.spelling.learn(word);
@@ -184,11 +199,10 @@ impl Regression {
             }
             #[cfg(target_os = "ios")]
             27 if core.edit.spelling.dictionary_revision() > 0
-                && core
-                    .edit
-                    .spelling
-                    .check(&self.spelling_word)
-                    .is_some_and(|r| r.is_empty()) =>
+                && core.edit.spelling.check(&sample).is_some_and(|r| {
+                    r.iter()
+                        .all(|range| sample.get(range.clone()) != Some(self.spelling_word.as_str()))
+                }) =>
             {
                 unsafe extern "C" {
                     fn kui_probe_unlearn(bytes: *const u8, len: usize);
@@ -285,4 +299,43 @@ impl Regression {
         })
         .unwrap()
     }
+}
+
+#[cfg(target_os = "ios")]
+fn spelling_diagnostics(text: &str) -> String {
+    use std::ffi::{CStr, c_char, c_void};
+    unsafe extern "C" {
+        fn kui_probe_spelling(
+            bytes: *const u8,
+            len: usize,
+            ctx: *mut c_void,
+            report: extern "C" fn(*mut c_void, *const c_char),
+        );
+    }
+    extern "C" fn report(ctx: *mut c_void, value: *const c_char) {
+        let value = unsafe { CStr::from_ptr(value) }.to_string_lossy();
+        unsafe { &mut *ctx.cast::<String>() }.push_str(&value);
+    }
+    let mut value = String::new();
+    unsafe { kui_probe_spelling(text.as_ptr(), text.len(), (&raw mut value).cast(), report) };
+    value
+}
+
+#[cfg(target_os = "ios")]
+fn native_spelling_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
+    use std::{ffi::c_void, ops::Range};
+    unsafe extern "C" {
+        fn kui_probe_expected_ranges(
+            text: *const u8,
+            len: usize,
+            ctx: *mut c_void,
+            emit: extern "C" fn(*mut c_void, usize, usize),
+        );
+    }
+    extern "C" fn emit(ctx: *mut c_void, start: usize, end: usize) {
+        unsafe { &mut *ctx.cast::<Vec<Range<usize>>>() }.push(start..end);
+    }
+    let mut ranges = Vec::new();
+    unsafe { kui_probe_expected_ranges(text.as_ptr(), text.len(), (&raw mut ranges).cast(), emit) }
+    ranges
 }
