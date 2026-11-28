@@ -8,9 +8,6 @@ static void onMain(dispatch_block_t block) {
 }
 
 extern void kui_ios_spell_readiness_changed(void);
-// The simulator regression supplies this optional sink. Only request/result
-// counts cross the probe; release apps have no sink or diagnostic storage.
-extern void kui_probe_backend_counts(int stage, size_t a, size_t b, size_t c) __attribute__((weak_import));
 
 @interface KUISpelling : NSObject
 @property(nonatomic, strong) UITextChecker *checker;
@@ -136,7 +133,6 @@ static NSIndexSet *nativeErrors(UITextChecker *checker, NSString *text, NSString
             }
         }
     }
-    if (kui_probe_backend_counts) kui_probe_backend_counts(2, self.languages.count, self.samples.count, answered.count);
     if (answered.count) self.checker = fresh;
     [self observe:answered text:nil];
 }
@@ -149,7 +145,6 @@ void *kui_ios_spell_open(void) {
         NSArray *languages = kui_ios_spell_languages();
         // Keyboard languages can be empty on the first UIKit query. Keep
         // the worker alive so an activation or provisional check can retry.
-        if (kui_probe_backend_counts) kui_probe_backend_counts(0, languages.count, 0, 0);
         KUISpelling *dictionary = [KUISpelling new];
         dictionary.checker = [UITextChecker new];
         dictionary.languages = languages;
@@ -228,12 +223,10 @@ void kui_ios_spell_check(void *handle, const uint8_t *bytes, size_t len, void *c
                 dictionary.checker = checker;
             }
         });
-        NSUInteger rawUnits = 0;
         for (NSString *language in dictionary.languages) {
             if ([lowercase rangeOfCharacterFromSet:dictionary.letters[language]].location == NSNotFound)
                 continue;
             NSIndexSet *errors = nativeErrors(checker, text, language);
-            rawUnits += errors.count;
             checked[language] = errors;
             if (errors.count) [answered addObject:language];
         }
@@ -242,7 +235,6 @@ void kui_ios_spell_check(void *handle, const uint8_t *bytes, size_t len, void *c
             if (NSProcessInfo.processInfo.systemUptime - dictionary.lastProbe >= 30) [dictionary refresh];
         });
         NSIndexSet *errors = kui_ios_spell_consensus(text, dictionary.letters, checked);
-        if (kui_probe_backend_counts) kui_probe_backend_counts(1, checked.count, rawUnits, errors.count);
         [errors enumerateRangesUsingBlock:^(NSRange range, BOOL * __unused stop) {
             emit(context, range.location, NSMaxRange(range));
         }];
