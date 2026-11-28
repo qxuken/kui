@@ -2779,6 +2779,13 @@ impl Interaction {
             .filter(move |r| point.is_some_and(|p| !r.inert && r.clip.contains(p) && r.under(p)))
     }
 
+    /// Whether a long press here can open an editor, selection, or application menu.
+    pub fn has_context_menu_at(&self, point: Vec2) -> bool {
+        self.hit_at(point).is_some_and(|hit| {
+            hit.edit_origin.is_some() || hit.select_scope.is_some() || hit.context_menu.is_some()
+        })
+    }
+
     /// Whether a host can pan content here with a scroll gesture.
     pub fn prefers_scroll_at(&self, point: Vec2) -> bool {
         !self.prefers_drag_at(point)

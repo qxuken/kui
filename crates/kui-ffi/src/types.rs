@@ -2814,7 +2814,7 @@ pub const KUI_EDIT_VALUE: u32 = 1 << 5;
 /// "Tab moves focus" toggle (`kui_tab_moves_focus`), or Ctrl+Tab
 /// (backlog C99).
 pub const KUI_EDIT_TAB_MOVES_FOCUS: u32 = 1 << 6;
-/// Highlight misspellings using the desktop dictionary.
+/// Highlight misspellings and offer spelling actions in the editor menu.
 pub const KUI_EDIT_SPELLCHECK: u32 = 1 << 7;
 
 /// OR'd into `kui_path`'s and `kui_path_d`'s `fill_rule`: the path turns,

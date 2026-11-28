@@ -43,6 +43,36 @@ impl Editor {
         Ok(Self(app.clone()))
     }
 
+    pub(super) fn copy(&self, text: &str) {
+        if let Err(e) = with_activity(&self.0, |env, activity| {
+            let text = JString::from_str(env, text)?;
+            env.call_method(
+                activity,
+                jni_str!("copyKuiText"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[JValue::Object(text.as_ref())],
+            )?;
+            Ok(())
+        }) {
+            eprintln!("kui: copying Android editor text: {e}");
+        }
+    }
+
+    pub(super) fn paste(&self) -> String {
+        with_activity(&self.0, |env, activity| {
+            let text = env
+                .call_method(
+                    activity,
+                    jni_str!("pasteKuiText"),
+                    jni_sig!("()Ljava/lang/String;"),
+                    &[],
+                )?
+                .l()?;
+            JString::cast_local(env, text)?.try_to_string(env)
+        })
+        .unwrap_or_default()
+    }
+
     pub(super) fn set(
         &self,
         session: i64,

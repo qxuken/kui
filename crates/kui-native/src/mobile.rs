@@ -23,6 +23,9 @@ pub use winit::platform::android::activity::AndroidApp;
 #[cfg(target_os = "android")]
 #[path = "mobile_android_editor.rs"]
 mod android_editor;
+#[cfg(target_os = "android")]
+#[path = "mobile_android_spelling.rs"]
+mod android_spelling;
 
 #[path = "mobile_access.rs"]
 mod access;
@@ -32,6 +35,8 @@ pub use fonts::session_with_japanese_fallback;
 #[cfg(target_os = "ios")]
 #[path = "mobile_ios_editor.rs"]
 mod ios_editor;
+#[cfg(target_os = "ios")]
+pub(crate) use ios_editor::wake_spelling_windows;
 #[path = "mobile_text.rs"]
 mod mobile_text;
 use mobile_text::{Document, NativeText};
@@ -135,17 +140,31 @@ pub fn run_with_extensions(
 }
 
 impl<A: App> Host<A> {
+    fn next_deadline(&self) -> Option<Instant> {
+        self.contacts
+            .deadline()
+            .map(|at| self.epoch + Duration::from_secs_f64(at))
+            .into_iter()
+            .chain(self.next_draw)
+            .min()
+    }
+
     fn new(
         #[cfg(target_os = "android")] activity: AndroidApp,
-        core: Core,
+        mut core: Core,
         mut app: A,
         extensions: Extensions,
         proxy: Proxy,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         #[cfg(target_os = "android")]
         let editor = android_editor::Editor::new(&activity, proxy.clone())?;
+        #[cfg(target_os = "android")]
+        android_spelling::install(&mut core, activity.clone());
         #[cfg(target_os = "ios")]
-        let editor = ios_editor::Editor::new(proxy.clone());
+        let editor = {
+            crate::system::configure_spelling(&mut core);
+            ios_editor::Editor::new(proxy.clone())
+        };
         app.setup(Waker(proxy.clone()));
         Ok(Self {
             #[cfg(target_os = "ios")]
@@ -312,6 +331,24 @@ impl<A: App> Host<A> {
         });
         self.core.set_time(time);
         self.app.before_frame(&mut self.core);
+        for action in self.core.take_matching_menu_actions(|action| {
+            matches!(
+                action,
+                crate::MenuAction::SetClipboard { .. } | crate::MenuAction::Paste
+            )
+        }) {
+            match action {
+                crate::MenuAction::SetClipboard { text, .. } => self.editor.copy(&text),
+                crate::MenuAction::Paste => {
+                    let text = self.editor.paste();
+                    self.input(InputEvent::Paste {
+                        text,
+                        marks: Default::default(),
+                    });
+                }
+                _ => unreachable!(),
+            }
+        }
         let reveal = changed && self.core.ime_rect().is_some();
         let mut ui = self.core.frame_with(
             Size::new(logical.width, height),
@@ -435,7 +472,9 @@ impl<A: App> Host<A> {
 impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
     fn new_events(&mut self, _: &ActiveEventLoop, cause: StartCause) {
         if matches!(cause, StartCause::ResumeTimeReached { .. })
-            && self.next_draw.is_some_and(|due| due <= Instant::now())
+            && self
+                .next_deadline()
+                .is_some_and(|due| due <= Instant::now())
         {
             self.next_draw = None;
             if let Some(window) = &self.window {
@@ -448,7 +487,7 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
         let Some(window) = self.window.as_ref().filter(|_| self.renderer.is_some()) else {
             return;
         };
-        let deadline = self.next_draw;
+        let deadline = self.next_deadline();
         // The usable area can change while the surface itself stays the same size.
         #[cfg(target_os = "ios")]
         {
@@ -669,6 +708,11 @@ impl<A: App> ApplicationHandler<MobileEvent> for Host<A> {
                         )
                     },
                 );
+                if touch.phase == winit::event::TouchPhase::Started
+                    && self.core.interaction.has_context_menu_at(at)
+                {
+                    self.contacts.arm_context_menu(time);
+                }
                 // Down and sub-slop moves only update the recognizer. A
                 // synchronous present here delays the motion we need to sample.
                 if !dispatched {

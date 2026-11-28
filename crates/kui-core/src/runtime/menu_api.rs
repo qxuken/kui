@@ -20,12 +20,22 @@ use crate::geom::{Size, Vec2};
 /// nothing to say about a passage.
 pub const LOOKUP_MAX: usize = 100;
 
+use crate::edit::Misspelling;
 use crate::input::{EventKind, UiEvent};
 use crate::key::Key;
 use crate::menu::{Menu, MenuAction, MenuItem, MenuRole};
 use crate::runtime::Core;
+use crate::spelling::SpellingChoices;
 use crate::tree::OriginId;
 use crate::ui::Ui;
+
+/// A single right-click. Hold the normal menu until native suggestions
+/// arrive, since an OS menu takes a snapshot of its rows when shown.
+pub(super) struct SpellingMenu {
+    target: Misspelling,
+    pending: Option<Menu>,
+    choices: SpellingChoices,
+}
 use crate::value::Value;
 
 impl Core {
@@ -178,6 +188,7 @@ impl Core {
         // right-clicked. The window's *selection* survives the press
         // (a press under `OriginId::MENU` is spared), but an editor's
         // lives with its focus.
+        self.spelling_menu = None;
         self.menu_editor = self.edit.focused();
         self.menu_focus = self.focus;
         // The accelerators in the platform's spelling, as the bar's are
@@ -249,6 +260,7 @@ impl Core {
     /// Closes it, and every submenu open in it. Returns whether one was
     /// open.
     pub fn close_menu(&mut self) -> bool {
+        self.spelling_menu = None;
         self.menu_sub = Submenus::default();
         self.menu_where = MenuWhere::Window;
         self.menu.take().is_some()
@@ -268,6 +280,16 @@ impl Core {
     /// its own.
     pub fn take_menu_actions(&mut self) -> Vec<MenuAction> {
         std::mem::take(&mut self.menu_actions)
+    }
+
+    /// Drain actions handled by this host, leaving the rest for the embedder.
+    pub fn take_matching_menu_actions(
+        &mut self,
+        mut handles: impl FnMut(&MenuAction) -> bool,
+    ) -> Vec<MenuAction> {
+        self.menu_actions
+            .extract_if(.., |action| handles(action))
+            .collect()
     }
 
     /// Draws the open menu into the frame being built, if there is one.
@@ -366,19 +388,69 @@ impl Core {
             return;
         };
         let (key, origin) = (region.key, region.origin);
-        let editor = region.edit_origin.map(|_| key);
+        let edit_origin = region.edit_origin;
+        let editor = edit_origin.map(|_| key);
         let scope = region.select_scope;
         let items = self.default_menu_items(editor, scope);
         if items.is_empty() {
             return;
         }
         let target = editor.or(scope).unwrap_or(key);
-        self.open_menu_raw(Menu::new(target, at, items).origin(origin));
+        let menu = Menu::new(target, at, items).origin(origin);
+        if let Some(content) = edit_origin {
+            let pos = self.unturned(key, at);
+            if let Some(target) = self
+                .edit
+                .misspelling_at(key, Vec2::new(pos.x - content.x, pos.y - content.y))
+            {
+                self.close_menu();
+                self.spelling_menu = Some(SpellingMenu {
+                    target,
+                    pending: Some(menu),
+                    choices: Default::default(),
+                });
+                self.finish_spelling_menu();
+                return;
+            }
+        }
+        self.open_menu_raw(menu);
         // The press told us which editor this is about, which is better
         // than what held focus: a right-click moves no focus (it must
         // leave a selection alone), so the field under the pointer is not
         // necessarily the focused one.
         self.menu_editor = editor;
+    }
+
+    pub(super) fn finish_spelling_menu(&mut self) {
+        if !self
+            .spelling_menu
+            .as_ref()
+            .is_some_and(|s| s.pending.is_some())
+        {
+            return;
+        }
+        let mut spelling = self.spelling_menu.take().unwrap();
+        if !self.edit.still_misspelled(&spelling.target) {
+            return;
+        }
+        let Some(choices) = self.edit.spelling.choices(&spelling.target.word) else {
+            self.spelling_menu = Some(spelling);
+            return;
+        };
+        let mut menu = spelling.pending.take().unwrap();
+        let mut rows: Vec<_> = choices.suggestions.iter().map(MenuItem::new).collect();
+        if choices.can_learn {
+            rows.push(MenuItem::new("Add to dictionary"));
+        }
+        if !rows.is_empty() {
+            rows.push(MenuItem::separator());
+            rows.append(&mut menu.items);
+            menu.items = rows;
+        }
+        self.open_menu_raw(menu);
+        self.menu_editor = Some(spelling.target.key);
+        spelling.choices = choices;
+        self.spelling_menu = Some(spelling);
     }
 
     /// Filters the events one input produced: anything belonging to the
@@ -466,7 +538,36 @@ impl Core {
         let Some(item) = MenuItem::at_path(&menu.items, path).cloned() else {
             return;
         };
+        let spelling = self.spelling_menu.take();
         self.close_menu();
+        if let Some(SpellingMenu {
+            target, choices, ..
+        }) = spelling
+            && let [index] = path
+        {
+            if let Some(replacement) = choices.suggestions.get(*index) {
+                if self.edit.still_misspelled(&target) {
+                    self.move_focus(Some(target.key));
+                    self.edit.set_selection(
+                        target.key,
+                        (target.line, target.range.start),
+                        (target.line, target.range.end),
+                    );
+                    if self.edit_with_fonts(|edit, fs| {
+                        edit.apply_text(target.key, replacement, false, fs)
+                    }) {
+                        self.push_edit_event(target.key, EventKind::Change, out);
+                    }
+                }
+                return;
+            }
+            if choices.can_learn && *index == choices.suggestions.len() {
+                if self.edit.still_misspelled(&target) {
+                    self.edit.spelling.learn(&target.word);
+                }
+                return;
+            }
+        }
         self.perform_menu_item(&item, menu.target, menu.origin, false, out);
     }
 

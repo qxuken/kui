@@ -1742,7 +1742,7 @@ typedef struct KitTextField {
      */
     KuiStr placeholder;
     /*
-     * Underline misspelled words using the desktop dictionary.
+     * Underline misspellings and offer spelling actions in the editor menu.
      */
     bool spellcheck;
     bool spellcheck_set;
@@ -1998,7 +1998,7 @@ typedef struct KitTextArea {
      */
     KuiStr error;
     /*
-     * Underline misspelled words using the desktop dictionary.
+     * Underline misspellings and offer spelling actions in the editor menu.
      */
     bool spellcheck;
     bool spellcheck_set;

@@ -573,7 +573,7 @@ export interface TextFieldProps {
   hideLabel?: boolean;
   /** Shown while it is empty. */
   placeholder?: string;
-  /** Underline misspelled words using the desktop dictionary. */
+  /** Underline misspellings and offer spelling actions in the editor menu. */
   spellcheck?: boolean;
   /** In the data face. */
   mono?: boolean;
@@ -691,7 +691,7 @@ export interface TextAreaProps {
   autofocus?: boolean;
   /** What is wrong with the text, under it in the danger colour. */
   error?: string;
-  /** Underline misspelled words using the desktop dictionary. */
+  /** Underline misspellings and offer spelling actions in the editor menu. */
   spellcheck?: boolean;
   /** Tab and Shift+Tab move the keyboard to the next or the last control, as from a one-line field: a note, a comment. Left out, Tab types indentation as a code editor's does, and the ways out are Escape then Tab, or Ctrl+M (Ctrl+Shift+M on macOS). */
   tabMovesFocus?: boolean;

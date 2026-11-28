@@ -594,6 +594,7 @@ pub struct Core {
     /// The editor that held focus when the menu opened, since the menu's
     /// own rows take focus from it — what Cut, Copy and Select All act on.
     menu_editor: Option<Key>,
+    spelling_menu: Option<menu_api::SpellingMenu>,
     /// The node that held focus when the menu opened, whatever it was:
     /// where a `replay` row's chord goes once the menu is gone (backlog
     /// F151), since a key goes where the keyboard was.
@@ -1591,6 +1592,7 @@ impl Core {
             menu: None,
             menu_actions: Vec::new(),
             menu_editor: None,
+            spelling_menu: None,
             menu_focus: None,
             native_menus: false,
             menu_popups: false,
@@ -2398,6 +2400,7 @@ impl Core {
     /// directly starts here and ends with `Ui::wrap(core).finish()`.
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
         self.edit.spelling.begin_frame();
+        self.finish_spelling_menu();
         // A frame at or past the time asked for is that frame.
         if let (Some(due), Some(now)) = (self.frame_due, self.anim.time())
             && due <= now

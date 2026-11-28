@@ -20,6 +20,10 @@ public final class EditingProbe {
     }
 
     public static boolean step(Activity activity, int step) throws Exception {
+        if (step == 14) {
+            return activity.getSharedPreferences("kui.spelling", Activity.MODE_PRIVATE)
+                .edit().remove("kuizzzword").commit();
+        }
         FutureTask<Boolean> task = new FutureTask<>(() -> {
             View view = activity.getCurrentFocus();
             if (step == 12) return view == null || !view.onCheckIsTextEditor();

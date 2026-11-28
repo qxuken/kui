@@ -1,1 +1,4 @@
-<input-method xmlns:android="http://schemas.android.com/apk/res/android"/>
+<input-method xmlns:android="http://schemas.android.com/apk/res/android">
+    <subtype android:imeSubtypeLocale="ru_RU" android:languageTag="ru-RU"
+             android:imeSubtypeMode="keyboard" android:overridesImplicitlyEnabledSubtype="true"/>
+</input-method>

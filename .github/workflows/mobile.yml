@@ -36,6 +36,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  mac-spelling:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-tools
+        with:
+          tools: rust
+      - name: Exercise the macOS personal dictionary
+        run: cargo test --locked -p kui-native --no-default-features --lib appkit_suggestions_and_learning -- --ignored
+
   iphone:
     runs-on: macos-15
     timeout-minutes: 30

@@ -77,6 +77,8 @@ void kui_ios_editor(UIView *parent, uint64_t scene, int64_t owner, int kind, con
         view.owner = owner;
         view.scene = scene;
         view.alpha = 0.01;
+        // This view supplies input. KUI paints spelling in opted-in fields.
+        view.spellCheckingType = UITextSpellCheckingTypeNo;
         view.accessibilityElementsHidden = YES;
         view.multiline = (kind & 0x20000) != 0;
         view.returnKeyType = view.multiline ? UIReturnKeyDefault : UIReturnKeyDone;
@@ -91,6 +93,16 @@ void kui_ios_editor(UIView *parent, uint64_t scene, int64_t owner, int kind, con
         view.selectedRange = NSMakeRange(MIN(anchor,caret), abs(caret-anchor));
     }
     if (show && parent.window.isKeyWindow && !view.isFirstResponder) [view becomeFirstResponder];
+}
+
+void kui_ios_copy_text(const uint8_t *bytes, size_t len) {
+    UIPasteboard.generalPasteboard.string =
+        [[NSString alloc] initWithBytes:bytes length:len encoding:NSUTF8StringEncoding];
+}
+
+void kui_ios_paste_text(void *context, void (*emit)(void *, const uint8_t *, size_t)) {
+    NSData *value = [UIPasteboard.generalPasteboard.string dataUsingEncoding:NSUTF8StringEncoding];
+    if (value.length) emit(context, value.bytes, value.length);
 }
 
 extern void kui_ios_hardware_key(uint64_t scene, int64_t owner, uint32_t code,

@@ -268,7 +268,7 @@ return {
         { "label", "string?", doc = "Its label, above it; its name." },
         { "hide_label", "boolean?", doc = "The label names the field but is not drawn: a field whose place says what it is." },
         { "placeholder", "string?", doc = "Shown while it is empty." },
-        { "spellcheck", "boolean?", doc = "Underline misspelled words using the desktop dictionary." },
+        { "spellcheck", "boolean?", doc = "Underline misspellings and offer spelling actions in the editor menu." },
         { "mono", "boolean?", doc = "In the data face." },
         { "disabled", "boolean?", doc = "Unavailable." },
         { "width", "number?", doc = "Its width in px; grows when left out." },
@@ -315,7 +315,7 @@ return {
         { "focus", "integer?", doc = "Takes the keyboard each time this number changes while it is on screen." },
         { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows." },
         { "error", "string?", doc = "What is wrong with the text, under it in the danger colour." },
-        { "spellcheck", "boolean?", doc = "Underline misspelled words using the desktop dictionary." },
+        { "spellcheck", "boolean?", doc = "Underline misspellings and offer spelling actions in the editor menu." },
         { "tab_moves_focus", "boolean?", doc = "Tab and Shift+Tab move the keyboard to the next or the last control, as from a one-line field: a note, a comment. Left out, Tab types indentation as a code editor's does, and the ways out are Escape then Tab, or Ctrl+M (Ctrl+Shift+M on macOS)." },
       },
       events = {
